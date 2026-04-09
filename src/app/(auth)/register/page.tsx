@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,9 +20,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DEPARTMENTS } from "@/lib/utils/constants";
+import { signUp } from "@/lib/actions/auth.actions";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [department, setDepartment] = useState("");
@@ -34,35 +32,22 @@ export default function RegisterPage() {
     setLoading(true);
     setError(null);
 
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    const fullName = formData.get("full_name") as string;
-    const position = formData.get("position") as string;
-
     if (!department) {
       setError("Please select a department.");
       setLoading(false);
       return;
     }
 
-    const supabase = createClient();
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName, department, position },
-        emailRedirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    });
+    const formData = new FormData(e.currentTarget);
+    formData.set("department", department);
 
-    if (signUpError) {
-      setError(signUpError.message);
+    const result = await signUp(formData);
+
+    if (result?.error) {
+      setError(result.error);
       setLoading(false);
-      return;
     }
-
-    router.push("/verify");
+    // On success, signUp() redirects to /verify server-side
   }
 
   return (

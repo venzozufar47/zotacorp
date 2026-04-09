@@ -3,6 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/types";
+
+function getAdminClient() {
+  return createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export async function signIn(formData: FormData) {
   const supabase = await createClient();
@@ -16,7 +25,6 @@ export async function signIn(formData: FormData) {
     return { error: error.message };
   }
 
-  // Determine role and redirect accordingly
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -38,6 +46,7 @@ export async function signIn(formData: FormData) {
 
 export async function signUp(formData: FormData) {
   const supabase = await createClient();
+  const adminClient = getAdminClient();
 
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
@@ -45,21 +54,31 @@ export async function signUp(formData: FormData) {
   const department = formData.get("department") as string;
   const position = formData.get("position") as string;
 
-  const { error } = await supabase.auth.signUp({
+  const { data: signUpData, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: {
-        full_name: fullName,
-        department,
-        position,
-      },
+      data: { full_name: fullName, department, position },
       emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`,
     },
   });
 
   if (error) {
     return { error: error.message };
+  }
+
+  // Create profile immediately using service role (bypasses RLS)
+  // This works even before email confirmation
+  if (signUpData.user) {
+    await adminClient.from("profiles").upsert({
+      id: signUpData.user.id,
+      email,
+      full_name: fullName,
+      department,
+      position,
+      role: "employee",
+      is_active: true,
+    });
   }
 
   redirect("/verify");
