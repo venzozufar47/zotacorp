@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DEPARTMENTS } from "@/lib/utils/constants";
-import { signUp } from "@/lib/actions/auth.actions";
 
 export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
@@ -39,18 +39,56 @@ export default function RegisterPage() {
     }
 
     const formData = new FormData(e.currentTarget);
-    formData.set("department", department);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    const fullName = formData.get("full_name") as string;
+    const position = formData.get("position") as string;
 
-    const result = await signUp(formData);
+    try {
+      const supabase = createClient();
 
-    if (result?.error) {
-      setError(result.error);
+      // Step 1: sign up with Supabase Auth
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName, department, position },
+          emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+        },
+      });
+
+      if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: create profile row via API route (uses service role server-side)
+      if (signUpData.user) {
+        const res = await fetch("/api/profile/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: signUpData.user.id,
+            email,
+            full_name: fullName,
+            department,
+            position,
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          console.error("Profile creation failed:", body);
+          // Non-blocking — user can still proceed, profile can be fixed later
+        }
+      }
+
+      window.location.href = "/verify";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred.");
       setLoading(false);
-      return;
     }
-
-    // Hard redirect to verify page
-    window.location.href = "/verify";
   }
 
   return (
@@ -144,11 +182,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-muted-foreground mt-4">
           Already have an account?{" "}
-          <Link
-            href="/login"
-            className="font-medium"
-            style={{ color: "var(--primary)" }}
-          >
+          <Link href="/login" className="font-medium" style={{ color: "var(--primary)" }}>
             Sign in
           </Link>
         </p>
