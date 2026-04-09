@@ -35,8 +35,8 @@ export default function LoginPage() {
       return;
     }
 
-    // Let the server-side root page handle role-based redirect
-    router.push("/");
+    // Hard redirect so the browser sends fresh auth cookies to the server
+    window.location.href = "/";
   }
 
   return (

@@ -46,8 +46,11 @@ export default function RegisterPage() {
     if (result?.error) {
       setError(result.error);
       setLoading(false);
+      return;
     }
-    // On success, signUp() redirects to /verify server-side
+
+    // Hard redirect to verify page
+    window.location.href = "/verify";
   }
 
   return (

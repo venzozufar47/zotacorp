@@ -68,7 +68,6 @@ export async function signUp(formData: FormData) {
   }
 
   // Create profile immediately using service role (bypasses RLS)
-  // This works even before email confirmation
   if (signUpData.user) {
     await adminClient.from("profiles").upsert({
       id: signUpData.user.id,
@@ -81,7 +80,7 @@ export async function signUp(formData: FormData) {
     });
   }
 
-  redirect("/verify");
+  return { success: true };
 }
 
 export async function signOut() {
