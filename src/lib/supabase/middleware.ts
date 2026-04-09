@@ -32,7 +32,6 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Public routes that don't require auth
   const publicRoutes = ["/login", "/register", "/verify"];
   const isPublic = publicRoutes.some((r) => pathname.startsWith(r));
 
@@ -48,7 +47,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Admin-only routes
+  // Admin-only route guard
   if (user && pathname.startsWith("/admin")) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -56,7 +55,7 @@ export async function updateSession(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== "admin") {
+    if (!profile || profile.role !== "admin") {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);
