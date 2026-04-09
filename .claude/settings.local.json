@@ -6,7 +6,8 @@
       "Bash(npx shadcn@latest init -d)",
       "Bash(npx shadcn@latest add card input dialog table select badge avatar skeleton toast label)",
       "Bash(npx tsc:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:3000 -o /dev/null -w \"%{http_code}\")"
     ]
   }
 }
