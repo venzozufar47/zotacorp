@@ -26,8 +26,6 @@ interface AttendanceRow {
   profiles: {
     full_name: string;
     email: string;
-    department: string;
-    position: string;
   };
 }
 
@@ -67,7 +65,6 @@ export function AttendanceRecapTable({
           <TableHeader>
             <TableRow className="bg-[#f5f5f7]">
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Employee</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Department</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
@@ -94,7 +91,6 @@ export function AttendanceRecapTable({
                       <p className="text-xs text-muted-foreground">{row.profiles.email}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm">{row.profiles.department}</TableCell>
                   <TableCell className="text-sm font-medium">
                     {formatLocalDate(row.date)}
                   </TableCell>

@@ -4,28 +4,18 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { DEPARTMENTS } from "@/lib/utils/constants";
 import { Search, X } from "lucide-react";
 
 interface AttendanceFiltersProps {
   startDate: string;
   endDate: string;
-  department: string;
   search: string;
 }
 
 export function AttendanceFilters({
   startDate,
   endDate,
-  department,
   search,
 }: AttendanceFiltersProps) {
   const router = useRouter();
@@ -50,14 +40,13 @@ export function AttendanceFilters({
   }
 
   const hasFilters =
-    searchParams.has("department") ||
     searchParams.has("search") ||
     searchParams.has("start") ||
     searchParams.has("end");
 
   return (
     <div className="bg-white rounded-xl border p-4 space-y-3">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Date range */}
         <div className="space-y-1">
           <Label className="text-xs">From</Label>
@@ -76,29 +65,6 @@ export function AttendanceFilters({
             onChange={(e) => updateParams({ end: e.target.value })}
             className="text-sm h-9"
           />
-        </div>
-
-        {/* Department */}
-        <div className="space-y-1">
-          <Label className="text-xs">Department</Label>
-          <Select
-            value={department || "all"}
-            onValueChange={(v) =>
-              updateParams({ department: v === "all" ? "" : (v ?? "") })
-            }
-          >
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue placeholder="All departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All departments</SelectItem>
-              {DEPARTMENTS.map((d) => (
-                <SelectItem key={d} value={d}>
-                  {d}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         {/* Search */}

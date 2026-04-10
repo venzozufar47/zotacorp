@@ -11,7 +11,6 @@ import { format, startOfMonth, endOfMonth } from "date-fns";
 interface SearchParams {
   start?: string;
   end?: string;
-  department?: string;
   search?: string;
   page?: string;
 }
@@ -48,7 +47,6 @@ export default async function AdminAttendancePage({
   const { data, count } = await getAllAttendanceLogs({
     startDate,
     endDate,
-    department: params.department,
     search: params.search,
     page,
     pageSize,
@@ -64,7 +62,6 @@ export default async function AdminAttendancePage({
       <AttendanceFilters
         startDate={startDate}
         endDate={endDate}
-        department={params.department ?? ""}
         search={params.search ?? ""}
       />
 

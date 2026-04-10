@@ -143,7 +143,6 @@ export async function getMyAttendanceLogs(limit = 30) {
 export async function getAllAttendanceLogs(params: {
   startDate?: string;
   endDate?: string;
-  department?: string;
   search?: string;
   page?: number;
   pageSize?: number;
@@ -167,7 +166,6 @@ export async function getAllAttendanceLogs(params: {
   const {
     startDate,
     endDate,
-    department,
     search,
     page = 1,
     pageSize = 25,
@@ -178,7 +176,7 @@ export async function getAllAttendanceLogs(params: {
     .select(
       `
       *,
-      profiles!inner(full_name, email, department, position)
+      profiles!inner(full_name, email)
     `,
       { count: "exact" }
     )
@@ -187,8 +185,6 @@ export async function getAllAttendanceLogs(params: {
 
   if (startDate) query = query.gte("date", startDate);
   if (endDate) query = query.lte("date", endDate);
-  if (department)
-    query = query.eq("profiles.department", department);
   if (search)
     query = query.ilike("profiles.full_name", `%${search}%`);
 

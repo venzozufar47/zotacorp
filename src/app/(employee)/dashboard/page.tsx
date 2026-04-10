@@ -37,37 +37,12 @@ export default async function DashboardPage() {
 
       <Card className="border-0 shadow-sm animate-fade-up animate-fade-up-delay-1">
         <CardContent className="p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Attendance
-            </p>
-            {profile && (
-              <span className="text-xs text-muted-foreground">
-                {profile.department} · {profile.position}
-              </span>
-            )}
-          </div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Attendance
+          </p>
 
           <AttendanceStatusCard log={todayLog} />
           <CheckInButton todayLog={todayLog} />
-        </CardContent>
-      </Card>
-
-      <Card className="border-0 shadow-sm animate-fade-up animate-fade-up-delay-2">
-        <CardContent className="p-5">
-          <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-            Quick info
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[#f5f5f7] rounded-xl p-3">
-              <p className="text-xs text-muted-foreground">Department</p>
-              <p className="font-semibold text-sm mt-0.5">{profile?.department ?? "—"}</p>
-            </div>
-            <div className="bg-[#f5f5f7] rounded-xl p-3">
-              <p className="text-xs text-muted-foreground">Position</p>
-              <p className="font-semibold text-sm mt-0.5">{profile?.position ?? "—"}</p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
