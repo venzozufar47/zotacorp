@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,19 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<"employee" | "admin">("employee");
+  const [adminTaken, setAdminTaken] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/exists")
+      .then((r) => r.json())
+      .then((d: { exists: boolean }) => {
+        if (d.exists) {
+          setAdminTaken(true);
+          setRole("employee");
+        }
+      })
+      .catch(() => setAdminTaken(false));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -129,9 +142,14 @@ export default function RegisterPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="employee">Employee</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
+                {!adminTaken && <SelectItem value="admin">Admin</SelectItem>}
               </SelectContent>
             </Select>
+            {adminTaken && (
+              <p className="text-xs text-muted-foreground">
+                An admin account already exists — only employee sign-ups are allowed.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

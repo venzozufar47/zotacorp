@@ -16,6 +16,23 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
+    // Enforce single-admin rule: if requesting admin role, reject when one exists
+    if (role === "admin") {
+      const { count } = await adminClient
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "admin");
+
+      if ((count ?? 0) > 0) {
+        // Roll back the auth user we just created so the email is free to try again
+        await adminClient.auth.admin.deleteUser(id);
+        return NextResponse.json(
+          { error: "An admin account already exists. Contact the existing admin." },
+          { status: 409 }
+        );
+      }
+    }
+
     // Auto-confirm email so user can sign in immediately (no email verification flow)
     const { error: confirmError } = await adminClient.auth.admin.updateUserById(id, {
       email_confirm: true,
