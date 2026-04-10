@@ -118,7 +118,7 @@ export function AttendanceRecapTable({
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Hours</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Overtime</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide w-[200px] max-w-[200px]">Overtime</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
             </TableRow>
           </TableHeader>
@@ -165,7 +165,7 @@ export function AttendanceRecapTable({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="w-[200px] max-w-[200px] overflow-hidden">
                     {row.is_overtime && row.overtime_minutes > 0 && otStyle ? (
                       <div className="space-y-1.5">
                         <Badge
@@ -177,7 +177,7 @@ export function AttendanceRecapTable({
 
                         {/* Employee's reason */}
                         {otRequest?.reason && (
-                          <div className="flex items-start gap-1 max-w-[200px]">
+                          <div className="flex items-start gap-1 w-full">
                             <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />
                             <p className="text-[10px] text-muted-foreground leading-tight break-words">
                               {otRequest.reason}
@@ -189,7 +189,7 @@ export function AttendanceRecapTable({
                         {row.overtime_status === "pending" && otRequest && (
                           <>
                             {rejectingId === otRequest.id ? (
-                              <div className="space-y-1 max-w-[200px]">
+                              <div className="space-y-1 w-full">
                                 <textarea
                                   className="w-full text-[11px] border rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-red-300"
                                   rows={2}
@@ -260,7 +260,7 @@ export function AttendanceRecapTable({
 
                         {/* Admin note for reviewed requests */}
                         {otRequest?.admin_note && row.overtime_status === "rejected" && (
-                          <div className="flex items-start gap-1 max-w-[200px]">
+                          <div className="flex items-start gap-1 w-full">
                             <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
                             <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
                               {otRequest.admin_note}
@@ -276,7 +276,7 @@ export function AttendanceRecapTable({
                         >
                           Rejected
                         </Badge>
-                        <div className="flex items-start gap-1 max-w-[200px]">
+                        <div className="flex items-start gap-1 w-full">
                           <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
                           <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
                             {otRequest.admin_note}

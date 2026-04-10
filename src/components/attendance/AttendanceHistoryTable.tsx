@@ -55,7 +55,7 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Duration</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">Overtime</TableHead>
+            <TableHead className="text-xs font-semibold uppercase tracking-wide w-[180px] max-w-[180px]">Overtime</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
           </TableRow>
         </TableHeader>
@@ -91,7 +91,7 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                     )}
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="w-[180px] max-w-[180px] overflow-hidden">
                   {log.is_overtime && log.overtime_minutes > 0 && otStyle ? (
                     <div className="space-y-1">
                       <Badge
@@ -101,7 +101,7 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                         {formatMinutesHuman(log.overtime_minutes)} ({log.overtime_status})
                       </Badge>
                       {log.overtime_status === "rejected" && log.overtime_admin_note && (
-                        <div className="flex items-start gap-1 max-w-[180px]">
+                        <div className="flex items-start gap-1 w-full">
                           <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
                           <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
                             {log.overtime_admin_note}
