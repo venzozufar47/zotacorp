@@ -20,40 +20,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DEPARTMENTS } from "@/lib/utils/constants";
 
 export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [department, setDepartment] = useState("");
+  const [role, setRole] = useState<"employee" | "admin">("employee");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    if (!department) {
-      setError("Please select a department.");
-      setLoading(false);
-      return;
-    }
-
     const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
     const fullName = formData.get("full_name") as string;
-    const position = formData.get("position") as string;
 
     try {
       const supabase = createClient();
 
-      // Step 1: sign up with Supabase Auth
+      // Step 1: sign up
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName, department, position },
-          emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+          data: { full_name: fullName, role },
         },
       });
 
@@ -72,19 +63,25 @@ export default function RegisterPage() {
             id: signUpData.user.id,
             email,
             full_name: fullName,
-            department,
-            position,
+            role,
           }),
         });
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           console.error("Profile creation failed:", body);
-          // Non-blocking — user can still proceed, profile can be fixed later
         }
       }
 
-      window.location.href = "/verify";
+      // Step 3: sign in immediately (skip email confirmation)
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
+
+      window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred.");
       setLoading(false);
@@ -122,33 +119,17 @@ export default function RegisterPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Department</Label>
-              <Select value={department} onValueChange={(v) => setDepartment(v ?? "")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEPARTMENTS.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="position">Position</Label>
-              <Input
-                id="position"
-                name="position"
-                type="text"
-                placeholder="e.g. Designer"
-                required
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label>Role</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as "employee" | "admin")}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select role…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="employee">Employee</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">

@@ -4,22 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Dreaming Outloud — self-hosted. Place DreamingOutloud.woff2 in /public/fonts/ */
-@font-face {
-  font-family: "Dreaming Outloud";
-  src: url("/fonts/DreamingOutloud.woff2") format("woff2"),
-       url("/fonts/DreamingOutloud.woff") format("woff");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: "Dreaming Outloud", cursive;
+  --font-display: var(--font-poppins);
 
   /* Brand palette */
   --color-primary: var(--primary);
@@ -93,19 +83,16 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-      system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
   }
-  h1, h2 {
-    font-family: "Dreaming Outloud", -apple-system, cursive;
+  h1, h2, h3 {
+    font-family: var(--font-poppins), system-ui, sans-serif;
   }
 }
 
 @layer utilities {
   .font-display {
-    font-family: "Dreaming Outloud", -apple-system, cursive;
+    font-family: var(--font-poppins), system-ui, sans-serif;
   }
 
   /* Card hover lift */

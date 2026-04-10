@@ -5,7 +5,7 @@ import type { Database } from "@/lib/supabase/types";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { id, email, full_name, department, position } = body;
+    const { id, email, full_name, role } = body;
 
     if (!id || !email) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -20,9 +20,9 @@ export async function POST(request: Request) {
       id,
       email,
       full_name: full_name ?? "",
-      department: department ?? "",
-      position: position ?? "",
-      role: "employee",
+      department: "",
+      position: "",
+      role: role === "admin" ? "admin" : "employee",
       is_active: true,
     });
 
