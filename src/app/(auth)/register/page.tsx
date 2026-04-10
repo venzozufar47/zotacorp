@@ -54,7 +54,7 @@ export default function RegisterPage() {
         return;
       }
 
-      // Step 2: create profile row via API route (uses service role server-side)
+      // Step 2: create profile + auto-confirm email via API route (service role)
       if (signUpData.user) {
         const res = await fetch("/api/profile/create", {
           method: "POST",
@@ -69,11 +69,13 @@ export default function RegisterPage() {
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          console.error("Profile creation failed:", body);
+          setError(body.error ?? "Account created but setup failed. Please contact support.");
+          setLoading(false);
+          return;
         }
       }
 
-      // Step 3: sign in immediately (skip email confirmation)
+      // Step 3: sign in (email is now confirmed server-side)
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
         setError(signInError.message);

@@ -16,6 +16,16 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
+    // Auto-confirm email so user can sign in immediately (no email verification flow)
+    const { error: confirmError } = await adminClient.auth.admin.updateUserById(id, {
+      email_confirm: true,
+    });
+
+    if (confirmError) {
+      console.error("Email confirm error:", confirmError);
+      return NextResponse.json({ error: confirmError.message }, { status: 500 });
+    }
+
     const { error } = await adminClient.from("profiles").upsert({
       id,
       email,
