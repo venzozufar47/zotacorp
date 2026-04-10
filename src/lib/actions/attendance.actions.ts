@@ -11,19 +11,15 @@ interface CheckInPayload {
 }
 
 /**
- * Compute the attendance status at check-in time.
- * Compares the check-in time against work_start_time + grace_period using
- * the configured timezone.
+ * Compute the attendance status at check-in time using per-user settings.
  */
 function computeCheckInStatus(
   checkedInAt: Date,
-  settings: {
+  userSettings: {
     work_start_time: string;
-    work_end_time: string;
     grace_period_min: number;
-    working_days: number[];
-    timezone: string;
   },
+  timezone: string,
   isFlexible: boolean
 ): { status: "on_time" | "late" | "flexible" | "unknown"; late_minutes: number } {
   if (isFlexible) {
@@ -33,26 +29,17 @@ function computeCheckInStatus(
   try {
     // Convert check-in time to configured timezone
     const checkinLocal = new Date(
-      checkedInAt.toLocaleString("en-US", { timeZone: settings.timezone })
+      checkedInAt.toLocaleString("en-US", { timeZone: timezone })
     );
 
-    // Check if today is a working day (ISO: 1=Mon..7=Sun)
-    const dayOfWeek = checkinLocal.getDay(); // JS: 0=Sun..6=Sat
-    const isoDay = dayOfWeek === 0 ? 7 : dayOfWeek; // Convert to ISO
-
-    if (!settings.working_days.includes(isoDay)) {
-      // Non-working day — no late penalty
-      return { status: "on_time", late_minutes: 0 };
-    }
-
     // Parse work_start_time (e.g. "09:00" or "09:00:00")
-    const [startH, startM] = settings.work_start_time.split(":").map(Number);
+    const [startH, startM] = userSettings.work_start_time.split(":").map(Number);
 
-    // Create cutoff time = work_start_time + grace_period_min
+    // Cutoff = work_start_time + grace_period_min
     const cutoff = new Date(checkinLocal);
-    cutoff.setHours(startH, startM + settings.grace_period_min, 0, 0);
+    cutoff.setHours(startH, startM + userSettings.grace_period_min, 0, 0);
 
-    // Create exact start time for late_minutes calculation
+    // Exact start time for late_minutes
     const startTime = new Date(checkinLocal);
     startTime.setHours(startH, startM, 0, 0);
 
@@ -60,7 +47,6 @@ function computeCheckInStatus(
       return { status: "on_time", late_minutes: 0 };
     }
 
-    // Late: minutes measured from work_start_time, not from cutoff
     const lateMs = checkinLocal.getTime() - startTime.getTime();
     const lateMinutes = Math.ceil(lateMs / 60_000);
 
@@ -81,7 +67,6 @@ export async function checkIn(payload: CheckInPayload) {
 
   const today = getTodayDateString();
 
-  // Check for existing record today
   const { data: existing } = await supabase
     .from("attendance_logs")
     .select("id, checked_in_at, checked_out_at")
@@ -96,19 +81,28 @@ export async function checkIn(payload: CheckInPayload) {
     return { error: "You have already completed attendance for today." };
   }
 
-  // Get profile for flexible schedule flag
+  // Get profile for per-user working time settings
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_flexible_schedule")
+    .select("is_flexible_schedule, work_start_time, work_end_time, grace_period_min")
     .eq("id", user.id)
     .single();
 
-  // Get attendance settings
+  // Get global timezone
   const settings = await getAttendanceSettings();
+  const timezone = settings?.timezone ?? "Asia/Jakarta";
 
   const now = new Date();
-  const { status, late_minutes } = settings
-    ? computeCheckInStatus(now, settings, profile?.is_flexible_schedule ?? false)
+  const { status, late_minutes } = profile
+    ? computeCheckInStatus(
+        now,
+        {
+          work_start_time: profile.work_start_time,
+          grace_period_min: profile.grace_period_min,
+        },
+        timezone,
+        profile.is_flexible_schedule
+      )
     : { status: "unknown" as const, late_minutes: 0 };
 
   const { data, error } = await supabase
@@ -172,37 +166,35 @@ export async function checkOut(payload?: CheckOutPayload) {
   const isOvertime = payload?.isOvertime ?? false;
   const overtimeReason = payload?.overtimeReason ?? "";
 
-  // Get profile for flexible schedule flag
+  // Get per-user settings
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_flexible_schedule")
+    .select("is_flexible_schedule, work_end_time")
     .eq("id", user.id)
     .single();
 
   let overtimeMinutes = 0;
 
   if (isOvertime && !profile?.is_flexible_schedule) {
-    // Get settings to compute overtime
     const settings = await getAttendanceSettings();
-    if (settings) {
-      try {
-        const checkoutLocal = new Date(
-          now.toLocaleString("en-US", { timeZone: settings.timezone })
-        );
-        const [endH, endM] = settings.work_end_time.split(":").map(Number);
-        const endTime = new Date(checkoutLocal);
-        endTime.setHours(endH, endM, 0, 0);
+    const timezone = settings?.timezone ?? "Asia/Jakarta";
 
-        if (checkoutLocal > endTime) {
-          overtimeMinutes = Math.ceil(
-            (checkoutLocal.getTime() - endTime.getTime()) / 60_000
-          );
-          // Cap at 8 hours (480 minutes)
-          overtimeMinutes = Math.min(overtimeMinutes, 480);
-        }
-      } catch {
-        // Fallback: no overtime
+    try {
+      const checkoutLocal = new Date(
+        now.toLocaleString("en-US", { timeZone: timezone })
+      );
+      const [endH, endM] = (profile?.work_end_time ?? "18:00").split(":").map(Number);
+      const endTime = new Date(checkoutLocal);
+      endTime.setHours(endH, endM, 0, 0);
+
+      if (checkoutLocal > endTime) {
+        overtimeMinutes = Math.ceil(
+          (checkoutLocal.getTime() - endTime.getTime()) / 60_000
+        );
+        overtimeMinutes = Math.min(overtimeMinutes, 480);
       }
+    } catch {
+      // Fallback: no overtime
     }
   }
 
@@ -212,6 +204,7 @@ export async function checkOut(payload?: CheckOutPayload) {
       checked_out_at: now.toISOString(),
       is_overtime: isOvertime && overtimeMinutes > 0,
       overtime_minutes: isOvertime ? overtimeMinutes : 0,
+      overtime_status: isOvertime && overtimeMinutes > 0 ? "pending" : null,
       updated_at: now.toISOString(),
     })
     .eq("id", existing.id)
@@ -277,7 +270,7 @@ export async function getMyAttendanceLogs(limit = 30) {
 export async function getAllAttendanceLogs(params: {
   startDate?: string;
   endDate?: string;
-  search?: string;
+  userId?: string;
   statusFilter?: string;
   page?: number;
   pageSize?: number;
@@ -301,7 +294,7 @@ export async function getAllAttendanceLogs(params: {
   const {
     startDate,
     endDate,
-    search,
+    userId,
     statusFilter,
     page = 1,
     pageSize = 25,
@@ -321,8 +314,7 @@ export async function getAllAttendanceLogs(params: {
 
   if (startDate) query = query.gte("date", startDate);
   if (endDate) query = query.lte("date", endDate);
-  if (search)
-    query = query.ilike("profiles.full_name", `%${search}%`);
+  if (userId) query = query.eq("user_id", userId);
   if (statusFilter && statusFilter !== "all")
     query = query.eq("status", statusFilter as "on_time" | "late" | "late_excused" | "flexible" | "unknown");
 
@@ -345,14 +337,13 @@ export async function getMyAttendanceSummary(month: number, year: number) {
 
   if (!user) return null;
 
-  // Build date range for the month
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
   const { data: logs } = await supabase
     .from("attendance_logs")
-    .select("checked_in_at, checked_out_at, status, late_minutes, is_overtime, overtime_minutes")
+    .select("checked_in_at, checked_out_at, status, late_minutes, is_overtime, overtime_minutes, overtime_status")
     .eq("user_id", user.id)
     .gte("date", startDate)
     .lte("date", endDate)
@@ -360,20 +351,12 @@ export async function getMyAttendanceSummary(month: number, year: number) {
 
   if (!logs) return null;
 
-  // Get approved overtime totals
-  const { data: overtimeData } = await supabase
-    .from("overtime_requests")
-    .select("overtime_minutes, status")
-    .eq("user_id", user.id)
-    .gte("date", startDate)
-    .lte("date", endDate)
-    .eq("status", "approved");
-
   let totalWorkingMs = 0;
   let onTimeCount = 0;
   let lateCount = 0;
   let lateExcusedCount = 0;
   let flexibleCount = 0;
+  let approvedOvertimeMinutes = 0;
 
   for (const log of logs) {
     if (log.checked_out_at) {
@@ -396,15 +379,13 @@ export async function getMyAttendanceSummary(month: number, year: number) {
         flexibleCount++;
         break;
     }
+
+    if (log.overtime_status === "approved" && log.overtime_minutes > 0) {
+      approvedOvertimeMinutes += log.overtime_minutes;
+    }
   }
 
   const totalWorkingHours = Math.round((totalWorkingMs / 3_600_000) * 10) / 10;
-  const approvedOvertimeMinutes = (overtimeData ?? []).reduce(
-    (sum, r) => sum + r.overtime_minutes,
-    0
-  );
-  const approvedOvertimeHours =
-    Math.round((approvedOvertimeMinutes / 60) * 10) / 10;
 
   return {
     totalWorkingHours,
@@ -412,7 +393,19 @@ export async function getMyAttendanceSummary(month: number, year: number) {
     lateCount,
     lateExcusedCount,
     flexibleCount,
-    approvedOvertimeHours,
+    approvedOvertimeMinutes,
     totalDays: logs.length,
   };
+}
+
+/** Get all employee profiles (id + name) for admin dropdown filters */
+export async function getAllEmployees() {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, full_name, email")
+    .order("full_name", { ascending: true });
+
+  return data ?? [];
 }

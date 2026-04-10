@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Clock, CheckCircle, AlertCircle, Timer, Calendar } from "lucide-react";
+import { formatMinutesHuman } from "@/lib/utils/date";
 
 interface AttendanceSummaryCardProps {
   summary: {
@@ -8,7 +9,7 @@ interface AttendanceSummaryCardProps {
     lateCount: number;
     lateExcusedCount: number;
     flexibleCount: number;
-    approvedOvertimeHours: number;
+    approvedOvertimeMinutes: number;
     totalDays: number;
   };
   monthLabel: string;
@@ -18,10 +19,20 @@ export function AttendanceSummaryCard({
   summary,
   monthLabel,
 }: AttendanceSummaryCardProps) {
+  const totalHours = Math.floor(summary.totalWorkingHours);
+  const totalMins = Math.round((summary.totalWorkingHours - totalHours) * 60);
+  const totalLabel = totalHours > 0
+    ? `${totalHours}h ${totalMins}m`
+    : `${totalMins}m`;
+
+  const overtimeLabel = summary.approvedOvertimeMinutes > 0
+    ? formatMinutesHuman(summary.approvedOvertimeMinutes)
+    : "0";
+
   const stats = [
     {
       label: "Total Hours",
-      value: `${summary.totalWorkingHours}h`,
+      value: totalLabel,
       icon: Clock,
       color: "var(--primary)",
       bg: "var(--accent)",
@@ -42,7 +53,7 @@ export function AttendanceSummaryCard({
     },
     {
       label: "Overtime",
-      value: summary.approvedOvertimeHours > 0 ? `${summary.approvedOvertimeHours}h` : "0h",
+      value: overtimeLabel,
       icon: Timer,
       color: "#3b82f6",
       bg: "#eff6ff",

@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getAllAttendanceLogs } from "@/lib/actions/attendance.actions";
+import { getAllAttendanceLogs, getAllEmployees } from "@/lib/actions/attendance.actions";
+import { getAttendanceSettings } from "@/lib/actions/settings.actions";
 import { AttendanceRecapTable } from "@/components/admin/AttendanceRecapTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AttendanceFilters } from "@/components/admin/AttendanceFilters";
@@ -11,7 +12,7 @@ import { format, startOfMonth, endOfMonth } from "date-fns";
 interface SearchParams {
   start?: string;
   end?: string;
-  search?: string;
+  userId?: string;
   page?: string;
 }
 
@@ -27,7 +28,6 @@ export default async function AdminAttendancePage({
 
   if (!user) redirect("/login");
 
-  // Verify admin
   const { data: profile } = await supabase
     .from("profiles")
     .select("role, full_name")
@@ -44,13 +44,46 @@ export default async function AdminAttendancePage({
   const page = parseInt(params.page ?? "1", 10);
   const pageSize = 25;
 
-  const { data, count } = await getAllAttendanceLogs({
-    startDate,
-    endDate,
-    search: params.search,
-    page,
-    pageSize,
-  });
+  const [{ data, count }, employees, settings] = await Promise.all([
+    getAllAttendanceLogs({
+      startDate,
+      endDate,
+      userId: params.userId,
+      page,
+      pageSize,
+    }),
+    getAllEmployees(),
+    getAttendanceSettings(),
+  ]);
+
+  // Fetch overtime requests for the displayed attendance logs
+  const logIds = data.map((d: { id: string }) => d.id);
+  let overtimeMap: Record<string, { id: string; reason: string; status: string }> = {};
+
+  if (logIds.length > 0) {
+    const { data: otRequests } = await supabase
+      .from("overtime_requests")
+      .select("id, attendance_log_id, reason, status")
+      .in("attendance_log_id", logIds);
+
+    if (otRequests) {
+      for (const ot of otRequests) {
+        overtimeMap[ot.attendance_log_id] = {
+          id: ot.id,
+          reason: ot.reason,
+          status: ot.status,
+        };
+      }
+    }
+  }
+
+  // Merge overtime requests into attendance rows
+  const rowsWithOt = data.map((row: Record<string, unknown>) => ({
+    ...row,
+    overtime_requests: overtimeMap[(row as { id: string }).id]
+      ? [overtimeMap[(row as { id: string }).id]]
+      : [],
+  }));
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -62,14 +95,16 @@ export default async function AdminAttendancePage({
       <AttendanceFilters
         startDate={startDate}
         endDate={endDate}
-        search={params.search ?? ""}
+        selectedUserId={params.userId ?? ""}
+        employees={employees}
       />
 
       <AttendanceRecapTable
-        rows={data as Parameters<typeof AttendanceRecapTable>[0]["rows"]}
+        rows={rowsWithOt as Parameters<typeof AttendanceRecapTable>[0]["rows"]}
         count={count}
         page={page}
         pageSize={pageSize}
+        timezone={settings?.timezone}
       />
     </div>
   );

@@ -9,7 +9,7 @@ import { OvertimePromptModal } from "./OvertimePromptModal";
 import { checkIn, checkOut } from "@/lib/actions/attendance.actions";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
-import { formatTime } from "@/lib/utils/date";
+import { formatTime, formatMinutesHuman } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
 
 interface CheckInButtonProps {
@@ -138,8 +138,7 @@ export function CheckInButton({
         setLog(result.data as AttendanceLog);
         if (isOvertime && (result.data as AttendanceLog).overtime_minutes > 0) {
           const mins = (result.data as AttendanceLog).overtime_minutes;
-          const hrs = Math.round((mins / 60) * 10) / 10;
-          toast.success(`Checked out! Overtime request submitted (${hrs}h)`);
+          toast.success(`Checked out! Overtime request submitted (${formatMinutesHuman(mins)})`);
         } else {
           toast.success("Checked out! See you tomorrow ✌️");
         }
@@ -182,7 +181,7 @@ export function CheckInButton({
               <span>
                 Checked in at{" "}
                 <span className="font-semibold text-foreground">
-                  {formatTime(log!.checked_in_at)}
+                  {formatTime(log!.checked_in_at, settings?.timezone)}
                 </span>
               </span>
               <StatusBadge status={log!.status} lateMinutes={log!.late_minutes} />

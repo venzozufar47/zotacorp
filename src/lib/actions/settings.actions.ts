@@ -16,10 +16,6 @@ export async function getAttendanceSettings(): Promise<AttendanceSettings | null
 }
 
 export async function updateAttendanceSettings(updates: {
-  work_start_time?: string;
-  work_end_time?: string;
-  grace_period_min?: number;
-  working_days?: number[];
   timezone?: string;
 }): Promise<{ error?: string }> {
   const supabase = await createClient();
@@ -30,7 +26,6 @@ export async function updateAttendanceSettings(updates: {
 
   if (!user) return { error: "Not authenticated" };
 
-  // Verify admin
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -39,7 +34,6 @@ export async function updateAttendanceSettings(updates: {
 
   if (profile?.role !== "admin") return { error: "Forbidden" };
 
-  // Get the singleton row id
   const { data: settings } = await supabase
     .from("attendance_settings")
     .select("id")

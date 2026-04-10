@@ -43,7 +43,7 @@ export default async function DashboardPage() {
             Attendance
           </p>
 
-          <AttendanceStatusCard log={todayLog} />
+          <AttendanceStatusCard log={todayLog} timezone={settings?.timezone} />
           <CheckInButton
             todayLog={todayLog}
             settings={settings}

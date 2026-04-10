@@ -5,18 +5,33 @@ import { useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Search, X } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { X } from "lucide-react";
+
+interface Employee {
+  id: string;
+  full_name: string;
+  email: string;
+}
 
 interface AttendanceFiltersProps {
   startDate: string;
   endDate: string;
-  search: string;
+  selectedUserId: string;
+  employees: Employee[];
 }
 
 export function AttendanceFilters({
   startDate,
   endDate,
-  search,
+  selectedUserId,
+  employees,
 }: AttendanceFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -29,7 +44,7 @@ export function AttendanceFilters({
         if (v) params.set(k, v);
         else params.delete(k);
       });
-      params.delete("page"); // reset page on filter change
+      params.delete("page");
       router.push(`${pathname}?${params.toString()}`);
     },
     [router, pathname, searchParams]
@@ -40,7 +55,7 @@ export function AttendanceFilters({
   }
 
   const hasFilters =
-    searchParams.has("search") ||
+    searchParams.has("userId") ||
     searchParams.has("start") ||
     searchParams.has("end");
 
@@ -67,21 +82,25 @@ export function AttendanceFilters({
           />
         </div>
 
-        {/* Search */}
+        {/* Employee dropdown */}
         <div className="space-y-1">
-          <Label className="text-xs">Search name</Label>
-          <div className="relative">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              placeholder="Employee name…"
-              value={search}
-              onChange={(e) => updateParams({ search: e.target.value })}
-              className="pl-8 text-sm h-9"
-            />
-          </div>
+          <Label className="text-xs">Employee</Label>
+          <Select
+            value={selectedUserId || "all"}
+            onValueChange={(v) => updateParams({ userId: v === "all" ? "" : (v ?? "") })}
+          >
+            <SelectTrigger className="text-sm h-9">
+              <SelectValue placeholder="All employees" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All employees</SelectItem>
+              {employees.map((emp) => (
+                <SelectItem key={emp.id} value={emp.id}>
+                  {emp.full_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

@@ -103,19 +103,27 @@ export async function reviewOvertimeRequest(
 
   if (updateError) return { error: updateError.message };
 
-  // If rejected, reset overtime on the attendance log
+  // Update attendance log overtime_status
   if (decision === "rejected") {
     await supabase
       .from("attendance_logs")
       .update({
         is_overtime: false,
         overtime_minutes: 0,
+        overtime_status: "rejected",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", request.attendance_log_id);
+  } else {
+    await supabase
+      .from("attendance_logs")
+      .update({
+        overtime_status: "approved",
         updated_at: new Date().toISOString(),
       })
       .eq("id", request.attendance_log_id);
   }
 
-  revalidatePath("/admin/overtime");
   revalidatePath("/admin/attendance");
   return {};
 }

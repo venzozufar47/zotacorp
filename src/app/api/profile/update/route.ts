@@ -22,6 +22,9 @@ const ALLOWED_FIELDS = [
   "motto",
   "shirt_size",
   "is_flexible_schedule",
+  "work_start_time",
+  "work_end_time",
+  "grace_period_min",
 ] as const;
 
 function sanitize(body: Record<string, unknown>): ProfileUpdate {

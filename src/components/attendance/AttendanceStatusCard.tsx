@@ -5,18 +5,26 @@ import {
   formatTime,
   getDurationHours,
   getDurationHoursDecimal,
+  formatMinutesHuman,
 } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
 
 interface AttendanceStatusCardProps {
   log: AttendanceLog | null;
+  timezone?: string;
 }
 
-export function AttendanceStatusCard({ log }: AttendanceStatusCardProps) {
+export function AttendanceStatusCard({ log, timezone }: AttendanceStatusCardProps) {
   if (!log) return null;
 
   const isOpen = !log.checked_out_at;
   const hours = getDurationHoursDecimal(log.checked_in_at, log.checked_out_at);
+
+  const overtimeLabel = log.overtime_status === "approved"
+    ? "approved"
+    : log.overtime_status === "rejected"
+    ? "rejected"
+    : "pending";
 
   return (
     <Card className="border-0 shadow-sm" style={{ background: "var(--accent)" }}>
@@ -36,13 +44,13 @@ export function AttendanceStatusCard({ log }: AttendanceStatusCardProps) {
               <div className="flex items-center gap-1.5 text-sm">
                 <Clock size={14} style={{ color: "var(--primary)" }} />
                 <span className="font-semibold">
-                  {formatTime(log.checked_in_at)}
+                  {formatTime(log.checked_in_at, timezone)}
                 </span>
                 {log.checked_out_at && (
                   <>
                     <span className="text-muted-foreground">→</span>
                     <span className="font-semibold">
-                      {formatTime(log.checked_out_at)}
+                      {formatTime(log.checked_out_at, timezone)}
                     </span>
                   </>
                 )}
@@ -52,8 +60,12 @@ export function AttendanceStatusCard({ log }: AttendanceStatusCardProps) {
               <p className="text-xs text-muted-foreground">
                 {getDurationHours(log.checked_in_at, log.checked_out_at)} worked
                 {log.is_overtime && log.overtime_minutes > 0 && (
-                  <span className="ml-1" style={{ color: "var(--primary)" }}>
-                    · {Math.round((log.overtime_minutes / 60) * 10) / 10}h overtime (pending)
+                  <span className="ml-1" style={{
+                    color: overtimeLabel === "approved" ? "#34c759"
+                      : overtimeLabel === "rejected" ? "#ff3b30"
+                      : "var(--primary)"
+                  }}>
+                    · {formatMinutesHuman(log.overtime_minutes)} overtime ({overtimeLabel})
                   </span>
                 )}
               </p>

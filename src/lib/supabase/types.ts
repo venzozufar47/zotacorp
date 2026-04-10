@@ -19,6 +19,9 @@ export type Database = {
           role: "employee" | "admin";
           is_active: boolean;
           is_flexible_schedule: boolean;
+          work_start_time: string;
+          work_end_time: string;
+          grace_period_min: number;
           created_at: string;
           updated_at: string;
           nickname: string | null;
@@ -45,6 +48,9 @@ export type Database = {
           role?: "employee" | "admin";
           is_active?: boolean;
           is_flexible_schedule?: boolean;
+          work_start_time?: string;
+          work_end_time?: string;
+          grace_period_min?: number;
           created_at?: string;
           updated_at?: string;
           nickname?: string | null;
@@ -71,6 +77,9 @@ export type Database = {
           role?: "employee" | "admin";
           is_active?: boolean;
           is_flexible_schedule?: boolean;
+          work_start_time?: string;
+          work_end_time?: string;
+          grace_period_min?: number;
           updated_at?: string;
           nickname?: string | null;
           business_unit?: string | null;
@@ -103,6 +112,7 @@ export type Database = {
           late_proof_url: string | null;
           is_overtime: boolean;
           overtime_minutes: number;
+          overtime_status: "pending" | "approved" | "rejected" | null;
           created_at: string;
           updated_at: string;
         };
@@ -119,6 +129,7 @@ export type Database = {
           late_proof_url?: string | null;
           is_overtime?: boolean;
           overtime_minutes?: number;
+          overtime_status?: "pending" | "approved" | "rejected" | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -129,6 +140,7 @@ export type Database = {
           late_proof_url?: string | null;
           is_overtime?: boolean;
           overtime_minutes?: number;
+          overtime_status?: "pending" | "approved" | "rejected" | null;
           updated_at?: string;
         };
         Relationships: [
@@ -147,7 +159,6 @@ export type Database = {
           work_start_time: string;
           work_end_time: string;
           grace_period_min: number;
-          working_days: number[];
           timezone: string;
           created_at: string;
           updated_at: string;
@@ -157,7 +168,6 @@ export type Database = {
           work_start_time?: string;
           work_end_time?: string;
           grace_period_min?: number;
-          working_days?: number[];
           timezone?: string;
           created_at?: string;
           updated_at?: string;
@@ -166,7 +176,6 @@ export type Database = {
           work_start_time?: string;
           work_end_time?: string;
           grace_period_min?: number;
-          working_days?: number[];
           timezone?: string;
           updated_at?: string;
         };

@@ -47,6 +47,9 @@ type FormState = {
   motto: string;
   shirt_size: string;
   is_flexible_schedule: boolean;
+  work_start_time: string;
+  work_end_time: string;
+  grace_period_min: number;
 };
 
 function toFormState(p: Profile): FormState {
@@ -67,6 +70,9 @@ function toFormState(p: Profile): FormState {
     motto: p.motto ?? "",
     shirt_size: p.shirt_size ?? "",
     is_flexible_schedule: p.is_flexible_schedule ?? false,
+    work_start_time: (p.work_start_time ?? "09:00").slice(0, 5),
+    work_end_time: (p.work_end_time ?? "18:00").slice(0, 5),
+    grace_period_min: p.grace_period_min ?? 15,
   };
 }
 
@@ -257,7 +263,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
             </Field>
           </div>
           {targetId && (
-            <div className="pt-2 border-t border-border mt-4">
+            <div className="pt-3 border-t border-border mt-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -273,6 +279,33 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
                   </p>
                 </div>
               </label>
+              {!state.is_flexible_schedule && (
+                <div className="grid md:grid-cols-3 gap-4">
+                  <Field label="Work Start Time">
+                    <Input
+                      type="time"
+                      value={state.work_start_time}
+                      onChange={(e) => set("work_start_time", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Work End Time">
+                    <Input
+                      type="time"
+                      value={state.work_end_time}
+                      onChange={(e) => set("work_end_time", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Grace Period (min)">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={state.grace_period_min}
+                      onChange={(e) => set("grace_period_min", Number(e.target.value))}
+                    />
+                  </Field>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

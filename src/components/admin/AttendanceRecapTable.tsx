@@ -1,4 +1,8 @@
-import { MapPin } from "lucide-react";
+"use client";
+
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { MapPin, CheckCircle, XCircle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -8,12 +12,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/attendance/StatusBadge";
+import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
+import { toast } from "sonner";
 import {
   formatLocalDate,
   formatTime,
   getDurationHoursDecimal,
+  formatMinutesHuman,
 } from "@/lib/utils/date";
 
 interface AttendanceRow {
@@ -28,10 +36,16 @@ interface AttendanceRow {
   late_proof_url: string | null;
   is_overtime: boolean;
   overtime_minutes: number;
+  overtime_status: string | null;
   profiles: {
     full_name: string;
     email: string;
   };
+  overtime_requests?: {
+    id: string;
+    reason: string;
+    status: string;
+  }[];
 }
 
 interface AttendanceRecapTableProps {
@@ -39,14 +53,25 @@ interface AttendanceRecapTableProps {
   count: number;
   page: number;
   pageSize: number;
+  timezone?: string;
 }
+
+const OT_STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  pending: { bg: "#fff7ed", color: "#ff9f0a", label: "Pending" },
+  approved: { bg: "#f0fdf4", color: "#34c759", label: "Approved" },
+  rejected: { bg: "#fef2f2", color: "#ff3b30", label: "Rejected" },
+};
 
 export function AttendanceRecapTable({
   rows,
   count,
   page,
   pageSize,
+  timezone,
 }: AttendanceRecapTableProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -58,6 +83,18 @@ export function AttendanceRecapTable({
   }
 
   const totalPages = Math.ceil(count / pageSize);
+
+  function handleOvertimeAction(requestId: string, decision: "approved" | "rejected") {
+    startTransition(async () => {
+      const result = await reviewOvertimeRequest(requestId, decision);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success(decision === "approved" ? "Overtime approved" : "Overtime rejected");
+        router.refresh();
+      }
+    });
+  }
 
   return (
     <div className="space-y-3">
@@ -86,6 +123,13 @@ export function AttendanceRecapTable({
                 row.checked_in_at,
                 row.checked_out_at
               );
+
+              const otStyle = row.overtime_status
+                ? OT_STATUS_STYLES[row.overtime_status] ?? OT_STATUS_STYLES.pending
+                : null;
+
+              const otRequest = row.overtime_requests?.[0];
+
               return (
                 <TableRow
                   key={row.id}
@@ -100,9 +144,9 @@ export function AttendanceRecapTable({
                   <TableCell className="text-sm font-medium">
                     {formatLocalDate(row.date)}
                   </TableCell>
-                  <TableCell className="text-sm">{formatTime(row.checked_in_at)}</TableCell>
+                  <TableCell className="text-sm">{formatTime(row.checked_in_at, timezone)}</TableCell>
                   <TableCell className="text-sm">
-                    {row.checked_out_at ? formatTime(row.checked_out_at) : "—"}
+                    {row.checked_out_at ? formatTime(row.checked_out_at, timezone) : "—"}
                   </TableCell>
                   <TableCell className="text-sm font-semibold">
                     {hours > 0 ? `${hours}h` : "—"}
@@ -116,13 +160,41 @@ export function AttendanceRecapTable({
                     </div>
                   </TableCell>
                   <TableCell>
-                    {row.is_overtime && row.overtime_minutes > 0 ? (
-                      <Badge
-                        className="text-[10px] px-2"
-                        style={{ background: "#eff6ff", color: "#3b82f6", border: "none" }}
-                      >
-                        {Math.round((row.overtime_minutes / 60) * 10) / 10}h
-                      </Badge>
+                    {row.is_overtime && row.overtime_minutes > 0 && otStyle ? (
+                      <div className="space-y-1">
+                        <Badge
+                          className="text-[10px] px-2"
+                          style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
+                        >
+                          {formatMinutesHuman(row.overtime_minutes)} ({otStyle.label})
+                        </Badge>
+                        {row.overtime_status === "pending" && otRequest && (
+                          <div className="flex items-center gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 px-1 text-[10px]"
+                              onClick={() => handleOvertimeAction(otRequest.id, "approved")}
+                              disabled={isPending}
+                              style={{ color: "#34c759" }}
+                            >
+                              <CheckCircle size={10} className="mr-0.5" />
+                              Approve
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 px-1 text-[10px]"
+                              onClick={() => handleOvertimeAction(otRequest.id, "rejected")}
+                              disabled={isPending}
+                              style={{ color: "#ff3b30" }}
+                            >
+                              <XCircle size={10} className="mr-0.5" />
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>
                     )}

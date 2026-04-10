@@ -13,6 +13,7 @@ import {
   formatLocalDate,
   formatTime,
   getDurationHours,
+  formatMinutesHuman,
 } from "@/lib/utils/date";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "./StatusBadge";
@@ -20,9 +21,16 @@ import { LateProofUploadDialog } from "./LateProofUploadDialog";
 
 interface AttendanceHistoryTableProps {
   logs: AttendanceLog[];
+  timezone?: string;
 }
 
-export function AttendanceHistoryTable({ logs }: AttendanceHistoryTableProps) {
+const OT_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
+  pending: { bg: "#fff7ed", color: "#ff9f0a" },
+  approved: { bg: "#f0fdf4", color: "#34c759" },
+  rejected: { bg: "#fef2f2", color: "#ff3b30" },
+};
+
+export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTableProps) {
   if (logs.length === 0) {
     return (
       <EmptyState
@@ -48,62 +56,68 @@ export function AttendanceHistoryTable({ logs }: AttendanceHistoryTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {logs.map((log) => (
-            <TableRow key={log.id} className="hover:bg-[#f5f5f7]/50">
-              <TableCell className="font-medium">
-                {formatLocalDate(log.date)}
-              </TableCell>
-              <TableCell>{formatTime(log.checked_in_at)}</TableCell>
-              <TableCell>
-                {log.checked_out_at ? formatTime(log.checked_out_at) : "—"}
-              </TableCell>
-              <TableCell>
-                {getDurationHours(log.checked_in_at, log.checked_out_at)}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
-                  {log.status === "late" && (
-                    <LateProofUploadDialog
-                      attendanceLogId={log.id}
-                      hasExistingProof={!!log.late_proof_url}
-                    />
+          {logs.map((log) => {
+            const otStyle = log.overtime_status
+              ? OT_STATUS_STYLES[log.overtime_status] ?? OT_STATUS_STYLES.pending
+              : null;
+
+            return (
+              <TableRow key={log.id} className="hover:bg-[#f5f5f7]/50">
+                <TableCell className="font-medium">
+                  {formatLocalDate(log.date)}
+                </TableCell>
+                <TableCell>{formatTime(log.checked_in_at, timezone)}</TableCell>
+                <TableCell>
+                  {log.checked_out_at ? formatTime(log.checked_out_at, timezone) : "—"}
+                </TableCell>
+                <TableCell>
+                  {getDurationHours(log.checked_in_at, log.checked_out_at)}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
+                    {log.status === "late" && (
+                      <LateProofUploadDialog
+                        attendanceLogId={log.id}
+                        hasExistingProof={!!log.late_proof_url}
+                      />
+                    )}
+                    {log.status === "late_excused" && (
+                      <span className="text-[10px] text-green-600">📎</span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {log.is_overtime && log.overtime_minutes > 0 && otStyle ? (
+                    <Badge
+                      className="text-[10px] px-2"
+                      style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
+                    >
+                      {formatMinutesHuman(log.overtime_minutes)} ({log.overtime_status})
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">—</span>
                   )}
-                  {log.status === "late_excused" && (
-                    <span className="text-[10px] text-green-600">📎</span>
+                </TableCell>
+                <TableCell>
+                  {log.latitude ? (
+                    <a
+                      href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs"
+                      style={{ color: "var(--primary)" }}
+                    >
+                      <MapPin size={12} />
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">—</span>
                   )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {log.is_overtime && log.overtime_minutes > 0 ? (
-                  <Badge
-                    className="text-[10px] px-2"
-                    style={{ background: "#eff6ff", color: "#3b82f6", border: "none" }}
-                  >
-                    {Math.round((log.overtime_minutes / 60) * 10) / 10}h
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground text-xs">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {log.latitude ? (
-                  <a
-                    href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs"
-                    style={{ color: "var(--primary)" }}
-                  >
-                    <MapPin size={12} />
-                    View
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground text-xs">—</span>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

@@ -6,6 +6,7 @@ import {
   getMyAttendanceLogs,
   getMyAttendanceSummary,
 } from "@/lib/actions/attendance.actions";
+import { getAttendanceSettings } from "@/lib/actions/settings.actions";
 import { AttendanceHistoryTable } from "@/components/attendance/AttendanceHistoryTable";
 import { AttendanceSummaryCard } from "@/components/attendance/AttendanceSummaryCard";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -24,9 +25,10 @@ export default async function AttendancePage() {
   const year = now.getFullYear();
   const monthLabel = format(now, "MMMM yyyy");
 
-  const [logs, summary] = await Promise.all([
+  const [logs, summary, settings] = await Promise.all([
     getMyAttendanceLogs(30),
     getMyAttendanceSummary(month, year),
+    getAttendanceSettings(),
   ]);
 
   return (
@@ -40,7 +42,7 @@ export default async function AttendancePage() {
         <AttendanceSummaryCard summary={summary} monthLabel={monthLabel} />
       )}
 
-      <AttendanceHistoryTable logs={logs} />
+      <AttendanceHistoryTable logs={logs} timezone={settings?.timezone} />
     </div>
   );
 }

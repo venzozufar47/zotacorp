@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { formatMinutesHuman } from "@/lib/utils/date";
 
 interface StatusBadgeProps {
   status: string;
@@ -18,7 +19,7 @@ export function StatusBadge({ status, lateMinutes }: StatusBadgeProps) {
 
   const label =
     status === "late" && lateMinutes
-      ? `Late (${lateMinutes} min)`
+      ? `Late (${formatMinutesHuman(lateMinutes)})`
       : style.label;
 
   return (
