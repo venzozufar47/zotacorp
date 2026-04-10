@@ -117,7 +117,7 @@ export default function RegisterPage() {
               id="full_name"
               name="full_name"
               type="text"
-              placeholder="Alex Johnson"
+              placeholder="Avenzoar Zufar Qisthauzan"
               required
             />
           </div>
