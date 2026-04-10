@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, LogOut } from "lucide-react";
+import { ClipboardList, LogOut, Users } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 
 const navItems = [
   { href: "/admin/attendance", icon: ClipboardList, label: "Attendance" },
+  { href: "/admin/users", icon: Users, label: "Users" },
 ];
 
 export function AdminSidebar() {
