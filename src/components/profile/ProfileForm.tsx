@@ -133,7 +133,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
             <Field label="Gender">
               <Select
                 value={state.gender || undefined}
-                onValueChange={(v) => set("gender", v)}
+                onValueChange={(v) => set("gender", v ?? "")}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select…" />
@@ -171,7 +171,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
             <Field label="Shirt Size">
               <Select
                 value={state.shirt_size || undefined}
-                onValueChange={(v) => set("shirt_size", v)}
+                onValueChange={(v) => set("shirt_size", v ?? "")}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select…" />
@@ -200,7 +200,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               <Select
                 value={state.business_unit || undefined}
                 onValueChange={(v) => {
-                  set("business_unit", v);
+                  set("business_unit", v ?? "");
                   set("job_role", ""); // reset role when BU changes
                 }}
               >
@@ -219,7 +219,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
             <Field label="Role">
               <Select
                 value={state.job_role || undefined}
-                onValueChange={(v) => set("job_role", v)}
+                onValueChange={(v) => set("job_role", v ?? "")}
                 disabled={!state.business_unit}
               >
                 <SelectTrigger>

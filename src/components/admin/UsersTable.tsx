@@ -13,7 +13,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -140,17 +141,15 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        asChild
-                        className="text-muted-foreground hover:text-foreground"
+                      <Link
+                        href={`/admin/users/${row.id}`}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          "text-muted-foreground hover:text-foreground"
+                        )}
                       >
-                        <Link href={`/admin/users/${row.id}`}>
-                          <Pencil size={16} />
-                        </Link>
-                      </Button>
+                        <Pencil size={16} />
+                      </Link>
                       <Button
                         type="button"
                         variant="ghost"
