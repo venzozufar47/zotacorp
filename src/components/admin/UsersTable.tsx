@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -138,16 +139,29 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                     {format(new Date(row.created_at), "d MMM yyyy")}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={isSelf}
-                      onClick={() => setTarget(row)}
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                    >
-                      <Trash2 size={16} />
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Link href={`/admin/users/${row.id}`}>
+                          <Pencil size={16} />
+                        </Link>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isSelf}
+                        onClick={() => setTarget(row)}
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );

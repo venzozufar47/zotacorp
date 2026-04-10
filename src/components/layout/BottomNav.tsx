@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, LogOut } from "lucide-react";
+import { LayoutDashboard, Clock, User, LogOut } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
   { href: "/attendance", icon: Clock, label: "Attendance" },
+  { href: "/profile", icon: User, label: "Profile" },
 ];
 
 export function BottomNav() {
