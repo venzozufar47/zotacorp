@@ -9,10 +9,10 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { StatusBadge } from "@/components/attendance/StatusBadge";
 import {
   formatLocalDate,
   formatTime,
-  getDurationHours,
   getDurationHoursDecimal,
 } from "@/lib/utils/date";
 
@@ -23,6 +23,11 @@ interface AttendanceRow {
   checked_out_at: string | null;
   latitude: number | null;
   longitude: number | null;
+  status: string;
+  late_minutes: number;
+  late_proof_url: string | null;
+  is_overtime: boolean;
+  overtime_minutes: number;
   profiles: {
     full_name: string;
     email: string;
@@ -70,6 +75,7 @@ export function AttendanceRecapTable({
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Hours</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">Overtime</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
             </TableRow>
           </TableHeader>
@@ -102,20 +108,23 @@ export function AttendanceRecapTable({
                     {hours > 0 ? `${hours}h` : "—"}
                   </TableCell>
                   <TableCell>
-                    {isOpen ? (
+                    <div className="flex items-center gap-1">
+                      <StatusBadge status={row.status} lateMinutes={row.late_minutes} />
+                      {row.late_proof_url && (
+                        <span className="text-[10px] text-blue-500">📎</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {row.is_overtime && row.overtime_minutes > 0 ? (
                       <Badge
                         className="text-[10px] px-2"
-                        style={{ background: "#fff7ed", color: "#ff9f0a", border: "none" }}
+                        style={{ background: "#eff6ff", color: "#3b82f6", border: "none" }}
                       >
-                        Open
+                        {Math.round((row.overtime_minutes / 60) * 10) / 10}h
                       </Badge>
                     ) : (
-                      <Badge
-                        className="text-[10px] px-2"
-                        style={{ background: "#f0fdf4", color: "#34c759", border: "none" }}
-                      >
-                        Complete
-                      </Badge>
+                      <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
                   <TableCell>

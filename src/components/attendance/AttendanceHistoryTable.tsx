@@ -15,6 +15,8 @@ import {
   getDurationHours,
 } from "@/lib/utils/date";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { StatusBadge } from "./StatusBadge";
+import { LateProofUploadDialog } from "./LateProofUploadDialog";
 
 interface AttendanceHistoryTableProps {
   logs: AttendanceLog[];
@@ -41,6 +43,7 @@ export function AttendanceHistoryTable({ logs }: AttendanceHistoryTableProps) {
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Duration</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
+            <TableHead className="text-xs font-semibold uppercase tracking-wide">Overtime</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
           </TableRow>
         </TableHeader>
@@ -58,20 +61,29 @@ export function AttendanceHistoryTable({ logs }: AttendanceHistoryTableProps) {
                 {getDurationHours(log.checked_in_at, log.checked_out_at)}
               </TableCell>
               <TableCell>
-                {log.checked_out_at ? (
+                <div className="flex items-center gap-1">
+                  <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
+                  {log.status === "late" && (
+                    <LateProofUploadDialog
+                      attendanceLogId={log.id}
+                      hasExistingProof={!!log.late_proof_url}
+                    />
+                  )}
+                  {log.status === "late_excused" && (
+                    <span className="text-[10px] text-green-600">📎</span>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                {log.is_overtime && log.overtime_minutes > 0 ? (
                   <Badge
                     className="text-[10px] px-2"
-                    style={{ background: "#f0fdf4", color: "#34c759", border: "none" }}
+                    style={{ background: "#eff6ff", color: "#3b82f6", border: "none" }}
                   >
-                    Complete
+                    {Math.round((log.overtime_minutes / 60) * 10) / 10}h
                   </Badge>
                 ) : (
-                  <Badge
-                    className="text-[10px] px-2"
-                    style={{ background: "#fff7ed", color: "#ff9f0a", border: "none" }}
-                  >
-                    Open
-                  </Badge>
+                  <span className="text-muted-foreground text-xs">—</span>
                 )}
               </TableCell>
               <TableCell>

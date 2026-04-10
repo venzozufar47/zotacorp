@@ -5,13 +5,17 @@ import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { MapPin, MapPinOff, Clock } from "lucide-react";
 import { PasswordConfirmModal } from "./PasswordConfirmModal";
+import { OvertimePromptModal } from "./OvertimePromptModal";
 import { checkIn, checkOut } from "@/lib/actions/attendance.actions";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
-import type { AttendanceLog } from "@/lib/supabase/types";
+import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
 import { formatTime } from "@/lib/utils/date";
+import { StatusBadge } from "./StatusBadge";
 
 interface CheckInButtonProps {
   todayLog: AttendanceLog | null;
+  settings: AttendanceSettings | null;
+  isFlexible?: boolean;
   onSuccess?: () => void;
 }
 
@@ -23,10 +27,16 @@ function getState(log: AttendanceLog | null): AttendanceState {
   return "checked-out";
 }
 
-export function CheckInButton({ todayLog, onSuccess }: CheckInButtonProps) {
+export function CheckInButton({
+  todayLog,
+  settings,
+  isFlexible = false,
+  onSuccess,
+}: CheckInButtonProps) {
   const [log, setLog] = useState<AttendanceLog | null>(todayLog);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalAction, setModalAction] = useState<"check-in" | "check-out">("check-in");
+  const [overtimeOpen, setOvertimeOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const { status: geoStatus, requestLocation } = useGeolocation();
 
@@ -42,9 +52,25 @@ export function CheckInButton({ todayLog, onSuccess }: CheckInButtonProps) {
     setModalOpen(true);
   }
 
+  /** Check if current time is past work end time */
+  function isPastEndTime(): boolean {
+    if (!settings || isFlexible) return false;
+    try {
+      const now = new Date();
+      const localNow = new Date(
+        now.toLocaleString("en-US", { timeZone: settings.timezone })
+      );
+      const [endH, endM] = settings.work_end_time.split(":").map(Number);
+      const endTime = new Date(localNow);
+      endTime.setHours(endH, endM, 0, 0);
+      return localNow > endTime;
+    } catch {
+      return false;
+    }
+  }
+
   async function handleCheckIn() {
     startTransition(async () => {
-      // Request geolocation (non-blocking if denied)
       const coords = await requestLocation();
 
       const result = await checkIn({
@@ -59,9 +85,15 @@ export function CheckInButton({ todayLog, onSuccess }: CheckInButtonProps) {
 
       if (result?.data) {
         setLog(result.data as AttendanceLog);
-        toast.success("Checked in! Have a great day 🎉");
+        const status = (result.data as AttendanceLog).status;
 
-        // Confetti celebration
+        if (status === "late") {
+          const mins = (result.data as AttendanceLog).late_minutes;
+          toast.warning(`Checked in — Late by ${mins} minute${mins !== 1 ? "s" : ""}`);
+        } else {
+          toast.success("Checked in! Have a great day 🎉");
+        }
+
         confetti({
           particleCount: 80,
           spread: 70,
@@ -74,9 +106,28 @@ export function CheckInButton({ todayLog, onSuccess }: CheckInButtonProps) {
     });
   }
 
-  async function handleCheckOut() {
+  async function handleCheckOutAttempt() {
+    // If past end time and not flexible, show overtime prompt
+    if (isPastEndTime()) {
+      setOvertimeOpen(true);
+      return;
+    }
+
+    // Normal checkout
+    await performCheckOut(false, "");
+  }
+
+  async function handleOvertimeDecision(isOvertime: boolean, reason: string) {
+    setOvertimeOpen(false);
+    await performCheckOut(isOvertime, reason);
+  }
+
+  async function performCheckOut(isOvertime: boolean, overtimeReason: string) {
     startTransition(async () => {
-      const result = await checkOut();
+      const result = await checkOut({
+        isOvertime,
+        overtimeReason,
+      });
 
       if (result?.error) {
         toast.error(result.error);
@@ -85,7 +136,13 @@ export function CheckInButton({ todayLog, onSuccess }: CheckInButtonProps) {
 
       if (result?.data) {
         setLog(result.data as AttendanceLog);
-        toast.success("Checked out! See you tomorrow ✌️");
+        if (isOvertime && (result.data as AttendanceLog).overtime_minutes > 0) {
+          const mins = (result.data as AttendanceLog).overtime_minutes;
+          const hrs = Math.round((mins / 60) * 10) / 10;
+          toast.success(`Checked out! Overtime request submitted (${hrs}h)`);
+        } else {
+          toast.success("Checked out! See you tomorrow ✌️");
+        }
         onSuccess?.();
       }
     });
@@ -128,6 +185,7 @@ export function CheckInButton({ todayLog, onSuccess }: CheckInButtonProps) {
                   {formatTime(log!.checked_in_at)}
                 </span>
               </span>
+              <StatusBadge status={log!.status} lateMinutes={log!.late_minutes} />
               {log?.latitude && (
                 <span className="flex items-center gap-0.5 ml-auto">
                   <MapPin size={13} style={{ color: "var(--primary)" }} />
@@ -178,7 +236,13 @@ export function CheckInButton({ todayLog, onSuccess }: CheckInButtonProps) {
         open={modalOpen}
         onOpenChange={setModalOpen}
         action={modalAction}
-        onConfirm={modalAction === "check-in" ? handleCheckIn : handleCheckOut}
+        onConfirm={modalAction === "check-in" ? handleCheckIn : handleCheckOutAttempt}
+      />
+
+      <OvertimePromptModal
+        open={overtimeOpen}
+        onOpenChange={setOvertimeOpen}
+        onConfirm={handleOvertimeDecision}
       />
     </>
   );

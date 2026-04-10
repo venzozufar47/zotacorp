@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTodayAttendance } from "@/lib/actions/attendance.actions";
+import { getAttendanceSettings } from "@/lib/actions/settings.actions";
 import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,9 +18,10 @@ export default async function DashboardPage() {
 
   if (userError || !user) redirect("/login");
 
-  const [profileResult, todayLog] = await Promise.all([
+  const [profileResult, todayLog, settings] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user!.id).single(),
     getTodayAttendance(),
+    getAttendanceSettings(),
   ]);
 
   const profile = profileResult.data;
@@ -42,7 +44,11 @@ export default async function DashboardPage() {
           </p>
 
           <AttendanceStatusCard log={todayLog} />
-          <CheckInButton todayLog={todayLog} />
+          <CheckInButton
+            todayLog={todayLog}
+            settings={settings}
+            isFlexible={profile?.is_flexible_schedule ?? false}
+          />
         </CardContent>
       </Card>
     </div>

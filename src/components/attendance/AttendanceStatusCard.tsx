@@ -6,6 +6,7 @@ import {
   getDurationHours,
   getDurationHoursDecimal,
 } from "@/lib/utils/date";
+import { StatusBadge } from "./StatusBadge";
 
 interface AttendanceStatusCardProps {
   log: AttendanceLog | null;
@@ -22,17 +23,27 @@ export function AttendanceStatusCard({ log }: AttendanceStatusCardProps) {
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--primary)" }}>
-              Today
-            </p>
+            <div className="flex items-center gap-2">
+              <p
+                className="text-xs font-medium uppercase tracking-wide"
+                style={{ color: "var(--primary)" }}
+              >
+                Today
+              </p>
+              <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
+            </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 text-sm">
                 <Clock size={14} style={{ color: "var(--primary)" }} />
-                <span className="font-semibold">{formatTime(log.checked_in_at)}</span>
+                <span className="font-semibold">
+                  {formatTime(log.checked_in_at)}
+                </span>
                 {log.checked_out_at && (
                   <>
                     <span className="text-muted-foreground">→</span>
-                    <span className="font-semibold">{formatTime(log.checked_out_at)}</span>
+                    <span className="font-semibold">
+                      {formatTime(log.checked_out_at)}
+                    </span>
                   </>
                 )}
               </div>
@@ -40,6 +51,11 @@ export function AttendanceStatusCard({ log }: AttendanceStatusCardProps) {
             {log.checked_out_at && (
               <p className="text-xs text-muted-foreground">
                 {getDurationHours(log.checked_in_at, log.checked_out_at)} worked
+                {log.is_overtime && log.overtime_minutes > 0 && (
+                  <span className="ml-1" style={{ color: "var(--primary)" }}>
+                    · {Math.round((log.overtime_minutes / 60) * 10) / 10}h overtime (pending)
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -62,7 +78,10 @@ export function AttendanceStatusCard({ log }: AttendanceStatusCardProps) {
                   <span className="w-1.5 h-1.5 rounded-full bg-[#34c759]" />
                   Complete
                 </span>
-                <p className="text-lg font-bold mt-1" style={{ color: "var(--primary)" }}>
+                <p
+                  className="text-lg font-bold mt-1"
+                  style={{ color: "var(--primary)" }}
+                >
                   {hours}h
                 </p>
               </div>

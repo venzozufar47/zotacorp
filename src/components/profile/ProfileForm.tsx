@@ -46,6 +46,7 @@ type FormState = {
   first_day_of_work: string;
   motto: string;
   shirt_size: string;
+  is_flexible_schedule: boolean;
 };
 
 function toFormState(p: Profile): FormState {
@@ -65,6 +66,7 @@ function toFormState(p: Profile): FormState {
     first_day_of_work: p.first_day_of_work ?? "",
     motto: p.motto ?? "",
     shirt_size: p.shirt_size ?? "",
+    is_flexible_schedule: p.is_flexible_schedule ?? false,
   };
 }
 
@@ -254,6 +256,25 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               />
             </Field>
           </div>
+          {targetId && (
+            <div className="pt-2 border-t border-border mt-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={state.is_flexible_schedule}
+                  onChange={(e) => set("is_flexible_schedule", e.target.checked)}
+                  className="h-4 w-4 rounded border-border"
+                  style={{ accentColor: "var(--primary)" }}
+                />
+                <div>
+                  <span className="text-sm font-medium">Flexible Schedule</span>
+                  <p className="text-xs text-muted-foreground">
+                    Exempt from on-time/late and overtime rules
+                  </p>
+                </div>
+              </label>
+            </div>
+          )}
         </CardContent>
       </Card>
 

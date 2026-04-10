@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, LogOut, Users } from "lucide-react";
+import { ClipboardList, LogOut, Users, Settings, Timer } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 
 const navItems = [
   { href: "/admin/attendance", icon: ClipboardList, label: "Attendance" },
+  { href: "/admin/overtime", icon: Timer, label: "Overtime" },
   { href: "/admin/users", icon: Users, label: "Users" },
+  { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];
 
 export function AdminSidebar() {

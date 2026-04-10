@@ -2,9 +2,14 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getMyAttendanceLogs } from "@/lib/actions/attendance.actions";
+import {
+  getMyAttendanceLogs,
+  getMyAttendanceSummary,
+} from "@/lib/actions/attendance.actions";
 import { AttendanceHistoryTable } from "@/components/attendance/AttendanceHistoryTable";
+import { AttendanceSummaryCard } from "@/components/attendance/AttendanceSummaryCard";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { format } from "date-fns";
 
 export default async function AttendancePage() {
   const supabase = await createClient();
@@ -14,14 +19,27 @@ export default async function AttendancePage() {
 
   if (!user) redirect("/login");
 
-  const logs = await getMyAttendanceLogs(30);
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const monthLabel = format(now, "MMMM yyyy");
+
+  const [logs, summary] = await Promise.all([
+    getMyAttendanceLogs(30),
+    getMyAttendanceSummary(month, year),
+  ]);
 
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="My Attendance"
-        subtitle="Your last 30 days of check-in history"
+        subtitle="Your check-in history and monthly summary"
       />
+
+      {summary && (
+        <AttendanceSummaryCard summary={summary} monthLabel={monthLabel} />
+      )}
+
       <AttendanceHistoryTable logs={logs} />
     </div>
   );
