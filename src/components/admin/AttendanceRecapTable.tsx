@@ -179,7 +179,7 @@ export function AttendanceRecapTable({
                         {otRequest?.reason && (
                           <div className="flex items-start gap-1 max-w-[200px]">
                             <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />
-                            <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2 break-words">
+                            <p className="text-[10px] text-muted-foreground leading-tight break-words">
                               {otRequest.reason}
                             </p>
                           </div>
@@ -262,7 +262,7 @@ export function AttendanceRecapTable({
                         {otRequest?.admin_note && row.overtime_status === "rejected" && (
                           <div className="flex items-start gap-1 max-w-[200px]">
                             <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                            <p className="text-[10px] leading-tight line-clamp-2 break-words" style={{ color: "#ff3b30" }}>
+                            <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
                               {otRequest.admin_note}
                             </p>
                           </div>

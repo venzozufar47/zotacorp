@@ -103,7 +103,7 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                       {log.overtime_status === "rejected" && log.overtime_admin_note && (
                         <div className="flex items-start gap-1 max-w-[180px]">
                           <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                          <p className="text-[10px] leading-tight line-clamp-2 break-words" style={{ color: "#ff3b30" }}>
+                          <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
                             {log.overtime_admin_note}
                           </p>
                         </div>

@@ -74,7 +74,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                 {overtimeLabel === "rejected" && overtimeAdminNote && (
                   <div className="flex items-start gap-1 max-w-[220px]">
                     <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                    <p className="text-[10px] leading-tight line-clamp-2 break-words" style={{ color: "#ff3b30" }}>
+                    <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
                       {overtimeAdminNote}
                     </p>
                   </div>
