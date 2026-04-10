@@ -28,6 +28,17 @@ export default async function DashboardPage() {
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
   const today = format(new Date(), "EEEE, d MMMM");
 
+  // Fetch admin rejection note for today's log if applicable
+  let overtimeAdminNote: string | null = null;
+  if (todayLog?.id) {
+    const { data: otReq } = await supabase
+      .from("overtime_requests")
+      .select("admin_note")
+      .eq("attendance_log_id", todayLog.id)
+      .single();
+    overtimeAdminNote = otReq?.admin_note ?? null;
+  }
+
   return (
     <div className="space-y-5 animate-fade-up">
       <div>
@@ -43,7 +54,11 @@ export default async function DashboardPage() {
             Attendance
           </p>
 
-          <AttendanceStatusCard log={todayLog} timezone={settings?.timezone} />
+          <AttendanceStatusCard
+            log={todayLog}
+            timezone={settings?.timezone}
+            overtimeAdminNote={overtimeAdminNote}
+          />
           <CheckInButton
             todayLog={todayLog}
             settings={settings}

@@ -1,4 +1,4 @@
-import { MapPin } from "lucide-react";
+import { MapPin, XCircle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -19,8 +19,12 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "./StatusBadge";
 import { LateProofUploadDialog } from "./LateProofUploadDialog";
 
+type LogWithOt = AttendanceLog & {
+  overtime_admin_note?: string | null;
+};
+
 interface AttendanceHistoryTableProps {
-  logs: AttendanceLog[];
+  logs: LogWithOt[];
   timezone?: string;
 }
 
@@ -89,12 +93,37 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                 </TableCell>
                 <TableCell>
                   {log.is_overtime && log.overtime_minutes > 0 && otStyle ? (
-                    <Badge
-                      className="text-[10px] px-2"
-                      style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
-                    >
-                      {formatMinutesHuman(log.overtime_minutes)} ({log.overtime_status})
-                    </Badge>
+                    <div className="space-y-1">
+                      <Badge
+                        className="text-[10px] px-2"
+                        style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
+                      >
+                        {formatMinutesHuman(log.overtime_minutes)} ({log.overtime_status})
+                      </Badge>
+                      {log.overtime_status === "rejected" && log.overtime_admin_note && (
+                        <div className="flex items-start gap-1 max-w-[180px]">
+                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
+                          <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
+                            {log.overtime_admin_note}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : log.overtime_status === "rejected" && log.overtime_admin_note ? (
+                    <div className="space-y-1">
+                      <Badge
+                        className="text-[10px] px-2"
+                        style={{ background: "#fef2f2", color: "#ff3b30", border: "none" }}
+                      >
+                        Rejected
+                      </Badge>
+                      <div className="flex items-start gap-1 max-w-[180px]">
+                        <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
+                        <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
+                          {log.overtime_admin_note}
+                        </p>
+                      </div>
+                    </div>
                   ) : (
                     <span className="text-muted-foreground text-xs">—</span>
                   )}

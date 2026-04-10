@@ -1,8 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, CheckCircle, XCircle } from "lucide-react";
+import { MapPin, CheckCircle, XCircle, MessageSquare } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -45,6 +45,7 @@ interface AttendanceRow {
     id: string;
     reason: string;
     status: string;
+    admin_note?: string | null;
   }[];
 }
 
@@ -84,13 +85,18 @@ export function AttendanceRecapTable({
 
   const totalPages = Math.ceil(count / pageSize);
 
-  function handleOvertimeAction(requestId: string, decision: "approved" | "rejected") {
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectMessage, setRejectMessage] = useState("");
+
+  function handleOvertimeAction(requestId: string, decision: "approved" | "rejected", adminNote?: string) {
     startTransition(async () => {
-      const result = await reviewOvertimeRequest(requestId, decision);
+      const result = await reviewOvertimeRequest(requestId, decision, adminNote);
       if (result.error) {
         toast.error(result.error);
       } else {
         toast.success(decision === "approved" ? "Overtime approved" : "Overtime rejected");
+        setRejectingId(null);
+        setRejectMessage("");
         router.refresh();
       }
     });
@@ -161,39 +167,121 @@ export function AttendanceRecapTable({
                   </TableCell>
                   <TableCell>
                     {row.is_overtime && row.overtime_minutes > 0 && otStyle ? (
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <Badge
                           className="text-[10px] px-2"
                           style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
                         >
                           {formatMinutesHuman(row.overtime_minutes)} ({otStyle.label})
                         </Badge>
-                        {row.overtime_status === "pending" && otRequest && (
-                          <div className="flex items-center gap-0.5">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-5 px-1 text-[10px]"
-                              onClick={() => handleOvertimeAction(otRequest.id, "approved")}
-                              disabled={isPending}
-                              style={{ color: "#34c759" }}
-                            >
-                              <CheckCircle size={10} className="mr-0.5" />
-                              Approve
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-5 px-1 text-[10px]"
-                              onClick={() => handleOvertimeAction(otRequest.id, "rejected")}
-                              disabled={isPending}
-                              style={{ color: "#ff3b30" }}
-                            >
-                              <XCircle size={10} className="mr-0.5" />
-                              Reject
-                            </Button>
+
+                        {/* Employee's reason */}
+                        {otRequest?.reason && (
+                          <div className="flex items-start gap-1 max-w-[200px]">
+                            <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />
+                            <p className="text-[10px] text-muted-foreground leading-tight">
+                              {otRequest.reason}
+                            </p>
                           </div>
                         )}
+
+                        {/* Pending: show approve/reject actions */}
+                        {row.overtime_status === "pending" && otRequest && (
+                          <>
+                            {rejectingId === otRequest.id ? (
+                              <div className="space-y-1 max-w-[200px]">
+                                <textarea
+                                  className="w-full text-[11px] border rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-red-300"
+                                  rows={2}
+                                  placeholder="Rejection reason (required)…"
+                                  value={rejectMessage}
+                                  onChange={(e) => setRejectMessage(e.target.value)}
+                                  autoFocus
+                                />
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 px-1.5 text-[10px]"
+                                    onClick={() => {
+                                      if (!rejectMessage.trim()) {
+                                        toast.error("Please provide a rejection reason");
+                                        return;
+                                      }
+                                      handleOvertimeAction(otRequest.id, "rejected", rejectMessage.trim());
+                                    }}
+                                    disabled={isPending}
+                                    style={{ color: "#ff3b30" }}
+                                  >
+                                    Confirm Reject
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 px-1.5 text-[10px] text-muted-foreground"
+                                    onClick={() => {
+                                      setRejectingId(null);
+                                      setRejectMessage("");
+                                    }}
+                                    disabled={isPending}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-0.5">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 px-1 text-[10px]"
+                                  onClick={() => handleOvertimeAction(otRequest.id, "approved")}
+                                  disabled={isPending}
+                                  style={{ color: "#34c759" }}
+                                >
+                                  <CheckCircle size={10} className="mr-0.5" />
+                                  Approve
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 px-1 text-[10px]"
+                                  onClick={() => setRejectingId(otRequest.id)}
+                                  disabled={isPending}
+                                  style={{ color: "#ff3b30" }}
+                                >
+                                  <XCircle size={10} className="mr-0.5" />
+                                  Reject
+                                </Button>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {/* Admin note for reviewed requests */}
+                        {otRequest?.admin_note && row.overtime_status === "rejected" && (
+                          <div className="flex items-start gap-1 max-w-[200px]">
+                            <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
+                            <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
+                              {otRequest.admin_note}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : row.overtime_status === "rejected" && otRequest?.admin_note ? (
+                      <div className="space-y-1">
+                        <Badge
+                          className="text-[10px] px-2"
+                          style={{ background: "#fef2f2", color: "#ff3b30", border: "none" }}
+                        >
+                          Rejected
+                        </Badge>
+                        <div className="flex items-start gap-1 max-w-[200px]">
+                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
+                          <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
+                            {otRequest.admin_note}
+                          </p>
+                        </div>
                       </div>
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>

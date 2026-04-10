@@ -50,45 +50,27 @@ export default function RegisterPage() {
     const fullName = formData.get("full_name") as string;
 
     try {
-      const supabase = createClient();
-
-      // Step 1: sign up
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: fullName, role },
-        },
+      // Step 1: create user + profile entirely server-side (no Supabase email sent)
+      const res = await fetch("/api/profile/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          full_name: fullName,
+          role,
+        }),
       });
 
-      if (signUpError) {
-        setError(signUpError.message);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? "Account creation failed. Please try again.");
         setLoading(false);
         return;
       }
 
-      // Step 2: create profile + auto-confirm email via API route (service role)
-      if (signUpData.user) {
-        const res = await fetch("/api/profile/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: signUpData.user.id,
-            email,
-            full_name: fullName,
-            role,
-          }),
-        });
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          setError(body.error ?? "Account created but setup failed. Please contact support.");
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Step 3: sign in (email is now confirmed server-side)
+      // Step 2: sign in (user is already confirmed, no email verification needed)
+      const supabase = createClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
         setError(signInError.message);

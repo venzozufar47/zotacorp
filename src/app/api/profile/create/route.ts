@@ -5,9 +5,9 @@ import type { Database } from "@/lib/supabase/types";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { id, email, full_name, role } = body;
+    const { email, password, full_name, role } = body;
 
-    if (!id || !email) {
+    if (!email || !password) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -24,8 +24,6 @@ export async function POST(request: Request) {
         .eq("role", "admin");
 
       if ((count ?? 0) > 0) {
-        // Roll back the auth user we just created so the email is free to try again
-        await adminClient.auth.admin.deleteUser(id);
         return NextResponse.json(
           { error: "An admin account already exists. Contact the existing admin." },
           { status: 409 }
@@ -33,18 +31,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // Auto-confirm email so user can sign in immediately (no email verification flow)
-    const { error: confirmError } = await adminClient.auth.admin.updateUserById(id, {
+    // Create user server-side with admin API — email_confirm: true means
+    // the user is pre-confirmed and Supabase sends NO confirmation email
+    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+      email,
+      password,
       email_confirm: true,
+      user_metadata: { full_name, role },
     });
 
-    if (confirmError) {
-      console.error("Email confirm error:", confirmError);
-      return NextResponse.json({ error: confirmError.message }, { status: 500 });
+    if (authError) {
+      console.error("Auth create user error:", authError);
+      return NextResponse.json({ error: authError.message }, { status: 500 });
     }
 
+    const userId = authData.user.id;
+
     const { error } = await adminClient.from("profiles").upsert({
-      id,
+      id: userId,
       email,
       full_name: full_name ?? "",
       department: "",
@@ -55,10 +59,12 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("Profile upsert error:", error);
+      // Clean up the auth user if profile creation fails
+      await adminClient.auth.admin.deleteUser(userId);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, userId });
   } catch (err) {
     console.error("Profile create route error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

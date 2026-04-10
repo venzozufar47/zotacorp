@@ -1,4 +1,4 @@
-import { Clock, MapPin } from "lucide-react";
+import { Clock, MapPin, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { AttendanceLog } from "@/lib/supabase/types";
 import {
@@ -12,9 +12,10 @@ import { StatusBadge } from "./StatusBadge";
 interface AttendanceStatusCardProps {
   log: AttendanceLog | null;
   timezone?: string;
+  overtimeAdminNote?: string | null;
 }
 
-export function AttendanceStatusCard({ log, timezone }: AttendanceStatusCardProps) {
+export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: AttendanceStatusCardProps) {
   if (!log) return null;
 
   const isOpen = !log.checked_out_at;
@@ -57,18 +58,28 @@ export function AttendanceStatusCard({ log, timezone }: AttendanceStatusCardProp
               </div>
             </div>
             {log.checked_out_at && (
-              <p className="text-xs text-muted-foreground">
-                {getDurationHours(log.checked_in_at, log.checked_out_at)} worked
-                {log.is_overtime && log.overtime_minutes > 0 && (
-                  <span className="ml-1" style={{
-                    color: overtimeLabel === "approved" ? "#34c759"
-                      : overtimeLabel === "rejected" ? "#ff3b30"
-                      : "var(--primary)"
-                  }}>
-                    · {formatMinutesHuman(log.overtime_minutes)} overtime ({overtimeLabel})
-                  </span>
+              <div className="space-y-0.5">
+                <p className="text-xs text-muted-foreground">
+                  {getDurationHours(log.checked_in_at, log.checked_out_at)} worked
+                  {log.is_overtime && log.overtime_minutes > 0 && (
+                    <span className="ml-1" style={{
+                      color: overtimeLabel === "approved" ? "#34c759"
+                        : overtimeLabel === "rejected" ? "#ff3b30"
+                        : "var(--primary)"
+                    }}>
+                      · {formatMinutesHuman(log.overtime_minutes)} overtime ({overtimeLabel})
+                    </span>
+                  )}
+                </p>
+                {overtimeLabel === "rejected" && overtimeAdminNote && (
+                  <div className="flex items-start gap-1">
+                    <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
+                    <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
+                      {overtimeAdminNote}
+                    </p>
+                  </div>
                 )}
-              </p>
+              </div>
             )}
           </div>
 

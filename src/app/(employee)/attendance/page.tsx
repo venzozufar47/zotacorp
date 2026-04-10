@@ -31,6 +31,32 @@ export default async function AttendancePage() {
     getAttendanceSettings(),
   ]);
 
+  // Fetch overtime requests for the employee's logs to show admin rejection reasons
+  const logIds = logs.map((l) => l.id);
+  let overtimeMap: Record<string, { admin_note: string | null; reason: string }> = {};
+
+  if (logIds.length > 0) {
+    const { data: otRequests } = await supabase
+      .from("overtime_requests")
+      .select("attendance_log_id, reason, admin_note")
+      .in("attendance_log_id", logIds);
+
+    if (otRequests) {
+      for (const ot of otRequests) {
+        overtimeMap[ot.attendance_log_id] = {
+          admin_note: ot.admin_note,
+          reason: ot.reason,
+        };
+      }
+    }
+  }
+
+  // Attach overtime request data to logs
+  const logsWithOt = logs.map((log) => ({
+    ...log,
+    overtime_admin_note: overtimeMap[log.id]?.admin_note ?? null,
+  }));
+
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
@@ -42,7 +68,7 @@ export default async function AttendancePage() {
         <AttendanceSummaryCard summary={summary} monthLabel={monthLabel} />
       )}
 
-      <AttendanceHistoryTable logs={logs} timezone={settings?.timezone} />
+      <AttendanceHistoryTable logs={logsWithOt} timezone={settings?.timezone} />
     </div>
   );
 }

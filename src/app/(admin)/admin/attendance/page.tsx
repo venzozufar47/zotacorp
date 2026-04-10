@@ -58,12 +58,12 @@ export default async function AdminAttendancePage({
 
   // Fetch overtime requests for the displayed attendance logs
   const logIds = data.map((d: { id: string }) => d.id);
-  let overtimeMap: Record<string, { id: string; reason: string; status: string }> = {};
+  let overtimeMap: Record<string, { id: string; reason: string; status: string; admin_note: string | null }> = {};
 
   if (logIds.length > 0) {
     const { data: otRequests } = await supabase
       .from("overtime_requests")
-      .select("id, attendance_log_id, reason, status")
+      .select("id, attendance_log_id, reason, status, admin_note")
       .in("attendance_log_id", logIds);
 
     if (otRequests) {
@@ -72,6 +72,7 @@ export default async function AdminAttendancePage({
           id: ot.id,
           reason: ot.reason,
           status: ot.status,
+          admin_note: ot.admin_note,
         };
       }
     }
