@@ -15,7 +15,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden md:flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0">
+    <aside className="flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0">
       {/* Brand */}
       <div className="px-6 py-6 border-b border-border">
         <span className="font-display text-2xl" style={{ color: "var(--primary)" }}>
