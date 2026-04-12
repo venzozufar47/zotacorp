@@ -12,6 +12,7 @@ export default async function EmployeeProfilePage() {
 
   const profile = await getCurrentProfile();
   if (!profile) redirect("/dashboard");
+  if (profile.role === "admin") redirect("/admin/attendance");
 
   return (
     <div className="space-y-5 animate-fade-up">

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCurrentUser,
+  getCurrentRole,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import {
@@ -18,6 +19,9 @@ import { format } from "date-fns";
 export default async function AttendancePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+
+  const role = await getCurrentRole();
+  if (role === "admin") redirect("/admin/attendance");
 
   const now = new Date();
   const month = now.getMonth() + 1;

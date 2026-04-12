@@ -1,9 +1,8 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
-// Minimal pass-through proxy — auth is enforced in each Server Component.
-// Supabase session refresh happens via individual page data fetches.
 export async function proxy(request: NextRequest) {
-  return NextResponse.next({ request });
+  return updateSession(request);
 }
 
 export const config = {

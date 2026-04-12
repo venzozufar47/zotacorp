@@ -35,30 +35,52 @@ export async function updateSession(request: NextRequest) {
   const publicRoutes = ["/login", "/register"];
   const isPublic = publicRoutes.some((r) => pathname.startsWith(r));
 
+  // Not logged in → force to login (except public routes)
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  if (user && isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
-  }
+  // Logged in → resolve role once for all guards below
+  if (user) {
+    const employeeRoutes = ["/dashboard", "/attendance", "/profile"];
+    const onEmployeeRoute = employeeRoutes.some(
+      (r) => pathname === r || pathname.startsWith(r + "/")
+    );
+    const onAdminRoute = pathname.startsWith("/admin");
 
-  // Admin-only route guard
-  if (user && pathname.startsWith("/admin")) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    // Only query profile when we actually need a role-based decision
+    if (isPublic || onAdminRoute || onEmployeeRoute) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
 
-    if (!profile || profile.role !== "admin") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+      const isAdmin = profile?.role === "admin";
+      const home = isAdmin ? "/admin/attendance" : "/dashboard";
+
+      // Logged-in user on public page → send to their home
+      if (isPublic) {
+        const url = request.nextUrl.clone();
+        url.pathname = home;
+        return NextResponse.redirect(url);
+      }
+
+      // Non-admin on admin route → send to employee home
+      if (onAdminRoute && !isAdmin) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/dashboard";
+        return NextResponse.redirect(url);
+      }
+
+      // Admin on employee route → send to admin home
+      if (onEmployeeRoute && isAdmin) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/admin/attendance";
+        return NextResponse.redirect(url);
+      }
     }
   }
 

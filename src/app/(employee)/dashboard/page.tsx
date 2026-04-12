@@ -23,6 +23,8 @@ export default async function DashboardPage() {
     getCachedAttendanceSettings(),
   ]);
 
+  if (profile?.role === "admin") redirect("/admin/attendance");
+
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
   const today = format(new Date(), "EEEE, d MMMM");
 
