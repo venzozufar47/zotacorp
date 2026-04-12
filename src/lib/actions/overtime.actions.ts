@@ -2,16 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 
 export async function getMyOvertimeRequests() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return [];
 
+  const supabase = await createClient();
   const { data } = await supabase
     .from("overtime_requests")
     .select("*")
@@ -22,23 +19,10 @@ export async function getMyOvertimeRequests() {
 }
 
 export async function getPendingOvertimeRequests(statusFilter: string = "pending") {
+  const role = await getCurrentRole();
+  if (role !== "admin") return [];
+
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return [];
-
-  // Verify admin
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") return [];
-
   let query = supabase
     .from("overtime_requests")
     .select(
@@ -62,22 +46,13 @@ export async function reviewOvertimeRequest(
   decision: "approved" | "rejected",
   adminNote?: string
 ) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated" };
 
-  // Verify admin
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
 
-  if (profile?.role !== "admin") return { error: "Forbidden" };
+  const supabase = await createClient();
 
   // Get the request
   const { data: request } = await supabase
@@ -129,14 +104,10 @@ export async function reviewOvertimeRequest(
 }
 
 export async function getPendingOvertimeCount() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return 0;
 
+  const supabase = await createClient();
   const { count } = await supabase
     .from("overtime_requests")
     .select("id", { count: "exact", head: true })

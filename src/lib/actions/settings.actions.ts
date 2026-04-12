@@ -1,18 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCachedAttendanceSettings } from "@/lib/supabase/cached";
 import type { AttendanceSettings } from "@/lib/supabase/types";
 
 export async function getAttendanceSettings(): Promise<AttendanceSettings | null> {
-  const supabase = await createClient();
-
-  const { data } = await supabase
-    .from("attendance_settings")
-    .select("*")
-    .limit(1)
-    .single();
-
-  return data;
+  // Delegates to the React cache() wrapper so repeated calls within one
+  // request (page + server actions in Promise.all) share a single query.
+  return getCachedAttendanceSettings();
 }
 
 export async function updateAttendanceSettings(updates: {

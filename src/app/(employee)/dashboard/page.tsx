@@ -2,35 +2,34 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getCurrentUser,
+  getCurrentProfile,
+  getCachedAttendanceSettings,
+} from "@/lib/supabase/cached";
 import { getTodayAttendance } from "@/lib/actions/attendance.actions";
-import { getAttendanceSettings } from "@/lib/actions/settings.actions";
 import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
-  if (userError || !user) redirect("/login");
-
-  const [profileResult, todayLog, settings] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user!.id).single(),
+  const [profile, todayLog, settings] = await Promise.all([
+    getCurrentProfile(),
     getTodayAttendance(),
-    getAttendanceSettings(),
+    getCachedAttendanceSettings(),
   ]);
 
-  const profile = profileResult.data;
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
   const today = format(new Date(), "EEEE, d MMMM");
 
   // Fetch admin rejection note for today's log if applicable
   let overtimeAdminNote: string | null = null;
   if (todayLog?.id) {
+    const supabase = await createClient();
     const { data: otReq } = await supabase
       .from("overtime_requests")
       .select("admin_note")

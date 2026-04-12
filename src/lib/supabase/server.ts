@@ -1,8 +1,12 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "./types";
 
-export async function createClient() {
+// Wrapped in React `cache()` so multiple callers within a single request
+// (page + server actions invoked via Promise.all) reuse one client instead
+// of awaiting cookies() and allocating a fresh Supabase client each time.
+export const createClient = cache(async () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -30,4 +34,4 @@ export async function createClient() {
       },
     },
   });
-}
+});

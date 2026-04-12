@@ -3,21 +3,20 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
+  getCurrentUser,
+  getCachedAttendanceSettings,
+} from "@/lib/supabase/cached";
+import {
   getMyAttendanceLogs,
   getMyAttendanceSummary,
 } from "@/lib/actions/attendance.actions";
-import { getAttendanceSettings } from "@/lib/actions/settings.actions";
 import { AttendanceHistoryTable } from "@/components/attendance/AttendanceHistoryTable";
 import { AttendanceSummaryCard } from "@/components/attendance/AttendanceSummaryCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { format } from "date-fns";
 
 export default async function AttendancePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const now = new Date();
@@ -28,7 +27,7 @@ export default async function AttendancePage() {
   const [logs, summary, settings] = await Promise.all([
     getMyAttendanceLogs(30),
     getMyAttendanceSummary(month, year),
-    getAttendanceSettings(),
+    getCachedAttendanceSettings(),
   ]);
 
   // Fetch overtime requests for the employee's logs to show admin rejection reasons
@@ -36,6 +35,7 @@ export default async function AttendancePage() {
   let overtimeMap: Record<string, { admin_note: string | null; reason: string }> = {};
 
   if (logIds.length > 0) {
+    const supabase = await createClient();
     const { data: otRequests } = await supabase
       .from("overtime_requests")
       .select("attendance_log_id, reason, admin_note")

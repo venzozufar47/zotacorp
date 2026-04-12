@@ -1,28 +1,22 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { getAttendanceSettings } from "@/lib/actions/settings.actions";
+import {
+  getCurrentUser,
+  getCurrentRole,
+  getCachedAttendanceSettings,
+} from "@/lib/supabase/cached";
 import { AttendanceSettingsForm } from "@/components/admin/AttendanceSettingsForm";
 import { PageHeader } from "@/components/shared/PageHeader";
 
 export default async function AdminSettingsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const role = await getCurrentRole();
+  if (role !== "admin") redirect("/dashboard");
 
-  if (profile?.role !== "admin") redirect("/dashboard");
-
-  const settings = await getAttendanceSettings();
+  const settings = await getCachedAttendanceSettings();
 
   if (!settings) {
     return (

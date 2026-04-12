@@ -2,8 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getCurrentUser,
+  getCurrentRole,
+  getCachedAttendanceSettings,
+} from "@/lib/supabase/cached";
 import { getAllAttendanceLogs, getAllEmployees } from "@/lib/actions/attendance.actions";
-import { getAttendanceSettings } from "@/lib/actions/settings.actions";
 import { AttendanceRecapTable } from "@/components/admin/AttendanceRecapTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AttendanceFilters } from "@/components/admin/AttendanceFilters";
@@ -21,20 +25,11 @@ export default async function AdminAttendancePage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") redirect("/dashboard");
+  const role = await getCurrentRole();
+  if (role !== "admin") redirect("/dashboard");
 
   const params = await searchParams;
 
@@ -53,7 +48,7 @@ export default async function AdminAttendancePage({
       pageSize,
     }),
     getAllEmployees(),
-    getAttendanceSettings(),
+    getCachedAttendanceSettings(),
   ]);
 
   // Fetch overtime requests for the displayed attendance logs
@@ -61,6 +56,7 @@ export default async function AdminAttendancePage({
   let overtimeMap: Record<string, { id: string; reason: string; status: string; admin_note: string | null }> = {};
 
   if (logIds.length > 0) {
+    const supabase = await createClient();
     const { data: otRequests } = await supabase
       .from("overtime_requests")
       .select("id, attendance_log_id, reason, status, admin_note")

@@ -2,25 +2,18 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { UsersTable } from "@/components/admin/UsersTable";
 
 export default async function AdminUsersPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { data: callerProfile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const role = await getCurrentRole();
+  if (role !== "admin") redirect("/dashboard");
 
-  if (callerProfile?.role !== "admin") redirect("/dashboard");
-
+  const supabase = await createClient();
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id, email, full_name, role, created_at")

@@ -2,8 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getCurrentUser,
+  getCurrentRole,
+  getCachedAttendanceSettings,
+} from "@/lib/supabase/cached";
 import { getTodayDateString } from "@/lib/utils/date";
-import { getAttendanceSettings } from "./settings.actions";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -57,14 +61,10 @@ function computeCheckInStatus(
 }
 
 export async function checkIn(payload: CheckInPayload) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated" };
 
+  const supabase = await createClient();
   const today = getTodayDateString();
 
   const { data: existing } = await supabase
@@ -89,7 +89,7 @@ export async function checkIn(payload: CheckInPayload) {
     .single();
 
   // Get global timezone
-  const settings = await getAttendanceSettings();
+  const settings = await getCachedAttendanceSettings();
   const timezone = settings?.timezone ?? "Asia/Jakarta";
 
   const now = new Date();
@@ -137,14 +137,10 @@ interface CheckOutPayload {
 }
 
 export async function checkOut(payload?: CheckOutPayload) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated" };
 
+  const supabase = await createClient();
   const today = getTodayDateString();
 
   const { data: existing } = await supabase
@@ -176,7 +172,7 @@ export async function checkOut(payload?: CheckOutPayload) {
   let overtimeMinutes = 0;
 
   if (isOvertime && !profile?.is_flexible_schedule) {
-    const settings = await getAttendanceSettings();
+    const settings = await getCachedAttendanceSettings();
     const timezone = settings?.timezone ?? "Asia/Jakarta";
 
     try {
@@ -230,14 +226,10 @@ export async function checkOut(payload?: CheckOutPayload) {
 }
 
 export async function getTodayAttendance() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return null;
 
+  const supabase = await createClient();
   const { data } = await supabase
     .from("attendance_logs")
     .select("*")
@@ -249,14 +241,10 @@ export async function getTodayAttendance() {
 }
 
 export async function getMyAttendanceLogs(limit = 30) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return [];
 
+  const supabase = await createClient();
   const { data } = await supabase
     .from("attendance_logs")
     .select("*")
@@ -275,21 +263,11 @@ export async function getAllAttendanceLogs(params: {
   page?: number;
   pageSize?: number;
 }) {
+  // Cached helpers dedupe against the page's own auth check.
+  const role = await getCurrentRole();
+  if (role !== "admin") return { data: [], count: 0 };
+
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { data: [], count: 0 };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") return { data: [], count: 0 };
 
   const {
     startDate,
@@ -329,13 +307,10 @@ export async function getAllAttendanceLogs(params: {
 }
 
 export async function getMyAttendanceSummary(month: number, year: number) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return null;
+
+  const supabase = await createClient();
 
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();

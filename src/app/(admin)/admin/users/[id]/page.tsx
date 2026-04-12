@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import type { Profile } from "@/lib/supabase/types";
@@ -14,22 +15,14 @@ export default async function AdminEditUserPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { data: caller } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const role = await getCurrentRole();
+  if (role !== "admin") redirect("/dashboard");
 
-  if (caller?.role !== "admin") redirect("/dashboard");
-
+  const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
