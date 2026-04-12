@@ -17,10 +17,12 @@ export function AdminSidebar() {
   return (
     <aside className="hidden md:flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0">
       <div className="px-6 py-6 border-b border-border">
-        <span className="font-display text-2xl" style={{ color: "var(--primary)" }}>
-          Zota Corp
-        </span>
-        <p className="text-xs text-muted-foreground mt-0.5 font-medium uppercase tracking-wide">Admin</p>
+        <img
+          src="/zota-corp-logo-tosca.png"
+          alt="Zota Corp"
+          className="h-7"
+        />
+        <p className="text-xs text-muted-foreground mt-1.5 font-medium uppercase tracking-wide">Admin</p>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">

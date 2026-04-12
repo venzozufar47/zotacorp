@@ -20,7 +20,6 @@ import { toast } from "sonner";
 import {
   formatLocalDate,
   formatTime,
-  getDurationHoursDecimal,
   formatMinutesHuman,
 } from "@/lib/utils/date";
 
@@ -116,7 +115,6 @@ export function AttendanceRecapTable({
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Hours</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide w-[200px] max-w-[200px]">Overtime</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
@@ -125,11 +123,6 @@ export function AttendanceRecapTable({
           <TableBody>
             {rows.map((row) => {
               const isOpen = !row.checked_out_at;
-              const hours = getDurationHoursDecimal(
-                row.checked_in_at,
-                row.checked_out_at
-              );
-
               const otStyle = row.overtime_status
                 ? OT_STATUS_STYLES[row.overtime_status] ?? OT_STATUS_STYLES.pending
                 : null;
@@ -153,9 +146,6 @@ export function AttendanceRecapTable({
                   <TableCell className="text-sm">{formatTime(row.checked_in_at, timezone)}</TableCell>
                   <TableCell className="text-sm">
                     {row.checked_out_at ? formatTime(row.checked_out_at, timezone) : "—"}
-                  </TableCell>
-                  <TableCell className="text-sm font-semibold">
-                    {hours > 0 ? `${hours}h` : "—"}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">

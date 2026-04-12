@@ -9,12 +9,9 @@ import {
 } from "@/lib/supabase/cached";
 import {
   getMyAttendanceLogs,
-  getMyAttendanceSummary,
 } from "@/lib/actions/attendance.actions";
 import { AttendanceHistoryTable } from "@/components/attendance/AttendanceHistoryTable";
-import { AttendanceSummaryCard } from "@/components/attendance/AttendanceSummaryCard";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { format } from "date-fns";
 
 export default async function AttendancePage() {
   const user = await getCurrentUser();
@@ -23,14 +20,8 @@ export default async function AttendancePage() {
   const role = await getCurrentRole();
   if (role === "admin") redirect("/admin/attendance");
 
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-  const monthLabel = format(now, "MMMM yyyy");
-
-  const [logs, summary, settings] = await Promise.all([
+  const [logs, settings] = await Promise.all([
     getMyAttendanceLogs(30),
-    getMyAttendanceSummary(month, year),
     getCachedAttendanceSettings(),
   ]);
 
@@ -67,10 +58,6 @@ export default async function AttendancePage() {
         title="My Attendance"
         subtitle="Your check-in history and monthly summary"
       />
-
-      {summary && (
-        <AttendanceSummaryCard summary={summary} monthLabel={monthLabel} />
-      )}
 
       <AttendanceHistoryTable logs={logsWithOt} timezone={settings?.timezone} />
     </div>

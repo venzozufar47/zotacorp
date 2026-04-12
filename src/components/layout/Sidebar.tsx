@@ -18,9 +18,11 @@ export function Sidebar() {
     <aside className="flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0">
       {/* Brand */}
       <div className="px-6 py-6 border-b border-border">
-        <span className="font-display text-2xl" style={{ color: "var(--primary)" }}>
-          Zota Corp
-        </span>
+        <img
+          src="/zota-corp-logo-tosca.png"
+          alt="Zota Corp"
+          className="h-7"
+        />
       </div>
 
       {/* Nav */}

@@ -8,12 +8,11 @@ export default function AuthLayout({
       <div className="w-full max-w-sm">
         {/* Brand mark */}
         <div className="text-center mb-8">
-          <h1
-            className="font-display text-4xl mb-1"
-            style={{ color: "var(--primary)" }}
-          >
-            Zota Corp
-          </h1>
+          <img
+            src="/zota-corp-full-logo-tosca.png"
+            alt="Zota Corp"
+            className="h-10 mx-auto mb-1"
+          />
           <p className="text-muted-foreground text-sm">Employee Dashboard</p>
         </div>
         {children}

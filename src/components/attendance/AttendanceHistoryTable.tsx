@@ -12,7 +12,6 @@ import type { AttendanceLog } from "@/lib/supabase/types";
 import {
   formatLocalDate,
   formatTime,
-  getDurationHours,
   formatMinutesHuman,
 } from "@/lib/utils/date";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -53,7 +52,6 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">Duration</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide w-[180px] max-w-[180px]">Overtime</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
@@ -73,9 +71,6 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                 <TableCell>{formatTime(log.checked_in_at, timezone)}</TableCell>
                 <TableCell>
                   {log.checked_out_at ? formatTime(log.checked_out_at, timezone) : "—"}
-                </TableCell>
-                <TableCell>
-                  {getDurationHours(log.checked_in_at, log.checked_out_at)}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">

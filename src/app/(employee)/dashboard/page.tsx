@@ -10,8 +10,23 @@ import {
 import { getTodayAttendance } from "@/lib/actions/attendance.actions";
 import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
+import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
+
+const REQUIRED_PROFILE_FIELDS: { key: string; label: string }[] = [
+  { key: "full_name", label: "Full Name" },
+  { key: "gender", label: "Gender" },
+  { key: "date_of_birth", label: "Date of Birth" },
+  { key: "place_of_birth", label: "Place of Birth" },
+  { key: "current_city", label: "Current City" },
+  { key: "business_unit", label: "Business Unit" },
+  { key: "job_role", label: "Role" },
+  { key: "whatsapp_number", label: "WhatsApp Number" },
+  { key: "npwp", label: "NPWP" },
+  { key: "emergency_contact_name", label: "Emergency Contact" },
+  { key: "emergency_contact_whatsapp", label: "Emergency WhatsApp" },
+];
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -40,6 +55,10 @@ export default async function DashboardPage() {
     overtimeAdminNote = otReq?.admin_note ?? null;
   }
 
+  const missingFields = REQUIRED_PROFILE_FIELDS
+    .filter(({ key }) => !profile?.[key as keyof typeof profile])
+    .map(({ label }) => label);
+
   return (
     <div className="space-y-5 animate-fade-up">
       <div>
@@ -48,6 +67,8 @@ export default async function DashboardPage() {
         </h2>
         <p className="text-muted-foreground text-sm mt-0.5">{today}</p>
       </div>
+
+      <ProfileCompletionCard missingFields={missingFields} />
 
       <Card className="border-0 shadow-sm animate-fade-up animate-fade-up-delay-1">
         <CardContent className="p-5 space-y-4">

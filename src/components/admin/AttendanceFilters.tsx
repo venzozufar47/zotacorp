@@ -96,7 +96,7 @@ export function AttendanceFilters({
               <SelectItem value="all">All employees</SelectItem>
               {employees.map((emp) => (
                 <SelectItem key={emp.id} value={emp.id}>
-                  {emp.full_name}
+                  {emp.full_name || emp.email}
                 </SelectItem>
               ))}
             </SelectContent>
