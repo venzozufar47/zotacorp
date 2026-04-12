@@ -34,9 +34,10 @@ export async function updateSession(request: NextRequest) {
 
   const publicRoutes = ["/login", "/register"];
   const isPublic = publicRoutes.some((r) => pathname.startsWith(r));
+  const isApi = pathname.startsWith("/api");
 
-  // Not logged in → force to login (except public routes)
-  if (!user && !isPublic) {
+  // Not logged in → force to login (except public routes and API routes)
+  if (!user && !isPublic && !isApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
