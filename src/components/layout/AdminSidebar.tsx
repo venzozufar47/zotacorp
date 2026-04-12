@@ -20,9 +20,9 @@ export function AdminSidebar() {
         <img
           src="/zota-corp-logo-tosca.png"
           alt="Zota Corp"
-          className="h-7"
+          className="h-10"
         />
-        <p className="text-xs text-muted-foreground mt-1.5 font-medium uppercase tracking-wide">Admin</p>
+        <p className="text-xs text-muted-foreground mt-2 font-medium uppercase tracking-wide">Admin</p>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">

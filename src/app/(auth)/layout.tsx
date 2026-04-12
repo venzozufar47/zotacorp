@@ -11,7 +11,7 @@ export default function AuthLayout({
           <img
             src="/zota-corp-full-logo-tosca.png"
             alt="Zota Corp"
-            className="h-10 mx-auto mb-1"
+            className="h-16 mx-auto mb-2"
           />
           <p className="text-muted-foreground text-sm">Employee Dashboard</p>
         </div>

@@ -21,7 +21,7 @@ export function Sidebar() {
         <img
           src="/zota-corp-logo-tosca.png"
           alt="Zota Corp"
-          className="h-7"
+          className="h-10"
         />
       </div>
 
