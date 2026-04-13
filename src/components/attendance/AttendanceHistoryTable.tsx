@@ -45,7 +45,7 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
   }
 
   return (
-    <div className="rounded-xl border overflow-hidden">
+    <div className="rounded-xl border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow className="bg-[#f5f5f7]">

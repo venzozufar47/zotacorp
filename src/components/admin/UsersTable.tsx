@@ -85,7 +85,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
 
   return (
     <>
-      <div className="rounded-xl border overflow-hidden bg-white">
+      <div className="rounded-xl border overflow-x-auto bg-white">
         <Table>
           <TableHeader>
             <TableRow className="bg-[#f5f5f7]">

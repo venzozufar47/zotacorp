@@ -107,7 +107,7 @@ export function AttendanceRecapTable({
         {count} record{count !== 1 ? "s" : ""} · page {page} of {totalPages}
       </p>
 
-      <div className="rounded-xl border overflow-hidden bg-white">
+      <div className="rounded-xl border overflow-x-auto bg-white">
         <Table>
           <TableHeader>
             <TableRow className="bg-[#f5f5f7]">
@@ -192,7 +192,7 @@ export function AttendanceRecapTable({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-5 px-1.5 text-[10px]"
+                                    className="h-7 px-2 text-xs"
                                     onClick={() => {
                                       if (!rejectMessage.trim()) {
                                         toast.error("Please provide a rejection reason");
@@ -224,7 +224,7 @@ export function AttendanceRecapTable({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-5 px-1 text-[10px]"
+                                  className="h-7 px-2 text-xs"
                                   onClick={() => handleOvertimeAction(otRequest.id, "approved")}
                                   disabled={isPending}
                                   style={{ color: "#34c759" }}
@@ -235,7 +235,7 @@ export function AttendanceRecapTable({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-5 px-1 text-[10px]"
+                                  className="h-7 px-2 text-xs"
                                   onClick={() => setRejectingId(otRequest.id)}
                                   disabled={isPending}
                                   style={{ color: "#ff3b30" }}
