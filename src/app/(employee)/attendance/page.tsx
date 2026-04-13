@@ -53,7 +53,7 @@ export default async function AttendancePage() {
   }));
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    <div className="space-y-5 animate-fade-up overflow-x-hidden">
       <PageHeader
         title="My Attendance"
         subtitle="Your check-in history and monthly summary"

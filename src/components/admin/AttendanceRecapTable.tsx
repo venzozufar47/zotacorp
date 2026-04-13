@@ -102,7 +102,7 @@ export function AttendanceRecapTable({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 max-w-full">
       <p className="text-xs text-muted-foreground">
         {count} record{count !== 1 ? "s" : ""} · page {page} of {totalPages}
       </p>

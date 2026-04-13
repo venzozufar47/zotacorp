@@ -99,7 +99,7 @@ export default async function AdminAttendancePage({
   }
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    <div className="space-y-5 animate-fade-up overflow-x-hidden">
       <PageHeader
         title="Attendance Recap"
         subtitle={`Overview for all employees — ${format(new Date(startDate), "d MMM")} to ${format(new Date(endDate), "d MMM yyyy")}`}
