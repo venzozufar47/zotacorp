@@ -39,50 +39,63 @@ export default async function AdminAttendancePage({
   const page = parseInt(params.page ?? "1", 10);
   const pageSize = 25;
 
-  const [logsResult, employees, settings] = await Promise.all([
-    getAllAttendanceLogs({
-      startDate,
-      endDate,
-      userId: params.userId,
-      page,
-      pageSize,
-    }).catch(() => ({ data: [] as Awaited<ReturnType<typeof getAllAttendanceLogs>>["data"], count: 0 })),
-    getAllEmployees(),
-    getCachedAttendanceSettings(),
-  ]);
+  let rowsWithOt: Parameters<typeof AttendanceRecapTable>[0]["rows"] = [];
+  let count = 0;
+  let employees: Awaited<ReturnType<typeof getAllEmployees>> = [];
+  let settings: Awaited<ReturnType<typeof getCachedAttendanceSettings>> = null;
 
-  const { data, count } = logsResult;
+  try {
+    const [logsResult, emps, s] = await Promise.all([
+      getAllAttendanceLogs({
+        startDate,
+        endDate,
+        userId: params.userId,
+        page,
+        pageSize,
+      }),
+      getAllEmployees(),
+      getCachedAttendanceSettings(),
+    ]);
 
-  // Fetch overtime requests for the displayed attendance logs
-  const logIds = data.map((d: { id: string }) => d.id);
-  let overtimeMap: Record<string, { id: string; reason: string; status: string; admin_note: string | null }> = {};
+    employees = emps;
+    settings = s;
+    const { data } = logsResult;
+    count = logsResult.count;
 
-  if (logIds.length > 0) {
-    const supabase = await createClient();
-    const { data: otRequests } = await supabase
-      .from("overtime_requests")
-      .select("id, attendance_log_id, reason, status, admin_note")
-      .in("attendance_log_id", logIds);
+    // Fetch overtime requests for the displayed attendance logs
+    const logIds = data.map((d: { id: string }) => d.id);
+    let overtimeMap: Record<string, { id: string; reason: string; status: string; admin_note: string | null }> = {};
 
-    if (otRequests) {
-      for (const ot of otRequests) {
-        overtimeMap[ot.attendance_log_id] = {
-          id: ot.id,
-          reason: ot.reason,
-          status: ot.status,
-          admin_note: ot.admin_note,
-        };
+    if (logIds.length > 0) {
+      const supabase = await createClient();
+      const { data: otRequests } = await supabase
+        .from("overtime_requests")
+        .select("id, attendance_log_id, reason, status, admin_note")
+        .in("attendance_log_id", logIds);
+
+      if (otRequests) {
+        for (const ot of otRequests) {
+          overtimeMap[ot.attendance_log_id] = {
+            id: ot.id,
+            reason: ot.reason,
+            status: ot.status,
+            admin_note: ot.admin_note,
+          };
+        }
       }
     }
-  }
 
-  // Merge overtime requests into attendance rows
-  const rowsWithOt = data.map((row: Record<string, unknown>) => ({
-    ...row,
-    overtime_requests: overtimeMap[(row as { id: string }).id]
-      ? [overtimeMap[(row as { id: string }).id]]
-      : [],
-  }));
+    // Merge overtime requests into attendance rows
+    rowsWithOt = data.map((row: Record<string, unknown>) => ({
+      ...row,
+      overtime_requests: overtimeMap[(row as { id: string }).id]
+        ? [overtimeMap[(row as { id: string }).id]]
+        : [],
+    })) as typeof rowsWithOt;
+  } catch {
+    // If anything fails, render with empty data — the table shows "No records found"
+    employees = await getAllEmployees().catch(() => []);
+  }
 
   return (
     <div className="space-y-5 animate-fade-up">
