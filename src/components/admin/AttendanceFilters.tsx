@@ -5,13 +5,7 @@ import { useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
 
 interface Employee {
@@ -85,28 +79,21 @@ export function AttendanceFilters({
         {/* Employee dropdown */}
         <div className="space-y-1">
           <Label className="text-xs">Employee</Label>
-          <Select
+          <select
             value={selectedUserId || "all"}
-            onValueChange={(v) => updateParams({ userId: v === "all" ? "" : (v ?? "") })}
+            onChange={(e) => updateParams({ userId: e.target.value === "all" ? "" : e.target.value })}
+            className={cn(
+              "flex w-full items-center rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm h-9 outline-none",
+              "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            )}
           >
-            <SelectTrigger className="text-sm h-9">
-              <SelectValue placeholder="All employees">
-                {selectedUserId
-                  ? (employees.find((e) => e.id === selectedUserId)?.full_name ||
-                     employees.find((e) => e.id === selectedUserId)?.email ||
-                     "All employees")
-                  : "All employees"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All employees</SelectItem>
-              {employees.map((emp) => (
-                <SelectItem key={emp.id} value={emp.id}>
-                  {emp.full_name || emp.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="all">All employees</option>
+            {employees.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.full_name || emp.email}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
