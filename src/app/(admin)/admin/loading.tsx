@@ -16,10 +16,10 @@ export default function AdminLoading() {
 
       <Card className="border-0 shadow-sm">
         <CardContent className="p-5 space-y-3">
-          <div className="flex gap-3">
-            <Skeleton className="h-10 w-40" />
-            <Skeleton className="h-10 w-40" />
-            <Skeleton className="h-10 w-40" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </div>
         </CardContent>
       </Card>

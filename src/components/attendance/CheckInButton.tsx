@@ -176,7 +176,7 @@ export function CheckInButton({
 
         {state === "checked-in" && (
           <>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground px-1">
               <Clock size={14} style={{ color: "var(--primary)" }} />
               <span>
                 Checked in at{" "}

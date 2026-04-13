@@ -114,7 +114,6 @@ export function PasswordConfirmModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              autoFocus
               autoComplete="current-password"
             />
           </div>
