@@ -92,7 +92,8 @@ export default async function AdminAttendancePage({
         ? [overtimeMap[(row as { id: string }).id]]
         : [],
     })) as typeof rowsWithOt;
-  } catch {
+  } catch (err) {
+    console.error("[attendance-page] data fetch error:", err);
     // If anything fails, render with empty data — the table shows "No records found"
     employees = await getAllEmployees().catch(() => []);
   }
