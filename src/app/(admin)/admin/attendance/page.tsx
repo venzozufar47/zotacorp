@@ -39,17 +39,19 @@ export default async function AdminAttendancePage({
   const page = parseInt(params.page ?? "1", 10);
   const pageSize = 25;
 
-  const [{ data, count }, employees, settings] = await Promise.all([
+  const [logsResult, employees, settings] = await Promise.all([
     getAllAttendanceLogs({
       startDate,
       endDate,
       userId: params.userId,
       page,
       pageSize,
-    }),
+    }).catch(() => ({ data: [] as Awaited<ReturnType<typeof getAllAttendanceLogs>>["data"], count: 0 })),
     getAllEmployees(),
     getCachedAttendanceSettings(),
   ]);
+
+  const { data, count } = logsResult;
 
   // Fetch overtime requests for the displayed attendance logs
   const logIds = data.map((d: { id: string }) => d.id);

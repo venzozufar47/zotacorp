@@ -90,7 +90,13 @@ export function AttendanceFilters({
             onValueChange={(v) => updateParams({ userId: v === "all" ? "" : (v ?? "") })}
           >
             <SelectTrigger className="text-sm h-9">
-              <SelectValue placeholder="All employees" />
+              <SelectValue placeholder="All employees">
+                {selectedUserId
+                  ? (employees.find((e) => e.id === selectedUserId)?.full_name ||
+                     employees.find((e) => e.id === selectedUserId)?.email ||
+                     "All employees")
+                  : "All employees"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All employees</SelectItem>
