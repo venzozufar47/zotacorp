@@ -28,9 +28,9 @@ interface AttendanceHistoryTableProps {
 }
 
 const OT_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
-  pending: { bg: "#fff7ed", color: "#ff9f0a" },
-  approved: { bg: "#f0fdf4", color: "#34c759" },
-  rejected: { bg: "#fef2f2", color: "#ff3b30" },
+  pending: { bg: "#fff7ed", color: "#b45309" },
+  approved: { bg: "#f0fdf4", color: "#15803d" },
+  rejected: { bg: "#fef2f2", color: "#b91c1c" },
 };
 
 export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTableProps) {
@@ -82,7 +82,7 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                       />
                     )}
                     {log.status === "late_excused" && (
-                      <span className="text-[10px] text-green-600">📎</span>
+                      <span className="text-xs text-green-600">📎</span>
                     )}
                   </div>
                 </TableCell>
@@ -90,15 +90,15 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                   {log.is_overtime && log.overtime_minutes > 0 && otStyle ? (
                     <div className="space-y-1">
                       <Badge
-                        className="text-[10px] px-2"
+                        className="text-xs px-2"
                         style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
                       >
                         {formatMinutesHuman(log.overtime_minutes)} ({log.overtime_status})
                       </Badge>
                       {log.overtime_status === "rejected" && log.overtime_admin_note && (
                         <div className="flex items-start gap-1 w-full">
-                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                          <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
+                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
+                          <p className="text-xs leading-tight break-words" style={{ color: "#b91c1c" }}>
                             {log.overtime_admin_note}
                           </p>
                         </div>
@@ -107,14 +107,14 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                   ) : log.overtime_status === "rejected" && log.overtime_admin_note ? (
                     <div className="space-y-1">
                       <Badge
-                        className="text-[10px] px-2"
+                        className="text-xs px-2"
                         style={{ background: "#fef2f2", color: "#ff3b30", border: "none" }}
                       >
                         Rejected
                       </Badge>
                       <div className="flex items-start gap-1 max-w-[180px]">
-                        <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                        <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
+                        <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
+                        <p className="text-xs leading-tight" style={{ color: "#b91c1c" }}>
                           {log.overtime_admin_note}
                         </p>
                       </div>

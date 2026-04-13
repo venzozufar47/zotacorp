@@ -57,9 +57,9 @@ interface AttendanceRecapTableProps {
 }
 
 const OT_STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  pending: { bg: "#fff7ed", color: "#ff9f0a", label: "Pending" },
-  approved: { bg: "#f0fdf4", color: "#34c759", label: "Approved" },
-  rejected: { bg: "#fef2f2", color: "#ff3b30", label: "Rejected" },
+  pending: { bg: "#fff7ed", color: "#b45309", label: "Pending" },
+  approved: { bg: "#f0fdf4", color: "#15803d", label: "Approved" },
+  rejected: { bg: "#fef2f2", color: "#b91c1c", label: "Rejected" },
 };
 
 export function AttendanceRecapTable({
@@ -151,7 +151,7 @@ export function AttendanceRecapTable({
                     <div className="flex items-center gap-1">
                       <StatusBadge status={row.status} lateMinutes={row.late_minutes} />
                       {row.late_proof_url && (
-                        <span className="text-[10px] text-blue-500">📎</span>
+                        <span className="text-xs text-blue-500">📎</span>
                       )}
                     </div>
                   </TableCell>
@@ -159,7 +159,7 @@ export function AttendanceRecapTable({
                     {row.is_overtime && row.overtime_minutes > 0 && otStyle ? (
                       <div className="space-y-1.5">
                         <Badge
-                          className="text-[10px] px-2"
+                          className="text-xs px-2"
                           style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
                         >
                           {formatMinutesHuman(row.overtime_minutes)} ({otStyle.label})
@@ -169,7 +169,7 @@ export function AttendanceRecapTable({
                         {otRequest?.reason && (
                           <div className="flex items-start gap-1 w-full">
                             <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />
-                            <p className="text-[10px] text-muted-foreground leading-tight break-words">
+                            <p className="text-xs text-muted-foreground leading-tight break-words">
                               {otRequest.reason}
                             </p>
                           </div>
@@ -201,14 +201,14 @@ export function AttendanceRecapTable({
                                       handleOvertimeAction(otRequest.id, "rejected", rejectMessage.trim());
                                     }}
                                     disabled={isPending}
-                                    style={{ color: "#ff3b30" }}
+                                    style={{ color: "#b91c1c" }}
                                   >
                                     Confirm Reject
                                   </Button>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-5 px-1.5 text-[10px] text-muted-foreground"
+                                    className="h-5 px-1.5 text-xs text-muted-foreground"
                                     onClick={() => {
                                       setRejectingId(null);
                                       setRejectMessage("");
@@ -227,7 +227,7 @@ export function AttendanceRecapTable({
                                   className="h-7 px-2 text-xs"
                                   onClick={() => handleOvertimeAction(otRequest.id, "approved")}
                                   disabled={isPending}
-                                  style={{ color: "#34c759" }}
+                                  style={{ color: "#15803d" }}
                                 >
                                   <CheckCircle size={10} className="mr-0.5" />
                                   Approve
@@ -238,7 +238,7 @@ export function AttendanceRecapTable({
                                   className="h-7 px-2 text-xs"
                                   onClick={() => setRejectingId(otRequest.id)}
                                   disabled={isPending}
-                                  style={{ color: "#ff3b30" }}
+                                  style={{ color: "#b91c1c" }}
                                 >
                                   <XCircle size={10} className="mr-0.5" />
                                   Reject
@@ -251,8 +251,8 @@ export function AttendanceRecapTable({
                         {/* Admin note for reviewed requests */}
                         {otRequest?.admin_note && row.overtime_status === "rejected" && (
                           <div className="flex items-start gap-1 w-full">
-                            <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                            <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
+                            <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
+                            <p className="text-xs leading-tight break-words" style={{ color: "#b91c1c" }}>
                               {otRequest.admin_note}
                             </p>
                           </div>
@@ -261,14 +261,14 @@ export function AttendanceRecapTable({
                     ) : row.overtime_status === "rejected" && otRequest?.admin_note ? (
                       <div className="space-y-1">
                         <Badge
-                          className="text-[10px] px-2"
+                          className="text-xs px-2"
                           style={{ background: "#fef2f2", color: "#ff3b30", border: "none" }}
                         >
                           Rejected
                         </Badge>
                         <div className="flex items-start gap-1 w-full">
-                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                          <p className="text-[10px] leading-tight" style={{ color: "#ff3b30" }}>
+                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
+                          <p className="text-xs leading-tight" style={{ color: "#b91c1c" }}>
                             {otRequest.admin_note}
                           </p>
                         </div>

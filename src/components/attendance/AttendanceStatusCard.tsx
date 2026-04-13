@@ -63,8 +63,8 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                   {getDurationHours(log.checked_in_at, log.checked_out_at)} worked
                   {log.is_overtime && log.overtime_minutes > 0 && (
                     <span className="ml-1" style={{
-                      color: overtimeLabel === "approved" ? "#34c759"
-                        : overtimeLabel === "rejected" ? "#ff3b30"
+                      color: overtimeLabel === "approved" ? "#15803d"
+                        : overtimeLabel === "rejected" ? "#b91c1c"
                         : "var(--primary)"
                     }}>
                       · {formatMinutesHuman(log.overtime_minutes)} overtime ({overtimeLabel})
@@ -73,8 +73,8 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                 </p>
                 {overtimeLabel === "rejected" && overtimeAdminNote && (
                   <div className="flex items-start gap-1 max-w-[220px]">
-                    <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#ff3b30" }} />
-                    <p className="text-[10px] leading-tight break-words" style={{ color: "#ff3b30" }}>
+                    <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
+                    <p className="text-xs leading-tight break-words" style={{ color: "#b91c1c" }}>
                       {overtimeAdminNote}
                     </p>
                   </div>
@@ -87,18 +87,18 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
             {isOpen ? (
               <span
                 className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full"
-                style={{ background: "#fff7ed", color: "#ff9f0a" }}
+                style={{ background: "#fff7ed", color: "#b45309" }}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#ff9f0a] animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#b45309] animate-pulse" />
                 In progress
               </span>
             ) : (
               <div className="text-right">
                 <span
                   className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full"
-                  style={{ background: "#f0fdf4", color: "#34c759" }}
+                  style={{ background: "#f0fdf4", color: "#15803d" }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#34c759]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#15803d]" />
                   Complete
                 </span>
                 <p

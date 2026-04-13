@@ -7,11 +7,11 @@ interface StatusBadgeProps {
 }
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  on_time: { bg: "#f0fdf4", color: "#34c759", label: "On Time" },
-  late: { bg: "#fef2f2", color: "#ff3b30", label: "Late" },
-  late_excused: { bg: "#fefce8", color: "#ca8a04", label: "Late (Excused)" },
-  flexible: { bg: "#f5f5f7", color: "#6e6e73", label: "Flexible" },
-  unknown: { bg: "#f5f5f7", color: "#6e6e73", label: "—" },
+  on_time: { bg: "#f0fdf4", color: "#15803d", label: "On Time" },
+  late: { bg: "#fef2f2", color: "#b91c1c", label: "Late" },
+  late_excused: { bg: "#fefce8", color: "#92400e", label: "Late (Excused)" },
+  flexible: { bg: "#f5f5f7", color: "#525252", label: "Flexible" },
+  unknown: { bg: "#f5f5f7", color: "#525252", label: "—" },
 };
 
 export function StatusBadge({ status, lateMinutes }: StatusBadgeProps) {
@@ -24,7 +24,7 @@ export function StatusBadge({ status, lateMinutes }: StatusBadgeProps) {
 
   return (
     <Badge
-      className="text-[10px] px-2 shrink-0"
+      className="text-xs px-2 shrink-0"
       style={{ background: style.bg, color: style.color, border: "none" }}
     >
       {label}

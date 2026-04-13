@@ -84,7 +84,7 @@ export function AttendanceSummaryCard({
               <p className="text-lg font-bold" style={{ color }}>
                 {value}
               </p>
-              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
                 {label}
               </p>
             </div>

@@ -114,7 +114,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                   <TableCell className="font-medium text-sm">
                     {row.full_name || "—"}
                     {isSelf && (
-                      <span className="ml-2 text-[10px] text-muted-foreground">
+                      <span className="ml-2 text-xs text-muted-foreground">
                         (you)
                       </span>
                     )}
@@ -124,7 +124,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      className="text-[10px] px-2"
+                      className="text-xs px-2"
                       style={{
                         background:
                           row.role === "admin" ? "#e0f2fe" : "#f0fdf4",

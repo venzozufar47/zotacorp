@@ -153,7 +153,7 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
                   </TableCell>
                   <TableCell>
                     <Badge
-                      className="text-[10px] px-2"
+                      className="text-xs px-2"
                       style={{ background: badge.bg, color: badge.color, border: "none" }}
                     >
                       {badge.label}
