@@ -10,7 +10,7 @@ export default function AdminLayout({
     <div className="flex min-h-screen bg-[#f5f5f7]">
       <AdminMobileNav />
       <AdminSidebar />
-      <main className="flex-1">
+      <main className="flex-1 min-w-0">
         <div className="max-w-6xl mx-auto px-4 pt-16 pb-6 md:pt-6">{children}</div>
       </main>
     </div>
