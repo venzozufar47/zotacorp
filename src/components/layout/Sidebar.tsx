@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Clock, User, LogOut } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
+import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
@@ -11,11 +12,11 @@ const navItems = [
   { href: "/profile", icon: User, label: "Profile" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ className }: { className?: string }) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0">
+    <aside className={cn("flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0", className)}>
       {/* Brand */}
       <div className="px-6 py-6 border-b border-border">
         <img
