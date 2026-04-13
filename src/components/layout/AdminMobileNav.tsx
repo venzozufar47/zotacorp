@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, ClipboardList, Users, Settings, LogOut } from "lucide-react";
+import { Menu, X, ClipboardList, Users, Settings, LogOut, Receipt } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 
 const navItems = [
   { href: "/admin/attendance", icon: ClipboardList, label: "Attendance" },
+  { href: "/admin/payslips", icon: Receipt, label: "Payslips" },
   { href: "/admin/users", icon: Users, label: "Users" },
   { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];
