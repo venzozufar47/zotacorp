@@ -407,7 +407,7 @@ function SectionCard({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground"
+              className="h-8 px-2.5 text-xs text-muted-foreground"
               onClick={onCancel}
               disabled={saving}
             >
@@ -416,7 +416,7 @@ function SectionCard({
             </Button>
             <Button
               size="sm"
-              className="h-7 px-3 text-xs"
+              className="h-8 px-3 text-xs"
               style={{ background: "var(--primary)" }}
               onClick={onSave}
               disabled={saving}
@@ -429,7 +429,7 @@ function SectionCard({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground"
+            className="h-8 px-2.5 text-xs text-muted-foreground"
             onClick={onEdit}
           >
             <Pencil size={14} className="mr-1" />

@@ -41,7 +41,7 @@ export function ProfileCompletionCard({ missingFields }: ProfileCompletionCardPr
             </div>
             <Link
               href="/profile"
-              className="inline-flex items-center justify-center mt-3 h-8 px-3 text-xs font-medium text-white rounded-md"
+              className="inline-flex items-center justify-center mt-3 h-10 px-4 text-sm font-medium text-white rounded-md"
               style={{ background: "var(--primary)" }}
             >
               Update profile

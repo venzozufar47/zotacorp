@@ -67,17 +67,17 @@ export function LateProofUploadDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger>
         <button
-          className="text-[10px] font-medium px-1.5 py-0.5 rounded transition-all hover:bg-blue-50"
+          className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1.5 min-h-[32px] rounded transition-all hover:bg-blue-50"
           style={{ color: "#3b82f6" }}
         >
           {hasExistingProof ? (
-            <span className="flex items-center gap-0.5">
-              <FileText size={10} /> Proof uploaded
-            </span>
+            <>
+              <FileText size={14} /> Proof uploaded
+            </>
           ) : (
-            <span className="flex items-center gap-0.5">
-              <Upload size={10} /> Upload proof
-            </span>
+            <>
+              <Upload size={14} /> Upload proof
+            </>
           )}
         </button>
       </DialogTrigger>
