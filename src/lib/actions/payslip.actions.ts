@@ -14,7 +14,7 @@ function adminGuard(role: string | null) {
 }
 
 /** Pure calculation: compute payslip fields from attendance + settings */
-export function calculateFromAttendance(
+function calculateFromAttendance(
   settings: PayslipSettings,
   logs: Pick<AttendanceLog, "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime">[],
   overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[]
