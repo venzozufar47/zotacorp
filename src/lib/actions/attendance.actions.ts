@@ -64,6 +64,10 @@ export async function checkIn(payload: CheckInPayload) {
   const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated" };
 
+  if (payload.latitude == null || payload.longitude == null) {
+    return { error: "Location is required to check in. Please enable location access in your browser settings." };
+  }
+
   const supabase = await createClient();
   const today = getTodayDateString();
 

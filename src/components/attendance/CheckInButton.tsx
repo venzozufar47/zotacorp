@@ -73,9 +73,17 @@ export function CheckInButton({
     startTransition(async () => {
       const coords = await requestLocation();
 
+      if (!coords) {
+        toast.error(
+          "Location is required to check in. Please enable location access in your browser settings and try again.",
+          { duration: 6000 }
+        );
+        return;
+      }
+
       const result = await checkIn({
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
       });
 
       if (result?.error) {
@@ -220,13 +228,17 @@ export function CheckInButton({
 
         {/* Location status hint — only shown before check-in */}
         {state === "idle" && (
-          <p className="text-xs text-center text-muted-foreground">
+          <p className={`text-xs text-center ${
+            geoStatus === "denied" || geoStatus === "unavailable"
+              ? "text-destructive font-medium"
+              : "text-muted-foreground"
+          }`}>
             {locationIcon}
             {geoStatus === "idle" || geoStatus === "requesting"
-              ? "Location will be requested on check-in"
+              ? "Location is required for check-in"
               : geoStatus === "granted"
               ? "Location will be recorded"
-              : "Check-in works without location"}
+              : "Location access is blocked — enable it in browser settings to check in"}
           </p>
         )}
       </div>
