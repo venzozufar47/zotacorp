@@ -256,6 +256,7 @@ export type Database = {
           late_penalty_mode: "per_minutes" | "per_day" | "none";
           late_penalty_amount: number;
           late_penalty_interval_min: number;
+          standard_working_hours: number;
           is_finalized: boolean;
           finalized_at: string | null;
           created_at: string;
@@ -274,6 +275,7 @@ export type Database = {
           late_penalty_mode?: "per_minutes" | "per_day" | "none";
           late_penalty_amount?: number;
           late_penalty_interval_min?: number;
+          standard_working_hours?: number;
           is_finalized?: boolean;
           finalized_at?: string | null;
           created_at?: string;
@@ -290,6 +292,7 @@ export type Database = {
           late_penalty_mode?: "per_minutes" | "per_day" | "none";
           late_penalty_amount?: number;
           late_penalty_interval_min?: number;
+          standard_working_hours?: number;
           is_finalized?: boolean;
           finalized_at?: string | null;
           updated_at?: string;

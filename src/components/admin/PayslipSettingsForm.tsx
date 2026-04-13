@@ -23,9 +23,8 @@ type FormData = {
   calculation_basis: "presence" | "deliverables" | "both";
   monthly_fixed_amount: string;
   expected_work_days: string;
+  standard_working_hours: string;
   overtime_mode: "hourly_tiered" | "fixed_per_day";
-  ot_first_hour_rate: string;
-  ot_next_hour_rate: string;
   ot_fixed_daily_rate: string;
   late_penalty_mode: "per_minutes" | "per_day" | "none";
   late_penalty_amount: string;
@@ -37,13 +36,24 @@ function toForm(s: PayslipSettings | null): FormData {
     calculation_basis: s?.calculation_basis ?? "presence",
     monthly_fixed_amount: String(s?.monthly_fixed_amount ?? 0),
     expected_work_days: String(s?.expected_work_days ?? 22),
+    standard_working_hours: String(s?.standard_working_hours ?? 8),
     overtime_mode: s?.overtime_mode ?? "hourly_tiered",
-    ot_first_hour_rate: String(s?.ot_first_hour_rate ?? 0),
-    ot_next_hour_rate: String(s?.ot_next_hour_rate ?? 0),
     ot_fixed_daily_rate: String(s?.ot_fixed_daily_rate ?? 0),
     late_penalty_mode: s?.late_penalty_mode ?? "none",
     late_penalty_amount: String(s?.late_penalty_amount ?? 0),
     late_penalty_interval_min: String(s?.late_penalty_interval_min ?? 30),
+  };
+}
+
+function calcOtRates(form: FormData) {
+  const monthly = parseFloat(form.monthly_fixed_amount) || 0;
+  const days = parseInt(form.expected_work_days) || 22;
+  const hours = parseInt(form.standard_working_hours) || 8;
+  const hourlyRate = days > 0 && hours > 0 ? monthly / (days * hours) : 0;
+  return {
+    hourlyRate: Math.round(hourlyRate),
+    firstHourRate: Math.round(hourlyRate * 1.5),
+    nextHourRate: Math.round(hourlyRate * 2),
   };
 }
 
@@ -57,20 +67,26 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function buildPayload() {
+    const ot = calcOtRates(form);
+    return {
+      calculation_basis: form.calculation_basis,
+      monthly_fixed_amount: parseFloat(form.monthly_fixed_amount) || 0,
+      expected_work_days: parseInt(form.expected_work_days) || 22,
+      standard_working_hours: parseInt(form.standard_working_hours) || 8,
+      overtime_mode: form.overtime_mode,
+      ot_first_hour_rate: form.overtime_mode === "hourly_tiered" ? ot.firstHourRate : 0,
+      ot_next_hour_rate: form.overtime_mode === "hourly_tiered" ? ot.nextHourRate : 0,
+      ot_fixed_daily_rate: parseFloat(form.ot_fixed_daily_rate) || 0,
+      late_penalty_mode: form.late_penalty_mode,
+      late_penalty_amount: parseFloat(form.late_penalty_amount) || 0,
+      late_penalty_interval_min: parseInt(form.late_penalty_interval_min) || 30,
+    };
+  }
+
   function handleSave() {
     startTransition(async () => {
-      const result = await upsertPayslipSettings(userId, {
-        calculation_basis: form.calculation_basis,
-        monthly_fixed_amount: parseFloat(form.monthly_fixed_amount) || 0,
-        expected_work_days: parseInt(form.expected_work_days) || 22,
-        overtime_mode: form.overtime_mode,
-        ot_first_hour_rate: parseFloat(form.ot_first_hour_rate) || 0,
-        ot_next_hour_rate: parseFloat(form.ot_next_hour_rate) || 0,
-        ot_fixed_daily_rate: parseFloat(form.ot_fixed_daily_rate) || 0,
-        late_penalty_mode: form.late_penalty_mode,
-        late_penalty_amount: parseFloat(form.late_penalty_amount) || 0,
-        late_penalty_interval_min: parseInt(form.late_penalty_interval_min) || 30,
-      });
+      const result = await upsertPayslipSettings(userId, buildPayload());
       if (result.error) {
         toast.error(result.error);
         return;
@@ -84,18 +100,7 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
   function handleFinalize() {
     startTransition(async () => {
       // Save first, then finalize
-      const saveResult = await upsertPayslipSettings(userId, {
-        calculation_basis: form.calculation_basis,
-        monthly_fixed_amount: parseFloat(form.monthly_fixed_amount) || 0,
-        expected_work_days: parseInt(form.expected_work_days) || 22,
-        overtime_mode: form.overtime_mode,
-        ot_first_hour_rate: parseFloat(form.ot_first_hour_rate) || 0,
-        ot_next_hour_rate: parseFloat(form.ot_next_hour_rate) || 0,
-        ot_fixed_daily_rate: parseFloat(form.ot_fixed_daily_rate) || 0,
-        late_penalty_mode: form.late_penalty_mode,
-        late_penalty_amount: parseFloat(form.late_penalty_amount) || 0,
-        late_penalty_interval_min: parseInt(form.late_penalty_interval_min) || 30,
-      });
+      const saveResult = await upsertPayslipSettings(userId, buildPayload());
       if (saveResult.error) {
         toast.error(saveResult.error);
         return;
@@ -161,15 +166,51 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
             </div>
 
             {/* Expected Work Days */}
-            <div className="space-y-1">
-              <Label className="text-xs">Expected Work Days / Month</Label>
-              <Input
-                type="number"
-                value={form.expected_work_days}
-                onChange={(e) => set("expected_work_days", e.target.value)}
-                placeholder="22"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Expected Work Days / Month</Label>
+                <Input
+                  type="number"
+                  value={form.expected_work_days}
+                  onChange={(e) => set("expected_work_days", e.target.value)}
+                  placeholder="22"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Standard Working Hours / Day</Label>
+                <Input
+                  type="number"
+                  value={form.standard_working_hours}
+                  onChange={(e) => set("standard_working_hours", e.target.value)}
+                  placeholder="8"
+                />
+              </div>
             </div>
+
+            {/* Hourly Rate Calculation */}
+            {(() => {
+              const ot = calcOtRates(form);
+              return (
+                <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1 text-sm">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({form.expected_work_days || 22} days x {form.standard_working_hours || 8} hrs)
+                  </p>
+                  <div className="flex justify-between">
+                    <span>Hourly Rate</span>
+                    <span className="font-medium">{formatIDR(ot.hourlyRate)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1st Hour OT (1.5x)</span>
+                    <span className="font-medium">{formatIDR(ot.firstHourRate)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Next Hours OT (2x)</span>
+                    <span className="font-medium">{formatIDR(ot.nextHourRate)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Overtime */}
             <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
@@ -179,30 +220,13 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
                 onChange={(e) => set("overtime_mode", e.target.value as FormData["overtime_mode"])}
                 className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                <option value="hourly_tiered">Hourly tiered (1st hour + next hours)</option>
+                <option value="hourly_tiered">Hourly tiered (1.5x 1st hr + 2x next hrs)</option>
                 <option value="fixed_per_day">Fixed per day</option>
               </select>
               {form.overtime_mode === "hourly_tiered" ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">1st Hour Rate (IDR)</Label>
-                    <Input
-                      type="number"
-                      value={form.ot_first_hour_rate}
-                      onChange={(e) => set("ot_first_hour_rate", e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Next Hours Rate (IDR)</Label>
-                    <Input
-                      type="number"
-                      value={form.ot_next_hour_rate}
-                      onChange={(e) => set("ot_next_hour_rate", e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Rates auto-calculated from hourly rate above.
+                </p>
               ) : (
                 <div className="space-y-1">
                   <Label className="text-xs">Fixed Daily OT Rate (IDR)</Label>
@@ -293,10 +317,45 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
                 <p className="font-medium">{settings?.expected_work_days ?? "—"} days</p>
               </div>
               <div>
+                <p className="text-xs text-muted-foreground">Standard Hours / Day</p>
+                <p className="font-medium">{settings?.standard_working_hours ?? 8} hours</p>
+              </div>
+            </div>
+
+            {/* Hourly Rate Calculation */}
+            {settings && (() => {
+              const monthly = Number(settings.monthly_fixed_amount);
+              const days = settings.expected_work_days;
+              const hours = settings.standard_working_hours ?? 8;
+              const hourlyRate = days > 0 && hours > 0 ? Math.round(monthly / (days * hours)) : 0;
+              return (
+                <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatIDR(monthly)} / ({days} days x {hours} hrs)
+                  </p>
+                  <div className="flex justify-between">
+                    <span>Hourly Rate</span>
+                    <span className="font-medium">{formatIDR(hourlyRate)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1st Hour OT (1.5x)</span>
+                    <span className="font-medium">{formatIDR(Math.round(hourlyRate * 1.5))}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Next Hours OT (2x)</span>
+                    <span className="font-medium">{formatIDR(Math.round(hourlyRate * 2))}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
                 <p className="text-xs text-muted-foreground">Overtime Mode</p>
                 <p className="font-medium">
                   {settings?.overtime_mode === "hourly_tiered"
-                    ? `Tiered: ${formatIDR(Number(settings.ot_first_hour_rate))} / ${formatIDR(Number(settings.ot_next_hour_rate))}`
+                    ? "Hourly tiered (auto-calculated)"
                     : settings?.overtime_mode === "fixed_per_day"
                     ? `Fixed: ${formatIDR(Number(settings?.ot_fixed_daily_rate ?? 0))}/day`
                     : "—"}
