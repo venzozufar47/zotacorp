@@ -21,9 +21,10 @@ interface Props {
   month: number;
   year: number;
   payslip: Payslip | null;
+  gracePeriodMin?: number;
 }
 
-export function PayslipMonthlyView({ userId, month, year, payslip }: Props) {
+export function PayslipMonthlyView({ userId, month, year, payslip, gracePeriodMin = 0 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -197,6 +198,11 @@ export function PayslipMonthlyView({ userId, month, year, payslip }: Props) {
                   value={`- ${formatIDR(Number(payslip.late_penalty))}`}
                   negative
                 />
+                {payslip.total_late_minutes > 0 && gracePeriodMin > 0 && (
+                  <p className="text-xs text-muted-foreground pl-2 leading-snug">
+                    First {gracePeriodMin} min each late day is absorbed by the grace period and not penalized — only minutes beyond that count toward the penalty.
+                  </p>
+                )}
               </div>
             </div>
 

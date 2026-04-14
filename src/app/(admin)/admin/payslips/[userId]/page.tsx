@@ -35,7 +35,7 @@ export default async function AdminPayslipUserPage({
   const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, full_name, email, work_start_time, work_end_time")
+    .select("id, full_name, email, work_start_time, work_end_time, grace_period_min")
     .eq("id", userId)
     .single();
 
@@ -80,6 +80,7 @@ export default async function AdminPayslipUserPage({
           month={month}
           year={year}
           payslip={payslip}
+          gracePeriodMin={profile.grace_period_min ?? 0}
         />
       )}
     </div>
