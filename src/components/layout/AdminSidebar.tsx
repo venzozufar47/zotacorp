@@ -18,7 +18,7 @@ export function AdminSidebar() {
   ];
 
   return (
-    <aside className="hidden md:flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0">
+    <aside className="hidden md:flex flex-col w-56 bg-white border-r border-border h-screen sticky top-0">
       <div className="px-6 py-6 border-b border-border">
         <img
           src="/zota-corp-logo-tosca.png"
