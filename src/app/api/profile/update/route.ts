@@ -25,6 +25,16 @@ const ALLOWED_FIELDS = [
   "work_start_time",
   "work_end_time",
   "grace_period_min",
+  "domisili_provinsi",
+  "domisili_kota",
+  "domisili_kecamatan",
+  "domisili_kelurahan",
+  "domisili_alamat",
+  "asal_provinsi",
+  "asal_kota",
+  "asal_kecamatan",
+  "asal_kelurahan",
+  "asal_alamat",
 ] as const;
 
 function sanitize(body: Record<string, unknown>): ProfileUpdate {

@@ -38,6 +38,16 @@ export type Database = {
           first_day_of_work: string | null;
           motto: string | null;
           shirt_size: string | null;
+          domisili_provinsi: string | null;
+          domisili_kota: string | null;
+          domisili_kecamatan: string | null;
+          domisili_kelurahan: string | null;
+          domisili_alamat: string | null;
+          asal_provinsi: string | null;
+          asal_kota: string | null;
+          asal_kecamatan: string | null;
+          asal_kelurahan: string | null;
+          asal_alamat: string | null;
         };
         Insert: {
           id: string;
@@ -67,6 +77,16 @@ export type Database = {
           first_day_of_work?: string | null;
           motto?: string | null;
           shirt_size?: string | null;
+          domisili_provinsi?: string | null;
+          domisili_kota?: string | null;
+          domisili_kecamatan?: string | null;
+          domisili_kelurahan?: string | null;
+          domisili_alamat?: string | null;
+          asal_provinsi?: string | null;
+          asal_kota?: string | null;
+          asal_kecamatan?: string | null;
+          asal_kelurahan?: string | null;
+          asal_alamat?: string | null;
         };
         Update: {
           id?: string;
@@ -95,6 +115,16 @@ export type Database = {
           first_day_of_work?: string | null;
           motto?: string | null;
           shirt_size?: string | null;
+          domisili_provinsi?: string | null;
+          domisili_kota?: string | null;
+          domisili_kecamatan?: string | null;
+          domisili_kelurahan?: string | null;
+          domisili_alamat?: string | null;
+          asal_provinsi?: string | null;
+          asal_kota?: string | null;
+          asal_kecamatan?: string | null;
+          asal_kelurahan?: string | null;
+          asal_alamat?: string | null;
         };
         Relationships: [];
       };
