@@ -174,7 +174,7 @@ export function renderPasswordResetEmail({
     ``,
     `Kami dengar kamu mau ganti password akun Zota Corp.`,
     `Buka link di bawah buat reset password kamu. Link ini aktif ${expiresIn}`,
-    `dan cuma bisa dipake sekali.`,
+    `dan cuma bisa kamu pakai sekali.`,
     ``,
     actionLink,
     ``,
