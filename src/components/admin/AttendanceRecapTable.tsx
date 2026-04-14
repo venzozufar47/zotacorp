@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, CheckCircle, XCircle, MessageSquare } from "lucide-react";
+import { MapPin, CheckCircle, XCircle, MessageSquare, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/attendance/StatusBadge";
 import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
+import { deleteAttendanceLog } from "@/lib/actions/attendance.actions";
 import { toast } from "sonner";
 import {
   formatLocalDate,
@@ -86,6 +87,26 @@ export function AttendanceRecapTable({
 
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectMessage, setRejectMessage] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  function handleDelete(logId: string) {
+    if (deletingId === logId) {
+      // Second click — confirm
+      startTransition(async () => {
+        const result = await deleteAttendanceLog(logId);
+        if (result.error) {
+          toast.error(result.error);
+        } else {
+          toast.success("Attendance record deleted");
+          setDeletingId(null);
+          router.refresh();
+        }
+      });
+    } else {
+      // First click — ask confirmation
+      setDeletingId(logId);
+    }
+  }
 
   function handleOvertimeAction(requestId: string, decision: "approved" | "rejected", adminNote?: string) {
     startTransition(async () => {
@@ -118,6 +139,7 @@ export function AttendanceRecapTable({
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide w-[200px] max-w-[200px]">Overtime</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -291,6 +313,22 @@ export function AttendanceRecapTable({
                       </a>
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => handleDelete(row.id)}
+                      disabled={isPending}
+                      title={deletingId === row.id ? "Click again to confirm" : "Delete record"}
+                      style={{ color: deletingId === row.id ? "#dc2626" : "var(--muted-foreground)" }}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                    {deletingId === row.id && (
+                      <p className="text-[10px] text-red-600 mt-0.5">Click to confirm</p>
                     )}
                   </TableCell>
                 </TableRow>

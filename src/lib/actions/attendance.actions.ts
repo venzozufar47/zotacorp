@@ -230,6 +230,30 @@ export async function checkOut(payload?: CheckOutPayload) {
 }
 
 // ---------------------------------------------------------------------------
+// Admin: Delete attendance record
+// ---------------------------------------------------------------------------
+
+export async function deleteAttendanceLog(logId: string) {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+
+  const supabase = await createClient();
+
+  // Delete related overtime requests first
+  await supabase.from("overtime_requests").delete().eq("attendance_log_id", logId);
+
+  const { error } = await supabase
+    .from("attendance_logs")
+    .delete()
+    .eq("id", logId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/attendance");
+  return {};
+}
+
+// ---------------------------------------------------------------------------
 // Late Checkout — fill in missed checkout for a previous day
 // ---------------------------------------------------------------------------
 
