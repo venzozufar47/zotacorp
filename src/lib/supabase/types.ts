@@ -311,6 +311,8 @@ export type Database = {
           calculation_basis: "presence" | "deliverables" | "both";
           monthly_fixed_amount: number;
           expected_work_days: number;
+          expected_days_mode: "manual" | "weekly_pattern";
+          expected_weekdays: number[];
           overtime_mode: "hourly_tiered" | "fixed_per_day";
           ot_first_hour_rate: number;
           ot_next_hour_rate: number;
@@ -332,6 +334,8 @@ export type Database = {
           calculation_basis?: "presence" | "deliverables" | "both";
           monthly_fixed_amount?: number;
           expected_work_days?: number;
+          expected_days_mode?: "manual" | "weekly_pattern";
+          expected_weekdays?: number[];
           overtime_mode?: "hourly_tiered" | "fixed_per_day";
           ot_first_hour_rate?: number;
           ot_next_hour_rate?: number;
@@ -351,6 +355,8 @@ export type Database = {
           calculation_basis?: "presence" | "deliverables" | "both";
           monthly_fixed_amount?: number;
           expected_work_days?: number;
+          expected_days_mode?: "manual" | "weekly_pattern";
+          expected_weekdays?: number[];
           overtime_mode?: "hourly_tiered" | "fixed_per_day";
           ot_first_hour_rate?: number;
           ot_next_hour_rate?: number;

@@ -19,6 +19,38 @@ function adminGuard(role: string | null) {
   if (role !== "admin") throw new Error("Forbidden");
 }
 
+/** Count calendar days in (month, year) whose weekday (0=Sun..6=Sat) is in `weekdays`. */
+function countWeekdaysInMonth(month: number, year: number, weekdays: number[]): number {
+  if (!weekdays || weekdays.length === 0) return 0;
+  const set = new Set(weekdays);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(year, month - 1, d).getDay();
+    if (set.has(dow)) count++;
+  }
+  return count;
+}
+
+/**
+ * Resolve the effective "expected work days" for a given month based on the
+ * configured mode. Mirrors the same rule the UI shows.
+ *
+ * - manual: the static number stored on settings
+ * - weekly_pattern: count of matching weekdays in that month
+ */
+function resolveExpectedWorkDays(
+  settings: PayslipSettings,
+  month: number,
+  year: number
+): number {
+  const mode = settings.expected_days_mode ?? "manual";
+  if (mode === "weekly_pattern") {
+    return countWeekdaysInMonth(month, year, settings.expected_weekdays ?? []);
+  }
+  return settings.expected_work_days;
+}
+
 /**
  * Pure calculation: compute payslip fields from attendance + settings.
  * Also returns `breakdown` — a per-day snapshot for employee transparency.
@@ -332,6 +364,16 @@ export async function calculatePayslip(userId: string, month: number, year: numb
   const includesDeliverables = basis === "deliverables" || basis === "both";
   const baseSalary = Number(settings.monthly_fixed_amount);
 
+  // Resolve expected work days for this month according to the configured
+  // mode (manual number or weekly pattern). We override
+  // settings.expected_work_days locally so calculateFromAttendance sees the
+  // per-month value without changing the settings row.
+  const resolvedExpected = resolveExpectedWorkDays(settings, month, year);
+  const effectiveSettings: PayslipSettings = {
+    ...settings,
+    expected_work_days: resolvedExpected,
+  };
+
   // Attendance-side calculation (only when attendance is in play)
   const emptyBreakdown: PayslipBreakdown = {
     overtime_mode: settings.overtime_mode,
@@ -342,7 +384,7 @@ export async function calculatePayslip(userId: string, month: number, year: numb
   };
   let attCalc = {
     actual_work_days: 0,
-    expected_work_days: settings.expected_work_days,
+    expected_work_days: resolvedExpected,
     base_salary: baseSalary,
     prorated_salary: 0,
     total_overtime_minutes: 0,
@@ -382,7 +424,7 @@ export async function calculatePayslip(userId: string, month: number, year: numb
       overtimeRequests = otReqs ?? [];
     }
 
-    attCalc = calculateFromAttendance(settings, logs ?? [], overtimeRequests, gracePeriodMin);
+    attCalc = calculateFromAttendance(effectiveSettings, logs ?? [], overtimeRequests, gracePeriodMin);
   }
 
   // Check existing payslip to preserve manual entries + deliverables

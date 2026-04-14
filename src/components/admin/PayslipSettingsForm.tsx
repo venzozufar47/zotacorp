@@ -23,10 +23,14 @@ interface Props {
 
 type Basis = "presence" | "deliverables" | "both";
 
+type ExpectedDaysMode = "manual" | "weekly_pattern";
+
 type FormData = {
   calculation_basis: Basis;
   monthly_fixed_amount: string;
+  expected_days_mode: ExpectedDaysMode;
   expected_work_days: string;
+  expected_weekdays: number[];
   overtime_mode: "hourly_tiered" | "fixed_per_day";
   ot_fixed_daily_rate: string;
   late_penalty_mode: "per_minutes" | "per_day" | "none";
@@ -36,11 +40,27 @@ type FormData = {
   deliverables_weight_pct: string;
 };
 
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/** Count days in (month, year) matching the chosen weekdays (0=Sun..6=Sat). */
+function countWeekdaysInMonth(month: number, year: number, weekdays: number[]): number {
+  if (weekdays.length === 0) return 0;
+  const set = new Set(weekdays);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let c = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    if (set.has(new Date(year, month - 1, d).getDay())) c++;
+  }
+  return c;
+}
+
 function toForm(s: PayslipSettings | null): FormData {
   return {
     calculation_basis: s?.calculation_basis ?? "presence",
     monthly_fixed_amount: String(s?.monthly_fixed_amount ?? 0),
+    expected_days_mode: s?.expected_days_mode ?? "manual",
     expected_work_days: String(s?.expected_work_days ?? 22),
+    expected_weekdays: s?.expected_weekdays ?? [],
     overtime_mode: s?.overtime_mode ?? "hourly_tiered",
     ot_fixed_daily_rate: String(s?.ot_fixed_daily_rate ?? 0),
     late_penalty_mode: s?.late_penalty_mode ?? "none",
@@ -51,16 +71,30 @@ function toForm(s: PayslipSettings | null): FormData {
   };
 }
 
+/**
+ * Compute OT rates based on the effective expected days for the current
+ * month — so when an admin picks a weekly pattern, the preview reflects
+ * the actual month's divisor instead of the static fallback.
+ */
 function calcOtRates(form: FormData, standardWorkingHours: number) {
   const monthly = parseFloat(form.monthly_fixed_amount) || 0;
-  const days = parseInt(form.expected_work_days) || 22;
+  const now = new Date();
+  const days = effectiveExpectedDays(form, now.getMonth() + 1, now.getFullYear()) || 22;
   const hours = standardWorkingHours;
   const hourlyRate = days > 0 && hours > 0 ? monthly / (days * hours) : 0;
   return {
     hourlyRate: Math.round(hourlyRate),
     firstHourRate: Math.round(hourlyRate * 1.5),
     nextHourRate: Math.round(hourlyRate * 2),
+    effectiveDays: days,
   };
+}
+
+function effectiveExpectedDays(form: FormData, month: number, year: number): number {
+  if (form.expected_days_mode === "weekly_pattern") {
+    return countWeekdaysInMonth(month, year, form.expected_weekdays);
+  }
+  return parseInt(form.expected_work_days) || 0;
 }
 
 export function PayslipSettingsForm({ userId, settings, standardWorkingHours, workSchedule }: Props) {
@@ -86,7 +120,9 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
     return {
       calculation_basis: form.calculation_basis,
       monthly_fixed_amount: parseFloat(form.monthly_fixed_amount) || 0,
+      expected_days_mode: form.expected_days_mode,
       expected_work_days: parseInt(form.expected_work_days) || 22,
+      expected_weekdays: form.expected_weekdays,
       standard_working_hours: standardWorkingHours,
       // attendance-side fields (store zero when not in play so recalcs are clean)
       overtime_mode: showsAttendance ? form.overtime_mode : ("hourly_tiered" as const),
@@ -233,34 +269,101 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
             {/* Attendance-only settings */}
             {showsAttendance && (
               <>
-                {/* Expected Work Days + Standard Hours */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Expected Work Days / Month</Label>
-                    <Input
-                      type="number"
-                      value={form.expected_work_days}
-                      onChange={(e) => set("expected_work_days", e.target.value)}
-                      placeholder="22"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Standard Hours / Day</Label>
-                    <div className="flex items-center h-10 px-2.5 rounded-lg border border-input bg-muted text-sm">
-                      <span className="font-medium">{standardWorkingHours} hrs</span>
-                      <span className="ml-auto text-xs text-muted-foreground">{workSchedule}</span>
+                {/* Expected Work Days */}
+                <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+                  <Label className="text-xs font-semibold">Expected Work Days / Month</Label>
+                  <select
+                    value={form.expected_days_mode}
+                    onChange={(e) => set("expected_days_mode", e.target.value as ExpectedDaysMode)}
+                    className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="manual">Fixed number (same every month)</option>
+                    <option value="weekly_pattern">Weekly pattern (count matching weekdays per month)</option>
+                  </select>
+
+                  {form.expected_days_mode === "manual" && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Number of days</Label>
+                      <Input
+                        type="number"
+                        value={form.expected_work_days}
+                        onChange={(e) => set("expected_work_days", e.target.value)}
+                        placeholder="22"
+                      />
                     </div>
+                  )}
+
+                  {form.expected_days_mode === "weekly_pattern" && (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Working weekdays</Label>
+                      <div className="grid grid-cols-7 gap-1">
+                        {WEEKDAY_LABELS.map((lbl, idx) => {
+                          const on = form.expected_weekdays.includes(idx);
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                const next = on
+                                  ? form.expected_weekdays.filter((d) => d !== idx)
+                                  : [...form.expected_weekdays, idx].sort((a, b) => a - b);
+                                set("expected_weekdays", next);
+                              }}
+                              className={`h-9 rounded-md text-xs font-medium transition-colors ${
+                                on
+                                  ? "bg-primary text-white"
+                                  : "bg-white border border-input text-muted-foreground hover:border-foreground/20"
+                              }`}
+                            >
+                              {lbl}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {(() => {
+                        const now = new Date();
+                        const count = countWeekdaysInMonth(
+                          now.getMonth() + 1,
+                          now.getFullYear(),
+                          form.expected_weekdays
+                        );
+                        const monthLabel = now.toLocaleDateString("en-US", {
+                          month: "long",
+                          year: "numeric",
+                        });
+                        return (
+                          <p className="text-xs text-muted-foreground">
+                            {form.expected_weekdays.length === 0
+                              ? "Select at least one weekday."
+                              : `${count} day${count !== 1 ? "s" : ""} in ${monthLabel} — recalculates each month.`}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Standard Hours */}
+                <div className="space-y-1">
+                  <Label className="text-xs">Standard Hours / Day</Label>
+                  <div className="flex items-center h-10 px-2.5 rounded-lg border border-input bg-muted text-sm">
+                    <span className="font-medium">{standardWorkingHours} hrs</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{workSchedule}</span>
                   </div>
                 </div>
 
                 {/* Hourly Rate Calculation */}
                 {(() => {
                   const ot = calcOtRates(form, standardWorkingHours);
+                  const daysLabel =
+                    form.expected_days_mode === "weekly_pattern"
+                      ? `${ot.effectiveDays} days (this month)`
+                      : `${ot.effectiveDays || 22} days`;
                   return (
                     <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1 text-sm">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({form.expected_work_days || 22} days x {standardWorkingHours} hrs)
+                        {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({daysLabel} x {standardWorkingHours} hrs)
                       </p>
                       <div className="flex justify-between">
                         <span>Hourly Rate</span>
@@ -403,7 +506,27 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                 <>
                   <div>
                     <p className="text-xs text-muted-foreground">Expected Work Days</p>
-                    <p className="font-medium">{settings.expected_work_days} days</p>
+                    {settings.expected_days_mode === "weekly_pattern" ? (
+                      (() => {
+                        const now = new Date();
+                        const count = countWeekdaysInMonth(
+                          now.getMonth() + 1,
+                          now.getFullYear(),
+                          settings.expected_weekdays ?? []
+                        );
+                        const dayNames = (settings.expected_weekdays ?? [])
+                          .map((d) => WEEKDAY_LABELS[d])
+                          .join(", ") || "none";
+                        return (
+                          <>
+                            <p className="font-medium">{count} days this month</p>
+                            <p className="text-xs text-muted-foreground">Pattern: {dayNames}</p>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <p className="font-medium">{settings.expected_work_days} days (fixed)</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Standard Hours / Day</p>
