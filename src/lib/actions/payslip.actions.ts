@@ -380,6 +380,28 @@ export async function finalizePayslip(payslipId: string) {
   return {};
 }
 
+/**
+ * Reopen a finalized payslip so admin can recalculate and revise it.
+ * Moves status back to 'draft'. Employee will no longer see it in their
+ * finalized history until it's finalized again.
+ */
+export async function reopenPayslip(payslipId: string) {
+  const role = await getCurrentRole();
+  adminGuard(role);
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("payslips")
+    .update({ status: "draft", updated_at: new Date().toISOString() })
+    .eq("id", payslipId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/payslips");
+  revalidatePath("/payslips");
+  return {};
+}
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------

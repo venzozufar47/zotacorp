@@ -11,6 +11,7 @@ import {
   calculatePayslip,
   updatePayslipManualEntries,
   finalizePayslip,
+  reopenPayslip,
 } from "@/lib/actions/payslip.actions";
 import { formatIDR } from "@/lib/utils/currency";
 import type { Payslip } from "@/lib/supabase/types";
@@ -84,6 +85,20 @@ export function PayslipMonthlyView({ userId, month, year, payslip }: Props) {
     });
   }
 
+  function handleReopen() {
+    if (!payslip) return;
+    if (!confirm("Reopen this payslip? It will return to draft status, and the employee will no longer see it in their finalized history until you finalize it again.")) return;
+    startTransition(async () => {
+      const result = await reopenPayslip(payslip.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Payslip reopened — you can now recalculate and revise");
+      router.refresh();
+    });
+  }
+
   function handleFinalize() {
     if (!payslip) return;
     startTransition(async () => {
@@ -130,14 +145,26 @@ export function PayslipMonthlyView({ userId, month, year, payslip }: Props) {
           </div>
         </div>
 
-        {/* Calculate Button */}
-        <Button
-          size="sm"
-          onClick={handleCalculate}
-          disabled={isPending || isFinalized}
-        >
-          {isPending ? "Calculating..." : payslip ? "Recalculate" : "Calculate"}
-        </Button>
+        {/* Calculate / Reopen Button */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            onClick={handleCalculate}
+            disabled={isPending || isFinalized}
+          >
+            {isPending ? "Calculating..." : payslip ? "Recalculate" : "Calculate"}
+          </Button>
+          {isFinalized && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReopen}
+              disabled={isPending}
+            >
+              {isPending ? "Reopening..." : "Reopen to revise"}
+            </Button>
+          )}
+        </div>
 
         {payslip ? (
           <div className="space-y-4">
