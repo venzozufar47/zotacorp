@@ -186,8 +186,15 @@ export function PayslipMonthlyView({ userId, month, year, payslip, gracePeriodMi
               <div className="space-y-1 text-sm">
                 <Row label="Work Days" value={`${payslip.actual_work_days} / ${payslip.expected_work_days}`} />
                 <Row label="Base Salary" value={formatIDR(Number(payslip.base_salary))} />
-                <Row label="Prorated Salary" value={formatIDR(Number(payslip.prorated_salary))} highlight />
-                <Row label="Extra Day Bonus" value={`+ ${formatIDR(Number(payslip.extra_day_bonus))}`} positive />
+                <Row
+                  label={
+                    payslip.actual_work_days > payslip.expected_work_days
+                      ? "Prorated Salary (includes extra-day bonus)"
+                      : "Prorated Salary"
+                  }
+                  value={formatIDR(Number(payslip.prorated_salary))}
+                  highlight
+                />
                 <Row
                   label={`Overtime (${Math.floor(payslip.total_overtime_minutes / 60)}h ${payslip.total_overtime_minutes % 60}m)`}
                   value={`+ ${formatIDR(Number(payslip.overtime_pay))}`}

@@ -50,15 +50,13 @@ export default async function EmployeePayslipsPage() {
                       <span>{p.actual_work_days} / {p.expected_work_days}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Prorated Salary</span>
+                      <span className="text-muted-foreground">
+                        {p.actual_work_days > p.expected_work_days
+                          ? "Prorated Salary (incl. extra days)"
+                          : "Prorated Salary"}
+                      </span>
                       <span>{formatIDR(Number(p.prorated_salary))}</span>
                     </div>
-                    {Number(p.extra_day_bonus) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Extra Day Bonus</span>
-                        <span className="text-green-700">+ {formatIDR(Number(p.extra_day_bonus))}</span>
-                      </div>
-                    )}
                     {Number(p.overtime_pay) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Overtime Pay</span>

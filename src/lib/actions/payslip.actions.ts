@@ -25,14 +25,10 @@ function calculateFromAttendance(
   const expected = settings.expected_work_days;
   const baseSalary = Number(settings.monthly_fixed_amount);
 
-  // Prorate
+  // Prorate — this already rewards extra days (actual/expected > 1 when over-worked),
+  // so there is no separate extra-day bonus.
   const proratedSalary = expected > 0
     ? Math.round((actualWorkDays / expected) * baseSalary)
-    : 0;
-
-  // Extra day bonus (worked more than expected)
-  const extraDayBonus = actualWorkDays > expected && expected > 0
-    ? Math.round(((actualWorkDays - expected) / expected) * baseSalary)
     : 0;
 
   // Overtime — only count approved
@@ -100,7 +96,7 @@ function calculateFromAttendance(
     expected_work_days: expected,
     base_salary: baseSalary,
     prorated_salary: proratedSalary,
-    extra_day_bonus: extraDayBonus,
+    extra_day_bonus: 0,
     total_overtime_minutes: totalOvertimeMinutes,
     overtime_pay: overtimePay,
     total_late_minutes: totalLateMinutes,
@@ -110,7 +106,6 @@ function calculateFromAttendance(
 
 function computeNetTotal(fields: {
   prorated_salary: number;
-  extra_day_bonus: number;
   overtime_pay: number;
   late_penalty: number;
   monthly_bonus: number;
@@ -119,7 +114,6 @@ function computeNetTotal(fields: {
 }) {
   return (
     fields.prorated_salary +
-    fields.extra_day_bonus +
     fields.overtime_pay -
     fields.late_penalty +
     fields.monthly_bonus -
@@ -343,7 +337,6 @@ export async function updatePayslipManualEntries(
 
   const netTotal = computeNetTotal({
     prorated_salary: Number(existing.prorated_salary),
-    extra_day_bonus: Number(existing.extra_day_bonus),
     overtime_pay: Number(existing.overtime_pay),
     late_penalty: Number(existing.late_penalty),
     ...merged,
