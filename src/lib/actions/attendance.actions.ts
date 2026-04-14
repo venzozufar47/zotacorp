@@ -141,10 +141,15 @@ export async function checkIn(payload: CheckInPayload) {
 
 export async function reviewLateProof(
   logId: string,
-  decision: "approved" | "rejected"
+  decision: "approved" | "rejected",
+  adminNote?: string
 ) {
   const role = await getCurrentRole();
   if (role !== "admin") return { error: "Forbidden" };
+
+  if (decision === "rejected" && !adminNote?.trim()) {
+    return { error: "A rejection reason is required." };
+  }
 
   const supabase = await createClient();
 
@@ -152,6 +157,7 @@ export async function reviewLateProof(
     .from("attendance_logs")
     .update({
       late_proof_status: decision,
+      late_proof_admin_note: adminNote?.trim() || null,
       ...(decision === "approved" ? { status: "late_excused" as const } : {}),
       updated_at: new Date().toISOString(),
     })

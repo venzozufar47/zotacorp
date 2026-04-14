@@ -41,22 +41,29 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
               </p>
               <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
               {log.late_proof_url && log.late_proof_status && (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded-full"
-                  style={
-                    log.late_proof_status === "pending"
-                      ? { background: "#fff7ed", color: "#b45309" }
+                <>
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded-full"
+                    style={
+                      log.late_proof_status === "pending"
+                        ? { background: "#fff7ed", color: "#b45309" }
+                        : log.late_proof_status === "approved"
+                        ? { background: "#f0fdf4", color: "#15803d" }
+                        : { background: "#fef2f2", color: "#b91c1c" }
+                    }
+                  >
+                    {log.late_proof_status === "pending"
+                      ? "📎 Proof pending"
                       : log.late_proof_status === "approved"
-                      ? { background: "#f0fdf4", color: "#15803d" }
-                      : { background: "#fef2f2", color: "#b91c1c" }
-                  }
-                >
-                  {log.late_proof_status === "pending"
-                    ? "📎 Proof pending"
-                    : log.late_proof_status === "approved"
-                    ? "📎 Excuse accepted"
-                    : "📎 Excuse rejected"}
-                </span>
+                      ? "📎 Excuse accepted"
+                      : "📎 Excuse rejected"}
+                  </span>
+                  {log.late_proof_status === "rejected" && log.late_proof_admin_note && (
+                    <p className="text-[10px] text-red-600 leading-tight break-words basis-full">
+                      {log.late_proof_admin_note}
+                    </p>
+                  )}
+                </>
               )}
             </div>
             <div className="flex items-center gap-3">

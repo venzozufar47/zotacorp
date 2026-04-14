@@ -35,6 +35,7 @@ interface AttendanceRow {
   late_minutes: number;
   late_proof_url: string | null;
   late_proof_status: string | null;
+  late_proof_admin_note: string | null;
   is_overtime: boolean;
   overtime_minutes: number;
   overtime_status: string | null;
@@ -91,14 +92,18 @@ export function AttendanceRecapTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [proofPreview, setProofPreview] = useState<{ url: string; name: string } | null>(null);
   const [loadingProof, setLoadingProof] = useState<string | null>(null);
+  const [rejectingProofId, setRejectingProofId] = useState<string | null>(null);
+  const [proofRejectMessage, setProofRejectMessage] = useState("");
 
-  function handleLateProofReview(logId: string, decision: "approved" | "rejected") {
+  function handleLateProofReview(logId: string, decision: "approved" | "rejected", note?: string) {
     startTransition(async () => {
-      const result = await reviewLateProof(logId, decision);
+      const result = await reviewLateProof(logId, decision, note);
       if (result.error) {
         toast.error(result.error);
       } else {
         toast.success(decision === "approved" ? "Late excuse accepted" : "Late excuse rejected");
+        setRejectingProofId(null);
+        setProofRejectMessage("");
         router.refresh();
       }
     });
@@ -218,30 +223,72 @@ export function AttendanceRecapTable({
                             {loadingProof === row.id ? "Loading…" : "View proof"}
                           </button>
                           {row.late_proof_status === "pending" && (
-                            <div className="flex items-center gap-0.5">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5 text-[11px]"
-                                onClick={() => handleLateProofReview(row.id, "approved")}
-                                disabled={isPending}
-                                style={{ color: "#15803d" }}
-                              >
-                                <CheckCircle size={10} className="mr-0.5" />
-                                Accept
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-1.5 text-[11px]"
-                                onClick={() => handleLateProofReview(row.id, "rejected")}
-                                disabled={isPending}
-                                style={{ color: "#b91c1c" }}
-                              >
-                                <XCircle size={10} className="mr-0.5" />
-                                Reject
-                              </Button>
-                            </div>
+                            <>
+                              {rejectingProofId === row.id ? (
+                                <div className="space-y-1 w-full">
+                                  <textarea
+                                    className="w-full text-[11px] border rounded-md px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-red-300"
+                                    rows={2}
+                                    placeholder="Rejection reason (required)…"
+                                    value={proofRejectMessage}
+                                    onChange={(e) => setProofRejectMessage(e.target.value)}
+                                    autoFocus
+                                  />
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 px-1.5 text-[11px]"
+                                      onClick={() => {
+                                        if (!proofRejectMessage.trim()) {
+                                          toast.error("Please provide a rejection reason");
+                                          return;
+                                        }
+                                        handleLateProofReview(row.id, "rejected", proofRejectMessage.trim());
+                                      }}
+                                      disabled={isPending}
+                                      style={{ color: "#b91c1c" }}
+                                    >
+                                      Confirm Reject
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-5 px-1.5 text-[11px] text-muted-foreground"
+                                      onClick={() => { setRejectingProofId(null); setProofRejectMessage(""); }}
+                                      disabled={isPending}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-0.5">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-1.5 text-[11px]"
+                                    onClick={() => handleLateProofReview(row.id, "approved")}
+                                    disabled={isPending}
+                                    style={{ color: "#15803d" }}
+                                  >
+                                    <CheckCircle size={10} className="mr-0.5" />
+                                    Accept
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-1.5 text-[11px]"
+                                    onClick={() => setRejectingProofId(row.id)}
+                                    disabled={isPending}
+                                    style={{ color: "#b91c1c" }}
+                                  >
+                                    <XCircle size={10} className="mr-0.5" />
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </>
                           )}
                           {row.late_proof_status === "approved" && (
                             <Badge className="text-[10px] px-1.5" style={{ background: "#f0fdf4", color: "#15803d", border: "none" }}>
@@ -249,9 +296,16 @@ export function AttendanceRecapTable({
                             </Badge>
                           )}
                           {row.late_proof_status === "rejected" && (
-                            <Badge className="text-[10px] px-1.5" style={{ background: "#fef2f2", color: "#b91c1c", border: "none" }}>
-                              Excuse rejected
-                            </Badge>
+                            <div className="space-y-0.5">
+                              <Badge className="text-[10px] px-1.5" style={{ background: "#fef2f2", color: "#b91c1c", border: "none" }}>
+                                Excuse rejected
+                              </Badge>
+                              {row.late_proof_admin_note && (
+                                <p className="text-[10px] text-red-600 leading-tight break-words">
+                                  {row.late_proof_admin_note}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}

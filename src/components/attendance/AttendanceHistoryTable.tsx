@@ -116,6 +116,11 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#fef2f2", color: "#b91c1c" }}>
                               📎 Excuse rejected
                             </span>
+                            {log.late_proof_admin_note && (
+                              <p className="text-[10px] text-red-600 leading-tight break-words pl-1">
+                                {log.late_proof_admin_note}
+                              </p>
+                            )}
                             {log.status === "late" && (
                               <LateProofUploadDialog
                                 attendanceLogId={log.id}

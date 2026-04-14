@@ -111,6 +111,7 @@ export type Database = {
           late_minutes: number;
           late_proof_url: string | null;
           late_proof_status: "pending" | "approved" | "rejected" | null;
+          late_proof_admin_note: string | null;
           is_overtime: boolean;
           overtime_minutes: number;
           overtime_status: "pending" | "approved" | "rejected" | null;
@@ -130,6 +131,7 @@ export type Database = {
           late_minutes?: number;
           late_proof_url?: string | null;
           late_proof_status?: "pending" | "approved" | "rejected" | null;
+          late_proof_admin_note?: string | null;
           is_overtime?: boolean;
           overtime_minutes?: number;
           overtime_status?: "pending" | "approved" | "rejected" | null;
@@ -143,6 +145,7 @@ export type Database = {
           late_minutes?: number;
           late_proof_url?: string | null;
           late_proof_status?: "pending" | "approved" | "rejected" | null;
+          late_proof_admin_note?: string | null;
           is_overtime?: boolean;
           overtime_minutes?: number;
           overtime_status?: "pending" | "approved" | "rejected" | null;
