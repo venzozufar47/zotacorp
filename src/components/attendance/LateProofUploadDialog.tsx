@@ -52,7 +52,7 @@ export function LateProofUploadDialog({
         return;
       }
 
-      toast.success("Proof uploaded — your lateness has been excused");
+      toast.success("Proof uploaded — waiting for admin approval");
       setOpen(false);
       setFile(null);
       setUploading(false);
