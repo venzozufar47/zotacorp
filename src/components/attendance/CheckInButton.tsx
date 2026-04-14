@@ -1,12 +1,49 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import confetti from "canvas-confetti";
 import { MapPin, MapPinOff, Clock } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { PasswordConfirmModal } from "./PasswordConfirmModal";
 import { checkIn, checkOut } from "@/lib/actions/attendance.actions";
+
+/**
+ * The password-confirm modal pulls in @base-ui/react's Dialog, Input,
+ * Label, and Button plus an auth round-trip — none of which we need until
+ * the employee actually taps Check In / Check Out. Loading it lazily
+ * trims a meaningful chunk off the dashboard's first-paint bundle and
+ * pushes the modal's hydration to interaction time (where the cost is
+ * hidden by the tap). `ssr: false` skips server-rendering because the
+ * modal is only ever visible after a click anyway.
+ */
+const PasswordConfirmModal = dynamic(
+  () => import("./PasswordConfirmModal").then((m) => m.PasswordConfirmModal),
+  { ssr: false }
+);
+
+/**
+ * canvas-confetti is ~7KB gzipped but its eval cost on mobile is
+ * non-trivial and it only runs on a successful check-in. Import it on
+ * demand so it never touches the critical hydration path. We also shrink
+ * the particle count on low-power devices — rendering 80 particles at 60fps
+ * on a mid-tier phone can easily hold the main thread long enough to flag
+ * in INP. deviceMemory is a loose proxy but good enough for this.
+ */
+async function fireConfetti() {
+  const confettiModule = await import("canvas-confetti");
+  const confetti = confettiModule.default;
+  const nav = typeof navigator !== "undefined" ? navigator : undefined;
+  const isLowPower =
+    // @ts-expect-error deviceMemory is not in the standard DOM typings.
+    (nav && typeof nav.deviceMemory === "number" && nav.deviceMemory < 4) ||
+    (nav && nav.hardwareConcurrency && nav.hardwareConcurrency <= 4);
+  confetti({
+    particleCount: isLowPower ? 40 : 80,
+    spread: 70,
+    origin: { y: 0.6 },
+    colors: ["#005a65", "#007a88", "#34c759", "#fff"],
+  });
+}
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
 import { formatTime, formatMinutesHuman } from "@/lib/utils/date";
@@ -117,12 +154,10 @@ export function CheckInButton({
           toast.success(t.checkIn.toastCheckedIn);
         }
 
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ["#005a65", "#007a88", "#34c759", "#fff"],
-        });
+        // Fire-and-forget — don't keep the transition pending on the
+        // confetti animation, which would tie the button to its disabled
+        // state during the whole 400ms spread.
+        fireConfetti();
 
         onSuccess?.();
       }

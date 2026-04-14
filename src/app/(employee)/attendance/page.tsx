@@ -21,38 +21,37 @@ export default async function AttendancePage() {
   const role = await getCurrentRole();
   if (role === "admin") redirect("/admin/attendance");
 
-  const supabaseProfile = await createClient();
-  const [logs, settings, profileRes] = await Promise.all([
+  const supabase = await createClient();
+  /**
+   * Batch ALL queries this page needs — logs + settings + profile +
+   * overtime requests — into a single Promise.all. The overtime query
+   * is scoped by `user_id` rather than an explicit `log_id in (…)` list
+   * so it can run in parallel with the logs fetch. We then join them
+   * in-memory below.
+   */
+  const [logs, settings, profileRes, overtimeRes, dict] = await Promise.all([
     getMyAttendanceLogs(30),
     getCachedAttendanceSettings(),
-    supabaseProfile
+    supabase
       .from("profiles")
       .select("work_end_time, is_flexible_schedule")
       .eq("id", user.id)
       .single(),
-  ]);
-  const profile = profileRes.data;
-  const { t } = await getDictionary();
-
-  // Fetch overtime requests for the employee's logs to show admin rejection reasons
-  const logIds = logs.map((l) => l.id);
-  let overtimeMap: Record<string, { admin_note: string | null; reason: string }> = {};
-
-  if (logIds.length > 0) {
-    const supabase = await createClient();
-    const { data: otRequests } = await supabase
+    supabase
       .from("overtime_requests")
       .select("attendance_log_id, reason, admin_note")
-      .in("attendance_log_id", logIds);
+      .eq("user_id", user.id),
+    getDictionary(),
+  ]);
+  const profile = profileRes.data;
+  const { t } = dict;
 
-    if (otRequests) {
-      for (const ot of otRequests) {
-        overtimeMap[ot.attendance_log_id] = {
-          admin_note: ot.admin_note,
-          reason: ot.reason,
-        };
-      }
-    }
+  const overtimeMap: Record<string, { admin_note: string | null; reason: string }> = {};
+  for (const ot of overtimeRes.data ?? []) {
+    overtimeMap[ot.attendance_log_id] = {
+      admin_note: ot.admin_note,
+      reason: ot.reason,
+    };
   }
 
   // Attach overtime request data to logs
