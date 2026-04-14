@@ -1,6 +1,7 @@
 "use client";
 
 import { LanguageCard } from "@/components/settings/LanguageCard";
+import { PasswordResetCard } from "@/components/settings/PasswordResetCard";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export default function SettingsPage() {
@@ -13,6 +14,7 @@ export default function SettingsPage() {
         <p className="text-sm text-muted-foreground">{t.settings.subtitle}</p>
       </div>
       <LanguageCard />
+      <PasswordResetCard />
     </div>
   );
 }
