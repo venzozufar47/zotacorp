@@ -30,9 +30,12 @@ const poppins = Poppins({
   display: "swap",
 });
 
+// Browser tab stays "Zota Corp" for professionalism (users see the tab all
+// day — a casual greeting wears out fast). Social/link previews use the
+// warm Indonesian greeting so first contact feels human.
 export const metadata: Metadata = {
-  title: "Selamat datang orang baik!",
-  description: "Selamat datang orang baik!",
+  title: "Zota Corp",
+  description: "Zota Corp — employee operations",
   openGraph: {
     title: "Selamat datang orang baik!",
     description: "Selamat datang orang baik!",
