@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LockKeyhole } from "lucide-react";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface PasswordConfirmModalProps {
   open: boolean;
@@ -30,6 +31,7 @@ export function PasswordConfirmModal({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,7 +46,7 @@ export function PasswordConfirmModal({
     } = await supabase.auth.getUser();
 
     if (!user?.email) {
-      setError("Session expired. Please sign in again.");
+      setError(t.passwordConfirm.sessionExpired);
       setLoading(false);
       return;
     }
@@ -56,7 +58,7 @@ export function PasswordConfirmModal({
     });
 
     if (authError) {
-      setError("Incorrect password. Please try again.");
+      setError(t.passwordConfirm.wrongPassword);
       setLoading(false);
       return;
     }
@@ -95,22 +97,24 @@ export function PasswordConfirmModal({
               />
             </div>
             <DialogTitle className="text-lg">
-              Confirm {isCheckIn ? "Check-in" : "Check-out"}
+              {isCheckIn ? t.passwordConfirm.confirmCheckIn : t.passwordConfirm.confirmCheckOut}
             </DialogTitle>
           </div>
           <DialogDescription>
-            Enter your password to confirm your{" "}
-            {isCheckIn ? "check-in" : "check-out"}.
+            {t.passwordConfirm.description.replace(
+              "{action}",
+              isCheckIn ? t.passwordConfirm.actionCheckIn : t.passwordConfirm.actionCheckOut
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-1.5">
-            <Label htmlFor="confirm-password">Password</Label>
+            <Label htmlFor="confirm-password">{t.passwordConfirm.passwordLabel}</Label>
             <Input
               id="confirm-password"
               type="password"
-              placeholder="Enter your password"
+              placeholder={t.passwordConfirm.passwordPlaceholder}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -132,7 +136,7 @@ export function PasswordConfirmModal({
               onClick={() => handleOpenChange(false)}
               disabled={loading}
             >
-              Cancel
+              {t.passwordConfirm.cancel}
             </Button>
             <Button
               type="submit"
@@ -141,10 +145,10 @@ export function PasswordConfirmModal({
               disabled={loading || !password}
             >
               {loading
-                ? "Verifying…"
+                ? t.passwordConfirm.verifying
                 : isCheckIn
-                ? "Check in"
-                : "Check out"}
+                ? t.passwordConfirm.submitCheckIn
+                : t.passwordConfirm.submitCheckOut}
             </Button>
           </div>
         </form>

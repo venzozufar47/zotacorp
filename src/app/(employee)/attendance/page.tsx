@@ -12,6 +12,7 @@ import {
 } from "@/lib/actions/attendance.actions";
 import { AttendanceHistoryTable } from "@/components/attendance/AttendanceHistoryTable";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { getDictionary } from "@/lib/i18n/server";
 
 export default async function AttendancePage() {
   const user = await getCurrentUser();
@@ -31,6 +32,7 @@ export default async function AttendancePage() {
       .single(),
   ]);
   const profile = profileRes.data;
+  const { t } = await getDictionary();
 
   // Fetch overtime requests for the employee's logs to show admin rejection reasons
   const logIds = logs.map((l) => l.id);
@@ -62,8 +64,8 @@ export default async function AttendancePage() {
   return (
     <div className="space-y-5 animate-fade-up overflow-x-hidden">
       <PageHeader
-        title="My Attendance"
-        subtitle="Your check-in history and monthly summary"
+        title={t.attendancePage.title}
+        subtitle={t.attendancePage.subtitle}
       />
 
       <AttendanceHistoryTable

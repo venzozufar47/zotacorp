@@ -5,6 +5,7 @@ import { getCurrentUser, getCurrentProfile } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import type { Profile } from "@/lib/supabase/types";
+import { getDictionary } from "@/lib/i18n/server";
 
 export default async function EmployeeProfilePage() {
   const user = await getCurrentUser();
@@ -14,11 +15,13 @@ export default async function EmployeeProfilePage() {
   if (!profile) redirect("/dashboard");
   if (profile.role === "admin") redirect("/admin/attendance");
 
+  const { t } = await getDictionary();
+
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
-        title="My Profile"
-        subtitle="Keep your details up to date"
+        title={t.profilePage.title}
+        subtitle={t.profilePage.subtitle}
       />
       <ProfileForm profile={profile as Profile} />
     </div>

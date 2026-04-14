@@ -11,6 +11,7 @@ import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
 import { formatTime, formatMinutesHuman } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface CheckInButtonProps {
   todayLog: AttendanceLog | null;
@@ -46,6 +47,7 @@ export function CheckInButton({
   const [overtimeReason, setOvertimeReason] = useState("");
   const [isPending, startTransition] = useTransition();
   const { status: geoStatus, requestLocation } = useGeolocation();
+  const { t } = useTranslation();
 
   const state = getState(log);
   const pastEndTime = isPastEndTime();
@@ -86,10 +88,7 @@ export function CheckInButton({
       const coords = await requestLocation();
 
       if (!coords) {
-        toast.error(
-          "Location is required to check in. Please enable location access in your browser settings and try again.",
-          { duration: 6000 }
-        );
+        toast.error(t.checkIn.toastLocationRequired, { duration: 6000 });
         return;
       }
 
@@ -109,9 +108,13 @@ export function CheckInButton({
 
         if (status === "late") {
           const mins = (result.data as AttendanceLog).late_minutes;
-          toast.warning(`Checked in — Late by ${mins} minute${mins !== 1 ? "s" : ""}`);
+          toast.warning(
+            t.checkIn.toastLateBy
+              .replace("{n}", String(mins))
+              .replace("{plural}", mins !== 1 ? "s" : "")
+          );
         } else {
-          toast.success("Checked in! Have a great day 🎉");
+          toast.success(t.checkIn.toastCheckedIn);
         }
 
         confetti({
@@ -128,7 +131,7 @@ export function CheckInButton({
 
   async function handleCheckOutAttempt() {
     if (overtimeChecked && !overtimeReason.trim()) {
-      toast.error("Please provide a reason for overtime");
+      toast.error(t.checkIn.toastReasonRequired);
       return;
     }
     await performCheckOut(overtimeChecked, overtimeReason.trim());
@@ -150,9 +153,14 @@ export function CheckInButton({
         setLog(result.data as AttendanceLog);
         if (isOvertime && (result.data as AttendanceLog).overtime_minutes > 0) {
           const mins = (result.data as AttendanceLog).overtime_minutes;
-          toast.success(`Checked out! Overtime request submitted (${formatMinutesHuman(mins)})`);
+          toast.success(
+            t.checkIn.toastCheckedOutOvertime.replace(
+              "{duration}",
+              formatMinutesHuman(mins)
+            )
+          );
         } else {
-          toast.success("Checked out! See you tomorrow ✌️");
+          toast.success(t.checkIn.toastCheckedOut);
         }
         onSuccess?.();
       }
@@ -176,11 +184,11 @@ export function CheckInButton({
             disabled={isPending}
           >
             {isPending ? (
-              <span className="animate-pulse">Processing…</span>
+              <span className="animate-pulse">{t.checkIn.processing}</span>
             ) : (
               <>
                 <Clock size={20} />
-                Check In
+                {t.checkIn.checkIn}
               </>
             )}
           </button>
@@ -191,7 +199,7 @@ export function CheckInButton({
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground px-1">
               <Clock size={14} style={{ color: "var(--primary)" }} />
               <span>
-                Checked in at{" "}
+                {t.checkIn.checkedInAt}{" "}
                 <span className="font-semibold text-foreground">
                   {formatTime(log!.checked_in_at, settings?.timezone)}
                 </span>
@@ -200,7 +208,7 @@ export function CheckInButton({
               {log?.latitude && (
                 <span className="flex items-center gap-0.5 ml-auto">
                   <MapPin size={13} style={{ color: "var(--primary)" }} />
-                  <span className="text-xs">Location saved</span>
+                  <span className="text-xs">{t.checkIn.locationSaved}</span>
                 </span>
               )}
             </div>
@@ -211,11 +219,11 @@ export function CheckInButton({
               disabled={isPending}
             >
               {isPending ? (
-                <span className="animate-pulse">Processing…</span>
+                <span className="animate-pulse">{t.checkIn.processing}</span>
               ) : (
                 <>
                   <Clock size={20} />
-                  Check Out
+                  {t.checkIn.checkOut}
                 </>
               )}
             </button>
@@ -235,13 +243,13 @@ export function CheckInButton({
                     }}
                     className="w-4 h-4 rounded accent-[var(--primary)]"
                   />
-                  <span className="text-sm font-medium">Submit this check-out as overtime</span>
+                  <span className="text-sm font-medium">{t.checkIn.overtimeOptIn}</span>
                 </label>
                 {overtimeChecked && (
                   <Textarea
                     value={overtimeReason}
                     onChange={(e) => setOvertimeReason(e.target.value)}
-                    placeholder="Describe why you worked overtime… (required)"
+                    placeholder={t.checkIn.overtimeReasonPlaceholder}
                     rows={2}
                     className="text-sm"
                   />
@@ -255,7 +263,7 @@ export function CheckInButton({
           <div className="w-full h-[72px] rounded-[20px] bg-[#f5f5f7] flex flex-col items-center justify-center gap-1">
             <span className="text-2xl">✅</span>
             <span className="text-sm font-medium text-muted-foreground">
-              Attendance complete for today
+              {t.checkIn.completeToday}
             </span>
           </div>
         )}
@@ -269,10 +277,10 @@ export function CheckInButton({
           }`}>
             {locationIcon}
             {geoStatus === "idle" || geoStatus === "requesting"
-              ? "Location is required for check-in"
+              ? t.checkIn.locationRequiredBefore
               : geoStatus === "granted"
-              ? "Location will be recorded"
-              : "Location access is blocked — enable it in browser settings to check in"}
+              ? t.checkIn.locationWillRecord
+              : t.checkIn.locationBlocked}
           </p>
         )}
       </div>

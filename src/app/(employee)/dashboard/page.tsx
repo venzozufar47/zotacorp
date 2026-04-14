@@ -13,6 +13,8 @@ import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCa
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
+import { getDictionary } from "@/lib/i18n/server";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -65,8 +67,11 @@ export default async function DashboardPage() {
 
   if (profile?.role === "admin") redirect("/admin/attendance");
 
+  const { lang, t } = await getDictionary();
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
-  const today = format(new Date(), "EEEE, d MMMM");
+  const today = format(new Date(), "EEEE, d MMMM", {
+    locale: lang === "id" ? idLocale : undefined,
+  });
 
   // Fetch admin rejection note for today's log if applicable
   let overtimeAdminNote: string | null = null;
@@ -90,7 +95,7 @@ export default async function DashboardPage() {
     <div className="space-y-5 animate-fade-up">
       <div>
         <h2 className="text-2xl font-semibold text-foreground">
-          Hey, {firstName} 👋
+          {t.dashboard.greeting.replace("{name}", firstName)}
         </h2>
         <p className="text-muted-foreground text-sm mt-0.5">{today}</p>
       </div>
@@ -100,7 +105,7 @@ export default async function DashboardPage() {
       <Card className="border-0 shadow-sm animate-fade-up animate-fade-up-delay-1">
         <CardContent className="p-5 space-y-4">
           <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Attendance
+            {t.dashboard.attendanceSection}
           </p>
 
           <AttendanceStatusCard

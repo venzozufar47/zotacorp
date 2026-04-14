@@ -1,3 +1,5 @@
+"use client";
+
 import { Clock, MapPin, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { AttendanceLog } from "@/lib/supabase/types";
@@ -8,6 +10,7 @@ import {
   formatMinutesHuman,
 } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface AttendanceStatusCardProps {
   log: AttendanceLog | null;
@@ -16,16 +19,24 @@ interface AttendanceStatusCardProps {
 }
 
 export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: AttendanceStatusCardProps) {
+  const { t } = useTranslation();
   if (!log) return null;
 
   const isOpen = !log.checked_out_at;
   const hours = getDurationHoursDecimal(log.checked_in_at, log.checked_out_at);
 
-  const overtimeLabel = log.overtime_status === "approved"
-    ? "approved"
-    : log.overtime_status === "rejected"
-    ? "rejected"
-    : "pending";
+  const overtimeStatus: "approved" | "rejected" | "pending" =
+    log.overtime_status === "approved"
+      ? "approved"
+      : log.overtime_status === "rejected"
+      ? "rejected"
+      : "pending";
+  const overtimeLabel =
+    overtimeStatus === "approved"
+      ? t.attendanceStatus.overtimeApproved
+      : overtimeStatus === "rejected"
+      ? t.attendanceStatus.overtimeRejected
+      : t.attendanceStatus.overtimePending;
 
   return (
     <Card className="border-0 shadow-sm" style={{ background: "var(--accent)" }}>
@@ -37,7 +48,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                 className="text-xs font-medium uppercase tracking-wide"
                 style={{ color: "var(--primary)" }}
               >
-                Today
+                {t.attendanceStatus.today}
               </p>
               <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
               {log.late_proof_url && log.late_proof_status && (
@@ -53,10 +64,10 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                     }
                   >
                     {log.late_proof_status === "pending"
-                      ? "📎 Proof pending"
+                      ? `📎 ${t.attendanceStatus.proofPending}`
                       : log.late_proof_status === "approved"
-                      ? "📎 Excuse accepted"
-                      : "📎 Excuse rejected"}
+                      ? `📎 ${t.attendanceStatus.excuseAccepted}`
+                      : `📎 ${t.attendanceStatus.excuseRejected}`}
                   </span>
                   {log.late_proof_status === "rejected" && log.late_proof_admin_note && (
                     <p className="text-[10px] text-red-600 leading-tight break-words basis-full">
@@ -85,18 +96,18 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
             {log.checked_out_at && (
               <div className="space-y-0.5">
                 <p className="text-xs text-muted-foreground">
-                  {getDurationHours(log.checked_in_at, log.checked_out_at)} worked
+                  {getDurationHours(log.checked_in_at, log.checked_out_at)} {t.attendanceStatus.worked}
                   {log.is_overtime && log.overtime_minutes > 0 && (
                     <span className="ml-1" style={{
-                      color: overtimeLabel === "approved" ? "#15803d"
-                        : overtimeLabel === "rejected" ? "#b91c1c"
+                      color: overtimeStatus === "approved" ? "#15803d"
+                        : overtimeStatus === "rejected" ? "#b91c1c"
                         : "var(--primary)"
                     }}>
-                      · {formatMinutesHuman(log.overtime_minutes)} overtime ({overtimeLabel})
+                      · {formatMinutesHuman(log.overtime_minutes)} {overtimeLabel}
                     </span>
                   )}
                 </p>
-                {overtimeLabel === "rejected" && overtimeAdminNote && (
+                {overtimeStatus === "rejected" && overtimeAdminNote && (
                   <div className="flex items-start gap-1 max-w-[220px]">
                     <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
                     <p className="text-xs leading-tight break-words" style={{ color: "#b91c1c" }}>
@@ -115,7 +126,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                 style={{ background: "#fff7ed", color: "#b45309" }}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#b45309] animate-pulse" />
-                In progress
+                {t.attendanceStatus.inProgress}
               </span>
             ) : (
               <div className="text-right">
@@ -124,7 +135,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                   style={{ background: "#f0fdf4", color: "#15803d" }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-[#15803d]" />
-                  Complete
+                  {t.attendanceStatus.complete}
                 </span>
                 <p
                   className="text-lg font-bold mt-1"
@@ -143,7 +154,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                 style={{ color: "var(--primary)" }}
               >
                 <MapPin size={12} />
-                View location
+                {t.attendanceStatus.viewLocation}
               </a>
             )}
           </div>
