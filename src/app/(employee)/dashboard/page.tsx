@@ -97,6 +97,7 @@ export default async function DashboardPage() {
         firstName={firstName}
         dateLabel={today}
         timezone={settings?.timezone ?? null}
+        motto={profile?.motto ?? null}
       />
 
       <ProfileCompletionCard missingSections={missingSections} />

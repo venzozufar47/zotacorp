@@ -12,6 +12,10 @@ interface DashboardHeroProps {
    *  the browser's timezone so the clock never gets stuck on an undefined
    *  zone while settings load. */
   timezone?: string | null;
+  /** Employee's personal motto / quote of the day. When present, it
+   *  replaces the generic time-of-day tagline so the hero feels like
+   *  *their* space rather than a stock dashboard. */
+  motto?: string | null;
 }
 
 /**
@@ -32,7 +36,7 @@ interface DashboardHeroProps {
  * so they can mismatch by one bucket on the client near a boundary.
  * We accept this: it only swaps one label silently on mount.
  */
-export function DashboardHero({ firstName, dateLabel, timezone }: DashboardHeroProps) {
+export function DashboardHero({ firstName, dateLabel, timezone, motto }: DashboardHeroProps) {
   const { t } = useTranslation();
   const [now, setNow] = useState<Date | null>(null);
 
@@ -80,14 +84,19 @@ export function DashboardHero({ firstName, dateLabel, timezone }: DashboardHeroP
       : bucket === "evening"
       ? t.dashboard.greetingEvening
       : t.dashboard.greetingNight;
-  const tagline =
-    bucket === "morning"
-      ? t.dashboard.taglineMorning
-      : bucket === "afternoon"
-      ? t.dashboard.taglineAfternoon
-      : bucket === "evening"
-      ? t.dashboard.taglineEvening
-      : t.dashboard.taglineNight;
+  // When the employee has filled in a motto, it acts as their personal
+  // quote of the day and takes precedence over the generic time-of-day
+  // tagline. We trim to avoid a whitespace-only motto silently winning.
+  const mottoTrimmed = motto?.trim();
+  const tagline = mottoTrimmed
+    ? mottoTrimmed
+    : bucket === "morning"
+    ? t.dashboard.taglineMorning
+    : bucket === "afternoon"
+    ? t.dashboard.taglineAfternoon
+    : bucket === "evening"
+    ? t.dashboard.taglineEvening
+    : t.dashboard.taglineNight;
 
   return (
     <section
@@ -113,36 +122,43 @@ export function DashboardHero({ firstName, dateLabel, timezone }: DashboardHeroP
         >
           {firstName}.
         </h1>
-        <p className="mt-2 text-white/70 text-sm max-w-xs">
+        <p
+          className={
+            mottoTrimmed
+              ? "mt-2 text-white/75 text-sm max-w-xs italic leading-snug before:content-['“'] after:content-['”'] before:opacity-60 after:opacity-60"
+              : "mt-2 text-white/70 text-sm max-w-xs"
+          }
+        >
           {tagline}
         </p>
       </div>
 
       {/* Clock — the visual anchor */}
-      <div className="mt-7 md:mt-10 flex items-end justify-between gap-4">
-        <div>
-          <span className="eyebrow text-white/60">{t.dashboard.eyebrowNow}</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="clock-display text-[4rem] md:text-[5.5rem]">
-              {timeString}
-            </span>
-            <span
-              className="clock-display text-white/55 text-xl md:text-2xl"
-              aria-hidden
-            >
-              :{seconds}
-            </span>
-          </div>
+      <div className="mt-7 md:mt-10">
+        <span className="eyebrow text-white/60">{t.dashboard.eyebrowNow}</span>
+        <div className="flex items-baseline gap-2 mt-1">
+          <span className="clock-display text-[4rem] md:text-[5.5rem]">
+            {timeString}
+          </span>
+          <span
+            className="clock-display text-white/55 text-xl md:text-2xl"
+            aria-hidden
+          >
+            :{seconds}
+          </span>
         </div>
-        {/* Decorative glyph — a soft ring echoing the brand. Purely aesthetic. */}
-        <div
-          aria-hidden
-          className="hidden md:block w-16 h-16 rounded-full border border-white/25"
-          style={{
-            boxShadow: "inset 0 0 40px rgba(255,255,255,0.15)",
-          }}
-        />
       </div>
+
+      {/* Brand lockup — bottom-right corner, slightly translucent so it
+          reads as a watermark/identity mark rather than a primary element.
+          We use a plain <img> so the PNG keeps its baked-in white and
+          doesn't need Next/Image optimization configured. */}
+      <img
+        src="/zota-corp-logo-white.png"
+        alt="Zota Corp"
+        aria-hidden
+        className="absolute bottom-4 right-4 md:bottom-5 md:right-6 h-5 md:h-6 w-auto opacity-80 select-none pointer-events-none"
+      />
     </section>
   );
 }

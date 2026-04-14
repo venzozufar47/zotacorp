@@ -254,7 +254,7 @@ export const dictionary = {
     dashboard: {
       attendanceSection: "Kehadiran",
       eyebrowToday: "Hari ini",
-      eyebrowNow: "Jam segini",
+      eyebrowNow: "Jam saat ini",
       taglineMorning: "Hari baru, semangat baru!",
       taglineAfternoon: "Udah setengah jalan, terus aja!",
       taglineEvening: "Hampir selesai. Kamu keren hari ini.",
