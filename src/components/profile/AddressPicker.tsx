@@ -76,7 +76,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
     }
     let cancelled = false;
     setLoading((l) => ({ ...l, regencies: true }));
-    fetchWilayah(`https://wilayah.id/api/regencies/${provinceCode}.json`).then(
+    fetchWilayah(`/api/wilayah/regencies/${provinceCode}.json`).then(
       (data) => {
         if (cancelled) return;
         setRegencies(data);
@@ -96,7 +96,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
     }
     let cancelled = false;
     setLoading((l) => ({ ...l, districts: true }));
-    fetchWilayah(`https://wilayah.id/api/districts/${regencyCode}.json`).then(
+    fetchWilayah(`/api/wilayah/districts/${regencyCode}.json`).then(
       (data) => {
         if (cancelled) return;
         setDistricts(data);
@@ -116,7 +116,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
     }
     let cancelled = false;
     setLoading((l) => ({ ...l, villages: true }));
-    fetchWilayah(`https://wilayah.id/api/villages/${districtCode}.json`).then(
+    fetchWilayah(`/api/wilayah/villages/${districtCode}.json`).then(
       (data) => {
         if (cancelled) return;
         setVillages(data);
