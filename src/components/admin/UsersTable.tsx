@@ -33,6 +33,14 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+
+/** The slice of the dictionary this component tree needs. Lets us pass
+ *  a single `tu` prop to every sub-component instead of re-calling
+ *  useTranslation() inside each one (which would work but keeps the
+ *  translation pulls co-located with the parent for easier audit). */
+type AdminUsersT = Dictionary["adminUsers"];
 
 interface UserRow {
   id: string;
@@ -57,6 +65,8 @@ interface UsersTableProps {
 
 export function UsersTable({ rows, currentUserId }: UsersTableProps) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const tu = t.adminUsers;
   const [target, setTarget] = useState<UserRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
@@ -65,8 +75,8 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
     return (
       <EmptyState
         icon="👥"
-        title="No users yet"
-        description="New sign-ups will appear here."
+        title={tu.emptyTitle}
+        description={tu.emptyDescription}
       />
     );
   }
@@ -84,17 +94,19 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        toast.error(body.error ?? "Failed to delete user");
+        toast.error(body.error ?? tu.toastDeleteFailed);
         setDeleting(false);
         return;
       }
 
-      toast.success(`Deleted ${target.full_name || target.email}`);
+      toast.success(
+        tu.toastDeleted.replace("{name}", target.full_name || target.email)
+      );
       setTarget(null);
       setDeleting(false);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toast.error(err instanceof Error ? err.message : tu.errSomethingWrong);
       setDeleting(false);
     }
   }
@@ -106,22 +118,22 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
           <TableHeader>
             <TableRow className="bg-[#f5f5f7]">
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Name
+                {tu.colName}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Schedule
+                {tu.colSchedule}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Business Unit
+                {tu.colBusinessUnit}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Position
+                {tu.colPosition}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Profile
+                {tu.colProfile}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">
-                Actions
+                {tu.colActions}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -138,18 +150,18 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                           className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
                           style={{ background: "#e0f2fe", color: "#0369a1" }}
                         >
-                          admin
+                          {tu.adminBadge}
                         </span>
                       )}
                       {isSelf && (
                         <span className="text-xs text-muted-foreground">
-                          (you)
+                          {tu.selfTag}
                         </span>
                       )}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <ScheduleCell row={row} onEdit={() => setEditing(row)} />
+                    <ScheduleCell row={row} onEdit={() => setEditing(row)} tu={tu} />
                   </TableCell>
                   <TableCell className="text-sm">
                     {row.business_unit ? (
@@ -166,7 +178,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                     )}
                   </TableCell>
                   <TableCell>
-                    <ProfileStatus complete={row.profile_complete} />
+                    <ProfileStatus complete={row.profile_complete} tu={tu} />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -176,7 +188,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                           buttonVariants({ variant: "ghost", size: "sm" }),
                           "text-muted-foreground hover:text-foreground"
                         )}
-                        aria-label="Open full profile"
+                        aria-label={tu.ariaOpenProfile}
                       >
                         <Pencil size={16} />
                       </Link>
@@ -187,7 +199,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                         disabled={isSelf}
                         onClick={() => setTarget(row)}
                         className="text-destructive hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                        aria-label="Delete user"
+                        aria-label={tu.ariaDeleteUser}
                       >
                         <Trash2 size={16} />
                       </Button>
@@ -203,13 +215,13 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
       <Dialog open={target !== null} onOpenChange={(open) => !open && setTarget(null)}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
-            <DialogTitle>Delete user?</DialogTitle>
+            <DialogTitle>{tu.deleteTitle}</DialogTitle>
             <DialogDescription>
-              This permanently removes{" "}
+              {tu.deleteBodyPrefix}{" "}
               <span className="font-semibold text-foreground">
                 {target?.full_name || target?.email}
               </span>{" "}
-              and all their attendance records. This cannot be undone.
+              {tu.deleteBodySuffix}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -219,7 +231,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
               onClick={() => setTarget(null)}
               disabled={deleting}
             >
-              Cancel
+              {tu.cancel}
             </Button>
             <Button
               type="button"
@@ -227,7 +239,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
               disabled={deleting}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {deleting ? "Deleting…" : "Delete user"}
+              {deleting ? tu.deleting : tu.deleteCta}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -235,6 +247,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
 
       <ScheduleEditDialog
         row={editing}
+        tu={tu}
         onOpenChange={(open) => !open && setEditing(null)}
         onSaved={() => {
           setEditing(null);
@@ -258,7 +271,15 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
  * logs for historical context) but isn't surfaced here — lateness
  * tracking is off for them, so displaying a grace number would be noise.
  */
-function ScheduleCell({ row, onEdit }: { row: UserRow; onEdit: () => void }) {
+function ScheduleCell({
+  row,
+  onEdit,
+  tu,
+}: {
+  row: UserRow;
+  onEdit: () => void;
+  tu: AdminUsersT;
+}) {
   const isFlexible = row.is_flexible_schedule;
   return (
     <button
@@ -271,12 +292,12 @@ function ScheduleCell({ row, onEdit }: { row: UserRow; onEdit: () => void }) {
           ? "border-dashed border-muted-foreground/30 text-muted-foreground"
           : "border-border text-foreground"
       )}
-      aria-label="Edit schedule and grace period"
+      aria-label={tu.ariaEditSchedule}
     >
       {isFlexible ? (
         <span className="inline-flex items-center gap-1.5 font-medium">
           <Sparkles size={12} />
-          Flexible
+          {tu.flexible}
         </span>
       ) : (
         <>
@@ -285,7 +306,7 @@ function ScheduleCell({ row, onEdit }: { row: UserRow; onEdit: () => void }) {
             {row.work_start_time} – {row.work_end_time}
           </span>
           <span className="text-[10px] text-muted-foreground tabular-nums pl-[18px]">
-            +{row.grace_period_min}m grace
+            {tu.graceSuffix.replace("{n}", String(row.grace_period_min))}
           </span>
         </>
       )}
@@ -298,7 +319,13 @@ function ScheduleCell({ row, onEdit }: { row: UserRow; onEdit: () => void }) {
  * overview doesn't need a percentage here; the detail page shows which
  * specific sections are incomplete. A single yes/no cell scans faster.
  */
-function ProfileStatus({ complete }: { complete: boolean }) {
+function ProfileStatus({
+  complete,
+  tu,
+}: {
+  complete: boolean;
+  tu: AdminUsersT;
+}) {
   if (complete) {
     return (
       <span
@@ -306,14 +333,14 @@ function ProfileStatus({ complete }: { complete: boolean }) {
         style={{ color: "#15803d" }}
       >
         <CheckCircle2 size={14} />
-        Complete
+        {tu.profileComplete}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
       <CircleDashed size={14} />
-      Incomplete
+      {tu.profileIncomplete}
     </span>
   );
 }
@@ -335,10 +362,12 @@ function ProfileStatus({ complete }: { complete: boolean }) {
  */
 function ScheduleEditDialog({
   row,
+  tu,
   onOpenChange,
   onSaved,
 }: {
   row: UserRow | null;
+  tu: AdminUsersT;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
@@ -366,15 +395,15 @@ function ScheduleEditDialog({
 
     if (!flexible) {
       if (!start || !end) {
-        setError("Both start and end times are required.");
+        setError(tu.errStartEndRequired);
         return;
       }
       if (start >= end) {
-        setError("End time must be after start time.");
+        setError(tu.errEndAfterStart);
         return;
       }
       if (!Number.isFinite(grace) || grace < 0 || grace > 120) {
-        setError("Grace period must be between 0 and 120 minutes.");
+        setError(tu.errGraceRange);
         return;
       }
     }
@@ -399,20 +428,26 @@ function ScheduleEditDialog({
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        toast.error(body.error ?? "Failed to update schedule");
+        toast.error(body.error ?? tu.toastScheduleFailed);
         setSaving(false);
         return;
       }
 
       toast.success(
         flexible
-          ? `${row.full_name || row.email} is now on a flexible schedule`
-          : `Schedule saved · ${start}–${end} · ${grace}m grace`
+          ? tu.toastScheduleFlexible.replace(
+              "{name}",
+              row.full_name || row.email
+            )
+          : tu.toastScheduleSaved
+              .replace("{start}", start)
+              .replace("{end}", end)
+              .replace("{grace}", String(grace))
       );
       setSaving(false);
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toast.error(err instanceof Error ? err.message : tu.errSomethingWrong);
       setSaving(false);
     }
   }
@@ -421,14 +456,13 @@ function ScheduleEditDialog({
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[460px]">
         <DialogHeader>
-          <DialogTitle>Edit schedule</DialogTitle>
+          <DialogTitle>{tu.scheduleTitle}</DialogTitle>
           <DialogDescription>
             <span className="font-medium text-foreground">
               {row?.full_name || row?.email}
             </span>
             {" — "}
-            drives attendance lateness, overtime prompt, and payslip
-            calculations.
+            {tu.scheduleSubtitle}
           </DialogDescription>
         </DialogHeader>
 
@@ -443,11 +477,9 @@ function ScheduleEditDialog({
               className="mt-0.5 h-4 w-4 rounded border-input accent-[color:var(--primary)]"
             />
             <div className="flex-1">
-              <div className="text-sm font-medium">Flexible schedule</div>
+              <div className="text-sm font-medium">{tu.flexibleLabel}</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                No fixed sign-in/out time. Exempt from lateness tracking,
-                grace period, and the overtime prompt. Payslip "standard
-                working hours" is treated as informational only.
+                {tu.flexibleHint}
               </div>
             </div>
           </label>
@@ -461,7 +493,7 @@ function ScheduleEditDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="start" className="text-xs">
-                  Sign-in time
+                  {tu.signInTime}
                 </Label>
                 <Input
                   id="start"
@@ -474,7 +506,7 @@ function ScheduleEditDialog({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="end" className="text-xs">
-                  Sign-out time
+                  {tu.signOutTime}
                 </Label>
                 <Input
                   id="end"
@@ -489,7 +521,7 @@ function ScheduleEditDialog({
 
             <div className="space-y-1.5">
               <Label htmlFor="grace" className="text-xs">
-                Grace period (minutes)
+                {tu.graceLabel}
               </Label>
               <div className="flex items-center gap-2">
                 <Input
@@ -504,8 +536,9 @@ function ScheduleEditDialog({
                   className="w-24 tabular-nums"
                 />
                 <span className="text-xs text-muted-foreground leading-relaxed">
-                  The first <span className="font-medium">{grace}</span>{" "}
-                  minutes past sign-in time aren't counted as late.
+                  {tu.graceHelperPrefix}{" "}
+                  <span className="font-medium">{grace}</span>{" "}
+                  {tu.graceHelperSuffix}
                 </span>
               </div>
             </div>
@@ -513,8 +546,7 @@ function ScheduleEditDialog({
 
           {!flexible && (
             <div className="text-xs text-muted-foreground leading-relaxed">
-              Late threshold = sign-in + grace. Overtime prompt triggers
-              after sign-out time.
+              {tu.lateFormula}
             </div>
           )}
 
@@ -532,7 +564,7 @@ function ScheduleEditDialog({
             onClick={() => onOpenChange(false)}
             disabled={saving}
           >
-            Cancel
+            {tu.cancel}
           </Button>
           <Button
             type="button"
@@ -541,7 +573,7 @@ function ScheduleEditDialog({
             style={{ background: "var(--primary)" }}
             className="text-white"
           >
-            {saving ? "Saving…" : "Save schedule"}
+            {saving ? tu.saving : tu.save}
           </Button>
         </DialogFooter>
       </DialogContent>

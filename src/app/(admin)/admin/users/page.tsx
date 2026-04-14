@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
+import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { UsersTable } from "@/components/admin/UsersTable";
 
@@ -79,12 +80,15 @@ export default async function AdminUsersPage() {
     };
   });
 
+  const { t } = await getDictionary();
+  const subtitle =
+    rows.length === 1
+      ? t.adminUsers.pageSubtitleOne
+      : t.adminUsers.pageSubtitleMany.replace("{n}", String(rows.length));
+
   return (
     <div className="space-y-5 animate-fade-up">
-      <PageHeader
-        title="Users"
-        subtitle={`${rows.length} account${rows.length === 1 ? "" : "s"} — edit schedule inline, or open a row for the full profile`}
-      />
+      <PageHeader title={t.adminUsers.pageTitle} subtitle={subtitle} />
       <UsersTable rows={rows} currentUserId={user.id} />
     </div>
   );
