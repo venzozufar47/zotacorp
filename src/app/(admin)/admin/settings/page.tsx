@@ -7,6 +7,7 @@ import {
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { AttendanceSettingsForm } from "@/components/admin/AttendanceSettingsForm";
+import { LanguageCard } from "@/components/settings/LanguageCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 
 export default async function AdminSettingsPage() {
@@ -36,6 +37,7 @@ export default async function AdminSettingsPage() {
         subtitle="Configure working hours, grace period, and schedule rules"
       />
       <AttendanceSettingsForm settings={settings} />
+      <LanguageCard />
     </div>
   );
 }

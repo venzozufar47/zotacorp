@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Poppins } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,9 +34,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col overflow-x-hidden">
-        {children}
-        <Toaster position="top-center" richColors />
-        <SpeedInsights />
+        <LanguageProvider>
+          {children}
+          <Toaster position="top-center" richColors />
+          <SpeedInsights />
+        </LanguageProvider>
       </body>
     </html>
   );
