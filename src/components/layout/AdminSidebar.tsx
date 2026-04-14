@@ -4,16 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ClipboardList, LogOut, Users, Settings, Receipt } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
-
-const navItems = [
-  { href: "/admin/attendance", icon: ClipboardList, label: "Attendance" },
-  { href: "/admin/payslips", icon: Receipt, label: "Payslips" },
-  { href: "/admin/users", icon: Users, label: "Users" },
-  { href: "/admin/settings", icon: Settings, label: "Settings" },
-];
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { t } = useTranslation();
+
+  const navItems = [
+    { href: "/admin/attendance", icon: ClipboardList, label: t.nav.attendance },
+    { href: "/admin/payslips", icon: Receipt, label: t.nav.payslips },
+    { href: "/admin/users", icon: Users, label: t.nav.users },
+    { href: "/admin/settings", icon: Settings, label: t.nav.settings },
+  ];
 
   return (
     <aside className="hidden md:flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0">
@@ -54,7 +56,7 @@ export function AdminSidebar() {
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all"
           >
             <LogOut size={18} strokeWidth={1.8} />
-            Sign out
+            {t.nav.signOut}
           </button>
         </form>
       </div>

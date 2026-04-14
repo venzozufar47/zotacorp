@@ -11,6 +11,7 @@ export const dictionary = {
       payslips: "Payslips",
       profile: "Profile",
       settings: "Settings",
+      users: "Users",
       signOut: "Sign out",
     },
     settings: {
@@ -152,7 +153,6 @@ export const dictionary = {
       totals: "Total",
       graceExplainer: "Each late day's first {min} min is absorbed by the grace period and not penalized.",
       perDayExplainer: "Penalty applied as a flat amount for each unexcused late day.",
-      perMinutesExplainer: "Per-day amounts are allocated proportionally from the monthly penalty so the total matches exactly.",
     },
   },
   id: {
@@ -162,6 +162,7 @@ export const dictionary = {
       payslips: "Slip Gaji",
       profile: "Profil",
       settings: "Pengaturan",
+      users: "Pengguna",
       signOut: "Keluar",
     },
     settings: {
@@ -303,7 +304,6 @@ export const dictionary = {
       totals: "Total",
       graceExplainer: "Setiap hari terlambat, {min} menit pertama masuk masa toleransi dan tidak didenda.",
       perDayExplainer: "Denda diterapkan sebagai jumlah tetap untuk setiap hari terlambat yang tidak dimaafkan.",
-      perMinutesExplainer: "Jumlah harian dialokasikan proporsional dari denda bulanan agar totalnya pas.",
     },
   },
 } as const;

@@ -148,7 +148,6 @@ export function PayslipBreakdownDetails({
                 </p>
               )}
               {breakdown.late_penalty_mode === "per_day" && <p>{bt.perDayExplainer}</p>}
-              {breakdown.late_penalty_mode === "per_minutes" && <p>{bt.perMinutesExplainer}</p>}
             </div>
           </div>
         )}

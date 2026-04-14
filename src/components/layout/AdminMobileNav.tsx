@@ -5,17 +5,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, ClipboardList, Users, Settings, LogOut, Receipt } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
-
-const navItems = [
-  { href: "/admin/attendance", icon: ClipboardList, label: "Attendance" },
-  { href: "/admin/payslips", icon: Receipt, label: "Payslips" },
-  { href: "/admin/users", icon: Users, label: "Users" },
-  { href: "/admin/settings", icon: Settings, label: "Settings" },
-];
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export function AdminMobileNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
+
+  const navItems = [
+    { href: "/admin/attendance", icon: ClipboardList, label: t.nav.attendance },
+    { href: "/admin/payslips", icon: Receipt, label: t.nav.payslips },
+    { href: "/admin/users", icon: Users, label: t.nav.users },
+    { href: "/admin/settings", icon: Settings, label: t.nav.settings },
+  ];
 
   // Auto-close on route change
   useEffect(() => {
@@ -85,7 +87,7 @@ export function AdminMobileNav() {
               className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all"
             >
               <LogOut size={18} strokeWidth={1.8} />
-              Sign out
+              {t.nav.signOut}
             </button>
           </form>
         </div>
