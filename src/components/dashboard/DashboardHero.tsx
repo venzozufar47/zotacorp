@@ -84,19 +84,11 @@ export function DashboardHero({ firstName, dateLabel, timezone, motto }: Dashboa
       : bucket === "evening"
       ? t.dashboard.greetingEvening
       : t.dashboard.greetingNight;
-  // When the employee has filled in a motto, it acts as their personal
-  // quote of the day and takes precedence over the generic time-of-day
-  // tagline. We trim to avoid a whitespace-only motto silently winning.
+  // The tagline slot is reserved exclusively for the employee's personal
+  // motto / quote of the day — no canned time-of-day fallback. If the
+  // profile motto is empty or whitespace-only, the slot simply doesn't
+  // render rather than filling the space with generic copy.
   const mottoTrimmed = motto?.trim();
-  const tagline = mottoTrimmed
-    ? mottoTrimmed
-    : bucket === "morning"
-    ? t.dashboard.taglineMorning
-    : bucket === "afternoon"
-    ? t.dashboard.taglineAfternoon
-    : bucket === "evening"
-    ? t.dashboard.taglineEvening
-    : t.dashboard.taglineNight;
 
   return (
     <section
@@ -122,15 +114,11 @@ export function DashboardHero({ firstName, dateLabel, timezone, motto }: Dashboa
         >
           {firstName}.
         </h1>
-        <p
-          className={
-            mottoTrimmed
-              ? "mt-2 text-white/75 text-sm max-w-xs italic leading-snug before:content-['“'] after:content-['”'] before:opacity-60 after:opacity-60"
-              : "mt-2 text-white/70 text-sm max-w-xs"
-          }
-        >
-          {tagline}
-        </p>
+        {mottoTrimmed && (
+          <p className="mt-2 text-white/75 text-sm max-w-xs italic leading-snug before:content-['“'] after:content-['”'] before:opacity-60 after:opacity-60">
+            {mottoTrimmed}
+          </p>
+        )}
       </div>
 
       {/* Clock — the visual anchor */}
