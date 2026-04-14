@@ -52,7 +52,7 @@ function computeCheckInStatus(
     }
 
     const lateMs = checkinLocal.getTime() - startTime.getTime();
-    const lateMinutes = Math.ceil(lateMs / 60_000);
+    const lateMinutes = Math.floor(lateMs / 60_000);
 
     return { status: "late", late_minutes: lateMinutes };
   } catch {
