@@ -105,6 +105,45 @@ export function PayslipMonthlyView({
 
   function handleCalculate() {
     startTransition(async () => {
+      // If a draft payslip already exists, persist whatever the admin has typed
+      // into the manual-adjustment and deliverables inputs BEFORE recalculating —
+      // otherwise those unsaved values never reach the net total.
+      if (payslip && !isFinalized) {
+        if (showsDeliverables) {
+          const dErr = validateDeliverables();
+          if (dErr) {
+            toast.error(dErr);
+            return;
+          }
+          const dResult = await saveDeliverables(
+            payslip.id,
+            rows.map((r) => ({
+              id: r.id,
+              name: r.name.trim(),
+              target: parseFloat(r.target) || 0,
+              realization: parseFloat(r.realization) || 0,
+              weight_pct: parseFloat(r.weight_pct) || 0,
+            }))
+          );
+          if (dResult.error) {
+            toast.error(dResult.error);
+            return;
+          }
+        }
+
+        const saveResult = await updatePayslipManualEntries(payslip.id, {
+          monthly_bonus: parseFloat(bonus) || 0,
+          monthly_bonus_note: bonusNote || null,
+          debt_deduction: parseFloat(debt) || 0,
+          other_penalty: parseFloat(otherPenalty) || 0,
+          other_penalty_note: otherPenaltyNote || null,
+        });
+        if (saveResult.error) {
+          toast.error(saveResult.error);
+          return;
+        }
+      }
+
       const result = await calculatePayslip(userId, month, year);
       if (result.error) {
         toast.error(result.error);
