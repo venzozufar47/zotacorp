@@ -21,10 +21,10 @@ import {
   BUSINESS_UNIT_ROLES,
   GENDERS,
   SHIRT_SIZES,
-  ID_PROVINCES,
   type BusinessUnit,
 } from "@/lib/utils/constants";
 import type { Profile } from "@/lib/supabase/types";
+import { AddressPicker, type AddressValues } from "./AddressPicker";
 
 interface ProfileFormProps {
   profile: Profile;
@@ -235,54 +235,26 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         onSave={saveSection}
         saving={saving}
       >
-        <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Province" value={state.domisili_provinsi} editing={isEditing("domisili")}>
-            <Select
-              value={state.domisili_provinsi || undefined}
-              onValueChange={(v) => set("domisili_provinsi", v ?? "")}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select province..." />
-              </SelectTrigger>
-              <SelectContent>
-                {ID_PROVINCES.map((p) => (
-                  <SelectItem key={p.code} value={p.name}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="City / Regency" value={state.domisili_kota} editing={isEditing("domisili")}>
-            <Input
-              value={state.domisili_kota}
-              onChange={(e) => set("domisili_kota", e.target.value)}
-              placeholder="City or regency name"
-            />
-          </Field>
-          <Field label="District" value={state.domisili_kecamatan} editing={isEditing("domisili")}>
-            <Input
-              value={state.domisili_kecamatan}
-              onChange={(e) => set("domisili_kecamatan", e.target.value)}
-              placeholder="District name"
-            />
-          </Field>
-          <Field label="Sub-district / Village" value={state.domisili_kelurahan} editing={isEditing("domisili")}>
-            <Input
-              value={state.domisili_kelurahan}
-              onChange={(e) => set("domisili_kelurahan", e.target.value)}
-              placeholder="Sub-district or village name"
-            />
-          </Field>
-          <div className="md:col-span-2">
-            <Field label="Full Address" value={state.domisili_alamat} editing={isEditing("domisili")}>
-              <Textarea
-                value={state.domisili_alamat}
-                onChange={(e) => set("domisili_alamat", e.target.value)}
-                placeholder="Street, number, RT/RW, etc."
-                rows={2}
-              />
-            </Field>
-          </div>
-        </div>
+        <AddressPicker
+          editing={isEditing("domisili")}
+          values={{
+            provinsi: state.domisili_provinsi,
+            kota: state.domisili_kota,
+            kecamatan: state.domisili_kecamatan,
+            kelurahan: state.domisili_kelurahan,
+            alamat: state.domisili_alamat,
+          }}
+          onChange={(patch: Partial<AddressValues>) => {
+            setState((s) => ({
+              ...s,
+              ...(patch.provinsi !== undefined && { domisili_provinsi: patch.provinsi }),
+              ...(patch.kota !== undefined && { domisili_kota: patch.kota }),
+              ...(patch.kecamatan !== undefined && { domisili_kecamatan: patch.kecamatan }),
+              ...(patch.kelurahan !== undefined && { domisili_kelurahan: patch.kelurahan }),
+              ...(patch.alamat !== undefined && { domisili_alamat: patch.alamat }),
+            }));
+          }}
+        />
       </SectionCard>
 
       {/* Hometown */}
@@ -294,54 +266,26 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         onSave={saveSection}
         saving={saving}
       >
-        <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Province" value={state.asal_provinsi} editing={isEditing("asal")}>
-            <Select
-              value={state.asal_provinsi || undefined}
-              onValueChange={(v) => set("asal_provinsi", v ?? "")}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select province..." />
-              </SelectTrigger>
-              <SelectContent>
-                {ID_PROVINCES.map((p) => (
-                  <SelectItem key={p.code} value={p.name}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="City / Regency" value={state.asal_kota} editing={isEditing("asal")}>
-            <Input
-              value={state.asal_kota}
-              onChange={(e) => set("asal_kota", e.target.value)}
-              placeholder="City or regency name"
-            />
-          </Field>
-          <Field label="District" value={state.asal_kecamatan} editing={isEditing("asal")}>
-            <Input
-              value={state.asal_kecamatan}
-              onChange={(e) => set("asal_kecamatan", e.target.value)}
-              placeholder="District name"
-            />
-          </Field>
-          <Field label="Sub-district / Village" value={state.asal_kelurahan} editing={isEditing("asal")}>
-            <Input
-              value={state.asal_kelurahan}
-              onChange={(e) => set("asal_kelurahan", e.target.value)}
-              placeholder="Sub-district or village name"
-            />
-          </Field>
-          <div className="md:col-span-2">
-            <Field label="Full Address" value={state.asal_alamat} editing={isEditing("asal")}>
-              <Textarea
-                value={state.asal_alamat}
-                onChange={(e) => set("asal_alamat", e.target.value)}
-                placeholder="Street, number, RT/RW, etc."
-                rows={2}
-              />
-            </Field>
-          </div>
-        </div>
+        <AddressPicker
+          editing={isEditing("asal")}
+          values={{
+            provinsi: state.asal_provinsi,
+            kota: state.asal_kota,
+            kecamatan: state.asal_kecamatan,
+            kelurahan: state.asal_kelurahan,
+            alamat: state.asal_alamat,
+          }}
+          onChange={(patch: Partial<AddressValues>) => {
+            setState((s) => ({
+              ...s,
+              ...(patch.provinsi !== undefined && { asal_provinsi: patch.provinsi }),
+              ...(patch.kota !== undefined && { asal_kota: patch.kota }),
+              ...(patch.kecamatan !== undefined && { asal_kecamatan: patch.kecamatan }),
+              ...(patch.kelurahan !== undefined && { asal_kelurahan: patch.kelurahan }),
+              ...(patch.alamat !== undefined && { asal_alamat: patch.alamat }),
+            }));
+          }}
+        />
       </SectionCard>
 
       {/* Work Information */}
