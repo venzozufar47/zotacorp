@@ -135,6 +135,35 @@ export async function checkIn(payload: CheckInPayload) {
   return { data };
 }
 
+// ---------------------------------------------------------------------------
+// Admin: Review late proof (accept/reject)
+// ---------------------------------------------------------------------------
+
+export async function reviewLateProof(
+  logId: string,
+  decision: "approved" | "rejected"
+) {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("attendance_logs")
+    .update({
+      late_proof_status: decision,
+      ...(decision === "approved" ? { status: "late_excused" as const } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", logId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/attendance");
+  revalidatePath("/attendance");
+  return {};
+}
+
 interface CheckOutPayload {
   isOvertime?: boolean;
   overtimeReason?: string;

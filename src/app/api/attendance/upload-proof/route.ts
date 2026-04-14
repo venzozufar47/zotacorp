@@ -100,12 +100,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Update attendance log
+    // Update attendance log — proof submitted, pending admin review
     const { error: updateError } = await adminClient
       .from("attendance_logs")
       .update({
         late_proof_url: filePath,
-        status: "late_excused",
+        late_proof_status: "pending",
         updated_at: new Date().toISOString(),
       })
       .eq("id", attendanceLogId);

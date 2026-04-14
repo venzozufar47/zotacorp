@@ -89,16 +89,42 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                   )}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-1">
-                    <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
-                    {log.status === "late" && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
+                    </div>
+                    {log.status === "late" && !log.late_proof_url && (
                       <LateProofUploadDialog
                         attendanceLogId={log.id}
-                        hasExistingProof={!!log.late_proof_url}
+                        hasExistingProof={false}
                       />
                     )}
-                    {log.status === "late_excused" && (
-                      <span className="text-xs text-green-600">📎</span>
+                    {log.late_proof_url && (
+                      <div>
+                        {log.late_proof_status === "pending" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#fff7ed", color: "#b45309" }}>
+                            📎 Proof pending review
+                          </span>
+                        )}
+                        {log.late_proof_status === "approved" && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#f0fdf4", color: "#15803d" }}>
+                            📎 Excuse accepted
+                          </span>
+                        )}
+                        {log.late_proof_status === "rejected" && (
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#fef2f2", color: "#b91c1c" }}>
+                              📎 Excuse rejected
+                            </span>
+                            {log.status === "late" && (
+                              <LateProofUploadDialog
+                                attendanceLogId={log.id}
+                                hasExistingProof={true}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </TableCell>

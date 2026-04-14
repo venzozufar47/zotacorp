@@ -32,7 +32,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p
                 className="text-xs font-medium uppercase tracking-wide"
                 style={{ color: "var(--primary)" }}
@@ -40,6 +40,24 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                 Today
               </p>
               <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
+              {log.late_proof_url && log.late_proof_status && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded-full"
+                  style={
+                    log.late_proof_status === "pending"
+                      ? { background: "#fff7ed", color: "#b45309" }
+                      : log.late_proof_status === "approved"
+                      ? { background: "#f0fdf4", color: "#15803d" }
+                      : { background: "#fef2f2", color: "#b91c1c" }
+                  }
+                >
+                  {log.late_proof_status === "pending"
+                    ? "📎 Proof pending"
+                    : log.late_proof_status === "approved"
+                    ? "📎 Excuse accepted"
+                    : "📎 Excuse rejected"}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 text-sm">

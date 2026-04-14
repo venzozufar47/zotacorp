@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/attendance/StatusBadge";
 import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
-import { deleteAttendanceLog } from "@/lib/actions/attendance.actions";
+import { deleteAttendanceLog, reviewLateProof } from "@/lib/actions/attendance.actions";
 import { toast } from "sonner";
 import {
   formatLocalDate,
@@ -34,6 +34,7 @@ interface AttendanceRow {
   status: string;
   late_minutes: number;
   late_proof_url: string | null;
+  late_proof_status: string | null;
   is_overtime: boolean;
   overtime_minutes: number;
   overtime_status: string | null;
@@ -90,6 +91,18 @@ export function AttendanceRecapTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [proofPreview, setProofPreview] = useState<{ url: string; name: string } | null>(null);
   const [loadingProof, setLoadingProof] = useState<string | null>(null);
+
+  function handleLateProofReview(logId: string, decision: "approved" | "rejected") {
+    startTransition(async () => {
+      const result = await reviewLateProof(logId, decision);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success(decision === "approved" ? "Late excuse accepted" : "Late excuse rejected");
+        router.refresh();
+      }
+    });
+  }
 
   async function handleViewProof(logId: string, employeeName: string, date: string) {
     setLoadingProof(logId);
@@ -189,18 +202,58 @@ export function AttendanceRecapTable({
                     {row.checked_out_at ? formatTime(row.checked_out_at, timezone) : "—"}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
-                      <StatusBadge status={row.status} lateMinutes={row.late_minutes} />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <StatusBadge status={row.status} lateMinutes={row.late_minutes} />
+                      </div>
                       {row.late_proof_url && (
-                        <button
-                          className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                          onClick={() => handleViewProof(row.id, row.profiles.full_name, row.date)}
-                          disabled={loadingProof === row.id}
-                          title="View late excuse proof"
-                        >
-                          <Paperclip size={12} />
-                          {loadingProof === row.id ? "Loading…" : "View"}
-                        </button>
+                        <div className="space-y-1">
+                          <button
+                            className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                            onClick={() => handleViewProof(row.id, row.profiles.full_name, row.date)}
+                            disabled={loadingProof === row.id}
+                            title="View late excuse proof"
+                          >
+                            <Paperclip size={12} />
+                            {loadingProof === row.id ? "Loading…" : "View proof"}
+                          </button>
+                          {row.late_proof_status === "pending" && (
+                            <div className="flex items-center gap-0.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-[11px]"
+                                onClick={() => handleLateProofReview(row.id, "approved")}
+                                disabled={isPending}
+                                style={{ color: "#15803d" }}
+                              >
+                                <CheckCircle size={10} className="mr-0.5" />
+                                Accept
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-[11px]"
+                                onClick={() => handleLateProofReview(row.id, "rejected")}
+                                disabled={isPending}
+                                style={{ color: "#b91c1c" }}
+                              >
+                                <XCircle size={10} className="mr-0.5" />
+                                Reject
+                              </Button>
+                            </div>
+                          )}
+                          {row.late_proof_status === "approved" && (
+                            <Badge className="text-[10px] px-1.5" style={{ background: "#f0fdf4", color: "#15803d", border: "none" }}>
+                              Excuse accepted
+                            </Badge>
+                          )}
+                          {row.late_proof_status === "rejected" && (
+                            <Badge className="text-[10px] px-1.5" style={{ background: "#fef2f2", color: "#b91c1c", border: "none" }}>
+                              Excuse rejected
+                            </Badge>
+                          )}
+                        </div>
                       )}
                     </div>
                   </TableCell>
