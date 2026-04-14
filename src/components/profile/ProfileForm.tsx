@@ -225,9 +225,9 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         </div>
       </SectionCard>
 
-      {/* Domisili Saat Ini */}
+      {/* Current Residence */}
       <SectionCard
-        title="Domisili Saat Ini"
+        title="Current Residence"
         editing={isEditing("domisili")}
         onEdit={() => startEdit("domisili")}
         onCancel={cancelEdit}
@@ -235,40 +235,40 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         saving={saving}
       >
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Provinsi" value={state.domisili_provinsi} editing={isEditing("domisili")}>
+          <Field label="Province" value={state.domisili_provinsi} editing={isEditing("domisili")}>
             <Input
               value={state.domisili_provinsi}
               onChange={(e) => set("domisili_provinsi", e.target.value)}
-              placeholder="Nama provinsi"
+              placeholder="Province name"
             />
           </Field>
-          <Field label="Kota / Kabupaten" value={state.domisili_kota} editing={isEditing("domisili")}>
+          <Field label="City / Regency" value={state.domisili_kota} editing={isEditing("domisili")}>
             <Input
               value={state.domisili_kota}
               onChange={(e) => set("domisili_kota", e.target.value)}
-              placeholder="Nama kota atau kabupaten"
+              placeholder="City or regency name"
             />
           </Field>
-          <Field label="Kecamatan" value={state.domisili_kecamatan} editing={isEditing("domisili")}>
+          <Field label="District" value={state.domisili_kecamatan} editing={isEditing("domisili")}>
             <Input
               value={state.domisili_kecamatan}
               onChange={(e) => set("domisili_kecamatan", e.target.value)}
-              placeholder="Nama kecamatan"
+              placeholder="District name"
             />
           </Field>
-          <Field label="Kelurahan / Desa" value={state.domisili_kelurahan} editing={isEditing("domisili")}>
+          <Field label="Sub-district / Village" value={state.domisili_kelurahan} editing={isEditing("domisili")}>
             <Input
               value={state.domisili_kelurahan}
               onChange={(e) => set("domisili_kelurahan", e.target.value)}
-              placeholder="Nama kelurahan atau desa"
+              placeholder="Sub-district or village name"
             />
           </Field>
           <div className="md:col-span-2">
-            <Field label="Alamat Lengkap" value={state.domisili_alamat} editing={isEditing("domisili")}>
+            <Field label="Full Address" value={state.domisili_alamat} editing={isEditing("domisili")}>
               <Textarea
                 value={state.domisili_alamat}
                 onChange={(e) => set("domisili_alamat", e.target.value)}
-                placeholder="Jalan, nomor, RT/RW, dll."
+                placeholder="Street, number, RT/RW, etc."
                 rows={2}
               />
             </Field>
@@ -276,9 +276,9 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         </div>
       </SectionCard>
 
-      {/* Kota Asal */}
+      {/* Hometown */}
       <SectionCard
-        title="Kota Asal"
+        title="Hometown"
         editing={isEditing("asal")}
         onEdit={() => startEdit("asal")}
         onCancel={cancelEdit}
@@ -286,40 +286,40 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         saving={saving}
       >
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Provinsi" value={state.asal_provinsi} editing={isEditing("asal")}>
+          <Field label="Province" value={state.asal_provinsi} editing={isEditing("asal")}>
             <Input
               value={state.asal_provinsi}
               onChange={(e) => set("asal_provinsi", e.target.value)}
-              placeholder="Nama provinsi"
+              placeholder="Province name"
             />
           </Field>
-          <Field label="Kota / Kabupaten" value={state.asal_kota} editing={isEditing("asal")}>
+          <Field label="City / Regency" value={state.asal_kota} editing={isEditing("asal")}>
             <Input
               value={state.asal_kota}
               onChange={(e) => set("asal_kota", e.target.value)}
-              placeholder="Nama kota atau kabupaten"
+              placeholder="City or regency name"
             />
           </Field>
-          <Field label="Kecamatan" value={state.asal_kecamatan} editing={isEditing("asal")}>
+          <Field label="District" value={state.asal_kecamatan} editing={isEditing("asal")}>
             <Input
               value={state.asal_kecamatan}
               onChange={(e) => set("asal_kecamatan", e.target.value)}
-              placeholder="Nama kecamatan"
+              placeholder="District name"
             />
           </Field>
-          <Field label="Kelurahan / Desa" value={state.asal_kelurahan} editing={isEditing("asal")}>
+          <Field label="Sub-district / Village" value={state.asal_kelurahan} editing={isEditing("asal")}>
             <Input
               value={state.asal_kelurahan}
               onChange={(e) => set("asal_kelurahan", e.target.value)}
-              placeholder="Nama kelurahan atau desa"
+              placeholder="Sub-district or village name"
             />
           </Field>
           <div className="md:col-span-2">
-            <Field label="Alamat Lengkap" value={state.asal_alamat} editing={isEditing("asal")}>
+            <Field label="Full Address" value={state.asal_alamat} editing={isEditing("asal")}>
               <Textarea
                 value={state.asal_alamat}
                 onChange={(e) => set("asal_alamat", e.target.value)}
-                placeholder="Jalan, nomor, RT/RW, dll."
+                placeholder="Street, number, RT/RW, etc."
                 rows={2}
               />
             </Field>
