@@ -16,6 +16,11 @@ interface CheckInButtonProps {
   todayLog: AttendanceLog | null;
   settings: AttendanceSettings | null;
   isFlexible?: boolean;
+  /** Per-employee standard check-out time (HH:MM or HH:MM:SS). Falls back
+   * to the org-wide setting. This is also what the server uses to compute
+   * overtime minutes, so gating the UI on the same value keeps things
+   * consistent. */
+  workEndTime?: string | null;
   onSuccess?: () => void;
 }
 
@@ -31,6 +36,7 @@ export function CheckInButton({
   todayLog,
   settings,
   isFlexible = false,
+  workEndTime,
   onSuccess,
 }: CheckInButtonProps) {
   const [log, setLog] = useState<AttendanceLog | null>(todayLog);
@@ -54,17 +60,21 @@ export function CheckInButton({
     setModalOpen(true);
   }
 
-  /** Check if current time is past work end time */
+  /** Check if current time is past work end time. Uses the per-employee
+   * `workEndTime` (same source the server uses for overtime calc) and
+   * falls back to the org-wide setting. */
   function isPastEndTime(): boolean {
     if (!settings || isFlexible) return false;
     try {
+      const endRaw = workEndTime ?? settings.work_end_time;
+      if (!endRaw) return false;
       const now = new Date();
       const localNow = new Date(
         now.toLocaleString("en-US", { timeZone: settings.timezone })
       );
-      const [endH, endM] = settings.work_end_time.split(":").map(Number);
+      const [endH, endM] = endRaw.split(":").map(Number);
       const endTime = new Date(localNow);
-      endTime.setHours(endH, endM, 0, 0);
+      endTime.setHours(endH, endM ?? 0, 0, 0);
       return localNow > endTime;
     } catch {
       return false;
@@ -195,33 +205,6 @@ export function CheckInButton({
               )}
             </div>
 
-            {/* Overtime opt-in — only visible after standard end time */}
-            {pastEndTime && (
-              <div className="space-y-2 p-3 rounded-xl bg-[#f5f5f7]">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={overtimeChecked}
-                    onChange={(e) => {
-                      setOvertimeChecked(e.target.checked);
-                      if (!e.target.checked) setOvertimeReason("");
-                    }}
-                    className="w-4 h-4 rounded accent-[var(--primary)]"
-                  />
-                  <span className="text-sm font-medium">I worked overtime</span>
-                </label>
-                {overtimeChecked && (
-                  <Textarea
-                    value={overtimeReason}
-                    onChange={(e) => setOvertimeReason(e.target.value)}
-                    placeholder="Describe why you worked overtime… (required)"
-                    rows={2}
-                    className="text-sm"
-                  />
-                )}
-              </div>
-            )}
-
             <button
               className="btn-checkout w-full flex items-center justify-center gap-2"
               onClick={openCheckOut}
@@ -236,6 +219,35 @@ export function CheckInButton({
                 </>
               )}
             </button>
+
+            {/* Overtime opt-in — only active after the standard end time.
+                Rendered below the Check Out button so the primary action
+                stays at the top and the opt-in reads as a modifier. */}
+            {pastEndTime && (
+              <div className="space-y-2 p-3 rounded-xl bg-[#f5f5f7]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={overtimeChecked}
+                    onChange={(e) => {
+                      setOvertimeChecked(e.target.checked);
+                      if (!e.target.checked) setOvertimeReason("");
+                    }}
+                    className="w-4 h-4 rounded accent-[var(--primary)]"
+                  />
+                  <span className="text-sm font-medium">Submit this check-out as overtime</span>
+                </label>
+                {overtimeChecked && (
+                  <Textarea
+                    value={overtimeReason}
+                    onChange={(e) => setOvertimeReason(e.target.value)}
+                    placeholder="Describe why you worked overtime… (required)"
+                    rows={2}
+                    className="text-sm"
+                  />
+                )}
+              </div>
+            )}
           </>
         )}
 

@@ -85,6 +85,7 @@ export default async function DashboardPage() {
             todayLog={todayLog}
             settings={settings}
             isFlexible={profile?.is_flexible_schedule ?? false}
+            workEndTime={profile?.work_end_time ?? null}
           />
         </CardContent>
       </Card>
