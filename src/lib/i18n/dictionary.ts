@@ -286,7 +286,7 @@ export const dictionary = {
       minuteShort: "m",
     },
     profileCompletion: {
-      title: "Complete your profile",
+      title: "Complete your profile — incomplete profiles don't get paid 🤭",
       description: "These sections still need attention:",
       updateButton: "Update profile",
     },
@@ -587,7 +587,7 @@ export const dictionary = {
       minuteShort: "m",
     },
     profileCompletion: {
-      title: "Yuk lengkapi profil kamu",
+      title: "Yuk lengkapi profil kamu, kalo ngga lengkap gaji ngga turun 🤭",
       description: "Bagian ini belum diisi:",
       updateButton: "Lengkapi sekarang",
     },
