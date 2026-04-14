@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, Clock, Sparkles } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  Clock,
+  Sparkles,
+  CheckCircle2,
+  CircleDashed,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,7 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,19 +33,21 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
-import { format } from "date-fns";
 
 interface UserRow {
   id: string;
   email: string;
   full_name: string;
   role: "employee" | "admin";
-  created_at: string;
+  business_unit: string | null;
+  job_role: string | null;
   is_flexible_schedule: boolean;
-  /** HH:MM, already normalized server-side. */
+  /** HH:MM, normalized server-side. */
   work_start_time: string;
-  /** HH:MM, already normalized server-side. */
+  /** HH:MM, normalized server-side. */
   work_end_time: string;
+  grace_period_min: number;
+  profile_complete: boolean;
 }
 
 interface UsersTableProps {
@@ -101,16 +109,16 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                 Name
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Email
-              </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Role
-              </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
                 Schedule
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                Joined
+                Business Unit
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                Position
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                Profile
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">
                 Actions
@@ -123,35 +131,42 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
               return (
                 <TableRow key={row.id} className="hover:bg-[#f5f5f7]/40">
                   <TableCell className="font-medium text-sm">
-                    {row.full_name || "—"}
-                    {isSelf && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        (you)
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {row.email}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className="text-xs px-2"
-                      style={{
-                        background:
-                          row.role === "admin" ? "#e0f2fe" : "#f0fdf4",
-                        color:
-                          row.role === "admin" ? "#0369a1" : "#15803d",
-                        border: "none",
-                      }}
-                    >
-                      {row.role}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <span>{row.full_name || "—"}</span>
+                      {row.role === "admin" && (
+                        <span
+                          className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                          style={{ background: "#e0f2fe", color: "#0369a1" }}
+                        >
+                          admin
+                        </span>
+                      )}
+                      {isSelf && (
+                        <span className="text-xs text-muted-foreground">
+                          (you)
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <ScheduleCell row={row} onEdit={() => setEditing(row)} />
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {format(new Date(row.created_at), "d MMM yyyy")}
+                  <TableCell className="text-sm">
+                    {row.business_unit ? (
+                      row.business_unit
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {row.job_role ? (
+                      row.job_role
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <ProfileStatus complete={row.profile_complete} />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -161,6 +176,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                           buttonVariants({ variant: "ghost", size: "sm" }),
                           "text-muted-foreground hover:text-foreground"
                         )}
+                        aria-label="Open full profile"
                       >
                         <Pencil size={16} />
                       </Link>
@@ -171,6 +187,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                         disabled={isSelf}
                         onClick={() => setTarget(row)}
                         className="text-destructive hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                        aria-label="Delete user"
                       >
                         <Trash2 size={16} />
                       </Button>
@@ -230,10 +247,16 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
 
 /**
  * Compact schedule cell — doubles as the affordance to open the inline
- * edit dialog. Renders one of two glyphs so flexible vs fixed reads at a
- * glance without the admin parsing time values:
- *   - ✨ "Flexible"                                   (gray badge)
- *   - 🕒 "09:00 – 18:00"                              (tabular-nums)
+ * edit dialog.
+ *
+ *   - ✨ Flexible                                         (dashed badge)
+ *   - 🕒 09:00 – 18:00  +  +15m grace                     (stacked pair)
+ *
+ * The grace period sits under the time range in a subdued line so it
+ * reads as metadata, not a second primary value. For flexible users the
+ * grace period is preserved in the DB (it's still written to attendance
+ * logs for historical context) but isn't surfaced here — lateness
+ * tracking is off for them, so displaying a grace number would be noise.
  */
 function ScheduleCell({ row, onEdit }: { row: UserRow; onEdit: () => void }) {
   const isFlexible = row.is_flexible_schedule;
@@ -242,24 +265,27 @@ function ScheduleCell({ row, onEdit }: { row: UserRow; onEdit: () => void }) {
       type="button"
       onClick={onEdit}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition-colors",
+        "inline-flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors text-left",
         "hover:bg-[#f5f5f7] hover:border-foreground/20",
         isFlexible
           ? "border-dashed border-muted-foreground/30 text-muted-foreground"
           : "border-border text-foreground"
       )}
-      aria-label="Edit schedule"
+      aria-label="Edit schedule and grace period"
     >
       {isFlexible ? (
-        <>
+        <span className="inline-flex items-center gap-1.5 font-medium">
           <Sparkles size={12} />
-          <span className="font-medium">Flexible</span>
-        </>
+          Flexible
+        </span>
       ) : (
         <>
-          <Clock size={12} className="text-muted-foreground" />
-          <span className="font-medium tabular-nums">
+          <span className="inline-flex items-center gap-1.5 font-medium tabular-nums">
+            <Clock size={12} className="text-muted-foreground" />
             {row.work_start_time} – {row.work_end_time}
+          </span>
+          <span className="text-[10px] text-muted-foreground tabular-nums pl-[18px]">
+            +{row.grace_period_min}m grace
           </span>
         </>
       )}
@@ -268,16 +294,44 @@ function ScheduleCell({ row, onEdit }: { row: UserRow; onEdit: () => void }) {
 }
 
 /**
+ * Profile completion status badge. Boolean on purpose — the admin
+ * overview doesn't need a percentage here; the detail page shows which
+ * specific sections are incomplete. A single yes/no cell scans faster.
+ */
+function ProfileStatus({ complete }: { complete: boolean }) {
+  if (complete) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs font-medium"
+        style={{ color: "#15803d" }}
+      >
+        <CheckCircle2 size={14} />
+        Complete
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <CircleDashed size={14} />
+      Incomplete
+    </span>
+  );
+}
+
+/**
  * Inline schedule editor.
  *
  * Invariants enforced here (also respected across attendance + payslip):
  *   - `is_flexible_schedule === true` ⇒ attendance logic ignores
- *     start/end times entirely (no late tracking, no overtime prompt).
- *     We still preserve the stored times so toggling OFF restores a
- *     sensible default instead of jumping to 00:00.
+ *     start/end times + grace period entirely. We still preserve those
+ *     values so toggling OFF restores a sensible default instead of
+ *     jumping to 00:00 / 0m.
  *   - start < end: surfaced as an inline validation error. The DB
  *     doesn't enforce this, but every consumer assumes it, so we catch
  *     it at write time rather than letting it bleed into payslip math.
+ *   - grace_period_min is clamped 0–120. The DB accepts any integer,
+ *     but UX-wise "2 hours grace" is already past the point where the
+ *     schedule itself is misconfigured.
  */
 function ScheduleEditDialog({
   row,
@@ -291,6 +345,7 @@ function ScheduleEditDialog({
   const [flexible, setFlexible] = useState(false);
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("18:00");
+  const [grace, setGrace] = useState(15);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -301,6 +356,7 @@ function ScheduleEditDialog({
     setFlexible(row.is_flexible_schedule);
     setStart(row.work_start_time);
     setEnd(row.work_end_time);
+    setGrace(row.grace_period_min);
     setError(null);
   }, [row]);
 
@@ -317,6 +373,10 @@ function ScheduleEditDialog({
         setError("End time must be after start time.");
         return;
       }
+      if (!Number.isFinite(grace) || grace < 0 || grace > 120) {
+        setError("Grace period must be between 0 and 120 minutes.");
+        return;
+      }
     }
 
     setSaving(true);
@@ -327,12 +387,13 @@ function ScheduleEditDialog({
         body: JSON.stringify({
           targetId: row.id,
           is_flexible_schedule: flexible,
-          // Always send the time values so attendance history and payslip
-          // `standardWorkingHours` keep a stable reference. When flexible
-          // is on the downstream consumers short-circuit on that flag and
-          // don't care what the times are.
+          // Always send the time + grace values so attendance history and
+          // payslip `standardWorkingHours` keep a stable reference. When
+          // flexible is on, downstream consumers short-circuit on that
+          // flag and don't care what these values are.
           work_start_time: start,
           work_end_time: end,
+          grace_period_min: Math.round(grace),
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -346,7 +407,7 @@ function ScheduleEditDialog({
       toast.success(
         flexible
           ? `${row.full_name || row.email} is now on a flexible schedule`
-          : `Schedule saved · ${start} – ${end}`
+          : `Schedule saved · ${start}–${end} · ${grace}m grace`
       );
       setSaving(false);
       onSaved();
@@ -358,7 +419,7 @@ function ScheduleEditDialog({
 
   return (
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Edit schedule</DialogTitle>
           <DialogDescription>
@@ -366,13 +427,14 @@ function ScheduleEditDialog({
               {row?.full_name || row?.email}
             </span>
             {" — "}
-            drives attendance lateness, overtime, and payslip calculations.
+            drives attendance lateness, overtime prompt, and payslip
+            calculations.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          {/* Flexible toggle — the governing switch. When on, time fields
-              are disabled so the UI matches the stored invariant. */}
+          {/* Flexible toggle — the governing switch. When on, time + grace
+              fields are disabled so the UI matches the stored invariant. */}
           <label className="flex items-start gap-3 rounded-xl border border-border bg-[#f5f5f7]/60 px-3 py-2.5 cursor-pointer">
             <input
               type="checkbox"
@@ -383,51 +445,76 @@ function ScheduleEditDialog({
             <div className="flex-1">
               <div className="text-sm font-medium">Flexible schedule</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                No fixed sign-in/out time. Exempt from lateness tracking
-                and the overtime prompt. Payslip "standard working hours"
-                is treated as informational only.
+                No fixed sign-in/out time. Exempt from lateness tracking,
+                grace period, and the overtime prompt. Payslip "standard
+                working hours" is treated as informational only.
               </div>
             </div>
           </label>
 
           <div
             className={cn(
-              "grid grid-cols-2 gap-3 transition-opacity",
+              "space-y-3 transition-opacity",
               flexible && "opacity-50 pointer-events-none"
             )}
           >
-            <div className="space-y-1.5">
-              <Label htmlFor="start" className="text-xs">
-                Sign-in time
-              </Label>
-              <Input
-                id="start"
-                type="time"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                disabled={flexible}
-                step={60}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="start" className="text-xs">
+                  Sign-in time
+                </Label>
+                <Input
+                  id="start"
+                  type="time"
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                  disabled={flexible}
+                  step={60}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="end" className="text-xs">
+                  Sign-out time
+                </Label>
+                <Input
+                  id="end"
+                  type="time"
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                  disabled={flexible}
+                  step={60}
+                />
+              </div>
             </div>
+
             <div className="space-y-1.5">
-              <Label htmlFor="end" className="text-xs">
-                Sign-out time
+              <Label htmlFor="grace" className="text-xs">
+                Grace period (minutes)
               </Label>
-              <Input
-                id="end"
-                type="time"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-                disabled={flexible}
-                step={60}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="grace"
+                  type="number"
+                  min={0}
+                  max={120}
+                  step={1}
+                  value={Number.isFinite(grace) ? grace : ""}
+                  onChange={(e) => setGrace(Number(e.target.value))}
+                  disabled={flexible}
+                  className="w-24 tabular-nums"
+                />
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  The first <span className="font-medium">{grace}</span>{" "}
+                  minutes past sign-in time aren't counted as late.
+                </span>
+              </div>
             </div>
           </div>
 
           {!flexible && (
             <div className="text-xs text-muted-foreground leading-relaxed">
-              Late threshold and overtime windows are derived from these two
-              values (plus the grace period on the user's profile page).
+              Late threshold = sign-in + grace. Overtime prompt triggers
+              after sign-out time.
             </div>
           )}
 
