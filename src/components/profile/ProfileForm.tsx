@@ -109,6 +109,27 @@ function toFormState(p: Profile): FormState {
 
 type CardSection = "personal" | "work" | "contact" | "emergency" | "domisili" | "asal";
 
+/**
+ * True when every asal_* field already equals its domisili_* counterpart.
+ * Drives the "Same as current residence" checkbox's checked state so it
+ * stays in sync with whatever the user typed in either picker — ticks
+ * itself when they happen to match, unticks itself when they diverge.
+ * All five fields must match (including a fully-empty domisili — which
+ * would tick the box on an empty form, but that's a harmless no-op).
+ */
+function asalMatchesDomisili(s: FormState): boolean {
+  return (
+    s.asal_provinsi === s.domisili_provinsi &&
+    s.asal_kota === s.domisili_kota &&
+    s.asal_kecamatan === s.domisili_kecamatan &&
+    s.asal_kelurahan === s.domisili_kelurahan &&
+    s.asal_alamat === s.domisili_alamat &&
+    // Don't show as "same" when domisili itself is empty — otherwise the
+    // box is ticked on a brand-new profile before the user does anything.
+    (s.domisili_provinsi.trim() !== "" || s.domisili_alamat.trim() !== "")
+  );
+}
+
 export function ProfileForm({ profile, targetId }: ProfileFormProps) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -295,6 +316,49 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         onSave={saveSection}
         saving={saving}
       >
+        {isEditing("asal") && (
+          <label className="flex items-start gap-3 rounded-xl border border-border bg-[#f5f5f7]/60 px-3 py-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={asalMatchesDomisili(state)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  // Mirror domisili → asal. We copy values (rather than aliasing)
+                  // so unchecking leaves whatever's there editable instead of
+                  // re-clearing the fields.
+                  setState((s) => ({
+                    ...s,
+                    asal_provinsi: s.domisili_provinsi,
+                    asal_kota: s.domisili_kota,
+                    asal_kecamatan: s.domisili_kecamatan,
+                    asal_kelurahan: s.domisili_kelurahan,
+                    asal_alamat: s.domisili_alamat,
+                  }));
+                } else {
+                  // Unchecking clears so the user can re-enter a different
+                  // hometown — safer than leaving stale mirrored values that
+                  // the user might not notice and then accidentally save.
+                  setState((s) => ({
+                    ...s,
+                    asal_provinsi: "",
+                    asal_kota: "",
+                    asal_kecamatan: "",
+                    asal_kelurahan: "",
+                    asal_alamat: "",
+                  }));
+                }
+              }}
+              className="mt-0.5 h-4 w-4 rounded border-input"
+              style={{ accentColor: "var(--primary)" }}
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium">{pf.sameAsCurrentResidence}</div>
+              <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                {pf.sameAsCurrentResidenceHint}
+              </div>
+            </div>
+          </label>
+        )}
         <AddressPicker
           editing={isEditing("asal")}
           values={{
