@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, User, LogOut, Receipt } from "lucide-react";
+import { LayoutDashboard, Clock, User, LogOut, Receipt, Settings } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
-
-const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
-  { href: "/attendance", icon: Clock, label: "Attendance" },
-  { href: "/payslips", icon: Receipt, label: "Payslips" },
-  { href: "/profile", icon: User, label: "Profile" },
-];
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { t } = useTranslation();
+
+  const navItems = [
+    { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home },
+    { href: "/attendance", icon: Clock, label: t.nav.attendance },
+    { href: "/payslips", icon: Receipt, label: t.nav.payslips },
+    { href: "/profile", icon: User, label: t.nav.profile },
+    { href: "/settings", icon: Settings, label: t.nav.settings },
+  ];
 
   return (
     <nav
@@ -27,7 +30,7 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className="flex flex-col items-center gap-1 flex-1 py-3 text-xs transition-colors"
+              className="flex flex-col items-center gap-1 flex-1 py-3 text-[11px] transition-colors"
               style={{ color: active ? "var(--primary)" : "var(--muted-foreground)" }}
             >
               <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
@@ -38,10 +41,10 @@ export function BottomNav() {
         <form action={signOut} className="flex-1">
           <button
             type="submit"
-            className="flex flex-col items-center gap-1 w-full py-3 text-xs text-muted-foreground transition-colors hover:text-destructive"
+            className="flex flex-col items-center gap-1 w-full py-3 text-[11px] text-muted-foreground transition-colors hover:text-destructive"
           >
             <LogOut size={22} strokeWidth={1.8} />
-            <span>Sign out</span>
+            <span>{t.nav.signOut}</span>
           </button>
         </form>
       </div>

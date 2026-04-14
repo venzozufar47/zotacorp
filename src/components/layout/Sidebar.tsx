@@ -2,19 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, User, LogOut, Receipt } from "lucide-react";
+import { LayoutDashboard, Clock, User, LogOut, Receipt, Settings } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 import { cn } from "@/lib/utils";
-
-const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
-  { href: "/attendance", icon: Clock, label: "Attendance" },
-  { href: "/payslips", icon: Receipt, label: "Payslips" },
-  { href: "/profile", icon: User, label: "Profile" },
-];
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export function Sidebar({ className }: { className?: string }) {
   const pathname = usePathname();
+  const { t } = useTranslation();
+
+  const navItems = [
+    { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home },
+    { href: "/attendance", icon: Clock, label: t.nav.attendance },
+    { href: "/payslips", icon: Receipt, label: t.nav.payslips },
+    { href: "/profile", icon: User, label: t.nav.profile },
+    { href: "/settings", icon: Settings, label: t.nav.settings },
+  ];
 
   return (
     <aside className={cn("flex flex-col w-56 bg-white border-r border-border min-h-screen sticky top-0", className)}>
@@ -57,7 +60,7 @@ export function Sidebar({ className }: { className?: string }) {
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all"
           >
             <LogOut size={18} strokeWidth={1.8} />
-            Sign out
+            {t.nav.signOut}
           </button>
         </form>
       </div>
