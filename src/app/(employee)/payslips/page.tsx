@@ -52,6 +52,12 @@ export default async function EmployeePayslipsPage() {
                   </div>
 
                   <div className="space-y-1 text-sm">
+                    {Number(p.base_salary) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Monthly Standard Salary</span>
+                        <span>{formatIDR(Number(p.base_salary))}</span>
+                      </div>
+                    )}
                     {Number(p.prorated_salary) > 0 && (
                       <>
                         <div className="flex justify-between">
