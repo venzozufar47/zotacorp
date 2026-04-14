@@ -17,13 +17,14 @@ import { formatIDR } from "@/lib/utils/currency";
 interface Props {
   userId: string;
   settings: PayslipSettings | null;
+  standardWorkingHours: number;
+  workSchedule: string;
 }
 
 type FormData = {
   calculation_basis: "presence" | "deliverables" | "both";
   monthly_fixed_amount: string;
   expected_work_days: string;
-  standard_working_hours: string;
   overtime_mode: "hourly_tiered" | "fixed_per_day";
   ot_fixed_daily_rate: string;
   late_penalty_mode: "per_minutes" | "per_day" | "none";
@@ -36,7 +37,6 @@ function toForm(s: PayslipSettings | null): FormData {
     calculation_basis: s?.calculation_basis ?? "presence",
     monthly_fixed_amount: String(s?.monthly_fixed_amount ?? 0),
     expected_work_days: String(s?.expected_work_days ?? 22),
-    standard_working_hours: String(s?.standard_working_hours ?? 8),
     overtime_mode: s?.overtime_mode ?? "hourly_tiered",
     ot_fixed_daily_rate: String(s?.ot_fixed_daily_rate ?? 0),
     late_penalty_mode: s?.late_penalty_mode ?? "none",
@@ -45,10 +45,10 @@ function toForm(s: PayslipSettings | null): FormData {
   };
 }
 
-function calcOtRates(form: FormData) {
+function calcOtRates(form: FormData, standardWorkingHours: number) {
   const monthly = parseFloat(form.monthly_fixed_amount) || 0;
   const days = parseInt(form.expected_work_days) || 22;
-  const hours = parseInt(form.standard_working_hours) || 8;
+  const hours = standardWorkingHours;
   const hourlyRate = days > 0 && hours > 0 ? monthly / (days * hours) : 0;
   return {
     hourlyRate: Math.round(hourlyRate),
@@ -57,7 +57,7 @@ function calcOtRates(form: FormData) {
   };
 }
 
-export function PayslipSettingsForm({ userId, settings }: Props) {
+export function PayslipSettingsForm({ userId, settings, standardWorkingHours, workSchedule }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(!settings);
   const [form, setForm] = useState<FormData>(() => toForm(settings));
@@ -68,12 +68,12 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
   }
 
   function buildPayload() {
-    const ot = calcOtRates(form);
+    const ot = calcOtRates(form, standardWorkingHours);
     return {
       calculation_basis: form.calculation_basis,
       monthly_fixed_amount: parseFloat(form.monthly_fixed_amount) || 0,
       expected_work_days: parseInt(form.expected_work_days) || 22,
-      standard_working_hours: parseInt(form.standard_working_hours) || 8,
+      standard_working_hours: standardWorkingHours,
       overtime_mode: form.overtime_mode,
       ot_first_hour_rate: form.overtime_mode === "hourly_tiered" ? ot.firstHourRate : 0,
       ot_next_hour_rate: form.overtime_mode === "hourly_tiered" ? ot.nextHourRate : 0,
@@ -165,7 +165,7 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
               />
             </div>
 
-            {/* Expected Work Days */}
+            {/* Expected Work Days + Standard Hours (read-only) */}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">Expected Work Days / Month</Label>
@@ -177,24 +177,22 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Standard Working Hours / Day</Label>
-                <Input
-                  type="number"
-                  value={form.standard_working_hours}
-                  onChange={(e) => set("standard_working_hours", e.target.value)}
-                  placeholder="8"
-                />
+                <Label className="text-xs">Standard Hours / Day</Label>
+                <div className="flex items-center h-10 px-2.5 rounded-lg border border-input bg-muted text-sm">
+                  <span className="font-medium">{standardWorkingHours} hrs</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{workSchedule}</span>
+                </div>
               </div>
             </div>
 
             {/* Hourly Rate Calculation */}
             {(() => {
-              const ot = calcOtRates(form);
+              const ot = calcOtRates(form, standardWorkingHours);
               return (
                 <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1 text-sm">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
                   <p className="text-xs text-muted-foreground">
-                    {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({form.expected_work_days || 22} days x {form.standard_working_hours || 8} hrs)
+                    {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({form.expected_work_days || 22} days x {standardWorkingHours} hrs)
                   </p>
                   <div className="flex justify-between">
                     <span>Hourly Rate</span>
@@ -318,7 +316,7 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Standard Hours / Day</p>
-                <p className="font-medium">{settings?.standard_working_hours ?? 8} hours</p>
+                <p className="font-medium">{standardWorkingHours} hrs <span className="text-xs text-muted-foreground font-normal">({workSchedule})</span></p>
               </div>
             </div>
 
@@ -326,13 +324,12 @@ export function PayslipSettingsForm({ userId, settings }: Props) {
             {settings && (() => {
               const monthly = Number(settings.monthly_fixed_amount);
               const days = settings.expected_work_days;
-              const hours = settings.standard_working_hours ?? 8;
-              const hourlyRate = days > 0 && hours > 0 ? Math.round(monthly / (days * hours)) : 0;
+              const hourlyRate = days > 0 && standardWorkingHours > 0 ? Math.round(monthly / (days * standardWorkingHours)) : 0;
               return (
                 <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
                   <p className="text-xs text-muted-foreground">
-                    {formatIDR(monthly)} / ({days} days x {hours} hrs)
+                    {formatIDR(monthly)} / ({days} days x {standardWorkingHours} hrs)
                   </p>
                   <div className="flex justify-between">
                     <span>Hourly Rate</span>

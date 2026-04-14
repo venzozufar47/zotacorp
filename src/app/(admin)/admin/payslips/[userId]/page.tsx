@@ -35,11 +35,23 @@ export default async function AdminPayslipUserPage({
   const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, full_name, email")
+    .select("id, full_name, email, work_start_time, work_end_time")
     .eq("id", userId)
     .single();
 
   if (!profile) notFound();
+
+  // Derive standard working hours from user's schedule
+  function calcWorkingHours(start: string, end: string): number {
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    return Math.max(Math.round(diff / 60), 1);
+  }
+  const standardWorkingHours = calcWorkingHours(
+    profile.work_start_time ?? "09:00",
+    profile.work_end_time ?? "17:00"
+  );
 
   const today = new Date();
   const month = parseInt(sp.month ?? String(today.getMonth() + 1), 10);
@@ -58,6 +70,8 @@ export default async function AdminPayslipUserPage({
       <PayslipSettingsForm
         userId={userId}
         settings={settings}
+        standardWorkingHours={standardWorkingHours}
+        workSchedule={`${profile.work_start_time ?? "09:00"} – ${profile.work_end_time ?? "17:00"}`}
       />
 
       {settings?.is_finalized && (
