@@ -36,6 +36,7 @@ interface AttendanceRow {
   late_proof_url: string | null;
   late_proof_status: string | null;
   late_proof_admin_note: string | null;
+  late_checkout_reason: string | null;
   is_overtime: boolean;
   overtime_minutes: number;
   overtime_status: string | null;
@@ -204,7 +205,21 @@ export function AttendanceRecapTable({
                   </TableCell>
                   <TableCell className="text-sm">{formatTime(row.checked_in_at, timezone)}</TableCell>
                   <TableCell className="text-sm">
-                    {row.checked_out_at ? formatTime(row.checked_out_at, timezone) : "—"}
+                    {row.checked_out_at ? (
+                      <div>
+                        <span>{formatTime(row.checked_out_at, timezone)}</span>
+                        {row.late_checkout_reason && (
+                          <div className="flex items-start gap-1 mt-0.5 max-w-[180px]">
+                            <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground leading-tight break-words" title={row.late_checkout_reason}>
+                              Late checkout: {row.late_checkout_reason}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="space-y-1">
