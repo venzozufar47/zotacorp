@@ -14,18 +14,43 @@ import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCar
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
 
-const REQUIRED_PROFILE_FIELDS: { key: string; label: string }[] = [
-  { key: "full_name", label: "Full Name" },
-  { key: "gender", label: "Gender" },
-  { key: "date_of_birth", label: "Date of Birth" },
-  { key: "place_of_birth", label: "Place of Birth" },
-  { key: "current_city", label: "Current City" },
-  { key: "business_unit", label: "Business Unit" },
-  { key: "job_role", label: "Role" },
-  { key: "whatsapp_number", label: "WhatsApp Number" },
-  { key: "npwp", label: "NPWP" },
-  { key: "emergency_contact_name", label: "Emergency Contact" },
-  { key: "emergency_contact_whatsapp", label: "Emergency WhatsApp" },
+const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
+  {
+    title: "Personal Information",
+    keys: ["full_name", "gender", "date_of_birth", "place_of_birth"],
+  },
+  {
+    title: "Current Residence",
+    keys: [
+      "domisili_provinsi",
+      "domisili_kota",
+      "domisili_kecamatan",
+      "domisili_kelurahan",
+      "domisili_alamat",
+    ],
+  },
+  {
+    title: "Hometown",
+    keys: [
+      "asal_provinsi",
+      "asal_kota",
+      "asal_kecamatan",
+      "asal_kelurahan",
+      "asal_alamat",
+    ],
+  },
+  {
+    title: "Work Information",
+    keys: ["business_unit", "job_role"],
+  },
+  {
+    title: "Contact Information",
+    keys: ["whatsapp_number", "npwp"],
+  },
+  {
+    title: "Emergency Contact",
+    keys: ["emergency_contact_name", "emergency_contact_whatsapp"],
+  },
 ];
 
 export default async function DashboardPage() {
@@ -55,9 +80,11 @@ export default async function DashboardPage() {
     overtimeAdminNote = otReq?.admin_note ?? null;
   }
 
-  const missingFields = REQUIRED_PROFILE_FIELDS
-    .filter(({ key }) => !profile?.[key as keyof typeof profile])
-    .map(({ label }) => label);
+  const missingSections = PROFILE_SECTIONS
+    .filter(({ keys }) =>
+      keys.some((k) => !profile?.[k as keyof typeof profile])
+    )
+    .map(({ title }) => title);
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -68,7 +95,7 @@ export default async function DashboardPage() {
         <p className="text-muted-foreground text-sm mt-0.5">{today}</p>
       </div>
 
-      <ProfileCompletionCard missingFields={missingFields} />
+      <ProfileCompletionCard missingSections={missingSections} />
 
       <Card className="border-0 shadow-sm animate-fade-up animate-fade-up-delay-1">
         <CardContent className="p-5 space-y-4">

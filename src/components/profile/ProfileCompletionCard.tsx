@@ -5,11 +5,11 @@ import { AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface ProfileCompletionCardProps {
-  missingFields: string[];
+  missingSections: string[];
 }
 
-export function ProfileCompletionCard({ missingFields }: ProfileCompletionCardProps) {
-  if (missingFields.length === 0) return null;
+export function ProfileCompletionCard({ missingSections }: ProfileCompletionCardProps) {
+  if (missingSections.length === 0) return null;
 
   return (
     <Card className="border-0 shadow-sm border-l-4" style={{ borderLeftColor: "#ff9f0a" }}>
@@ -26,16 +26,16 @@ export function ProfileCompletionCard({ missingFields }: ProfileCompletionCardPr
               Complete your profile
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              The following details are needed for payslip and company records:
+              These sections still need attention:
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {missingFields.map((f) => (
+              {missingSections.map((s) => (
                 <span
-                  key={f}
+                  key={s}
                   className="text-[11px] px-2 py-0.5 rounded-full font-medium"
                   style={{ background: "#fff7ed", color: "#ff9f0a" }}
                 >
-                  {f}
+                  {s}
                 </span>
               ))}
             </div>
