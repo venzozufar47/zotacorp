@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ID_PROVINCES } from "@/lib/utils/constants";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export interface AddressValues {
   provinsi: string;
@@ -46,6 +47,8 @@ async function fetchWilayah(url: string): Promise<Option[]> {
  * new parent clears its descendants.
  */
 export function AddressPicker({ values, onChange, editing }: Props) {
+  const { t } = useTranslation();
+  const pf = t.profileForm;
   const [regencies, setRegencies] = useState<Option[]>([]);
   const [districts, setDistricts] = useState<Option[]>([]);
   const [villages, setVillages] = useState<Option[]>([]);
@@ -130,7 +133,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
 
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      <Field label="Province" value={values.provinsi} editing={editing}>
+      <Field label={pf.province} value={values.provinsi} editing={editing} notFilled={pf.notFilled}>
         <Select
           value={values.provinsi || undefined}
           onValueChange={(v) =>
@@ -143,7 +146,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Select province..." />
+            <SelectValue placeholder={pf.selectProvince} />
           </SelectTrigger>
           <SelectContent>
             {ID_PROVINCES.map((p) => (
@@ -153,7 +156,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
         </Select>
       </Field>
 
-      <Field label="City / Regency" value={values.kota} editing={editing}>
+      <Field label={pf.cityRegency} value={values.kota} editing={editing} notFilled={pf.notFilled}>
         <Select
           value={values.kota || undefined}
           onValueChange={(v) =>
@@ -165,10 +168,10 @@ export function AddressPicker({ values, onChange, editing }: Props) {
             <SelectValue
               placeholder={
                 !provinceCode
-                  ? "Select province first"
+                  ? pf.pickProvinceFirst
                   : loading.regencies
-                  ? "Loading..."
-                  : "Select city/regency..."
+                  ? pf.loading
+                  : pf.selectCityRegency
               }
             />
           </SelectTrigger>
@@ -180,7 +183,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
         </Select>
       </Field>
 
-      <Field label="District" value={values.kecamatan} editing={editing}>
+      <Field label={pf.district} value={values.kecamatan} editing={editing} notFilled={pf.notFilled}>
         <Select
           value={values.kecamatan || undefined}
           onValueChange={(v) => onChange({ kecamatan: v ?? "", kelurahan: "" })}
@@ -190,10 +193,10 @@ export function AddressPicker({ values, onChange, editing }: Props) {
             <SelectValue
               placeholder={
                 !regencyCode
-                  ? "Select regency first"
+                  ? pf.pickRegencyFirst
                   : loading.districts
-                  ? "Loading..."
-                  : "Select district..."
+                  ? pf.loading
+                  : pf.selectDistrict
               }
             />
           </SelectTrigger>
@@ -205,7 +208,7 @@ export function AddressPicker({ values, onChange, editing }: Props) {
         </Select>
       </Field>
 
-      <Field label="Sub-district / Village" value={values.kelurahan} editing={editing}>
+      <Field label={pf.villageSubdistrict} value={values.kelurahan} editing={editing} notFilled={pf.notFilled}>
         <Select
           value={values.kelurahan || undefined}
           onValueChange={(v) => onChange({ kelurahan: v ?? "" })}
@@ -215,10 +218,10 @@ export function AddressPicker({ values, onChange, editing }: Props) {
             <SelectValue
               placeholder={
                 !districtCode
-                  ? "Select district first"
+                  ? pf.pickDistrictFirst
                   : loading.villages
-                  ? "Loading..."
-                  : "Select sub-district/village..."
+                  ? pf.loading
+                  : pf.selectVillage
               }
             />
           </SelectTrigger>
@@ -231,11 +234,11 @@ export function AddressPicker({ values, onChange, editing }: Props) {
       </Field>
 
       <div className="md:col-span-2">
-        <Field label="Full Address" value={values.alamat} editing={editing}>
+        <Field label={pf.fullAddress} value={values.alamat} editing={editing} notFilled={pf.notFilled}>
           <Textarea
             value={values.alamat}
             onChange={(e) => onChange({ alamat: e.target.value })}
-            placeholder="Street, number, RT/RW, etc."
+            placeholder={pf.fullAddressPlaceholder}
             rows={2}
           />
         </Field>
@@ -248,11 +251,13 @@ function Field({
   label,
   value,
   editing,
+  notFilled,
   children,
 }: {
   label: string;
   value?: string;
   editing: boolean;
+  notFilled: string;
   children: React.ReactNode;
 }) {
   const isEmpty = !value || value.trim() === "";
@@ -267,7 +272,7 @@ function Field({
             isEmpty ? "text-muted-foreground italic" : "text-foreground"
           }`}
         >
-          {isEmpty ? "Not filled" : value}
+          {isEmpty ? notFilled : value}
         </p>
       )}
     </div>

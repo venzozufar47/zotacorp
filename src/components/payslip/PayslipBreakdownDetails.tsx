@@ -12,12 +12,12 @@ interface Props {
   totalLatePenalty: number;
 }
 
-function formatMinutes(mins: number): string {
+function formatMinutes(mins: number, hLabel: string, mLabel: string): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+  if (h === 0) return `${m}${mLabel}`;
+  if (m === 0) return `${h}${hLabel}`;
+  return `${h}${hLabel} ${m}${mLabel}`;
 }
 
 function formatDate(iso: string, locale: string): string {
@@ -44,6 +44,8 @@ export function PayslipBreakdownDetails({
 }: Props) {
   const { t, lang } = useTranslation();
   const bt = t.payslipBreakdown;
+  const hShort = t.units.hourShort;
+  const mShort = t.units.minuteShort;
 
   const hasOvertime = breakdown.overtime_days.length > 0;
   const hasLate = breakdown.late_days.length > 0;
@@ -74,7 +76,7 @@ export function PayslipBreakdownDetails({
               {breakdown.overtime_days.map((row) => (
                 <Fragment3 key={row.date}>
                   <span>{formatDate(row.date, lang)}</span>
-                  <span className="text-right tabular-nums">{formatMinutes(row.minutes)}</span>
+                  <span className="text-right tabular-nums">{formatMinutes(row.minutes, hShort, mShort)}</span>
                   <span className="text-right tabular-nums text-green-700">
                     + {formatIDR(row.pay)}
                   </span>
@@ -84,7 +86,7 @@ export function PayslipBreakdownDetails({
                 {bt.totals}
               </span>
               <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
-                {formatMinutes(totalOtMin)}
+                {formatMinutes(totalOtMin, hShort, mShort)}
               </span>
               <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-green-700">
                 + {formatIDR(totalOvertimePay)}
@@ -119,9 +121,9 @@ export function PayslipBreakdownDetails({
                       </span>
                     )}
                   </span>
-                  <span className="text-right tabular-nums">{formatMinutes(row.raw_minutes)}</span>
+                  <span className="text-right tabular-nums">{formatMinutes(row.raw_minutes, hShort, mShort)}</span>
                   <span className="text-right tabular-nums text-muted-foreground">
-                    {row.excused ? "—" : formatMinutes(row.after_grace_minutes)}
+                    {row.excused ? "—" : formatMinutes(row.after_grace_minutes, hShort, mShort)}
                   </span>
                   <span className="text-right tabular-nums text-red-600">
                     {row.penalty > 0 ? `- ${formatIDR(row.penalty)}` : "—"}
@@ -132,10 +134,10 @@ export function PayslipBreakdownDetails({
                 {bt.totals}
               </span>
               <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
-                {formatMinutes(totalLateRaw)}
+                {formatMinutes(totalLateRaw, hShort, mShort)}
               </span>
               <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
-                {formatMinutes(totalAfterGrace)}
+                {formatMinutes(totalAfterGrace, hShort, mShort)}
               </span>
               <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-red-600">
                 - {formatIDR(totalLatePenalty)}

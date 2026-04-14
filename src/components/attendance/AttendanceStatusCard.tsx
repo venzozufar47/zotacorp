@@ -141,7 +141,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                   className="text-lg font-bold mt-1"
                   style={{ color: "var(--primary)" }}
                 >
-                  {hours}h
+                  {hours}{t.units.hourShort}
                 </p>
               </div>
             )}
