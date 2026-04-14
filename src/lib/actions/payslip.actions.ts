@@ -17,7 +17,8 @@ function adminGuard(role: string | null) {
 function calculateFromAttendance(
   settings: PayslipSettings,
   logs: Pick<AttendanceLog, "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime">[],
-  overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[]
+  overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[],
+  gracePeriodMin: number = 0
 ) {
   const completedLogs = logs.filter((l) => l.checked_out_at);
   const actualWorkDays = completedLogs.length;
@@ -69,19 +70,26 @@ function calculateFromAttendance(
   }
 
   // Late penalty — exclude excused
-  let totalLateMinutes = 0;
+  // Display: raw late_minutes (from standard sign-in time)
+  // Penalty: late_minutes minus grace period (penalized portion only)
+  let totalLateMinutes = 0; // raw display value
+  let penalizedLateMinutes = 0; // for penalty calculation
   let latePenalty = 0;
   let lateDays = 0;
 
   for (const log of completedLogs) {
     if (log.status === "late" && log.late_minutes > 0) {
       totalLateMinutes += log.late_minutes;
-      lateDays++;
+      const penalized = Math.max(log.late_minutes - gracePeriodMin, 0);
+      if (penalized > 0) {
+        penalizedLateMinutes += penalized;
+        lateDays++;
+      }
     }
   }
 
   if (settings.late_penalty_mode === "per_minutes" && settings.late_penalty_interval_min > 0) {
-    const intervals = Math.floor(totalLateMinutes / settings.late_penalty_interval_min);
+    const intervals = Math.floor(penalizedLateMinutes / settings.late_penalty_interval_min);
     latePenalty = Math.round(intervals * Number(settings.late_penalty_amount));
   } else if (settings.late_penalty_mode === "per_day") {
     latePenalty = Math.round(lateDays * Number(settings.late_penalty_amount));
@@ -203,6 +211,14 @@ export async function calculatePayslip(userId: string, month: number, year: numb
   if (!settings) return { error: "Payslip settings not found for this employee." };
   if (!settings.is_finalized) return { error: "Payslip settings must be finalized before calculating." };
 
+  // Get employee's grace period
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("grace_period_min")
+    .eq("id", userId)
+    .single();
+  const gracePeriodMin = profile?.grace_period_min ?? 0;
+
   // Get attendance logs for the month
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = month === 12
@@ -227,7 +243,7 @@ export async function calculatePayslip(userId: string, month: number, year: numb
     overtimeRequests = otReqs ?? [];
   }
 
-  const calc = calculateFromAttendance(settings, logs ?? [], overtimeRequests);
+  const calc = calculateFromAttendance(settings, logs ?? [], overtimeRequests, gracePeriodMin);
 
   // Check existing payslip to preserve manual entries
   const { data: existing } = await supabase
