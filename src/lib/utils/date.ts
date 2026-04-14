@@ -50,13 +50,42 @@ export function getDurationHoursDecimal(
 }
 
 /**
- * Format minutes as "X hours Y minutes" or "Y minutes" if < 60.
+ * Unit labels passed in by the caller so this pure util stays language-
+ * agnostic. In Indonesian both forms collapse to "jam" / "menit" (no
+ * plural inflection), so passing the same string for singular/plural
+ * is fine.
  */
-export function formatMinutesHuman(minutes: number): string {
-  if (minutes <= 0) return "0 minutes";
+export type DurationLabels = {
+  zeroMinutes: string;
+  hourSingular: string;
+  hourPlural: string;
+  minuteSingular: string;
+  minutePlural: string;
+};
+
+const EN_LABELS: DurationLabels = {
+  zeroMinutes: "0 minutes",
+  hourSingular: "hour",
+  hourPlural: "hours",
+  minuteSingular: "minute",
+  minutePlural: "minutes",
+};
+
+/**
+ * Format minutes as "X hours Y minutes" or "Y minutes" if < 60.
+ * Callers in localized surfaces should pass their dictionary's `units`
+ * so output matches the current language.
+ */
+export function formatMinutesHuman(
+  minutes: number,
+  labels: DurationLabels = EN_LABELS
+): string {
+  if (minutes <= 0) return labels.zeroMinutes;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  if (h === 0) return `${m} minute${m !== 1 ? "s" : ""}`;
-  if (m === 0) return `${h} hour${h !== 1 ? "s" : ""}`;
-  return `${h} hour${h !== 1 ? "s" : ""} ${m} minute${m !== 1 ? "s" : ""}`;
+  const hWord = h === 1 ? labels.hourSingular : labels.hourPlural;
+  const mWord = m === 1 ? labels.minuteSingular : labels.minutePlural;
+  if (h === 0) return `${m} ${mWord}`;
+  if (m === 0) return `${h} ${hWord}`;
+  return `${h} ${hWord} ${m} ${mWord}`;
 }

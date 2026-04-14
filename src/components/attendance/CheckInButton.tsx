@@ -191,7 +191,7 @@ export function CheckInButton({
           toast.success(
             t.checkIn.toastCheckedOutOvertime.replace(
               "{duration}",
-              formatMinutesHuman(mins)
+              formatMinutesHuman(mins, t.units)
             )
           );
         } else {

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Upload, FileText } from "lucide-react";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface LateProofUploadDialogProps {
   attendanceLogId: string;
@@ -25,6 +26,8 @@ export function LateProofUploadDialog({
   hasExistingProof = false,
 }: LateProofUploadDialogProps) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const lp = t.lateProof;
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -47,18 +50,18 @@ export function LateProofUploadDialog({
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        toast.error(body.error ?? "Upload failed");
+        toast.error(body.error ?? lp.uploadFailed);
         setUploading(false);
         return;
       }
 
-      toast.success("Proof uploaded — waiting for admin approval");
+      toast.success(lp.uploadedToast);
       setOpen(false);
       setFile(null);
       setUploading(false);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(err instanceof Error ? err.message : lp.uploadFailed);
       setUploading(false);
     }
   }
@@ -72,20 +75,20 @@ export function LateProofUploadDialog({
         >
           {hasExistingProof ? (
             <>
-              <FileText size={14} /> Proof uploaded
+              <FileText size={14} /> {lp.uploadedBadge}
             </>
           ) : (
             <>
-              <Upload size={14} /> Upload proof
+              <Upload size={14} /> {lp.uploadButton}
             </>
           )}
         </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Upload Late Permission Proof</DialogTitle>
+          <DialogTitle>{lp.dialogTitle}</DialogTitle>
           <DialogDescription>
-            Upload a photo or document showing your permission to arrive late. Accepted: JPEG, PNG, PDF (max 5MB).
+            {lp.dialogDescription}
           </DialogDescription>
         </DialogHeader>
 
@@ -106,7 +109,7 @@ export function LateProofUploadDialog({
               <div className="space-y-1">
                 <Upload size={24} className="mx-auto text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
-                  Click to select a file
+                  {lp.clickToSelect}
                 </p>
               </div>
             )}
@@ -123,14 +126,14 @@ export function LateProofUploadDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {lp.cancel}
           </Button>
           <Button
             onClick={handleUpload}
             disabled={!file || uploading}
             style={{ background: "var(--primary)" }}
           >
-            {uploading ? "Uploading…" : "Upload"}
+            {uploading ? lp.uploading : lp.upload}
           </Button>
         </DialogFooter>
       </DialogContent>

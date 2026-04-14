@@ -103,7 +103,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                         : overtimeStatus === "rejected" ? "#b91c1c"
                         : "var(--primary)"
                     }}>
-                      · {formatMinutesHuman(log.overtime_minutes)} {overtimeLabel}
+                      · {formatMinutesHuman(log.overtime_minutes, t.units)} {overtimeLabel}
                     </span>
                   )}
                 </p>

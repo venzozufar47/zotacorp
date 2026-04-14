@@ -36,7 +36,7 @@ export function StatusBadge({ status, lateMinutes }: StatusBadgeProps) {
 
   const label =
     status === "late" && lateMinutes
-      ? `${t.statusBadge.late} (${formatMinutesHuman(lateMinutes)})`
+      ? `${t.statusBadge.late} (${formatMinutesHuman(lateMinutes, t.units)})`
       : labelMap[key];
 
   return (

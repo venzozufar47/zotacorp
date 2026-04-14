@@ -33,6 +33,8 @@ import {
 } from "@/lib/utils/constants";
 import type { Profile } from "@/lib/supabase/types";
 import { AddressPicker, type AddressValues } from "./AddressPicker";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import type { Dictionary } from "@/lib/i18n/dictionary";
 
 interface ProfileFormProps {
   profile: Profile;
@@ -109,6 +111,8 @@ type CardSection = "personal" | "work" | "contact" | "emergency" | "domisili" | 
 
 export function ProfileForm({ profile, targetId }: ProfileFormProps) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const pf = t.profileForm;
   const [state, setState] = useState<FormState>(() => toFormState(profile));
   const [snapshot, setSnapshot] = useState<FormState>(() => toFormState(profile));
   const [editing, setEditing] = useState<CardSection | null>(null);
@@ -144,18 +148,18 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
 
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(body.error ?? "Failed to save profile");
+        toast.error(body.error ?? pf.profileSaveFailed);
         setSaving(false);
         return;
       }
 
-      toast.success("Profile saved");
+      toast.success(pf.profileSaved);
       setSnapshot({ ...state });
       setEditing(null);
       setSaving(false);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toast.error(err instanceof Error ? err.message : pf.somethingWentWrong);
       setSaving(false);
     }
   }
@@ -166,7 +170,8 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
     <div className="space-y-5">
       {/* Personal Information */}
       <SectionCard
-        title="Personal Information"
+        title={pf.sectionPersonal}
+        labels={pf}
         editing={isEditing("personal")}
         onEdit={() => startEdit("personal")}
         onCancel={cancelEdit}
@@ -174,26 +179,26 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         saving={saving}
       >
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Full Name" required value={state.full_name} editing={isEditing("personal")}>
+          <Field label={pf.fullName} required value={state.full_name} editing={isEditing("personal")} notFilled={pf.notFilled}>
             <Input
               value={state.full_name}
               onChange={(e) => set("full_name", e.target.value)}
               required
             />
           </Field>
-          <Field label="Nickname" value={state.nickname} editing={isEditing("personal")}>
+          <Field label={pf.nickname} value={state.nickname} editing={isEditing("personal")} notFilled={pf.notFilled}>
             <Input
               value={state.nickname}
               onChange={(e) => set("nickname", e.target.value)}
             />
           </Field>
-          <Field label="Gender" value={state.gender} editing={isEditing("personal")}>
+          <Field label={pf.gender} value={state.gender} editing={isEditing("personal")} notFilled={pf.notFilled}>
             <Select
               value={state.gender || undefined}
               onValueChange={(v) => set("gender", v ?? "")}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select..." />
+                <SelectValue placeholder={pf.selectPlaceholder} />
               </SelectTrigger>
               <SelectContent>
                 {GENDERS.map((g) => (
@@ -202,24 +207,24 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Date of Birth" value={state.date_of_birth} editing={isEditing("personal")}>
+          <Field label={pf.dateOfBirth} value={state.date_of_birth} editing={isEditing("personal")} notFilled={pf.notFilled}>
             <Input
               type="date"
               value={state.date_of_birth}
               onChange={(e) => set("date_of_birth", e.target.value)}
             />
           </Field>
-          <Field label="Place of Birth" value={state.place_of_birth} editing={isEditing("personal")}>
+          <Field label={pf.placeOfBirth} value={state.place_of_birth} editing={isEditing("personal")} notFilled={pf.notFilled}>
             <Input
               value={state.place_of_birth}
               onChange={(e) => set("place_of_birth", e.target.value)}
-              placeholder="City of birth"
+              placeholder={pf.placeOfBirthPlaceholder}
             />
           </Field>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs">Shirt Size</Label>
-              <SizeChartDialog />
+              <Label className="text-xs">{pf.shirtSize}</Label>
+              <SizeChartDialog label={pf.viewSizeChart} title={pf.sizeChartTitle} />
             </div>
             {isEditing("personal") ? (
               <Select
@@ -227,7 +232,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
                 onValueChange={(v) => set("shirt_size", v ?? "")}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
+                  <SelectValue placeholder={pf.selectPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {SHIRT_SIZES.map((s) => (
@@ -241,7 +246,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
                   !state.shirt_size ? "text-muted-foreground italic" : "text-foreground"
                 }`}
               >
-                {state.shirt_size || "Not filled"}
+                {state.shirt_size || pf.notFilled}
               </p>
             )}
           </div>
@@ -250,7 +255,8 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
 
       {/* Current Residence */}
       <SectionCard
-        title="Current Residence"
+        title={pf.sectionCurrentResidence}
+        labels={pf}
         editing={isEditing("domisili")}
         onEdit={() => startEdit("domisili")}
         onCancel={cancelEdit}
@@ -281,7 +287,8 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
 
       {/* Hometown */}
       <SectionCard
-        title="Hometown"
+        title={pf.sectionHometown}
+        labels={pf}
         editing={isEditing("asal")}
         onEdit={() => startEdit("asal")}
         onCancel={cancelEdit}
@@ -312,7 +319,8 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
 
       {/* Work Information */}
       <SectionCard
-        title="Work Information"
+        title={pf.sectionWork}
+        labels={pf}
         editing={isEditing("work")}
         onEdit={() => startEdit("work")}
         onCancel={cancelEdit}
@@ -320,7 +328,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         saving={saving}
       >
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Business Unit" value={state.business_unit} editing={isEditing("work")}>
+          <Field label={pf.businessUnit} value={state.business_unit} editing={isEditing("work")} notFilled={pf.notFilled}>
             <Select
               value={state.business_unit || undefined}
               onValueChange={(v) => {
@@ -329,7 +337,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select business unit..." />
+                <SelectValue placeholder={pf.selectBusinessUnit} />
               </SelectTrigger>
               <SelectContent>
                 {BUSINESS_UNITS.map((bu) => (
@@ -338,7 +346,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Role" value={state.job_role} editing={isEditing("work")}>
+          <Field label={pf.role} value={state.job_role} editing={isEditing("work")} notFilled={pf.notFilled}>
             <Select
               value={state.job_role || undefined}
               onValueChange={(v) => set("job_role", v ?? "")}
@@ -346,7 +354,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
             >
               <SelectTrigger>
                 <SelectValue
-                  placeholder={state.business_unit ? "Select role..." : "Pick business unit first"}
+                  placeholder={state.business_unit ? pf.selectRole : pf.pickBusinessUnitFirst}
                 />
               </SelectTrigger>
               <SelectContent>
@@ -356,18 +364,18 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="First Day of Work" value={state.first_day_of_work} editing={isEditing("work")}>
+          <Field label={pf.firstDayOfWork} value={state.first_day_of_work} editing={isEditing("work")} notFilled={pf.notFilled}>
             <Input
               type="date"
               value={state.first_day_of_work}
               onChange={(e) => set("first_day_of_work", e.target.value)}
             />
           </Field>
-          <Field label="Motto / Quote of the Day" value={state.motto} editing={isEditing("work")}>
+          <Field label={pf.motto} value={state.motto} editing={isEditing("work")} notFilled={pf.notFilled}>
             <Textarea
               value={state.motto}
               onChange={(e) => set("motto", e.target.value)}
-              placeholder="Words to live by..."
+              placeholder={pf.mottoPlaceholder}
               rows={2}
             />
           </Field>
@@ -384,29 +392,29 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
                 disabled={!isEditing("work")}
               />
               <div>
-                <span className="text-sm font-medium">Flexible Schedule</span>
+                <span className="text-sm font-medium">{pf.flexibleSchedule}</span>
                 <p className="text-xs text-muted-foreground">
-                  Exempt from on-time/late and overtime rules
+                  {pf.flexibleScheduleHint}
                 </p>
               </div>
             </label>
             {!state.is_flexible_schedule && (
               <div className="grid md:grid-cols-3 gap-4">
-                <Field label="Work Start Time" value={state.work_start_time} editing={isEditing("work")}>
+                <Field label={pf.workStartTime} value={state.work_start_time} editing={isEditing("work")} notFilled={pf.notFilled}>
                   <Input
                     type="time"
                     value={state.work_start_time}
                     onChange={(e) => set("work_start_time", e.target.value)}
                   />
                 </Field>
-                <Field label="Work End Time" value={state.work_end_time} editing={isEditing("work")}>
+                <Field label={pf.workEndTime} value={state.work_end_time} editing={isEditing("work")} notFilled={pf.notFilled}>
                   <Input
                     type="time"
                     value={state.work_end_time}
                     onChange={(e) => set("work_end_time", e.target.value)}
                   />
                 </Field>
-                <Field label="Grace Period (min)" value={String(state.grace_period_min)} editing={isEditing("work")}>
+                <Field label={pf.gracePeriodMin} value={String(state.grace_period_min)} editing={isEditing("work")} notFilled={pf.notFilled}>
                   <Input
                     type="number"
                     min={0}
@@ -423,7 +431,8 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
 
       {/* Contact Information */}
       <SectionCard
-        title="Contact Information"
+        title={pf.sectionContact}
+        labels={pf}
         editing={isEditing("contact")}
         onEdit={() => startEdit("contact")}
         onCancel={cancelEdit}
@@ -431,7 +440,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         saving={saving}
       >
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="WhatsApp Number" value={state.whatsapp_number} editing={isEditing("contact")}>
+          <Field label={pf.whatsappNumber} value={state.whatsapp_number} editing={isEditing("contact")} notFilled={pf.notFilled}>
             <Input
               type="tel"
               value={state.whatsapp_number}
@@ -439,11 +448,11 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               placeholder="+62..."
             />
           </Field>
-          <Field label="NPWP" value={state.npwp} editing={isEditing("contact")}>
+          <Field label={pf.npwp} value={state.npwp} editing={isEditing("contact")} notFilled={pf.notFilled}>
             <Input
               value={state.npwp}
               onChange={(e) => set("npwp", e.target.value)}
-              placeholder="Tax ID number"
+              placeholder={pf.npwpPlaceholder}
             />
           </Field>
         </div>
@@ -451,7 +460,8 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
 
       {/* Emergency Contact */}
       <SectionCard
-        title="Emergency Contact"
+        title={pf.sectionEmergency}
+        labels={pf}
         editing={isEditing("emergency")}
         onEdit={() => startEdit("emergency")}
         onCancel={cancelEdit}
@@ -459,13 +469,13 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         saving={saving}
       >
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Emergency Contact Name" value={state.emergency_contact_name} editing={isEditing("emergency")}>
+          <Field label={pf.emergencyContactName} value={state.emergency_contact_name} editing={isEditing("emergency")} notFilled={pf.notFilled}>
             <Input
               value={state.emergency_contact_name}
               onChange={(e) => set("emergency_contact_name", e.target.value)}
             />
           </Field>
-          <Field label="Emergency Contact WhatsApp" value={state.emergency_contact_whatsapp} editing={isEditing("emergency")}>
+          <Field label={pf.emergencyContactWhatsapp} value={state.emergency_contact_whatsapp} editing={isEditing("emergency")} notFilled={pf.notFilled}>
             <Input
               type="tel"
               value={state.emergency_contact_whatsapp}
@@ -481,6 +491,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
 
 function SectionCard({
   title,
+  labels,
   editing,
   onEdit,
   onCancel,
@@ -489,6 +500,7 @@ function SectionCard({
   children,
 }: {
   title: string;
+  labels: Dictionary["profileForm"];
   editing: boolean;
   onEdit: () => void;
   onCancel: () => void;
@@ -510,7 +522,7 @@ function SectionCard({
               disabled={saving}
             >
               <X size={14} className="mr-1" />
-              Cancel
+              {labels.cancel}
             </Button>
             <Button
               size="sm"
@@ -520,7 +532,7 @@ function SectionCard({
               disabled={saving}
             >
               <Check size={14} className="mr-1" />
-              {saving ? "Saving..." : "Save"}
+              {saving ? labels.saving : labels.save}
             </Button>
           </div>
         ) : (
@@ -531,7 +543,7 @@ function SectionCard({
             onClick={onEdit}
           >
             <Pencil size={14} className="mr-1" />
-            Edit
+            {labels.edit}
           </Button>
         )}
       </CardHeader>
@@ -540,7 +552,7 @@ function SectionCard({
   );
 }
 
-function SizeChartDialog() {
+function SizeChartDialog({ label, title }: { label: string; title: string }) {
   return (
     <Dialog>
       <DialogTrigger
@@ -554,11 +566,11 @@ function SizeChartDialog() {
         }
       >
         <Ruler size={12} className="mr-1" />
-        View size chart
+        {label}
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Shirt Size Chart</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="relative w-full" style={{ aspectRatio: "4 / 3" }}>
           <Image
@@ -580,12 +592,14 @@ function Field({
   required,
   value,
   editing,
+  notFilled,
   children,
 }: {
   label: string;
   required?: boolean;
   value?: string;
   editing: boolean;
+  notFilled: string;
   children: React.ReactNode;
 }) {
   const isEmpty = !value || value.trim() === "";
@@ -600,7 +614,7 @@ function Field({
         children
       ) : (
         <p className={`text-sm py-2 px-3 rounded-md bg-[#f5f5f7] min-h-[36px] ${isEmpty ? "text-muted-foreground italic" : "text-foreground"}`}>
-          {isEmpty ? "Not filled" : value}
+          {isEmpty ? notFilled : value}
         </p>
       )}
     </div>
