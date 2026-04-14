@@ -327,12 +327,32 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
     return { error: "Invalid checkout time." };
   }
 
-  // Ensure checkout time is after check-in time
-  const checkinDate = new Date(log.checked_in_at);
-  const checkoutDate = new Date(log.checked_in_at);
-  checkoutDate.setHours(hours, minutes, 0, 0);
+  // Resolve timezone so the user's "HH:mm" is interpreted in their local TZ,
+  // not the server's UTC. Without this, "07:12" Jakarta gets saved as 07:12 UTC
+  // and displays as 14:12 after the +07:00 offset is re-applied.
+  const settings = await getCachedAttendanceSettings();
+  const timezone = settings?.timezone ?? "Asia/Jakarta";
 
-  // If the time is before check-in, it might be next day — but we don't allow that
+  const checkinDate = new Date(log.checked_in_at);
+
+  // Find the checkout date (YYYY-MM-DD) in the target TZ, based on check-in moment.
+  const dateInTz = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(checkinDate);
+
+  // Convert "YYYY-MM-DDTHH:mm" in target TZ → UTC instant.
+  // Trick: parse as if UTC, then measure how far off that moment's TZ wall-clock is,
+  // and subtract the offset.
+  const assumedUtc = new Date(`${dateInTz}T${payload.checkoutTime}:00Z`);
+  const utcWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: "UTC" }));
+  const tzWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: timezone }));
+  const offsetMs = tzWall.getTime() - utcWall.getTime();
+  const checkoutDate = new Date(assumedUtc.getTime() - offsetMs);
+
+  // Ensure checkout time is after check-in time
   if (checkoutDate <= checkinDate) {
     return { error: "Checkout time must be after check-in time." };
   }
@@ -351,14 +371,11 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
 
   if (isOvertime && !profile?.is_flexible_schedule) {
     const [endH, endM] = (profile?.work_end_time ?? "18:00").split(":").map(Number);
-    const endTime = new Date(log.checked_in_at);
-    endTime.setHours(endH, endM, 0, 0);
+    const endHm = endH * 60 + endM;
+    const checkoutHm = hours * 60 + minutes;
 
-    if (checkoutDate > endTime) {
-      overtimeMinutes = Math.ceil(
-        (checkoutDate.getTime() - endTime.getTime()) / 60_000
-      );
-      overtimeMinutes = Math.min(overtimeMinutes, 480);
+    if (checkoutHm > endHm) {
+      overtimeMinutes = Math.min(checkoutHm - endHm, 480);
     }
   }
 
