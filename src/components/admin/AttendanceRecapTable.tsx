@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, CheckCircle, XCircle, MessageSquare, Trash2 } from "lucide-react";
+import { MapPin, CheckCircle, XCircle, MessageSquare, Trash2, Paperclip } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -173,7 +173,26 @@ export function AttendanceRecapTable({
                     <div className="flex items-center gap-1">
                       <StatusBadge status={row.status} lateMinutes={row.late_minutes} />
                       {row.late_proof_url && (
-                        <span className="text-xs text-blue-500">📎</span>
+                        <button
+                          className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`/api/attendance/proof?logId=${row.id}`);
+                              const json = await res.json();
+                              if (json.url) {
+                                window.open(json.url, "_blank");
+                              } else {
+                                toast.error(json.error || "Failed to load proof");
+                              }
+                            } catch {
+                              toast.error("Failed to load proof");
+                            }
+                          }}
+                          title="View late excuse proof"
+                        >
+                          <Paperclip size={12} />
+                          View
+                        </button>
                       )}
                     </div>
                   </TableCell>
