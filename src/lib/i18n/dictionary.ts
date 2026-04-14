@@ -285,7 +285,7 @@ export const dictionary = {
       description:
         "Lupa password? Kirim link reset ke email kamu yang terdaftar.",
       send: "Kirim link reset",
-      sending: "Ngirim…",
+      sending: "Sedang mengirim…",
       sentTo: "Link reset udah dikirim ke",
       checkInbox: "Cek inbox kamu — linknya cuma aktif 1 jam",
       toastSuccess: "Email terkirim. Cek inbox kamu ya",
