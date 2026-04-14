@@ -121,7 +121,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                 {tu.colName}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                {tu.colSchedule}
+                {tu.colProfile}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
                 {tu.colBusinessUnit}
@@ -130,7 +130,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                 {tu.colPosition}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                {tu.colProfile}
+                {tu.colSchedule}
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">
                 {tu.colActions}
@@ -161,7 +161,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <ScheduleCell row={row} onEdit={() => setEditing(row)} tu={tu} />
+                    <ProfileStatus complete={row.profile_complete} tu={tu} />
                   </TableCell>
                   <TableCell className="text-sm">
                     {row.business_unit ? (
@@ -178,7 +178,7 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                     )}
                   </TableCell>
                   <TableCell>
-                    <ProfileStatus complete={row.profile_complete} tu={tu} />
+                    <ScheduleCell row={row} onEdit={() => setEditing(row)} tu={tu} />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
