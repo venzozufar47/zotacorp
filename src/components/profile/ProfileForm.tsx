@@ -21,6 +21,7 @@ import {
   BUSINESS_UNIT_ROLES,
   GENDERS,
   SHIRT_SIZES,
+  ID_PROVINCES,
   type BusinessUnit,
 } from "@/lib/utils/constants";
 import type { Profile } from "@/lib/supabase/types";
@@ -236,11 +237,19 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
       >
         <div className="grid md:grid-cols-2 gap-4">
           <Field label="Province" value={state.domisili_provinsi} editing={isEditing("domisili")}>
-            <Input
-              value={state.domisili_provinsi}
-              onChange={(e) => set("domisili_provinsi", e.target.value)}
-              placeholder="Province name"
-            />
+            <Select
+              value={state.domisili_provinsi || undefined}
+              onValueChange={(v) => set("domisili_provinsi", v ?? "")}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select province..." />
+              </SelectTrigger>
+              <SelectContent>
+                {ID_PROVINCES.map((p) => (
+                  <SelectItem key={p.code} value={p.name}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="City / Regency" value={state.domisili_kota} editing={isEditing("domisili")}>
             <Input
@@ -287,11 +296,19 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
       >
         <div className="grid md:grid-cols-2 gap-4">
           <Field label="Province" value={state.asal_provinsi} editing={isEditing("asal")}>
-            <Input
-              value={state.asal_provinsi}
-              onChange={(e) => set("asal_provinsi", e.target.value)}
-              placeholder="Province name"
-            />
+            <Select
+              value={state.asal_provinsi || undefined}
+              onValueChange={(v) => set("asal_provinsi", v ?? "")}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select province..." />
+              </SelectTrigger>
+              <SelectContent>
+                {ID_PROVINCES.map((p) => (
+                  <SelectItem key={p.code} value={p.name}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="City / Regency" value={state.asal_kota} editing={isEditing("asal")}>
             <Input
