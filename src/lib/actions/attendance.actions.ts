@@ -229,6 +229,71 @@ export async function checkOut(payload?: CheckOutPayload) {
   return { data };
 }
 
+// ---------------------------------------------------------------------------
+// Late Checkout — fill in missed checkout for a previous day
+// ---------------------------------------------------------------------------
+
+interface LateCheckoutPayload {
+  attendanceLogId: string;
+  checkoutTime: string; // HH:mm format
+  reason: string;
+}
+
+export async function lateCheckout(payload: LateCheckoutPayload) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+
+  if (!payload.reason.trim()) {
+    return { error: "A reason is required for late checkout." };
+  }
+
+  const supabase = await createClient();
+
+  // Verify the log belongs to this user and has no checkout
+  const { data: log } = await supabase
+    .from("attendance_logs")
+    .select("id, user_id, date, checked_in_at, checked_out_at")
+    .eq("id", payload.attendanceLogId)
+    .single();
+
+  if (!log) return { error: "Attendance record not found." };
+  if (log.user_id !== user.id) return { error: "You can only edit your own records." };
+  if (log.checked_out_at) return { error: "This record already has a checkout time." };
+
+  // Build checkout datetime from the log's date + provided time
+  const [hours, minutes] = payload.checkoutTime.split(":").map(Number);
+  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return { error: "Invalid checkout time." };
+  }
+
+  // Ensure checkout time is after check-in time
+  const checkinDate = new Date(log.checked_in_at);
+  const checkoutDate = new Date(log.checked_in_at);
+  checkoutDate.setHours(hours, minutes, 0, 0);
+
+  // If the time is before check-in, it might be next day — but we don't allow that
+  if (checkoutDate <= checkinDate) {
+    return { error: "Checkout time must be after check-in time." };
+  }
+
+  const { data, error } = await supabase
+    .from("attendance_logs")
+    .update({
+      checked_out_at: checkoutDate.toISOString(),
+      late_checkout_reason: payload.reason.trim(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", log.id)
+    .select()
+    .single();
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/attendance");
+  return { data };
+}
+
 export async function getTodayAttendance() {
   const user = await getCurrentUser();
   if (!user) return null;

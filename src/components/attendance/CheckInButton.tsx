@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { MapPin, MapPinOff, Clock } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { PasswordConfirmModal } from "./PasswordConfirmModal";
-import { OvertimePromptModal } from "./OvertimePromptModal";
 import { checkIn, checkOut } from "@/lib/actions/attendance.actions";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
@@ -36,11 +36,13 @@ export function CheckInButton({
   const [log, setLog] = useState<AttendanceLog | null>(todayLog);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalAction, setModalAction] = useState<"check-in" | "check-out">("check-in");
-  const [overtimeOpen, setOvertimeOpen] = useState(false);
+  const [overtimeChecked, setOvertimeChecked] = useState(false);
+  const [overtimeReason, setOvertimeReason] = useState("");
   const [isPending, startTransition] = useTransition();
   const { status: geoStatus, requestLocation } = useGeolocation();
 
   const state = getState(log);
+  const pastEndTime = isPastEndTime();
 
   function openCheckIn() {
     setModalAction("check-in");
@@ -115,26 +117,18 @@ export function CheckInButton({
   }
 
   async function handleCheckOutAttempt() {
-    // If past end time and not flexible, show overtime prompt
-    if (isPastEndTime()) {
-      setOvertimeOpen(true);
+    if (overtimeChecked && !overtimeReason.trim()) {
+      toast.error("Please provide a reason for overtime");
       return;
     }
-
-    // Normal checkout
-    await performCheckOut(false, "");
+    await performCheckOut(overtimeChecked, overtimeReason.trim());
   }
 
-  async function handleOvertimeDecision(isOvertime: boolean, reason: string) {
-    setOvertimeOpen(false);
-    await performCheckOut(isOvertime, reason);
-  }
-
-  async function performCheckOut(isOvertime: boolean, overtimeReason: string) {
+  async function performCheckOut(isOvertime: boolean, reason: string) {
     startTransition(async () => {
       const result = await checkOut({
         isOvertime,
-        overtimeReason,
+        overtimeReason: reason,
       });
 
       if (result?.error) {
@@ -200,6 +194,34 @@ export function CheckInButton({
                 </span>
               )}
             </div>
+
+            {/* Overtime opt-in — only visible after standard end time */}
+            {pastEndTime && (
+              <div className="space-y-2 p-3 rounded-xl bg-[#f5f5f7]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={overtimeChecked}
+                    onChange={(e) => {
+                      setOvertimeChecked(e.target.checked);
+                      if (!e.target.checked) setOvertimeReason("");
+                    }}
+                    className="w-4 h-4 rounded accent-[var(--primary)]"
+                  />
+                  <span className="text-sm font-medium">I worked overtime</span>
+                </label>
+                {overtimeChecked && (
+                  <Textarea
+                    value={overtimeReason}
+                    onChange={(e) => setOvertimeReason(e.target.value)}
+                    placeholder="Describe why you worked overtime… (required)"
+                    rows={2}
+                    className="text-sm"
+                  />
+                )}
+              </div>
+            )}
+
             <button
               className="btn-checkout w-full flex items-center justify-center gap-2"
               onClick={openCheckOut}
@@ -248,12 +270,6 @@ export function CheckInButton({
         onOpenChange={setModalOpen}
         action={modalAction}
         onConfirm={modalAction === "check-in" ? handleCheckIn : handleCheckOutAttempt}
-      />
-
-      <OvertimePromptModal
-        open={overtimeOpen}
-        onOpenChange={setOvertimeOpen}
-        onConfirm={handleOvertimeDecision}
       />
     </>
   );

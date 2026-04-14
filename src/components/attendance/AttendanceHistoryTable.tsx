@@ -17,6 +17,7 @@ import {
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "./StatusBadge";
 import { LateProofUploadDialog } from "./LateProofUploadDialog";
+import { LateCheckoutDialog } from "./LateCheckoutDialog";
 
 type LogWithOt = AttendanceLog & {
   overtime_admin_note?: string | null;
@@ -70,7 +71,22 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                 </TableCell>
                 <TableCell>{formatTime(log.checked_in_at, timezone)}</TableCell>
                 <TableCell>
-                  {log.checked_out_at ? formatTime(log.checked_out_at, timezone) : "—"}
+                  {log.checked_out_at ? (
+                    <div>
+                      <span>{formatTime(log.checked_out_at, timezone)}</span>
+                      {log.late_checkout_reason && (
+                        <p className="text-xs text-muted-foreground mt-0.5" title={log.late_checkout_reason}>
+                          Late: {log.late_checkout_reason.length > 30 ? log.late_checkout_reason.slice(0, 30) + "…" : log.late_checkout_reason}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <LateCheckoutDialog
+                      attendanceLogId={log.id}
+                      date={log.date}
+                      checkedInAt={log.checked_in_at}
+                    />
+                  )}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">

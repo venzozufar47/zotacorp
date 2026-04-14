@@ -113,6 +113,7 @@ export type Database = {
           is_overtime: boolean;
           overtime_minutes: number;
           overtime_status: "pending" | "approved" | "rejected" | null;
+          late_checkout_reason: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -130,6 +131,7 @@ export type Database = {
           is_overtime?: boolean;
           overtime_minutes?: number;
           overtime_status?: "pending" | "approved" | "rejected" | null;
+          late_checkout_reason?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -141,6 +143,7 @@ export type Database = {
           is_overtime?: boolean;
           overtime_minutes?: number;
           overtime_status?: "pending" | "approved" | "rejected" | null;
+          late_checkout_reason?: string | null;
           updated_at?: string;
         };
         Relationships: [
