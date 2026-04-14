@@ -21,8 +21,10 @@ interface Props {
   workSchedule: string;
 }
 
+type Basis = "presence" | "deliverables" | "both";
+
 type FormData = {
-  calculation_basis: "presence" | "deliverables" | "both";
+  calculation_basis: Basis;
   monthly_fixed_amount: string;
   expected_work_days: string;
   overtime_mode: "hourly_tiered" | "fixed_per_day";
@@ -30,6 +32,8 @@ type FormData = {
   late_penalty_mode: "per_minutes" | "per_day" | "none";
   late_penalty_amount: string;
   late_penalty_interval_min: string;
+  attendance_weight_pct: string;
+  deliverables_weight_pct: string;
 };
 
 function toForm(s: PayslipSettings | null): FormData {
@@ -42,6 +46,8 @@ function toForm(s: PayslipSettings | null): FormData {
     late_penalty_mode: s?.late_penalty_mode ?? "none",
     late_penalty_amount: String(s?.late_penalty_amount ?? 0),
     late_penalty_interval_min: String(s?.late_penalty_interval_min ?? 30),
+    attendance_weight_pct: String(s?.attendance_weight_pct ?? 50),
+    deliverables_weight_pct: String(s?.deliverables_weight_pct ?? 50),
   };
 }
 
@@ -67,24 +73,48 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const basis = form.calculation_basis;
+  const showsAttendance = basis === "presence" || basis === "both";
+  const showsDeliverables = basis === "deliverables" || basis === "both";
+  const showsWeights = basis === "both";
+
   function buildPayload() {
     const ot = calcOtRates(form, standardWorkingHours);
+    const attW = parseFloat(form.attendance_weight_pct) || 0;
+    const delW = parseFloat(form.deliverables_weight_pct) || 0;
+
     return {
       calculation_basis: form.calculation_basis,
       monthly_fixed_amount: parseFloat(form.monthly_fixed_amount) || 0,
       expected_work_days: parseInt(form.expected_work_days) || 22,
       standard_working_hours: standardWorkingHours,
-      overtime_mode: form.overtime_mode,
-      ot_first_hour_rate: form.overtime_mode === "hourly_tiered" ? ot.firstHourRate : 0,
-      ot_next_hour_rate: form.overtime_mode === "hourly_tiered" ? ot.nextHourRate : 0,
-      ot_fixed_daily_rate: parseFloat(form.ot_fixed_daily_rate) || 0,
-      late_penalty_mode: form.late_penalty_mode,
-      late_penalty_amount: parseFloat(form.late_penalty_amount) || 0,
-      late_penalty_interval_min: parseInt(form.late_penalty_interval_min) || 30,
+      // attendance-side fields (store zero when not in play so recalcs are clean)
+      overtime_mode: showsAttendance ? form.overtime_mode : ("hourly_tiered" as const),
+      ot_first_hour_rate: showsAttendance && form.overtime_mode === "hourly_tiered" ? ot.firstHourRate : 0,
+      ot_next_hour_rate: showsAttendance && form.overtime_mode === "hourly_tiered" ? ot.nextHourRate : 0,
+      ot_fixed_daily_rate: showsAttendance ? parseFloat(form.ot_fixed_daily_rate) || 0 : 0,
+      late_penalty_mode: showsAttendance ? form.late_penalty_mode : ("none" as const),
+      late_penalty_amount: showsAttendance ? parseFloat(form.late_penalty_amount) || 0 : 0,
+      late_penalty_interval_min: showsAttendance ? parseInt(form.late_penalty_interval_min) || 30 : 30,
+      // weights only meaningful for "both"
+      attendance_weight_pct: basis === "both" ? attW : basis === "presence" ? 100 : 0,
+      deliverables_weight_pct: basis === "both" ? delW : basis === "deliverables" ? 100 : 0,
     };
   }
 
+  function validateWeights(): string | null {
+    if (basis !== "both") return null;
+    const attW = parseFloat(form.attendance_weight_pct) || 0;
+    const delW = parseFloat(form.deliverables_weight_pct) || 0;
+    if (Math.abs(attW + delW - 100) > 0.01) {
+      return `Attendance + Deliverables weight must total 100% (currently ${attW + delW}%).`;
+    }
+    return null;
+  }
+
   function handleSave() {
+    const wErr = validateWeights();
+    if (wErr) return toast.error(wErr);
     startTransition(async () => {
       const result = await upsertPayslipSettings(userId, buildPayload());
       if (result.error) {
@@ -98,14 +128,14 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
   }
 
   function handleFinalize() {
+    const wErr = validateWeights();
+    if (wErr) return toast.error(wErr);
     startTransition(async () => {
-      // Save first, then finalize
       const saveResult = await upsertPayslipSettings(userId, buildPayload());
       if (saveResult.error) {
         toast.error(saveResult.error);
         return;
       }
-
       const result = await finalizePayslipSettings(userId);
       if (result.error) {
         toast.error(result.error);
@@ -145,7 +175,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               <Label className="text-xs">Calculation Basis</Label>
               <select
                 value={form.calculation_basis}
-                onChange={(e) => set("calculation_basis", e.target.value as FormData["calculation_basis"])}
+                onChange={(e) => set("calculation_basis", e.target.value as Basis)}
                 className="flex w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <option value="presence">Presence (attendance-based)</option>
@@ -165,125 +195,176 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               />
             </div>
 
-            {/* Expected Work Days + Standard Hours (read-only) */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Expected Work Days / Month</Label>
-                <Input
-                  type="number"
-                  value={form.expected_work_days}
-                  onChange={(e) => set("expected_work_days", e.target.value)}
-                  placeholder="22"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Standard Hours / Day</Label>
-                <div className="flex items-center h-10 px-2.5 rounded-lg border border-input bg-muted text-sm">
-                  <span className="font-medium">{standardWorkingHours} hrs</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{workSchedule}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Hourly Rate Calculation */}
-            {(() => {
-              const ot = calcOtRates(form, standardWorkingHours);
-              return (
-                <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1 text-sm">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({form.expected_work_days || 22} days x {standardWorkingHours} hrs)
-                  </p>
-                  <div className="flex justify-between">
-                    <span>Hourly Rate</span>
-                    <span className="font-medium">{formatIDR(ot.hourlyRate)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>1st Hour OT (1.5x)</span>
-                    <span className="font-medium">{formatIDR(ot.firstHourRate)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Next Hours OT (2x)</span>
-                    <span className="font-medium">{formatIDR(ot.nextHourRate)}</span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Overtime */}
-            <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
-              <Label className="text-xs font-semibold">Overtime Formula</Label>
-              <select
-                value={form.overtime_mode}
-                onChange={(e) => set("overtime_mode", e.target.value as FormData["overtime_mode"])}
-                className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="hourly_tiered">Hourly tiered (1.5x 1st hr + 2x next hrs)</option>
-                <option value="fixed_per_day">Fixed per day</option>
-              </select>
-              {form.overtime_mode === "hourly_tiered" ? (
-                <p className="text-xs text-muted-foreground">
-                  Rates auto-calculated from hourly rate above.
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  <Label className="text-xs">Fixed Daily OT Rate (IDR)</Label>
-                  <Input
-                    type="number"
-                    value={form.ot_fixed_daily_rate}
-                    onChange={(e) => set("ot_fixed_daily_rate", e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Late Penalty */}
-            <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
-              <Label className="text-xs font-semibold">Late Penalty</Label>
-              <select
-                value={form.late_penalty_mode}
-                onChange={(e) => set("late_penalty_mode", e.target.value as FormData["late_penalty_mode"])}
-                className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="none">No penalty</option>
-                <option value="per_minutes">Per minutes interval</option>
-                <option value="per_day">Per day</option>
-              </select>
-              {form.late_penalty_mode === "per_minutes" && (
+            {/* Weights — only for "both" */}
+            {showsWeights && (
+              <div className="space-y-2 p-3 rounded-lg bg-[#fff7ed]">
+                <Label className="text-xs font-semibold">Weight Split (must total 100%)</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">Penalty Amount (IDR)</Label>
+                    <Label className="text-xs">Attendance %</Label>
                     <Input
                       type="number"
-                      value={form.late_penalty_amount}
-                      onChange={(e) => set("late_penalty_amount", e.target.value)}
-                      placeholder="0"
+                      value={form.attendance_weight_pct}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        set("attendance_weight_pct", v);
+                        const n = parseFloat(v);
+                        if (!isNaN(n)) set("deliverables_weight_pct", String(Math.max(0, 100 - n)));
+                      }}
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Per every X minutes</Label>
+                    <Label className="text-xs">Deliverables %</Label>
                     <Input
                       type="number"
-                      value={form.late_penalty_interval_min}
-                      onChange={(e) => set("late_penalty_interval_min", e.target.value)}
-                      placeholder="30"
+                      value={form.deliverables_weight_pct}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        set("deliverables_weight_pct", v);
+                        const n = parseFloat(v);
+                        if (!isNaN(n)) set("attendance_weight_pct", String(Math.max(0, 100 - n)));
+                      }}
                     />
                   </div>
                 </div>
-              )}
-              {form.late_penalty_mode === "per_day" && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Penalty per Day Late (IDR)</Label>
-                  <Input
-                    type="number"
-                    value={form.late_penalty_amount}
-                    onChange={(e) => set("late_penalty_amount", e.target.value)}
-                    placeholder="0"
-                  />
+              </div>
+            )}
+
+            {/* Attendance-only settings */}
+            {showsAttendance && (
+              <>
+                {/* Expected Work Days + Standard Hours */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Expected Work Days / Month</Label>
+                    <Input
+                      type="number"
+                      value={form.expected_work_days}
+                      onChange={(e) => set("expected_work_days", e.target.value)}
+                      placeholder="22"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Standard Hours / Day</Label>
+                    <div className="flex items-center h-10 px-2.5 rounded-lg border border-input bg-muted text-sm">
+                      <span className="font-medium">{standardWorkingHours} hrs</span>
+                      <span className="ml-auto text-xs text-muted-foreground">{workSchedule}</span>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
+
+                {/* Hourly Rate Calculation */}
+                {(() => {
+                  const ot = calcOtRates(form, standardWorkingHours);
+                  return (
+                    <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1 text-sm">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({form.expected_work_days || 22} days x {standardWorkingHours} hrs)
+                      </p>
+                      <div className="flex justify-between">
+                        <span>Hourly Rate</span>
+                        <span className="font-medium">{formatIDR(ot.hourlyRate)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>1st Hour OT (1.5x)</span>
+                        <span className="font-medium">{formatIDR(ot.firstHourRate)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Next Hours OT (2x)</span>
+                        <span className="font-medium">{formatIDR(ot.nextHourRate)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Overtime */}
+                <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+                  <Label className="text-xs font-semibold">Overtime Formula</Label>
+                  <select
+                    value={form.overtime_mode}
+                    onChange={(e) => set("overtime_mode", e.target.value as FormData["overtime_mode"])}
+                    className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="hourly_tiered">Hourly tiered (1.5x 1st hr + 2x next hrs)</option>
+                    <option value="fixed_per_day">Fixed per day</option>
+                  </select>
+                  {form.overtime_mode === "hourly_tiered" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Rates auto-calculated from hourly rate above.
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Fixed Daily OT Rate (IDR)</Label>
+                      <Input
+                        type="number"
+                        value={form.ot_fixed_daily_rate}
+                        onChange={(e) => set("ot_fixed_daily_rate", e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Late Penalty */}
+                <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+                  <Label className="text-xs font-semibold">Late Penalty</Label>
+                  <select
+                    value={form.late_penalty_mode}
+                    onChange={(e) => set("late_penalty_mode", e.target.value as FormData["late_penalty_mode"])}
+                    className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="none">No penalty</option>
+                    <option value="per_minutes">Per minutes interval</option>
+                    <option value="per_day">Per day</option>
+                  </select>
+                  {form.late_penalty_mode === "per_minutes" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Penalty Amount (IDR)</Label>
+                        <Input
+                          type="number"
+                          value={form.late_penalty_amount}
+                          onChange={(e) => set("late_penalty_amount", e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Per every X minutes</Label>
+                        <Input
+                          type="number"
+                          value={form.late_penalty_interval_min}
+                          onChange={(e) => set("late_penalty_interval_min", e.target.value)}
+                          placeholder="30"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {form.late_penalty_mode === "per_day" && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Penalty per Day Late (IDR)</Label>
+                      <Input
+                        type="number"
+                        value={form.late_penalty_amount}
+                        onChange={(e) => set("late_penalty_amount", e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Deliverables note */}
+            {showsDeliverables && (
+              <div className="p-3 rounded-lg bg-[#ecfeff] text-sm space-y-1">
+                <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Deliverables</p>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  Deliverables (target, realization, weight) are entered per month on the monthly payslip
+                  after you calculate it. Deliverables pay = weighted achievement % × monthly fixed amount.
+                </p>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-2">
@@ -310,18 +391,30 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                 <p className="text-xs text-muted-foreground">Monthly Fixed Amount</p>
                 <p className="font-medium">{settings ? formatIDR(Number(settings.monthly_fixed_amount)) : "—"}</p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Expected Work Days</p>
-                <p className="font-medium">{settings?.expected_work_days ?? "—"} days</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Standard Hours / Day</p>
-                <p className="font-medium">{standardWorkingHours} hrs <span className="text-xs text-muted-foreground font-normal">({workSchedule})</span></p>
-              </div>
+              {settings?.calculation_basis === "both" && (
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Weight Split</p>
+                  <p className="font-medium">
+                    Attendance {Number(settings.attendance_weight_pct)}% · Deliverables {Number(settings.deliverables_weight_pct)}%
+                  </p>
+                </div>
+              )}
+              {settings && settings.calculation_basis !== "deliverables" && (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Expected Work Days</p>
+                    <p className="font-medium">{settings.expected_work_days} days</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Standard Hours / Day</p>
+                    <p className="font-medium">{standardWorkingHours} hrs <span className="text-xs text-muted-foreground font-normal">({workSchedule})</span></p>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Hourly Rate Calculation */}
-            {settings && (() => {
+            {settings && settings.calculation_basis !== "deliverables" && (() => {
               const monthly = Number(settings.monthly_fixed_amount);
               const days = settings.expected_work_days;
               const hourlyRate = days > 0 && standardWorkingHours > 0 ? Math.round(monthly / (days * standardWorkingHours)) : 0;
@@ -347,28 +440,34 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               );
             })()}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Overtime Mode</p>
-                <p className="font-medium">
-                  {settings?.overtime_mode === "hourly_tiered"
-                    ? "Hourly tiered (auto-calculated)"
-                    : settings?.overtime_mode === "fixed_per_day"
-                    ? `Fixed: ${formatIDR(Number(settings?.ot_fixed_daily_rate ?? 0))}/day`
-                    : "—"}
-                </p>
+            {settings && settings.calculation_basis !== "deliverables" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Overtime Mode</p>
+                  <p className="font-medium">
+                    {settings.overtime_mode === "hourly_tiered"
+                      ? "Hourly tiered (auto-calculated)"
+                      : `Fixed: ${formatIDR(Number(settings.ot_fixed_daily_rate ?? 0))}/day`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Late Penalty</p>
+                  <p className="font-medium">
+                    {settings.late_penalty_mode === "per_minutes"
+                      ? `${formatIDR(Number(settings.late_penalty_amount))} per ${settings.late_penalty_interval_min} min`
+                      : settings.late_penalty_mode === "per_day"
+                      ? `${formatIDR(Number(settings.late_penalty_amount))} per day`
+                      : "None"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Late Penalty</p>
-                <p className="font-medium">
-                  {settings?.late_penalty_mode === "per_minutes"
-                    ? `${formatIDR(Number(settings.late_penalty_amount))} per ${settings.late_penalty_interval_min} min`
-                    : settings?.late_penalty_mode === "per_day"
-                    ? `${formatIDR(Number(settings.late_penalty_amount))} per day`
-                    : "None"}
-                </p>
+            )}
+
+            {settings && settings.calculation_basis !== "presence" && (
+              <div className="p-3 rounded-lg bg-[#ecfeff] text-xs text-muted-foreground">
+                Deliverables are entered per month on the monthly payslip.
               </div>
-            </div>
+            )}
           </div>
         )}
       </CardContent>

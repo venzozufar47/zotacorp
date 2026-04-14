@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/supabase/cached";
-import { getEmployeePayslips } from "@/lib/actions/payslip.actions";
+import { getEmployeePayslips, getPayslipDeliverables } from "@/lib/actions/payslip.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatIDR } from "@/lib/utils/currency";
@@ -12,6 +12,11 @@ export default async function EmployeePayslipsPage() {
   if (!user) redirect("/login");
 
   const payslips = await getEmployeePayslips(user.id);
+  const deliverablesByPayslip = new Map(
+    await Promise.all(
+      payslips.map(async (p) => [p.id, await getPayslipDeliverables(p.id)] as const)
+    )
+  );
 
   return (
     <div className="space-y-5 animate-fade-up overflow-x-hidden">
@@ -45,18 +50,22 @@ export default async function EmployeePayslipsPage() {
                   </div>
 
                   <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Work Days</span>
-                      <span>{p.actual_work_days} / {p.expected_work_days}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        {p.actual_work_days > p.expected_work_days
-                          ? "Prorated Salary (incl. extra days)"
-                          : "Prorated Salary"}
-                      </span>
-                      <span>{formatIDR(Number(p.prorated_salary))}</span>
-                    </div>
+                    {Number(p.prorated_salary) > 0 && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Work Days</span>
+                          <span>{p.actual_work_days} / {p.expected_work_days}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            {p.actual_work_days > p.expected_work_days
+                              ? "Prorated Salary (incl. extra days)"
+                              : "Prorated Salary"}
+                          </span>
+                          <span>{formatIDR(Number(p.prorated_salary))}</span>
+                        </div>
+                      </>
+                    )}
                     {Number(p.overtime_pay) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Overtime Pay</span>
@@ -68,6 +77,29 @@ export default async function EmployeePayslipsPage() {
                         <span className="text-muted-foreground">Late Penalty</span>
                         <span className="text-red-600">- {formatIDR(Number(p.late_penalty))}</span>
                       </div>
+                    )}
+                    {Number(p.deliverables_pay) > 0 && (
+                      <>
+                        {(deliverablesByPayslip.get(p.id) ?? []).map((d) => {
+                          const target = Number(d.target);
+                          const real = Number(d.realization);
+                          const ach = target > 0 ? (real / target) * 100 : 0;
+                          return (
+                            <div key={d.id} className="flex justify-between text-xs">
+                              <span className="text-muted-foreground pl-2">
+                                {d.name} ({real}/{target}, {Number(d.weight_pct)}%)
+                              </span>
+                              <span>{ach.toFixed(1)}%</span>
+                            </div>
+                          );
+                        })}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Deliverables ({Number(p.deliverables_achievement_pct).toFixed(1)}%)
+                          </span>
+                          <span className="text-green-700">+ {formatIDR(Number(p.deliverables_pay))}</span>
+                        </div>
+                      </>
                     )}
                     {Number(p.monthly_bonus) > 0 && (
                       <div className="flex justify-between">

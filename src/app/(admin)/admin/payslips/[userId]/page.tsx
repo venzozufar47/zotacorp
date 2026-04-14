@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect, notFound } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
-import { getPayslipSettings, getPayslip } from "@/lib/actions/payslip.actions";
+import { getPayslipSettings, getPayslip, getPayslipDeliverables } from "@/lib/actions/payslip.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PayslipSettingsForm } from "@/components/admin/PayslipSettingsForm";
 import { PayslipMonthlyView } from "@/components/admin/PayslipMonthlyView";
@@ -59,6 +59,7 @@ export default async function AdminPayslipUserPage({
 
   const settings = await getPayslipSettings(userId);
   const payslip = settings?.is_finalized ? await getPayslip(userId, month, year) : null;
+  const deliverables = payslip ? await getPayslipDeliverables(payslip.id) : [];
 
   return (
     <div className="space-y-5 animate-fade-up overflow-x-hidden">
@@ -80,6 +81,11 @@ export default async function AdminPayslipUserPage({
           month={month}
           year={year}
           payslip={payslip}
+          deliverables={deliverables}
+          basis={settings.calculation_basis}
+          attendanceWeightPct={Number(settings.attendance_weight_pct)}
+          deliverablesWeightPct={Number(settings.deliverables_weight_pct)}
+          monthlyFixedAmount={Number(settings.monthly_fixed_amount)}
           gracePeriodMin={profile.grace_period_min ?? 0}
         />
       )}

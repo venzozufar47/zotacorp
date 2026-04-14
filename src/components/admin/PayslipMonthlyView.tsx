@@ -12,19 +12,60 @@ import {
   updatePayslipManualEntries,
   finalizePayslip,
   reopenPayslip,
+  saveDeliverables,
 } from "@/lib/actions/payslip.actions";
 import { formatIDR } from "@/lib/utils/currency";
-import type { Payslip } from "@/lib/supabase/types";
+import type { Payslip, PayslipDeliverable } from "@/lib/supabase/types";
+
+type Basis = "presence" | "deliverables" | "both";
 
 interface Props {
   userId: string;
   month: number;
   year: number;
   payslip: Payslip | null;
+  deliverables: PayslipDeliverable[];
+  basis: Basis;
+  attendanceWeightPct: number;
+  deliverablesWeightPct: number;
+  monthlyFixedAmount: number;
   gracePeriodMin?: number;
 }
 
-export function PayslipMonthlyView({ userId, month, year, payslip, gracePeriodMin = 0 }: Props) {
+type DeliverableRow = {
+  id?: string;
+  name: string;
+  target: string;
+  realization: string;
+  weight_pct: string;
+};
+
+function toRow(d: PayslipDeliverable): DeliverableRow {
+  return {
+    id: d.id,
+    name: d.name,
+    target: String(d.target),
+    realization: String(d.realization),
+    weight_pct: String(d.weight_pct),
+  };
+}
+
+function emptyRow(): DeliverableRow {
+  return { name: "", target: "0", realization: "0", weight_pct: "100" };
+}
+
+export function PayslipMonthlyView({
+  userId,
+  month,
+  year,
+  payslip,
+  deliverables,
+  basis,
+  attendanceWeightPct,
+  deliverablesWeightPct,
+  monthlyFixedAmount,
+  gracePeriodMin = 0,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -35,6 +76,13 @@ export function PayslipMonthlyView({ userId, month, year, payslip, gracePeriodMi
   const [debt, setDebt] = useState(String(payslip?.debt_deduction ?? 0));
   const [otherPenalty, setOtherPenalty] = useState(String(payslip?.other_penalty ?? 0));
   const [otherPenaltyNote, setOtherPenaltyNote] = useState(payslip?.other_penalty_note ?? "");
+
+  const [rows, setRows] = useState<DeliverableRow[]>(() =>
+    deliverables.length > 0 ? deliverables.map(toRow) : [emptyRow()]
+  );
+
+  const showsAttendance = basis === "presence" || basis === "both";
+  const showsDeliverables = basis === "deliverables" || basis === "both";
 
   function changeMonth(m: number, y: number) {
     const params = new URLSearchParams(searchParams.toString());
@@ -100,10 +148,71 @@ export function PayslipMonthlyView({ userId, month, year, payslip, gracePeriodMi
     });
   }
 
+  function validateDeliverables(): string | null {
+    if (!showsDeliverables) return null;
+    if (rows.length === 0) return null;
+    for (const r of rows) {
+      if (!r.name.trim()) return "Each deliverable needs a name.";
+      if ((parseFloat(r.target) || 0) < 0) return "Target cannot be negative.";
+      if ((parseFloat(r.realization) || 0) < 0) return "Realization cannot be negative.";
+      if ((parseFloat(r.weight_pct) || 0) < 0) return "Weight cannot be negative.";
+    }
+    if (rows.length > 1) {
+      const sumW = rows.reduce((s, r) => s + (parseFloat(r.weight_pct) || 0), 0);
+      if (Math.abs(sumW - 100) > 0.01) {
+        return `Deliverable weights must total 100% (currently ${sumW}%).`;
+      }
+    }
+    return null;
+  }
+
+  function handleSaveDeliverables() {
+    if (!payslip) return;
+    const err = validateDeliverables();
+    if (err) return toast.error(err);
+    startTransition(async () => {
+      const result = await saveDeliverables(
+        payslip.id,
+        rows.map((r) => ({
+          id: r.id,
+          name: r.name.trim(),
+          target: parseFloat(r.target) || 0,
+          realization: parseFloat(r.realization) || 0,
+          weight_pct: parseFloat(r.weight_pct) || 0,
+        }))
+      );
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Deliverables saved & payslip recalculated");
+      router.refresh();
+    });
+  }
+
   function handleFinalize() {
     if (!payslip) return;
+    const dErr = validateDeliverables();
+    if (dErr) return toast.error(dErr);
     startTransition(async () => {
-      // Save manual entries first
+      // Save deliverables first (if applicable), then manual entries, then finalize
+      if (showsDeliverables) {
+        const dResult = await saveDeliverables(
+          payslip.id,
+          rows.map((r) => ({
+            id: r.id,
+            name: r.name.trim(),
+            target: parseFloat(r.target) || 0,
+            realization: parseFloat(r.realization) || 0,
+            weight_pct: parseFloat(r.weight_pct) || 0,
+          }))
+        );
+        if (dResult.error) {
+          toast.error(dResult.error);
+          return;
+        }
+      }
+
       const saveResult = await updatePayslipManualEntries(payslip.id, {
         monthly_bonus: parseFloat(bonus) || 0,
         monthly_bonus_note: bonusNote || null,
@@ -124,6 +233,18 @@ export function PayslipMonthlyView({ userId, month, year, payslip, gracePeriodMi
       toast.success("Payslip finalized — employee can now view it");
       router.refresh();
     });
+  }
+
+  function updateRow(idx: number, patch: Partial<DeliverableRow>) {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+
+  function addRow() {
+    setRows((prev) => [...prev, emptyRow()]);
+  }
+
+  function removeRow(idx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== idx));
   }
 
   const monthLabel = new Date(year, month - 1).toLocaleDateString("en-US", {
@@ -180,38 +301,171 @@ export function PayslipMonthlyView({ userId, month, year, payslip, gracePeriodMi
               </span>
             )}
 
-            {/* Auto-Calculated Breakdown */}
-            <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Calculated Breakdown</p>
-              <div className="space-y-1 text-sm">
-                <Row label="Work Days" value={`${payslip.actual_work_days} / ${payslip.expected_work_days}`} />
-                <Row label="Base Salary" value={formatIDR(Number(payslip.base_salary))} />
-                <Row
-                  label={
-                    payslip.actual_work_days > payslip.expected_work_days
-                      ? "Prorated Salary (includes extra-day bonus)"
-                      : "Prorated Salary"
-                  }
-                  value={formatIDR(Number(payslip.prorated_salary))}
-                  highlight
-                />
-                <Row
-                  label={`Overtime (${Math.floor(payslip.total_overtime_minutes / 60)}h ${payslip.total_overtime_minutes % 60}m)`}
-                  value={`+ ${formatIDR(Number(payslip.overtime_pay))}`}
-                  positive
-                />
-                <Row
-                  label={`Late Penalty (${payslip.total_late_minutes} min)`}
-                  value={`- ${formatIDR(Number(payslip.late_penalty))}`}
-                  negative
-                />
-                {payslip.total_late_minutes > 0 && gracePeriodMin > 0 && (
-                  <p className="text-xs text-muted-foreground pl-2 leading-snug">
-                    First {gracePeriodMin} min each late day is absorbed by the grace period and not penalized — only minutes beyond that count toward the penalty.
-                  </p>
+            {/* Attendance-side breakdown */}
+            {showsAttendance && (
+              <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attendance Breakdown</p>
+                <div className="space-y-1 text-sm">
+                  <Row label="Work Days" value={`${payslip.actual_work_days} / ${payslip.expected_work_days}`} />
+                  <Row label="Base Salary" value={formatIDR(Number(payslip.base_salary))} />
+                  <Row
+                    label={
+                      payslip.actual_work_days > payslip.expected_work_days
+                        ? "Prorated Salary (includes extra-day bonus)"
+                        : "Prorated Salary"
+                    }
+                    value={formatIDR(Number(payslip.prorated_salary))}
+                    highlight
+                  />
+                  <Row
+                    label={`Overtime (${Math.floor(payslip.total_overtime_minutes / 60)}h ${payslip.total_overtime_minutes % 60}m)`}
+                    value={`+ ${formatIDR(Number(payslip.overtime_pay))}`}
+                    positive
+                  />
+                  <Row
+                    label={`Late Penalty (${payslip.total_late_minutes} min)`}
+                    value={`- ${formatIDR(Number(payslip.late_penalty))}`}
+                    negative
+                  />
+                  {payslip.total_late_minutes > 0 && gracePeriodMin > 0 && (
+                    <p className="text-xs text-muted-foreground pl-2 leading-snug">
+                      First {gracePeriodMin} min each late day is absorbed by the grace period and not penalized — only minutes beyond that count toward the penalty.
+                    </p>
+                  )}
+                  {basis === "both" && (
+                    <p className="text-xs text-muted-foreground pl-2 pt-1 leading-snug">
+                      Attendance bucket weighted at {attendanceWeightPct}%.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Deliverables section */}
+            {showsDeliverables && (
+              <div className="space-y-2 p-3 rounded-lg bg-[#ecfeff]">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deliverables</p>
+                  <span className="text-xs text-muted-foreground">
+                    Monthly fixed: {formatIDR(monthlyFixedAmount)}
+                  </span>
+                </div>
+
+                {isFinalized ? (
+                  // Read-only finalized view
+                  <div className="space-y-1 text-sm">
+                    {deliverables.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No deliverables recorded.</p>
+                    ) : (
+                      deliverables.map((d) => {
+                        const target = Number(d.target);
+                        const real = Number(d.realization);
+                        const ach = target > 0 ? (real / target) * 100 : 0;
+                        return (
+                          <div key={d.id} className="flex justify-between text-xs">
+                            <span>
+                              {d.name} <span className="text-muted-foreground">({real}/{target}, {Number(d.weight_pct)}%)</span>
+                            </span>
+                            <span className="font-medium">{ach.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })
+                    )}
+                    <Row
+                      label={`Weighted Achievement`}
+                      value={`${Number(payslip.deliverables_achievement_pct).toFixed(2)}%`}
+                      highlight
+                    />
+                    <Row
+                      label="Deliverables Pay"
+                      value={`+ ${formatIDR(Number(payslip.deliverables_pay))}`}
+                      positive
+                    />
+                    {basis === "both" && (
+                      <p className="text-xs text-muted-foreground pl-2 pt-1 leading-snug">
+                        Deliverables bucket weighted at {deliverablesWeightPct}%.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  // Editable
+                  <div className="space-y-2">
+                    <div className="space-y-2">
+                      {rows.map((r, idx) => {
+                        const target = parseFloat(r.target) || 0;
+                        const real = parseFloat(r.realization) || 0;
+                        const ach = target > 0 ? (real / target) * 100 : 0;
+                        return (
+                          <div key={idx} className="p-2 rounded-lg bg-white border border-[#e5e7eb] space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={r.name}
+                                onChange={(e) => updateRow(idx, { name: e.target.value })}
+                                placeholder="Deliverable name"
+                                className="flex-1"
+                              />
+                              {rows.length > 1 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => removeRow(idx)}
+                                  disabled={isPending}
+                                >
+                                  Remove
+                                </Button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Target</Label>
+                                <Input
+                                  type="number"
+                                  value={r.target}
+                                  onChange={(e) => updateRow(idx, { target: e.target.value })}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Realization</Label>
+                                <Input
+                                  type="number"
+                                  value={r.realization}
+                                  onChange={(e) => updateRow(idx, { realization: e.target.value })}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Weight %</Label>
+                                <Input
+                                  type="number"
+                                  value={r.weight_pct}
+                                  onChange={(e) => updateRow(idx, { weight_pct: e.target.value })}
+                                />
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground text-right">
+                              Achievement: <span className="font-medium">{ach.toFixed(1)}%</span>
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={addRow} disabled={isPending}>
+                        + Add deliverable
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleSaveDeliverables} disabled={isPending}>
+                        {isPending ? "Saving..." : "Save Deliverables"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-snug">
+                      Deliverables pay = weighted achievement % × monthly fixed amount. Current:{" "}
+                      <span className="font-medium">{Number(payslip.deliverables_achievement_pct).toFixed(2)}%</span> ={" "}
+                      <span className="font-medium">{formatIDR(Number(payslip.deliverables_pay))}</span>
+                      {basis === "both" && <> · bucket weighted at {deliverablesWeightPct}%</>}
+                    </p>
+                  </div>
                 )}
               </div>
-            </div>
+            )}
 
             {/* Manual Adjustments */}
             <div className="space-y-3 p-3 rounded-lg bg-[#f5f5f7]">

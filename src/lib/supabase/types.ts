@@ -266,6 +266,8 @@ export type Database = {
           late_penalty_amount: number;
           late_penalty_interval_min: number;
           standard_working_hours: number;
+          attendance_weight_pct: number;
+          deliverables_weight_pct: number;
           is_finalized: boolean;
           finalized_at: string | null;
           created_at: string;
@@ -285,6 +287,8 @@ export type Database = {
           late_penalty_amount?: number;
           late_penalty_interval_min?: number;
           standard_working_hours?: number;
+          attendance_weight_pct?: number;
+          deliverables_weight_pct?: number;
           is_finalized?: boolean;
           finalized_at?: string | null;
           created_at?: string;
@@ -302,6 +306,8 @@ export type Database = {
           late_penalty_amount?: number;
           late_penalty_interval_min?: number;
           standard_working_hours?: number;
+          attendance_weight_pct?: number;
+          deliverables_weight_pct?: number;
           is_finalized?: boolean;
           finalized_at?: string | null;
           updated_at?: string;
@@ -336,6 +342,8 @@ export type Database = {
           debt_deduction: number;
           other_penalty: number;
           other_penalty_note: string | null;
+          deliverables_achievement_pct: number;
+          deliverables_pay: number;
           net_total: number;
           status: "draft" | "finalized";
           created_at: string;
@@ -360,6 +368,8 @@ export type Database = {
           debt_deduction?: number;
           other_penalty?: number;
           other_penalty_note?: string | null;
+          deliverables_achievement_pct?: number;
+          deliverables_pay?: number;
           net_total?: number;
           status?: "draft" | "finalized";
           created_at?: string;
@@ -380,6 +390,8 @@ export type Database = {
           debt_deduction?: number;
           other_penalty?: number;
           other_penalty_note?: string | null;
+          deliverables_achievement_pct?: number;
+          deliverables_pay?: number;
           net_total?: number;
           status?: "draft" | "finalized";
           updated_at?: string;
@@ -390,6 +402,47 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      payslip_deliverables: {
+        Row: {
+          id: string;
+          payslip_id: string;
+          name: string;
+          target: number;
+          realization: number;
+          weight_pct: number;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          payslip_id: string;
+          name: string;
+          target?: number;
+          realization?: number;
+          weight_pct?: number;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          target?: number;
+          realization?: number;
+          weight_pct?: number;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payslip_deliverables_payslip_id_fkey";
+            columns: ["payslip_id"];
+            isOneToOne: false;
+            referencedRelation: "payslips";
             referencedColumns: ["id"];
           }
         ];
@@ -417,3 +470,5 @@ export type OvertimeRequest =
 export type PayslipSettings =
   Database["public"]["Tables"]["payslip_settings"]["Row"];
 export type Payslip = Database["public"]["Tables"]["payslips"]["Row"];
+export type PayslipDeliverable =
+  Database["public"]["Tables"]["payslip_deliverables"]["Row"];

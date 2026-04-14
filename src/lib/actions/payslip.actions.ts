@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import type { PayslipSettings, AttendanceLog, OvertimeRequest } from "@/lib/supabase/types";
+import type {
+  PayslipSettings,
+  AttendanceLog,
+  OvertimeRequest,
+  PayslipDeliverable,
+} from "@/lib/supabase/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,10 +36,9 @@ function calculateFromAttendance(
     ? Math.round((actualWorkDays / expected) * baseSalary)
     : 0;
 
-  // Overtime — only count approved
-  const approvedOtSet = new Set(
-    overtimeRequests.filter((r) => r.status === "approved").map((r) => r.attendance_log_id)
-  );
+  // Overtime — only count approved (overtime_requests currently informational;
+  // calculation uses log.overtime_status = 'approved' directly)
+  void overtimeRequests;
   let totalOvertimeMinutes = 0;
   let overtimePay = 0;
 
@@ -104,22 +108,64 @@ function calculateFromAttendance(
   };
 }
 
-function computeNetTotal(fields: {
-  prorated_salary: number;
-  overtime_pay: number;
-  late_penalty: number;
-  monthly_bonus: number;
-  debt_deduction: number;
-  other_penalty: number;
-}) {
-  return (
-    fields.prorated_salary +
-    fields.overtime_pay -
-    fields.late_penalty +
-    fields.monthly_bonus -
-    fields.debt_deduction -
-    fields.other_penalty
-  );
+/**
+ * Compute weighted achievement % across deliverables.
+ * Per-row achievement = realization / target (0 if target <= 0).
+ * Weighted average = Σ(achievement_i × weight_i) / Σweight_i.
+ * Returns 0 if there are no rows with weight.
+ */
+function computeDeliverablesAchievement(
+  deliverables: Pick<PayslipDeliverable, "target" | "realization" | "weight_pct">[]
+): number {
+  const rows = deliverables.filter((d) => Number(d.weight_pct) > 0);
+  if (rows.length === 0) return 0;
+  let weightedSum = 0;
+  let weightTotal = 0;
+  for (const d of rows) {
+    const target = Number(d.target);
+    const realization = Number(d.realization);
+    const weight = Number(d.weight_pct);
+    const achievement = target > 0 ? realization / target : 0;
+    weightedSum += achievement * weight;
+    weightTotal += weight;
+  }
+  return weightTotal > 0 ? (weightedSum / weightTotal) * 100 : 0;
+}
+
+/**
+ * Combine calculated attendance + deliverables components into a net total,
+ * applying weights when calculation_basis === 'both'.
+ */
+function computeNetTotal(
+  basis: "presence" | "deliverables" | "both",
+  attW: number,
+  delW: number,
+  fields: {
+    prorated_salary: number;
+    overtime_pay: number;
+    late_penalty: number;
+    deliverables_pay: number;
+    monthly_bonus: number;
+    debt_deduction: number;
+    other_penalty: number;
+  }
+): number {
+  const attendanceBucket =
+    fields.prorated_salary + fields.overtime_pay - fields.late_penalty;
+  const deliverablesBucket = fields.deliverables_pay;
+
+  let combined = 0;
+  if (basis === "presence") {
+    combined = attendanceBucket;
+  } else if (basis === "deliverables") {
+    combined = deliverablesBucket;
+  } else {
+    const aw = Math.max(0, attW) / 100;
+    const dw = Math.max(0, delW) / 100;
+    combined = Math.round(attendanceBucket * aw + deliverablesBucket * dw);
+  }
+
+  return combined + fields.monthly_bonus - fields.debt_deduction - fields.other_penalty;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,41 +251,57 @@ export async function calculatePayslip(userId: string, month: number, year: numb
   if (!settings) return { error: "Payslip settings not found for this employee." };
   if (!settings.is_finalized) return { error: "Payslip settings must be finalized before calculating." };
 
-  // Get employee's grace period
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("grace_period_min")
-    .eq("id", userId)
-    .single();
-  const gracePeriodMin = profile?.grace_period_min ?? 0;
+  const basis = settings.calculation_basis;
+  const includesAttendance = basis === "presence" || basis === "both";
+  const includesDeliverables = basis === "deliverables" || basis === "both";
+  const baseSalary = Number(settings.monthly_fixed_amount);
 
-  // Get attendance logs for the month
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const endDate = month === 12
-    ? `${year + 1}-01-01`
-    : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  // Attendance-side calculation (only when attendance is in play)
+  let attCalc = {
+    actual_work_days: 0,
+    expected_work_days: settings.expected_work_days,
+    base_salary: baseSalary,
+    prorated_salary: 0,
+    total_overtime_minutes: 0,
+    overtime_pay: 0,
+    total_late_minutes: 0,
+    late_penalty: 0,
+  };
 
-  const { data: logs } = await supabase
-    .from("attendance_logs")
-    .select("id, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime")
-    .eq("user_id", userId)
-    .gte("date", startDate)
-    .lt("date", endDate);
+  if (includesAttendance) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("grace_period_min")
+      .eq("id", userId)
+      .single();
+    const gracePeriodMin = profile?.grace_period_min ?? 0;
 
-  // Get overtime requests for those logs
-  const logIds = (logs ?? []).map((l) => l.id);
-  let overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[] = [];
-  if (logIds.length > 0) {
-    const { data: otReqs } = await supabase
-      .from("overtime_requests")
-      .select("attendance_log_id, overtime_minutes, status")
-      .in("attendance_log_id", logIds);
-    overtimeRequests = otReqs ?? [];
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+
+    const { data: logs } = await supabase
+      .from("attendance_logs")
+      .select("id, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime")
+      .eq("user_id", userId)
+      .gte("date", startDate)
+      .lt("date", endDate);
+
+    const logIds = (logs ?? []).map((l) => l.id);
+    let overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[] = [];
+    if (logIds.length > 0) {
+      const { data: otReqs } = await supabase
+        .from("overtime_requests")
+        .select("attendance_log_id, overtime_minutes, status")
+        .in("attendance_log_id", logIds);
+      overtimeRequests = otReqs ?? [];
+    }
+
+    attCalc = calculateFromAttendance(settings, logs ?? [], overtimeRequests, gracePeriodMin);
   }
 
-  const calc = calculateFromAttendance(settings, logs ?? [], overtimeRequests, gracePeriodMin);
-
-  // Check existing payslip to preserve manual entries
+  // Check existing payslip to preserve manual entries + deliverables
   const { data: existing } = await supabase
     .from("payslips")
     .select("*")
@@ -249,7 +311,19 @@ export async function calculatePayslip(userId: string, month: number, year: numb
     .maybeSingle();
 
   if (existing && existing.status === "finalized") {
-    return { error: "This payslip is already finalized. Cannot recalculate." };
+    return { error: "This payslip is already finalized. Reopen it first to recalculate." };
+  }
+
+  // Load existing deliverables so we can recompute the deliverables pay
+  let deliverablesAchievementPct = 0;
+  let deliverablesPay = 0;
+  if (includesDeliverables && existing) {
+    const { data: rows } = await supabase
+      .from("payslip_deliverables")
+      .select("target, realization, weight_pct")
+      .eq("payslip_id", existing.id);
+    deliverablesAchievementPct = computeDeliverablesAchievement(rows ?? []);
+    deliverablesPay = Math.round((deliverablesAchievementPct / 100) * baseSalary);
   }
 
   const manualEntries = existing
@@ -268,15 +342,26 @@ export async function calculatePayslip(userId: string, month: number, year: numb
         other_penalty_note: null,
       };
 
-  const netTotal = computeNetTotal({
-    ...calc,
-    monthly_bonus: manualEntries.monthly_bonus,
-    debt_deduction: manualEntries.debt_deduction,
-    other_penalty: manualEntries.other_penalty,
-  });
+  const netTotal = computeNetTotal(
+    basis,
+    Number(settings.attendance_weight_pct),
+    Number(settings.deliverables_weight_pct),
+    {
+      prorated_salary: attCalc.prorated_salary,
+      overtime_pay: attCalc.overtime_pay,
+      late_penalty: attCalc.late_penalty,
+      deliverables_pay: deliverablesPay,
+      monthly_bonus: manualEntries.monthly_bonus,
+      debt_deduction: manualEntries.debt_deduction,
+      other_penalty: manualEntries.other_penalty,
+    }
+  );
 
   const calcFields = {
-    ...calc,
+    ...attCalc,
+    extra_day_bonus: 0,
+    deliverables_achievement_pct: Math.round(deliverablesAchievementPct * 100) / 100,
+    deliverables_pay: deliverablesPay,
     ...manualEntries,
     net_total: netTotal,
     status: "draft" as const,
@@ -295,6 +380,80 @@ export async function calculatePayslip(userId: string, month: number, year: numb
       .insert({ user_id: userId, month, year, ...calcFields });
     if (error) return { error: error.message };
   }
+
+  revalidatePath("/admin/payslips");
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// Deliverables CRUD (admin only)
+// ---------------------------------------------------------------------------
+
+export async function getPayslipDeliverables(payslipId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("payslip_deliverables")
+    .select("*")
+    .eq("payslip_id", payslipId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  return data ?? [];
+}
+
+/**
+ * Replace the full deliverables list for a payslip. Recalculates the
+ * payslip totals afterwards so UI stays in sync.
+ */
+export async function saveDeliverables(
+  payslipId: string,
+  rows: Array<{ id?: string; name: string; target: number; realization: number; weight_pct: number }>
+): Promise<{ error?: string }> {
+  const role = await getCurrentRole();
+  adminGuard(role);
+
+  const supabase = await createClient();
+
+  const { data: payslip } = await supabase
+    .from("payslips")
+    .select("id, user_id, month, year, status")
+    .eq("id", payslipId)
+    .single();
+
+  if (!payslip) return { error: "Payslip not found." };
+  if (payslip.status === "finalized") return { error: "Reopen the payslip before editing deliverables." };
+
+  // Validate
+  for (const r of rows) {
+    if (!r.name.trim()) return { error: "Each deliverable needs a name." };
+    if (r.target < 0 || r.realization < 0 || r.weight_pct < 0) {
+      return { error: "Target, realization, and weight cannot be negative." };
+    }
+  }
+
+  // Wipe and re-insert (simpler than diffing). sort_order preserved by array index.
+  const { error: delErr } = await supabase
+    .from("payslip_deliverables")
+    .delete()
+    .eq("payslip_id", payslipId);
+  if (delErr) return { error: delErr.message };
+
+  if (rows.length > 0) {
+    const { error: insErr } = await supabase.from("payslip_deliverables").insert(
+      rows.map((r, i) => ({
+        payslip_id: payslipId,
+        name: r.name.trim(),
+        target: r.target,
+        realization: r.realization,
+        weight_pct: r.weight_pct,
+        sort_order: i,
+      }))
+    );
+    if (insErr) return { error: insErr.message };
+  }
+
+  // Recalc the payslip so totals reflect new deliverables
+  const recalc = await calculatePayslip(payslip.user_id, payslip.month, payslip.year);
+  if (recalc.error) return recalc;
 
   revalidatePath("/admin/payslips");
   return {};
@@ -335,12 +494,25 @@ export async function updatePayslipManualEntries(
     other_penalty: fields.other_penalty ?? Number(existing.other_penalty),
   };
 
-  const netTotal = computeNetTotal({
-    prorated_salary: Number(existing.prorated_salary),
-    overtime_pay: Number(existing.overtime_pay),
-    late_penalty: Number(existing.late_penalty),
-    ...merged,
-  });
+  // Need settings to know basis + weights
+  const { data: settings } = await supabase
+    .from("payslip_settings")
+    .select("calculation_basis, attendance_weight_pct, deliverables_weight_pct")
+    .eq("user_id", existing.user_id)
+    .single();
+
+  const netTotal = computeNetTotal(
+    settings?.calculation_basis ?? "presence",
+    Number(settings?.attendance_weight_pct ?? 100),
+    Number(settings?.deliverables_weight_pct ?? 0),
+    {
+      prorated_salary: Number(existing.prorated_salary),
+      overtime_pay: Number(existing.overtime_pay),
+      late_penalty: Number(existing.late_penalty),
+      deliverables_pay: Number(existing.deliverables_pay),
+      ...merged,
+    }
+  );
 
   const { error } = await supabase
     .from("payslips")
