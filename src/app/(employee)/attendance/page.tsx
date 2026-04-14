@@ -20,10 +20,17 @@ export default async function AttendancePage() {
   const role = await getCurrentRole();
   if (role === "admin") redirect("/admin/attendance");
 
-  const [logs, settings] = await Promise.all([
+  const supabaseProfile = await createClient();
+  const [logs, settings, profileRes] = await Promise.all([
     getMyAttendanceLogs(30),
     getCachedAttendanceSettings(),
+    supabaseProfile
+      .from("profiles")
+      .select("work_end_time, is_flexible_schedule")
+      .eq("id", user.id)
+      .single(),
   ]);
+  const profile = profileRes.data;
 
   // Fetch overtime requests for the employee's logs to show admin rejection reasons
   const logIds = logs.map((l) => l.id);
@@ -59,7 +66,12 @@ export default async function AttendancePage() {
         subtitle="Your check-in history and monthly summary"
       />
 
-      <AttendanceHistoryTable logs={logsWithOt} timezone={settings?.timezone} />
+      <AttendanceHistoryTable
+        logs={logsWithOt}
+        timezone={settings?.timezone}
+        workEndTime={profile?.work_end_time}
+        isFlexibleSchedule={profile?.is_flexible_schedule}
+      />
     </div>
   );
 }

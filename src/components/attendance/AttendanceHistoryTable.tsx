@@ -26,6 +26,8 @@ type LogWithOt = AttendanceLog & {
 interface AttendanceHistoryTableProps {
   logs: LogWithOt[];
   timezone?: string;
+  workEndTime?: string;
+  isFlexibleSchedule?: boolean;
 }
 
 const OT_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
@@ -34,7 +36,7 @@ const OT_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   rejected: { bg: "#fef2f2", color: "#b91c1c" },
 };
 
-export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTableProps) {
+export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexibleSchedule }: AttendanceHistoryTableProps) {
   if (logs.length === 0) {
     return (
       <EmptyState
@@ -85,6 +87,8 @@ export function AttendanceHistoryTable({ logs, timezone }: AttendanceHistoryTabl
                       attendanceLogId={log.id}
                       date={log.date}
                       checkedInAt={log.checked_in_at}
+                      workEndTime={workEndTime}
+                      isFlexibleSchedule={isFlexibleSchedule}
                     />
                   )}
                 </TableCell>

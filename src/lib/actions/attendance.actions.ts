@@ -296,6 +296,8 @@ interface LateCheckoutPayload {
   attendanceLogId: string;
   checkoutTime: string; // HH:mm format
   reason: string;
+  isOvertime?: boolean;
+  overtimeReason?: string;
 }
 
 export async function lateCheckout(payload: LateCheckoutPayload) {
@@ -335,11 +337,39 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
     return { error: "Checkout time must be after check-in time." };
   }
 
+  // Compute overtime if requested (same logic as checkOut)
+  const isOvertime = payload.isOvertime ?? false;
+  const overtimeReason = payload.overtimeReason ?? "";
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_flexible_schedule, work_end_time")
+    .eq("id", user.id)
+    .single();
+
+  let overtimeMinutes = 0;
+
+  if (isOvertime && !profile?.is_flexible_schedule) {
+    const [endH, endM] = (profile?.work_end_time ?? "18:00").split(":").map(Number);
+    const endTime = new Date(log.checked_in_at);
+    endTime.setHours(endH, endM, 0, 0);
+
+    if (checkoutDate > endTime) {
+      overtimeMinutes = Math.ceil(
+        (checkoutDate.getTime() - endTime.getTime()) / 60_000
+      );
+      overtimeMinutes = Math.min(overtimeMinutes, 480);
+    }
+  }
+
   const { data, error } = await supabase
     .from("attendance_logs")
     .update({
       checked_out_at: checkoutDate.toISOString(),
       late_checkout_reason: payload.reason.trim(),
+      is_overtime: isOvertime && overtimeMinutes > 0,
+      overtime_minutes: isOvertime ? overtimeMinutes : 0,
+      overtime_status: isOvertime && overtimeMinutes > 0 ? "pending" : null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", log.id)
@@ -347,6 +377,17 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
     .single();
 
   if (error) return { error: error.message };
+
+  // If overtime was claimed, create an overtime request
+  if (isOvertime && overtimeMinutes > 0 && data) {
+    await supabase.from("overtime_requests").insert({
+      attendance_log_id: data.id,
+      user_id: user.id,
+      date: log.date,
+      overtime_minutes: overtimeMinutes,
+      reason: overtimeReason || "No reason provided",
+    });
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/attendance");
