@@ -11,7 +11,7 @@ import { getTodayAttendance } from "@/lib/actions/attendance.actions";
 import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
-import { Card, CardContent } from "@/components/ui/card";
+import { DashboardHero } from "@/components/dashboard/DashboardHero";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { getDictionary } from "@/lib/i18n/server";
@@ -92,22 +92,33 @@ export default async function DashboardPage() {
     .map(({ title }) => title);
 
   return (
-    <div className="space-y-5 animate-fade-up">
-      <div>
-        <h2 className="text-2xl font-semibold text-foreground">
-          {t.dashboard.greeting.replace("{name}", firstName)}
-        </h2>
-        <p className="text-muted-foreground text-sm mt-0.5">{today}</p>
-      </div>
+    <div className="space-y-5">
+      <DashboardHero
+        firstName={firstName}
+        dateLabel={today}
+        timezone={settings?.timezone ?? null}
+      />
 
       <ProfileCompletionCard missingSections={missingSections} />
 
-      <Card className="border-0 shadow-sm animate-fade-up animate-fade-up-delay-1">
-        <CardContent className="p-5 space-y-4">
-          <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      {/* Attendance — magazine-style section with an eyebrow label and a soft
+          white panel that floats above the page background. The section
+          label sits *outside* the card so the card's content gets the full
+          breathing room. */}
+      <section
+        aria-label={t.dashboard.attendanceSection}
+        className="animate-fade-up animate-fade-up-delay-1"
+      >
+        <div className="flex items-center justify-between px-1 mb-2.5">
+          <span className="eyebrow text-muted-foreground">
             {t.dashboard.attendanceSection}
-          </p>
-
+          </span>
+          <span
+            aria-hidden
+            className="h-px flex-1 ml-3 bg-gradient-to-r from-border to-transparent"
+          />
+        </div>
+        <div className="panel-soft p-5 space-y-4">
           <AttendanceStatusCard
             log={todayLog}
             timezone={settings?.timezone}
@@ -119,8 +130,8 @@ export default async function DashboardPage() {
             isFlexible={profile?.is_flexible_schedule ?? false}
             workEndTime={profile?.work_end_time ?? null}
           />
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
