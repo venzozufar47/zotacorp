@@ -89,9 +89,9 @@ export function renderPasswordResetEmail({
             <tr>
               <td style="padding:28px 32px 8px 32px;">
                 <p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;color:${INK};">
-                  Klik tombol di bawah buat reset password akun Zota Corp kamu.
+                  Klik tombol di bawah untuk reset password akun Zota Corp kamu.
                   Link ini cuma aktif selama <strong>${escapeHtml(expiresIn)}</strong> dan
-                  cuma bisa dipake sekali.
+                  cuma bisa kamu pakai sekali.
                 </p>
                 <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;color:${MUTED};">
                   <em>Click the button below to reset your Zota Corp password. This link
