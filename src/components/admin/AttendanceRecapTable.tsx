@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, CheckCircle, XCircle, MessageSquare, Trash2, Paperclip } from "lucide-react";
+import { MapPin, CheckCircle, XCircle, MessageSquare, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -88,6 +88,25 @@ export function AttendanceRecapTable({
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectMessage, setRejectMessage] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [proofPreview, setProofPreview] = useState<{ url: string; name: string } | null>(null);
+  const [loadingProof, setLoadingProof] = useState<string | null>(null);
+
+  async function handleViewProof(logId: string, employeeName: string, date: string) {
+    setLoadingProof(logId);
+    try {
+      const res = await fetch(`/api/attendance/proof?logId=${logId}`);
+      const json = await res.json();
+      if (json.url) {
+        setProofPreview({ url: json.url, name: `${employeeName} — ${formatLocalDate(date)}` });
+      } else {
+        toast.error(json.error || "Failed to load proof");
+      }
+    } catch {
+      toast.error("Failed to load proof");
+    } finally {
+      setLoadingProof(null);
+    }
+  }
 
   function handleDelete(logId: string) {
     if (deletingId === logId) {
@@ -175,23 +194,12 @@ export function AttendanceRecapTable({
                       {row.late_proof_url && (
                         <button
                           className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(`/api/attendance/proof?logId=${row.id}`);
-                              const json = await res.json();
-                              if (json.url) {
-                                window.open(json.url, "_blank");
-                              } else {
-                                toast.error(json.error || "Failed to load proof");
-                              }
-                            } catch {
-                              toast.error("Failed to load proof");
-                            }
-                          }}
+                          onClick={() => handleViewProof(row.id, row.profiles.full_name, row.date)}
+                          disabled={loadingProof === row.id}
                           title="View late excuse proof"
                         >
                           <Paperclip size={12} />
-                          View
+                          {loadingProof === row.id ? "Loading…" : "View"}
                         </button>
                       )}
                     </div>
@@ -356,6 +364,50 @@ export function AttendanceRecapTable({
           </TableBody>
         </Table>
       </div>
+
+      {/* Inline Proof Preview */}
+      {proofPreview && (
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-[#f5f5f7] border-b">
+            <p className="text-sm font-medium">{proofPreview.name}</p>
+            <div className="flex items-center gap-1">
+              <a
+                href={proofPreview.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg hover:bg-white/80 transition-colors"
+                style={{ color: "var(--primary)" }}
+                title="Open in new tab"
+              >
+                <ExternalLink size={12} />
+                New tab
+              </a>
+              <button
+                onClick={() => setProofPreview(null)}
+                className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/80 transition-colors text-muted-foreground"
+                title="Close preview"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-center bg-[#fafafa] min-h-[300px] max-h-[70vh]">
+            {proofPreview.url.match(/\.(jpe?g|png|gif|webp)/i) || proofPreview.url.includes("image") ? (
+              <img
+                src={proofPreview.url}
+                alt="Late proof"
+                className="max-w-full max-h-[70vh] object-contain"
+              />
+            ) : (
+              <iframe
+                src={proofPreview.url}
+                className="w-full h-[70vh] border-0"
+                title="Late proof preview"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
