@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, User, LogOut, Receipt, Settings } from "lucide-react";
-import { signOut } from "@/lib/actions/auth.actions";
+import { LayoutDashboard, Clock, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { HamburgerMenu } from "./HamburgerMenu";
 
 export function Sidebar({ className }: { className?: string }) {
   const pathname = usePathname();
@@ -15,8 +15,6 @@ export function Sidebar({ className }: { className?: string }) {
     { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home },
     { href: "/attendance", icon: Clock, label: t.nav.attendance },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips },
-    { href: "/profile", icon: User, label: t.nav.profile },
-    { href: "/settings", icon: Settings, label: t.nav.settings },
   ];
 
   return (
@@ -52,17 +50,10 @@ export function Sidebar({ className }: { className?: string }) {
         })}
       </nav>
 
-      {/* Sign out */}
+      {/* Profile / Settings / Sign out — collapsed into one hamburger menu
+          so the primary sidebar keeps a tight 3-item focus. */}
       <div className="px-3 py-4 border-t border-border">
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all"
-          >
-            <LogOut size={18} strokeWidth={1.8} />
-            {t.nav.signOut}
-          </button>
-        </form>
+        <HamburgerMenu variant="sidebar" />
       </div>
     </aside>
   );

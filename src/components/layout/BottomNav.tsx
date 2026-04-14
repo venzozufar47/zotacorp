@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, User, LogOut, Receipt, Settings } from "lucide-react";
-import { signOut } from "@/lib/actions/auth.actions";
+import { LayoutDashboard, Clock, Receipt } from "lucide-react";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { HamburgerMenu } from "./HamburgerMenu";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -14,8 +14,6 @@ export function BottomNav() {
     { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home },
     { href: "/attendance", icon: Clock, label: t.nav.attendance },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips },
-    { href: "/profile", icon: User, label: t.nav.profile },
-    { href: "/settings", icon: Settings, label: t.nav.settings },
   ];
 
   return (
@@ -38,15 +36,9 @@ export function BottomNav() {
             </Link>
           );
         })}
-        <form action={signOut} className="flex-1">
-          <button
-            type="submit"
-            className="flex flex-col items-center gap-1 w-full py-3 text-[11px] text-muted-foreground transition-colors hover:text-destructive"
-          >
-            <LogOut size={22} strokeWidth={1.8} />
-            <span>{t.nav.signOut}</span>
-          </button>
-        </form>
+        {/* Profile / Settings / Sign out consolidated into one bottom-sheet
+            menu so the rail keeps a 4-tab max on small screens. */}
+        <HamburgerMenu variant="bottom" />
       </div>
     </nav>
   );

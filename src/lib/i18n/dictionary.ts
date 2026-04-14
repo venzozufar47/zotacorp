@@ -13,6 +13,7 @@ export const dictionary = {
       settings: "Settings",
       users: "Users",
       signOut: "Sign out",
+      menu: "Menu",
     },
     settings: {
       title: "Settings",
@@ -230,6 +231,7 @@ export const dictionary = {
       settings: "Pengaturan",
       users: "Pengguna",
       signOut: "Keluar",
+      menu: "Menu",
     },
     settings: {
       title: "Pengaturan",
