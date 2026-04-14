@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { lateCheckout } from "@/lib/actions/attendance.actions";
-import { formatLocalDate } from "@/lib/utils/date";
+import { formatLocalDate, formatTime } from "@/lib/utils/date";
 
 interface LateCheckoutDialogProps {
   attendanceLogId: string;
@@ -24,6 +24,8 @@ interface LateCheckoutDialogProps {
   checkedInAt: string;
   workEndTime?: string; // "HH:mm" or "HH:mm:ss"
   isFlexibleSchedule?: boolean;
+  /** Admin-configured org timezone — always wins over browser local. */
+  timezone?: string;
 }
 
 export function LateCheckoutDialog({
@@ -32,6 +34,7 @@ export function LateCheckoutDialog({
   checkedInAt,
   workEndTime,
   isFlexibleSchedule,
+  timezone,
 }: LateCheckoutDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -103,12 +106,10 @@ export function LateCheckoutDialog({
     });
   }
 
-  // Extract check-in time for display
-  const checkinTime = new Date(checkedInAt).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  // Extract check-in time for display — always rendered in the admin
+  // org timezone so late-checkout comparisons match the attendance
+  // calculation. Never uses the browser's local timezone.
+  const checkinTime = formatTime(checkedInAt, timezone);
 
   return (
     <>

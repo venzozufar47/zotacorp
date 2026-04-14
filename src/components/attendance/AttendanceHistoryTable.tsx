@@ -89,6 +89,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                       checkedInAt={log.checked_in_at}
                       workEndTime={workEndTime}
                       isFlexibleSchedule={isFlexibleSchedule}
+                      timezone={timezone}
                     />
                   )}
                 </TableCell>
