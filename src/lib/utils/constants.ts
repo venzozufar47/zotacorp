@@ -14,6 +14,6 @@ export const BUSINESS_UNIT_ROLES: Record<BusinessUnit, readonly string[]> = {
   Gritamora: ["Admin", "Storage"],
 };
 
-export const GENDERS = ["Female", "Male", "Other"] as const;
+export const GENDERS = ["Female", "Male"] as const;
 
 export const SHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"] as const;
