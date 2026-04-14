@@ -31,8 +31,19 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Zota Corp",
-  description: "Employee Dashboard — Zota Corp",
+  title: "Selamat datang orang baik!",
+  description: "Selamat datang orang baik!",
+  openGraph: {
+    title: "Selamat datang orang baik!",
+    description: "Selamat datang orang baik!",
+    siteName: "Zota Corp",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Selamat datang orang baik!",
+    description: "Selamat datang orang baik!",
+  },
 };
 
 export default function RootLayout({

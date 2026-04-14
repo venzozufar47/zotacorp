@@ -13,7 +13,7 @@ export default function AuthLayout({
             alt="Zota Corp"
             className="h-16 mx-auto mb-2"
           />
-          <p className="text-muted-foreground text-sm">Employee Dashboard</p>
+          <p className="text-muted-foreground text-sm">Selamat datang orang baik!</p>
         </div>
         {children}
       </div>
