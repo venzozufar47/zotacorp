@@ -367,11 +367,6 @@ export function PayslipMonthlyView({
                     value={`- ${formatIDR(Number(payslip.late_penalty))}`}
                     negative
                   />
-                  {payslip.total_late_minutes > 0 && gracePeriodMin > 0 && (
-                    <p className="text-xs text-muted-foreground pl-2 leading-snug">
-                      First {gracePeriodMin} min each late day is absorbed by the grace period and not penalized — only minutes beyond that count toward the penalty.
-                    </p>
-                  )}
                   {basis === "both" && (
                     <p className="text-xs text-muted-foreground pl-2 pt-1 leading-snug">
                       Attendance bucket weighted at {attendanceWeightPct}%.
