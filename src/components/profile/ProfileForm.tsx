@@ -307,6 +307,11 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
       </SectionCard>
 
       {/* Hometown */}
+      {(() => {
+        // Derive "locked" state here so the checkbox, the AddressPicker, and
+        // the save button all read from one source of truth.
+        const asalLocked = isEditing("asal") && asalMatchesDomisili(state);
+        return (
       <SectionCard
         title={pf.sectionHometown}
         labels={pf}
@@ -320,7 +325,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
           <label className="flex items-start gap-3 rounded-xl border border-border bg-[#f5f5f7]/60 px-3 py-2.5 cursor-pointer">
             <input
               type="checkbox"
-              checked={asalMatchesDomisili(state)}
+              checked={asalLocked}
               onChange={(e) => {
                 if (e.target.checked) {
                   // Mirror domisili → asal. We copy values (rather than aliasing)
@@ -360,7 +365,13 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
           </label>
         )}
         <AddressPicker
-          editing={isEditing("asal")}
+          // When "same as current residence" is ticked we force read-only
+          // rendering: (a) it visually signals the fields are locked because
+          // they mirror domisili, and (b) it sidesteps a Radix Select quirk
+          // where the cascading lists (kota / kecamatan / kelurahan) haven't
+          // been fetched yet when values are injected wholesale, so their
+          // labels render blank until the user interacts.
+          editing={isEditing("asal") && !asalLocked}
           values={{
             provinsi: state.asal_provinsi,
             kota: state.asal_kota,
@@ -380,6 +391,8 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
           }}
         />
       </SectionCard>
+        );
+      })()}
 
       {/* Work Information */}
       <SectionCard
