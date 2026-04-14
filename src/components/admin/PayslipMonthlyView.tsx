@@ -15,7 +15,8 @@ import {
   saveDeliverables,
 } from "@/lib/actions/payslip.actions";
 import { formatIDR } from "@/lib/utils/currency";
-import type { Payslip, PayslipDeliverable } from "@/lib/supabase/types";
+import type { Payslip, PayslipDeliverable, PayslipBreakdown } from "@/lib/supabase/types";
+import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 
 type Basis = "presence" | "deliverables" | "both";
 
@@ -377,6 +378,16 @@ export function PayslipMonthlyView({
                     </p>
                   )}
                 </div>
+
+                {payslip.breakdown_json && (
+                  <div className="pt-2">
+                    <PayslipBreakdownDetails
+                      breakdown={payslip.breakdown_json as PayslipBreakdown}
+                      totalOvertimePay={Number(payslip.overtime_pay)}
+                      totalLatePenalty={Number(payslip.late_penalty)}
+                    />
+                  </div>
+                )}
               </div>
             )}
 

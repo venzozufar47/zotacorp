@@ -8,6 +8,7 @@ import type {
   AttendanceLog,
   OvertimeRequest,
   PayslipDeliverable,
+  PayslipBreakdown,
 } from "@/lib/supabase/types";
 
 // ---------------------------------------------------------------------------
@@ -18,10 +19,19 @@ function adminGuard(role: string | null) {
   if (role !== "admin") throw new Error("Forbidden");
 }
 
-/** Pure calculation: compute payslip fields from attendance + settings */
+/**
+ * Pure calculation: compute payslip fields from attendance + settings.
+ * Also returns `breakdown` — a per-day snapshot for employee transparency.
+ *
+ * For per-minutes late penalty, the actual penalty is computed on the
+ * aggregate (`floor(total_penalized / interval) * amount`) so partial
+ * intervals don't stack across days. The per-day penalty in the breakdown
+ * is allocated proportionally from the aggregate — the per-day values
+ * always sum to exactly the aggregate penalty.
+ */
 function calculateFromAttendance(
   settings: PayslipSettings,
-  logs: Pick<AttendanceLog, "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime">[],
+  logs: Pick<AttendanceLog, "date" | "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime">[],
   overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[],
   gracePeriodMin: number = 0
 ) {
@@ -41,59 +51,124 @@ function calculateFromAttendance(
   void overtimeRequests;
   let totalOvertimeMinutes = 0;
   let overtimePay = 0;
+  const overtimeDays: PayslipBreakdown["overtime_days"] = [];
 
   if (settings.overtime_mode === "hourly_tiered") {
     for (const log of completedLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
-      // Only count if approved via overtime_requests or overtime_status = approved
       if (log.overtime_status !== "approved") continue;
       const mins = log.overtime_minutes;
       totalOvertimeMinutes += mins;
       const hours = mins / 60;
       const firstHour = Math.min(hours, 1);
       const nextHours = Math.max(hours - 1, 0);
-      overtimePay += Math.round(
+      const dayPay = Math.round(
         firstHour * Number(settings.ot_first_hour_rate) +
         nextHours * Number(settings.ot_next_hour_rate)
       );
+      overtimePay += dayPay;
+      overtimeDays.push({ date: log.date, minutes: mins, pay: dayPay });
     }
   } else {
     // fixed_per_day
-    let otDays = 0;
+    const dailyRate = Number(settings.ot_fixed_daily_rate);
     for (const log of completedLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
       totalOvertimeMinutes += log.overtime_minutes;
-      otDays++;
+      const dayPay = Math.round(dailyRate);
+      overtimePay += dayPay;
+      overtimeDays.push({ date: log.date, minutes: log.overtime_minutes, pay: dayPay });
     }
-    overtimePay = Math.round(otDays * Number(settings.ot_fixed_daily_rate));
   }
 
-  // Late penalty — exclude excused
+  // Late penalty — exclude excused (status !== 'late')
   // Display: raw late_minutes (from standard sign-in time)
   // Penalty: late_minutes minus grace period (penalized portion only)
-  let totalLateMinutes = 0; // raw display value
-  let penalizedLateMinutes = 0; // for penalty calculation
+  let totalLateMinutes = 0;
+  let penalizedLateMinutes = 0;
   let latePenalty = 0;
   let lateDays = 0;
 
+  type LateRow = {
+    date: string;
+    raw_minutes: number;
+    after_grace_minutes: number;
+    excused: boolean;
+  };
+  const lateRows: LateRow[] = [];
+
   for (const log of completedLogs) {
-    if (log.status === "late" && log.late_minutes > 0) {
+    // Show excused late days too — zero penalty, flagged — so employees see
+    // the full picture. Only 'late' (unexcused) counts toward penalty.
+    if (log.status === "late_excused" && log.late_minutes > 0) {
+      totalLateMinutes += log.late_minutes;
+      lateRows.push({
+        date: log.date,
+        raw_minutes: log.late_minutes,
+        after_grace_minutes: 0,
+        excused: true,
+      });
+    } else if (log.status === "late" && log.late_minutes > 0) {
       totalLateMinutes += log.late_minutes;
       const penalized = Math.max(log.late_minutes - gracePeriodMin, 0);
       if (penalized > 0) {
         penalizedLateMinutes += penalized;
         lateDays++;
       }
+      lateRows.push({
+        date: log.date,
+        raw_minutes: log.late_minutes,
+        after_grace_minutes: penalized,
+        excused: false,
+      });
     }
   }
 
+  // Aggregate penalty calculation (unchanged)
   if (settings.late_penalty_mode === "per_minutes" && settings.late_penalty_interval_min > 0) {
     const intervals = Math.floor(penalizedLateMinutes / settings.late_penalty_interval_min);
     latePenalty = Math.round(intervals * Number(settings.late_penalty_amount));
   } else if (settings.late_penalty_mode === "per_day") {
     latePenalty = Math.round(lateDays * Number(settings.late_penalty_amount));
   }
+
+  // Allocate per-day penalty. For per_day: each unexcused late day gets the flat amount.
+  // For per_minutes: proportional to after_grace_minutes, with rounding residual
+  // assigned to the last row so the sum matches the aggregate exactly.
+  const lateDaysBreakdown: PayslipBreakdown["late_days"] = lateRows.map((r) => ({
+    ...r,
+    penalty: 0,
+  }));
+
+  if (settings.late_penalty_mode === "per_day") {
+    const flat = Math.round(Number(settings.late_penalty_amount));
+    for (const row of lateDaysBreakdown) {
+      if (!row.excused && row.after_grace_minutes > 0) row.penalty = flat;
+    }
+  } else if (settings.late_penalty_mode === "per_minutes" && penalizedLateMinutes > 0 && latePenalty > 0) {
+    let allocated = 0;
+    const penalizedRows = lateDaysBreakdown.filter(
+      (r) => !r.excused && r.after_grace_minutes > 0
+    );
+    penalizedRows.forEach((row, idx) => {
+      if (idx === penalizedRows.length - 1) {
+        row.penalty = latePenalty - allocated;
+      } else {
+        const share = Math.round((row.after_grace_minutes / penalizedLateMinutes) * latePenalty);
+        row.penalty = share;
+        allocated += share;
+      }
+    });
+  }
+
+  const breakdown: PayslipBreakdown = {
+    overtime_mode: settings.overtime_mode,
+    late_penalty_mode: settings.late_penalty_mode,
+    grace_period_min: gracePeriodMin,
+    overtime_days: overtimeDays.sort((a, b) => a.date.localeCompare(b.date)),
+    late_days: lateDaysBreakdown.sort((a, b) => a.date.localeCompare(b.date)),
+  };
 
   return {
     actual_work_days: actualWorkDays,
@@ -105,6 +180,7 @@ function calculateFromAttendance(
     overtime_pay: overtimePay,
     total_late_minutes: totalLateMinutes,
     late_penalty: latePenalty,
+    breakdown,
   };
 }
 
@@ -257,6 +333,13 @@ export async function calculatePayslip(userId: string, month: number, year: numb
   const baseSalary = Number(settings.monthly_fixed_amount);
 
   // Attendance-side calculation (only when attendance is in play)
+  const emptyBreakdown: PayslipBreakdown = {
+    overtime_mode: settings.overtime_mode,
+    late_penalty_mode: settings.late_penalty_mode,
+    grace_period_min: 0,
+    overtime_days: [],
+    late_days: [],
+  };
   let attCalc = {
     actual_work_days: 0,
     expected_work_days: settings.expected_work_days,
@@ -266,6 +349,7 @@ export async function calculatePayslip(userId: string, month: number, year: numb
     overtime_pay: 0,
     total_late_minutes: 0,
     late_penalty: 0,
+    breakdown: emptyBreakdown,
   };
 
   if (includesAttendance) {
@@ -283,7 +367,7 @@ export async function calculatePayslip(userId: string, month: number, year: numb
 
     const { data: logs } = await supabase
       .from("attendance_logs")
-      .select("id, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime")
+      .select("id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime")
       .eq("user_id", userId)
       .gte("date", startDate)
       .lt("date", endDate);
@@ -357,14 +441,16 @@ export async function calculatePayslip(userId: string, month: number, year: numb
     }
   );
 
+  const { breakdown: attBreakdown, ...attFields } = attCalc;
   const calcFields = {
-    ...attCalc,
+    ...attFields,
     extra_day_bonus: 0,
     deliverables_achievement_pct: Math.round(deliverablesAchievementPct * 100) / 100,
     deliverables_pay: deliverablesPay,
     ...manualEntries,
     net_total: netTotal,
     status: "draft" as const,
+    breakdown_json: includesAttendance ? attBreakdown : null,
     updated_at: new Date().toISOString(),
   };
 

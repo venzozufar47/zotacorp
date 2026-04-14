@@ -6,6 +6,8 @@ import { getEmployeePayslips, getPayslipDeliverables } from "@/lib/actions/paysl
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatIDR } from "@/lib/utils/currency";
+import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
+import type { PayslipBreakdown } from "@/lib/supabase/types";
 
 export default async function EmployeePayslipsPage() {
   const user = await getCurrentUser();
@@ -124,6 +126,14 @@ export default async function EmployeePayslipsPage() {
                       </div>
                     )}
                   </div>
+
+                  {p.breakdown_json && (
+                    <PayslipBreakdownDetails
+                      breakdown={p.breakdown_json as PayslipBreakdown}
+                      totalOvertimePay={Number(p.overtime_pay)}
+                      totalLatePenalty={Number(p.late_penalty)}
+                    />
+                  )}
 
                   <div className="flex items-center justify-between p-2.5 rounded-lg" style={{ background: "var(--primary)", color: "white" }}>
                     <span className="text-xs font-semibold">Net Total</span>

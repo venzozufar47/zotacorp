@@ -6,6 +6,29 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+/**
+ * Per-day transparency snapshot stored on payslips.breakdown_json. Captured at
+ * calculation time so finalized payslips remain immutable even if settings or
+ * raw attendance data change later.
+ */
+export type PayslipBreakdown = {
+  overtime_mode: "hourly_tiered" | "fixed_per_day";
+  late_penalty_mode: "per_minutes" | "per_day" | "none";
+  grace_period_min: number;
+  overtime_days: Array<{
+    date: string; // YYYY-MM-DD
+    minutes: number;
+    pay: number;
+  }>;
+  late_days: Array<{
+    date: string; // YYYY-MM-DD
+    raw_minutes: number;
+    after_grace_minutes: number;
+    penalty: number;
+    excused: boolean;
+  }>;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -376,6 +399,7 @@ export type Database = {
           deliverables_pay: number;
           net_total: number;
           status: "draft" | "finalized";
+          breakdown_json: PayslipBreakdown | null;
           created_at: string;
           updated_at: string;
         };
@@ -402,6 +426,7 @@ export type Database = {
           deliverables_pay?: number;
           net_total?: number;
           status?: "draft" | "finalized";
+          breakdown_json?: PayslipBreakdown | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -424,6 +449,7 @@ export type Database = {
           deliverables_pay?: number;
           net_total?: number;
           status?: "draft" | "finalized";
+          breakdown_json?: PayslipBreakdown | null;
           updated_at?: string;
         };
         Relationships: [
