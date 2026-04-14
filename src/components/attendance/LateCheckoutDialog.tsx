@@ -55,6 +55,17 @@ export function LateCheckoutDialog({
       toast.error("Please enter a checkout time");
       return;
     }
+    // Block same-or-before check-in (compare minute-of-day)
+    const [th, tm] = time.split(":").map(Number);
+    const [ch, cm] = checkinTime.split(":").map(Number);
+    if (!isNaN(th) && !isNaN(ch)) {
+      const checkoutMin = th * 60 + tm;
+      const checkinMin = ch * 60 + cm;
+      if (checkoutMin <= checkinMin) {
+        toast.error(`Checkout time must be after check-in (${checkinTime})`);
+        return;
+      }
+    }
     if (!reason.trim()) {
       toast.error("Please provide a reason for the missed checkout");
       return;

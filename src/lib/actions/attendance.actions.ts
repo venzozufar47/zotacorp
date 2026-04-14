@@ -352,9 +352,9 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
   const offsetMs = tzWall.getTime() - utcWall.getTime();
   const checkoutDate = new Date(assumedUtc.getTime() - offsetMs);
 
-  // Ensure checkout time is after check-in time
-  if (checkoutDate <= checkinDate) {
-    return { error: "Checkout time must be after check-in time." };
+  // Ensure checkout time is strictly after check-in time (same day, same TZ)
+  if (checkoutDate.getTime() <= checkinDate.getTime()) {
+    return { error: "Checkout time cannot be the same as or before check-in time." };
   }
 
   // Compute overtime if requested (same logic as checkOut)
