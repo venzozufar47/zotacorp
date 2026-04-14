@@ -107,8 +107,29 @@ export async function POST() {
 
     if (sendError) {
       console.error("Password reset: resend send failed", sendError);
+
+      // Resend's sandbox-mode restriction — happens when RESEND_FROM uses
+      // `onboarding@resend.dev` AND the target isn't the Resend account
+      // owner's email. Surface the actionable fix instead of a generic
+      // "try again" that the user can't do anything about.
+      const msg = sendError.message ?? "";
+      if (
+        sendError.name === "validation_error" &&
+        /only send testing emails/i.test(msg)
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Email sender domain isn't verified in Resend yet. Ask the admin to verify a Zota Corp domain at resend.com/domains and update RESEND_FROM.",
+          },
+          { status: 502 }
+        );
+      }
+
+      // Any other Resend error — surface its message so the failure is
+      // diagnosable from the toast instead of silently generic.
       return NextResponse.json(
-        { error: "Could not send email. Try again in a moment." },
+        { error: msg || "Could not send email. Try again in a moment." },
         { status: 502 }
       );
     }
