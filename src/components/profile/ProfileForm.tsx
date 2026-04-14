@@ -15,7 +15,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Pencil, X, Check } from "lucide-react";
+import { Pencil, X, Check, Ruler } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import Image from "next/image";
 import {
   BUSINESS_UNITS,
   BUSINESS_UNIT_ROLES,
@@ -208,21 +216,35 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               placeholder="City of birth"
             />
           </Field>
-          <Field label="Shirt Size" value={state.shirt_size} editing={isEditing("personal")}>
-            <Select
-              value={state.shirt_size || undefined}
-              onValueChange={(v) => set("shirt_size", v ?? "")}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select..." />
-              </SelectTrigger>
-              <SelectContent>
-                {SHIRT_SIZES.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Shirt Size</Label>
+              <SizeChartDialog />
+            </div>
+            {isEditing("personal") ? (
+              <Select
+                value={state.shirt_size || undefined}
+                onValueChange={(v) => set("shirt_size", v ?? "")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {SHIRT_SIZES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p
+                className={`text-sm py-2 px-3 rounded-md bg-[#f5f5f7] min-h-[36px] ${
+                  !state.shirt_size ? "text-muted-foreground italic" : "text-foreground"
+                }`}
+              >
+                {state.shirt_size || "Not filled"}
+              </p>
+            )}
+          </div>
         </div>
       </SectionCard>
 
@@ -515,6 +537,41 @@ function SectionCard({
       </CardHeader>
       <CardContent className="space-y-4">{children}</CardContent>
     </Card>
+  );
+}
+
+function SizeChartDialog() {
+  return (
+    <Dialog>
+      <DialogTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        <Ruler size={12} className="mr-1" />
+        View size chart
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Shirt Size Chart</DialogTitle>
+        </DialogHeader>
+        <div className="relative w-full" style={{ aspectRatio: "4 / 3" }}>
+          <Image
+            src="/sizechart.jpeg"
+            alt="Shirt size chart"
+            fill
+            className="object-contain rounded-md"
+            sizes="(max-width: 768px) 100vw, 640px"
+            priority
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
