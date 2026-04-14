@@ -37,14 +37,14 @@ export const metadata: Metadata = {
   title: "Zota Corp",
   description: "Zota Corp — employee operations",
   openGraph: {
-    title: "Selamat datang orang baik!",
+    title: "Zota Corp",
     description: "Selamat datang orang baik!",
     siteName: "Zota Corp",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "Selamat datang orang baik!",
+    title: "Zota Corp",
     description: "Selamat datang orang baik!",
   },
 };
