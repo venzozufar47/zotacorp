@@ -35,6 +35,7 @@ const ALLOWED_FIELDS = [
   "asal_kecamatan",
   "asal_kelurahan",
   "asal_alamat",
+  "extra_work_enabled",
 ] as const;
 
 function sanitize(body: Record<string, unknown>): ProfileUpdate {

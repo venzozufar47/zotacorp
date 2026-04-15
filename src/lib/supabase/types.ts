@@ -71,6 +71,7 @@ export type Database = {
           asal_kecamatan: string | null;
           asal_kelurahan: string | null;
           asal_alamat: string | null;
+          extra_work_enabled: boolean;
         };
         Insert: {
           id: string;
@@ -110,6 +111,7 @@ export type Database = {
           asal_kecamatan?: string | null;
           asal_kelurahan?: string | null;
           asal_alamat?: string | null;
+          extra_work_enabled?: boolean;
         };
         Update: {
           id?: string;
@@ -148,6 +150,7 @@ export type Database = {
           asal_kecamatan?: string | null;
           asal_kelurahan?: string | null;
           asal_alamat?: string | null;
+          extra_work_enabled?: boolean;
         };
         Relationships: [];
       };
@@ -486,6 +489,34 @@ export type Database = {
           }
         ];
       };
+      extra_work_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          date: string;
+          kind: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          date: string;
+          kind: string;
+          created_at?: string;
+        };
+        Update: {
+          kind?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "extra_work_logs_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       whatsapp_notification_recipients: {
         Row: {
           id: string;
@@ -634,6 +665,8 @@ export type PayslipSettings =
 export type Payslip = Database["public"]["Tables"]["payslips"]["Row"];
 export type PayslipDeliverable =
   Database["public"]["Tables"]["payslip_deliverables"]["Row"];
+export type ExtraWorkLog =
+  Database["public"]["Tables"]["extra_work_logs"]["Row"];
 export type AttendanceLocation =
   Database["public"]["Tables"]["attendance_locations"]["Row"];
 export type EmployeeLocation =

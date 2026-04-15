@@ -95,6 +95,7 @@ export default async function AdminUsersPage() {
       grace_period_min: p.grace_period_min ?? 15,
       profile_complete: profileComplete,
       assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
+      extra_work_enabled: p.extra_work_enabled ?? false,
     };
   });
 

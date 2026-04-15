@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/cached";
 import { getTodayAttendance } from "@/lib/actions/attendance.actions";
 import { CheckInButton } from "@/components/attendance/CheckInButton";
+import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
 import { DashboardHero } from "@/components/dashboard/DashboardHero";
@@ -85,6 +86,20 @@ export default async function DashboardPage() {
     overtimeAdminNote = otReq?.admin_note ?? null;
   }
 
+  // Today's extra-work entries — only fetched when the per-user feature
+  // flag is on so disabled accounts don't hit the table at all.
+  let extraWorkToday: { id: string; kind: string; created_at: string }[] = [];
+  if (profile?.extra_work_enabled) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("extra_work_logs")
+      .select("id, kind, created_at")
+      .eq("user_id", user.id)
+      .eq("date", format(new Date(), "yyyy-MM-dd"))
+      .order("created_at", { ascending: false });
+    extraWorkToday = data ?? [];
+  }
+
   const missingSections = PROFILE_SECTIONS
     .filter(({ keys }) =>
       keys.some((k) => !profile?.[k as keyof typeof profile])
@@ -132,6 +147,9 @@ export default async function DashboardPage() {
             workStartTime={profile?.work_start_time ?? null}
             workEndTime={profile?.work_end_time ?? null}
           />
+          {profile?.extra_work_enabled && (
+            <ExtraWorkButton todayEntries={extraWorkToday} />
+          )}
         </div>
       </section>
     </div>

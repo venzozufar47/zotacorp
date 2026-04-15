@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 import {
   Pencil,
   Trash2,
@@ -63,6 +64,9 @@ interface UserRow {
   /** IDs of attendance_locations this employee is allowed to check in at.
    *  Empty array = unrestricted (can check in anywhere). */
   assigned_location_ids: string[];
+  /** When true, the employee sees the "Add extra work" button on their
+   *  dashboard. Toggleable from this table. */
+  extra_work_enabled: boolean;
 }
 
 interface LocationOption {
@@ -196,6 +200,9 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
                 {tu.colLocations}
               </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                {t.extraWork.adminColLabel}
+              </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">
                 {tu.colActions}
               </TableHead>
@@ -250,6 +257,13 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
                       allLocations={allLocations}
                       onEdit={() => setEditingLocations(row)}
                       tu={tu}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <ExtraWorkToggle
+                      userId={row.id}
+                      initial={row.extra_work_enabled}
+                      ariaLabel={t.extraWork.adminToggleAria}
                     />
                   </TableCell>
                   <TableCell className="text-right">
@@ -360,6 +374,64 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
  *   - 3+    → "{N} lokasi" with the count, same shape as when all sites
  *     are assigned.
  */
+/**
+ * Tiny inline toggle backed by `/api/profile/update`. We don't have a
+ * proper Switch primitive yet, so this is a styled checkbox: visually a
+ * pill, semantically a `role="switch"`. Optimistically flips on click
+ * and rolls back if the network call fails.
+ */
+function ExtraWorkToggle({
+  userId,
+  initial,
+  ariaLabel,
+}: {
+  userId: string;
+  initial: boolean;
+  ariaLabel: string;
+}) {
+  const [enabled, setEnabled] = useState(initial);
+  const [pending, startTransition] = useTransition();
+
+  function flip() {
+    const next = !enabled;
+    setEnabled(next);
+    startTransition(async () => {
+      const res = await fetch("/api/profile/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetId: userId, extra_work_enabled: next }),
+      });
+      if (!res.ok) {
+        toast.error("Gagal update toggle");
+        setEnabled(!next);
+      }
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={ariaLabel}
+      disabled={pending}
+      onClick={flip}
+      className={cn(
+        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+        enabled ? "bg-[color:var(--primary)]" : "bg-muted",
+        pending && "opacity-50"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-4 w-4 rounded-full bg-white transition-transform shadow-sm",
+          enabled ? "translate-x-4" : "translate-x-0.5"
+        )}
+      />
+    </button>
+  );
+}
+
 function LocationsCell({
   row,
   allLocations,
