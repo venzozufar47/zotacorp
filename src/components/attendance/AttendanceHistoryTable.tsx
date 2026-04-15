@@ -21,7 +21,9 @@ import { StatusBadge } from "./StatusBadge";
 import { LateProofUploadDialog } from "./LateProofUploadDialog";
 import { LateCheckoutDialog } from "./LateCheckoutDialog";
 import { AttendanceNotesCell } from "./AttendanceNotesCell";
+import { SelfiePreviewDialog } from "./SelfiePreviewDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { useState } from "react";
 
 type LogWithOt = AttendanceLog & {
   overtime_admin_note?: string | null;
@@ -42,6 +44,7 @@ const OT_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
 
 export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexibleSchedule }: AttendanceHistoryTableProps) {
   const { t } = useTranslation();
+  const [selfieLog, setSelfieLog] = useState<{ id: string; title: string } | null>(null);
 
   if (logs.length === 0) {
     return (
@@ -62,7 +65,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide w-[180px] max-w-[180px]">Overtime</TableHead>
+            <TableHead className="text-xs font-semibold uppercase tracking-wide w-[260px] max-w-[260px]">Overtime</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">{t.attendanceTable.colNotes}</TableHead>
           </TableRow>
         </TableHeader>
@@ -77,7 +80,25 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                 <TableCell className="font-medium">
                   {formatLocalDate(log.date)}
                 </TableCell>
-                <TableCell>{formatTime(log.checked_in_at, timezone)}</TableCell>
+                <TableCell>
+                  {log.selfie_path ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelfieLog({
+                          id: log.id,
+                          title: formatLocalDate(log.date),
+                        })
+                      }
+                      className="underline-offset-2 hover:underline tabular-nums"
+                      style={{ color: "var(--primary)" }}
+                    >
+                      {formatTime(log.checked_in_at, timezone)}
+                    </button>
+                  ) : (
+                    formatTime(log.checked_in_at, timezone)
+                  )}
+                </TableCell>
                 <TableCell>
                   {log.checked_out_at ? (
                     formatTime(log.checked_out_at, timezone)
@@ -137,7 +158,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="w-[180px] max-w-[180px] overflow-hidden">
+                <TableCell className="w-[260px] max-w-[260px] overflow-hidden">
                   {log.is_overtime && log.overtime_minutes > 0 && otStyle ? (
                     <div className="space-y-1">
                       <Badge
@@ -163,7 +184,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                       >
                         Rejected
                       </Badge>
-                      <div className="flex items-start gap-1 max-w-[180px]">
+                      <div className="flex items-start gap-1 max-w-[260px]">
                         <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
                         <p className="text-xs leading-tight" style={{ color: "#b91c1c" }}>
                           {log.overtime_admin_note}
@@ -190,6 +211,12 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
           })}
         </TableBody>
       </Table>
+
+      <SelfiePreviewDialog
+        logId={selfieLog?.id ?? null}
+        title={selfieLog?.title ?? ""}
+        onOpenChange={(o) => !o && setSelfieLog(null)}
+      />
     </div>
   );
 }

@@ -15,6 +15,10 @@ import { evaluateCheckIn, evaluateCheckOut } from "@/lib/location/enforce";
 interface CheckInPayload {
   latitude: number | null;
   longitude: number | null;
+  /** Storage path under the `attendance-selfies` bucket. Required: a check-in
+   *  without a live selfie is rejected server-side. Client uploads to storage
+   *  before calling this action and passes the resulting path. */
+  selfie_path: string;
 }
 
 /**
@@ -69,6 +73,18 @@ export async function checkIn(payload: CheckInPayload) {
 
   if (payload.latitude == null || payload.longitude == null) {
     return { error: "Location is required to check in. Please enable location access in your browser settings." };
+  }
+
+  if (!payload.selfie_path?.trim()) {
+    return { error: "Foto selfie wajib diambil sebelum check in." };
+  }
+
+  // Defensive: ensure the submitted path actually lives under the
+  // employee's own folder. Storage RLS also enforces this, but catching
+  // it here avoids committing an attendance row that references a file
+  // the caller had no business uploading.
+  if (!payload.selfie_path.startsWith(`${user.id}/`)) {
+    return { error: "Selfie path tidak valid." };
   }
 
   // Geofence enforcement: assigned employees must be inside one of their
@@ -128,6 +144,7 @@ export async function checkIn(payload: CheckInPayload) {
       latitude: payload.latitude,
       longitude: payload.longitude,
       matched_location_id: decision.matchedLocationId,
+      selfie_path: payload.selfie_path,
       status,
       late_minutes,
     })

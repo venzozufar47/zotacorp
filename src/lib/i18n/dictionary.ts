@@ -158,6 +158,17 @@ export const dictionary = {
       toastCheckedOutOvertime: "Checked out! Overtime request submitted ({duration})",
       toastCheckedOut: "Checked out! See you tomorrow ✌️",
       toastLocationRequired: "Location is required to check in. Please enable location access in your browser settings and try again.",
+      errGeneric: "Something went wrong. Please try again.",
+      selfieTitle: "Take a selfie",
+      selfieSubtitle: "A live selfie is required for check-in — gallery uploads aren't accepted.",
+      selfieRequesting: "Requesting camera…",
+      selfieDenied: "Camera access denied. Enable it in your browser settings to check in.",
+      selfieUnavailable: "Camera not available on this device.",
+      selfieCapture: "Take photo",
+      selfieRetake: "Retake",
+      selfieUseThis: "Use this photo",
+      selfieCancel: "Cancel",
+      selfieUploadFailed: "Failed to upload selfie. Please try again.",
     },
     passwordConfirm: {
       confirmCheckIn: "Confirm Check-in",
@@ -322,6 +333,8 @@ export const dictionary = {
     attendanceTable: {
       colNotes: "Notes",
       lateCheckoutPrefix: "Late checkout",
+      selfieDialogTitle: "Check-in selfie",
+      selfieLoadError: "Failed to load selfie.",
     },
     adminLocations: {
       pageTitle: "Locations",
@@ -543,6 +556,17 @@ export const dictionary = {
       toastCheckedOutOvertime: "Check-out berhasil! Lembur udah dikirim ({duration})",
       toastCheckedOut: "Check-out berhasil! Sampai ketemu besok ✌️",
       toastLocationRequired: "Lokasi dibutuhin buat check-in. Aktifin akses lokasi di pengaturan browser terus coba lagi ya",
+      errGeneric: "Ada yang salah. Coba lagi ya.",
+      selfieTitle: "Ambil foto selfie",
+      selfieSubtitle: "Selfie live wajib buat check-in — upload dari galeri nggak diterima.",
+      selfieRequesting: "Buka kamera…",
+      selfieDenied: "Akses kamera diblokir. Aktifin dulu di pengaturan browser biar bisa check-in.",
+      selfieUnavailable: "Kamera nggak tersedia di device ini.",
+      selfieCapture: "Ambil foto",
+      selfieRetake: "Ambil ulang",
+      selfieUseThis: "Pakai foto ini",
+      selfieCancel: "Batal",
+      selfieUploadFailed: "Gagal upload selfie. Coba lagi ya.",
     },
     passwordConfirm: {
       confirmCheckIn: "Konfirmasi Check-in",
@@ -705,6 +729,8 @@ export const dictionary = {
     attendanceTable: {
       colNotes: "Keterangan",
       lateCheckoutPrefix: "Telat check-out",
+      selfieDialogTitle: "Selfie check-in",
+      selfieLoadError: "Gagal memuat selfie.",
     },
     adminLocations: {
       pageTitle: "Lokasi Kerja",

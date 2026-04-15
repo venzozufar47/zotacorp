@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle, XCircle, MessageSquare, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
+import { SelfiePreviewDialog } from "@/components/attendance/SelfiePreviewDialog";
 import {
   Table,
   TableBody,
@@ -45,6 +46,7 @@ interface AttendanceRow {
   checkout_outside_note: string | null;
   checkout_latitude: number | null;
   checkout_longitude: number | null;
+  selfie_path: string | null;
   is_overtime: boolean;
   overtime_minutes: number;
   overtime_status: string | null;
@@ -85,6 +87,8 @@ export function AttendanceRecapTable({
   const [isPending, startTransition] = useTransition();
   const { t } = useTranslation();
   const tl = t.adminLocations;
+  // Selfie preview — shared across all rows; null = closed.
+  const [selfieLog, setSelfieLog] = useState<{ id: string; title: string } | null>(null);
 
   if (rows.length === 0) {
     return (
@@ -185,7 +189,7 @@ export function AttendanceRecapTable({
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide w-[200px] max-w-[200px]">Overtime</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide w-[280px] max-w-[280px]">Overtime</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">{t.attendanceTable.colNotes}</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide w-[60px]"></TableHead>
             </TableRow>
@@ -213,7 +217,25 @@ export function AttendanceRecapTable({
                   <TableCell className="text-sm font-medium">
                     {formatLocalDate(row.date)}
                   </TableCell>
-                  <TableCell className="text-sm">{formatTime(row.checked_in_at, timezone)}</TableCell>
+                  <TableCell className="text-sm">
+                    {row.selfie_path ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelfieLog({
+                            id: row.id,
+                            title: `${row.profiles.full_name} — ${formatLocalDate(row.date)}`,
+                          })
+                        }
+                        className="underline-offset-2 hover:underline tabular-nums"
+                        style={{ color: "var(--primary)" }}
+                      >
+                        {formatTime(row.checked_in_at, timezone)}
+                      </button>
+                    ) : (
+                      formatTime(row.checked_in_at, timezone)
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm">
                     {row.checked_out_at ? formatTime(row.checked_out_at, timezone) : "—"}
                   </TableCell>
@@ -322,7 +344,7 @@ export function AttendanceRecapTable({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="w-[200px] max-w-[200px] overflow-hidden">
+                  <TableCell className="w-[280px] max-w-[280px] overflow-hidden">
                     {row.is_overtime && row.overtime_minutes > 0 && otStyle ? (
                       <div className="space-y-1.5">
                         <Badge
@@ -521,6 +543,12 @@ export function AttendanceRecapTable({
           </div>
         </div>
       )}
+
+      <SelfiePreviewDialog
+        logId={selfieLog?.id ?? null}
+        title={selfieLog?.title ?? ""}
+        onOpenChange={(o) => !o && setSelfieLog(null)}
+      />
     </div>
   );
 }

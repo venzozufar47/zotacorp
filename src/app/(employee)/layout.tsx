@@ -10,7 +10,12 @@ export default function EmployeeLayout({
     <div className="flex min-h-screen bg-[#f5f5f7]">
       <Sidebar className="hidden md:flex" />
       <main className="flex-1 min-w-0">
-        <div className="max-w-2xl mx-auto px-4 py-6 pb-20 md:pb-6">
+        {/* Matches the admin layout's fluid cap so the attendance history
+            table gets room to breathe on 1440p / 1920p monitors. Pages
+            designed for phone-shaped layouts (profile, dashboard, etc.)
+            can still wrap their own content in a narrower `max-w-2xl` if
+            they want the original feel on wide screens. */}
+        <div className="max-w-[1700px] mx-auto px-4 py-6 pb-20 md:px-6 md:pb-6">
           {children}
         </div>
       </main>

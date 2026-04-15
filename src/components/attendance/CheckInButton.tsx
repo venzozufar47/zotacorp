@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { MapPin, MapPinOff, Clock } from "lucide-react";
@@ -57,7 +57,9 @@ import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
 import { formatTime, formatMinutesHuman } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
+import { SelfieCaptureDialog } from "./SelfieCaptureDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 interface CheckInButtonProps {
   todayLog: AttendanceLog | null;
@@ -104,6 +106,10 @@ export function CheckInButton({
     latitude: number | null;
     longitude: number | null;
   } | null>(null);
+  // Selfie capture + upload for check-in. `pendingCoordsRef` holds the GPS
+  // fix from step 1 while the selfie dialog is open in step 2.
+  const [selfieOpen, setSelfieOpen] = useState(false);
+  const pendingCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const { status: geoStatus, requestLocation } = useGeolocation();
   const { t } = useTranslation();
 
@@ -141,26 +147,72 @@ export function CheckInButton({
     }
   }
 
+  /**
+   * Step 1 of check-in: grab GPS, then open the selfie capture dialog.
+   * We ask GPS first so a permission-denied case doesn't waste the user's
+   * time taking a selfie that can't be submitted. The selfie upload +
+   * server action run in step 2 (handleSelfieConfirmed).
+   */
   async function handleCheckIn() {
-    startTransition(async () => {
-      const coords = await requestLocation();
+    const coords = await requestLocation();
+    if (!coords) {
+      toast.error(t.checkIn.toastLocationRequired, { duration: 6000 });
+      return;
+    }
+    pendingCoordsRef.current = coords;
+    setSelfieOpen(true);
+  }
 
-      if (!coords) {
-        toast.error(t.checkIn.toastLocationRequired, { duration: 6000 });
+  /**
+   * Step 2: dialog returns the captured Blob. Upload to Supabase Storage
+   * under the signed-in employee's own folder (enforced by storage RLS),
+   * then call the server action with the resulting path.
+   */
+  async function handleSelfieConfirmed(blob: Blob) {
+    const coords = pendingCoordsRef.current;
+    if (!coords) {
+      toast.error(t.checkIn.toastLocationRequired);
+      setSelfieOpen(false);
+      return;
+    }
+
+    startTransition(async () => {
+      const supabase = createSupabaseClient();
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData.user?.id;
+      if (!uid) {
+        toast.error(t.checkIn.errGeneric);
+        return;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      // Unique per-day-per-user. If a browser re-tries, upsert overwrites
+      // rather than accumulating stale frames.
+      const path = `${uid}/${today}-${crypto.randomUUID()}.jpg`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from("attendance-selfies")
+        .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+      if (uploadErr) {
+        toast.error(t.checkIn.selfieUploadFailed);
         return;
       }
 
       const result = await checkIn({
         latitude: coords.latitude,
         longitude: coords.longitude,
+        selfie_path: path,
       });
 
       if (result?.error) {
         toast.error(result.error);
+        // Orphaned upload isn't worth a cleanup round-trip — bucket is
+        // private and path contains employee's uid; cost is negligible.
         return;
       }
 
       if (result?.data) {
+        setSelfieOpen(false);
         setLog(result.data as AttendanceLog);
         const status = (result.data as AttendanceLog).status;
 
@@ -404,6 +456,17 @@ export function CheckInButton({
         onOpenChange={setModalOpen}
         action={modalAction}
         onConfirm={modalAction === "check-in" ? handleCheckIn : handleCheckOutAttempt}
+      />
+
+      {/* Step 2 of check-in: live selfie capture. The dialog manages its
+          own MediaStream; we only handle the final Blob. */}
+      <SelfieCaptureDialog
+        open={selfieOpen}
+        onOpenChange={(o) => {
+          setSelfieOpen(o);
+          if (!o) pendingCoordsRef.current = null;
+        }}
+        onConfirm={handleSelfieConfirmed}
       />
 
       {/* Outside-radius checkout note prompt */}
