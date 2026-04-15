@@ -6,7 +6,6 @@ import type { AttendanceLog } from "@/lib/supabase/types";
 import {
   formatTime,
   getDurationHours,
-  getDurationHoursDecimal,
   formatMinutesHuman,
 } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
@@ -23,7 +22,18 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
   if (!log) return null;
 
   const isOpen = !log.checked_out_at;
-  const hours = getDurationHoursDecimal(log.checked_in_at, log.checked_out_at);
+  // Split the day's worked duration into whole hours + remaining minutes
+  // so the card can read "0j 42m" instead of "0.7j" — easier to scan at a
+  // glance than a decimal.
+  const totalMin = log.checked_out_at
+    ? Math.floor(
+        (new Date(log.checked_out_at).getTime() -
+          new Date(log.checked_in_at).getTime()) /
+          60_000
+      )
+    : 0;
+  const workedH = Math.floor(totalMin / 60);
+  const workedM = totalMin % 60;
 
   const overtimeStatus: "approved" | "rejected" | "pending" =
     log.overtime_status === "approved"
@@ -141,7 +151,9 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                   className="text-lg font-bold mt-1"
                   style={{ color: "var(--primary)" }}
                 >
-                  {hours}{t.units.hourShort}
+                  {workedH}
+                  {t.units.hourShort} {workedM}
+                  {t.units.minuteShort}
                 </p>
               </div>
             )}

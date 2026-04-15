@@ -593,7 +593,7 @@ export const dictionary = {
     attendanceStatus: {
       today: "Hari Ini",
       inProgress: "Sedang berlangsung",
-      complete: "Kelar",
+      complete: "Selesai",
       worked: "bekerja",
       overtimeApproved: "lembur disetujui",
       overtimeRejected: "lembur ditolak",
