@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { MapPin, Loader2 } from "lucide-react";
+import { MapPin, Loader2, Check, CircleAlert } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,13 @@ import {
   updateLocation,
   type LocationInput,
 } from "@/lib/actions/location.actions";
+import { resolveMapsLink } from "@/lib/actions/maps-link.actions";
+import {
+  parseCoordsFromText,
+  isShortMapsLink,
+  buildMapsLink,
+  type LatLng,
+} from "@/lib/utils/maps-link";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export interface LocationFormValue extends LocationInput {
@@ -32,47 +39,82 @@ interface Props {
   onSaved: () => void;
 }
 
+type ParseState =
+  | { status: "idle" }
+  | { status: "parsing" }
+  | { status: "ok"; coords: LatLng }
+  | { status: "error"; message: string };
+
 export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Props) {
   const { t } = useTranslation();
   const tl = t.adminLocations;
   const isEdit = !!initial?.id;
+
   const [name, setName] = useState(initial?.name ?? "");
-  // Match the locations table's 6-decimal display so what the admin
-  // sees in the Coordinates column is exactly what they see in this
-  // dialog's inputs. `String(number)` prints full double precision and
-  // would diverge from the table by 1–2 trailing digits.
-  const [latitude, setLatitude] = useState<string>(
-    initial ? initial.latitude.toFixed(6) : ""
-  );
-  const [longitude, setLongitude] = useState<string>(
-    initial ? initial.longitude.toFixed(6) : ""
+  const [link, setLink] = useState<string>(
+    initial ? buildMapsLink(initial.latitude, initial.longitude) : ""
   );
   const [radius, setRadius] = useState<string>(
     initial ? String(initial.radius_m) : "200"
   );
+  const [parse, setParse] = useState<ParseState>(
+    initial ? { status: "ok", coords: { lat: initial.latitude, lng: initial.longitude } } : { status: "idle" }
+  );
   const [gpsBusy, setGpsBusy] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function reset() {
-    setName(initial?.name ?? "");
-    setLatitude(initial ? initial.latitude.toFixed(6) : "");
-    setLongitude(initial ? initial.longitude.toFixed(6) : "");
-    setRadius(initial ? String(initial.radius_m) : "200");
-  }
-
-  /**
-   * Re-sync local form state whenever we're opened against a different
-   * row. Without this, the dialog stays mounted across edits and keeps
-   * the previous row's name/lat/lng in state — clicking Save would then
-   * silently overwrite row B with row A's fields. This guard keys off
-   * `open` + the target id so a fresh open (edit or create) always
-   * starts clean. The `initial?.id` dependency also catches the create
-   * → edit transition without an intervening close.
-   */
+  // Re-sync when the dialog opens against a different target row. Without
+  // this, edit-A → edit-B keeps A's values in state and clobbers B on
+  // save (the bug that overwrote the Tlogosari row earlier).
   useEffect(() => {
-    if (open) reset();
+    if (!open) return;
+    setName(initial?.name ?? "");
+    setLink(initial ? buildMapsLink(initial.latitude, initial.longitude) : "");
+    setRadius(initial ? String(initial.radius_m) : "200");
+    setParse(
+      initial
+        ? { status: "ok", coords: { lat: initial.latitude, lng: initial.longitude } }
+        : { status: "idle" }
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial?.id]);
+
+  /**
+   * Parse the link field. Direct URLs + raw "lat, lng" resolve instantly
+   * client-side; short links (`maps.app.goo.gl/...`) fall through to a
+   * server action that follows the redirect. We skip the server hop when
+   * the field is empty or clearly isn't a short link, to keep feedback
+   * responsive while typing.
+   */
+  function onLinkChange(value: string) {
+    setLink(value);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setParse({ status: "idle" });
+      return;
+    }
+    const direct = parseCoordsFromText(trimmed);
+    if (direct) {
+      setParse({ status: "ok", coords: direct });
+      return;
+    }
+    if (isShortMapsLink(trimmed)) {
+      setParse({ status: "parsing" });
+      // No debounce needed — short-link fetches are rare and fast, and
+      // onChange fires as the admin pastes (not per-keystroke typing).
+      resolveMapsLink(trimmed).then((res) => {
+        // Guard against stale responses if the field changed mid-fetch.
+        setLink((current) => {
+          if (current.trim() !== trimmed) return current;
+          if (res.ok) setParse({ status: "ok", coords: res.coords });
+          else setParse({ status: "error", message: res.error });
+          return current;
+        });
+      });
+      return;
+    }
+    setParse({ status: "error", message: tl.mapsLinkInvalid });
+  }
 
   function useCurrentLocation() {
     if (!navigator.geolocation) {
@@ -82,8 +124,10 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
     setGpsBusy(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLatitude(pos.coords.latitude.toFixed(6));
-        setLongitude(pos.coords.longitude.toFixed(6));
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLink(buildMapsLink(lat, lng));
+        setParse({ status: "ok", coords: { lat, lng } });
         setGpsBusy(false);
         toast.success(tl.gpsFilled);
       },
@@ -96,13 +140,15 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
   }
 
   function onSubmit() {
-    const lat = parseFloat(latitude);
-    const lng = parseFloat(longitude);
+    if (parse.status !== "ok") {
+      toast.error(tl.mapsLinkInvalid);
+      return;
+    }
     const r = parseInt(radius, 10);
     const input: LocationInput = {
       name: name.trim(),
-      latitude: lat,
-      longitude: lng,
+      latitude: parse.coords.lat,
+      longitude: parse.coords.lng,
       radius_m: r,
     };
 
@@ -116,19 +162,12 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
       }
       toast.success(isEdit ? tl.savedToast : tl.addedToast);
       onOpenChange(false);
-      reset();
       onSaved();
     });
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        onOpenChange(o);
-        if (!o) reset();
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? tl.editTitle : tl.createTitle}</DialogTitle>
@@ -146,29 +185,16 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="loc-lat">{tl.latLabel}</Label>
-              <Input
-                id="loc-lat"
-                type="number"
-                step="any"
-                value={latitude}
-                onChange={(e) => setLatitude(e.target.value)}
-                placeholder="-6.208800"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="loc-lng">{tl.lngLabel}</Label>
-              <Input
-                id="loc-lng"
-                type="number"
-                step="any"
-                value={longitude}
-                onChange={(e) => setLongitude(e.target.value)}
-                placeholder="106.845600"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="loc-link">{tl.mapsLinkLabel}</Label>
+            <Input
+              id="loc-link"
+              value={link}
+              onChange={(e) => onLinkChange(e.target.value)}
+              placeholder={tl.mapsLinkPlaceholder}
+              inputMode="url"
+            />
+            <CoordsPreview state={parse} tl={tl} />
           </div>
 
           <Button
@@ -210,11 +236,58 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             {tl.cancel}
           </Button>
-          <Button onClick={onSubmit} disabled={pending}>
+          <Button onClick={onSubmit} disabled={pending || parse.status !== "ok"}>
             {pending ? tl.saving : isEdit ? tl.save : tl.add}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Compact status line under the link input: spinner while the server is
+ * resolving a short link, green "detected" pill once coords resolve,
+ * amber error line otherwise. Coords render without any rounding — full
+ * double precision so admin sees exactly what lands in the DB.
+ */
+function CoordsPreview({
+  state,
+  tl,
+}: {
+  state: ParseState;
+  tl: {
+    mapsLinkParsing: string;
+    mapsLinkDetected: string;
+    mapsLinkInvalid: string;
+  };
+}) {
+  if (state.status === "idle") return null;
+  if (state.status === "parsing") {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2 size={12} className="animate-spin" />
+        {tl.mapsLinkParsing}
+      </p>
+    );
+  }
+  if (state.status === "ok") {
+    return (
+      <p className="flex items-center gap-1.5 text-xs" style={{ color: "#15803d" }}>
+        <Check size={12} />
+        <span>
+          {tl.mapsLinkDetected}{" "}
+          <span className="tabular-nums">
+            {state.coords.lat}, {state.coords.lng}
+          </span>
+        </span>
+      </p>
+    );
+  }
+  return (
+    <p className="flex items-center gap-1.5 text-xs" style={{ color: "#b91c1c" }}>
+      <CircleAlert size={12} />
+      {state.message}
+    </p>
   );
 }

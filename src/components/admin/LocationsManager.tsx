@@ -140,12 +140,12 @@ export function LocationsManager({ initialLocations }: Props) {
                   <td className="px-4 py-3 font-medium">{row.name}</td>
                   <td className="px-4 py-3 text-muted-foreground tabular-nums">
                     <a
-                      href={`https://maps.google.com/?q=${row.latitude},${row.longitude}`}
+                      href={`https://www.google.com/maps/@${row.latitude},${row.longitude},17z`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="hover:underline"
                     >
-                      {row.latitude.toFixed(6)}, {row.longitude.toFixed(6)}
+                      {row.latitude}, {row.longitude}
                     </a>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground tabular-nums">
