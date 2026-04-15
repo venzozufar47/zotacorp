@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { CheckCircle, XCircle, MessageSquare, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
@@ -92,7 +93,21 @@ export function AttendanceRecapTable({
   timezone,
 }: AttendanceRecapTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+
+  /**
+   * Build the URL for a target page, preserving the current filter query
+   * (start, end, userId, etc.). Using `URLSearchParams` keeps us from
+   * accidentally dropping params when the admin navigates paginated.
+   */
+  function pageHref(targetPage: number): string {
+    const next = new URLSearchParams(searchParams?.toString());
+    if (targetPage <= 1) next.delete("page");
+    else next.set("page", String(targetPage));
+    const qs = next.toString();
+    return qs ? `?${qs}` : "?";
+  }
   const { t } = useTranslation();
   const tl = t.adminLocations;
   // Selfie preview — shared across all rows; null = closed.
@@ -618,6 +633,41 @@ export function AttendanceRecapTable({
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination — only rendered when there's more than one page. Uses
+          <Link>-style anchor semantics via router.push so the browser
+          history gets a proper entry per page change. */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <p className="text-xs text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
+              disabled={page <= 1 || isPending}
+              onClick={() => router.push(pageHref(page - 1))}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={14} className="mr-1" />
+              Prev
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
+              disabled={page >= totalPages || isPending}
+              onClick={() => router.push(pageHref(page + 1))}
+              aria-label="Next page"
+            >
+              Next
+              <ChevronRight size={14} className="ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Inline Proof Preview */}
       {proofPreview && (
