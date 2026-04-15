@@ -4,14 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { getTodayDateString } from "@/lib/utils/date";
-
-/**
- * Allow-list of extra-work kinds the client can submit. Server validates
- * against this so a tampered request can't seed arbitrary `kind` strings
- * into the table — keeps the column shape clean for future reporting.
- */
-export const EXTRA_WORK_KINDS = ["belanja"] as const;
-export type ExtraWorkKind = (typeof EXTRA_WORK_KINDS)[number];
+import {
+  EXTRA_WORK_KINDS,
+  type ExtraWorkKind,
+} from "@/lib/utils/extra-work-kinds";
 
 /**
  * Log one extra-work entry for the signed-in employee on today's date.

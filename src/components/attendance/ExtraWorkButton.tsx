@@ -24,8 +24,8 @@ import {
 import {
   addExtraWorkEntry,
   deleteMyExtraWorkEntry,
-  EXTRA_WORK_KINDS,
 } from "@/lib/actions/extra-work.actions";
+import { EXTRA_WORK_KINDS } from "@/lib/utils/extra-work-kinds";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface TodayEntry {
