@@ -10,9 +10,14 @@ import {
 } from "react";
 import { dictionary, type Dictionary, type Language } from "./dictionary";
 
-const STORAGE_KEY = "zota.language";
-const COOKIE_KEY = "zota_lang";
-const DEFAULT_LANG: Language = "en";
+// Storage keys bumped to `.v2` / `_v2` the day we flipped the app default
+// from English to Indonesian. Old preferences saved under the v1 keys are
+// intentionally discarded on next load so every existing user lands on
+// Indonesian on first visit after this deploy. Anyone who prefers English
+// can re-pick it in Settings and the choice sticks under the new keys.
+const STORAGE_KEY = "zota.language.v2";
+const COOKIE_KEY = "zota_lang_v2";
+const DEFAULT_LANG: Language = "id";
 
 /** Max-age in seconds for the language cookie (1 year). */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
