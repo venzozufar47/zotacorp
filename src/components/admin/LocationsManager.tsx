@@ -16,6 +16,8 @@ import {
 import { LocationFormDialog, type LocationFormValue } from "./LocationFormDialog";
 import { deleteLocation } from "@/lib/actions/location.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { sortRows, type SortDir } from "@/lib/utils/sort";
 
 interface LocationRow {
   id: string;
@@ -30,6 +32,8 @@ interface Props {
   initialLocations: LocationRow[];
 }
 
+type LocSortKey = "name" | "radius_m" | "assigned_count";
+
 export function LocationsManager({ initialLocations }: Props) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -38,6 +42,31 @@ export function LocationsManager({ initialLocations }: Props) {
   const [editing, setEditing] = useState<LocationFormValue | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<LocationRow | null>(null);
   const [pending, startTransition] = useTransition();
+  const [sortKey, setSortKey] = useState<LocSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function toggleSort(key: LocSortKey) {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else {
+        setSortKey(null);
+        setSortDir("asc");
+      }
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const accessors: Record<LocSortKey, (r: LocationRow) => string | number> = {
+    name: (r) => r.name,
+    radius_m: (r) => r.radius_m,
+    assigned_count: (r) => r.assigned_count,
+  };
+
+  const displayRows = sortKey
+    ? sortRows(initialLocations, accessors[sortKey], sortDir)
+    : initialLocations;
 
   function openCreate() {
     setEditing(undefined);
@@ -92,15 +121,21 @@ export function LocationsManager({ initialLocations }: Props) {
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-medium">{tl.colName}</th>
+                <th className="px-4 py-3 font-medium">
+                  <SortBtn label={tl.colName} k="name" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+                </th>
                 <th className="px-4 py-3 font-medium">{tl.colCoords}</th>
-                <th className="px-4 py-3 font-medium">{tl.colRadius}</th>
-                <th className="px-4 py-3 font-medium">{tl.colEmployees}</th>
+                <th className="px-4 py-3 font-medium">
+                  <SortBtn label={tl.colRadius} k="radius_m" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <SortBtn label={tl.colEmployees} k="assigned_count" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+                </th>
                 <th className="px-4 py-3 font-medium text-right">{tl.colActions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {initialLocations.map((row) => (
+              {displayRows.map((row) => (
                 <tr key={row.id} className="hover:bg-muted/20">
                   <td className="px-4 py-3 font-medium">{row.name}</td>
                   <td className="px-4 py-3 text-muted-foreground tabular-nums">
@@ -188,5 +223,45 @@ export function LocationsManager({ initialLocations }: Props) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Lightweight sort-header button for this table — the outer <th> here
+ * isn't a shadcn TableHead so we can't reuse the generic SortableHeader
+ * component, but the UX is identical.
+ */
+function SortBtn({
+  label,
+  k,
+  sortKey,
+  sortDir,
+  onToggle,
+}: {
+  label: string;
+  k: LocSortKey;
+  sortKey: LocSortKey | null;
+  sortDir: SortDir;
+  onToggle: (k: LocSortKey) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(k)}
+      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+      aria-sort={!active ? "none" : sortDir === "asc" ? "ascending" : "descending"}
+    >
+      {label}
+      {active ? (
+        sortDir === "asc" ? (
+          <ArrowUp size={12} className="text-foreground" />
+        ) : (
+          <ArrowDown size={12} className="text-foreground" />
+        )
+      ) : (
+        <ArrowUpDown size={12} className="opacity-30" />
+      )}
+    </button>
   );
 }

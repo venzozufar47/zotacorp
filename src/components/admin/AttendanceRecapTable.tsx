@@ -7,6 +7,8 @@ import { CheckCircle, XCircle, MessageSquare, Trash2, Paperclip, X, ExternalLink
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
 import { SelfiePreviewDialog } from "@/components/attendance/SelfiePreviewDialog";
+import { SortableHeader } from "./SortableHeader";
+import type { AdminAttendanceSortKey } from "@/lib/actions/attendance.actions";
 import {
   Table,
   TableBody,
@@ -77,6 +79,9 @@ interface AttendanceRecapTableProps {
   page: number;
   pageSize: number;
   timezone?: string;
+  /** Current server-side sort — null = default order (date desc). */
+  sortBy?: AdminAttendanceSortKey | null;
+  sortDir?: "asc" | "desc";
 }
 
 const OT_STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -91,6 +96,8 @@ export function AttendanceRecapTable({
   page,
   pageSize,
   timezone,
+  sortBy = null,
+  sortDir = "desc",
 }: AttendanceRecapTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -107,6 +114,32 @@ export function AttendanceRecapTable({
     else next.set("page", String(targetPage));
     const qs = next.toString();
     return qs ? `?${qs}` : "?";
+  }
+
+  /**
+   * Cycle through asc → desc → unsorted for the clicked column.
+   * Navigates via router.push so the URL stays the source of truth
+   * (preserves filters across sort changes too).
+   */
+  function handleSort(key: AdminAttendanceSortKey) {
+    const next = new URLSearchParams(searchParams?.toString());
+    // Clear page on sort change — re-sort might push the user's current
+    // page out of range.
+    next.delete("page");
+    if (sortBy === key) {
+      if (sortDir === "asc") {
+        next.set("sortBy", key);
+        next.set("sortDir", "desc");
+      } else {
+        next.delete("sortBy");
+        next.delete("sortDir");
+      }
+    } else {
+      next.set("sortBy", key);
+      next.set("sortDir", "asc");
+    }
+    const qs = next.toString();
+    router.push(qs ? `?${qs}` : "?");
   }
 
   /** Inline helper — pagination controls are rendered above and below
@@ -340,11 +373,41 @@ export function AttendanceRecapTable({
                   aria-label="Select all rows on this page"
                 />
               </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Employee</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
+              <SortableHeader<AdminAttendanceSortKey>
+                sortKey="employee"
+                label="Employee"
+                currentKey={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              <SortableHeader<AdminAttendanceSortKey>
+                sortKey="date"
+                label="Date"
+                currentKey={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              <SortableHeader<AdminAttendanceSortKey>
+                sortKey="checked_in_at"
+                label="Check-in"
+                currentKey={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              <SortableHeader<AdminAttendanceSortKey>
+                sortKey="checked_out_at"
+                label="Check-out"
+                currentKey={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
+              <SortableHeader<AdminAttendanceSortKey>
+                sortKey="status"
+                label="Status"
+                currentKey={sortBy}
+                currentDir={sortDir}
+                onSort={handleSort}
+              />
               <TableHead className="text-xs font-semibold uppercase tracking-wide w-[280px] max-w-[280px]">Overtime</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">{t.attendanceTable.colNotes}</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide w-[60px]"></TableHead>

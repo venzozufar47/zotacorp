@@ -26,6 +26,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
 import { formatLocalDate } from "@/lib/utils/date";
 import { CheckCircle, XCircle } from "lucide-react";
+import { SortableHeader, type SortDir } from "./SortableHeader";
+import { sortRows } from "@/lib/utils/sort";
 
 interface OvertimeRow {
   id: string;
@@ -55,12 +57,40 @@ const STATUS_BADGES: Record<string, { bg: string; color: string; label: string }
   rejected: { bg: "#fef2f2", color: "#ff3b30", label: "Rejected" },
 };
 
+type OvertimeSortKey = "employee" | "date" | "hours" | "status";
+
 export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTableProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adminNote, setAdminNote] = useState("");
+  const [sortKey, setSortKey] = useState<OvertimeSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function toggleSort(key: OvertimeSortKey) {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else {
+        setSortKey(null);
+        setSortDir("asc");
+      }
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const accessors: Record<OvertimeSortKey, (r: OvertimeRow) => string | number> = {
+    employee: (r) => r.profiles.full_name || r.profiles.email,
+    date: (r) => r.date,
+    hours: (r) => r.overtime_minutes,
+    status: (r) => r.status,
+  };
+
+  const displayRows = sortKey
+    ? sortRows(rows, accessors[sortKey], sortDir)
+    : rows;
 
   if (rows.length === 0) {
     return (
@@ -114,11 +144,35 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
         <Table>
           <TableHeader>
             <TableRow className="bg-[#f5f5f7]">
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Employee</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Hours</TableHead>
+              <SortableHeader<OvertimeSortKey>
+                sortKey="employee"
+                label="Employee"
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
+              <SortableHeader<OvertimeSortKey>
+                sortKey="date"
+                label="Date"
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
+              <SortableHeader<OvertimeSortKey>
+                sortKey="hours"
+                label="Hours"
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Reason</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
+              <SortableHeader<OvertimeSortKey>
+                sortKey="status"
+                label="Status"
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
               {activeTab === "pending" && (
                 <TableHead className="text-xs font-semibold uppercase tracking-wide">Actions</TableHead>
               )}
@@ -128,7 +182,7 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => {
+            {displayRows.map((row) => {
               const hours = Math.round((row.overtime_minutes / 60) * 10) / 10;
               const badge = STATUS_BADGES[row.status] ?? STATUS_BADGES.pending;
 

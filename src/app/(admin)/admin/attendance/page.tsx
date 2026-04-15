@@ -7,7 +7,11 @@ import {
   getCurrentRole,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
-import { getAllAttendanceLogs, getAllEmployees } from "@/lib/actions/attendance.actions";
+import {
+  getAllAttendanceLogs,
+  getAllEmployees,
+  type AdminAttendanceSortKey,
+} from "@/lib/actions/attendance.actions";
 import { AttendanceRecapTable } from "@/components/admin/AttendanceRecapTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AttendanceFilters } from "@/components/admin/AttendanceFilters";
@@ -18,7 +22,17 @@ interface SearchParams {
   end?: string;
   userId?: string;
   page?: string;
+  sortBy?: string;
+  sortDir?: string;
 }
+
+const SORTABLE_KEYS: AdminAttendanceSortKey[] = [
+  "date",
+  "checked_in_at",
+  "checked_out_at",
+  "status",
+  "employee",
+];
 
 export default async function AdminAttendancePage({
   searchParams,
@@ -38,6 +52,12 @@ export default async function AdminAttendancePage({
   const endDate = params.end ?? format(endOfMonth(today), "yyyy-MM-dd");
   const page = parseInt(params.page ?? "1", 10);
   const pageSize = 25;
+  // Validate sort params against the whitelist so a malformed URL doesn't
+  // crash the server action.
+  const sortBy = SORTABLE_KEYS.includes(params.sortBy as AdminAttendanceSortKey)
+    ? (params.sortBy as AdminAttendanceSortKey)
+    : undefined;
+  const sortDir = params.sortDir === "asc" ? "asc" : "desc";
 
   let rowsWithOt: Parameters<typeof AttendanceRecapTable>[0]["rows"] = [];
   let count = 0;
@@ -52,6 +72,8 @@ export default async function AdminAttendancePage({
         userId: params.userId,
         page,
         pageSize,
+        sortBy,
+        sortDir,
       }),
       getAllEmployees(),
       getCachedAttendanceSettings(),
@@ -118,6 +140,8 @@ export default async function AdminAttendancePage({
         page={page}
         pageSize={pageSize}
         timezone={settings?.timezone}
+        sortBy={sortBy ?? null}
+        sortDir={sortDir}
       />
     </div>
   );

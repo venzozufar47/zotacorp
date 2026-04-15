@@ -13,6 +13,8 @@ import {
   MapPin,
 } from "lucide-react";
 import { LocationAssignmentDialog } from "./LocationAssignmentDialog";
+import { SortableHeader, type SortDir } from "./SortableHeader";
+import { sortRows } from "@/lib/utils/sort";
 import {
   Table,
   TableBody,
@@ -74,6 +76,8 @@ interface UsersTableProps {
   allLocations: LocationOption[];
 }
 
+type UserSortKey = "name" | "profile" | "business_unit" | "position";
+
 export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProps) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -82,6 +86,35 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [editingLocations, setEditingLocations] = useState<UserRow | null>(null);
+  const [sortKey, setSortKey] = useState<UserSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function toggleSort(key: UserSortKey) {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else {
+        // Third click clears the sort → falls back to server order.
+        setSortKey(null);
+        setSortDir("asc");
+      }
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  // Accessor map for each sort key. Kept outside the render loop so
+  // the comparator doesn't re-allocate per row.
+  const sortAccessors: Record<UserSortKey, (r: UserRow) => string | boolean | null> = {
+    name: (r) => r.full_name || r.email || "",
+    profile: (r) => r.profile_complete,
+    business_unit: (r) => r.business_unit,
+    position: (r) => r.job_role,
+  };
+
+  const displayRows = sortKey
+    ? sortRows(rows, sortAccessors[sortKey], sortDir)
+    : rows;
 
   if (rows.length === 0) {
     return (
@@ -129,18 +162,34 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
         <Table>
           <TableHeader>
             <TableRow className="bg-[#f5f5f7]">
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                {tu.colName}
-              </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                {tu.colProfile}
-              </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                {tu.colBusinessUnit}
-              </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
-                {tu.colPosition}
-              </TableHead>
+              <SortableHeader<UserSortKey>
+                sortKey="name"
+                label={tu.colName}
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
+              <SortableHeader<UserSortKey>
+                sortKey="profile"
+                label={tu.colProfile}
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
+              <SortableHeader<UserSortKey>
+                sortKey="business_unit"
+                label={tu.colBusinessUnit}
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
+              <SortableHeader<UserSortKey>
+                sortKey="position"
+                label={tu.colPosition}
+                currentKey={sortKey}
+                currentDir={sortDir}
+                onSort={toggleSort}
+              />
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
                 {tu.colSchedule}
               </TableHead>
@@ -153,7 +202,7 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => {
+            {displayRows.map((row) => {
               const isSelf = row.id === currentUserId;
               return (
                 <TableRow key={row.id} className="hover:bg-[#f5f5f7]/40">

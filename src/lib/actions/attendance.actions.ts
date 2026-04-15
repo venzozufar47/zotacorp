@@ -551,6 +551,17 @@ export async function getMyAttendanceLogs(limit = 30) {
   return data ?? [];
 }
 
+/** Whitelisted sort keys for the admin attendance recap. Anything outside
+ *  this set falls back to the default (date desc, checked_in_at desc).
+ *  Using a foreign-table column for "employee" requires the special
+ *  `foreignTable` syntax on `.order()`. */
+export type AdminAttendanceSortKey =
+  | "date"
+  | "checked_in_at"
+  | "checked_out_at"
+  | "status"
+  | "employee";
+
 export async function getAllAttendanceLogs(params: {
   startDate?: string;
   endDate?: string;
@@ -558,6 +569,8 @@ export async function getAllAttendanceLogs(params: {
   statusFilter?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: AdminAttendanceSortKey;
+  sortDir?: "asc" | "desc";
 }) {
   // Cached helpers dedupe against the page's own auth check.
   const role = await getCurrentRole();
@@ -572,6 +585,8 @@ export async function getAllAttendanceLogs(params: {
     statusFilter,
     page = 1,
     pageSize = 25,
+    sortBy,
+    sortDir = "desc",
   } = params;
 
   let query = supabase
@@ -582,9 +597,28 @@ export async function getAllAttendanceLogs(params: {
       profiles!inner(full_name, email)
     `,
       { count: "exact" }
-    )
-    .order("date", { ascending: false })
-    .order("checked_in_at", { ascending: false });
+    );
+
+  // Apply sort. When an explicit sortBy lands, use it; otherwise keep the
+  // default (newest first + tiebreak by checked_in_at).
+  const ascending = sortDir === "asc";
+  if (sortBy === "employee") {
+    query = query.order("full_name", { referencedTable: "profiles", ascending });
+  } else if (sortBy === "date") {
+    query = query.order("date", { ascending });
+  } else if (sortBy === "checked_in_at") {
+    query = query.order("checked_in_at", { ascending });
+  } else if (sortBy === "checked_out_at") {
+    // nullsFirst false so still-checked-in rows sink to the bottom when
+    // ascending — usually what the admin wants.
+    query = query.order("checked_out_at", { ascending, nullsFirst: false });
+  } else if (sortBy === "status") {
+    query = query.order("status", { ascending });
+  } else {
+    query = query
+      .order("date", { ascending: false })
+      .order("checked_in_at", { ascending: false });
+  }
 
   if (startDate) query = query.gte("date", startDate);
   if (endDate) query = query.lte("date", endDate);
