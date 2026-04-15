@@ -151,8 +151,11 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                   className="text-lg font-bold mt-1"
                   style={{ color: "var(--primary)" }}
                 >
-                  {workedH}
-                  {t.units.hourShort} {workedM}
+                  {/* Collapse the hours segment when it's zero so the
+                      card reads "41m" instead of "0j 41m" — cleaner at
+                      a glance for sub-hour shifts. */}
+                  {workedH > 0 && `${workedH}${t.units.hourShort} `}
+                  {workedM}
                   {t.units.minuteShort}
                 </p>
               </div>
