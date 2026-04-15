@@ -108,6 +108,41 @@ export function AttendanceRecapTable({
     const qs = next.toString();
     return qs ? `?${qs}` : "?";
   }
+
+  /** Inline helper — pagination controls are rendered above and below
+   *  the table, so extracting keeps both copies in sync. */
+  const paginationControls =
+    Math.ceil(count / pageSize) > 1 ? (
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          Page {page} of {Math.ceil(count / pageSize)}
+        </p>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2"
+            disabled={page <= 1 || isPending}
+            onClick={() => router.push(pageHref(page - 1))}
+            aria-label="Previous page"
+          >
+            <ChevronLeft size={14} className="mr-1" />
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2"
+            disabled={page >= Math.ceil(count / pageSize) || isPending}
+            onClick={() => router.push(pageHref(page + 1))}
+            aria-label="Next page"
+          >
+            Next
+            <ChevronRight size={14} className="ml-1" />
+          </Button>
+        </div>
+      </div>
+    ) : null;
   const { t } = useTranslation();
   const tl = t.adminLocations;
   // Selfie preview — shared across all rows; null = closed.
@@ -283,6 +318,8 @@ export function AttendanceRecapTable({
           </>
         )}
       </div>
+
+      {paginationControls}
 
       <div className="rounded-xl border overflow-x-auto bg-white">
         <Table>
@@ -634,40 +671,7 @@ export function AttendanceRecapTable({
         </Table>
       </div>
 
-      {/* Pagination — only rendered when there's more than one page. Uses
-          <Link>-style anchor semantics via router.push so the browser
-          history gets a proper entry per page change. */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <p className="text-xs text-muted-foreground">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2"
-              disabled={page <= 1 || isPending}
-              onClick={() => router.push(pageHref(page - 1))}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={14} className="mr-1" />
-              Prev
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2"
-              disabled={page >= totalPages || isPending}
-              onClick={() => router.push(pageHref(page + 1))}
-              aria-label="Next page"
-            >
-              Next
-              <ChevronRight size={14} className="ml-1" />
-            </Button>
-          </div>
-        </div>
-      )}
+      {paginationControls}
 
       {/* Inline Proof Preview */}
       {proofPreview && (
