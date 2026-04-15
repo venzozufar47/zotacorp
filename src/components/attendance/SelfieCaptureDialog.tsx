@@ -153,13 +153,19 @@ export function SelfieCaptureDialog({ open, onOpenChange, onConfirm }: Props) {
         onOpenChange(o);
       }}
     >
-      <DialogContent className="sm:max-w-[460px]">
+      <DialogContent className="sm:max-w-[380px] max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{tc.selfieTitle}</DialogTitle>
           <DialogDescription>{tc.selfieSubtitle}</DialogDescription>
         </DialogHeader>
 
-        <div className="relative aspect-[3/4] bg-black rounded-xl overflow-hidden">
+        {/* Cap the preview by viewport height so the dialog always fits
+            on short / zoomed-in browsers. `aspect-[3/4]` still defines
+            the shape when width is the limiting dimension, but
+            `max-h-[50vh]` wins on narrow viewports and shrinks width to
+            preserve the 3:4 ratio. `mx-auto` keeps it centered when the
+            height cap kicks in. */}
+        <div className="relative aspect-[3/4] max-h-[50vh] mx-auto bg-black rounded-xl overflow-hidden">
           {/* Video is ALWAYS in the DOM so `videoRef.current` is non-null
               by the time startStream()'s await resolves. Visibility is
               controlled by CSS — mirrored to match the user's pose. */}

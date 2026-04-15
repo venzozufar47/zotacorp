@@ -61,13 +61,15 @@ export function SelfiePreviewDialog({ logId, onOpenChange, title }: Props) {
 
   return (
     <Dialog open={logId !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-[420px] max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{ts.selfieDialogTitle}</DialogTitle>
           <DialogDescription>{title}</DialogDescription>
         </DialogHeader>
 
-        <div className="relative aspect-[3/4] bg-black rounded-xl overflow-hidden">
+        {/* Same responsive pattern as the capture dialog — aspect when
+            width limits, viewport height cap when height limits. */}
+        <div className="relative aspect-[3/4] max-h-[60vh] mx-auto bg-black rounded-xl overflow-hidden">
           {loading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/80">
               <Loader2 size={24} className="animate-spin" />
