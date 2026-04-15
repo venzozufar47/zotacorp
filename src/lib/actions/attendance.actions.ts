@@ -367,6 +367,37 @@ export async function deleteAttendanceLog(logId: string) {
   return {};
 }
 
+/**
+ * Batch-delete attendance logs. Cascades overtime_requests cleanup by id.
+ * Caps the batch at 500 ids to keep the in-query array size sane — the UI
+ * has a page size of 25, so in practice the selection rarely approaches
+ * the cap.
+ */
+export async function deleteAttendanceLogsBulk(logIds: string[]) {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden", deleted: 0 };
+
+  const ids = Array.from(new Set(logIds.filter(Boolean)));
+  if (ids.length === 0) return { error: "No records selected", deleted: 0 };
+  if (ids.length > 500) return { error: "Too many records selected (max 500)", deleted: 0 };
+
+  const supabase = await createClient();
+
+  // Clean dependents first — FK isn't set to ON DELETE CASCADE on
+  // overtime_requests, so we drop them by id rather than rely on the DB.
+  await supabase.from("overtime_requests").delete().in("attendance_log_id", ids);
+
+  const { error, count } = await supabase
+    .from("attendance_logs")
+    .delete({ count: "exact" })
+    .in("id", ids);
+
+  if (error) return { error: error.message, deleted: 0 };
+
+  revalidatePath("/admin/attendance");
+  return { deleted: count ?? ids.length };
+}
+
 // ---------------------------------------------------------------------------
 // Late Checkout — fill in missed checkout for a previous day
 // ---------------------------------------------------------------------------

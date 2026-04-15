@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, XCircle, MessageSquare, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -19,7 +19,15 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/attendance/StatusBadge";
 import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
-import { deleteAttendanceLog, reviewLateProof } from "@/lib/actions/attendance.actions";
+import { deleteAttendanceLog, deleteAttendanceLogsBulk, reviewLateProof } from "@/lib/actions/attendance.actions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   formatLocalDate,
@@ -89,6 +97,59 @@ export function AttendanceRecapTable({
   const tl = t.adminLocations;
   // Selfie preview — shared across all rows; null = closed.
   const [selfieLog, setSelfieLog] = useState<{ id: string; title: string } | null>(null);
+  // Batch selection. Scoped to the current page — changing pages clears it
+  // (selections are derived from `rows`, which refreshes per page).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+
+  // Clear selection whenever the visible page changes. Selections don't
+  // survive pagination because the checkboxes only reflect the current
+  // page's rows.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page]);
+
+  const allOnPageSelected =
+    rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
+  const someOnPageSelected = rows.some((r) => selectedIds.has(r.id));
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllOnPage() {
+    setSelectedIds((prev) => {
+      if (allOnPageSelected) {
+        const next = new Set(prev);
+        rows.forEach((r) => next.delete(r.id));
+        return next;
+      }
+      const next = new Set(prev);
+      rows.forEach((r) => next.add(r.id));
+      return next;
+    });
+  }
+
+  function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    startTransition(async () => {
+      const result = await deleteAttendanceLogsBulk(ids);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${result.deleted} attendance record${result.deleted === 1 ? "" : "s"} deleted`);
+      setSelectedIds(new Set());
+      setBulkConfirmOpen(false);
+      router.refresh();
+    });
+  }
 
   if (rows.length === 0) {
     return (
@@ -176,14 +237,57 @@ export function AttendanceRecapTable({
 
   return (
     <div className="space-y-3 max-w-full">
-      <p className="text-xs text-muted-foreground">
-        {count} record{count !== 1 ? "s" : ""} · page {page} of {totalPages}
-      </p>
+      <div className="flex items-center gap-3">
+        <p className="text-xs text-muted-foreground">
+          {count} record{count !== 1 ? "s" : ""} · page {page} of {totalPages}
+        </p>
+        {selectedIds.size > 0 && (
+          <>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs font-medium">
+              {selectedIds.size} selected
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={isPending}
+              className="h-7 px-2 text-xs"
+            >
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setBulkConfirmOpen(true)}
+              disabled={isPending}
+              className="h-7 px-3 text-xs bg-destructive text-white hover:bg-destructive/90"
+            >
+              <Trash2 size={12} className="mr-1" />
+              Delete selected
+            </Button>
+          </>
+        )}
+      </div>
 
       <div className="rounded-xl border overflow-x-auto bg-white">
         <Table>
           <TableHeader>
             <TableRow className="bg-[#f5f5f7]">
+              <TableHead className="w-[40px]">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded accent-[var(--primary)] align-middle"
+                  checked={allOnPageSelected}
+                  // indeterminate state fires when SOME but not all rows
+                  // on this page are selected. DOM-level only; React doesn't
+                  // model this attribute directly.
+                  ref={(el) => {
+                    if (el) el.indeterminate = !allOnPageSelected && someOnPageSelected;
+                  }}
+                  onChange={toggleAllOnPage}
+                  aria-label="Select all rows on this page"
+                />
+              </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Employee</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
@@ -206,8 +310,23 @@ export function AttendanceRecapTable({
               return (
                 <TableRow
                   key={row.id}
-                  className={isOpen ? "bg-orange-50/50" : "hover:bg-[#f5f5f7]/40"}
+                  className={
+                    selectedIds.has(row.id)
+                      ? "bg-primary/5"
+                      : isOpen
+                      ? "bg-orange-50/50"
+                      : "hover:bg-[#f5f5f7]/40"
+                  }
                 >
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded accent-[var(--primary)] align-middle"
+                      checked={selectedIds.has(row.id)}
+                      onChange={() => toggleOne(row.id)}
+                      aria-label={`Select row for ${row.profiles.full_name}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div>
                       <p className="font-medium text-sm">{row.profiles.full_name}</p>
@@ -549,6 +668,41 @@ export function AttendanceRecapTable({
         title={selfieLog?.title ?? ""}
         onOpenChange={(o) => !o && setSelfieLog(null)}
       />
+
+      <Dialog
+        open={bulkConfirmOpen}
+        onOpenChange={(o) => !o && setBulkConfirmOpen(false)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected records?</DialogTitle>
+            <DialogDescription>
+              <span className="font-semibold text-foreground">
+                {selectedIds.size} attendance record
+                {selectedIds.size === 1 ? "" : "s"}
+              </span>{" "}
+              will be permanently removed, including any linked overtime
+              requests. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkConfirmOpen(false)}
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBulkDelete}
+              disabled={isPending}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {isPending ? "Deleting…" : `Delete ${selectedIds.size}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
