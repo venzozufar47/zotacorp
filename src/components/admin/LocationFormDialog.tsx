@@ -37,11 +37,15 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
   const tl = t.adminLocations;
   const isEdit = !!initial?.id;
   const [name, setName] = useState(initial?.name ?? "");
+  // Match the locations table's 6-decimal display so what the admin
+  // sees in the Coordinates column is exactly what they see in this
+  // dialog's inputs. `String(number)` prints full double precision and
+  // would diverge from the table by 1–2 trailing digits.
   const [latitude, setLatitude] = useState<string>(
-    initial ? String(initial.latitude) : ""
+    initial ? initial.latitude.toFixed(6) : ""
   );
   const [longitude, setLongitude] = useState<string>(
-    initial ? String(initial.longitude) : ""
+    initial ? initial.longitude.toFixed(6) : ""
   );
   const [radius, setRadius] = useState<string>(
     initial ? String(initial.radius_m) : "200"
@@ -51,8 +55,8 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
 
   function reset() {
     setName(initial?.name ?? "");
-    setLatitude(initial ? String(initial.latitude) : "");
-    setLongitude(initial ? String(initial.longitude) : "");
+    setLatitude(initial ? initial.latitude.toFixed(6) : "");
+    setLongitude(initial ? initial.longitude.toFixed(6) : "");
     setRadius(initial ? String(initial.radius_m) : "200");
   }
 

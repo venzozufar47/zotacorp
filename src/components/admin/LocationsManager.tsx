@@ -145,7 +145,7 @@ export function LocationsManager({ initialLocations }: Props) {
                       rel="noopener noreferrer"
                       className="hover:underline"
                     >
-                      {row.latitude.toFixed(5)}, {row.longitude.toFixed(5)}
+                      {row.latitude.toFixed(6)}, {row.longitude.toFixed(6)}
                     </a>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground tabular-nums">
