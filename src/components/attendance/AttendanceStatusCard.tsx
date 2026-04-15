@@ -151,12 +151,14 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                   className="text-lg font-bold mt-1"
                   style={{ color: "var(--primary)" }}
                 >
-                  {/* Collapse the hours segment when it's zero so the
-                      card reads "41m" instead of "0j 41m" — cleaner at
-                      a glance for sub-hour shifts. */}
-                  {workedH > 0 && `${workedH}${t.units.hourShort} `}
-                  {workedM}
-                  {t.units.minuteShort}
+                  {/* Collapse zero segments so the card shows just the
+                      meaningful part: "41m", "2j", or "2j 30m" — never
+                      "0j 41m" or "2j 0m". */}
+                  {workedH === 0
+                    ? `${workedM}${t.units.minuteShort}`
+                    : workedM === 0
+                    ? `${workedH}${t.units.hourShort}`
+                    : `${workedH}${t.units.hourShort} ${workedM}${t.units.minuteShort}`}
                 </p>
               </div>
             )}
