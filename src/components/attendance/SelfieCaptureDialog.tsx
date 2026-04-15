@@ -26,15 +26,13 @@ type CameraState = "requesting" | "ready" | "denied" | "unavailable";
  * (unlike `<input capture="user">` which falls back to the file picker on
  * desktop and some Android browsers).
  *
- * Flow:
- *   1. Open → request front camera
- *   2. <video> shows live preview
- *   3. Tap "Take photo" → draw current frame to canvas, downsize, show still
- *   4. Tap "Retake" → back to live preview
- *   5. Tap "Use this photo" → hand Blob to parent via onConfirm
- *
- * The stream is torn down eagerly on close/unmount and whenever we pivot to
- * the still-preview state, so the camera light never lingers.
+ * Why the video is rendered unconditionally: React renders before effects
+ * run, so setting `video.srcObject` inside the stream-acquisition effect
+ * only works if the <video> element is already in the DOM at that point.
+ * A prior version rendered the video conditionally on `state === "ready"`,
+ * which meant `videoRef.current` was null at srcObject-attach time and the
+ * stream never reached the element — black screen. We now always render
+ * the video and overlay loading / error states on top.
  */
 export function SelfieCaptureDialog({ open, onOpenChange, onConfirm }: Props) {
   const { t } = useTranslation();
@@ -44,67 +42,69 @@ export function SelfieCaptureDialog({ open, onOpenChange, onConfirm }: Props) {
   const [state, setState] = useState<CameraState>("requesting");
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null);
 
-  // Start camera when the dialog opens; clean up when it closes. We do not
-  // share the stream across open/close cycles — cleaner to re-request, which
-  // also forces a fresh permission check if the user revoked it externally.
-  useEffect(() => {
-    if (!open) return;
+  function stopStream() {
+    streamRef.current?.getTracks().forEach((tr) => tr.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }
 
-    let cancelled = false;
-    setState("requesting");
-    setPreview(null);
-
-    async function start() {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setState("unavailable");
-        return;
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        setState("ready");
-      } catch {
-        if (!cancelled) setState("denied");
-      }
+  async function startStream() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setState("unavailable");
+      return;
     }
+    setState("requesting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        // play() is a Promise — Safari in particular rejects if we don't
+        // await it. We still swallow the error because autoplay policies
+        // occasionally block silently and the UI handles that with the
+        // explicit "Take photo" button being disabled until `state = ready`.
+        try {
+          await video.play();
+        } catch {
+          // No-op: state below will still flip to "ready" once metadata
+          // loads and the user can retry via Retake.
+        }
+      }
+      setState("ready");
+    } catch {
+      setState("denied");
+    }
+  }
 
-    start();
+  // Start / stop the stream whenever the dialog's open state changes.
+  useEffect(() => {
+    if (!open) {
+      stopStream();
+      setPreview(null);
+      return;
+    }
+    startStream();
     return () => {
-      cancelled = true;
       stopStream();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Also revoke any preview object URL we created, so we don't leak.
+  // Revoke any preview object URL we created, so we don't leak.
   useEffect(() => {
     return () => {
       if (preview?.url) URL.revokeObjectURL(preview.url);
     };
   }, [preview]);
 
-  function stopStream() {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }
-
   async function takePhoto() {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || video.videoWidth === 0) return;
 
-    // Downsize to max 800px wide. Keeps upload ~100KB on a modern phone
-    // camera (1280×720 → 800×450 JPEG 0.8 ≈ 60–120KB).
     const maxW = 800;
     const scale = Math.min(1, maxW / video.videoWidth);
     const w = Math.round(video.videoWidth * scale);
@@ -134,21 +134,7 @@ export function SelfieCaptureDialog({ open, onOpenChange, onConfirm }: Props) {
       URL.revokeObjectURL(preview.url);
       setPreview(null);
     }
-    setState("requesting");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
-      setState("ready");
-    } catch {
-      setState("denied");
-    }
+    await startStream();
   }
 
   function confirm() {
@@ -174,28 +160,35 @@ export function SelfieCaptureDialog({ open, onOpenChange, onConfirm }: Props) {
         </DialogHeader>
 
         <div className="relative aspect-[3/4] bg-black rounded-xl overflow-hidden">
-          {preview ? (
+          {/* Video is ALWAYS in the DOM so `videoRef.current` is non-null
+              by the time startStream()'s await resolves. Visibility is
+              controlled by CSS — mirrored to match the user's pose. */}
+          <video
+            ref={videoRef}
+            playsInline
+            muted
+            autoPlay
+            className={`w-full h-full object-cover scale-x-[-1] ${
+              state === "ready" && !preview ? "" : "invisible"
+            }`}
+          />
+
+          {preview && (
             <img
               src={preview.url}
               alt="Selfie preview"
-              // Match the mirrored video above so the still looks the same
-              className="w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover"
             />
-          ) : state === "ready" ? (
-            <video
-              ref={videoRef}
-              playsInline
-              muted
-              // Mirror the live preview so it behaves like a mirror — what
-              // the user sees on-screen matches how they're posing.
-              className="w-full h-full object-cover scale-x-[-1]"
-            />
-          ) : state === "requesting" ? (
+          )}
+
+          {!preview && state === "requesting" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/80">
               <Loader2 size={24} className="animate-spin" />
               <span className="text-sm">{tc.selfieRequesting}</span>
             </div>
-          ) : (
+          )}
+
+          {!preview && (state === "denied" || state === "unavailable") && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/80 px-6 text-center">
               <X size={32} />
               <span className="text-sm">
