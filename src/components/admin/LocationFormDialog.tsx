@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { MapPin, Loader2 } from "lucide-react";
 import {
@@ -55,6 +55,20 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
     setLongitude(initial ? String(initial.longitude) : "");
     setRadius(initial ? String(initial.radius_m) : "200");
   }
+
+  /**
+   * Re-sync local form state whenever we're opened against a different
+   * row. Without this, the dialog stays mounted across edits and keeps
+   * the previous row's name/lat/lng in state — clicking Save would then
+   * silently overwrite row B with row A's fields. This guard keys off
+   * `open` + the target id so a fresh open (edit or create) always
+   * starts clean. The `initial?.id` dependency also catches the create
+   * → edit transition without an intervening close.
+   */
+  useEffect(() => {
+    if (open) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial?.id]);
 
   function useCurrentLocation() {
     if (!navigator.geolocation) {
