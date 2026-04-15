@@ -329,6 +329,9 @@ export const dictionary = {
       totals: "Total",
       graceExplainer: "Each late day's first {min} min is absorbed by the grace period and not penalized.",
       perDayExplainer: "Penalty applied as a flat amount for each unexcused late day.",
+      extraWorkTitle: "Extra work",
+      colKind: "Type",
+      kindLabels: { belanja: "Shopping" },
     },
     attendanceTable: {
       colNotes: "Notes",
@@ -565,7 +568,7 @@ export const dictionary = {
       locationSaved: "Lokasi tersimpan",
       overtimeOptIn: "Catat check-out ini sebagai lembur",
       overtimeReasonPlaceholder: "Kenapa kamu lembur? (wajib diisi)",
-      completeToday: "Kehadiran hari ini kelar",
+      completeToday: "Kehadiran hari ini selesai",
       locationRequiredBefore: "Lokasi dibutuhin buat check-in",
       locationWillRecord: "Lokasi bakal dicatat",
       locationBlocked: "Akses lokasi diblokir — aktifin dulu di pengaturan browser biar bisa check-in",
@@ -744,6 +747,9 @@ export const dictionary = {
       totals: "Total",
       graceExplainer: "Tiap hari telat, {min} menit pertama masuk toleransi dan nggak kena denda",
       perDayExplainer: "Denda berupa jumlah tetap buat tiap hari telat yang nggak dimaafkan",
+      extraWorkTitle: "Kerjaan tambahan",
+      colKind: "Jenis",
+      kindLabels: { belanja: "Belanja" },
     },
     attendanceTable: {
       colNotes: "Keterangan",

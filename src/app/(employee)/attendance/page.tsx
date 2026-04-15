@@ -54,10 +54,26 @@ export default async function AttendancePage() {
     };
   }
 
-  // Attach overtime request data to logs
+  // Pull all extra-work entries for this user across the displayed log
+  // dates so we can render them inside the Notes cell. Grouped by date.
+  const extraWorkByDate: Record<string, { kind: string }[]> = {};
+  if (logs.length > 0) {
+    const dates = Array.from(new Set(logs.map((l) => l.date)));
+    const { data: extra } = await supabase
+      .from("extra_work_logs")
+      .select("date, kind")
+      .eq("user_id", user.id)
+      .in("date", dates);
+    for (const e of extra ?? []) {
+      (extraWorkByDate[e.date] ??= []).push({ kind: e.kind });
+    }
+  }
+
+  // Attach overtime + extra-work data to logs
   const logsWithOt = logs.map((log) => ({
     ...log,
     overtime_admin_note: overtimeMap[log.id]?.admin_note ?? null,
+    extra_work: extraWorkByDate[log.date] ?? [],
   }));
 
   return (

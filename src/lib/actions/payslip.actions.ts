@@ -256,6 +256,7 @@ function computeNetTotal(
     monthly_bonus: number;
     debt_deduction: number;
     other_penalty: number;
+    extra_work_pay: number;
   }
 ): number {
   const attendanceBucket =
@@ -273,7 +274,16 @@ function computeNetTotal(
     combined = Math.round(attendanceBucket * aw + deliverablesBucket * dw);
   }
 
-  return combined + fields.monthly_bonus - fields.debt_deduction - fields.other_penalty;
+  // Extra-work pay sits OUTSIDE the weighted attendance/deliverables
+  // bucket — it's a flat add regardless of basis or weight, since it
+  // represents discrete tasks not covered by the time-based salary.
+  return (
+    combined +
+    fields.extra_work_pay +
+    fields.monthly_bonus -
+    fields.debt_deduction -
+    fields.other_penalty
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -402,8 +412,8 @@ export async function calculatePayslip(userId: string, month: number, year: numb
       .single();
     const gracePeriodMin = profile?.grace_period_min ?? 0;
 
-    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate = month === 12
+    const startDate2 = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate2 = month === 12
       ? `${year + 1}-01-01`
       : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
@@ -411,8 +421,8 @@ export async function calculatePayslip(userId: string, month: number, year: numb
       .from("attendance_logs")
       .select("id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime")
       .eq("user_id", userId)
-      .gte("date", startDate)
-      .lt("date", endDate);
+      .gte("date", startDate2)
+      .lt("date", endDate2);
 
     const logIds = (logs ?? []).map((l) => l.id);
     let overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[] = [];
@@ -425,6 +435,30 @@ export async function calculatePayslip(userId: string, month: number, year: numb
     }
 
     attCalc = calculateFromAttendance(effectiveSettings, logs ?? [], overtimeRequests, gracePeriodMin);
+  }
+
+  // Extra-work pay: count entries × per-employee rate. Independent of
+  // calculation_basis — these are discrete tasks outside the regular
+  // schedule, so they earn flat regardless of presence/deliverables mix.
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endDate = month === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const extraWorkRate = Number(settings.extra_work_rate_idr ?? 0);
+  let extraWorkPay = 0;
+  const extraWorkDays: NonNullable<PayslipBreakdown["extra_work_days"]> = [];
+  if (extraWorkRate > 0) {
+    const { data: ewLogs } = await supabase
+      .from("extra_work_logs")
+      .select("date, kind")
+      .eq("user_id", userId)
+      .gte("date", startDate)
+      .lt("date", endDate);
+    for (const row of ewLogs ?? []) {
+      extraWorkDays.push({ date: row.date, kind: row.kind, pay: extraWorkRate });
+      extraWorkPay += extraWorkRate;
+    }
+    extraWorkDays.sort((a, b) => a.date.localeCompare(b.date));
   }
 
   // Check existing payslip to preserve manual entries + deliverables
@@ -480,19 +514,31 @@ export async function calculatePayslip(userId: string, month: number, year: numb
       monthly_bonus: manualEntries.monthly_bonus,
       debt_deduction: manualEntries.debt_deduction,
       other_penalty: manualEntries.other_penalty,
+      extra_work_pay: extraWorkPay,
     }
   );
 
   const { breakdown: attBreakdown, ...attFields } = attCalc;
+  // Merge the extra-work breakdown alongside attendance details so the
+  // payslip detail view can render a single consolidated breakdown.
+  const breakdownToStore: PayslipBreakdown | null =
+    includesAttendance || extraWorkDays.length > 0
+      ? {
+          ...attBreakdown,
+          extra_work_days: extraWorkDays,
+          extra_work_rate_idr: extraWorkRate,
+        }
+      : null;
   const calcFields = {
     ...attFields,
     extra_day_bonus: 0,
     deliverables_achievement_pct: Math.round(deliverablesAchievementPct * 100) / 100,
     deliverables_pay: deliverablesPay,
+    extra_work_pay: extraWorkPay,
     ...manualEntries,
     net_total: netTotal,
     status: "draft" as const,
-    breakdown_json: includesAttendance ? attBreakdown : null,
+    breakdown_json: breakdownToStore,
     updated_at: new Date().toISOString(),
   };
 
@@ -638,6 +684,9 @@ export async function updatePayslipManualEntries(
       overtime_pay: Number(existing.overtime_pay),
       late_penalty: Number(existing.late_penalty),
       deliverables_pay: Number(existing.deliverables_pay),
+      // Preserve previously-calculated extra-work pay across manual
+      // updates — only `calculatePayslip` recomputes it from the logs.
+      extra_work_pay: Number(existing.extra_work_pay ?? 0),
       ...merged,
     }
   );

@@ -27,6 +27,12 @@ export type PayslipBreakdown = {
     penalty: number;
     excused: boolean;
   }>;
+  extra_work_days?: Array<{
+    date: string; // YYYY-MM-DD
+    kind: string;
+    pay: number;
+  }>;
+  extra_work_rate_idr?: number;
 };
 
 export type Database = {
@@ -344,6 +350,7 @@ export type Database = {
           standard_working_hours: number;
           attendance_weight_pct: number;
           deliverables_weight_pct: number;
+          extra_work_rate_idr: number;
           is_finalized: boolean;
           finalized_at: string | null;
           created_at: string;
@@ -367,6 +374,7 @@ export type Database = {
           standard_working_hours?: number;
           attendance_weight_pct?: number;
           deliverables_weight_pct?: number;
+          extra_work_rate_idr?: number;
           is_finalized?: boolean;
           finalized_at?: string | null;
           created_at?: string;
@@ -388,6 +396,7 @@ export type Database = {
           standard_working_hours?: number;
           attendance_weight_pct?: number;
           deliverables_weight_pct?: number;
+          extra_work_rate_idr?: number;
           is_finalized?: boolean;
           finalized_at?: string | null;
           updated_at?: string;
@@ -424,6 +433,7 @@ export type Database = {
           other_penalty_note: string | null;
           deliverables_achievement_pct: number;
           deliverables_pay: number;
+          extra_work_pay: number;
           net_total: number;
           status: "draft" | "finalized";
           breakdown_json: PayslipBreakdown | null;
@@ -451,6 +461,7 @@ export type Database = {
           other_penalty_note?: string | null;
           deliverables_achievement_pct?: number;
           deliverables_pay?: number;
+          extra_work_pay?: number;
           net_total?: number;
           status?: "draft" | "finalized";
           breakdown_json?: PayslipBreakdown | null;
@@ -474,6 +485,7 @@ export type Database = {
           other_penalty_note?: string | null;
           deliverables_achievement_pct?: number;
           deliverables_pay?: number;
+          extra_work_pay?: number;
           net_total?: number;
           status?: "draft" | "finalized";
           breakdown_json?: PayslipBreakdown | null;

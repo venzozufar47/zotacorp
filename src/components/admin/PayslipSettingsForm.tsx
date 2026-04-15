@@ -38,6 +38,9 @@ type FormData = {
   late_penalty_interval_min: string;
   attendance_weight_pct: string;
   deliverables_weight_pct: string;
+  /** IDR per "extra work" entry. Multiplies the count of entries in the
+   *  payslip's month, regardless of calculation_basis. */
+  extra_work_rate_idr: string;
 };
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -68,6 +71,7 @@ function toForm(s: PayslipSettings | null): FormData {
     late_penalty_interval_min: String(s?.late_penalty_interval_min ?? 30),
     attendance_weight_pct: String(s?.attendance_weight_pct ?? 50),
     deliverables_weight_pct: String(s?.deliverables_weight_pct ?? 50),
+    extra_work_rate_idr: String(s?.extra_work_rate_idr ?? 0),
   };
 }
 
@@ -135,6 +139,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
       // weights only meaningful for "both"
       attendance_weight_pct: basis === "both" ? attW : basis === "presence" ? 100 : 0,
       deliverables_weight_pct: basis === "both" ? delW : basis === "deliverables" ? 100 : 0,
+      extra_work_rate_idr: Math.max(0, parseInt(form.extra_work_rate_idr) || 0),
     };
   }
 
@@ -458,6 +463,26 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               </>
             )}
 
+            {/* Extra-work rate — independent of calculation_basis. Each
+                logged extra-work entry in the payslip's month earns this
+                flat IDR, added on top of the weighted attendance/
+                deliverables totals. Set 0 to disable payment even when
+                the per-employee toggle is on. */}
+            <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+              <Label className="text-xs font-semibold">Extra Work Rate</Label>
+              <p className="text-xs text-muted-foreground leading-snug">
+                IDR earned per logged extra-work entry (e.g. each Belanja).
+                Multiplied by the count of entries in the month.
+              </p>
+              <Input
+                type="number"
+                min={0}
+                value={form.extra_work_rate_idr}
+                onChange={(e) => set("extra_work_rate_idr", e.target.value)}
+                placeholder="0"
+              />
+            </div>
+
             {/* Deliverables note */}
             {showsDeliverables && (
               <div className="p-3 rounded-lg bg-[#ecfeff] text-sm space-y-1">
@@ -500,6 +525,12 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                   <p className="font-medium">
                     Attendance {Number(settings.attendance_weight_pct)}% · Deliverables {Number(settings.deliverables_weight_pct)}%
                   </p>
+                </div>
+              )}
+              {settings && Number(settings.extra_work_rate_idr) > 0 && (
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Extra Work Rate</p>
+                  <p className="font-medium">{formatIDR(Number(settings.extra_work_rate_idr))} per entry</p>
                 </div>
               )}
               {settings && settings.calculation_basis !== "deliverables" && (

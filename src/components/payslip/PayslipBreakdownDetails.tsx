@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, AlertTriangle } from "lucide-react";
+import { Clock, AlertTriangle, ShoppingBag } from "lucide-react";
 import type { PayslipBreakdown } from "@/lib/supabase/types";
 import { formatIDR } from "@/lib/utils/currency";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -10,6 +10,9 @@ interface Props {
   /** Aggregate totals shown in the footer so employee can verify. */
   totalOvertimePay: number;
   totalLatePenalty: number;
+  /** Aggregate extra-work pay; rendered only when the breakdown
+   *  carries any extra-work entries. */
+  totalExtraWorkPay?: number;
 }
 
 function formatMinutes(mins: number, hLabel: string, mLabel: string): string {
@@ -41,6 +44,7 @@ export function PayslipBreakdownDetails({
   breakdown,
   totalOvertimePay,
   totalLatePenalty,
+  totalExtraWorkPay = 0,
 }: Props) {
   const { t, lang } = useTranslation();
   const bt = t.payslipBreakdown;
@@ -95,6 +99,45 @@ export function PayslipBreakdownDetails({
           </div>
         )}
       </section>
+
+      {/* Extra-work section — only rendered when the payslip earned any
+          extra-work pay this month. Same row format as overtime but with
+          the kind label instead of duration. */}
+      {breakdown.extra_work_days && breakdown.extra_work_days.length > 0 && (
+        <section className="rounded-lg bg-[#f5f5f7] p-3 space-y-2">
+          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <ShoppingBag size={14} />
+            {bt.extraWorkTitle}
+          </h4>
+          <div className="text-xs">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1 items-center">
+              <span className="font-medium text-muted-foreground">{bt.colDate}</span>
+              <span className="font-medium text-muted-foreground text-right">{bt.colKind}</span>
+              <span className="font-medium text-muted-foreground text-right">{bt.colPay}</span>
+              {breakdown.extra_work_days.map((row, idx) => (
+                <Fragment3 key={`${row.date}-${idx}`}>
+                  <span>{formatDate(row.date, lang)}</span>
+                  <span className="text-right capitalize">
+                    {bt.kindLabels[row.kind as keyof typeof bt.kindLabels] ?? row.kind}
+                  </span>
+                  <span className="text-right tabular-nums text-green-700">
+                    + {formatIDR(row.pay)}
+                  </span>
+                </Fragment3>
+              ))}
+              <span className="pt-1 border-t border-border text-muted-foreground font-medium">
+                {bt.totals}
+              </span>
+              <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
+                {breakdown.extra_work_days.length}
+              </span>
+              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-green-700">
+                + {formatIDR(totalExtraWorkPay)}
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Late section */}
       <section className="rounded-lg bg-[#f5f5f7] p-3 space-y-2">

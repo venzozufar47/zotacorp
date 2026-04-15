@@ -28,6 +28,9 @@ import { useState } from "react";
 
 type LogWithOt = AttendanceLog & {
   overtime_admin_note?: string | null;
+  /** Extra-work entries logged on the same day, fetched separately and
+   *  merged in by the page server component. */
+  extra_work?: { kind: string }[];
 };
 
 interface AttendanceHistoryTableProps {
@@ -208,6 +211,8 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                     lateCheckoutPrefix={t.attendanceTable.lateCheckoutPrefix}
                     outsideLabel={t.adminLocations.outsideLocationLabel}
                     viewOnMapsAria={t.adminLocations.viewOnMapsAria}
+                    extraWork={log.extra_work}
+                    extraWorkKindLabels={t.extraWork.kindLabels}
                   />
                 </TableCell>
               </TableRow>

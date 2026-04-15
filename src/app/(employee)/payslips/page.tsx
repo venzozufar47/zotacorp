@@ -140,6 +140,7 @@ export default async function EmployeePayslipsPage() {
                       breakdown={p.breakdown_json as PayslipBreakdown}
                       totalOvertimePay={Number(p.overtime_pay)}
                       totalLatePenalty={Number(p.late_penalty)}
+                      totalExtraWorkPay={Number(p.extra_work_pay)}
                     />
                   )}
 

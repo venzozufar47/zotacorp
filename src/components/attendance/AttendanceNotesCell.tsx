@@ -1,4 +1,4 @@
-import { MessageSquare, MapPinOff } from "lucide-react";
+import { MessageSquare, MapPinOff, ShoppingBag } from "lucide-react";
 
 /**
  * Shared "Keterangan" / "Notes" cell for attendance tables (admin recap +
@@ -18,6 +18,8 @@ export function AttendanceNotesCell({
   lateCheckoutPrefix,
   outsideLabel,
   viewOnMapsAria,
+  extraWork,
+  extraWorkKindLabels,
 }: {
   lateCheckoutReason: string | null;
   outsideNote: string | null;
@@ -26,8 +28,14 @@ export function AttendanceNotesCell({
   lateCheckoutPrefix: string;
   outsideLabel: string;
   viewOnMapsAria: string;
+  /** Extra-work entries logged on this same date. */
+  extraWork?: { kind: string }[];
+  /** Map of `kind` → human label, sourced from the caller's dictionary
+   *  so this component stays language-agnostic. */
+  extraWorkKindLabels?: Record<string, string>;
 }) {
-  if (!lateCheckoutReason && !outsideNote) {
+  const hasExtra = !!extraWork && extraWork.length > 0;
+  if (!lateCheckoutReason && !outsideNote && !hasExtra) {
     return <span className="text-muted-foreground text-xs">—</span>;
   }
 
@@ -87,6 +95,14 @@ export function AttendanceNotesCell({
           </p>
         </div>
       )}
+      {hasExtra && extraWork!.map((e, i) => (
+        <div key={i} className="flex items-center gap-1 text-xs">
+          <ShoppingBag size={11} className="shrink-0 text-muted-foreground" />
+          <span className="text-muted-foreground">
+            {extraWorkKindLabels?.[e.kind] ?? e.kind}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

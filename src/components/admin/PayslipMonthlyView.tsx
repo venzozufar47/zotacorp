@@ -367,6 +367,13 @@ export function PayslipMonthlyView({
                     value={`- ${formatIDR(Number(payslip.late_penalty))}`}
                     negative
                   />
+                  {Number(payslip.extra_work_pay) > 0 && (
+                    <Row
+                      label="Extra Work"
+                      value={`+ ${formatIDR(Number(payslip.extra_work_pay))}`}
+                      positive
+                    />
+                  )}
                   {basis === "both" && (
                     <p className="text-xs text-muted-foreground pl-2 pt-1 leading-snug">
                       Attendance bucket weighted at {attendanceWeightPct}%.
@@ -380,6 +387,7 @@ export function PayslipMonthlyView({
                       breakdown={payslip.breakdown_json as PayslipBreakdown}
                       totalOvertimePay={Number(payslip.overtime_pay)}
                       totalLatePenalty={Number(payslip.late_penalty)}
+                      totalExtraWorkPay={Number(payslip.extra_work_pay)}
                     />
                   </div>
                 )}

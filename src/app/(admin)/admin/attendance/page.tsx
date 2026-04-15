@@ -107,12 +107,33 @@ export default async function AdminAttendancePage({
       }
     }
 
-    // Merge overtime requests into attendance rows
+    // Pull extra-work entries for the same date range × visible employees
+    // and group by `${user_id}|${date}` so each attendance row can pluck
+    // its matching set in O(1) below.
+    const extraWorkByKey: Record<string, { kind: string }[]> = {};
+    if (data.length > 0) {
+      const userIds = Array.from(new Set(data.map((d: Record<string, unknown>) => d.user_id as string)));
+      const dates = Array.from(new Set(data.map((d: Record<string, unknown>) => d.date as string)));
+      const supabase = await createClient();
+      const { data: extra } = await supabase
+        .from("extra_work_logs")
+        .select("user_id, date, kind")
+        .in("user_id", userIds)
+        .in("date", dates);
+      for (const e of extra ?? []) {
+        const key = `${e.user_id}|${e.date}`;
+        (extraWorkByKey[key] ??= []).push({ kind: e.kind });
+      }
+    }
+
+    // Merge overtime requests + extra-work entries into attendance rows
     rowsWithOt = data.map((row: Record<string, unknown>) => ({
       ...row,
       overtime_requests: overtimeMap[(row as { id: string }).id]
         ? [overtimeMap[(row as { id: string }).id]]
         : [],
+      extra_work:
+        extraWorkByKey[`${row.user_id as string}|${row.date as string}`] ?? [],
     })) as typeof rowsWithOt;
   } catch (err) {
     console.error("[attendance-page] data fetch error:", err);

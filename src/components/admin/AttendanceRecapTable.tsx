@@ -60,6 +60,7 @@ interface AttendanceRow {
   checkout_longitude: number | null;
   selfie_path: string | null;
   is_early_arrival: boolean;
+  extra_work?: { kind: string }[];
   is_overtime: boolean;
   overtime_minutes: number;
   overtime_status: string | null;
@@ -714,6 +715,8 @@ export function AttendanceRecapTable({
                       lateCheckoutPrefix={t.attendanceTable.lateCheckoutPrefix}
                       outsideLabel={tl.outsideLocationLabel}
                       viewOnMapsAria={tl.viewOnMapsAria}
+                      extraWork={row.extra_work}
+                      extraWorkKindLabels={t.extraWork.kindLabels}
                     />
                   </TableCell>
                   <TableCell>
