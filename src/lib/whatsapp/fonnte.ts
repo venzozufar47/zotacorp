@@ -65,14 +65,22 @@ export async function sendWhatsApp(
       body,
     });
 
-    const json = (await res.json().catch(() => ({}))) as FonnteResponse;
+    // Keep the raw text around — some Fonnte error cases (device offline,
+    // quota exceeded, token revoked) return a plain string or a shape
+    // other than { status, reason }. Stringifying the raw body makes the
+    // Vercel log line self-diagnosing instead of guessing.
+    const raw = await res.text();
+    let json: FonnteResponse = {};
+    try {
+      json = JSON.parse(raw) as FonnteResponse;
+    } catch {
+      // fall through — json stays empty, raw has the body
+    }
 
     if (!res.ok || json.status === false) {
-      console.error("[fonnte] send failed", {
-        httpStatus: res.status,
-        reason: json.reason,
-        target,
-      });
+      console.error(
+        `[fonnte] send failed httpStatus=${res.status} reason=${json.reason ?? "(none)"} target=${target} body=${raw.slice(0, 500)}`
+      );
       return false;
     }
 
