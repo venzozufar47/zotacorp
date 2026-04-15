@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { LocationFormDialog, type LocationFormValue } from "./LocationFormDialog";
+import { LocationEmployeesDialog } from "./LocationEmployeesDialog";
 import { deleteLocation } from "@/lib/actions/location.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
@@ -26,20 +27,31 @@ interface LocationRow {
   longitude: number;
   radius_m: number;
   assigned_count: number;
+  /** Employee ids currently assigned to this location. Used to pre-tick
+   *  the employee picker dialog. */
+  assigned_employee_ids: string[];
+}
+
+interface EmployeeOption {
+  id: string;
+  full_name: string | null;
+  email: string;
 }
 
 interface Props {
   initialLocations: LocationRow[];
+  allEmployees: EmployeeOption[];
 }
 
 type LocSortKey = "name" | "radius_m" | "assigned_count";
 
-export function LocationsManager({ initialLocations }: Props) {
+export function LocationsManager({ initialLocations, allEmployees }: Props) {
   const router = useRouter();
   const { t } = useTranslation();
   const tl = t.adminLocations;
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<LocationFormValue | undefined>(undefined);
+  const [editingEmployees, setEditingEmployees] = useState<LocationRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<LocationRow | null>(null);
   const [pending, startTransition] = useTransition();
   const [sortKey, setSortKey] = useState<LocSortKey | null>(null);
@@ -151,8 +163,15 @@ export function LocationsManager({ initialLocations }: Props) {
                   <td className="px-4 py-3 text-muted-foreground tabular-nums">
                     {row.radius_m} m
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {row.assigned_count} {tl.employeeSuffix}
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditingEmployees(row)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-[#f5f5f7] hover:text-foreground hover:border-foreground/20 transition-colors"
+                      aria-label={tl.employeesDialogTitle}
+                    >
+                      {row.assigned_count} {tl.employeeSuffix}
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1.5">
@@ -187,6 +206,24 @@ export function LocationsManager({ initialLocations }: Props) {
         onOpenChange={setFormOpen}
         initial={editing}
         onSaved={() => router.refresh()}
+      />
+
+      <LocationEmployeesDialog
+        target={
+          editingEmployees
+            ? {
+                id: editingEmployees.id,
+                name: editingEmployees.name,
+                assigned_employee_ids: editingEmployees.assigned_employee_ids,
+              }
+            : null
+        }
+        allEmployees={allEmployees}
+        onOpenChange={(o) => !o && setEditingEmployees(null)}
+        onSaved={() => {
+          setEditingEmployees(null);
+          router.refresh();
+        }}
       />
 
       <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>

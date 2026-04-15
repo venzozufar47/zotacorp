@@ -178,3 +178,52 @@ export async function getEmployeeLocationIds(employeeId: string): Promise<string
 
   return (data ?? []).map((r) => r.location_id);
 }
+
+/**
+ * Replace the full set of employees assigned to a location. Inverse of
+ * `setEmployeeLocations` — drives the editable "Karyawan" column on the
+ * /admin/locations page so admins can manage assignments from either
+ * side without hopping between tabs.
+ */
+export async function setLocationEmployees(
+  locationId: string,
+  employeeIds: string[]
+) {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+
+  const supabase = await createClient();
+
+  const { data: existing } = await supabase
+    .from("employee_locations")
+    .select("employee_id")
+    .eq("location_id", locationId);
+
+  const existingIds = new Set((existing ?? []).map((r) => r.employee_id));
+  const desiredIds = new Set(employeeIds);
+
+  const toDelete = [...existingIds].filter((id) => !desiredIds.has(id));
+  const toInsert = [...desiredIds].filter((id) => !existingIds.has(id));
+
+  if (toDelete.length > 0) {
+    const { error } = await supabase
+      .from("employee_locations")
+      .delete()
+      .eq("location_id", locationId)
+      .in("employee_id", toDelete);
+    if (error) return { error: error.message };
+  }
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from("employee_locations").insert(
+      toInsert.map((employee_id) => ({
+        employee_id,
+        location_id: locationId,
+      }))
+    );
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath("/admin/locations");
+  return {};
+}

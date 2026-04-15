@@ -406,6 +406,10 @@ export const dictionary = {
       deleting: "Deleting…",
       outsideLocationLabel: "Outside location",
       viewOnMapsAria: "View on Google Maps",
+      employeesDialogTitle: "Assigned employees",
+      employeesDialogSubtitle: "Pick which employees may check in at this location. Unchecked employees are blocked from checking in here.",
+      employeesDialogEmpty: "No employees to assign yet.",
+      employeesSavedToast: "Employee assignments saved.",
     },
     adminWhatsApp: {
       title: "WhatsApp Notifications",
@@ -829,6 +833,10 @@ export const dictionary = {
       deleting: "Menghapus…",
       outsideLocationLabel: "Luar lokasi",
       viewOnMapsAria: "Buka di Google Maps",
+      employeesDialogTitle: "Karyawan di lokasi ini",
+      employeesDialogSubtitle: "Pilih karyawan yang boleh check in di lokasi ini. Yang nggak dicentang nggak bisa check in di sini.",
+      employeesDialogEmpty: "Belum ada karyawan buat di-assign.",
+      employeesSavedToast: "Assignment karyawan disimpan.",
     },
     adminWhatsApp: {
       title: "Notifikasi WhatsApp",
