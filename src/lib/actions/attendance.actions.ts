@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCurrentUser,
@@ -8,6 +9,8 @@ import {
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { getTodayDateString } from "@/lib/utils/date";
+import { notifyAdminAttendance } from "@/lib/whatsapp/attendance-notify";
+import { evaluateCheckIn, evaluateCheckOut } from "@/lib/location/enforce";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -68,6 +71,13 @@ export async function checkIn(payload: CheckInPayload) {
     return { error: "Location is required to check in. Please enable location access in your browser settings." };
   }
 
+  // Geofence enforcement: assigned employees must be inside one of their
+  // allowed radii. Unassigned employees pass freely.
+  const decision = await evaluateCheckIn(user.id, payload.latitude, payload.longitude);
+  if (!decision.ok) {
+    return { error: decision.error ?? "Tidak diizinkan check in dari lokasi ini." };
+  }
+
   const supabase = await createClient();
   const today = getTodayDateString();
 
@@ -85,10 +95,10 @@ export async function checkIn(payload: CheckInPayload) {
     return { error: "You have already completed attendance for today." };
   }
 
-  // Get profile for per-user working time settings
+  // Get profile for per-user working time settings + name (used in WA notify)
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_flexible_schedule, work_start_time, work_end_time, grace_period_min")
+    .select("full_name, is_flexible_schedule, work_start_time, work_end_time, grace_period_min")
     .eq("id", user.id)
     .single();
 
@@ -117,6 +127,7 @@ export async function checkIn(payload: CheckInPayload) {
       checked_in_at: now.toISOString(),
       latitude: payload.latitude,
       longitude: payload.longitude,
+      matched_location_id: decision.matchedLocationId,
       status,
       late_minutes,
     })
@@ -129,6 +140,20 @@ export async function checkIn(payload: CheckInPayload) {
     }
     return { error: error.message };
   }
+
+  // Notify admin WA(s) after the response is sent so attendance latency
+  // isn't tied to Fonnte's round-trip. Failures are swallowed in fonnte.ts.
+  after(() =>
+    notifyAdminAttendance({
+      employeeId: user.id,
+      fullName: profile?.full_name ?? "Karyawan",
+      event: "in",
+      at: now.toISOString(),
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      timezone,
+    })
+  );
 
   revalidatePath("/dashboard");
   revalidatePath("/attendance");
@@ -173,6 +198,11 @@ export async function reviewLateProof(
 interface CheckOutPayload {
   isOvertime?: boolean;
   overtimeReason?: string;
+  /** Fresh GPS captured at the moment of checkout (not the check-in coords). */
+  latitude?: number | null;
+  longitude?: number | null;
+  /** Required when employee is outside all assigned geofences. */
+  outsideLocationNote?: string;
 }
 
 export async function checkOut(payload?: CheckOutPayload) {
@@ -184,7 +214,7 @@ export async function checkOut(payload?: CheckOutPayload) {
 
   const { data: existing } = await supabase
     .from("attendance_logs")
-    .select("id, checked_out_at, checked_in_at")
+    .select("id, checked_out_at, checked_in_at, latitude, longitude")
     .eq("user_id", user.id)
     .eq("date", today)
     .maybeSingle();
@@ -197,14 +227,28 @@ export async function checkOut(payload?: CheckOutPayload) {
     return { error: "You have already checked out today." };
   }
 
+  // Geofence soft-check: outside-radius requires a note from the employee.
+  // Returning `requiresNote: true` lets the client open a note prompt and
+  // resubmit without fully reloading.
+  const checkoutLat = payload?.latitude ?? null;
+  const checkoutLng = payload?.longitude ?? null;
+  const note = payload?.outsideLocationNote?.trim() || null;
+  const decision = await evaluateCheckOut(user.id, checkoutLat, checkoutLng, note);
+  if (!decision.ok) {
+    return {
+      error: decision.error ?? "Catatan diperlukan untuk check out di luar lokasi.",
+      requiresNote: decision.requiresNote,
+    };
+  }
+
   const now = new Date();
   const isOvertime = payload?.isOvertime ?? false;
   const overtimeReason = payload?.overtimeReason ?? "";
 
-  // Get per-user settings
+  // Get per-user settings + name (used in WA notify)
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_flexible_schedule, work_end_time")
+    .select("full_name, is_flexible_schedule, work_end_time")
     .eq("id", user.id)
     .single();
 
@@ -237,6 +281,9 @@ export async function checkOut(payload?: CheckOutPayload) {
     .from("attendance_logs")
     .update({
       checked_out_at: now.toISOString(),
+      checkout_latitude: checkoutLat,
+      checkout_longitude: checkoutLng,
+      checkout_outside_note: note,
       is_overtime: isOvertime && overtimeMinutes > 0,
       overtime_minutes: isOvertime ? overtimeMinutes : 0,
       overtime_status: isOvertime && overtimeMinutes > 0 ? "pending" : null,
@@ -258,6 +305,21 @@ export async function checkOut(payload?: CheckOutPayload) {
       reason: overtimeReason || "No reason provided",
     });
   }
+
+  // Notify admin WA(s) using the FRESH checkout GPS — falls back to the
+  // check-in coords if the client didn't send any (defensive; geo can
+  // legitimately fail mid-day).
+  after(() =>
+    notifyAdminAttendance({
+      employeeId: user.id,
+      fullName: profile?.full_name ?? "Karyawan",
+      event: "out",
+      at: now.toISOString(),
+      latitude: checkoutLat ?? existing.latitude,
+      longitude: checkoutLng ?? existing.longitude,
+      outsideNote: note,
+    })
+  );
 
   revalidatePath("/dashboard");
   revalidatePath("/attendance");

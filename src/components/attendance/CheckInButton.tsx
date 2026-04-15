@@ -5,6 +5,15 @@ import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { MapPin, MapPinOff, Clock } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { checkIn, checkOut } from "@/lib/actions/attendance.actions";
 
 /**
@@ -83,6 +92,18 @@ export function CheckInButton({
   const [overtimeChecked, setOvertimeChecked] = useState(false);
   const [overtimeReason, setOvertimeReason] = useState("");
   const [isPending, startTransition] = useTransition();
+  // Outside-radius checkout note flow. When the server reports
+  // `requiresNote: true`, we stash the GPS + overtime args and open a
+  // small modal asking the employee for the explanation; submitting it
+  // re-fires the same checkOut call with the note attached.
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteValue, setNoteValue] = useState("");
+  const [pendingCheckout, setPendingCheckout] = useState<{
+    isOvertime: boolean;
+    overtimeReason: string;
+    latitude: number | null;
+    longitude: number | null;
+  } | null>(null);
   const { status: geoStatus, requestLocation } = useGeolocation();
   const { t } = useTranslation();
 
@@ -174,31 +195,89 @@ export function CheckInButton({
 
   async function performCheckOut(isOvertime: boolean, reason: string) {
     startTransition(async () => {
-      const result = await checkOut({
+      // Grab fresh GPS at checkout so the server can geofence-check against
+      // the employee's assigned locations. We don't block on missing coords —
+      // the server will downgrade the response to "requires note" if needed.
+      const coords = await requestLocation();
+
+      await submitCheckout({
         isOvertime,
         overtimeReason: reason,
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
+        note: null,
       });
+    });
+  }
 
-      if (result?.error) {
-        toast.error(result.error);
+  /**
+   * Single-shot checkout submission. Used by both the fresh attempt (no note
+   * yet) and the note-modal retry. Splitting it from `performCheckOut` keeps
+   * the GPS capture out of the retry path so the user doesn't get a second
+   * permission prompt on resubmit.
+   */
+  async function submitCheckout(args: {
+    isOvertime: boolean;
+    overtimeReason: string;
+    latitude: number | null;
+    longitude: number | null;
+    note: string | null;
+  }) {
+    const result = await checkOut({
+      isOvertime: args.isOvertime,
+      overtimeReason: args.overtimeReason,
+      latitude: args.latitude,
+      longitude: args.longitude,
+      outsideLocationNote: args.note ?? undefined,
+    });
+
+    if (result?.error) {
+      // Outside-radius → open the note modal and stash args for retry.
+      if ((result as { requiresNote?: boolean }).requiresNote) {
+        setPendingCheckout({
+          isOvertime: args.isOvertime,
+          overtimeReason: args.overtimeReason,
+          latitude: args.latitude,
+          longitude: args.longitude,
+        });
+        setNoteValue("");
+        setNoteOpen(true);
         return;
       }
+      toast.error(result.error);
+      return;
+    }
 
-      if (result?.data) {
-        setLog(result.data as AttendanceLog);
-        if (isOvertime && (result.data as AttendanceLog).overtime_minutes > 0) {
-          const mins = (result.data as AttendanceLog).overtime_minutes;
-          toast.success(
-            t.checkIn.toastCheckedOutOvertime.replace(
-              "{duration}",
-              formatMinutesHuman(mins, t.units)
-            )
-          );
-        } else {
-          toast.success(t.checkIn.toastCheckedOut);
-        }
-        onSuccess?.();
+    if (result?.data) {
+      setLog(result.data as AttendanceLog);
+      if (args.isOvertime && (result.data as AttendanceLog).overtime_minutes > 0) {
+        const mins = (result.data as AttendanceLog).overtime_minutes;
+        toast.success(
+          t.checkIn.toastCheckedOutOvertime.replace(
+            "{duration}",
+            formatMinutesHuman(mins, t.units)
+          )
+        );
+      } else {
+        toast.success(t.checkIn.toastCheckedOut);
       }
+      onSuccess?.();
+    }
+  }
+
+  function submitNoteAndRetry() {
+    if (!pendingCheckout) return;
+    if (!noteValue.trim()) {
+      toast.error("Catatan wajib diisi.");
+      return;
+    }
+    const args = pendingCheckout;
+    const note = noteValue.trim();
+    startTransition(async () => {
+      await submitCheckout({ ...args, note });
+      setNoteOpen(false);
+      setPendingCheckout(null);
+      setNoteValue("");
     });
   }
 
@@ -326,6 +405,41 @@ export function CheckInButton({
         action={modalAction}
         onConfirm={modalAction === "check-in" ? handleCheckIn : handleCheckOutAttempt}
       />
+
+      {/* Outside-radius checkout note prompt */}
+      <Dialog
+        open={noteOpen}
+        onOpenChange={(o) => {
+          setNoteOpen(o);
+          if (!o) {
+            setPendingCheckout(null);
+            setNoteValue("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Check out di luar lokasi</DialogTitle>
+            <DialogDescription>
+              Kamu sedang di luar lokasi kerja terdaftar. Isi catatan singkat untuk admin sebelum check out.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={noteValue}
+            onChange={(e) => setNoteValue(e.target.value)}
+            placeholder="Misal: lupa absen di kantor, baru sempet pas di rumah"
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteOpen(false)} disabled={isPending}>
+              Batal
+            </Button>
+            <Button onClick={submitNoteAndRetry} disabled={isPending}>
+              {isPending ? "Mengirim…" : "Check out"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, ClipboardList, Users, Settings, LogOut, Receipt } from "lucide-react";
+import { Menu, X, ClipboardList, Users, Settings, LogOut, Receipt, MapPin } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
@@ -16,6 +16,7 @@ export function AdminMobileNav() {
     { href: "/admin/attendance", icon: ClipboardList, label: t.nav.attendance },
     { href: "/admin/payslips", icon: Receipt, label: t.nav.payslips },
     { href: "/admin/users", icon: Users, label: t.nav.users },
+    { href: "/admin/locations", icon: MapPin, label: t.nav.locations },
     { href: "/admin/settings", icon: Settings, label: t.nav.settings },
   ];
 

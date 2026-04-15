@@ -160,6 +160,10 @@ export type Database = {
           checked_out_at: string | null;
           latitude: number | null;
           longitude: number | null;
+          checkout_latitude: number | null;
+          checkout_longitude: number | null;
+          checkout_outside_note: string | null;
+          matched_location_id: string | null;
           status: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
           late_minutes: number;
           late_proof_url: string | null;
@@ -180,6 +184,10 @@ export type Database = {
           checked_out_at?: string | null;
           latitude?: number | null;
           longitude?: number | null;
+          checkout_latitude?: number | null;
+          checkout_longitude?: number | null;
+          checkout_outside_note?: string | null;
+          matched_location_id?: string | null;
           status?: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
           late_minutes?: number;
           late_proof_url?: string | null;
@@ -194,6 +202,10 @@ export type Database = {
         };
         Update: {
           checked_out_at?: string | null;
+          checkout_latitude?: number | null;
+          checkout_longitude?: number | null;
+          checkout_outside_note?: string | null;
+          matched_location_id?: string | null;
           status?: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
           late_minutes?: number;
           late_proof_url?: string | null;
@@ -468,6 +480,88 @@ export type Database = {
           }
         ];
       };
+      whatsapp_notification_recipients: {
+        Row: {
+          id: string;
+          label: string;
+          phone_e164: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          label?: string;
+          phone_e164: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          label?: string;
+          phone_e164?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      attendance_locations: {
+        Row: {
+          id: string;
+          name: string;
+          latitude: number;
+          longitude: number;
+          radius_m: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          latitude: number;
+          longitude: number;
+          radius_m: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          latitude?: number;
+          longitude?: number;
+          radius_m?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      employee_locations: {
+        Row: {
+          employee_id: string;
+          location_id: string;
+          created_at: string;
+        };
+        Insert: {
+          employee_id: string;
+          location_id: string;
+          created_at?: string;
+        };
+        Update: {
+          employee_id?: string;
+          location_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "employee_locations_employee_id_fkey";
+            columns: ["employee_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "employee_locations_location_id_fkey";
+            columns: ["location_id"];
+            isOneToOne: false;
+            referencedRelation: "attendance_locations";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       payslip_deliverables: {
         Row: {
           id: string;
@@ -534,3 +628,9 @@ export type PayslipSettings =
 export type Payslip = Database["public"]["Tables"]["payslips"]["Row"];
 export type PayslipDeliverable =
   Database["public"]["Tables"]["payslip_deliverables"]["Row"];
+export type AttendanceLocation =
+  Database["public"]["Tables"]["attendance_locations"]["Row"];
+export type EmployeeLocation =
+  Database["public"]["Tables"]["employee_locations"]["Row"];
+export type WhatsAppNotificationRecipient =
+  Database["public"]["Tables"]["whatsapp_notification_recipients"]["Row"];

@@ -10,7 +10,9 @@ import {
   Sparkles,
   CheckCircle2,
   CircleDashed,
+  MapPin,
 } from "lucide-react";
+import { LocationAssignmentDialog } from "./LocationAssignmentDialog";
 import {
   Table,
   TableBody,
@@ -56,20 +58,30 @@ interface UserRow {
   work_end_time: string;
   grace_period_min: number;
   profile_complete: boolean;
+  /** IDs of attendance_locations this employee is allowed to check in at.
+   *  Empty array = unrestricted (can check in anywhere). */
+  assigned_location_ids: string[];
+}
+
+interface LocationOption {
+  id: string;
+  name: string;
 }
 
 interface UsersTableProps {
   rows: UserRow[];
   currentUserId: string;
+  allLocations: LocationOption[];
 }
 
-export function UsersTable({ rows, currentUserId }: UsersTableProps) {
+export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProps) {
   const router = useRouter();
   const { t } = useTranslation();
   const tu = t.adminUsers;
   const [target, setTarget] = useState<UserRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
+  const [editingLocations, setEditingLocations] = useState<UserRow | null>(null);
 
   if (rows.length === 0) {
     return (
@@ -132,6 +144,9 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
               <TableHead className="text-xs font-semibold uppercase tracking-wide">
                 {tu.colSchedule}
               </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                {tu.colLocations}
+              </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">
                 {tu.colActions}
               </TableHead>
@@ -179,6 +194,14 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
                   </TableCell>
                   <TableCell>
                     <ScheduleCell row={row} onEdit={() => setEditing(row)} tu={tu} />
+                  </TableCell>
+                  <TableCell>
+                    <LocationsCell
+                      row={row}
+                      allLocations={allLocations}
+                      onEdit={() => setEditingLocations(row)}
+                      tu={tu}
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -254,7 +277,79 @@ export function UsersTable({ rows, currentUserId }: UsersTableProps) {
           router.refresh();
         }}
       />
+
+      <LocationAssignmentDialog
+        target={
+          editingLocations
+            ? {
+                id: editingLocations.id,
+                full_name: editingLocations.full_name,
+                email: editingLocations.email,
+                assigned_location_ids: editingLocations.assigned_location_ids,
+              }
+            : null
+        }
+        allLocations={allLocations}
+        onOpenChange={(open) => !open && setEditingLocations(null)}
+        onSaved={() => {
+          setEditingLocations(null);
+          router.refresh();
+        }}
+      />
     </>
+  );
+}
+
+/**
+ * Compact location-assignment cell — badge summarizing how many locations
+ * the employee is allowed to check in at, clickable to open the
+ * inline assignment dialog.
+ *
+ *   - Empty → dashed "Bebas" badge (unrestricted; matches the spec that
+ *     employees with no assignments can clock in anywhere).
+ *   - 1–2   → list the names so a glance tells the story.
+ *   - 3+    → "{N} lokasi" with the count, same shape as when all sites
+ *     are assigned.
+ */
+function LocationsCell({
+  row,
+  allLocations,
+  onEdit,
+  tu,
+}: {
+  row: UserRow;
+  allLocations: LocationOption[];
+  onEdit: () => void;
+  tu: AdminUsersT;
+}) {
+  const assigned = allLocations.filter((l) =>
+    row.assigned_location_ids.includes(l.id)
+  );
+  const empty = assigned.length === 0;
+
+  const label = empty
+    ? tu.locFree
+    : assigned.length <= 2
+    ? assigned.map((l) => l.name).join(", ")
+    : `${assigned.length} ${tu.locCountSuffix}`;
+
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors max-w-[200px]",
+        "hover:bg-[#f5f5f7] hover:border-foreground/20",
+        empty
+          ? "border-dashed border-muted-foreground/30 text-muted-foreground"
+          : "border-border text-foreground"
+      )}
+      aria-label={tu.ariaEditLocations}
+      title={empty ? tu.locFreeHint : assigned.map((l) => l.name).join(", ")}
+    >
+      <MapPin size={12} className={empty ? "" : "text-muted-foreground"} />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 

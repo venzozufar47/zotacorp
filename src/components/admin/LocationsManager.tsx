@@ -1,0 +1,192 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Pencil, Trash2, Plus, MapPin } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { LocationFormDialog, type LocationFormValue } from "./LocationFormDialog";
+import { deleteLocation } from "@/lib/actions/location.actions";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
+
+interface LocationRow {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_m: number;
+  assigned_count: number;
+}
+
+interface Props {
+  initialLocations: LocationRow[];
+}
+
+export function LocationsManager({ initialLocations }: Props) {
+  const router = useRouter();
+  const { t } = useTranslation();
+  const tl = t.adminLocations;
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<LocationFormValue | undefined>(undefined);
+  const [pendingDelete, setPendingDelete] = useState<LocationRow | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function openCreate() {
+    setEditing(undefined);
+    setFormOpen(true);
+  }
+
+  function openEdit(row: LocationRow) {
+    setEditing({
+      id: row.id,
+      name: row.name,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      radius_m: row.radius_m,
+    });
+    setFormOpen(true);
+  }
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    startTransition(async () => {
+      const result = await deleteLocation(target.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(tl.deletedToast.replace("{name}", target.name));
+      setPendingDelete(null);
+      router.refresh();
+    });
+  }
+
+  return (
+    <>
+      <div className="flex justify-end">
+        <Button onClick={openCreate}>
+          <Plus size={14} className="mr-1.5" />
+          {tl.addCta}
+        </Button>
+      </div>
+
+      {initialLocations.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border px-6 py-12 text-center bg-white">
+          <MapPin size={32} className="mx-auto mb-3 text-muted-foreground/50" />
+          <h3 className="font-medium text-foreground mb-1">{tl.emptyTitle}</h3>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            {tl.emptyDescription}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-white ring-1 ring-foreground/6 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40">
+              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-3 font-medium">{tl.colName}</th>
+                <th className="px-4 py-3 font-medium">{tl.colCoords}</th>
+                <th className="px-4 py-3 font-medium">{tl.colRadius}</th>
+                <th className="px-4 py-3 font-medium">{tl.colEmployees}</th>
+                <th className="px-4 py-3 font-medium text-right">{tl.colActions}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {initialLocations.map((row) => (
+                <tr key={row.id} className="hover:bg-muted/20">
+                  <td className="px-4 py-3 font-medium">{row.name}</td>
+                  <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                    <a
+                      href={`https://maps.google.com/?q=${row.latitude},${row.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {row.latitude.toFixed(5)}, {row.longitude.toFixed(5)}
+                    </a>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                    {row.radius_m} m
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {row.assigned_count} {tl.employeeSuffix}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => openEdit(row)}
+                        aria-label={`${tl.ariaEdit} ${row.name}`}
+                      >
+                        <Pencil size={14} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setPendingDelete(row)}
+                        aria-label={`${tl.ariaDelete} ${row.name}`}
+                        className="hover:text-destructive"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <LocationFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        initial={editing}
+        onSaved={() => router.refresh()}
+      />
+
+      <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tl.deleteTitle}</DialogTitle>
+            <DialogDescription>
+              {tl.deleteBodyPrefix}{" "}
+              <span className="font-medium">{pendingDelete?.name}</span>{" "}
+              {pendingDelete && pendingDelete.assigned_count > 0 && (
+                <span className="text-destructive">
+                  ({pendingDelete.assigned_count} {tl.deleteWarnCountSuffix}){" "}
+                </span>
+              )}
+              {tl.deleteBodySuffix}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingDelete(null)}
+              disabled={pending}
+            >
+              {tl.cancel}
+            </Button>
+            <Button
+              onClick={confirmDelete}
+              disabled={pending}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {pending ? tl.deleting : tl.deleteCta}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

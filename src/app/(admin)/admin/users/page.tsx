@@ -48,10 +48,27 @@ export default async function AdminUsersPage() {
   // generated Supabase types strongly-typed (`select(string[])` would
   // collapse to GenericStringError). The profiles row is small.
   const supabase = await createClient();
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const [{ data: profiles }, { data: locations }, { data: assignments }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("attendance_locations")
+        .select("id, name")
+        .order("name", { ascending: true }),
+      supabase.from("employee_locations").select("employee_id, location_id"),
+    ]);
+
+  // Index assignments by employee so each row can pluck its own set in O(1).
+  const assignmentsByEmployee = (assignments ?? []).reduce<Record<string, string[]>>(
+    (acc, row) => {
+      (acc[row.employee_id] ??= []).push(row.location_id);
+      return acc;
+    },
+    {}
+  );
 
   const rows = (profiles ?? []).map((p) => {
     // Profile is complete when every completion key is non-empty. Numbers
@@ -77,6 +94,7 @@ export default async function AdminUsersPage() {
       work_end_time: toHHMM(p.work_end_time) ?? "18:00",
       grace_period_min: p.grace_period_min ?? 15,
       profile_complete: profileComplete,
+      assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
     };
   });
 
@@ -89,7 +107,11 @@ export default async function AdminUsersPage() {
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader title={t.adminUsers.pageTitle} subtitle={subtitle} />
-      <UsersTable rows={rows} currentUserId={user.id} />
+      <UsersTable
+        rows={rows}
+        currentUserId={user.id}
+        allLocations={locations ?? []}
+      />
     </div>
   );
 }

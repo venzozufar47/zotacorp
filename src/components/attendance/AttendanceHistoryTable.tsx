@@ -1,4 +1,6 @@
-import { MapPin, XCircle } from "lucide-react";
+"use client";
+
+import { XCircle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -18,6 +20,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "./StatusBadge";
 import { LateProofUploadDialog } from "./LateProofUploadDialog";
 import { LateCheckoutDialog } from "./LateCheckoutDialog";
+import { AttendanceNotesCell } from "./AttendanceNotesCell";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type LogWithOt = AttendanceLog & {
   overtime_admin_note?: string | null;
@@ -37,6 +41,8 @@ const OT_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
 };
 
 export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexibleSchedule }: AttendanceHistoryTableProps) {
+  const { t } = useTranslation();
+
   if (logs.length === 0) {
     return (
       <EmptyState
@@ -57,7 +63,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
             <TableHead className="text-xs font-semibold uppercase tracking-wide w-[180px] max-w-[180px]">Overtime</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">Location</TableHead>
+            <TableHead className="text-xs font-semibold uppercase tracking-wide">{t.attendanceTable.colNotes}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -74,14 +80,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                 <TableCell>{formatTime(log.checked_in_at, timezone)}</TableCell>
                 <TableCell>
                   {log.checked_out_at ? (
-                    <div>
-                      <span>{formatTime(log.checked_out_at, timezone)}</span>
-                      {log.late_checkout_reason && (
-                        <p className="text-xs text-muted-foreground mt-0.5" title={log.late_checkout_reason}>
-                          Late: {log.late_checkout_reason.length > 30 ? log.late_checkout_reason.slice(0, 30) + "…" : log.late_checkout_reason}
-                        </p>
-                      )}
-                    </div>
+                    formatTime(log.checked_out_at, timezone)
                   ) : (
                     <LateCheckoutDialog
                       attendanceLogId={log.id}
@@ -176,20 +175,15 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                   )}
                 </TableCell>
                 <TableCell>
-                  {log.latitude ? (
-                    <a
-                      href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs"
-                      style={{ color: "var(--primary)" }}
-                    >
-                      <MapPin size={12} />
-                      View
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">—</span>
-                  )}
+                  <AttendanceNotesCell
+                    lateCheckoutReason={log.late_checkout_reason}
+                    outsideNote={log.checkout_outside_note}
+                    checkoutLat={log.checkout_latitude}
+                    checkoutLng={log.checkout_longitude}
+                    lateCheckoutPrefix={t.attendanceTable.lateCheckoutPrefix}
+                    outsideLabel={t.adminLocations.outsideLocationLabel}
+                    viewOnMapsAria={t.adminLocations.viewOnMapsAria}
+                  />
                 </TableCell>
               </TableRow>
             );

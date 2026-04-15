@@ -7,6 +7,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ProfileForm } from "@/components/profile/ProfileForm";
+import { EmployeeLocationAssignment } from "@/components/admin/EmployeeLocationAssignment";
+import {
+  listLocations,
+  getEmployeeLocationIds,
+} from "@/lib/actions/location.actions";
 import type { Profile } from "@/lib/supabase/types";
 
 export default async function AdminEditUserPage({
@@ -31,6 +36,13 @@ export default async function AdminEditUserPage({
 
   if (!profile) notFound();
 
+  // Locations data is fetched in parallel with the profile so the page
+  // doesn't add a noticeable round-trip when assignment is the new section.
+  const [{ data: allLocations }, assignedIds] = await Promise.all([
+    listLocations(),
+    getEmployeeLocationIds(id),
+  ]);
+
   return (
     <div className="space-y-5 animate-fade-up">
       <Link
@@ -45,6 +57,11 @@ export default async function AdminEditUserPage({
         subtitle={profile.email}
       />
       <ProfileForm profile={profile as Profile} targetId={id} />
+      <EmployeeLocationAssignment
+        employeeId={id}
+        allLocations={(allLocations ?? []).map((l) => ({ id: l.id, name: l.name }))}
+        initialAssignedIds={assignedIds}
+      />
     </div>
   );
 }
