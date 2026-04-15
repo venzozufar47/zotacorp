@@ -129,6 +129,7 @@ export default async function DashboardPage() {
             todayLog={todayLog}
             settings={settings}
             isFlexible={profile?.is_flexible_schedule ?? false}
+            workStartTime={profile?.work_start_time ?? null}
             workEndTime={profile?.work_end_time ?? null}
           />
         </div>

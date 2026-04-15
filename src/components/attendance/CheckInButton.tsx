@@ -56,6 +56,7 @@ async function fireConfetti() {
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
 import { formatTime, formatMinutesHuman } from "@/lib/utils/date";
+import { getEffectiveWorkEnd } from "@/lib/utils/attendance-overtime";
 import { StatusBadge } from "./StatusBadge";
 import { SelfieCaptureDialog } from "./SelfieCaptureDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -65,6 +66,9 @@ interface CheckInButtonProps {
   todayLog: AttendanceLog | null;
   settings: AttendanceSettings | null;
   isFlexible?: boolean;
+  /** Per-employee standard check-in time. Required for the early-arrival
+   * overtime gate — without it we can't compute the effective end. */
+  workStartTime?: string | null;
   /** Per-employee standard check-out time (HH:MM or HH:MM:SS). Falls back
    * to the org-wide setting. This is also what the server uses to compute
    * overtime minutes, so gating the UI on the same value keeps things
@@ -85,6 +89,7 @@ export function CheckInButton({
   todayLog,
   settings,
   isFlexible = false,
+  workStartTime,
   workEndTime,
   onSuccess,
 }: CheckInButtonProps) {
@@ -114,7 +119,7 @@ export function CheckInButton({
   const { t } = useTranslation();
 
   const state = getState(log);
-  const pastEndTime = isPastEndTime();
+  const pastEndTime = canOptInOvertime();
 
   function openCheckIn() {
     setModalAction("check-in");
@@ -126,22 +131,33 @@ export function CheckInButton({
     setModalOpen(true);
   }
 
-  /** Check if current time is past work end time. Uses the per-employee
-   * `workEndTime` (same source the server uses for overtime calc) and
-   * falls back to the org-wide setting. */
-  function isPastEndTime(): boolean {
-    if (!settings || isFlexible) return false;
+  /**
+   * Should the overtime opt-in checkbox appear yet?
+   *
+   * Today's behaviour for normal arrivals: `now > work_end_time`.
+   * Early-arrival behaviour: `now > checked_in_at + standard_duration`.
+   * Both cases collapse into a single check via `getEffectiveWorkEnd`,
+   * the same helper the server uses to credit OT minutes — so the UI
+   * never enables an opt-in the server then refuses.
+   */
+  function canOptInOvertime(): boolean {
+    if (!settings || isFlexible || !log) return false;
     try {
-      const endRaw = workEndTime ?? settings.work_end_time;
-      if (!endRaw) return false;
-      const now = new Date();
-      const localNow = new Date(
-        now.toLocaleString("en-US", { timeZone: settings.timezone })
+      const start = workStartTime ?? settings.work_start_time;
+      const end = workEndTime ?? settings.work_end_time;
+      if (!start || !end) return false;
+      const effectiveEnd = getEffectiveWorkEnd(
+        new Date(log.checked_in_at),
+        start,
+        end,
+        settings.timezone,
+        false
       );
-      const [endH, endM] = endRaw.split(":").map(Number);
-      const endTime = new Date(localNow);
-      endTime.setHours(endH, endM ?? 0, 0, 0);
-      return localNow > endTime;
+      if (!effectiveEnd) return false;
+      const localNow = new Date(
+        new Date().toLocaleString("en-US", { timeZone: settings.timezone })
+      );
+      return localNow >= effectiveEnd;
     } catch {
       return false;
     }

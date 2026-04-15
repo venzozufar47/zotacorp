@@ -335,6 +335,8 @@ export const dictionary = {
       lateCheckoutPrefix: "Late checkout",
       selfieDialogTitle: "Check-in selfie",
       selfieLoadError: "Failed to load selfie.",
+      earlyArrivalLabel: "Early arrival",
+      earlyArrivalAria: "Signed in more than 30 minutes early",
     },
     adminLocations: {
       pageTitle: "Locations",
@@ -731,6 +733,8 @@ export const dictionary = {
       lateCheckoutPrefix: "Telat check-out",
       selfieDialogTitle: "Selfie check-in",
       selfieLoadError: "Gagal memuat selfie.",
+      earlyArrivalLabel: "Datang awal",
+      earlyArrivalAria: "Sign in lebih dari 30 menit sebelum jadwal",
     },
     adminLocations: {
       pageTitle: "Lokasi Kerja",

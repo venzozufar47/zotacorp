@@ -9,6 +9,7 @@ import {
   formatMinutesHuman,
 } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
+import { EarlyArrivalPill } from "./EarlyArrivalPill";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface AttendanceStatusCardProps {
@@ -61,6 +62,7 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
                 {t.attendanceStatus.today}
               </p>
               <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
+              {log.is_early_arrival && <EarlyArrivalPill />}
               {log.late_proof_url && log.late_proof_status && (
                 <>
                   <span

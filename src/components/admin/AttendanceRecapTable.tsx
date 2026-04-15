@@ -7,6 +7,7 @@ import { CheckCircle, XCircle, MessageSquare, Trash2, Paperclip, X, ExternalLink
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
 import { SelfiePreviewDialog } from "@/components/attendance/SelfiePreviewDialog";
+import { EarlyArrivalPill } from "@/components/attendance/EarlyArrivalPill";
 import { SortableHeader } from "./SortableHeader";
 import type { AdminAttendanceSortKey } from "@/lib/actions/attendance.actions";
 import {
@@ -58,6 +59,7 @@ interface AttendanceRow {
   checkout_latitude: number | null;
   checkout_longitude: number | null;
   selfie_path: string | null;
+  is_early_arrival: boolean;
   is_overtime: boolean;
   overtime_minutes: number;
   overtime_status: string | null;
@@ -452,23 +454,26 @@ export function AttendanceRecapTable({
                     {formatLocalDate(row.date)}
                   </TableCell>
                   <TableCell className="text-sm">
-                    {row.selfie_path ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelfieLog({
-                            id: row.id,
-                            title: `${row.profiles.full_name} — ${formatLocalDate(row.date)}`,
-                          })
-                        }
-                        className="underline-offset-2 hover:underline tabular-nums"
-                        style={{ color: "var(--primary)" }}
-                      >
-                        {formatTime(row.checked_in_at, timezone)}
-                      </button>
-                    ) : (
-                      formatTime(row.checked_in_at, timezone)
-                    )}
+                    <div className="flex flex-col items-start gap-0.5">
+                      {row.selfie_path ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelfieLog({
+                              id: row.id,
+                              title: `${row.profiles.full_name} — ${formatLocalDate(row.date)}`,
+                            })
+                          }
+                          className="underline-offset-2 hover:underline tabular-nums"
+                          style={{ color: "var(--primary)" }}
+                        >
+                          {formatTime(row.checked_in_at, timezone)}
+                        </button>
+                      ) : (
+                        formatTime(row.checked_in_at, timezone)
+                      )}
+                      {row.is_early_arrival && <EarlyArrivalPill />}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm">
                     {row.checked_out_at ? formatTime(row.checked_out_at, timezone) : "—"}

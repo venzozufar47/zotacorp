@@ -11,6 +11,10 @@ import {
 import { getTodayDateString } from "@/lib/utils/date";
 import { notifyAdminAttendance } from "@/lib/whatsapp/attendance-notify";
 import { evaluateCheckIn, evaluateCheckOut } from "@/lib/location/enforce";
+import {
+  isEarlyArrival,
+  getEffectiveWorkEnd,
+} from "@/lib/utils/attendance-overtime";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -135,6 +139,14 @@ export async function checkIn(payload: CheckInPayload) {
       )
     : { status: "unknown" as const, late_minutes: 0 };
 
+  // Early-arrival flag: only meaningful on fixed schedules. Stamped at
+  // check-in so later admin edits to work_start_time don't retroactively
+  // reshape OT math for old logs.
+  const is_early_arrival =
+    !!profile &&
+    !profile.is_flexible_schedule &&
+    isEarlyArrival(now, profile.work_start_time, timezone);
+
   const { data, error } = await supabase
     .from("attendance_logs")
     .insert({
@@ -145,6 +157,7 @@ export async function checkIn(payload: CheckInPayload) {
       longitude: payload.longitude,
       matched_location_id: decision.matchedLocationId,
       selfie_path: payload.selfie_path,
+      is_early_arrival,
       status,
       late_minutes,
     })
@@ -262,10 +275,11 @@ export async function checkOut(payload?: CheckOutPayload) {
   const isOvertime = payload?.isOvertime ?? false;
   const overtimeReason = payload?.overtimeReason ?? "";
 
-  // Get per-user settings + name (used in WA notify)
+  // Get per-user settings + name (used in WA notify). `work_start_time`
+  // is needed so `getEffectiveWorkEnd` can apply the early-arrival rule.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, is_flexible_schedule, work_end_time")
+    .select("full_name, is_flexible_schedule, work_start_time, work_end_time")
     .eq("id", user.id)
     .single();
 
@@ -279,13 +293,20 @@ export async function checkOut(payload?: CheckOutPayload) {
       const checkoutLocal = new Date(
         now.toLocaleString("en-US", { timeZone: timezone })
       );
-      const [endH, endM] = (profile?.work_end_time ?? "18:00").split(":").map(Number);
-      const endTime = new Date(checkoutLocal);
-      endTime.setHours(endH, endM, 0, 0);
+      // Effective end = work_end_time for normal arrivals, or
+      // check_in_at + standard duration for early arrivals. A single
+      // code path that subsumes both cases.
+      const effectiveEnd = getEffectiveWorkEnd(
+        new Date(existing.checked_in_at),
+        profile?.work_start_time ?? "09:00",
+        profile?.work_end_time ?? "18:00",
+        timezone,
+        false
+      );
 
-      if (checkoutLocal > endTime) {
+      if (effectiveEnd && checkoutLocal > effectiveEnd) {
         overtimeMinutes = Math.ceil(
-          (checkoutLocal.getTime() - endTime.getTime()) / 60_000
+          (checkoutLocal.getTime() - effectiveEnd.getTime()) / 60_000
         );
         overtimeMinutes = Math.min(overtimeMinutes, 480);
       }
@@ -473,19 +494,36 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_flexible_schedule, work_end_time")
+    .select("is_flexible_schedule, work_start_time, work_end_time")
     .eq("id", user.id)
     .single();
 
   let overtimeMinutes = 0;
 
   if (isOvertime && !profile?.is_flexible_schedule) {
-    const [endH, endM] = (profile?.work_end_time ?? "18:00").split(":").map(Number);
-    const endHm = endH * 60 + endM;
-    const checkoutHm = hours * 60 + minutes;
+    // Use the same shared helper as `checkOut` so retroactive checkouts
+    // honour early-arrival overtime too. We need a TZ-aware checkout
+    // moment to compare against `effectiveEnd`; `checkoutDate` above is
+    // already a UTC instant from the user's HH:mm in the target TZ, so
+    // shift the same way the helper expects.
+    const settings = await getCachedAttendanceSettings();
+    const tz = settings?.timezone ?? "Asia/Jakarta";
+    const checkoutLocal = new Date(
+      checkoutDate.toLocaleString("en-US", { timeZone: tz })
+    );
+    const effectiveEnd = getEffectiveWorkEnd(
+      checkinDate,
+      profile?.work_start_time ?? "09:00",
+      profile?.work_end_time ?? "18:00",
+      tz,
+      false
+    );
 
-    if (checkoutHm > endHm) {
-      overtimeMinutes = Math.min(checkoutHm - endHm, 480);
+    if (effectiveEnd && checkoutLocal > effectiveEnd) {
+      overtimeMinutes = Math.min(
+        Math.ceil((checkoutLocal.getTime() - effectiveEnd.getTime()) / 60_000),
+        480
+      );
     }
   }
 

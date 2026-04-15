@@ -22,6 +22,7 @@ import { LateProofUploadDialog } from "./LateProofUploadDialog";
 import { LateCheckoutDialog } from "./LateCheckoutDialog";
 import { AttendanceNotesCell } from "./AttendanceNotesCell";
 import { SelfiePreviewDialog } from "./SelfiePreviewDialog";
+import { EarlyArrivalPill } from "./EarlyArrivalPill";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { useState } from "react";
 
@@ -81,23 +82,26 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                   {formatLocalDate(log.date)}
                 </TableCell>
                 <TableCell>
-                  {log.selfie_path ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelfieLog({
-                          id: log.id,
-                          title: formatLocalDate(log.date),
-                        })
-                      }
-                      className="underline-offset-2 hover:underline tabular-nums"
-                      style={{ color: "var(--primary)" }}
-                    >
-                      {formatTime(log.checked_in_at, timezone)}
-                    </button>
-                  ) : (
-                    formatTime(log.checked_in_at, timezone)
-                  )}
+                  <div className="flex flex-col items-start gap-0.5">
+                    {log.selfie_path ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelfieLog({
+                            id: log.id,
+                            title: formatLocalDate(log.date),
+                          })
+                        }
+                        className="underline-offset-2 hover:underline tabular-nums"
+                        style={{ color: "var(--primary)" }}
+                      >
+                        {formatTime(log.checked_in_at, timezone)}
+                      </button>
+                    ) : (
+                      formatTime(log.checked_in_at, timezone)
+                    )}
+                    {log.is_early_arrival && <EarlyArrivalPill />}
+                  </div>
                 </TableCell>
                 <TableCell>
                   {log.checked_out_at ? (

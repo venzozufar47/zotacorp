@@ -165,6 +165,7 @@ export type Database = {
           checkout_outside_note: string | null;
           matched_location_id: string | null;
           selfie_path: string | null;
+          is_early_arrival: boolean;
           status: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
           late_minutes: number;
           late_proof_url: string | null;
@@ -190,6 +191,7 @@ export type Database = {
           checkout_outside_note?: string | null;
           matched_location_id?: string | null;
           selfie_path?: string | null;
+          is_early_arrival?: boolean;
           status?: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
           late_minutes?: number;
           late_proof_url?: string | null;
@@ -209,6 +211,7 @@ export type Database = {
           checkout_outside_note?: string | null;
           matched_location_id?: string | null;
           selfie_path?: string | null;
+          is_early_arrival?: boolean;
           status?: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
           late_minutes?: number;
           late_proof_url?: string | null;
