@@ -15,6 +15,10 @@ import {
   isEarlyArrival,
   getEffectiveWorkEnd,
 } from "@/lib/utils/attendance-overtime";
+import { computeStreak, buildMilestoneMessage } from "@/lib/utils/streak";
+import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
+import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
+import { cookies } from "next/headers";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -185,9 +189,172 @@ export async function checkIn(payload: CheckInPayload) {
     })
   );
 
+  // Streak ratchet + milestone WA. Runs post-response so Fonnte round-trip
+  // never blocks check-in. Guarded against double-firing via
+  // `streak_last_milestone` on profiles.
+  after(() => updateStreakAfterCheckIn(user.id));
+
   revalidatePath("/dashboard");
   revalidatePath("/attendance");
   return { data };
+}
+
+/**
+ * Post-check-in streak bookkeeping. Recomputes the current streak from
+ * attendance_logs, ratchets `streak_personal_best` when a new high is
+ * observed, and fires a single congratulatory WhatsApp the first time a
+ * milestone (5/10/20/30/60/100) is crossed. All failures swallowed —
+ * this is decoration, never a blocker.
+ */
+async function updateStreakAfterCheckIn(userId: string): Promise<void> {
+  try {
+    const supabase = await createClient();
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select(
+        "full_name, whatsapp_number, streak_personal_best, streak_last_milestone"
+      )
+      .eq("id", userId)
+      .single();
+    if (!profile) return;
+
+    // Last 120 days is more than any milestone window (100) and cheap.
+    const { data: logs } = await supabase
+      .from("attendance_logs")
+      .select("date, status")
+      .eq("user_id", userId)
+      .order("date", { ascending: false })
+      .limit(120);
+
+    const snapshot = computeStreak({
+      logs: logs ?? [],
+      storedPersonalBest: profile.streak_personal_best ?? 0,
+      storedLastMilestone: profile.streak_last_milestone ?? 0,
+    });
+
+    const updates: Partial<{
+      streak_personal_best: number;
+      streak_last_milestone: number;
+    }> = {};
+    if (snapshot.personalBest > (profile.streak_personal_best ?? 0)) {
+      updates.streak_personal_best = snapshot.personalBest;
+    }
+    if (snapshot.milestoneHitNow > 0) {
+      updates.streak_last_milestone = snapshot.milestoneHitNow;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("profiles").update(updates).eq("id", userId);
+    }
+
+    if (snapshot.milestoneHitNow > 0 && profile.whatsapp_number) {
+      const phone = normalizePhone(profile.whatsapp_number);
+      if (phone) {
+        // Respect the employee's preferred language cookie when building
+        // the copy. Falls back to Indonesian (the app default).
+        const store = await cookies();
+        const raw = store.get("zota_lang_v2")?.value;
+        const lang: "id" | "en" = raw === "en" ? "en" : "id";
+        await sendWhatsApp(
+          phone,
+          buildMilestoneMessage(
+            lang,
+            profile.full_name ?? (lang === "en" ? "there" : "teman"),
+            snapshot.milestoneHitNow
+          )
+        );
+      }
+    }
+  } catch (err) {
+    console.error("[streak] updateStreakAfterCheckIn failed", err);
+  }
+}
+
+/**
+ * Read-side helper for employee dashboard + /streak detail page.
+ * Returns null when the user is unauthenticated.
+ */
+export async function getMyStreak() {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const supabase = await createClient();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("streak_personal_best, streak_last_milestone")
+    .eq("id", user.id)
+    .single();
+
+  const { data: logs } = await supabase
+    .from("attendance_logs")
+    .select("date, status")
+    .eq("user_id", user.id)
+    .order("date", { ascending: false })
+    .limit(120);
+
+  return computeStreak({
+    logs: logs ?? [],
+    storedPersonalBest: profile?.streak_personal_best ?? 0,
+    storedLastMilestone: profile?.streak_last_milestone ?? 0,
+  });
+}
+
+/**
+ * Last N days of on-time/late/absent signal for the employee, newest
+ * first. Used by the /streak page's dot grid. Gaps in attendance_logs are
+ * returned as `null` (neither on-time nor late — the employee wasn't
+ * scheduled, on leave, or it was a weekend).
+ */
+export async function getMyAttendanceDotGrid(days = 30): Promise<
+  Array<{ date: string; status: "on_time" | "late" | "absent" | null }>
+> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const supabase = await createClient();
+
+  // Walk N days back from today in the attendance TZ so the grid aligns
+  // with how the employee perceives their week.
+  const settings = await getCachedAttendanceSettings();
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const todayStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const start = new Date(`${todayStr}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  const startStr = start.toISOString().slice(0, 10);
+
+  const { data: logs } = await supabase
+    .from("attendance_logs")
+    .select("date, status")
+    .eq("user_id", user.id)
+    .gte("date", startStr)
+    .lte("date", todayStr);
+
+  const byDate = new Map<string, "on_time" | "late" | "absent">();
+  for (const l of logs ?? []) {
+    const s =
+      l.status === "on_time"
+        ? "on_time"
+        : l.status === "late" || l.status === "late_excused"
+        ? "late"
+        : "absent";
+    byDate.set(l.date, s);
+  }
+
+  const out: Array<{ date: string; status: "on_time" | "late" | "absent" | null }> = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(`${todayStr}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    out.push({ date: key, status: byDate.get(key) ?? null });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

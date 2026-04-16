@@ -10,15 +10,19 @@ import {
 } from "@/lib/utils/date";
 import { StatusBadge } from "./StatusBadge";
 import { EarlyArrivalPill } from "./EarlyArrivalPill";
+import { StreakChip } from "./StreakChip";
+import type { StreakSnapshot } from "@/lib/utils/streak";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface AttendanceStatusCardProps {
   log: AttendanceLog | null;
   timezone?: string;
   overtimeAdminNote?: string | null;
+  /** Optional streak snapshot; when present renders a chip above the status row. */
+  streak?: StreakSnapshot | null;
 }
 
-export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: AttendanceStatusCardProps) {
+export function AttendanceStatusCard({ log, timezone, overtimeAdminNote, streak }: AttendanceStatusCardProps) {
   const { t } = useTranslation();
   if (!log) return null;
 
@@ -52,6 +56,11 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote }: Atten
   return (
     <Card className="border-0 shadow-sm" style={{ background: "var(--accent)" }}>
       <CardContent className="p-4">
+        {streak && (
+          <div className="mb-3">
+            <StreakChip snapshot={streak} />
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">

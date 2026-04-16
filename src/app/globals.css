@@ -247,4 +247,14 @@
   @media (prefers-reduced-motion: reduce) {
     .hero-oceanic::before { animation: none; }
   }
+
+  /* Hide scrollbar but keep scroll functionality — used on the streak
+     timeline strip to avoid a chunky bar on mobile. */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }

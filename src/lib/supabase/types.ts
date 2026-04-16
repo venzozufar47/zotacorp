@@ -78,6 +78,8 @@ export type Database = {
           asal_kelurahan: string | null;
           asal_alamat: string | null;
           extra_work_enabled: boolean;
+          streak_personal_best: number;
+          streak_last_milestone: number;
         };
         Insert: {
           id: string;
@@ -118,6 +120,8 @@ export type Database = {
           asal_kelurahan?: string | null;
           asal_alamat?: string | null;
           extra_work_enabled?: boolean;
+          streak_personal_best?: number;
+          streak_last_milestone?: number;
         };
         Update: {
           id?: string;
@@ -157,6 +161,8 @@ export type Database = {
           asal_kelurahan?: string | null;
           asal_alamat?: string | null;
           extra_work_enabled?: boolean;
+          streak_personal_best?: number;
+          streak_last_milestone?: number;
         };
         Relationships: [];
       };

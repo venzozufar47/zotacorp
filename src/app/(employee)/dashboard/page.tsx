@@ -7,7 +7,7 @@ import {
   getCurrentProfile,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
-import { getTodayAttendance } from "@/lib/actions/attendance.actions";
+import { getTodayAttendance, getMyStreak } from "@/lib/actions/attendance.actions";
 import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
@@ -60,10 +60,11 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [profile, todayLog, settings] = await Promise.all([
+  const [profile, todayLog, settings, streak] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
     getCachedAttendanceSettings(),
+    getMyStreak(),
   ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -139,6 +140,7 @@ export default async function DashboardPage() {
             log={todayLog}
             timezone={settings?.timezone}
             overtimeAdminNote={overtimeAdminNote}
+            streak={streak}
           />
           <CheckInButton
             todayLog={todayLog}
