@@ -149,7 +149,7 @@
     100% { box-shadow: 0 0 0 0 rgba(0, 90, 101, 0); }
   }
   .pulse-primary {
-    animation: pulse-ring 2s ease-out infinite;
+    animation: pulse-ring 2s ease-out 3;
   }
 
   /* Fade-up entrance */
@@ -246,6 +246,14 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .hero-oceanic::before { animation: none; }
+  }
+
+  /* Mobile: disable expensive GPU effects. The gradient alone looks great;
+     the blob blur + grain overlay + mix-blend-mode are luxury flourishes
+     that hammer mid-tier phone GPUs during Time to Interactive. */
+  @media (max-width: 768px) {
+    .hero-oceanic::before { animation: none; filter: none; opacity: 0.5; }
+    .hero-oceanic::after  { display: none; }
   }
 
   /* Hide scrollbar but keep scroll functionality — used on the streak

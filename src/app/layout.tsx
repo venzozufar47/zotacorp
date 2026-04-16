@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Poppins } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
+import { dictionary, type Language } from "@/lib/i18n/dictionary";
 import { LazyToaster } from "@/components/ui/LazyToaster";
 import "./globals.css";
 
@@ -49,15 +51,31 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+const COOKIE_KEY = "zota_lang_v2";
+const DEFAULT_LANG: Language = "id";
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Read the language cookie server-side so SSR and hydration start from
+  // the same language — no flash. The dictionary subset for the active
+  // language is passed as a prop so the client JS only ships ~19KB
+  // instead of the full ~38KB (both languages).
+  let lang: Language = DEFAULT_LANG;
+  try {
+    const store = await cookies();
+    const raw = store.get(COOKIE_KEY)?.value;
+    if (raw === "en" || raw === "id") lang = raw;
+  } catch {
+    // fallback to default
+  }
+
   return (
-    <html lang="id" className={`${geistSans.variable} ${poppins.variable} h-full antialiased`}>
+    <html lang={lang} className={`${geistSans.variable} ${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col overflow-x-hidden">
-        <LanguageProvider>
+        <LanguageProvider initialLang={lang} initialDictionary={dictionary[lang]}>
           {children}
           <LazyToaster />
           <SpeedInsights />

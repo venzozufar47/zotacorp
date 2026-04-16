@@ -60,46 +60,42 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [profile, todayLog, settings, streak] = await Promise.all([
-    getCurrentProfile(),
-    getTodayAttendance(),
-    getCachedAttendanceSettings(),
-    getMyStreak(),
-  ]);
+  // Single parallel fetch — no sequential waterfalls. The overtime and
+  // extra-work queries are cheap even when their results go unused, and
+  // Supabase RLS scopes them to the current user automatically.
+  const supabase = await createClient();
+  const todayDate = format(new Date(), "yyyy-MM-dd");
+
+  const [profile, todayLog, settings, streak, { lang, t }, otReqRes, extraWorkRes] =
+    await Promise.all([
+      getCurrentProfile(),
+      getTodayAttendance(),
+      getCachedAttendanceSettings(),
+      getMyStreak(),
+      getDictionary(),
+      supabase
+        .from("overtime_requests")
+        .select("admin_note, attendance_log_id")
+        .eq("user_id", user.id)
+        .eq("date", todayDate)
+        .maybeSingle(),
+      supabase
+        .from("extra_work_logs")
+        .select("id, kind, created_at")
+        .eq("user_id", user.id)
+        .eq("date", todayDate)
+        .order("created_at", { ascending: false }),
+    ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
 
-  const { lang, t } = await getDictionary();
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
   const today = format(new Date(), "EEEE, d MMMM", {
     locale: lang === "id" ? idLocale : undefined,
   });
 
-  // Fetch admin rejection note for today's log if applicable
-  let overtimeAdminNote: string | null = null;
-  if (todayLog?.id) {
-    const supabase = await createClient();
-    const { data: otReq } = await supabase
-      .from("overtime_requests")
-      .select("admin_note")
-      .eq("attendance_log_id", todayLog.id)
-      .single();
-    overtimeAdminNote = otReq?.admin_note ?? null;
-  }
-
-  // Today's extra-work entries — only fetched when the per-user feature
-  // flag is on so disabled accounts don't hit the table at all.
-  let extraWorkToday: { id: string; kind: string; created_at: string }[] = [];
-  if (profile?.extra_work_enabled) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("extra_work_logs")
-      .select("id, kind, created_at")
-      .eq("user_id", user.id)
-      .eq("date", format(new Date(), "yyyy-MM-dd"))
-      .order("created_at", { ascending: false });
-    extraWorkToday = data ?? [];
-  }
+  const overtimeAdminNote = otReqRes.data?.admin_note ?? null;
+  const extraWorkToday = profile?.extra_work_enabled ? (extraWorkRes.data ?? []) : [];
 
   const missingSections = PROFILE_SECTIONS
     .filter(({ keys }) =>

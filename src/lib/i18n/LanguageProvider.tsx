@@ -4,11 +4,10 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from "react";
-import { dictionary, type Dictionary, type Language } from "./dictionary";
+import type { Dictionary, Language } from "./dictionary";
 
 // Storage keys bumped to `.v2` / `_v2` the day we flipped the app default
 // from English to Indonesian. Old preferences saved under the v1 keys are
@@ -17,7 +16,6 @@ import { dictionary, type Dictionary, type Language } from "./dictionary";
 // can re-pick it in Settings and the choice sticks under the new keys.
 const STORAGE_KEY = "zota.language.v2";
 const COOKIE_KEY = "zota_lang_v2";
-const DEFAULT_LANG: Language = "id";
 
 /** Max-age in seconds for the language cookie (1 year). */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -39,44 +37,53 @@ type Ctx = {
 const LanguageContext = createContext<Ctx | null>(null);
 
 /**
- * Client-only language provider. Reads preference from localStorage on mount
- * and falls back to `DEFAULT_LANG` so SSR output matches the first paint.
- * The brief hydration flash for non-English users is acceptable for MVP.
+ * Language provider. The server reads the `zota_lang_v2` cookie in
+ * layout.tsx and passes the resolved language + dictionary subset as
+ * props. This eliminates:
+ *
+ *  1. The hydration flash (SSR and client start from the same lang).
+ *  2. The full-dictionary client bundle (~38KB → ~19KB) — only the
+ *     active language's strings ship in the initial JS.
+ *
+ * Language switches still do a full-page reload so server components
+ * re-render with the new cookie value.
  */
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Language>(DEFAULT_LANG);
+export function LanguageProvider({
+  children,
+  initialLang,
+  initialDictionary,
+}: {
+  children: React.ReactNode;
+  /** Resolved server-side from the cookie. */
+  initialLang: Language;
+  /** The dictionary subset for `initialLang`. */
+  initialDictionary: Dictionary;
+}) {
+  const [lang, setLangState] = useState<Language>(initialLang);
+  const [dict, setDict] = useState<Dictionary>(initialDictionary);
 
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored === "en" || stored === "id") {
-        setLangState(stored);
-        writeCookie(stored);
+  const setLang = useCallback(
+    (next: Language) => {
+      setLangState(next);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const setLang = useCallback((next: Language) => {
-    setLangState(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // ignore
-    }
-    writeCookie(next);
-    // Reload so server components re-render with the new language cookie.
-    try {
-      window.location.reload();
-    } catch {
-      // ignore
-    }
-  }, []);
+      writeCookie(next);
+      // Reload so server components re-render with the new language cookie.
+      try {
+        window.location.reload();
+      } catch {
+        // ignore
+      }
+    },
+    []
+  );
 
   const value = useMemo<Ctx>(
-    () => ({ lang, setLang, t: dictionary[lang] }),
-    [lang, setLang]
+    () => ({ lang, setLang, t: dict }),
+    [lang, setLang, dict]
   );
 
   return (
