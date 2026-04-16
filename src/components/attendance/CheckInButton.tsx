@@ -55,9 +55,8 @@ async function fireConfetti() {
 }
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
-import { formatTime, formatMinutesHuman } from "@/lib/utils/date";
+import { formatMinutesHuman } from "@/lib/utils/date";
 import { getEffectiveWorkEnd } from "@/lib/utils/attendance-overtime";
-import { StatusBadge } from "./StatusBadge";
 import { SelfieCaptureDialog } from "./SelfieCaptureDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
@@ -378,23 +377,6 @@ export function CheckInButton({
 
         {state === "checked-in" && (
           <>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground px-1">
-              <Clock size={14} style={{ color: "var(--primary)" }} />
-              <span>
-                {t.checkIn.checkedInAt}{" "}
-                <span className="font-semibold text-foreground">
-                  {formatTime(log!.checked_in_at, settings?.timezone)}
-                </span>
-              </span>
-              <StatusBadge status={log!.status} lateMinutes={log!.late_minutes} />
-              {log?.latitude && (
-                <span className="flex items-center gap-0.5 ml-auto">
-                  <MapPin size={13} style={{ color: "var(--primary)" }} />
-                  <span className="text-xs">{t.checkIn.locationSaved}</span>
-                </span>
-              )}
-            </div>
-
             <button
               className="btn-checkout w-full flex items-center justify-center gap-2"
               onClick={openCheckOut}
