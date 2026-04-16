@@ -8,7 +8,12 @@
  *   hires before admin assigns them).
  */
 
-import { getAssignedLocations, matchLocation, type NamedLocation } from "./resolve-location";
+import {
+  getAssignedLocations,
+  getAllLocations,
+  matchLocation,
+  type NamedLocation,
+} from "./resolve-location";
 
 export interface CheckInDecision {
   ok: boolean;
@@ -35,8 +40,19 @@ export async function evaluateCheckIn(
 ): Promise<CheckInDecision> {
   const assigned = await getAssignedLocations(employeeId);
 
-  // Unrestricted — free pass.
+  // Unrestricted — free pass. But if the GPS happens to land inside
+  // any REGISTERED location, record that id so the WA message and the
+  // attendance table show a meaningful name instead of raw coords.
   if (assigned.length === 0) {
+    if (lat != null && lng != null) {
+      const all = await getAllLocations();
+      const nearby = matchLocation(lat, lng, all);
+      return {
+        ok: true,
+        matchedLocationId: nearby?.id ?? null,
+        assigned: null,
+      };
+    }
     return { ok: true, matchedLocationId: null, assigned: null };
   }
 

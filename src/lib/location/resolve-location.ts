@@ -87,8 +87,12 @@ export function formatOutsideLabel(lat: number, lng: number): {
  * Resolve a coordinate against a specific employee's assigned locations.
  *
  *  - No coords → "Lokasi tidak diketahui"
- *  - No assignments → free pass: "Lokasi bebas (lat, lng)" with maps link
- *    so admin still has visibility on where the person actually is.
+ *  - No assignments (bebas) →
+ *      • If coords happen to fall inside ANY registered location's
+ *        radius, use that location's name so the admin sees the
+ *        meaningful place (e.g. "Haengbocorner Pare") instead of raw
+ *        coordinates. A "bebas" employee may well be at a known office.
+ *      • Otherwise surface raw coords as "Lokasi bebas".
  *  - Inside an assignment → location name, no maps link.
  *  - Outside all assignments → "LUAR LOKASI" + coords + maps link.
  */
@@ -109,7 +113,20 @@ export async function resolveLocationForEmployee(
   const assigned = await getAssignedLocations(employeeId);
 
   if (assigned.length === 0) {
-    // Unrestricted employee — surface raw coords so admin still sees where.
+    // Unrestricted employee. Before falling back to raw coordinates,
+    // check whether their GPS lands inside ANY registered location —
+    // that's almost always the meaningful answer admins want to see.
+    const all = await getAllLocations();
+    const nearby = matchLocation(lat, lng, all);
+    if (nearby) {
+      return {
+        label: nearby.name,
+        matchedLocationId: nearby.id,
+        mapsUrl: null,
+        outside: false,
+      };
+    }
+
     const { label, mapsUrl } = formatOutsideLabel(lat, lng);
     return {
       label: label.replace("LUAR LOKASI", "Lokasi bebas"),
@@ -148,4 +165,18 @@ export async function getAssignedLocations(
   return data
     .map((row) => row.attendance_locations as unknown as NamedLocation | null)
     .filter((l): l is NamedLocation => l !== null);
+}
+
+/**
+ * Fetch ALL registered locations. Used to see if a "bebas" employee
+ * happens to be at a known office even though they aren't formally
+ * assigned to one.
+ */
+export async function getAllLocations(): Promise<NamedLocation[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("attendance_locations")
+    .select("id, name, latitude, longitude, radius_m");
+  if (error || !data) return [];
+  return data as NamedLocation[];
 }
