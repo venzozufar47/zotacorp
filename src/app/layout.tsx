@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Geist, Poppins } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
 import { dictionary, type Language } from "@/lib/i18n/dictionary";
@@ -78,6 +79,7 @@ export default async function RootLayout({
         <LanguageProvider initialLang={lang} initialDictionary={dictionary[lang]}>
           {children}
           <LazyToaster />
+          <Analytics />
           <SpeedInsights />
         </LanguageProvider>
       </body>
