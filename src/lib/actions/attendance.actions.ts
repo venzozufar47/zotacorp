@@ -54,9 +54,12 @@ function computeCheckInStatus(
     // Parse work_start_time (e.g. "09:00" or "09:00:00")
     const [startH, startM] = userSettings.work_start_time.split(":").map(Number);
 
-    // Cutoff = work_start_time + grace_period_min
+    // Cutoff = work_start_time + grace_period_min + 60s buffer.
+    // The 60-second buffer absorbs phone clock drift and network round-trip
+    // so an employee who taps "Check In" right at the boundary isn't
+    // penalised by a few seconds of processing time.
     const cutoff = new Date(checkinLocal);
-    cutoff.setHours(startH, startM + userSettings.grace_period_min, 0, 0);
+    cutoff.setHours(startH, startM + userSettings.grace_period_min, 59, 999);
 
     // Exact start time for late_minutes
     const startTime = new Date(checkinLocal);
