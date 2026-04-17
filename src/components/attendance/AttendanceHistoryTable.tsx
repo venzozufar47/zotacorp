@@ -196,7 +196,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                     <span className="text-muted-foreground text-xs">—</span>
                   )}
                 </TableCell>
-                <TableCell className="max-w-[280px] align-top">
+                <TableCell className="max-w-[280px] align-top whitespace-normal">
                   <AttendanceNotesCell
                     lateCheckoutReason={log.late_checkout_reason}
                     outsideNote={log.checkout_outside_note}

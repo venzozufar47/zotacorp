@@ -694,7 +694,7 @@ export function AttendanceRecapTable({
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="max-w-[280px] align-top">
+                  <TableCell className="max-w-[280px] align-top whitespace-normal">
                     <AttendanceNotesCell
                       lateCheckoutReason={row.late_checkout_reason}
                       outsideNote={row.checkout_outside_note}
