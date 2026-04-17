@@ -19,6 +19,7 @@ import {
   getSelfCelebrationToday,
   isAnniversaryMilestone,
   isWithinActiveWindow,
+  pickDisplayName,
   zonedDateString,
 } from "@/lib/utils/celebrations";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
@@ -68,7 +69,7 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     getCachedAttendanceSettings(),
     supabase
       .from("profiles_celebrations_public")
-      .select("id, full_name, dob_month_day, first_day_of_work"),
+      .select("id, full_name, nickname, dob_month_day, first_day_of_work"),
   ]);
 
   const tz = settings?.timezone ?? "Asia/Jakarta";
@@ -83,6 +84,7 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     .map((r) => ({
       id: r.id as string,
       full_name: r.full_name as string,
+      nickname: r.nickname ?? null,
       dob_month_day: r.dob_month_day ?? null,
       first_day_of_work: r.first_day_of_work ?? null,
     }));
@@ -99,6 +101,7 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     ? getSelfCelebrationToday({
         id: profileSelf.id,
         fullName: profileSelf.full_name ?? "",
+        nickname: profileSelf.nickname ?? null,
         dateOfBirth: profileSelf.date_of_birth ?? null,
         firstDayOfWork: profileSelf.first_day_of_work ?? null,
         today: now,
@@ -129,13 +132,16 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     const { data: authors } = authorIds.length
       ? await supabase
           .from("profiles_celebrations_public")
-          .select("id, full_name")
+          .select("id, full_name, nickname")
           .in("id", authorIds)
-      : { data: [] as { id: string; full_name: string | null }[] };
+      : { data: [] as { id: string; full_name: string | null; nickname: string | null }[] };
     const nameOf = new Map(
       (authors ?? [])
-        .filter((a) => a.id && a.full_name)
-        .map((a) => [a.id as string, a.full_name as string])
+        .filter((a) => a.id)
+        .map((a) => [
+          a.id as string,
+          pickDisplayName(a.full_name ?? "", a.nickname ?? null),
+        ])
     );
 
     today = todayCelebrants.map((c) => ({
@@ -331,7 +337,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     // Birthday candidates: anyone whose DOB MM-DD matches today.
     const { data: bCandidates } = await admin
       .from("profiles")
-      .select("id, full_name, whatsapp_number, date_of_birth, birthday_last_greeted")
+      .select("id, full_name, nickname, whatsapp_number, date_of_birth, birthday_last_greeted")
       .not("date_of_birth", "is", null);
 
     for (const p of bCandidates ?? []) {
@@ -348,14 +354,15 @@ export async function dispatchTodaysGreetings(): Promise<void> {
         .update({ birthday_last_greeted: todayIso })
         .eq("id", p.id)
         .or(`birthday_last_greeted.is.null,birthday_last_greeted.lt.${todayIso}`)
-        .select("id, full_name, whatsapp_number")
+        .select("id, full_name, nickname, whatsapp_number")
         .maybeSingle();
 
       if (!claimed) continue;
       const phone = normalizePhone(claimed.whatsapp_number ?? "");
       if (!phone) continue;
+      const waName = pickDisplayName(claimed.full_name, claimed.nickname);
       try {
-        await sendWhatsApp(phone, buildBirthdayWaMessage(lang, claimed.full_name ?? ""));
+        await sendWhatsApp(phone, buildBirthdayWaMessage(lang, waName));
       } catch (err) {
         console.error("[celebrations] birthday WA failed", err);
       }
@@ -366,7 +373,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     const { data: aCandidates } = await admin
       .from("profiles")
       .select(
-        "id, full_name, whatsapp_number, first_day_of_work, anniversary_last_greeted"
+        "id, full_name, nickname, whatsapp_number, first_day_of_work, anniversary_last_greeted"
       )
       .not("first_day_of_work", "is", null);
 
@@ -384,21 +391,17 @@ export async function dispatchTodaysGreetings(): Promise<void> {
         .update({ anniversary_last_greeted: todayIso })
         .eq("id", p.id)
         .or(`anniversary_last_greeted.is.null,anniversary_last_greeted.lt.${todayIso}`)
-        .select("id, full_name, whatsapp_number")
+        .select("id, full_name, nickname, whatsapp_number")
         .maybeSingle();
 
       if (!claimed) continue;
       const phone = normalizePhone(claimed.whatsapp_number ?? "");
       if (!phone) continue;
+      const waName = pickDisplayName(claimed.full_name, claimed.nickname);
       try {
         await sendWhatsApp(
           phone,
-          buildAnniversaryWaMessage(
-            lang,
-            claimed.full_name ?? "",
-            years,
-            isAnniversaryMilestone(years)
-          )
+          buildAnniversaryWaMessage(lang, waName, years, isAnniversaryMilestone(years))
         );
       } catch (err) {
         console.error("[celebrations] anniversary WA failed", err);

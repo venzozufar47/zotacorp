@@ -38,9 +38,25 @@ export type Celebrant = {
 export type CelebrationRow = {
   id: string;
   full_name: string;
+  /** Optional admin-set nickname. When present, shown in place of
+   *  `full_name` everywhere in the celebrations UI. */
+  nickname: string | null;
   dob_month_day: string | null;
   first_day_of_work: string | null;
 };
+
+/**
+ * Return the name to show in the UI for a profile: the admin-set
+ * nickname when present and non-empty, otherwise the full name.
+ */
+export function pickDisplayName(
+  fullName: string | null | undefined,
+  nickname: string | null | undefined
+): string {
+  const n = nickname?.trim();
+  if (n) return n;
+  return (fullName ?? "").trim();
+}
 
 export const ANNIVERSARY_MILESTONES: readonly number[] = [1, 3, 5, 10, 15, 20, 25];
 
@@ -142,7 +158,7 @@ export function getCelebrantsInWindow(
         if (diff >= 0 && diff < windowDays) {
           out.push({
             id: row.id,
-            fullName: row.full_name,
+            fullName: pickDisplayName(row.full_name, row.nickname),
             kind: "birthday",
             occursOn: iso,
             eventYear: yr,
@@ -163,7 +179,7 @@ export function getCelebrantsInWindow(
           if (years <= 0) break;
           out.push({
             id: row.id,
-            fullName: row.full_name,
+            fullName: pickDisplayName(row.full_name, row.nickname),
             kind: "anniversary",
             occursOn: iso,
             eventYear: yr,
@@ -195,12 +211,14 @@ export function getCelebrantsInWindow(
 export function getSelfCelebrationToday(args: {
   id: string;
   fullName: string;
+  nickname?: string | null;
   dateOfBirth: string | null;
   firstDayOfWork: string | null;
   today: Date;
   tz: string;
 }): Celebrant | null {
-  const { id, fullName, dateOfBirth, firstDayOfWork, today, tz } = args;
+  const { id, fullName, nickname, dateOfBirth, firstDayOfWork, today, tz } = args;
+  const displayName = pickDisplayName(fullName, nickname);
   const t = zonedParts(today, tz);
   const todayIso = zonedDateString(today, tz);
 
@@ -211,7 +229,7 @@ export function getSelfCelebrationToday(args: {
     if (iso === todayIso) {
       return {
         id,
-        fullName,
+        fullName: displayName,
         kind: "birthday",
         occursOn: iso,
         eventYear: t.y,
@@ -226,7 +244,7 @@ export function getSelfCelebrationToday(args: {
     if (iso === todayIso && years > 0) {
       return {
         id,
-        fullName,
+        fullName: displayName,
         kind: "anniversary",
         occursOn: iso,
         eventYear: t.y,

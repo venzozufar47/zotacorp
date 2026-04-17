@@ -675,6 +675,7 @@ export type Database = {
           first_day_of_work: string | null
           full_name: string | null
           id: string | null
+          nickname: string | null
         }
         Relationships: []
       }
