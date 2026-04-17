@@ -54,7 +54,7 @@ export function AttendanceNotesCell({
     "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide";
 
   return (
-    <div className="space-y-1.5 w-full max-w-[280px] [overflow-wrap:anywhere]">
+    <div className="space-y-1.5 w-full max-w-[420px] [overflow-wrap:anywhere]">
       {lateCheckoutReason && (
         <div className="flex items-start gap-1 min-w-0">
           <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />

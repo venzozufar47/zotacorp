@@ -413,7 +413,7 @@ export function AttendanceRecapTable({
                 onSort={handleSort}
               />
               <TableHead className=" w-[280px] max-w-[280px]">Overtime</TableHead>
-              <TableHead className="w-[280px] max-w-[280px]">{t.attendanceTable.colNotes}</TableHead>
+              <TableHead className="w-[420px] max-w-[420px]">{t.attendanceTable.colNotes}</TableHead>
               <TableHead className=" w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -694,7 +694,7 @@ export function AttendanceRecapTable({
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="max-w-[280px] align-top whitespace-normal">
+                  <TableCell className="max-w-[420px] align-top whitespace-normal">
                     <AttendanceNotesCell
                       lateCheckoutReason={row.late_checkout_reason}
                       outsideNote={row.checkout_outside_note}

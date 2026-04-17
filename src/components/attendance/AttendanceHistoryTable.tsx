@@ -71,7 +71,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
             <TableHead>Check-out</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="w-[260px] max-w-[260px]">Overtime</TableHead>
-            <TableHead className="w-[280px] max-w-[280px]">{t.attendanceTable.colNotes}</TableHead>
+            <TableHead className="w-[420px] max-w-[420px]">{t.attendanceTable.colNotes}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -196,7 +196,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                     <span className="text-muted-foreground text-xs">—</span>
                   )}
                 </TableCell>
-                <TableCell className="max-w-[280px] align-top whitespace-normal">
+                <TableCell className="max-w-[420px] align-top whitespace-normal">
                   <AttendanceNotesCell
                     lateCheckoutReason={log.late_checkout_reason}
                     outsideNote={log.checkout_outside_note}
