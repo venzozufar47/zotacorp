@@ -36,7 +36,13 @@ export function AttendanceNotesCell({
 }) {
   const hasExtra = !!extraWork && extraWork.length > 0;
   if (!lateCheckoutReason && !outsideNote && !hasExtra) {
-    return <span className="text-muted-foreground text-xs">—</span>;
+    // Keep the same min-width as the populated cell so the column
+    // stays a consistent width across rows.
+    return (
+      <div className="w-[420px] max-w-[420px]">
+        <span className="text-muted-foreground text-xs">—</span>
+      </div>
+    );
   }
 
   const mapsUrl =
@@ -54,7 +60,7 @@ export function AttendanceNotesCell({
     "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide";
 
   return (
-    <div className="space-y-1.5 w-full max-w-[420px] [overflow-wrap:anywhere]">
+    <div className="space-y-1.5 w-[420px] max-w-[420px] [overflow-wrap:anywhere]">
       {lateCheckoutReason && (
         <div className="flex items-start gap-1 min-w-0">
           <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />
