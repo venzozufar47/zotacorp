@@ -4,7 +4,7 @@ export type Json =
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[];
+  | Json[]
 
 /**
  * Per-day transparency snapshot stored on payslips.breakdown_json. Captured at
@@ -36,644 +36,661 @@ export type PayslipBreakdown = {
 };
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
-      profiles: {
-        Row: {
-          id: string;
-          full_name: string;
-          email: string;
-          department: string;
-          position: string;
-          role: "employee" | "admin";
-          is_active: boolean;
-          is_flexible_schedule: boolean;
-          work_start_time: string;
-          work_end_time: string;
-          grace_period_min: number;
-          created_at: string;
-          updated_at: string;
-          nickname: string | null;
-          business_unit: string | null;
-          job_role: string | null;
-          gender: string | null;
-          date_of_birth: string | null;
-          place_of_birth: string | null;
-          current_city: string | null;
-          whatsapp_number: string | null;
-          npwp: string | null;
-          emergency_contact_name: string | null;
-          emergency_contact_whatsapp: string | null;
-          first_day_of_work: string | null;
-          motto: string | null;
-          shirt_size: string | null;
-          domisili_provinsi: string | null;
-          domisili_kota: string | null;
-          domisili_kecamatan: string | null;
-          domisili_kelurahan: string | null;
-          domisili_alamat: string | null;
-          asal_provinsi: string | null;
-          asal_kota: string | null;
-          asal_kecamatan: string | null;
-          asal_kelurahan: string | null;
-          asal_alamat: string | null;
-          extra_work_enabled: boolean;
-          streak_personal_best: number;
-          streak_last_milestone: number;
-        };
-        Insert: {
-          id: string;
-          full_name?: string;
-          email?: string;
-          department?: string;
-          position?: string;
-          role?: "employee" | "admin";
-          is_active?: boolean;
-          is_flexible_schedule?: boolean;
-          work_start_time?: string;
-          work_end_time?: string;
-          grace_period_min?: number;
-          created_at?: string;
-          updated_at?: string;
-          nickname?: string | null;
-          business_unit?: string | null;
-          job_role?: string | null;
-          gender?: string | null;
-          date_of_birth?: string | null;
-          place_of_birth?: string | null;
-          current_city?: string | null;
-          whatsapp_number?: string | null;
-          npwp?: string | null;
-          emergency_contact_name?: string | null;
-          emergency_contact_whatsapp?: string | null;
-          first_day_of_work?: string | null;
-          motto?: string | null;
-          shirt_size?: string | null;
-          domisili_provinsi?: string | null;
-          domisili_kota?: string | null;
-          domisili_kecamatan?: string | null;
-          domisili_kelurahan?: string | null;
-          domisili_alamat?: string | null;
-          asal_provinsi?: string | null;
-          asal_kota?: string | null;
-          asal_kecamatan?: string | null;
-          asal_kelurahan?: string | null;
-          asal_alamat?: string | null;
-          extra_work_enabled?: boolean;
-          streak_personal_best?: number;
-          streak_last_milestone?: number;
-        };
-        Update: {
-          id?: string;
-          full_name?: string;
-          email?: string;
-          department?: string;
-          position?: string;
-          role?: "employee" | "admin";
-          is_active?: boolean;
-          is_flexible_schedule?: boolean;
-          work_start_time?: string;
-          work_end_time?: string;
-          grace_period_min?: number;
-          updated_at?: string;
-          nickname?: string | null;
-          business_unit?: string | null;
-          job_role?: string | null;
-          gender?: string | null;
-          date_of_birth?: string | null;
-          place_of_birth?: string | null;
-          current_city?: string | null;
-          whatsapp_number?: string | null;
-          npwp?: string | null;
-          emergency_contact_name?: string | null;
-          emergency_contact_whatsapp?: string | null;
-          first_day_of_work?: string | null;
-          motto?: string | null;
-          shirt_size?: string | null;
-          domisili_provinsi?: string | null;
-          domisili_kota?: string | null;
-          domisili_kecamatan?: string | null;
-          domisili_kelurahan?: string | null;
-          domisili_alamat?: string | null;
-          asal_provinsi?: string | null;
-          asal_kota?: string | null;
-          asal_kecamatan?: string | null;
-          asal_kelurahan?: string | null;
-          asal_alamat?: string | null;
-          extra_work_enabled?: boolean;
-          streak_personal_best?: number;
-          streak_last_milestone?: number;
-        };
-        Relationships: [];
-      };
-      attendance_logs: {
-        Row: {
-          id: string;
-          user_id: string;
-          date: string;
-          checked_in_at: string;
-          checked_out_at: string | null;
-          latitude: number | null;
-          longitude: number | null;
-          checkout_latitude: number | null;
-          checkout_longitude: number | null;
-          checkout_outside_note: string | null;
-          matched_location_id: string | null;
-          selfie_path: string | null;
-          is_early_arrival: boolean;
-          status: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
-          late_minutes: number;
-          late_proof_url: string | null;
-          late_proof_status: "pending" | "approved" | "rejected" | null;
-          late_proof_admin_note: string | null;
-          is_overtime: boolean;
-          overtime_minutes: number;
-          overtime_status: "pending" | "approved" | "rejected" | null;
-          late_checkout_reason: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          date: string;
-          checked_in_at: string;
-          checked_out_at?: string | null;
-          latitude?: number | null;
-          longitude?: number | null;
-          checkout_latitude?: number | null;
-          checkout_longitude?: number | null;
-          checkout_outside_note?: string | null;
-          matched_location_id?: string | null;
-          selfie_path?: string | null;
-          is_early_arrival?: boolean;
-          status?: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
-          late_minutes?: number;
-          late_proof_url?: string | null;
-          late_proof_status?: "pending" | "approved" | "rejected" | null;
-          late_proof_admin_note?: string | null;
-          is_overtime?: boolean;
-          overtime_minutes?: number;
-          overtime_status?: "pending" | "approved" | "rejected" | null;
-          late_checkout_reason?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          checked_out_at?: string | null;
-          checkout_latitude?: number | null;
-          checkout_longitude?: number | null;
-          checkout_outside_note?: string | null;
-          matched_location_id?: string | null;
-          selfie_path?: string | null;
-          is_early_arrival?: boolean;
-          status?: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
-          late_minutes?: number;
-          late_proof_url?: string | null;
-          late_proof_status?: "pending" | "approved" | "rejected" | null;
-          late_proof_admin_note?: string | null;
-          is_overtime?: boolean;
-          overtime_minutes?: number;
-          overtime_status?: "pending" | "approved" | "rejected" | null;
-          late_checkout_reason?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "attendance_logs_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      attendance_settings: {
-        Row: {
-          id: string;
-          work_start_time: string;
-          work_end_time: string;
-          grace_period_min: number;
-          timezone: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          work_start_time?: string;
-          work_end_time?: string;
-          grace_period_min?: number;
-          timezone?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          work_start_time?: string;
-          work_end_time?: string;
-          grace_period_min?: number;
-          timezone?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      overtime_requests: {
-        Row: {
-          id: string;
-          attendance_log_id: string;
-          user_id: string;
-          date: string;
-          overtime_minutes: number;
-          reason: string;
-          status: "pending" | "approved" | "rejected";
-          admin_note: string | null;
-          reviewed_by: string | null;
-          reviewed_at: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          attendance_log_id: string;
-          user_id: string;
-          date: string;
-          overtime_minutes: number;
-          reason: string;
-          status?: "pending" | "approved" | "rejected";
-          admin_note?: string | null;
-          reviewed_by?: string | null;
-          reviewed_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          status?: "pending" | "approved" | "rejected";
-          admin_note?: string | null;
-          reviewed_by?: string | null;
-          reviewed_at?: string | null;
-          overtime_minutes?: number;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "overtime_requests_attendance_log_id_fkey";
-            columns: ["attendance_log_id"];
-            isOneToOne: true;
-            referencedRelation: "attendance_logs";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "overtime_requests_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "overtime_requests_reviewed_by_fkey";
-            columns: ["reviewed_by"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      payslip_settings: {
-        Row: {
-          id: string;
-          user_id: string;
-          calculation_basis: "presence" | "deliverables" | "both";
-          monthly_fixed_amount: number;
-          expected_work_days: number;
-          expected_days_mode: "manual" | "weekly_pattern";
-          expected_weekdays: number[];
-          overtime_mode: "hourly_tiered" | "fixed_per_day";
-          ot_first_hour_rate: number;
-          ot_next_hour_rate: number;
-          ot_fixed_daily_rate: number;
-          late_penalty_mode: "per_minutes" | "per_day" | "none";
-          late_penalty_amount: number;
-          late_penalty_interval_min: number;
-          standard_working_hours: number;
-          attendance_weight_pct: number;
-          deliverables_weight_pct: number;
-          extra_work_rate_idr: number;
-          is_finalized: boolean;
-          finalized_at: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          calculation_basis?: "presence" | "deliverables" | "both";
-          monthly_fixed_amount?: number;
-          expected_work_days?: number;
-          expected_days_mode?: "manual" | "weekly_pattern";
-          expected_weekdays?: number[];
-          overtime_mode?: "hourly_tiered" | "fixed_per_day";
-          ot_first_hour_rate?: number;
-          ot_next_hour_rate?: number;
-          ot_fixed_daily_rate?: number;
-          late_penalty_mode?: "per_minutes" | "per_day" | "none";
-          late_penalty_amount?: number;
-          late_penalty_interval_min?: number;
-          standard_working_hours?: number;
-          attendance_weight_pct?: number;
-          deliverables_weight_pct?: number;
-          extra_work_rate_idr?: number;
-          is_finalized?: boolean;
-          finalized_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          calculation_basis?: "presence" | "deliverables" | "both";
-          monthly_fixed_amount?: number;
-          expected_work_days?: number;
-          expected_days_mode?: "manual" | "weekly_pattern";
-          expected_weekdays?: number[];
-          overtime_mode?: "hourly_tiered" | "fixed_per_day";
-          ot_first_hour_rate?: number;
-          ot_next_hour_rate?: number;
-          ot_fixed_daily_rate?: number;
-          late_penalty_mode?: "per_minutes" | "per_day" | "none";
-          late_penalty_amount?: number;
-          late_penalty_interval_min?: number;
-          standard_working_hours?: number;
-          attendance_weight_pct?: number;
-          deliverables_weight_pct?: number;
-          extra_work_rate_idr?: number;
-          is_finalized?: boolean;
-          finalized_at?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "payslip_settings_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: true;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      payslips: {
-        Row: {
-          id: string;
-          user_id: string;
-          month: number;
-          year: number;
-          actual_work_days: number;
-          expected_work_days: number;
-          base_salary: number;
-          prorated_salary: number;
-          extra_day_bonus: number;
-          total_overtime_minutes: number;
-          overtime_pay: number;
-          total_late_minutes: number;
-          late_penalty: number;
-          monthly_bonus: number;
-          monthly_bonus_note: string | null;
-          debt_deduction: number;
-          other_penalty: number;
-          other_penalty_note: string | null;
-          deliverables_achievement_pct: number;
-          deliverables_pay: number;
-          extra_work_pay: number;
-          net_total: number;
-          status: "draft" | "finalized";
-          breakdown_json: PayslipBreakdown | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          month: number;
-          year: number;
-          actual_work_days?: number;
-          expected_work_days?: number;
-          base_salary?: number;
-          prorated_salary?: number;
-          extra_day_bonus?: number;
-          total_overtime_minutes?: number;
-          overtime_pay?: number;
-          total_late_minutes?: number;
-          late_penalty?: number;
-          monthly_bonus?: number;
-          monthly_bonus_note?: string | null;
-          debt_deduction?: number;
-          other_penalty?: number;
-          other_penalty_note?: string | null;
-          deliverables_achievement_pct?: number;
-          deliverables_pay?: number;
-          extra_work_pay?: number;
-          net_total?: number;
-          status?: "draft" | "finalized";
-          breakdown_json?: PayslipBreakdown | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          actual_work_days?: number;
-          expected_work_days?: number;
-          base_salary?: number;
-          prorated_salary?: number;
-          extra_day_bonus?: number;
-          total_overtime_minutes?: number;
-          overtime_pay?: number;
-          total_late_minutes?: number;
-          late_penalty?: number;
-          monthly_bonus?: number;
-          monthly_bonus_note?: string | null;
-          debt_deduction?: number;
-          other_penalty?: number;
-          other_penalty_note?: string | null;
-          deliverables_achievement_pct?: number;
-          deliverables_pay?: number;
-          extra_work_pay?: number;
-          net_total?: number;
-          status?: "draft" | "finalized";
-          breakdown_json?: PayslipBreakdown | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "payslips_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      extra_work_logs: {
-        Row: {
-          id: string;
-          user_id: string;
-          date: string;
-          kind: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          date: string;
-          kind: string;
-          created_at?: string;
-        };
-        Update: {
-          kind?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "extra_work_logs_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      whatsapp_notification_recipients: {
-        Row: {
-          id: string;
-          label: string;
-          phone_e164: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          label?: string;
-          phone_e164: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          label?: string;
-          phone_e164?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
       attendance_locations: {
         Row: {
-          id: string;
-          name: string;
-          latitude: number;
-          longitude: number;
-          radius_m: number;
-          created_at: string;
-          updated_at: string;
-        };
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          name: string
+          radius_m: number
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          name: string;
-          latitude: number;
-          longitude: number;
-          radius_m: number;
-          created_at?: string;
-          updated_at?: string;
-        };
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          name: string
+          radius_m: number
+          updated_at?: string
+        }
         Update: {
-          name?: string;
-          latitude?: number;
-          longitude?: number;
-          radius_m?: number;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          name?: string
+          radius_m?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      attendance_logs: {
+        Row: {
+          checked_in_at: string
+          checked_out_at: string | null
+          checkout_latitude: number | null
+          checkout_longitude: number | null
+          checkout_outside_note: string | null
+          created_at: string
+          date: string
+          id: string
+          is_early_arrival: boolean
+          is_overtime: boolean
+          late_checkout_reason: string | null
+          late_minutes: number
+          late_proof_admin_note: string | null
+          late_proof_status: string | null
+          late_proof_url: string | null
+          latitude: number | null
+          longitude: number | null
+          matched_location_id: string | null
+          overtime_minutes: number
+          overtime_status: string | null
+          selfie_path: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          checked_in_at: string
+          checked_out_at?: string | null
+          checkout_latitude?: number | null
+          checkout_longitude?: number | null
+          checkout_outside_note?: string | null
+          created_at?: string
+          date: string
+          id?: string
+          is_early_arrival?: boolean
+          is_overtime?: boolean
+          late_checkout_reason?: string | null
+          late_minutes?: number
+          late_proof_admin_note?: string | null
+          late_proof_status?: string | null
+          late_proof_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          matched_location_id?: string | null
+          overtime_minutes?: number
+          overtime_status?: string | null
+          selfie_path?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          checked_in_at?: string
+          checked_out_at?: string | null
+          checkout_latitude?: number | null
+          checkout_longitude?: number | null
+          checkout_outside_note?: string | null
+          created_at?: string
+          date?: string
+          id?: string
+          is_early_arrival?: boolean
+          is_overtime?: boolean
+          late_checkout_reason?: string | null
+          late_minutes?: number
+          late_proof_admin_note?: string | null
+          late_proof_status?: string | null
+          late_proof_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          matched_location_id?: string | null
+          overtime_minutes?: number
+          overtime_status?: string | null
+          selfie_path?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      attendance_settings: {
+        Row: {
+          created_at: string
+          grace_period_min: number
+          id: string
+          timezone: string
+          ui_theme: string
+          updated_at: string
+          work_end_time: string
+          work_start_time: string
+        }
+        Insert: {
+          created_at?: string
+          grace_period_min?: number
+          id?: string
+          timezone?: string
+          ui_theme?: string
+          updated_at?: string
+          work_end_time?: string
+          work_start_time?: string
+        }
+        Update: {
+          created_at?: string
+          grace_period_min?: number
+          id?: string
+          timezone?: string
+          ui_theme?: string
+          updated_at?: string
+          work_end_time?: string
+          work_start_time?: string
+        }
+        Relationships: []
+      }
+      celebration_messages: {
+        Row: {
+          author_id: string
+          body: string
+          celebrant_id: string
+          created_at: string
+          event_type: string
+          event_year: number
+          id: string
+          kind: string
+          parent_id: string | null
+        }
+        Insert: {
+          author_id: string
+          body: string
+          celebrant_id: string
+          created_at?: string
+          event_type: string
+          event_year: number
+          id?: string
+          kind: string
+          parent_id?: string | null
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          celebrant_id?: string
+          created_at?: string
+          event_type?: string
+          event_year?: number
+          id?: string
+          kind?: string
+          parent_id?: string | null
+        }
+        Relationships: []
+      }
       employee_locations: {
         Row: {
-          employee_id: string;
-          location_id: string;
-          created_at: string;
-        };
+          created_at: string
+          employee_id: string
+          location_id: string
+        }
         Insert: {
-          employee_id: string;
-          location_id: string;
-          created_at?: string;
-        };
+          created_at?: string
+          employee_id: string
+          location_id: string
+        }
         Update: {
-          employee_id?: string;
-          location_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "employee_locations_employee_id_fkey";
-            columns: ["employee_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "employee_locations_location_id_fkey";
-            columns: ["location_id"];
-            isOneToOne: false;
-            referencedRelation: "attendance_locations";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
+          created_at?: string
+          employee_id?: string
+          location_id?: string
+        }
+        Relationships: []
+      }
+      extra_work_logs: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          kind: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          kind: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          kind?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      overtime_requests: {
+        Row: {
+          admin_note: string | null
+          attendance_log_id: string
+          created_at: string
+          date: string
+          id: string
+          overtime_minutes: number
+          reason: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_note?: string | null
+          attendance_log_id: string
+          created_at?: string
+          date: string
+          id?: string
+          overtime_minutes: number
+          reason: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_note?: string | null
+          attendance_log_id?: string
+          created_at?: string
+          date?: string
+          id?: string
+          overtime_minutes?: number
+          reason?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       payslip_deliverables: {
         Row: {
-          id: string;
-          payslip_id: string;
-          name: string;
-          target: number;
-          realization: number;
-          weight_pct: number;
-          sort_order: number;
-          created_at: string;
-          updated_at: string;
-        };
+          created_at: string | null
+          id: string
+          name: string
+          payslip_id: string
+          realization: number
+          sort_order: number
+          target: number
+          updated_at: string | null
+          weight_pct: number
+        }
         Insert: {
-          id?: string;
-          payslip_id: string;
-          name: string;
-          target?: number;
-          realization?: number;
-          weight_pct?: number;
-          sort_order?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
+          created_at?: string | null
+          id?: string
+          name: string
+          payslip_id: string
+          realization?: number
+          sort_order?: number
+          target?: number
+          updated_at?: string | null
+          weight_pct?: number
+        }
         Update: {
-          name?: string;
-          target?: number;
-          realization?: number;
-          weight_pct?: number;
-          sort_order?: number;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "payslip_deliverables_payslip_id_fkey";
-            columns: ["payslip_id"];
-            isOneToOne: false;
-            referencedRelation: "payslips";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-    };
-    Views: Record<string, never>;
+          created_at?: string | null
+          id?: string
+          name?: string
+          payslip_id?: string
+          realization?: number
+          sort_order?: number
+          target?: number
+          updated_at?: string | null
+          weight_pct?: number
+        }
+        Relationships: []
+      }
+      payslip_settings: {
+        Row: {
+          attendance_weight_pct: number
+          calculation_basis: string
+          created_at: string | null
+          deliverables_weight_pct: number
+          expected_days_mode: string
+          expected_weekdays: number[]
+          expected_work_days: number
+          extra_work_rate_idr: number
+          finalized_at: string | null
+          id: string
+          is_finalized: boolean
+          late_penalty_amount: number
+          late_penalty_interval_min: number
+          late_penalty_mode: string
+          monthly_fixed_amount: number
+          ot_first_hour_rate: number
+          ot_fixed_daily_rate: number
+          ot_next_hour_rate: number
+          overtime_mode: string
+          standard_working_hours: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          attendance_weight_pct?: number
+          calculation_basis?: string
+          created_at?: string | null
+          deliverables_weight_pct?: number
+          expected_days_mode?: string
+          expected_weekdays?: number[]
+          expected_work_days?: number
+          extra_work_rate_idr?: number
+          finalized_at?: string | null
+          id?: string
+          is_finalized?: boolean
+          late_penalty_amount?: number
+          late_penalty_interval_min?: number
+          late_penalty_mode?: string
+          monthly_fixed_amount?: number
+          ot_first_hour_rate?: number
+          ot_fixed_daily_rate?: number
+          ot_next_hour_rate?: number
+          overtime_mode?: string
+          standard_working_hours?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          attendance_weight_pct?: number
+          calculation_basis?: string
+          created_at?: string | null
+          deliverables_weight_pct?: number
+          expected_days_mode?: string
+          expected_weekdays?: number[]
+          expected_work_days?: number
+          extra_work_rate_idr?: number
+          finalized_at?: string | null
+          id?: string
+          is_finalized?: boolean
+          late_penalty_amount?: number
+          late_penalty_interval_min?: number
+          late_penalty_mode?: string
+          monthly_fixed_amount?: number
+          ot_first_hour_rate?: number
+          ot_fixed_daily_rate?: number
+          ot_next_hour_rate?: number
+          overtime_mode?: string
+          standard_working_hours?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      payslips: {
+        Row: {
+          actual_work_days: number
+          base_salary: number
+          breakdown_json: Json | null
+          created_at: string | null
+          debt_deduction: number
+          deliverables_achievement_pct: number
+          deliverables_pay: number
+          expected_work_days: number
+          extra_day_bonus: number
+          extra_work_pay: number
+          id: string
+          late_penalty: number
+          month: number
+          monthly_bonus: number
+          monthly_bonus_note: string | null
+          net_total: number
+          other_penalty: number
+          other_penalty_note: string | null
+          overtime_pay: number
+          prorated_salary: number
+          status: string
+          total_late_minutes: number
+          total_overtime_minutes: number
+          updated_at: string | null
+          user_id: string
+          year: number
+        }
+        Insert: {
+          actual_work_days?: number
+          base_salary?: number
+          breakdown_json?: Json | null
+          created_at?: string | null
+          debt_deduction?: number
+          deliverables_achievement_pct?: number
+          deliverables_pay?: number
+          expected_work_days?: number
+          extra_day_bonus?: number
+          extra_work_pay?: number
+          id?: string
+          late_penalty?: number
+          month: number
+          monthly_bonus?: number
+          monthly_bonus_note?: string | null
+          net_total?: number
+          other_penalty?: number
+          other_penalty_note?: string | null
+          overtime_pay?: number
+          prorated_salary?: number
+          status?: string
+          total_late_minutes?: number
+          total_overtime_minutes?: number
+          updated_at?: string | null
+          user_id: string
+          year: number
+        }
+        Update: {
+          actual_work_days?: number
+          base_salary?: number
+          breakdown_json?: Json | null
+          created_at?: string | null
+          debt_deduction?: number
+          deliverables_achievement_pct?: number
+          deliverables_pay?: number
+          expected_work_days?: number
+          extra_day_bonus?: number
+          extra_work_pay?: number
+          id?: string
+          late_penalty?: number
+          month?: number
+          monthly_bonus?: number
+          monthly_bonus_note?: string | null
+          net_total?: number
+          other_penalty?: number
+          other_penalty_note?: string | null
+          overtime_pay?: number
+          prorated_salary?: number
+          status?: string
+          total_late_minutes?: number
+          total_overtime_minutes?: number
+          updated_at?: string | null
+          user_id?: string
+          year?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          anniversary_last_greeted: string | null
+          asal_alamat: string | null
+          asal_kecamatan: string | null
+          asal_kelurahan: string | null
+          asal_kota: string | null
+          asal_provinsi: string | null
+          birthday_last_greeted: string | null
+          business_unit: string | null
+          created_at: string
+          current_city: string | null
+          date_of_birth: string | null
+          department: string
+          domisili_alamat: string | null
+          domisili_kecamatan: string | null
+          domisili_kelurahan: string | null
+          domisili_kota: string | null
+          domisili_provinsi: string | null
+          email: string
+          emergency_contact_name: string | null
+          emergency_contact_whatsapp: string | null
+          extra_work_enabled: boolean
+          first_day_of_work: string | null
+          full_name: string
+          gender: string | null
+          grace_period_min: number
+          id: string
+          is_active: boolean
+          is_flexible_schedule: boolean
+          job_role: string | null
+          motto: string | null
+          nickname: string | null
+          npwp: string | null
+          place_of_birth: string | null
+          position: string
+          role: string
+          shirt_size: string | null
+          streak_last_milestone: number
+          streak_personal_best: number
+          updated_at: string
+          whatsapp_number: string | null
+          work_end_time: string
+          work_start_time: string
+        }
+        Insert: {
+          anniversary_last_greeted?: string | null
+          asal_alamat?: string | null
+          asal_kecamatan?: string | null
+          asal_kelurahan?: string | null
+          asal_kota?: string | null
+          asal_provinsi?: string | null
+          birthday_last_greeted?: string | null
+          business_unit?: string | null
+          created_at?: string
+          current_city?: string | null
+          date_of_birth?: string | null
+          department?: string
+          domisili_alamat?: string | null
+          domisili_kecamatan?: string | null
+          domisili_kelurahan?: string | null
+          domisili_kota?: string | null
+          domisili_provinsi?: string | null
+          email?: string
+          emergency_contact_name?: string | null
+          emergency_contact_whatsapp?: string | null
+          extra_work_enabled?: boolean
+          first_day_of_work?: string | null
+          full_name?: string
+          gender?: string | null
+          grace_period_min?: number
+          id: string
+          is_active?: boolean
+          is_flexible_schedule?: boolean
+          job_role?: string | null
+          motto?: string | null
+          nickname?: string | null
+          npwp?: string | null
+          place_of_birth?: string | null
+          position?: string
+          role?: string
+          shirt_size?: string | null
+          streak_last_milestone?: number
+          streak_personal_best?: number
+          updated_at?: string
+          whatsapp_number?: string | null
+          work_end_time?: string
+          work_start_time?: string
+        }
+        Update: {
+          anniversary_last_greeted?: string | null
+          asal_alamat?: string | null
+          asal_kecamatan?: string | null
+          asal_kelurahan?: string | null
+          asal_kota?: string | null
+          asal_provinsi?: string | null
+          birthday_last_greeted?: string | null
+          business_unit?: string | null
+          created_at?: string
+          current_city?: string | null
+          date_of_birth?: string | null
+          department?: string
+          domisili_alamat?: string | null
+          domisili_kecamatan?: string | null
+          domisili_kelurahan?: string | null
+          domisili_kota?: string | null
+          domisili_provinsi?: string | null
+          email?: string
+          emergency_contact_name?: string | null
+          emergency_contact_whatsapp?: string | null
+          extra_work_enabled?: boolean
+          first_day_of_work?: string | null
+          full_name?: string
+          gender?: string | null
+          grace_period_min?: number
+          id?: string
+          is_active?: boolean
+          is_flexible_schedule?: boolean
+          job_role?: string | null
+          motto?: string | null
+          nickname?: string | null
+          npwp?: string | null
+          place_of_birth?: string | null
+          position?: string
+          role?: string
+          shirt_size?: string | null
+          streak_last_milestone?: number
+          streak_personal_best?: number
+          updated_at?: string
+          whatsapp_number?: string | null
+          work_end_time?: string
+          work_start_time?: string
+        }
+        Relationships: []
+      }
+      whatsapp_notification_recipients: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          phone_e164: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string
+          phone_e164: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          phone_e164?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      profiles_celebrations_public: {
+        Row: {
+          dob_month_day: string | null
+          first_day_of_work: string | null
+          full_name: string | null
+          id: string | null
+        }
+        Relationships: []
+      }
+    }
     Functions: {
-      is_admin: {
-        Args: Record<string, never>;
-        Returns: boolean;
-      };
-      get_ui_theme: {
-        Args: Record<string, never>;
-        Returns: string;
-      };
-    };
-    Enums: Record<string, never>;
-    CompositeTypes: Record<string, never>;
-  };
-};
+      get_ui_theme: { Args: never; Returns: string }
+      is_admin: { Args: never; Returns: boolean }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
 
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type AttendanceLog =
@@ -695,3 +712,5 @@ export type EmployeeLocation =
   Database["public"]["Tables"]["employee_locations"]["Row"];
 export type WhatsAppNotificationRecipient =
   Database["public"]["Tables"]["whatsapp_notification_recipients"]["Row"];
+export type CelebrationMessageRow =
+  Database["public"]["Tables"]["celebration_messages"]["Row"];

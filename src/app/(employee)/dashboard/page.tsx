@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCurrentUser,
@@ -8,11 +9,17 @@ import {
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { getTodayAttendance, getMyStreak } from "@/lib/actions/attendance.actions";
+import {
+  getCelebrationsFeed,
+  dispatchTodaysGreetings,
+} from "@/lib/actions/celebrations.actions";
 import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
 import { DashboardHero } from "@/components/dashboard/DashboardHero";
+import { SelfCelebrationHero } from "@/components/dashboard/SelfCelebrationHero";
+import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { getDictionary } from "@/lib/i18n/server";
@@ -66,26 +73,35 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const todayDate = format(new Date(), "yyyy-MM-dd");
 
-  const [profile, todayLog, settings, streak, { lang, t }, otReqRes, extraWorkRes] =
-    await Promise.all([
-      getCurrentProfile(),
-      getTodayAttendance(),
-      getCachedAttendanceSettings(),
-      getMyStreak(),
-      getDictionary(),
-      supabase
-        .from("overtime_requests")
-        .select("admin_note, attendance_log_id")
-        .eq("user_id", user.id)
-        .eq("date", todayDate)
-        .maybeSingle(),
-      supabase
-        .from("extra_work_logs")
-        .select("id, kind, created_at")
-        .eq("user_id", user.id)
-        .eq("date", todayDate)
-        .order("created_at", { ascending: false }),
-    ]);
+  const [
+    profile,
+    todayLog,
+    settings,
+    streak,
+    { lang, t },
+    otReqRes,
+    extraWorkRes,
+    celebrationsFeed,
+  ] = await Promise.all([
+    getCurrentProfile(),
+    getTodayAttendance(),
+    getCachedAttendanceSettings(),
+    getMyStreak(),
+    getDictionary(),
+    supabase
+      .from("overtime_requests")
+      .select("admin_note, attendance_log_id")
+      .eq("user_id", user.id)
+      .eq("date", todayDate)
+      .maybeSingle(),
+    supabase
+      .from("extra_work_logs")
+      .select("id, kind, created_at")
+      .eq("user_id", user.id)
+      .eq("date", todayDate)
+      .order("created_at", { ascending: false }),
+    getCelebrationsFeed(),
+  ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
 
@@ -103,16 +119,41 @@ export default async function DashboardPage() {
     )
     .map(({ title }) => title);
 
+  // Kick off WhatsApp dispatch after the response is streamed. Safe to
+  // call on every dashboard render because `dispatchTodaysGreetings`
+  // uses an atomic UPDATE ... RETURNING claim per celebrant.
+  after(async () => {
+    try {
+      await dispatchTodaysGreetings();
+    } catch {
+      // dispatcher already swallows per-user errors; top-level guard for
+      // anything that slips through so the response isn't affected.
+    }
+  });
+
+  const selfCelebration = celebrationsFeed.mySelfCelebration;
+
   return (
     <div className="space-y-5">
-      <DashboardHero
-        firstName={firstName}
-        dateLabel={today}
-        timezone={settings?.timezone ?? null}
-        motto={profile?.motto ?? null}
-      />
+      {selfCelebration ? (
+        <SelfCelebrationHero
+          celebration={selfCelebration}
+          firstName={firstName}
+          dateLabel={today}
+          timezone={settings?.timezone ?? null}
+        />
+      ) : (
+        <DashboardHero
+          firstName={firstName}
+          dateLabel={today}
+          timezone={settings?.timezone ?? null}
+          motto={profile?.motto ?? null}
+        />
+      )}
 
       <ProfileCompletionCard missingSections={missingSections} />
+
+      <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 
       {/* Attendance — magazine-style section with an eyebrow label and a soft
           white panel that floats above the page background. The section
