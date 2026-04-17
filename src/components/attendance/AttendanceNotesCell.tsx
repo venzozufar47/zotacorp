@@ -54,12 +54,12 @@ export function AttendanceNotesCell({
     "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide";
 
   return (
-    <div className="space-y-1.5 max-w-[240px]">
+    <div className="space-y-1.5 w-full max-w-[280px] [overflow-wrap:anywhere]">
       {lateCheckoutReason && (
-        <div className="flex items-start gap-1">
+        <div className="flex items-start gap-1 min-w-0">
           <MessageSquare size={10} className="mt-0.5 shrink-0 text-muted-foreground" />
           <p
-            className="text-xs text-muted-foreground leading-snug break-words"
+            className="text-xs text-muted-foreground leading-snug break-words [overflow-wrap:anywhere] min-w-0 flex-1"
             title={lateCheckoutReason}
           >
             {lateCheckoutPrefix}: {lateCheckoutReason}
@@ -82,7 +82,7 @@ export function AttendanceNotesCell({
             <div className={`${pillClasses} text-foreground`}>{pillInner}</div>
           )}
           <p
-            className="text-xs text-foreground leading-snug break-words mt-0.5 font-medium"
+            className="text-xs text-foreground leading-snug break-words [overflow-wrap:anywhere] mt-0.5 font-medium"
             title={outsideNote}
           >
             {outsideNote}
