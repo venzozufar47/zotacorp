@@ -13,7 +13,7 @@ export default function EmployeeLoading() {
         <Skeleton className="h-4 w-32 mt-2" />
       </div>
 
-      <Card className="border-0 shadow-sm">
+      <Card>
         <CardContent className="p-5 space-y-4">
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-24 w-full rounded-xl" />
@@ -21,7 +21,7 @@ export default function EmployeeLoading() {
         </CardContent>
       </Card>
 
-      <Card className="border-0 shadow-sm">
+      <Card>
         <CardContent className="p-5 space-y-3">
           <Skeleton className="h-5 w-40" />
           <Skeleton className="h-4 w-full" />

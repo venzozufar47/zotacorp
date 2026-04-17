@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Clock, Receipt } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu } from "./HamburgerMenu";
 
@@ -11,28 +12,41 @@ export function BottomNav() {
   const { t } = useTranslation();
 
   const navItems = [
-    { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home },
-    { href: "/attendance", icon: Clock, label: t.nav.attendance },
-    { href: "/payslips", icon: Receipt, label: t.nav.payslips },
+    { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home, color: "bg-primary" },
+    { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
+    { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
   ];
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-border z-50 md:hidden"
+      className="fixed bottom-0 left-0 right-0 bg-background border-t-2 border-foreground z-50 md:hidden"
       style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
     >
-      <div className="flex items-center max-w-lg mx-auto">
-        {navItems.map(({ href, icon: Icon, label }) => {
+      <div className="flex items-center max-w-lg mx-auto px-2">
+        {navItems.map(({ href, icon: Icon, label, color }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
-              className="flex flex-col items-center gap-1 flex-1 py-3 text-[11px] transition-colors"
-              style={{ color: active ? "var(--primary)" : "var(--muted-foreground)" }}
+              className="flex flex-col items-center gap-1 flex-1 py-2 text-[11px] transition-colors"
             >
-              <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
-              <span className={active ? "font-semibold" : ""}>{label}</span>
+              <span
+                className={cn(
+                  "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
+                  active ? color + " text-foreground" : "bg-card text-muted-foreground"
+                )}
+              >
+                <Icon size={18} strokeWidth={2.5} />
+              </span>
+              <span
+                className={cn(
+                  "font-display font-bold uppercase tracking-wide text-[0.625rem]",
+                  active ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                {label}
+              </span>
             </Link>
           );
         })}

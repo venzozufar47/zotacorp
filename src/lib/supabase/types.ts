@@ -665,6 +665,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      get_ui_theme: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

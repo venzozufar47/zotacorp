@@ -263,7 +263,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
               </Select>
             ) : (
               <p
-                className={`text-sm py-2 px-3 rounded-md bg-[#f5f5f7] min-h-[36px] ${
+                className={`text-sm font-medium py-2.5 px-3.5 rounded-xl border-2 border-border bg-muted min-h-[44px] ${
                   !state.shirt_size ? "text-muted-foreground italic" : "text-foreground"
                 }`}
               >
@@ -322,7 +322,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
         saving={saving}
       >
         {isEditing("asal") && (
-          <label className="flex items-start gap-3 rounded-xl border border-border bg-[#f5f5f7]/60 px-3 py-2.5 cursor-pointer">
+          <label className="flex items-start gap-3 rounded-2xl border-2 border-foreground/30 bg-muted px-3 py-2.5 cursor-pointer hover:border-foreground transition-colors">
             <input
               type="checkbox"
               checked={asalLocked}
@@ -353,11 +353,10 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
                   }));
                 }
               }}
-              className="mt-0.5 h-4 w-4 rounded border-input"
-              style={{ accentColor: "var(--primary)" }}
+              className="mt-0.5 h-5 w-5 rounded border-2 border-foreground accent-primary"
             />
             <div className="flex-1">
-              <div className="text-sm font-medium">{pf.sameAsCurrentResidence}</div>
+              <div className="text-sm font-bold">{pf.sameAsCurrentResidence}</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                 {pf.sameAsCurrentResidenceHint}
               </div>
@@ -464,12 +463,11 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
                 type="checkbox"
                 checked={state.is_flexible_schedule}
                 onChange={(e) => set("is_flexible_schedule", e.target.checked)}
-                className="h-4 w-4 rounded border-border"
-                style={{ accentColor: "var(--primary)" }}
+                className="h-5 w-5 rounded border-2 border-foreground accent-primary"
                 disabled={!isEditing("work")}
               />
               <div>
-                <span className="text-sm font-medium">{pf.flexibleSchedule}</span>
+                <span className="text-sm font-bold">{pf.flexibleSchedule}</span>
                 <p className="text-xs text-muted-foreground">
                   {pf.flexibleScheduleHint}
                 </p>
@@ -586,9 +584,9 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="border-0 shadow-sm">
+    <Card>
       <CardHeader className="pb-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-base">{title}</CardTitle>
+        <CardTitle className="text-lg">{title}</CardTitle>
         {editing ? (
           <div className="flex items-center gap-1.5">
             <Button
@@ -604,7 +602,6 @@ function SectionCard({
             <Button
               size="sm"
               className="h-8 px-3 text-xs"
-              style={{ background: "var(--primary)" }}
               onClick={onSave}
               disabled={saving}
             >
@@ -690,7 +687,7 @@ function Field({
       {editing ? (
         children
       ) : (
-        <p className={`text-sm py-2 px-3 rounded-md bg-[#f5f5f7] min-h-[36px] ${isEmpty ? "text-muted-foreground italic" : "text-foreground"}`}>
+        <p className={`text-sm font-medium py-2.5 px-3.5 rounded-xl border-2 border-border bg-muted min-h-[44px] ${isEmpty ? "text-muted-foreground italic" : "text-foreground"}`}>
           {isEmpty ? notFilled : value}
         </p>
       )}

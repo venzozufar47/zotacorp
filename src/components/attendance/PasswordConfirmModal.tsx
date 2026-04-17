@@ -87,16 +87,10 @@ export function PasswordConfirmModal({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: "var(--accent)" }}
-            >
-              <LockKeyhole
-                size={18}
-                style={{ color: "var(--primary)" }}
-              />
+            <div className="size-11 rounded-full border-2 border-foreground bg-tertiary flex items-center justify-center shadow-hard-sm">
+              <LockKeyhole size={18} strokeWidth={2.5} className="text-foreground" />
             </div>
-            <DialogTitle className="text-lg">
+            <DialogTitle>
               {isCheckIn ? t.passwordConfirm.confirmCheckIn : t.passwordConfirm.confirmCheckOut}
             </DialogTitle>
           </div>
@@ -123,7 +117,7 @@ export function PasswordConfirmModal({
           </div>
 
           {error && (
-            <p className="text-sm text-destructive bg-destructive/8 rounded-lg px-3 py-2">
+            <p className="text-sm text-destructive bg-destructive/10 border-2 border-destructive rounded-xl px-3 py-2 font-medium">
               {error}
             </p>
           )}
@@ -141,7 +135,6 @@ export function PasswordConfirmModal({
             <Button
               type="submit"
               className="flex-1"
-              style={{ background: "var(--primary)" }}
               disabled={loading || !password}
             >
               {loading

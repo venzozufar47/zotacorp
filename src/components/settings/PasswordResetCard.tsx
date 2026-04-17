@@ -68,7 +68,6 @@ export function PasswordResetCard() {
           onClick={handleSend}
           disabled={loading}
           className="w-full sm:w-auto"
-          style={{ background: "var(--primary)" }}
         >
           <Mail size={16} className="mr-2" />
           {loading ? t.passwordReset.sending : t.passwordReset.send}
@@ -76,21 +75,21 @@ export function PasswordResetCard() {
 
         {sentTo && (
           <div
-            className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-sm text-foreground"
+            className="flex items-start gap-2.5 rounded-2xl border-2 border-foreground bg-quaternary/30 px-4 py-3 text-sm text-foreground shadow-hard-sm"
             role="status"
             aria-live="polite"
           >
             <CheckCircle2
-              size={16}
-              className="mt-0.5 shrink-0"
-              style={{ color: "var(--primary)" }}
+              size={18}
+              strokeWidth={2.5}
+              className="mt-0.5 shrink-0 text-foreground"
             />
             <div className="leading-relaxed">
-              <div>
+              <div className="font-medium">
                 {t.passwordReset.sentTo}{" "}
-                <span className="font-semibold">{sentTo}</span>
+                <span className="font-display font-bold">{sentTo}</span>
               </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
+              <div className="text-xs text-foreground/70 mt-0.5">
                 {t.passwordReset.checkInbox}
               </div>
             </div>

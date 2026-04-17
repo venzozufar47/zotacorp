@@ -88,15 +88,12 @@ export function ExtraWorkButton({ todayEntries }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-dashed border-foreground/15 text-sm text-muted-foreground hover:text-foreground hover:bg-[#f5f5f7] transition-colors"
+        className="w-full flex items-center justify-center gap-2 h-11 rounded-full border-2 border-dashed border-foreground/40 text-sm font-display font-bold uppercase tracking-wide text-muted-foreground hover:text-foreground hover:bg-muted hover:border-foreground transition-all"
       >
-        <Plus size={14} />
+        <Plus size={14} strokeWidth={2.5} />
         {tx.openCta}
         {todayEntries.length > 0 && (
-          <span
-            className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-[11px] font-semibold px-1.5"
-            style={{ background: "var(--accent)", color: "var(--primary)" }}
-          >
+          <span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-[20px] rounded-full text-[11px] font-bold px-1.5 border-2 border-foreground bg-pop-pink text-foreground">
             {todayEntries.length}
           </span>
         )}
@@ -133,24 +130,26 @@ export function ExtraWorkButton({ todayEntries }: Props) {
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {tx.todayHeading}
                 </p>
-                <ul className="space-y-1 max-h-40 overflow-y-auto">
+                <ul className="space-y-1.5 max-h-40 overflow-y-auto">
                   {todayEntries.map((e) => (
                     <li
                       key={e.id}
-                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/30"
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-foreground/10 bg-muted/40"
                     >
-                      <ShoppingBag size={14} className="text-muted-foreground" />
-                      <span className="text-sm flex-1">
+                      <span className="size-7 rounded-full border-2 border-foreground bg-pop-pink flex items-center justify-center">
+                        <ShoppingBag size={12} strokeWidth={2.5} className="text-foreground" />
+                      </span>
+                      <span className="text-sm flex-1 font-medium">
                         {tx.kindLabels[e.kind as keyof typeof tx.kindLabels] ?? e.kind}
                       </span>
                       <button
                         type="button"
                         onClick={() => onDelete(e.id)}
                         disabled={pending}
-                        className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                        className="size-7 rounded-full border-2 border-foreground bg-card text-muted-foreground hover:bg-destructive hover:text-white hover:border-destructive disabled:opacity-50 flex items-center justify-center transition-colors"
                         aria-label={tx.deleteAria}
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={12} strokeWidth={2.5} />
                       </button>
                     </li>
                   ))}

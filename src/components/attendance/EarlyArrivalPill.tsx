@@ -15,12 +15,11 @@ export function EarlyArrivalPill() {
   const { t } = useTranslation();
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
-      style={{ background: "#fff7ed", color: "#b45309" }}
+      className="inline-flex items-center gap-1 text-[10px] font-display font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border-2 border-foreground bg-tertiary text-foreground"
       aria-label={t.attendanceTable.earlyArrivalAria}
       title={t.attendanceTable.earlyArrivalAria}
     >
-      <LogIn size={10} />
+      <LogIn size={10} strokeWidth={2.5} />
       {t.attendanceTable.earlyArrivalLabel}
     </span>
   );

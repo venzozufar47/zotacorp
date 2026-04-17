@@ -87,10 +87,10 @@ interface AttendanceRecapTableProps {
   sortDir?: "asc" | "desc";
 }
 
-const OT_STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  pending: { bg: "#fff7ed", color: "#b45309", label: "Pending" },
-  approved: { bg: "#f0fdf4", color: "#15803d", label: "Approved" },
-  rejected: { bg: "#fef2f2", color: "#b91c1c", label: "Rejected" },
+const OT_BADGE_VARIANT: Record<string, { variant: "tertiary" | "quaternary" | "destructive"; label: string }> = {
+  pending: { variant: "tertiary", label: "Pending" },
+  approved: { variant: "quaternary", label: "Approved" },
+  rejected: { variant: "destructive", label: "Rejected" },
 };
 
 export function AttendanceRecapTable({
@@ -344,9 +344,10 @@ export function AttendanceRecapTable({
             </Button>
             <Button
               size="sm"
+              variant="destructive"
               onClick={() => setBulkConfirmOpen(true)}
               disabled={isPending}
-              className="h-7 px-3 text-xs bg-destructive text-white hover:bg-destructive/90"
+              className="h-7 px-3 text-xs"
             >
               <Trash2 size={12} className="mr-1" />
               Delete selected
@@ -357,14 +358,14 @@ export function AttendanceRecapTable({
 
       {paginationControls}
 
-      <div className="rounded-xl border overflow-x-auto bg-white">
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-[#f5f5f7]">
+            <TableRow>
               <TableHead className="w-[40px]">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded accent-[var(--primary)] align-middle"
+                  className="w-4 h-4 rounded border-2 border-foreground accent-tertiary align-middle"
                   checked={allOnPageSelected}
                   // indeterminate state fires when SOME but not all rows
                   // on this page are selected. DOM-level only; React doesn't
@@ -411,16 +412,16 @@ export function AttendanceRecapTable({
                 currentDir={sortDir}
                 onSort={handleSort}
               />
-              <TableHead className="text-xs font-semibold uppercase tracking-wide w-[280px] max-w-[280px]">Overtime</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">{t.attendanceTable.colNotes}</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide w-[60px]"></TableHead>
+              <TableHead className=" w-[280px] max-w-[280px]">Overtime</TableHead>
+              <TableHead className="">{t.attendanceTable.colNotes}</TableHead>
+              <TableHead className=" w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row) => {
               const isOpen = !row.checked_out_at;
-              const otStyle = row.overtime_status
-                ? OT_STATUS_STYLES[row.overtime_status] ?? OT_STATUS_STYLES.pending
+              const otBadge = row.overtime_status
+                ? OT_BADGE_VARIANT[row.overtime_status] ?? OT_BADGE_VARIANT.pending
                 : null;
 
               const otRequest = row.overtime_requests?.[0];
@@ -430,16 +431,16 @@ export function AttendanceRecapTable({
                   key={row.id}
                   className={
                     selectedIds.has(row.id)
-                      ? "bg-primary/5"
+                      ? "bg-accent"
                       : isOpen
-                      ? "bg-orange-50/50"
-                      : "hover:bg-[#f5f5f7]/40"
+                      ? "bg-tertiary/15"
+                      : ""
                   }
                 >
                   <TableCell>
                     <input
                       type="checkbox"
-                      className="w-4 h-4 rounded accent-[var(--primary)] align-middle"
+                      className="w-4 h-4 rounded border-2 border-foreground accent-tertiary align-middle"
                       checked={selectedIds.has(row.id)}
                       onChange={() => toggleOne(row.id)}
                       aria-label={`Select row for ${row.profiles.full_name}`}
@@ -447,11 +448,11 @@ export function AttendanceRecapTable({
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="font-medium text-sm">{row.profiles.full_name}</p>
+                      <p className="font-display font-bold text-sm">{row.profiles.full_name}</p>
                       <p className="text-xs text-muted-foreground">{row.profiles.email}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm font-medium">
+                  <TableCell className="text-sm font-display font-bold">
                     {formatLocalDate(row.date)}
                   </TableCell>
                   <TableCell className="text-sm">
@@ -465,13 +466,12 @@ export function AttendanceRecapTable({
                               title: `${row.profiles.full_name} — ${formatLocalDate(row.date)}`,
                             })
                           }
-                          className="underline-offset-2 hover:underline tabular-nums"
-                          style={{ color: "var(--primary)" }}
+                          className="font-medium tabular-nums text-primary underline-offset-2 hover:underline"
                         >
                           {formatTime(row.checked_in_at, timezone)}
                         </button>
                       ) : (
-                        formatTime(row.checked_in_at, timezone)
+                        <span className="font-medium tabular-nums">{formatTime(row.checked_in_at, timezone)}</span>
                       )}
                       {row.is_early_arrival && <EarlyArrivalPill />}
                     </div>
@@ -511,7 +511,6 @@ export function AttendanceRecapTable({
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-6 px-1.5 text-[11px]"
                                       onClick={() => {
                                         if (!proofRejectMessage.trim()) {
                                           toast.error("Please provide a rejection reason");
@@ -520,7 +519,7 @@ export function AttendanceRecapTable({
                                         handleLateProofReview(row.id, "rejected", proofRejectMessage.trim());
                                       }}
                                       disabled={isPending}
-                                      style={{ color: "#b91c1c" }}
+                                      className="h-6 px-1.5 text-[11px] !text-destructive"
                                     >
                                       Confirm Reject
                                     </Button>
@@ -540,10 +539,9 @@ export function AttendanceRecapTable({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 px-1.5 text-[11px]"
                                     onClick={() => handleLateProofReview(row.id, "approved")}
                                     disabled={isPending}
-                                    style={{ color: "#15803d" }}
+                                    className="h-6 px-1.5 text-[11px] !text-quaternary"
                                   >
                                     <CheckCircle size={10} className="mr-0.5" />
                                     Accept
@@ -551,10 +549,9 @@ export function AttendanceRecapTable({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 px-1.5 text-[11px]"
                                     onClick={() => setRejectingProofId(row.id)}
                                     disabled={isPending}
-                                    style={{ color: "#b91c1c" }}
+                                    className="h-6 px-1.5 text-[11px] !text-destructive"
                                   >
                                     <XCircle size={10} className="mr-0.5" />
                                     Reject
@@ -564,17 +561,17 @@ export function AttendanceRecapTable({
                             </>
                           )}
                           {row.late_proof_status === "approved" && (
-                            <Badge className="text-[10px] px-1.5" style={{ background: "#f0fdf4", color: "#15803d", border: "none" }}>
+                            <Badge variant="quaternary" className="text-[10px]">
                               Excuse accepted
                             </Badge>
                           )}
                           {row.late_proof_status === "rejected" && (
                             <div className="space-y-0.5">
-                              <Badge className="text-[10px] px-1.5" style={{ background: "#fef2f2", color: "#b91c1c", border: "none" }}>
+                              <Badge variant="destructive" className="text-[10px]">
                                 Excuse rejected
                               </Badge>
                               {row.late_proof_admin_note && (
-                                <p className="text-[10px] text-red-600 leading-tight break-words">
+                                <p className="text-[10px] text-destructive leading-tight break-words font-medium">
                                   {row.late_proof_admin_note}
                                 </p>
                               )}
@@ -585,13 +582,10 @@ export function AttendanceRecapTable({
                     </div>
                   </TableCell>
                   <TableCell className="w-[280px] max-w-[280px] overflow-hidden">
-                    {row.is_overtime && row.overtime_minutes > 0 && otStyle ? (
+                    {row.is_overtime && row.overtime_minutes > 0 && otBadge ? (
                       <div className="space-y-1.5">
-                        <Badge
-                          className="text-xs px-2"
-                          style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
-                        >
-                          {formatMinutesHuman(row.overtime_minutes)} ({otStyle.label})
+                        <Badge variant={otBadge.variant} className="text-[10px]">
+                          {formatMinutesHuman(row.overtime_minutes)} ({otBadge.label})
                         </Badge>
 
                         {/* Employee's reason */}
@@ -621,7 +615,6 @@ export function AttendanceRecapTable({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-7 px-2 text-xs"
                                     onClick={() => {
                                       if (!rejectMessage.trim()) {
                                         toast.error("Please provide a rejection reason");
@@ -630,7 +623,7 @@ export function AttendanceRecapTable({
                                       handleOvertimeAction(otRequest.id, "rejected", rejectMessage.trim());
                                     }}
                                     disabled={isPending}
-                                    style={{ color: "#b91c1c" }}
+                                    className="h-7 px-2 text-xs !text-destructive"
                                   >
                                     Confirm Reject
                                   </Button>
@@ -653,10 +646,9 @@ export function AttendanceRecapTable({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-7 px-2 text-xs"
+                                  className="h-7 px-2 text-xs !text-quaternary"
                                   onClick={() => handleOvertimeAction(otRequest.id, "approved")}
                                   disabled={isPending}
-                                  style={{ color: "#15803d" }}
                                 >
                                   <CheckCircle size={10} className="mr-0.5" />
                                   Approve
@@ -664,10 +656,9 @@ export function AttendanceRecapTable({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-7 px-2 text-xs"
+                                  className="h-7 px-2 text-xs !text-destructive"
                                   onClick={() => setRejectingId(otRequest.id)}
                                   disabled={isPending}
-                                  style={{ color: "#b91c1c" }}
                                 >
                                   <XCircle size={10} className="mr-0.5" />
                                   Reject
@@ -680,8 +671,8 @@ export function AttendanceRecapTable({
                         {/* Admin note for reviewed requests */}
                         {otRequest?.admin_note && row.overtime_status === "rejected" && (
                           <div className="flex items-start gap-1 w-full">
-                            <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
-                            <p className="text-xs leading-tight break-words" style={{ color: "#b91c1c" }}>
+                            <XCircle size={10} className="mt-0.5 shrink-0 text-destructive" />
+                            <p className="text-xs leading-tight break-words text-destructive font-medium">
                               {otRequest.admin_note}
                             </p>
                           </div>
@@ -689,15 +680,12 @@ export function AttendanceRecapTable({
                       </div>
                     ) : row.overtime_status === "rejected" && otRequest?.admin_note ? (
                       <div className="space-y-1">
-                        <Badge
-                          className="text-xs px-2"
-                          style={{ background: "#fef2f2", color: "#ff3b30", border: "none" }}
-                        >
+                        <Badge variant="destructive" className="text-[10px]">
                           Rejected
                         </Badge>
                         <div className="flex items-start gap-1 w-full">
-                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
-                          <p className="text-xs leading-tight" style={{ color: "#b91c1c" }}>
+                          <XCircle size={10} className="mt-0.5 shrink-0 text-destructive" />
+                          <p className="text-xs leading-tight text-destructive font-medium">
                             {otRequest.admin_note}
                           </p>
                         </div>
@@ -723,16 +711,15 @@ export function AttendanceRecapTable({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0"
+                      className={`h-7 w-7 p-0 ${deletingId === row.id ? "!text-destructive" : "!text-muted-foreground"}`}
                       onClick={() => handleDelete(row.id)}
                       disabled={isPending}
                       title={deletingId === row.id ? "Click again to confirm" : "Delete record"}
-                      style={{ color: deletingId === row.id ? "#dc2626" : "var(--muted-foreground)" }}
                     >
                       <Trash2 size={14} />
                     </Button>
                     {deletingId === row.id && (
-                      <p className="text-[10px] text-red-600 mt-0.5">Click to confirm</p>
+                      <p className="text-[10px] text-destructive mt-0.5 font-bold">Click to confirm</p>
                     )}
                   </TableCell>
                 </TableRow>
@@ -746,31 +733,30 @@ export function AttendanceRecapTable({
 
       {/* Inline Proof Preview */}
       {proofPreview && (
-        <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 bg-[#f5f5f7] border-b">
-            <p className="text-sm font-medium">{proofPreview.name}</p>
+        <div className="rounded-2xl border-2 border-foreground bg-card overflow-hidden shadow-hard">
+          <div className="flex items-center justify-between px-4 py-2 bg-muted border-b-2 border-foreground">
+            <p className="text-sm font-display font-bold">{proofPreview.name}</p>
             <div className="flex items-center gap-1">
               <a
                 href={proofPreview.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg hover:bg-white/80 transition-colors"
-                style={{ color: "var(--primary)" }}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-full text-primary font-bold hover:bg-card transition-colors"
                 title="Open in new tab"
               >
-                <ExternalLink size={12} />
+                <ExternalLink size={12} strokeWidth={2.5} />
                 New tab
               </a>
               <button
                 onClick={() => setProofPreview(null)}
-                className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/80 transition-colors text-muted-foreground"
+                className="flex items-center justify-center size-8 rounded-full border-2 border-foreground bg-card hover:rotate-90 transition-transform"
                 title="Close preview"
               >
-                <X size={16} />
+                <X size={14} strokeWidth={2.5} />
               </button>
             </div>
           </div>
-          <div className="flex items-center justify-center bg-[#fafafa] min-h-[300px] max-h-[70vh]">
+          <div className="flex items-center justify-center bg-muted min-h-[300px] max-h-[70vh]">
             {proofPreview.url.match(/\.(jpe?g|png|gif|webp)/i) || proofPreview.url.includes("image") ? (
               <img
                 src={proofPreview.url}
@@ -821,7 +807,7 @@ export function AttendanceRecapTable({
             <Button
               onClick={handleBulkDelete}
               disabled={isPending}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
             >
               {isPending ? "Deleting…" : `Delete ${selectedIds.size}`}
             </Button>

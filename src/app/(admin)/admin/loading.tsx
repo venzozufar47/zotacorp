@@ -14,7 +14,7 @@ export default function AdminLoading() {
         </div>
       </div>
 
-      <Card className="border-0 shadow-sm">
+      <Card>
         <CardContent className="p-5 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Skeleton className="h-10 w-full" />
@@ -24,7 +24,7 @@ export default function AdminLoading() {
         </CardContent>
       </Card>
 
-      <Card className="border-0 shadow-sm">
+      <Card>
         <CardContent className="p-0">
           <div className="p-4 border-b">
             <Skeleton className="h-5 w-48" />

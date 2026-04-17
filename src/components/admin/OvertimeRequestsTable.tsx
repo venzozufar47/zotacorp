@@ -51,10 +51,10 @@ interface OvertimeRequestsTableProps {
   activeTab: string;
 }
 
-const STATUS_BADGES: Record<string, { bg: string; color: string; label: string }> = {
-  pending: { bg: "#fff7ed", color: "#ff9f0a", label: "Pending" },
-  approved: { bg: "#f0fdf4", color: "#34c759", label: "Approved" },
-  rejected: { bg: "#fef2f2", color: "#ff3b30", label: "Rejected" },
+const STATUS_BADGES: Record<string, { variant: "tertiary" | "quaternary" | "destructive"; label: string }> = {
+  pending: { variant: "tertiary", label: "Pending" },
+  approved: { variant: "quaternary", label: "Approved" },
+  rejected: { variant: "destructive", label: "Rejected" },
 };
 
 type OvertimeSortKey = "employee" | "date" | "hours" | "status";
@@ -140,10 +140,10 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
 
   return (
     <>
-      <div className="rounded-xl border overflow-x-auto bg-white">
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-[#f5f5f7]">
+            <TableRow>
               <SortableHeader<OvertimeSortKey>
                 sortKey="employee"
                 label="Employee"
@@ -165,7 +165,7 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
                 currentDir={sortDir}
                 onSort={toggleSort}
               />
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">Reason</TableHead>
+              <TableHead>Reason</TableHead>
               <SortableHeader<OvertimeSortKey>
                 sortKey="status"
                 label="Status"
@@ -174,10 +174,10 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
                 onSort={toggleSort}
               />
               {activeTab === "pending" && (
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">Actions</TableHead>
+                <TableHead>Actions</TableHead>
               )}
               {activeTab !== "pending" && (
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">Note</TableHead>
+                <TableHead>Note</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -187,29 +187,26 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
               const badge = STATUS_BADGES[row.status] ?? STATUS_BADGES.pending;
 
               return (
-                <TableRow key={row.id} className="hover:bg-[#f5f5f7]/40">
+                <TableRow key={row.id}>
                   <TableCell>
                     <div>
-                      <p className="font-medium text-sm">{row.profiles.full_name}</p>
+                      <p className="font-display font-bold text-sm">{row.profiles.full_name}</p>
                       <p className="text-xs text-muted-foreground">{row.profiles.email}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm font-medium">
+                  <TableCell className="text-sm font-display font-bold">
                     {formatLocalDate(row.date)}
                   </TableCell>
-                  <TableCell className="text-sm font-semibold">
+                  <TableCell className="text-sm font-display font-bold tabular-nums">
                     {hours}h
                   </TableCell>
                   <TableCell className="text-sm max-w-[200px]">
-                    <p className="truncate" title={row.reason}>
+                    <p className="truncate font-medium" title={row.reason}>
                       {row.reason}
                     </p>
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      className="text-xs px-2"
-                      style={{ background: badge.bg, color: badge.color, border: "none" }}
-                    >
+                    <Badge variant={badge.variant} className="text-[10px]">
                       {badge.label}
                     </Badge>
                   </TableCell>
@@ -219,23 +216,21 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-xs"
+                          className="h-7 px-2 text-xs !text-quaternary"
                           onClick={() => handleApprove(row.id)}
                           disabled={isPending}
-                          style={{ color: "#34c759" }}
                         >
-                          <CheckCircle size={14} className="mr-1" />
+                          <CheckCircle size={14} className="mr-1" strokeWidth={2.5} />
                           Approve
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-xs"
+                          className="h-7 px-2 text-xs !text-destructive"
                           onClick={() => openReject(row.id)}
                           disabled={isPending}
-                          style={{ color: "#ff3b30" }}
                         >
-                          <XCircle size={14} className="mr-1" />
+                          <XCircle size={14} className="mr-1" strokeWidth={2.5} />
                           Reject
                         </Button>
                       </div>

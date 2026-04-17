@@ -30,10 +30,12 @@ export default async function EmployeePayslipsPage() {
       />
 
       {payslips.length === 0 ? (
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardContent className="p-8 text-center">
-            <p className="text-3xl mb-2">💰</p>
-            <p className="text-sm text-muted-foreground">{t.payslipsPage.emptyState}</p>
+            <div className="inline-flex items-center justify-center size-16 rounded-full border-2 border-foreground bg-tertiary shadow-hard-sm mb-3">
+              <span className="text-3xl">💰</span>
+            </div>
+            <p className="text-sm text-muted-foreground font-medium">{t.payslipsPage.emptyState}</p>
           </CardContent>
         </Card>
       ) : (
@@ -44,11 +46,11 @@ export default async function EmployeePayslipsPage() {
               { month: "long", year: "numeric" }
             );
             return (
-              <Card key={p.id} className="border-0 shadow-sm">
+              <Card key={p.id} className="card-wiggle">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">{monthLabel}</h3>
-                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0fdf4", color: "#15803d" }}>
+                    <h3 className="font-display text-base font-bold">{monthLabel}</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-display font-bold uppercase tracking-wider border-2 border-foreground bg-quaternary text-foreground">
                       {t.payslipsPage.finalized}
                     </span>
                   </div>
@@ -79,13 +81,13 @@ export default async function EmployeePayslipsPage() {
                     {Number(p.overtime_pay) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">{t.payslipsPage.overtimePay}</span>
-                        <span className="text-green-700">+ {formatIDR(Number(p.overtime_pay))}</span>
+                        <span className="text-quaternary font-bold">+ {formatIDR(Number(p.overtime_pay))}</span>
                       </div>
                     )}
                     {Number(p.late_penalty) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">{t.payslipsPage.latePenalty}</span>
-                        <span className="text-red-600">- {formatIDR(Number(p.late_penalty))}</span>
+                        <span className="text-destructive font-bold">- {formatIDR(Number(p.late_penalty))}</span>
                       </div>
                     )}
                     {Number(p.deliverables_pay) > 0 && (
@@ -107,7 +109,7 @@ export default async function EmployeePayslipsPage() {
                           <span className="text-muted-foreground">
                             {t.payslipsPage.deliverables} ({Number(p.deliverables_achievement_pct).toFixed(1)}%)
                           </span>
-                          <span className="text-green-700">+ {formatIDR(Number(p.deliverables_pay))}</span>
+                          <span className="text-quaternary font-bold">+ {formatIDR(Number(p.deliverables_pay))}</span>
                         </div>
                       </>
                     )}
@@ -116,13 +118,13 @@ export default async function EmployeePayslipsPage() {
                         <span className="text-muted-foreground">
                           {t.payslipsPage.monthlyBonus}{p.monthly_bonus_note ? ` (${p.monthly_bonus_note})` : ""}
                         </span>
-                        <span className="text-green-700">+ {formatIDR(Number(p.monthly_bonus))}</span>
+                        <span className="text-quaternary font-bold">+ {formatIDR(Number(p.monthly_bonus))}</span>
                       </div>
                     )}
                     {Number(p.debt_deduction) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">{t.payslipsPage.debtDeduction}</span>
-                        <span className="text-red-600">- {formatIDR(Number(p.debt_deduction))}</span>
+                        <span className="text-destructive font-bold">- {formatIDR(Number(p.debt_deduction))}</span>
                       </div>
                     )}
                     {Number(p.other_penalty) > 0 && (
@@ -130,7 +132,7 @@ export default async function EmployeePayslipsPage() {
                         <span className="text-muted-foreground">
                           {t.payslipsPage.otherPenalty}{p.other_penalty_note ? ` (${p.other_penalty_note})` : ""}
                         </span>
-                        <span className="text-red-600">- {formatIDR(Number(p.other_penalty))}</span>
+                        <span className="text-destructive font-bold">- {formatIDR(Number(p.other_penalty))}</span>
                       </div>
                     )}
                   </div>
@@ -144,9 +146,9 @@ export default async function EmployeePayslipsPage() {
                     />
                   )}
 
-                  <div className="flex items-center justify-between p-2.5 rounded-lg" style={{ background: "var(--primary)", color: "white" }}>
-                    <span className="text-xs font-semibold">{t.payslipsPage.netTotal}</span>
-                    <span className="text-base font-bold">{formatIDR(Number(p.net_total))}</span>
+                  <div className="flex items-center justify-between p-3 rounded-2xl border-2 border-foreground bg-primary text-primary-foreground shadow-hard">
+                    <span className="font-display text-sm font-bold uppercase tracking-wide">{t.payslipsPage.netTotal}</span>
+                    <span className="font-display text-lg font-extrabold tabular-nums">{formatIDR(Number(p.net_total))}</span>
                   </div>
                 </CardContent>
               </Card>

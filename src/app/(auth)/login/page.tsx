@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export default function LoginPage() {
+  const { t } = useTranslation();
+  const tl = t.login;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,62 +39,60 @@ export default function LoginPage() {
 
       window.location.href = "/";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred.");
+      setError(err instanceof Error ? err.message : tl.errGeneric);
       setLoading(false);
     }
   }
 
   return (
-    <Card className="shadow-md border-0">
+    <Card>
       <CardHeader className="pb-4">
-        <CardTitle className="text-xl">Welcome back</CardTitle>
-        <CardDescription>Sign in to your account</CardDescription>
+        <CardTitle className="text-2xl">
+          {tl.title}
+          <span className="text-primary">.</span>
+        </CardTitle>
+        <CardDescription>{tl.subtitle}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+          <div className="space-y-2">
+            <Label htmlFor="email">{tl.emailLabel}</Label>
             <Input
               id="email"
               name="email"
               type="email"
-              placeholder="you@zotacorp.com"
+              placeholder={tl.emailPlaceholder}
               required
               autoComplete="email"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+          <div className="space-y-2">
+            <Label htmlFor="password">{tl.passwordLabel}</Label>
             <Input
               id="password"
               name="password"
               type="password"
-              placeholder="••••••••"
+              placeholder={tl.passwordPlaceholder}
               required
               autoComplete="current-password"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-destructive bg-destructive/8 rounded-lg px-3 py-2">
+            <p className="text-sm text-destructive bg-destructive/10 border-2 border-destructive rounded-xl px-3 py-2 font-medium">
               {error}
             </p>
           )}
 
-          <Button
-            type="submit"
-            className="w-full"
-            style={{ background: "var(--primary)" }}
-            disabled={loading}
-          >
-            {loading ? "Signing in…" : "Sign in"}
+          <Button type="submit" size="lg" className="w-full" disabled={loading}>
+            {loading ? tl.submitting : tl.submit}
           </Button>
         </form>
 
-        <p className="text-center text-sm text-muted-foreground mt-4">
-          No account?{" "}
-          <Link href="/register" className="font-medium" style={{ color: "var(--primary)" }}>
-            Register
+        <p className="text-center text-sm text-muted-foreground mt-5 font-medium">
+          {tl.noAccount}{" "}
+          <Link href="/register" className="font-display font-bold text-primary hover:underline underline-offset-4">
+            {tl.registerCta}
           </Link>
         </p>
       </CardContent>

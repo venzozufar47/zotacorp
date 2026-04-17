@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, User, Settings, LogOut, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
@@ -59,8 +60,8 @@ export function HamburgerMenu({ variant }: HamburgerMenuProps) {
   }, [open, variant]);
 
   const items = [
-    { href: "/profile", icon: User, label: t.nav.profile },
-    { href: "/settings", icon: Settings, label: t.nav.settings },
+    { href: "/profile", icon: User, label: t.nav.profile, color: "bg-quaternary" },
+    { href: "/settings", icon: Settings, label: t.nav.settings, color: "bg-card" },
   ];
 
   const isActive = (href: string) =>
@@ -73,51 +74,62 @@ export function HamburgerMenu({ variant }: HamburgerMenuProps) {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm w-full text-left transition-all"
-          style={{
-            background: open || anyChildActive ? "var(--accent)" : "transparent",
-            color:
-              open || anyChildActive ? "var(--primary)" : "var(--muted-foreground)",
-            fontWeight: open || anyChildActive ? 600 : 400,
-          }}
+          className={cn(
+            "group/btn flex items-center gap-3 px-3 py-2.5 rounded-full text-sm w-full text-left transition-all duration-200",
+            open || anyChildActive
+              ? "bg-foreground text-background font-bold"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          )}
           aria-expanded={open}
           aria-haspopup="menu"
         >
-          <Menu size={18} strokeWidth={open || anyChildActive ? 2.2 : 1.8} />
+          <span
+            className={cn(
+              "flex items-center justify-center size-7 rounded-full border-2 border-foreground transition-transform duration-200",
+              open || anyChildActive ? "bg-pop-pink text-foreground" : "bg-card text-muted-foreground group-hover/btn:rotate-[-6deg]"
+            )}
+          >
+            <Menu size={14} strokeWidth={2.5} />
+          </span>
           {t.nav.menu}
         </button>
 
         {open && (
           <div
             role="menu"
-            className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-border bg-white shadow-lg py-1.5 animate-fade-up"
+            className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border-2 border-foreground bg-popover shadow-hard py-1.5 animate-pop-in origin-bottom"
           >
-            {items.map(({ href, icon: Icon, label }) => {
+            {items.map(({ href, icon: Icon, label, color }) => {
               const active = isActive(href);
               return (
                 <Link
                   key={href}
                   href={href}
                   role="menuitem"
-                  className="flex items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-[var(--accent)]"
-                  style={{
-                    color: active ? "var(--primary)" : "var(--foreground)",
-                    fontWeight: active ? 600 : 400,
-                  }}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 mx-1 my-0.5 rounded-full text-sm transition-colors",
+                    active
+                      ? "bg-foreground text-background font-bold"
+                      : "text-foreground hover:bg-muted"
+                  )}
                 >
-                  <Icon size={16} strokeWidth={active ? 2.2 : 1.8} />
+                  <span className={cn("flex items-center justify-center size-6 rounded-full border-2 border-foreground", active ? color + " text-foreground" : "bg-card text-muted-foreground")}>
+                    <Icon size={12} strokeWidth={2.5} />
+                  </span>
                   {label}
                 </Link>
               );
             })}
-            <div className="my-1 border-t border-border" />
+            <div className="my-1.5 border-t-2 border-foreground/20 mx-2" />
             <form action={signOut}>
               <button
                 type="submit"
                 role="menuitem"
-                className="flex items-center gap-3 px-3 py-2.5 text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-colors"
+                className="group/out flex items-center gap-3 px-3 py-2.5 mx-1 my-0.5 rounded-full text-sm w-[calc(100%-0.5rem)] text-left text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
-                <LogOut size={16} strokeWidth={1.8} />
+                <span className="flex items-center justify-center size-6 rounded-full border-2 border-foreground bg-card group-hover/out:bg-destructive group-hover/out:text-white">
+                  <LogOut size={12} strokeWidth={2.5} />
+                </span>
                 {t.nav.signOut}
               </button>
             </form>
@@ -133,15 +145,24 @@ export function HamburgerMenu({ variant }: HamburgerMenuProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex flex-col items-center gap-1 flex-1 py-3 text-[11px] transition-colors"
-        style={{
-          color: anyChildActive ? "var(--primary)" : "var(--muted-foreground)",
-        }}
+        className="flex flex-col items-center gap-1 flex-1 py-2 text-[11px] transition-colors"
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <Menu size={22} strokeWidth={anyChildActive ? 2.2 : 1.8} />
-        <span className={anyChildActive ? "font-semibold" : ""}>
+        <span
+          className={cn(
+            "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
+            anyChildActive ? "bg-pop-pink text-foreground" : "bg-card text-muted-foreground"
+          )}
+        >
+          <Menu size={18} strokeWidth={2.5} />
+        </span>
+        <span
+          className={cn(
+            "font-display font-bold uppercase tracking-wide text-[0.625rem]",
+            anyChildActive ? "text-foreground" : "text-muted-foreground"
+          )}
+        >
           {t.nav.menu}
         </span>
       </button>
@@ -149,52 +170,57 @@ export function HamburgerMenu({ variant }: HamburgerMenuProps) {
       {open && (
         <>
           <div
-            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-40 md:hidden"
             onClick={() => setOpen(false)}
             aria-hidden
           />
           <div
             role="menu"
-            className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl pb-[env(safe-area-inset-bottom,0px)] md:hidden animate-fade-up"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-background rounded-t-3xl border-t-2 border-foreground shadow-hard pb-[env(safe-area-inset-bottom,0px)] md:hidden animate-pop-in origin-bottom"
           >
-            <div className="flex items-center justify-between px-4 pt-3 pb-2">
-              <span className="text-sm font-semibold">{t.nav.menu}</span>
+            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b-2 border-foreground/10">
+              <span className="font-display text-base font-bold">{t.nav.menu}</span>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted"
+                className="size-8 flex items-center justify-center rounded-full border-2 border-foreground bg-card hover:rotate-90 transition-transform"
                 aria-label="Close"
               >
-                <X size={18} />
+                <X size={14} strokeWidth={2.5} />
               </button>
             </div>
-            <div className="pb-2">
-              {items.map(({ href, icon: Icon, label }) => {
+            <div className="py-2 px-2">
+              {items.map(({ href, icon: Icon, label, color }) => {
                 const active = isActive(href);
                 return (
                   <Link
                     key={href}
                     href={href}
                     role="menuitem"
-                    className="flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-[var(--accent)]"
-                    style={{
-                      color: active ? "var(--primary)" : "var(--foreground)",
-                      fontWeight: active ? 600 : 400,
-                    }}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-3 my-0.5 rounded-full text-sm transition-colors",
+                      active
+                        ? "bg-foreground text-background font-bold"
+                        : "text-foreground hover:bg-muted"
+                    )}
                   >
-                    <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
+                    <span className={cn("flex items-center justify-center size-8 rounded-full border-2 border-foreground", active ? color + " text-foreground" : "bg-card text-muted-foreground")}>
+                      <Icon size={16} strokeWidth={2.5} />
+                    </span>
                     {label}
                   </Link>
                 );
               })}
-              <div className="my-1 border-t border-border" />
+              <div className="my-1.5 border-t-2 border-foreground/10" />
               <form action={signOut}>
                 <button
                   type="submit"
                   role="menuitem"
-                  className="flex items-center gap-3 px-5 py-3 text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-colors"
+                  className="group/out flex items-center gap-3 px-3 py-3 my-0.5 rounded-full text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                 >
-                  <LogOut size={20} strokeWidth={1.8} />
+                  <span className="flex items-center justify-center size-8 rounded-full border-2 border-foreground bg-card group-hover/out:bg-destructive group-hover/out:text-white">
+                    <LogOut size={16} strokeWidth={2.5} />
+                  </span>
                   {t.nav.signOut}
                 </button>
               </form>

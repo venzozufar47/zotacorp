@@ -40,16 +40,11 @@ export function SortableHeader<K extends string>({
   const isActive = currentKey === sortKey;
 
   return (
-    <TableHead
-      className={cn(
-        "text-xs font-semibold uppercase tracking-wide select-none",
-        className
-      )}
-    >
+    <TableHead className={cn("select-none", className)}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+        className="inline-flex items-center gap-1 hover:opacity-90 transition-opacity"
         aria-label={`Sort by ${typeof label === "string" ? label : sortKey}`}
         aria-sort={
           !isActive ? "none" : currentDir === "asc" ? "ascending" : "descending"
@@ -58,12 +53,12 @@ export function SortableHeader<K extends string>({
         {label}
         {isActive ? (
           currentDir === "asc" ? (
-            <ArrowUp size={12} className="text-foreground" />
+            <ArrowUp size={12} strokeWidth={2.5} />
           ) : (
-            <ArrowDown size={12} className="text-foreground" />
+            <ArrowDown size={12} strokeWidth={2.5} />
           )
         ) : (
-          <ArrowUpDown size={12} className="opacity-30" />
+          <ArrowUpDown size={12} className="opacity-50" strokeWidth={2.5} />
         )}
       </button>
     </TableHead>

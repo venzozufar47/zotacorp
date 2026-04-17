@@ -50,7 +50,8 @@ async function fireConfetti() {
     particleCount: isLowPower ? 40 : 80,
     spread: 70,
     origin: { y: 0.6 },
-    colors: ["#005a65", "#007a88", "#34c759", "#fff"],
+    colors: ["#8B5CF6", "#F472B6", "#FBBF24", "#34D399", "#A78BFA"],
+    shapes: ["circle", "square"],
   });
 }
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
@@ -350,7 +351,7 @@ export function CheckInButton({
 
   const locationIcon =
     geoStatus === "granted" ? (
-      <MapPin size={14} className="inline-block mr-1" style={{ color: "var(--success)" }} />
+      <MapPin size={14} className="inline-block mr-1 text-quaternary" />
     ) : geoStatus === "denied" || geoStatus === "unavailable" ? (
       <MapPinOff size={14} className="inline-block mr-1 opacity-40" />
     ) : null;
@@ -360,7 +361,7 @@ export function CheckInButton({
       <div className="w-full space-y-3">
         {state === "idle" && (
           <button
-            className="btn-checkin w-full pulse-primary flex items-center justify-center gap-2"
+            className="btn-action-primary w-full pulse-primary flex items-center justify-center gap-2"
             onClick={openCheckIn}
             disabled={isPending}
           >
@@ -378,7 +379,7 @@ export function CheckInButton({
         {state === "checked-in" && (
           <>
             <button
-              className="btn-checkout w-full flex items-center justify-center gap-2"
+              className="btn-action-secondary w-full flex items-center justify-center gap-2"
               onClick={openCheckOut}
               disabled={isPending}
             >
@@ -396,8 +397,8 @@ export function CheckInButton({
                 Rendered below the Check Out button so the primary action
                 stays at the top and the opt-in reads as a modifier. */}
             {pastEndTime && (
-              <div className="space-y-2 p-3 rounded-xl bg-[#f5f5f7]">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="space-y-2 p-4 rounded-2xl border-2 border-foreground bg-tertiary/30">
+                <label className="flex items-center gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={overtimeChecked}
@@ -405,9 +406,9 @@ export function CheckInButton({
                       setOvertimeChecked(e.target.checked);
                       if (!e.target.checked) setOvertimeReason("");
                     }}
-                    className="w-4 h-4 rounded accent-[var(--primary)]"
+                    className="w-5 h-5 rounded border-2 border-foreground accent-primary"
                   />
-                  <span className="text-sm font-medium">{t.checkIn.overtimeOptIn}</span>
+                  <span className="font-display text-sm font-bold uppercase tracking-wide">{t.checkIn.overtimeOptIn}</span>
                 </label>
                 {overtimeChecked && (
                   <Textarea
@@ -424,9 +425,11 @@ export function CheckInButton({
         )}
 
         {state === "checked-out" && (
-          <div className="w-full h-[72px] rounded-[20px] bg-[#f5f5f7] flex flex-col items-center justify-center gap-1">
-            <span className="text-2xl">✅</span>
-            <span className="text-sm font-medium text-muted-foreground">
+          <div className="w-full h-[72px] rounded-full border-2 border-foreground bg-quaternary/30 flex items-center justify-center gap-2 shadow-hard-sm">
+            <span className="size-8 rounded-full border-2 border-foreground bg-quaternary flex items-center justify-center text-base">
+              ✓
+            </span>
+            <span className="font-display font-bold text-foreground uppercase tracking-wide text-sm">
               {t.checkIn.completeToday}
             </span>
           </div>

@@ -7,7 +7,7 @@ export default function EmployeeLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen bg-[#f5f5f7]">
+    <div className="flex min-h-screen bg-background">
       <Sidebar className="hidden md:flex" />
       <main className="flex-1 min-w-0">
         {/* Matches the admin layout's fluid cap so the attendance history
@@ -15,7 +15,7 @@ export default function EmployeeLayout({
             designed for phone-shaped layouts (profile, dashboard, etc.)
             can still wrap their own content in a narrower `max-w-2xl` if
             they want the original feel on wide screens. */}
-        <div className="max-w-[1700px] mx-auto px-4 py-6 pb-20 md:px-6 md:pb-6">
+        <div className="max-w-[1700px] mx-auto px-4 py-6 pb-24 md:px-6 md:pb-8">
           {children}
         </div>
       </main>

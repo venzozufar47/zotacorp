@@ -191,13 +191,13 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
   const isFinalized = settings?.is_finalized;
 
   return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-5 space-y-4">
+    <Card>
+      <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold">Payslip Settings</h2>
+            <h2 className="font-display text-lg font-bold">Payslip Settings</h2>
             {isFinalized && !editing && (
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0fdf4", color: "#15803d" }}>
+              <span className="text-[10px] font-display font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border-2 border-foreground bg-quaternary text-foreground inline-block mt-1">
                 Finalized
               </span>
             )}
@@ -217,7 +217,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               <select
                 value={form.calculation_basis}
                 onChange={(e) => set("calculation_basis", e.target.value as Basis)}
-                className="flex w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="flex w-full rounded-xl border-2 border-border bg-white px-3.5 py-2 text-sm h-11 font-medium outline-none focus-visible:border-primary focus-visible:shadow-hard-violet transition-all"
               >
                 <option value="presence">Presence (attendance-based)</option>
                 <option value="deliverables">Deliverables</option>
@@ -238,7 +238,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
 
             {/* Weights — only for "both" */}
             {showsWeights && (
-              <div className="space-y-2 p-3 rounded-lg bg-[#fff7ed]">
+              <div className="space-y-2 p-3 rounded-lg bg-tertiary/30 border-2 border-foreground">
                 <Label className="text-xs font-semibold">Weight Split (must total 100%)</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
@@ -275,12 +275,12 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
             {showsAttendance && (
               <>
                 {/* Expected Work Days */}
-                <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+                <div className="space-y-2 p-3 rounded-lg bg-muted">
                   <Label className="text-xs font-semibold">Expected Work Days / Month</Label>
                   <select
                     value={form.expected_days_mode}
                     onChange={(e) => set("expected_days_mode", e.target.value as ExpectedDaysMode)}
-                    className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex w-full rounded-xl border-2 border-border bg-white px-3.5 py-2 text-sm h-11 font-medium outline-none focus-visible:border-primary focus-visible:shadow-hard-violet transition-all"
                   >
                     <option value="manual">Fixed number (same every month)</option>
                     <option value="weekly_pattern">Weekly pattern (count matching weekdays per month)</option>
@@ -314,10 +314,10 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                                   : [...form.expected_weekdays, idx].sort((a, b) => a - b);
                                 set("expected_weekdays", next);
                               }}
-                              className={`h-9 rounded-md text-xs font-medium transition-colors ${
+                              className={`h-10 rounded-full text-xs font-display font-bold transition-all border-2 ${
                                 on
-                                  ? "bg-primary text-white"
-                                  : "bg-white border border-input text-muted-foreground hover:border-foreground/20"
+                                  ? "bg-primary text-white border-foreground shadow-hard-sm"
+                                  : "bg-white border-border text-muted-foreground hover:border-foreground/40 hover:bg-muted"
                               }`}
                             >
                               {lbl}
@@ -365,7 +365,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                       ? `${ot.effectiveDays} days (this month)`
                       : `${ot.effectiveDays || 22} days`;
                   return (
-                    <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1 text-sm">
+                    <div className="p-3 rounded-lg bg-accent border-2 border-foreground space-y-1 text-sm">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
                       <p className="text-xs text-muted-foreground">
                         {formatIDR(parseFloat(form.monthly_fixed_amount) || 0)} / ({daysLabel} x {standardWorkingHours} hrs)
@@ -387,12 +387,12 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                 })()}
 
                 {/* Overtime */}
-                <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+                <div className="space-y-2 p-3 rounded-lg bg-muted">
                   <Label className="text-xs font-semibold">Overtime Formula</Label>
                   <select
                     value={form.overtime_mode}
                     onChange={(e) => set("overtime_mode", e.target.value as FormData["overtime_mode"])}
-                    className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex w-full rounded-xl border-2 border-border bg-white px-3.5 py-2 text-sm h-11 font-medium outline-none focus-visible:border-primary focus-visible:shadow-hard-violet transition-all"
                   >
                     <option value="hourly_tiered">Hourly tiered (1.5x 1st hr + 2x next hrs)</option>
                     <option value="fixed_per_day">Fixed per day</option>
@@ -415,12 +415,12 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                 </div>
 
                 {/* Late Penalty */}
-                <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+                <div className="space-y-2 p-3 rounded-lg bg-muted">
                   <Label className="text-xs font-semibold">Late Penalty</Label>
                   <select
                     value={form.late_penalty_mode}
                     onChange={(e) => set("late_penalty_mode", e.target.value as FormData["late_penalty_mode"])}
-                    className="flex w-full rounded-lg border border-input bg-white px-2.5 py-2 text-sm h-10 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex w-full rounded-xl border-2 border-border bg-white px-3.5 py-2 text-sm h-11 font-medium outline-none focus-visible:border-primary focus-visible:shadow-hard-violet transition-all"
                   >
                     <option value="none">No penalty</option>
                     <option value="per_minutes">Per minutes interval</option>
@@ -468,7 +468,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                 flat IDR, added on top of the weighted attendance/
                 deliverables totals. Set 0 to disable payment even when
                 the per-employee toggle is on. */}
-            <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+            <div className="space-y-2 p-3 rounded-lg bg-muted">
               <Label className="text-xs font-semibold">Extra Work Rate</Label>
               <p className="text-xs text-muted-foreground leading-snug">
                 IDR earned per logged extra-work entry (e.g. each Belanja).
@@ -485,7 +485,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
 
             {/* Deliverables note */}
             {showsDeliverables && (
-              <div className="p-3 rounded-lg bg-[#ecfeff] text-sm space-y-1">
+              <div className="p-3 rounded-lg bg-quaternary/15 border-2 border-foreground text-sm space-y-1">
                 <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Deliverables</p>
                 <p className="text-xs text-muted-foreground leading-snug">
                   Deliverables (target, realization, weight) are entered per month on the monthly payslip
@@ -502,7 +502,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               <Button size="sm" onClick={handleSave} disabled={isPending}>
                 {isPending ? "Saving..." : "Save Draft"}
               </Button>
-              <Button size="sm" onClick={handleFinalize} disabled={isPending} style={{ background: "var(--primary)" }}>
+              <Button size="sm" onClick={handleFinalize} disabled={isPending}>
                 {isPending ? "Saving..." : isFinalized ? "Re-finalize" : "Save & Finalize"}
               </Button>
             </div>
@@ -573,7 +573,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               const days = settings.expected_work_days;
               const hourlyRate = days > 0 && standardWorkingHours > 0 ? Math.round(monthly / (days * standardWorkingHours)) : 0;
               return (
-                <div className="p-3 rounded-lg bg-[#f0f9ff] space-y-1">
+                <div className="p-3 rounded-lg bg-accent border-2 border-foreground space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hourly Rate Calculation</p>
                   <p className="text-xs text-muted-foreground">
                     {formatIDR(monthly)} / ({days} days x {standardWorkingHours} hrs)
@@ -618,7 +618,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
             )}
 
             {settings && settings.calculation_basis !== "presence" && (
-              <div className="p-3 rounded-lg bg-[#ecfeff] text-xs text-muted-foreground">
+              <div className="p-3 rounded-lg bg-quaternary/15 border-2 border-foreground text-xs text-muted-foreground">
                 Deliverables are entered per month on the monthly payslip.
               </div>
             )}

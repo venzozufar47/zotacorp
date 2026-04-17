@@ -162,10 +162,10 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
 
   return (
     <>
-      <div className="rounded-xl border overflow-x-auto bg-white">
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-[#f5f5f7]">
+            <TableRow>
               <SortableHeader<UserSortKey>
                 sortKey="name"
                 label={tu.colName}
@@ -194,16 +194,16 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
                 currentDir={sortDir}
                 onSort={toggleSort}
               />
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
+              <TableHead>
                 {tu.colSchedule}
               </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
+              <TableHead>
                 {tu.colLocations}
               </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide">
+              <TableHead>
                 {t.extraWork.adminColLabel}
               </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">
+              <TableHead className="text-right">
                 {tu.colActions}
               </TableHead>
             </TableRow>
@@ -212,15 +212,12 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
             {displayRows.map((row) => {
               const isSelf = row.id === currentUserId;
               return (
-                <TableRow key={row.id} className="hover:bg-[#f5f5f7]/40">
+                <TableRow key={row.id}>
                   <TableCell className="font-medium text-sm">
                     <div className="flex items-center gap-2">
-                      <span>{row.full_name || "—"}</span>
+                      <span className="font-display font-bold">{row.full_name || "—"}</span>
                       {row.role === "admin" && (
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                          style={{ background: "#e0f2fe", color: "#0369a1" }}
-                        >
+                        <span className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border-2 border-foreground bg-tertiary text-foreground">
                           {tu.adminBadge}
                         </span>
                       )}
@@ -460,7 +457,7 @@ function LocationsCell({
       onClick={onEdit}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors max-w-[200px]",
-        "hover:bg-[#f5f5f7] hover:border-foreground/20",
+        "hover:bg-muted hover:border-foreground/40",
         empty
           ? "border-dashed border-muted-foreground/30 text-muted-foreground"
           : "border-border text-foreground"
@@ -503,7 +500,7 @@ function ScheduleCell({
       onClick={onEdit}
       className={cn(
         "inline-flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors text-left",
-        "hover:bg-[#f5f5f7] hover:border-foreground/20",
+        "hover:bg-muted hover:border-foreground/40",
         isFlexible
           ? "border-dashed border-muted-foreground/30 text-muted-foreground"
           : "border-border text-foreground"
@@ -544,11 +541,8 @@ function ProfileStatus({
 }) {
   if (complete) {
     return (
-      <span
-        className="inline-flex items-center gap-1 text-xs font-medium"
-        style={{ color: "#15803d" }}
-      >
-        <CheckCircle2 size={14} />
+      <span className="inline-flex items-center gap-1 text-xs font-bold text-quaternary">
+        <CheckCircle2 size={14} strokeWidth={2.5} />
         {tu.profileComplete}
       </span>
     );
@@ -685,15 +679,15 @@ function ScheduleEditDialog({
         <div className="space-y-4 py-1">
           {/* Flexible toggle — the governing switch. When on, time + grace
               fields are disabled so the UI matches the stored invariant. */}
-          <label className="flex items-start gap-3 rounded-xl border border-border bg-[#f5f5f7]/60 px-3 py-2.5 cursor-pointer">
+          <label className="flex items-start gap-3 rounded-2xl border-2 border-foreground/30 bg-muted px-3 py-2.5 cursor-pointer hover:border-foreground transition-colors">
             <input
               type="checkbox"
               checked={flexible}
               onChange={(e) => setFlexible(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-input accent-[color:var(--primary)]"
+              className="mt-0.5 h-5 w-5 rounded border-2 border-foreground accent-primary"
             />
             <div className="flex-1">
-              <div className="text-sm font-medium">{tu.flexibleLabel}</div>
+              <div className="text-sm font-bold">{tu.flexibleLabel}</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                 {tu.flexibleHint}
               </div>
@@ -767,7 +761,7 @@ function ScheduleEditDialog({
           )}
 
           {error && (
-            <p className="text-sm text-destructive bg-destructive/8 rounded-lg px-3 py-2">
+            <p className="text-sm text-destructive bg-destructive/10 border-2 border-destructive rounded-xl px-3 py-2 font-medium">
               {error}
             </p>
           )}
@@ -782,13 +776,7 @@ function ScheduleEditDialog({
           >
             {tu.cancel}
           </Button>
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            style={{ background: "var(--primary)" }}
-            className="text-white"
-          >
+          <Button type="button" onClick={handleSave} disabled={saving}>
             {saving ? tu.saving : tu.save}
           </Button>
         </DialogFooter>

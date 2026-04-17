@@ -14,8 +14,8 @@ import { StreakDetail } from "@/components/attendance/StreakDetail";
 
 /**
  * Employee-only streak detail page. Read-only — shows current streak,
- * personal best, and a 30-day horizontal timeline. The hero-oceanic
- * banner replaces PageHeader for a premium look.
+ * personal best, and a 30-day horizontal timeline. The hero-playful
+ * banner replaces PageHeader for a premium playful look.
  */
 export default async function StreakPage() {
   const user = await getCurrentUser();

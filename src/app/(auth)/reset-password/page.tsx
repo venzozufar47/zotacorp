@@ -95,7 +95,7 @@ export default function ResetPasswordPage() {
 
   if (checking) {
     return (
-      <Card className="shadow-md border-0">
+      <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
           {t.resetPassword.checking}
         </CardContent>
@@ -105,7 +105,7 @@ export default function ResetPasswordPage() {
 
   if (!authorized) {
     return (
-      <Card className="shadow-md border-0">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-xl">{t.resetPassword.expiredTitle}</CardTitle>
           <CardDescription>{t.resetPassword.expiredBody}</CardDescription>
@@ -113,8 +113,7 @@ export default function ResetPasswordPage() {
         <CardContent>
           <Link
             href="/login"
-            className="block w-full rounded-lg text-center py-2.5 text-sm font-medium text-white"
-            style={{ background: "var(--primary)" }}
+            className="inline-flex items-center justify-center w-full h-11 rounded-full border-2 border-foreground bg-primary text-primary-foreground font-display font-bold text-sm shadow-hard hover:-translate-y-0.5 hover:shadow-hard-hover transition-all"
           >
             {t.resetPassword.backToLogin}
           </Link>
@@ -125,7 +124,7 @@ export default function ResetPasswordPage() {
 
   if (done) {
     return (
-      <Card className="shadow-md border-0">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-xl">{t.resetPassword.successTitle}</CardTitle>
           <CardDescription>{t.resetPassword.successBody}</CardDescription>
@@ -170,17 +169,12 @@ export default function ResetPasswordPage() {
           </div>
 
           {error && (
-            <p className="text-sm text-destructive bg-destructive/8 rounded-lg px-3 py-2">
+            <p className="text-sm text-destructive bg-destructive/10 border-2 border-destructive rounded-xl px-3 py-2 font-medium">
               {error}
             </p>
           )}
 
-          <Button
-            type="submit"
-            className="w-full"
-            style={{ background: "var(--primary)" }}
-            disabled={loading}
-          >
+          <Button type="submit" size="lg" className="w-full" disabled={loading}>
             {loading ? t.resetPassword.submitting : t.resetPassword.submit}
           </Button>
         </form>

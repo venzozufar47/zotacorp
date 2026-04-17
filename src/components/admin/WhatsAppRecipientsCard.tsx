@@ -73,17 +73,14 @@ export function WhatsAppRecipientsCard({ initialRecipients }: Props) {
   }
 
   return (
-    <section className="rounded-2xl bg-white ring-1 ring-foreground/6 p-5 sm:p-6 space-y-5">
+    <section className="rounded-2xl border-2 border-foreground bg-card shadow-hard p-5 sm:p-6 space-y-5">
       <div className="flex items-start gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: "var(--accent)", color: "var(--primary)" }}
-        >
-          <MessageCircle size={18} />
+        <div className="size-10 rounded-full border-2 border-foreground flex items-center justify-center flex-shrink-0 bg-quaternary">
+          <MessageCircle size={18} strokeWidth={2.5} className="text-foreground" />
         </div>
         <div className="flex-1">
-          <h3 className="font-display font-semibold text-base">{tw.title}</h3>
-          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+          <h3 className="font-display font-bold text-lg">{tw.title}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed font-medium">
             {tw.subtitle}
           </p>
         </div>

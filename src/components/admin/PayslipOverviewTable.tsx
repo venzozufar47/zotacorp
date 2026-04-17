@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -35,38 +36,18 @@ interface PayslipOverviewTableProps {
 
 function StatusBadge({ settings, payslip }: { settings: Summary["settings"]; payslip: Summary["payslip"] }) {
   if (!settings) {
-    return (
-      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f5f5f7", color: "#525252" }}>
-        No settings
-      </span>
-    );
+    return <Badge variant="muted" className="text-[10px]">No settings</Badge>;
   }
   if (!settings.is_finalized) {
-    return (
-      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#fefce8", color: "#92400e" }}>
-        Settings draft
-      </span>
-    );
+    return <Badge variant="tertiary" className="text-[10px]">Settings draft</Badge>;
   }
   if (!payslip) {
-    return (
-      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#fff7ed", color: "#b45309" }}>
-        Not calculated
-      </span>
-    );
+    return <Badge variant="tertiary" className="text-[10px]">Not calculated</Badge>;
   }
   if (payslip.status === "finalized") {
-    return (
-      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0fdf4", color: "#15803d" }}>
-        Finalized
-      </span>
-    );
+    return <Badge variant="quaternary" className="text-[10px]">Finalized</Badge>;
   }
-  return (
-    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#eff6ff", color: "#1d4ed8" }}>
-      Draft
-    </span>
-  );
+  return <Badge variant="default" className="text-[10px]">Draft</Badge>;
 }
 
 export function PayslipOverviewTable({ summaries, month, year }: PayslipOverviewTableProps) {
@@ -108,15 +89,14 @@ export function PayslipOverviewTable({ summaries, month, year }: PayslipOverview
   }
 
   const monthLabel = new Date(year, month - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  const employees = summaries.filter((s) => s.settings?.is_finalized !== undefined || s.payslip);
 
   return (
-    <div className="space-y-3 max-w-full">
+    <div className="space-y-4 max-w-full">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={prevMonth}>&larr;</Button>
-          <Label className="text-sm font-medium min-w-[140px] text-center">{monthLabel}</Label>
-          <Button variant="outline" size="sm" onClick={nextMonth}>&rarr;</Button>
+          <Button variant="outline" size="icon-sm" onClick={prevMonth}>&larr;</Button>
+          <Label className="!text-sm !font-display !font-extrabold !uppercase !tracking-wide min-w-[140px] !justify-center text-center">{monthLabel}</Label>
+          <Button variant="outline" size="icon-sm" onClick={nextMonth}>&rarr;</Button>
         </div>
         <Button
           size="sm"
@@ -131,34 +111,34 @@ export function PayslipOverviewTable({ summaries, month, year }: PayslipOverview
       {summaries.length === 0 ? (
         <EmptyState icon="💰" title="No employees found" />
       ) : (
-        <div className="rounded-xl border overflow-x-auto bg-white max-w-full">
+        <div className="overflow-x-auto max-w-full">
           <Table>
             <TableHeader>
-              <TableRow className="bg-[#f5f5f7]">
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">Employee</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">Work Days</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide text-right">Net Total</TableHead>
+              <TableRow>
+                <TableHead>Employee</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Work Days</TableHead>
+                <TableHead className="text-right">Net Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {summaries.map((s) => (
-                <TableRow key={s.id} className="cursor-pointer hover:bg-muted/50">
+                <TableRow key={s.id} className="cursor-pointer">
                   <TableCell>
                     <Link href={`/admin/payslips/${s.id}?month=${month}&year=${year}`} className="block">
-                      <p className="font-medium text-sm">{s.full_name || s.email}</p>
+                      <p className="font-display font-bold text-sm">{s.full_name || s.email}</p>
                       <p className="text-xs text-muted-foreground">{s.email}</p>
                     </Link>
                   </TableCell>
                   <TableCell>
                     <StatusBadge settings={s.settings} payslip={s.payslip} />
                   </TableCell>
-                  <TableCell className="text-right text-sm">
+                  <TableCell className="text-right text-sm font-medium tabular-nums">
                     {s.payslip
                       ? `${s.payslip.actual_work_days} / ${s.payslip.expected_work_days}`
                       : "—"}
                   </TableCell>
-                  <TableCell className="text-right text-sm font-medium">
+                  <TableCell className="text-right text-sm font-display font-bold tabular-nums">
                     {s.payslip ? formatIDR(Number(s.payslip.net_total)) : "—"}
                   </TableCell>
                 </TableRow>

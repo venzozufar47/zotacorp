@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-jakarta);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-display: var(--font-poppins);
+  --font-display: var(--font-outfit);
 
   /* Brand palette */
   --color-primary: var(--primary);
@@ -18,6 +18,13 @@
   --color-primary-dark: var(--primary-dark);
   --color-surface: var(--surface);
   --color-surface-alt: var(--surface-alt);
+
+  /* Playful palette extensions */
+  --color-tertiary: var(--tertiary);
+  --color-quaternary: var(--quaternary);
+  --color-pop-pink: var(--pop-pink);
+  --color-pop-amber: var(--pop-amber);
+  --color-pop-emerald: var(--pop-emerald);
 
   /* shadcn token passthrough */
   --color-card: var(--card);
@@ -43,226 +50,2003 @@
   --radius-3xl: calc(var(--radius) * 2.4);
 }
 
-:root {
-  /* Brand */
+/* ─── Theme Registry ────────────────────────────────────────────
+ * Org-wide theme is applied via `data-theme="<name>"` on <html>.
+ * Currently: "playful" (default).
+ *
+ * Adding a new theme = add a `[data-theme="<name>"] { ... }` block with
+ * the same custom-property surface area as below.
+ * ──────────────────────────────────────────────────────────────── */
+
+/* Fallback — same as [data-theme="playful"] so the app still renders if
+   the data-theme attribute is missing (defensive default). */
+:root,
+[data-theme="playful"] {
+  /* Brand — Vivid Violet */
+  --primary: #8B5CF6;
+  --primary-light: #A78BFA;
+  --primary-dark: #7C3AED;
+  --primary-foreground: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #F1F5F9;
+
+  /* shadcn base — warm cream foundation */
+  --background: #FFFDF5;
+  --foreground: #1E293B;
+  --card: #ffffff;
+  --card-foreground: #1E293B;
+  --popover: #ffffff;
+  --popover-foreground: #1E293B;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #1E293B;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #F5F3FF;
+  --accent-foreground: #8B5CF6;
+  --destructive: #EF4444;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #8B5CF6;
+  --radius: 1rem;
+
+  /* Playful pop colors — rotational palette for decorations */
+  --tertiary: #FBBF24;
+  --quaternary: #34D399;
+  --pop-pink: #F472B6;
+  --pop-amber: #FBBF24;
+  --pop-emerald: #34D399;
+
+  /* Status */
+  --success: #34D399;
+  --warning: #FBBF24;
+  --error: #EF4444;
+}
+
+/* ─── Minimal Theme ─────────────────────────────────────────────
+ * "Modern Minimalist" — Slack + Gojek superapp inspiration.
+ *
+ *   Philosophy: Content First, Chrome Second.
+ *   Vibe:       Calm · Confident · Efficient · Trustworthy.
+ *
+ * Neutral-dominant palette. A single Gojek-green accent (#00AA5B) is
+ * reserved for primary actions and status. Flat surfaces with subtle
+ * diffused shadows. Typography-driven hierarchy (Inter). Hairline 1px
+ * borders. Tight 6px radii for functional controls, 8px for cards.
+ *
+ * Same token surface as Playful so components adapt without rewrites —
+ * the visual shift happens through the scoped override block at the
+ * bottom of this file.
+ * ──────────────────────────────────────────────────────────────── */
+/* ─── Oceanic Editorial Theme ────────────────────────────────────
+ * The original Zota aesthetic — Apple-inspired editorial layout.
+ *
+ *   Philosophy: Editorial · Calm · Professional.
+ *   Signature: Teal primary over white, soft blurred shadows,
+ *              ring-style hairline borders, oceanic gradient hero,
+ *              Poppins display typography.
+ *
+ * Same token surface as Playful / Minimal so components adapt
+ * without rewrites. Visual identity is shifted via the override
+ * block below, where chunky dark borders become soft rings,
+ * hard offset shadows become blurred drops, and the hero swaps
+ * its Memphis decoration for the oceanic radial gradient.
+ * ──────────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] {
+  /* Brand — Oceanic Teal (original Zota) */
   --primary: #005a65;
   --primary-light: #007a88;
   --primary-dark: #003d45;
   --primary-foreground: #ffffff;
+
+  /* Surfaces — pure white canvas, slate-50 section fill */
   --surface: #ffffff;
   --surface-alt: #f5f5f7;
-
-  /* shadcn base */
   --background: #ffffff;
   --foreground: #1d1d1f;
   --card: #ffffff;
   --card-foreground: #1d1d1f;
   --popover: #ffffff;
   --popover-foreground: #1d1d1f;
+
+  /* Neutrals */
   --secondary: #f5f5f7;
   --secondary-foreground: #1d1d1f;
   --muted: #f5f5f7;
   --muted-foreground: #6e6e73;
   --accent: #f0f8f9;
   --accent-foreground: #005a65;
-  --destructive: #ff3b30;
-  --border: #d2d2d7;
-  --input: #d2d2d7;
-  --ring: #005a65;
-  --radius: 0.75rem;
 
-  /* Status */
+  /* Status (original palette) */
+  --destructive: #ff3b30;
   --success: #34c759;
   --warning: #ff9f0a;
   --error: #ff3b30;
+
+  /* Borders — apple-style soft greys */
+  --border: #d2d2d7;
+  --input: #d2d2d7;
+  --ring: #005a65;
+
+  /* Radii — generous rounded corners were the signature */
+  --radius: 0.75rem;
+
+  /* Decorative slots map to restrained neutrals — the theme uses
+     a single accent (teal) and has no Memphis-style pop colors. */
+  --tertiary: #f5f5f7;
+  --quaternary: #34c759;
+  --pop-pink: #f5f5f7;
+  --pop-amber: #ff9f0a;
+  --pop-emerald: #34c759;
 }
 
+[data-theme="minimal"] {
+  /* Brand — Gojek green (exact brand value) */
+  --primary: #00AA5B;
+  --primary-light: #00C76A;
+  --primary-dark: #008F4C;
+  --primary-foreground: #FFFFFF;
+
+  /* Surfaces — pure white canvas, Slate 50 for section separation */
+  --surface: #FFFFFF;
+  --surface-alt: #F8FAFC;
+  --background: #FFFFFF;
+  --foreground: #0F172A;          /* Slate 900 — AAA on white (16.8:1) */
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+
+  /* Neutrals — content and UI text ladder */
+  --secondary: #F8FAFC;           /* Slate 50 */
+  --secondary-foreground: #0F172A;
+  --muted: #F8FAFC;               /* Slate 50 — same as surface-alt */
+  --muted-foreground: #475569;    /* Slate 600 — foregroundMuted */
+
+  /* Accent surface — pale Gojek green tint for active/selected rows */
+  --accent: #E6F7EF;              /* accentSubtle */
+  --accent-foreground: #00AA5B;   /* accent on accentSubtle */
+
+  /* Status */
+  --destructive: #DC2626;         /* Red 600 */
+  --success: #16A34A;             /* Green 600 */
+  --warning: #D97706;             /* Amber 600 */
+  --error: #DC2626;
+
+  /* Borders — hairline by default, Slate 300 for emphasis */
+  --border: #E2E8F0;              /* Slate 200 */
+  --input: #E2E8F0;
+  --ring: #00AA5B;
+
+  /* Radii — functional, not decorative. 6px is the default button/input
+     radius; cards bump to 8px. */
+  --radius: 0.375rem;             /* 6px — radius-md */
+
+  /* These semantic slots exist so Playful-era components that reference
+     --tertiary / --quaternary / --pop-* don't break. In Minimal they
+     map to muted-on-muted combinations so decoration disappears. */
+  --tertiary: #F1F5F9;
+  --quaternary: #F1F5F9;
+  --pop-pink: #F1F5F9;
+  --pop-amber: #F1F5F9;
+  --pop-emerald: #00AA5B;
+}
+
+/* ─── Base Layer ────────────────────────────────────────────────── */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-family: var(--font-jakarta), system-ui, sans-serif;
   }
   h1, h2, h3 {
-    font-family: var(--font-poppins), system-ui, sans-serif;
+    font-family: var(--font-outfit), system-ui, sans-serif;
+    font-weight: 700;
   }
 }
 
+/* ─── Utilities Layer ───────────────────────────────────────────── */
 @layer utilities {
+
+  /* ── Font display ──────────────────────────────────────────── */
   .font-display {
-    font-family: var(--font-poppins), system-ui, sans-serif;
+    font-family: var(--font-outfit), system-ui, sans-serif;
   }
 
-  /* Card hover lift */
-  .card-hover {
-    @apply transition-all duration-200;
+  /* ── Hard Shadow System (no blur — sticker/cut-out feel) ──── */
+  .shadow-hard {
+    box-shadow: 4px 4px 0px 0px #1E293B;
   }
-  .card-hover:hover {
-    box-shadow: 0 8px 24px rgba(0, 90, 101, 0.12);
-    transform: translateY(-2px);
+  .shadow-hard-hover {
+    box-shadow: 6px 6px 0px 0px #1E293B;
+  }
+  .shadow-hard-active {
+    box-shadow: 2px 2px 0px 0px #1E293B;
+  }
+  .shadow-hard-sm {
+    box-shadow: 2px 2px 0px 0px #1E293B;
+  }
+  .shadow-hard-lg {
+    box-shadow: 8px 8px 0px 0px #1E293B;
   }
 
-  /* Primary glow for check-in button */
-  .btn-checkin {
+  /* Colored shadow variants — for confetti/rotating palette */
+  .shadow-hard-violet { box-shadow: 4px 4px 0px 0px #8B5CF6; }
+  .shadow-hard-pink   { box-shadow: 4px 4px 0px 0px #F472B6; }
+  .shadow-hard-amber  { box-shadow: 4px 4px 0px 0px #FBBF24; }
+  .shadow-hard-emerald { box-shadow: 4px 4px 0px 0px #34D399; }
+
+  /* Soft shadow variants for colored card accents */
+  .shadow-hard-muted { box-shadow: 6px 6px 0px 0px #E2E8F0; }
+
+  /* Mobile: reduce hard shadows to save visual space */
+  @media (max-width: 768px) {
+    .shadow-hard    { box-shadow: 2px 2px 0px 0px #1E293B; }
+    .shadow-hard-hover { box-shadow: 3px 3px 0px 0px #1E293B; }
+    .shadow-hard-lg { box-shadow: 4px 4px 0px 0px #1E293B; }
+    .shadow-hard-muted { box-shadow: 3px 3px 0px 0px #E2E8F0; }
+  }
+
+  /* ── Chunky Borders ────────────────────────────────────────── */
+  .border-chunky {
+    border: 2px solid #1E293B;
+  }
+
+  /* ── Bouncy Transitions ────────────────────────────────────── */
+  .transition-bouncy {
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition-duration: 300ms;
+  }
+
+  /* ── Keyframes ─────────────────────────────────────────────── */
+  @keyframes pop-in {
+    from { opacity: 0; transform: scale(0.5); }
+    60%  { transform: scale(1.05); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @keyframes wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    25%      { transform: rotate(-2deg); }
+    75%      { transform: rotate(2deg); }
+  }
+  @keyframes bounce-up {
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes float-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+  }
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  .animate-pop-in {
+    animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  .animate-wiggle {
+    animation: wiggle 0.3s ease-in-out;
+  }
+  .animate-bounce-up {
+    animation: bounce-up 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  .animate-fade-up {
+    animation: fade-up 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  .animate-float {
+    animation: float-bob 3s ease-in-out infinite;
+  }
+  .animate-spin-slow {
+    animation: spin-slow 12s linear infinite;
+  }
+
+  /* Staggered entrance delays */
+  .animate-fade-up-delay-1 { animation-delay: 0.05s; }
+  .animate-fade-up-delay-2 { animation-delay: 0.10s; }
+  .animate-fade-up-delay-3 { animation-delay: 0.15s; }
+  .animate-bounce-up-delay-1 { animation-delay: 0.08s; }
+  .animate-bounce-up-delay-2 { animation-delay: 0.16s; }
+  .animate-bounce-up-delay-3 { animation-delay: 0.24s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-pop-in,
+    .animate-wiggle,
+    .animate-bounce-up,
+    .animate-float,
+    .animate-spin-slow { animation: none; }
+    .animate-fade-up { animation-duration: 0.01ms; }
+    .transition-bouncy { transition-timing-function: ease; transition-duration: 150ms; }
+  }
+
+  /* ── Card Wiggle Hover ─────────────────────────────────────── */
+  .card-wiggle {
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .card-wiggle:hover {
+    animation: wiggle 0.3s ease-in-out;
+    transform: scale(1.01);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-wiggle:hover { animation: none; transform: none; }
+  }
+
+  /* ── Playful Hero ──────────────────────────────────────────── */
+  .hero-playful {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 40%, #C4B5FD 100%);
+    border: 2px solid #1E293B;
+    box-shadow: 6px 6px 0px 0px #1E293B;
+  }
+  /* Decorative yellow circle — top-right, playful asymmetry */
+  .hero-playful::before {
+    content: "";
+    position: absolute;
+    top: -20%;
+    right: -8%;
+    width: 45%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: rgba(251, 191, 36, 0.25);
+    pointer-events: none;
+    z-index: -1;
+  }
+  /* Decorative pink circle — bottom-left accent */
+  .hero-playful::after {
+    content: "";
+    position: absolute;
+    bottom: -30%;
+    left: -5%;
+    width: 35%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: rgba(244, 114, 182, 0.15);
+    pointer-events: none;
+    z-index: -1;
+  }
+  @media (max-width: 768px) {
+    .hero-playful {
+      box-shadow: 3px 3px 0px 0px #1E293B;
+    }
+    .hero-playful::before,
+    .hero-playful::after { display: none; }
+  }
+
+  /* ── Sticker Panel ─────────────────────────────────────────── */
+  .panel-sticker {
+    background: #ffffff;
+    border: 2px solid #1E293B;
+    border-radius: 1.5rem;
+    box-shadow: 4px 4px 0px 0px #1E293B;
+  }
+  @media (max-width: 768px) {
+    .panel-sticker { box-shadow: 2px 2px 0px 0px #1E293B; }
+  }
+
+  /* ── Action Buttons (check-in / check-out) ─────────────────── */
+  .btn-action-primary {
     background: var(--primary);
     color: #fff;
-    border-radius: 1.25rem;
+    border: 2px solid #1E293B;
+    border-radius: 9999px;
     height: 72px;
     font-size: 1.125rem;
-    font-weight: 600;
+    font-weight: 700;
+    font-family: var(--font-outfit), system-ui, sans-serif;
     letter-spacing: 0.01em;
-    transition: all 0.2s;
-    box-shadow: 0 4px 20px rgba(0, 90, 101, 0.35);
+    box-shadow: 4px 4px 0px 0px #1E293B;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    cursor: pointer;
   }
-  .btn-checkin:hover {
-    background: var(--primary-light);
-    box-shadow: 0 6px 28px rgba(0, 90, 101, 0.45);
-    transform: translateY(-1px);
+  .btn-action-primary:hover {
+    box-shadow: 6px 6px 0px 0px #1E293B;
+    transform: translateY(-2px);
   }
-  .btn-checkin:active {
-    transform: scale(0.97);
+  .btn-action-primary:active {
+    box-shadow: 2px 2px 0px 0px #1E293B;
+    transform: translateY(1px);
   }
-  .btn-checkout {
-    background: #fff;
-    color: var(--primary);
-    border: 2px solid var(--primary);
-    border-radius: 1.25rem;
-    height: 72px;
-    font-size: 1.125rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    transition: all 0.2s;
-  }
-  .btn-checkout:hover {
-    background: #f0f8f9;
-  }
-  .btn-checkout:active {
-    transform: scale(0.97);
+  .btn-action-primary:disabled {
+    opacity: 0.5;
+    pointer-events: none;
   }
 
-  /* Pulse animation for idle check-in */
+  .btn-action-secondary {
+    background: #fff;
+    color: var(--primary);
+    border: 2px solid #1E293B;
+    border-radius: 9999px;
+    height: 72px;
+    font-size: 1.125rem;
+    font-weight: 700;
+    font-family: var(--font-outfit), system-ui, sans-serif;
+    letter-spacing: 0.01em;
+    box-shadow: 4px 4px 0px 0px #1E293B;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    cursor: pointer;
+  }
+  .btn-action-secondary:hover {
+    box-shadow: 6px 6px 0px 0px #1E293B;
+    transform: translateY(-2px);
+    background: var(--accent);
+  }
+  .btn-action-secondary:active {
+    box-shadow: 2px 2px 0px 0px #1E293B;
+    transform: translateY(1px);
+  }
+  .btn-action-secondary:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  @media (max-width: 768px) {
+    .btn-action-primary,
+    .btn-action-secondary {
+      box-shadow: 2px 2px 0px 0px #1E293B;
+    }
+    .btn-action-primary:hover,
+    .btn-action-secondary:hover {
+      box-shadow: 3px 3px 0px 0px #1E293B;
+    }
+  }
+
+  /* ── Pulse animation (bouncy version) ──────────────────────── */
   @keyframes pulse-ring {
-    0% { box-shadow: 0 0 0 0 rgba(0, 90, 101, 0.4); }
-    70% { box-shadow: 0 0 0 12px rgba(0, 90, 101, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(0, 90, 101, 0); }
+    0%   { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
+    70%  { box-shadow: 0 0 0 12px rgba(139, 92, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
   }
   .pulse-primary {
     animation: pulse-ring 2s ease-out 3;
   }
-
-  /* Fade-up entrance */
-  @keyframes fade-up {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .animate-fade-up {
-    animation: fade-up 0.4s ease-out both;
-  }
-  .animate-fade-up-delay-1 { animation-delay: 0.05s; }
-  .animate-fade-up-delay-2 { animation-delay: 0.10s; }
-  .animate-fade-up-delay-3 { animation-delay: 0.15s; }
-
-  /* -----------------------------------------------------------------
-   * Dashboard "oceanic editorial" treatment.
-   *
-   * The hero block stacks three layers to avoid the flat-teal look:
-   *   1. A soft radial gradient tuned to the brand tosca for depth.
-   *   2. A decorative blurred blob that nudges off-canvas, giving the
-   *      composition an organic asymmetry without hurting legibility.
-   *   3. A fine SVG noise overlay (data URI — no extra request) that
-   *      keeps the gradient from feeling plastic/AI-ish on big screens.
-   * ----------------------------------------------------------------- */
-
-  .hero-oceanic {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    background:
-      radial-gradient(120% 140% at 100% 0%, #0a7a88 0%, transparent 55%),
-      radial-gradient(90% 120% at 0% 100%, #003d45 0%, transparent 60%),
-      linear-gradient(135deg, #004651 0%, #005a65 55%, #007785 100%);
-  }
-  /* Blob — a soft-edged off-center disk that echoes the primary accent. */
-  .hero-oceanic::before {
-    content: "";
-    position: absolute;
-    inset: auto -20% -40% auto;
-    width: 60%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.22), rgba(255,255,255,0) 70%);
-    filter: blur(20px);
-    pointer-events: none;
-    z-index: -1;
-  }
-  /* Grain — keeps the gradient from feeling flat/plastic on large screens. */
-  .hero-oceanic::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.28;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-    background-size: 160px 160px;
-    z-index: -1;
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-primary { animation: none; }
   }
 
-  /* Live clock — tabular figures so the seconds don't jitter. */
+  /* ── Dot Grid Pattern Background ───────────────────────────── */
+  .bg-dots {
+    background-image: radial-gradient(circle, #CBD5E1 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .bg-dots-light {
+    background-image: radial-gradient(circle, #E2E8F0 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* ── Diagonal Stripes Pattern ──────────────────────────────── */
+  .bg-stripes {
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(139, 92, 246, 0.06) 10px,
+      rgba(139, 92, 246, 0.06) 20px
+    );
+  }
+
+  /* ── Live clock display ────────────────────────────────────── */
   .clock-display {
-    font-family: var(--font-poppins), system-ui, sans-serif;
-    font-weight: 700;
+    font-family: var(--font-outfit), system-ui, sans-serif;
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.04em;
     line-height: 1;
   }
 
-  /* Eyebrow label used across hero + section headers. */
+  /* ── Eyebrow label ─────────────────────────────────────────── */
   .eyebrow {
+    font-family: var(--font-outfit), system-ui, sans-serif;
     font-size: 0.6875rem;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.18em;
   }
 
-  /* Soft premium card that reads as "content surface" against the oceanic hero. */
-  .panel-soft {
-    background: #ffffff;
-    border-radius: 1.75rem;
-    box-shadow:
-      0 1px 2px rgba(0, 58, 65, 0.04),
-      0 12px 32px -16px rgba(0, 58, 65, 0.18);
-  }
-
-  /* Subtle slow drift for the decorative blob to add life without distraction. */
-  @keyframes blob-drift {
-    0%, 100% { transform: translate3d(0,0,0) scale(1); }
-    50%      { transform: translate3d(-6%, -4%, 0) scale(1.08); }
-  }
-  .hero-oceanic::before {
-    animation: blob-drift 18s ease-in-out infinite;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .hero-oceanic::before { animation: none; }
-  }
-
-  /* Mobile: disable expensive GPU effects. The gradient alone looks great;
-     the blob blur + grain overlay + mix-blend-mode are luxury flourishes
-     that hammer mid-tier phone GPUs during Time to Interactive. */
-  @media (max-width: 768px) {
-    .hero-oceanic::before { animation: none; filter: none; opacity: 0.5; }
-    .hero-oceanic::after  { display: none; }
-  }
-
-  /* Hide scrollbar but keep scroll functionality — used on the streak
-     timeline strip to avoid a chunky bar on mobile. */
+  /* ── Scrollbar hide ────────────────────────────────────────── */
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  MINIMAL THEME — Component Overrides
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * Philosophy: Content First, Chrome Second.
+ *
+ * Reshapes every component the Playful theme styles — using the same
+ * data-slot attributes and utility classes the components already
+ * emit. No component rewrites required: the theme is pure CSS scoped
+ * under `[data-theme="minimal"]`.
+ *
+ * Design direction follows the "Modern Minimalist" spec: Inter
+ * typography, Gojek-green (#00AA5B) accent, soft diffused shadows,
+ * 1px hairline borders, 150ms ease-out motion, 6px functional radii.
+ *
+ * Key departures from Playful:
+ *   • No uppercase tracked labels — sentence-case, tight tracking.
+ *   • No pill-shaped buttons — 6px radius, 40px min height.
+ *   • No hard offset shadows — diffused soft shadows with two-layer depth.
+ *   • No chunky 2px borders — 1px hairlines.
+ *   • No bouncy overshoot — confident cubic-bezier(0.4, 0, 0.2, 1).
+ *   • Decorative shapes (geometric confetti, colored circles) are hidden.
+ *   • Hero violet gradient is replaced with flat white + hairline border.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Typography ────────────────────────────────────────────────
+ * Inter is the primary. Everything inherits. Outfit display class
+ * is retargeted to Inter so hero text reads as a clean UI heading
+ * instead of a pop display face.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"],
+[data-theme="minimal"] body {
+  font-family: var(--font-inter), "SF Pro Text", system-ui, -apple-system, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11"; /* Inter's cleaner character variants */
+}
+
+[data-theme="minimal"] h1,
+[data-theme="minimal"] h2,
+[data-theme="minimal"] h3,
+[data-theme="minimal"] h4,
+[data-theme="minimal"] h5,
+[data-theme="minimal"] h6 {
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+}
+
+[data-theme="minimal"] .font-display {
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="minimal"] .clock-display {
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eyebrow labels — sentence-case muted text, not uppercase */
+[data-theme="minimal"] .eyebrow {
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+}
+
+/* ── Shadow System ─────────────────────────────────────────────
+ * Hard offset shadows → soft two-layer diffused shadows. Intensity
+ * matches interaction intent (resting / hover / floating).
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] .shadow-hard,
+[data-theme="minimal"] .shadow-hard-sm,
+[data-theme="minimal"] .shadow-hard-violet,
+[data-theme="minimal"] .shadow-hard-pink,
+[data-theme="minimal"] .shadow-hard-amber,
+[data-theme="minimal"] .shadow-hard-emerald,
+[data-theme="minimal"] .shadow-hard-muted {
+  /* shadow-xs */
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+[data-theme="minimal"] .shadow-hard-hover {
+  /* shadow-sm */
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+[data-theme="minimal"] .shadow-hard-active {
+  /* resting — collapse to almost nothing */
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+[data-theme="minimal"] .shadow-hard-lg {
+  /* shadow-md */
+  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+/* ── Motion — confident, no overshoot ────────────────────────── */
+[data-theme="minimal"] .transition-bouncy,
+[data-theme="minimal"] .animate-pop-in,
+[data-theme="minimal"] .animate-bounce-up,
+[data-theme="minimal"] .animate-fade-up,
+[data-theme="minimal"] .animate-wiggle,
+[data-theme="minimal"] .animate-float,
+[data-theme="minimal"] .animate-spin-slow {
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
+  animation-duration: 200ms !important;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition-duration: 150ms !important;
+}
+[data-theme="minimal"] .animate-spin-slow,
+[data-theme="minimal"] .animate-float {
+  /* Idle ambient animations don't belong in Minimal — too playful */
+  animation: none !important;
+}
+[data-theme="minimal"] .card-wiggle:hover {
+  animation: none;
+  transform: none;
+}
+[data-theme="minimal"] .pulse-primary {
+  animation: none !important;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────
+ * Default (primary): solid Gojek green, 6px radius, 40px min height.
+ * Outline: white surface, 1px border, muted hover.
+ * Ghost: transparent, subtle surface hover.
+ * Destructive: solid red with matching semantics.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] [data-slot="button"] {
+  border-width: 1px !important;
+  border-color: transparent !important;
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  min-height: 40px;
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 100ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+[data-theme="minimal"] [data-slot="button"]:hover {
+  transform: none !important;
+}
+[data-theme="minimal"] [data-slot="button"]:active:not([aria-haspopup]) {
+  transform: scale(0.98) !important;
+  translate: none !important;
+}
+[data-theme="minimal"] [data-slot="button"]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+/* Primary — solid accent */
+[data-theme="minimal"] [data-slot="button"].bg-primary,
+[data-theme="minimal"] [data-slot="button"][class*="bg-primary"] {
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+  border-color: transparent !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+[data-theme="minimal"] [data-slot="button"].bg-primary:hover,
+[data-theme="minimal"] [data-slot="button"][class*="bg-primary"]:hover {
+  background-color: var(--primary-dark) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+/* Outline — secondary */
+[data-theme="minimal"] [data-slot="button"].bg-background {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="minimal"] [data-slot="button"].bg-background:hover {
+  background-color: var(--surface-alt) !important;
+  border-color: #CBD5E1 !important;   /* borderStrong */
+}
+/* Muted / secondary tone */
+[data-theme="minimal"] [data-slot="button"].bg-muted {
+  background-color: var(--surface-alt) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="minimal"] [data-slot="button"].bg-muted:hover {
+  background-color: #F1F5F9 !important;
+}
+/* Destructive */
+[data-theme="minimal"] [data-slot="button"].bg-destructive {
+  background-color: var(--destructive) !important;
+  color: #FFFFFF !important;
+}
+[data-theme="minimal"] [data-slot="button"].bg-destructive:hover {
+  opacity: 0.92;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────
+ * Flat surface + hairline border + minimal shadow-xs. No chunky
+ * dark borders. 8px radius — radius-lg in the spec.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] [data-slot="card"] {
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  background-color: var(--card) !important;
+}
+[data-theme="minimal"] [data-slot="card-title"] {
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: -0.005em;
+  color: var(--foreground);
+}
+[data-theme="minimal"] [data-slot="card-footer"] {
+  border-top-width: 1px !important;
+  border-top-color: var(--divider, #F1F5F9) !important;
+  background-color: transparent !important;
+}
+
+/* ── Inputs / Textarea / Select ─────────────────────────────── */
+[data-theme="minimal"] [data-slot="input"],
+[data-theme="minimal"] [data-slot="textarea"],
+[data-theme="minimal"] [data-slot="select-trigger"] {
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+  background-color: var(--background) !important;
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  min-height: 40px;
+  transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+[data-theme="minimal"] [data-slot="input"]:focus-visible,
+[data-theme="minimal"] [data-slot="textarea"]:focus-visible,
+[data-theme="minimal"] [data-slot="select-trigger"]:focus-visible {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(0, 170, 91, 0.18) !important;
+  transform: none !important;
+  translate: none !important;
+}
+/* Neutralize any leftover Playful translate-on-focus */
+[data-theme="minimal"] [data-slot="input"]:focus-visible {
+  transform: none !important;
+}
+
+/* ── Labels — sentence case with medium weight ────────────── */
+[data-theme="minimal"] [data-slot="label"] {
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--foreground);
+}
+
+/* ── Badges — Slack-style soft status chips ──────────────────
+ * Pale backgrounds with strong foreground color. 4px radius
+ * per the spec (radius-sm for tags/badges). Sentence case.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] [data-slot="badge"] {
+  border-width: 0 !important;
+  border-radius: 0.25rem !important;   /* radius-sm */
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+}
+[data-theme="minimal"] [data-slot="badge"].bg-primary {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+}
+[data-theme="minimal"] [data-slot="badge"].bg-quaternary {
+  background-color: #ECFDF5 !important;
+  color: #15803D !important;
+}
+[data-theme="minimal"] [data-slot="badge"].bg-tertiary {
+  background-color: #FEF3C7 !important;
+  color: #B45309 !important;
+}
+[data-theme="minimal"] [data-slot="badge"][class*="bg-pop-pink"] {
+  background-color: #F1F5F9 !important;
+  color: #475569 !important;
+}
+[data-theme="minimal"] [data-slot="badge"].bg-destructive {
+  background-color: #FEE2E2 !important;
+  color: var(--destructive) !important;
+}
+
+/* ── Tables ──────────────────────────────────────────────────
+ * Hairline container, muted header with lowercase labels.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] [data-slot="table-container"] {
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  background-color: var(--card) !important;
+}
+[data-theme="minimal"] [data-slot="table-header"] {
+  background-color: var(--surface-alt) !important;
+}
+[data-theme="minimal"] [data-slot="table-header"] [data-slot="table-head"] {
+  color: var(--muted-foreground) !important;
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 0.75rem;
+  height: 40px;
+}
+[data-theme="minimal"] [data-slot="table-header"] [data-slot="table-row"] {
+  border-bottom-width: 1px !important;
+  border-bottom-color: var(--border) !important;
+}
+[data-theme="minimal"] [data-slot="table-body"] [data-slot="table-row"] {
+  border-bottom-color: #F1F5F9 !important;   /* divider */
+}
+[data-theme="minimal"] [data-slot="table-body"] [data-slot="table-row"]:hover {
+  background-color: var(--surface-alt) !important;
+}
+
+/* ── Dialog ──────────────────────────────────────────────────
+ * Floating panels use shadow-xl per spec.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] [data-slot="dialog-content"] {
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+  border-radius: 0.75rem !important;   /* radius-xl */
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.12) !important;
+  background-color: var(--card) !important;
+}
+[data-theme="minimal"] [data-slot="dialog-title"] {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+  font-size: 1.125rem;
+}
+[data-theme="minimal"] [data-slot="dialog-footer"] {
+  border-top-width: 1px !important;
+  border-top-color: #F1F5F9 !important;
+  background-color: transparent !important;
+}
+[data-theme="minimal"] [data-slot="dialog-overlay"] {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+}
+
+/* ── Avatar ──────────────────────────────────────────────────── */
+[data-theme="minimal"] [data-slot="avatar"] {
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+}
+[data-theme="minimal"] [data-slot="avatar-fallback"] {
+  background-color: var(--surface-alt) !important;
+  color: var(--muted-foreground) !important;
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  font-weight: 500 !important;
+}
+
+/* ── Semantic text colors ───────────────────────────────────
+ * `text-quaternary` is used throughout the app to signal
+ * "positive / success / approved" — e.g. positive payslip
+ * amounts, approved overtime, accepted late-proof. The
+ * Minimal token `--quaternary` is slate-100 (by design, for
+ * decorative *backgrounds*), which makes text using it
+ * near-invisible on white. Route the text color to the spec's
+ * success Green 600 so contrast meets AA (4.65:1 on white).
+ *
+ * Must join Tailwind v4's `utilities` cascade layer so our
+ * !important wins — per CSS Cascade Level 4, `!important`
+ * declarations in layered styles beat those in unlayered
+ * styles. Named layers merge, so `@layer utilities` appends
+ * to Tailwind's existing layer rather than creating a new one.
+ * ───────────────────────────────────────────────────────── */
+@layer utilities {
+  [data-theme="minimal"] .text-quaternary,
+  [data-theme="minimal"] [class~="!text-quaternary"] {
+    color: #16A34A !important;
+  }
+}
+
+/* ── Toaster ─────────────────────────────────────────────────── */
+[data-theme="minimal"] .cn-toast {
+  border: 1px solid var(--border) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08), 0 4px 8px rgba(15, 23, 42, 0.04) !important;
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif !important;
+  font-weight: 500 !important;
+}
+
+/* ── Layout chrome: sidebar + top/bottom bars ────────────────
+ * Hairline borders replace chunky 2px dark edges. Sidebar becomes
+ * Slack-style: muted background, pale active states, lowercase
+ * section headers.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] aside[class*="border-r-2"][class*="border-foreground"] {
+  border-right-width: 1px !important;
+  border-right-color: var(--border) !important;
+  background-color: var(--surface-alt) !important;
+}
+[data-theme="minimal"] nav[class*="border-t-2"][class*="border-foreground"] {
+  border-top-width: 1px !important;
+  border-top-color: var(--border) !important;
+  background-color: var(--background) !important;
+}
+[data-theme="minimal"] div[class*="border-b-2"][class*="border-foreground"] {
+  border-bottom-width: 1px !important;
+  border-bottom-color: var(--border) !important;
+}
+[data-theme="minimal"] aside div[class*="border-t-2"][class*="border-foreground"],
+[data-theme="minimal"] aside > div[class*="border-b-2"][class*="border-foreground"] {
+  border-width: 0 !important;
+  border-top-width: 1px !important;
+  border-top-color: var(--border) !important;
+}
+
+/* Sidebar brand block — remove the hard 2px divider under the logo */
+[data-theme="minimal"] aside .border-b-2.border-foreground {
+  border-bottom-width: 1px !important;
+  border-bottom-color: var(--border) !important;
+}
+
+/* Sidebar nav items — tone down the colored icon chips to neutral */
+[data-theme="minimal"] aside a .rounded-full.border-2,
+[data-theme="minimal"] nav a .rounded-full.border-2,
+[data-theme="minimal"] button .rounded-full.border-2 {
+  border-width: 0 !important;
+  background-color: transparent !important;
+  color: var(--muted-foreground) !important;
+}
+/* Active nav link: pale accent tint — Slack-style */
+[data-theme="minimal"] aside a.bg-foreground,
+[data-theme="minimal"] aside button.bg-foreground {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  font-weight: 500 !important;
+}
+[data-theme="minimal"] aside a.bg-foreground .rounded-full,
+[data-theme="minimal"] aside button.bg-foreground .rounded-full {
+  background-color: transparent !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+}
+[data-theme="minimal"] aside a:hover:not(.bg-foreground),
+[data-theme="minimal"] aside button:hover:not(.bg-foreground) {
+  background-color: var(--surface) !important;
+  color: var(--foreground) !important;
+}
+
+/* Admin badge pill under the logo (was tertiary-yellow) */
+[data-theme="minimal"] aside span.bg-tertiary,
+[data-theme="minimal"] div.bg-tertiary {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  font-weight: 500 !important;
+}
+
+/* Brand wordmark — emerald accent dot */
+[data-theme="minimal"] .font-display .text-primary {
+  color: var(--primary) !important;
+}
+
+/* ── Hero (dashboard + streak) ───────────────────────────────
+ * Flat white card with hairline border. No gradient, no shapes,
+ * no hard shadow. The time is the star.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] .hero-playful {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  overflow: hidden;
+}
+[data-theme="minimal"] .hero-playful::before,
+[data-theme="minimal"] .hero-playful::after {
+  display: none !important;
+}
+/* All white-over-violet text flips to slate-over-white */
+[data-theme="minimal"] .hero-playful .text-white,
+[data-theme="minimal"] .hero-playful .clock-display {
+  color: var(--foreground) !important;
+}
+[data-theme="minimal"] .hero-playful .text-white\/85,
+[data-theme="minimal"] .hero-playful .text-white\/90,
+[data-theme="minimal"] .hero-playful .text-white\/75,
+[data-theme="minimal"] .hero-playful .text-white\/70 {
+  color: var(--muted-foreground) !important;
+}
+[data-theme="minimal"] .hero-playful .text-white\/40 {
+  color: var(--muted-foreground) !important;
+  opacity: 0.5;
+}
+[data-theme="minimal"] .hero-playful .text-tertiary {
+  color: var(--primary) !important;
+}
+[data-theme="minimal"] .hero-playful .border-tertiary {
+  border-color: var(--primary) !important;
+}
+/* Scrub all decorative SVG and absolute-positioned color blobs */
+[data-theme="minimal"] .hero-playful svg,
+[data-theme="minimal"] .hero-playful .bg-pop-pink,
+[data-theme="minimal"] .hero-playful .bg-quaternary {
+  display: none !important;
+}
+/* Live-pulse amber dot in the eyebrow row → muted */
+[data-theme="minimal"] .hero-playful .bg-tertiary {
+  background-color: var(--primary) !important;
+}
+
+/* ── Sticker panel ──────────────────────────────────────────── */
+[data-theme="minimal"] .panel-sticker {
+  background-color: var(--card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* ── Action Buttons (check-in / check-out) ──────────────────
+ * Primary becomes the signature Gojek green pill-less button.
+ * Standard 40px height, 6px radius, semibold.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] .btn-action-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  height: 48px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+[data-theme="minimal"] .btn-action-primary:hover {
+  background: var(--primary-dark);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  transform: none;
+}
+[data-theme="minimal"] .btn-action-primary:active {
+  transform: scale(0.98);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="minimal"] .btn-action-secondary {
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  height: 48px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-family: var(--font-inter), "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+[data-theme="minimal"] .btn-action-secondary:hover {
+  background: var(--surface-alt);
+  border-color: #CBD5E1;
+  transform: none;
+}
+[data-theme="minimal"] .btn-action-secondary:active {
+  transform: scale(0.98);
+}
+
+/* ── Decorative Shapes — hidden / desaturated ───────────────
+ * Minimalism = content, not geometric decoration. Hide the
+ * auth-layout geometric SVGs, dot backgrounds, and floating
+ * confetti on cards/empty states.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="minimal"] .bg-dots,
+[data-theme="minimal"] .bg-dots-light {
+  background-image: none !important;
+}
+
+/* Auth layout + empty state decorative blobs */
+[data-theme="minimal"] div[aria-hidden][class*="bg-tertiary"],
+[data-theme="minimal"] div[aria-hidden][class*="bg-pop-pink"],
+[data-theme="minimal"] div[aria-hidden][class*="bg-quaternary"],
+[data-theme="minimal"] div[aria-hidden][class*="rounded-full"][class*="bg-"] {
+  display: none !important;
+}
+[data-theme="minimal"] div[aria-hidden] svg {
+  display: none !important;
+}
+
+/* Empty-state containers — remove the dashed dot-grid */
+[data-theme="minimal"] div[class*="bg-dots-light"][class*="border-dashed"] {
+  background-image: none !important;
+  border-style: solid !important;
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+  border-radius: 0.5rem !important;
+  background-color: var(--card) !important;
+}
+
+/* Inline helper blocks (e.g. overtime opt-in) — subtle not saturated */
+[data-theme="minimal"] div[class*="bg-tertiary\/30"],
+[data-theme="minimal"] div[class*="bg-quaternary\/30"],
+[data-theme="minimal"] div[class*="bg-quaternary\/15"] {
+  background-color: var(--surface-alt) !important;
+  border-color: var(--border) !important;
+  border-width: 1px !important;
+}
+
+/* Colored pill chips on dashboard (early-arrival, streak etc) */
+[data-theme="minimal"] span[class*="bg-tertiary"]:not([data-slot]) {
+  background-color: #FEF3C7 !important;
+  color: #B45309 !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  font-weight: 500 !important;
+}
+[data-theme="minimal"] span[class*="bg-quaternary"]:not([data-slot]) {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  font-weight: 500 !important;
+}
+[data-theme="minimal"] span[class*="bg-pop-pink"]:not([data-slot]) {
+  background-color: #F1F5F9 !important;
+  color: #475569 !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+}
+
+/* ── Streak page — indicator dots (legend + 30-day timeline)
+ *
+ * The Minimal token block maps `bg-quaternary`/`bg-tertiary`/`bg-muted`
+ * to slate-50/100 — deliberate for decorative *backgrounds*, but that
+ * drains the small round indicator dots of their semantic meaning
+ * (on-time / late / absent). Combined with the chunky 2px dark border
+ * being stripped in Minimal, the dots become near-invisible.
+ *
+ * Remap the three states to punchy-but-soft semantic fills with a
+ * 1px hairline ring in the matching hue, so the treatment reads
+ * instantly while staying editorial. `:empty` targets only the
+ * self-closing indicator dots — text chips keep their pale-wash
+ * treatment from the rules above.
+ * ───────────────────────────────────────────────────────────── */
+
+/* On-time — Gojek green, matches theme primary */
+[data-theme="minimal"] span.bg-quaternary[class*="rounded-full"]:empty,
+[data-theme="minimal"] div.bg-quaternary[class*="rounded-full"]:empty {
+  background-color: var(--primary) !important;
+  border-color: rgba(0, 170, 91, 0.3) !important;
+  border-width: 1px !important;
+  box-shadow: 0 1px 2px rgba(0, 170, 91, 0.18) !important;
+}
+
+/* Late — amber-500, conventional warning */
+[data-theme="minimal"] span.bg-tertiary[class*="rounded-full"]:empty,
+[data-theme="minimal"] div.bg-tertiary[class*="rounded-full"]:empty {
+  background-color: #F59E0B !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  border-width: 1px !important;
+  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.18) !important;
+}
+
+/* Absent — slate-200 fill with slate-300 ring (muted but visible) */
+[data-theme="minimal"] span.bg-muted[class*="rounded-full"]:empty,
+[data-theme="minimal"] div.bg-muted[class*="rounded-full"]:empty {
+  background-color: #E2E8F0 !important;
+  border-color: #CBD5E1 !important;
+  border-width: 1px !important;
+}
+
+/* Today's dot gets a soft primary ring instead of hard shadow so the
+ * "this is today" emphasis stays subtle in line with Minimal's
+ * confident-ease animation language. */
+[data-theme="minimal"] div.rounded-full.scale-125.shadow-hard-sm {
+  box-shadow: 0 0 0 3px rgba(0, 170, 91, 0.18), 0 1px 2px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────
+ * Respect user preference: keep opacity, kill transforms/animations.
+ * ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="minimal"] * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Global scroll smoothing for the theme */
+[data-theme="minimal"] {
+  scroll-behavior: smooth;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  OCEANIC EDITORIAL THEME — Component Overrides
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * Philosophy: Editorial · Calm · Professional.
+ *
+ * Restores the original Zota aesthetic: Apple-inspired editorial
+ * surfaces, oceanic teal gradients, Poppins display typography, and
+ * the signature hero treatment with a blurred blob + SVG grain
+ * overlay. Departures from Playful:
+ *
+ *   • No chunky 2px dark borders — ring-style hairlines (slate-200).
+ *   • No hard offset shadows — soft blurred drop shadows.
+ *   • No pill buttons — rounded-lg (0.75rem) radius throughout.
+ *   • Hero-playful replaced with the radial-gradient oceanic treatment.
+ *   • Poppins for display type (restoring the original typography).
+ *   • Pop-pink / tertiary decorative chips are muted to neutrals.
+ *
+ * Same CSS strategy as the Minimal block — scoped via
+ * `[data-theme="oceanic"]` on every component override, so the
+ * theme is purely additive and doesn't touch component code.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Typography ────────────────────────────────────────────────
+ * Body: Jakarta (inherited from default). Display: Poppins.
+ * Poppins's geometric rounded terminals carry the "editorial"
+ * feel the original design system was built around.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] h1,
+[data-theme="oceanic"] h2,
+[data-theme="oceanic"] h3,
+[data-theme="oceanic"] h4 {
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="oceanic"] .font-display {
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-weight: 700;
+}
+
+[data-theme="oceanic"] .clock-display {
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+/* Eyebrow — uppercase like Playful but with softer tracking */
+[data-theme="oceanic"] .eyebrow {
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+/* ── Shadow System ─────────────────────────────────────────────
+ * Hard offset shadows → soft blurred drop shadows with the
+ * signature oceanic teal tint on primary elements.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] .shadow-hard,
+[data-theme="oceanic"] .shadow-hard-sm,
+[data-theme="oceanic"] .shadow-hard-muted {
+  box-shadow: 0 1px 2px rgba(0, 58, 65, 0.04),
+    0 8px 24px -12px rgba(0, 58, 65, 0.12) !important;
+}
+[data-theme="oceanic"] .shadow-hard-hover {
+  box-shadow: 0 2px 4px rgba(0, 58, 65, 0.06),
+    0 12px 32px -12px rgba(0, 58, 65, 0.18) !important;
+}
+[data-theme="oceanic"] .shadow-hard-active {
+  box-shadow: 0 1px 2px rgba(0, 58, 65, 0.04) !important;
+}
+[data-theme="oceanic"] .shadow-hard-lg {
+  box-shadow: 0 4px 8px rgba(0, 58, 65, 0.08),
+    0 16px 40px -8px rgba(0, 58, 65, 0.2) !important;
+}
+[data-theme="oceanic"] .shadow-hard-violet,
+[data-theme="oceanic"] .shadow-hard-pink,
+[data-theme="oceanic"] .shadow-hard-amber,
+[data-theme="oceanic"] .shadow-hard-emerald {
+  /* Focus-ring variants become teal tinted rings */
+  box-shadow: 0 0 0 3px rgba(0, 90, 101, 0.2) !important;
+}
+
+/* ── Motion — gentle ease-out ────────────────────────────────── */
+[data-theme="oceanic"] .transition-bouncy,
+[data-theme="oceanic"] .animate-pop-in,
+[data-theme="oceanic"] .animate-bounce-up,
+[data-theme="oceanic"] .animate-fade-up {
+  animation-timing-function: cubic-bezier(0.2, 0, 0.2, 1) !important;
+  transition-timing-function: cubic-bezier(0.2, 0, 0.2, 1) !important;
+}
+[data-theme="oceanic"] .card-wiggle:hover {
+  animation: none;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 58, 65, 0.12) !important;
+}
+[data-theme="oceanic"] .animate-spin-slow,
+[data-theme="oceanic"] .animate-float {
+  animation: none !important;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────
+ * Rounded-lg (0.75rem) — not pill, not sharp. Teal primary with
+ * soft shadow. Chunky 2px dark borders become light slate.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] [data-slot="button"] {
+  border-width: 1px !important;
+  border-color: transparent !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 1px 2px rgba(0, 58, 65, 0.04) !important;
+  font-family: var(--font-jakarta), system-ui, sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  transition: background-color 200ms cubic-bezier(0.2, 0, 0.2, 1),
+    box-shadow 200ms cubic-bezier(0.2, 0, 0.2, 1),
+    transform 150ms cubic-bezier(0.2, 0, 0.2, 1) !important;
+}
+[data-theme="oceanic"] [data-slot="button"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 58, 65, 0.12) !important;
+}
+[data-theme="oceanic"] [data-slot="button"]:active:not([aria-haspopup]) {
+  transform: translateY(0) !important;
+  translate: none !important;
+}
+/* Primary — teal solid with tinted glow */
+[data-theme="oceanic"] [data-slot="button"].bg-primary,
+[data-theme="oceanic"] [data-slot="button"][class*="bg-primary"] {
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 8px rgba(0, 90, 101, 0.25) !important;
+}
+[data-theme="oceanic"] [data-slot="button"].bg-primary:hover,
+[data-theme="oceanic"] [data-slot="button"][class*="bg-primary"]:hover {
+  background-color: var(--primary-light) !important;
+  box-shadow: 0 4px 14px rgba(0, 90, 101, 0.35) !important;
+}
+/* Outline — slate border, white surface */
+[data-theme="oceanic"] [data-slot="button"].bg-background {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="oceanic"] [data-slot="button"].bg-background:hover {
+  background-color: var(--accent) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+}
+[data-theme="oceanic"] [data-slot="button"].bg-muted {
+  background-color: var(--muted) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="oceanic"] [data-slot="button"].bg-destructive {
+  background-color: var(--destructive) !important;
+  color: #ffffff !important;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────
+ * Ring-style borders instead of chunky 2px dark. Soft blurred
+ * drop shadow. Generous 1rem radius.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] [data-slot="card"] {
+  border-width: 1px !important;
+  border-color: rgba(29, 29, 31, 0.08) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 1px 2px rgba(0, 58, 65, 0.04),
+    0 4px 16px -8px rgba(0, 58, 65, 0.08) !important;
+  background-color: var(--card) !important;
+}
+[data-theme="oceanic"] [data-slot="card-title"] {
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+[data-theme="oceanic"] [data-slot="card-footer"] {
+  border-top-width: 1px !important;
+  border-top-color: var(--border) !important;
+  background-color: var(--surface-alt) !important;
+}
+
+/* ── Inputs / Textarea / Select ─────────────────────────────── */
+[data-theme="oceanic"] [data-slot="input"],
+[data-theme="oceanic"] [data-slot="textarea"],
+[data-theme="oceanic"] [data-slot="select-trigger"] {
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+  background-color: var(--background) !important;
+  font-family: var(--font-jakarta), system-ui, sans-serif !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  transition: border-color 200ms cubic-bezier(0.2, 0, 0.2, 1),
+    box-shadow 200ms cubic-bezier(0.2, 0, 0.2, 1) !important;
+}
+[data-theme="oceanic"] [data-slot="input"]:focus-visible,
+[data-theme="oceanic"] [data-slot="textarea"]:focus-visible,
+[data-theme="oceanic"] [data-slot="select-trigger"]:focus-visible {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(0, 90, 101, 0.18) !important;
+  transform: none !important;
+  translate: none !important;
+}
+
+/* ── Labels ──────────────────────────────────────────────────── */
+[data-theme="oceanic"] [data-slot="label"] {
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--foreground);
+}
+
+/* ── Badges — soft pill chips with subtle borders ────────────── */
+[data-theme="oceanic"] [data-slot="badge"] {
+  border-width: 1px !important;
+  border-color: rgba(29, 29, 31, 0.08) !important;
+  border-radius: 9999px;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  height: 1.5rem;
+  padding: 0 0.625rem;
+}
+[data-theme="oceanic"] [data-slot="badge"].bg-primary {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+}
+[data-theme="oceanic"] [data-slot="badge"].bg-quaternary {
+  background-color: rgba(52, 199, 89, 0.12) !important;
+  color: #1a7e3e !important;
+  border-color: transparent !important;
+}
+[data-theme="oceanic"] [data-slot="badge"].bg-tertiary {
+  background-color: rgba(255, 159, 10, 0.12) !important;
+  color: #b45309 !important;
+  border-color: transparent !important;
+}
+[data-theme="oceanic"] [data-slot="badge"][class*="bg-pop-pink"] {
+  background-color: var(--muted) !important;
+  color: var(--muted-foreground) !important;
+  border-color: transparent !important;
+}
+[data-theme="oceanic"] [data-slot="badge"].bg-destructive {
+  background-color: rgba(255, 59, 48, 0.12) !important;
+  color: var(--destructive) !important;
+  border-color: transparent !important;
+}
+
+/* ── Tables ──────────────────────────────────────────────────── */
+[data-theme="oceanic"] [data-slot="table-container"] {
+  border-width: 1px !important;
+  border-color: rgba(29, 29, 31, 0.08) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 1px 2px rgba(0, 58, 65, 0.04),
+    0 4px 16px -8px rgba(0, 58, 65, 0.08) !important;
+  background-color: var(--card) !important;
+}
+[data-theme="oceanic"] [data-slot="table-header"] {
+  background-color: var(--surface-alt) !important;
+}
+[data-theme="oceanic"] [data-slot="table-header"] [data-slot="table-head"] {
+  color: var(--muted-foreground) !important;
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  font-size: 0.75rem;
+  height: 44px;
+}
+[data-theme="oceanic"] [data-slot="table-body"] [data-slot="table-row"]:hover {
+  background-color: var(--surface-alt) !important;
+}
+
+/* ── Dialog ──────────────────────────────────────────────────── */
+[data-theme="oceanic"] [data-slot="dialog-content"] {
+  border-width: 1px !important;
+  border-color: rgba(29, 29, 31, 0.08) !important;
+  border-radius: 1.25rem !important;
+  box-shadow: 0 24px 48px rgba(0, 58, 65, 0.18),
+    0 8px 16px rgba(0, 58, 65, 0.08) !important;
+  background-color: var(--card) !important;
+}
+[data-theme="oceanic"] [data-slot="dialog-title"] {
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-weight: 600;
+}
+
+/* ── Avatar ──────────────────────────────────────────────────── */
+[data-theme="oceanic"] [data-slot="avatar"] {
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+}
+[data-theme="oceanic"] [data-slot="avatar-fallback"] {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-weight: 600 !important;
+}
+
+/* ── Toaster ─────────────────────────────────────────────────── */
+[data-theme="oceanic"] .cn-toast {
+  border: 1px solid rgba(29, 29, 31, 0.08) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 12px 24px rgba(0, 58, 65, 0.1),
+    0 4px 8px rgba(0, 58, 65, 0.06) !important;
+  font-family: var(--font-jakarta), system-ui, sans-serif !important;
+  font-weight: 500 !important;
+}
+
+/* ── Sidebar + layout chrome ──────────────────────────────────
+ * Hairline slate-200 borders replace chunky 2px dark. Active
+ * nav becomes accent-tinted (pale teal) instead of dark-fill.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] aside[class*="border-r-2"][class*="border-foreground"] {
+  border-right-width: 1px !important;
+  border-right-color: var(--border) !important;
+  background-color: var(--background) !important;
+}
+[data-theme="oceanic"] nav[class*="border-t-2"][class*="border-foreground"] {
+  border-top-width: 1px !important;
+  border-top-color: var(--border) !important;
+  background-color: var(--background) !important;
+}
+[data-theme="oceanic"] div[class*="border-b-2"][class*="border-foreground"] {
+  border-bottom-width: 1px !important;
+  border-bottom-color: var(--border) !important;
+}
+[data-theme="oceanic"] aside div[class*="border-t-2"][class*="border-foreground"] {
+  border-width: 0 !important;
+  border-top-width: 1px !important;
+  border-top-color: var(--border) !important;
+}
+
+[data-theme="oceanic"] aside a .rounded-full.border-2,
+[data-theme="oceanic"] nav a .rounded-full.border-2,
+[data-theme="oceanic"] button .rounded-full.border-2 {
+  border-width: 0 !important;
+  background-color: transparent !important;
+  color: var(--muted-foreground) !important;
+}
+[data-theme="oceanic"] aside a.bg-foreground,
+[data-theme="oceanic"] aside button.bg-foreground {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  font-weight: 600 !important;
+}
+[data-theme="oceanic"] aside a.bg-foreground .rounded-full,
+[data-theme="oceanic"] aside button.bg-foreground .rounded-full {
+  background-color: transparent !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+}
+[data-theme="oceanic"] aside a:hover:not(.bg-foreground),
+[data-theme="oceanic"] aside button:hover:not(.bg-foreground) {
+  background-color: var(--surface-alt) !important;
+  color: var(--foreground) !important;
+}
+[data-theme="oceanic"] aside span.bg-tertiary,
+[data-theme="oceanic"] div.bg-tertiary {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  font-weight: 600 !important;
+}
+
+/* ── Hero — restore the signature oceanic gradient treatment ──
+ * Radial + linear gradient layers in the original teal palette.
+ * Decorative blob + SVG grain are re-applied. No Memphis shapes.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] .hero-playful {
+  background:
+    radial-gradient(120% 140% at 100% 0%, #0a7a88 0%, transparent 55%),
+    radial-gradient(90% 120% at 0% 100%, #003d45 0%, transparent 60%),
+    linear-gradient(135deg, #004651 0%, #005a65 55%, #007785 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(0, 90, 101, 0.3) !important;
+  box-shadow: 0 12px 40px -12px rgba(0, 58, 65, 0.35) !important;
+  border-radius: 1.75rem !important;
+  overflow: hidden;
+  isolation: isolate;
+  position: relative;
+}
+/* Replace the Playful yellow + pink circles with a single soft
+   white blob nudged off-canvas — the signature of the original. */
+[data-theme="oceanic"] .hero-playful::before {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  inset: auto -20% -40% auto !important;
+  width: 60% !important;
+  aspect-ratio: 1 !important;
+  border-radius: 50% !important;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 70%) !important;
+  filter: blur(20px) !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+  animation: blob-drift 18s ease-in-out infinite !important;
+}
+/* SVG grain overlay */
+[data-theme="oceanic"] .hero-playful::after {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  opacity: 0.28 !important;
+  mix-blend-mode: overlay !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>") !important;
+  background-size: 160px 160px !important;
+  z-index: -1 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="oceanic"] .hero-playful::before { animation: none !important; }
+}
+/* Hide Playful's inline decorative SVG confetti inside the hero */
+[data-theme="oceanic"] .hero-playful svg,
+[data-theme="oceanic"] .hero-playful .bg-pop-pink,
+[data-theme="oceanic"] .hero-playful .bg-quaternary {
+  display: none !important;
+}
+[data-theme="oceanic"] .hero-playful .text-tertiary {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+[data-theme="oceanic"] .hero-playful .border-tertiary {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+[data-theme="oceanic"] .hero-playful .bg-tertiary {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* ── Sticker panel → Soft premium panel ─────────────────────── */
+[data-theme="oceanic"] .panel-sticker {
+  background-color: var(--card) !important;
+  border: 1px solid rgba(29, 29, 31, 0.06) !important;
+  border-radius: 1.75rem !important;
+  box-shadow:
+    0 1px 2px rgba(0, 58, 65, 0.04),
+    0 12px 32px -16px rgba(0, 58, 65, 0.18) !important;
+}
+
+/* ── Action buttons (check-in / check-out) ───────────────────
+ * Original signature: 72px height, 1.25rem radius, soft oceanic
+ * glow. Lift slightly on hover with stronger glow.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] .btn-action-primary {
+  background: var(--primary);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 1.25rem;
+  height: 72px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 20px rgba(0, 90, 101, 0.35);
+  transition: all 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+  cursor: pointer;
+}
+[data-theme="oceanic"] .btn-action-primary:hover {
+  background: var(--primary-light);
+  box-shadow: 0 6px 28px rgba(0, 90, 101, 0.45);
+  transform: translateY(-1px);
+}
+[data-theme="oceanic"] .btn-action-primary:active {
+  transform: scale(0.97);
+}
+
+[data-theme="oceanic"] .btn-action-secondary {
+  background: var(--background);
+  color: var(--primary);
+  border: 2px solid var(--primary);
+  border-radius: 1.25rem;
+  height: 72px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+  box-shadow: none;
+  cursor: pointer;
+}
+[data-theme="oceanic"] .btn-action-secondary:hover {
+  background: var(--accent);
+  transform: none;
+}
+[data-theme="oceanic"] .btn-action-secondary:active {
+  transform: scale(0.97);
+}
+
+/* ── Decoration — restrained but not fully hidden ────────────
+ * Unlike Minimal (which hides everything) or Playful (which
+ * shows bold confetti), Oceanic keeps subtle geometric shapes
+ * rendered in accent teal tones.
+ * ───────────────────────────────────────────────────────────── */
+[data-theme="oceanic"] .bg-dots,
+[data-theme="oceanic"] .bg-dots-light {
+  background-image: radial-gradient(circle, rgba(0, 90, 101, 0.08) 1px, transparent 1px);
+}
+
+/* Auth-layout decorative blobs → soft teal ghosts */
+[data-theme="oceanic"] div[aria-hidden][class*="bg-tertiary"],
+[data-theme="oceanic"] div[aria-hidden][class*="bg-pop-pink"],
+[data-theme="oceanic"] div[aria-hidden][class*="bg-quaternary"] {
+  background-color: var(--accent) !important;
+  border-color: var(--border) !important;
+  opacity: 0.6;
+}
+[data-theme="oceanic"] div[aria-hidden] svg polygon,
+[data-theme="oceanic"] div[aria-hidden] svg path {
+  fill: var(--accent) !important;
+  stroke: var(--border) !important;
+}
+
+/* Empty-state dashed dot-grid */
+[data-theme="oceanic"] div[class*="bg-dots-light"][class*="border-dashed"] {
+  background-color: var(--card) !important;
+  border-style: dashed !important;
+  border-width: 1px !important;
+  border-color: var(--border) !important;
+  border-radius: 1rem !important;
+}
+
+/* Inline helper blocks */
+[data-theme="oceanic"] div[class*="bg-tertiary\/30"],
+[data-theme="oceanic"] div[class*="bg-quaternary\/30"],
+[data-theme="oceanic"] div[class*="bg-quaternary\/15"] {
+  background-color: var(--surface-alt) !important;
+  border-color: var(--border) !important;
+  border-width: 1px !important;
+}
+
+/* Inline colored pill chips (early-arrival, streak badges) */
+[data-theme="oceanic"] span[class*="bg-tertiary"]:not([data-slot]) {
+  background-color: rgba(255, 159, 10, 0.12) !important;
+  color: #b45309 !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  font-weight: 500 !important;
+}
+
+/* Streak-view late-status dots — legend + timeline.
+ *
+ * The rule above maps `bg-tertiary` text-chips to a pale amber wash,
+ * but for the tiny round indicators used in the streak legend
+ * ("TERLAMBAT") and the 30-day timeline, that wash reads as nearly
+ * invisible next to on-time green and absent-grey. These indicators
+ * are always *empty* (self-closing round span/div, no text), so we
+ * can target them with `:empty` without disturbing the text chips.
+ *
+ * Remap to the theme's own `--destructive` for a punchy red that
+ * reads instantly as "late" while still belonging to the oceanic
+ * palette (destructive is defined in the theme token block). A thin
+ * red-tinted ring replaces the chunky 2px dark foreground border to
+ * keep the editorial restraint. */
+[data-theme="oceanic"] span.bg-tertiary[class*="rounded-full"]:empty,
+[data-theme="oceanic"] div.bg-tertiary[class*="rounded-full"]:empty {
+  background-color: var(--destructive) !important;
+  border-color: rgba(255, 59, 48, 0.35) !important;
+  border-width: 1px !important;
+  box-shadow: 0 1px 2px rgba(255, 59, 48, 0.18) !important;
+}
+[data-theme="oceanic"] span[class*="bg-quaternary"]:not([data-slot]) {
+  background-color: var(--accent) !important;
+  color: var(--primary) !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  font-weight: 500 !important;
+}
+[data-theme="oceanic"] span[class*="bg-pop-pink"]:not([data-slot]) {
+  background-color: var(--muted) !important;
+  color: var(--muted-foreground) !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+}
+
+/* Semantic text-quaternary → original success green for readability */
+@layer utilities {
+  [data-theme="oceanic"] .text-quaternary,
+  [data-theme="oceanic"] [class~="!text-quaternary"] {
+    color: #1a7e3e !important;
+  }
+}
+
+[data-theme="oceanic"] {
+  scroll-behavior: smooth;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  SHARED — Logo & Auth Decoration Theme Switches
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * The brand logo and auth-page decoration sets are rendered in the
+ * DOM for every theme; CSS toggles which variant is visible based on
+ * the active `data-theme`. This keeps JSX identical across themes
+ * while letting each theme project a distinct identity.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Dashboard hero logo — white on the colored gradient heroes
+ * (Playful violet, Oceanic teal), tosca on Minimal's flat white.
+ * ───────────────────────────────────────────────────────────── */
+.brand-hero-white { display: block; }
+.brand-hero-tosca { display: none; }
+
+[data-theme="minimal"] .brand-hero-white { display: none; }
+[data-theme="minimal"] .brand-hero-tosca { display: block; }
+
+/* ── Auth layout — decoration group toggle ───────────────────
+ * Default (Playful): Memphis shapes visible.
+ * Minimal: all decoration hidden — clean whitespace only.
+ * Oceanic: Memphis hidden, soft teal radial glows visible.
+ * ───────────────────────────────────────────────────────────── */
+.auth-decor-playful { display: contents; }
+.auth-decor-oceanic { display: none; }
+
+[data-theme="minimal"] .auth-decor-playful,
+[data-theme="minimal"] .auth-decor-oceanic {
+  display: none;
+}
+[data-theme="minimal"] .bg-dots-light {
+  background-image: none;
+}
+
+[data-theme="oceanic"] .auth-decor-playful { display: none; }
+[data-theme="oceanic"] .auth-decor-oceanic { display: contents; }
+
+/* ── Oceanic auth glows — soft teal radial light bleeds ──────
+ * Two positioned blobs in the teal accent palette that create
+ * the editorial feel of the original Zota auth page without
+ * resorting to Memphis geometry.
+ * ───────────────────────────────────────────────────────────── */
+.auth-glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(60px);
+  z-index: 0;
+}
+.auth-glow-tl {
+  top: -120px;
+  left: -120px;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(0, 122, 136, 0.22) 0%, rgba(0, 122, 136, 0) 70%);
+}
+.auth-glow-br {
+  bottom: -140px;
+  right: -140px;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, rgba(0, 90, 101, 0.18) 0%, rgba(0, 90, 101, 0) 70%);
+}
+@media (max-width: 768px) {
+  .auth-glow-tl { width: 280px; height: 280px; }
+  .auth-glow-br { width: 300px; height: 300px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* static — no animation needed, but keep the rule in case we ever add one */
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  OCEANIC — StreakChip Celebration Treatment
+ * ═══════════════════════════════════════════════════════════════════
+ * Default (Playful) styling renders the streak pill in muted grey
+ * (`bg-tertiary`) which disappears against Oceanic's refined teal
+ * surface. Overlay the signature oceanic gradient + soft glow + a
+ * subtle fire flicker so the streak becomes a premium editorial
+ * badge — celebratory but not loud.
+ *
+ * Only targets the streak chip via its `href="/streak"` anchor +
+ * `bg-tertiary` class combo, so broken-streak (destructive) and
+ * other themes are unaffected.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+@keyframes oceanic-flicker {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  48% { opacity: 0.92; transform: scale(1.04) rotate(-2deg); }
+  52% { opacity: 1; transform: scale(0.98) rotate(2deg); }
+}
+
+@keyframes oceanic-shimmer {
+  0% { transform: translateX(-120%) skewX(-20deg); }
+  60%, 100% { transform: translateX(260%) skewX(-20deg); }
+}
+
+@keyframes oceanic-trophy-bob {
+  0%, 80%, 100% { transform: translateY(0) rotate(0); }
+  85% { transform: translateY(-2px) rotate(-6deg); }
+  90% { transform: translateY(-1px) rotate(6deg); }
+  95% { transform: translateY(0) rotate(0); }
+}
+
+/* Active streak — teal gradient + glow + fire flicker */
+[data-theme="oceanic"] a[href="/streak"].bg-tertiary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(120% 140% at 100% 0%, #0a7a88 0%, transparent 55%),
+    radial-gradient(90% 120% at 0% 100%, #003d45 0%, transparent 60%),
+    linear-gradient(135deg, #004651 0%, #005a65 55%, #007785 100%) !important;
+  color: #ffffff !important;
+  border-width: 1px !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+    0 4px 16px -2px rgba(0, 90, 101, 0.45),
+    0 1px 3px rgba(0, 58, 65, 0.12) !important;
+  transition: transform 200ms cubic-bezier(0.2, 0, 0.2, 1),
+    box-shadow 200ms cubic-bezier(0.2, 0, 0.2, 1) !important;
+}
+
+[data-theme="oceanic"] a[href="/streak"].bg-tertiary:hover {
+  transform: translateY(-2px) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+    0 8px 24px -4px rgba(0, 90, 101, 0.55),
+    0 2px 4px rgba(0, 58, 65, 0.12) !important;
+}
+
+/* Shimmer sweep — a soft light bar slides across every ~5s */
+[data-theme="oceanic"] a[href="/streak"].bg-tertiary::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: oceanic-shimmer 5.5s ease-in-out infinite;
+  animation-delay: 1.5s;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Fire emoji — subtle flicker (first span child, the emoji holder) */
+[data-theme="oceanic"] a[href="/streak"].bg-tertiary > span:first-child > span[aria-hidden] {
+  display: inline-block;
+  animation: oceanic-flicker 1.8s ease-in-out infinite;
+  transform-origin: center 80%;
+  filter: drop-shadow(0 0 6px rgba(255, 200, 100, 0.55));
+}
+
+/* Trophy emoji — occasional bob (second span child, the personal-best chip) */
+[data-theme="oceanic"] a[href="/streak"].bg-tertiary > span:nth-child(2) {
+  opacity: 0.95 !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  animation: oceanic-trophy-bob 6s ease-in-out infinite;
+  animation-delay: 2s;
+  display: inline-block;
+}
+
+/* Broken streak — softer red wash, no celebration animations */
+[data-theme="oceanic"] a[href="/streak"].bg-destructive {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border-width: 1px !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25) !important;
+}
+
+/* Respect reduced-motion — drop shimmer, flicker, bob */
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="oceanic"] a[href="/streak"].bg-tertiary::before,
+  [data-theme="oceanic"] a[href="/streak"].bg-tertiary > span:first-child > span[aria-hidden],
+  [data-theme="oceanic"] a[href="/streak"].bg-tertiary > span:nth-child(2) {
+    animation: none !important;
   }
 }

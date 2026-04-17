@@ -1,7 +1,7 @@
 "use client";
 
 import { Clock, MapPin, XCircle } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { AttendanceLog } from "@/lib/supabase/types";
 import {
   formatTime,
@@ -27,9 +27,6 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote, streak 
   if (!log) return null;
 
   const isOpen = !log.checked_out_at;
-  // Split the day's worked duration into whole hours + remaining minutes
-  // so the card can read "0j 42m" instead of "0.7j" — easier to scan at a
-  // glance than a decimal.
   const totalMin = log.checked_out_at
     ? Math.floor(
         (new Date(log.checked_out_at).getTime() -
@@ -54,140 +51,125 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote, streak 
       : t.attendanceStatus.overtimePending;
 
   return (
-    <Card className="border-0 shadow-sm" style={{ background: "var(--accent)" }}>
-      <CardContent className="p-4">
-        {streak && (
-          <div className="mb-3">
-            <StreakChip snapshot={streak} />
-          </div>
-        )}
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p
-                className="text-xs font-medium uppercase tracking-wide"
-                style={{ color: "var(--primary)" }}
-              >
-                {t.attendanceStatus.today}
-              </p>
-              <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
-              {log.is_early_arrival && <EarlyArrivalPill />}
-              {log.late_proof_url && log.late_proof_status && (
-                <>
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded-full"
-                    style={
-                      log.late_proof_status === "pending"
-                        ? { background: "#fff7ed", color: "#b45309" }
-                        : log.late_proof_status === "approved"
-                        ? { background: "#f0fdf4", color: "#15803d" }
-                        : { background: "#fef2f2", color: "#b91c1c" }
-                    }
-                  >
-                    {log.late_proof_status === "pending"
-                      ? `📎 ${t.attendanceStatus.proofPending}`
-                      : log.late_proof_status === "approved"
-                      ? `📎 ${t.attendanceStatus.excuseAccepted}`
-                      : `📎 ${t.attendanceStatus.excuseRejected}`}
-                  </span>
-                  {log.late_proof_status === "rejected" && log.late_proof_admin_note && (
-                    <p className="text-[10px] text-red-600 leading-tight break-words basis-full">
-                      {log.late_proof_admin_note}
-                    </p>
+    <div className="rounded-2xl border-2 border-foreground bg-accent shadow-hard-sm p-4">
+      {streak && (
+        <div className="mb-3">
+          <StreakChip snapshot={streak} />
+        </div>
+      )}
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1.5 min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="eyebrow text-primary">
+              {t.attendanceStatus.today}
+            </p>
+            <StatusBadge status={log.status} lateMinutes={log.late_minutes} />
+            {log.is_early_arrival && <EarlyArrivalPill />}
+            {log.late_proof_url && log.late_proof_status && (
+              <>
+                <span
+                  className={cn(
+                    "text-[10px] font-display font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border-2 border-foreground",
+                    log.late_proof_status === "pending" && "bg-tertiary text-foreground",
+                    log.late_proof_status === "approved" && "bg-quaternary text-foreground",
+                    log.late_proof_status === "rejected" && "bg-destructive text-white"
                   )}
+                >
+                  {log.late_proof_status === "pending"
+                    ? `📎 ${t.attendanceStatus.proofPending}`
+                    : log.late_proof_status === "approved"
+                    ? `📎 ${t.attendanceStatus.excuseAccepted}`
+                    : `📎 ${t.attendanceStatus.excuseRejected}`}
+                </span>
+                {log.late_proof_status === "rejected" && log.late_proof_admin_note && (
+                  <p className="text-[10px] text-destructive leading-tight break-words basis-full font-medium">
+                    {log.late_proof_admin_note}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="inline-flex items-center justify-center size-6 rounded-full border-2 border-foreground bg-card">
+                <Clock size={12} strokeWidth={2.5} className="text-primary" />
+              </span>
+              <span className="font-display font-bold text-foreground">
+                {formatTime(log.checked_in_at, timezone)}
+              </span>
+              {log.checked_out_at && (
+                <>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="font-display font-bold text-foreground">
+                    {formatTime(log.checked_out_at, timezone)}
+                  </span>
                 </>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-sm">
-                <Clock size={14} style={{ color: "var(--primary)" }} />
-                <span className="font-semibold">
-                  {formatTime(log.checked_in_at, timezone)}
-                </span>
-                {log.checked_out_at && (
-                  <>
-                    <span className="text-muted-foreground">→</span>
-                    <span className="font-semibold">
-                      {formatTime(log.checked_out_at, timezone)}
-                    </span>
-                  </>
+          </div>
+          {log.checked_out_at && (
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground font-medium">
+                {getDurationHours(log.checked_in_at, log.checked_out_at)} {t.attendanceStatus.worked}
+                {log.is_overtime && log.overtime_minutes > 0 && (
+                  <span
+                    className={cn(
+                      "ml-1 font-bold",
+                      overtimeStatus === "approved" && "text-quaternary",
+                      overtimeStatus === "rejected" && "text-destructive",
+                      overtimeStatus === "pending" && "text-primary"
+                    )}
+                  >
+                    · {formatMinutesHuman(log.overtime_minutes, t.units)} {overtimeLabel}
+                  </span>
                 )}
-              </div>
+              </p>
+              {overtimeStatus === "rejected" && overtimeAdminNote && (
+                <div className="flex items-start gap-1 max-w-[220px]">
+                  <XCircle size={10} className="mt-0.5 shrink-0 text-destructive" />
+                  <p className="text-xs leading-tight break-words text-destructive font-medium">
+                    {overtimeAdminNote}
+                  </p>
+                </div>
+              )}
             </div>
-            {log.checked_out_at && (
-              <div className="space-y-0.5">
-                <p className="text-xs text-muted-foreground">
-                  {getDurationHours(log.checked_in_at, log.checked_out_at)} {t.attendanceStatus.worked}
-                  {log.is_overtime && log.overtime_minutes > 0 && (
-                    <span className="ml-1" style={{
-                      color: overtimeStatus === "approved" ? "#15803d"
-                        : overtimeStatus === "rejected" ? "#b91c1c"
-                        : "var(--primary)"
-                    }}>
-                      · {formatMinutesHuman(log.overtime_minutes, t.units)} {overtimeLabel}
-                    </span>
-                  )}
-                </p>
-                {overtimeStatus === "rejected" && overtimeAdminNote && (
-                  <div className="flex items-start gap-1 max-w-[220px]">
-                    <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
-                    <p className="text-xs leading-tight break-words" style={{ color: "#b91c1c" }}>
-                      {overtimeAdminNote}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="text-right">
-            {isOpen ? (
-              <span
-                className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full"
-                style={{ background: "#fff7ed", color: "#b45309" }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#b45309] animate-pulse" />
-                {t.attendanceStatus.inProgress}
-              </span>
-            ) : (
-              <div className="text-right">
-                <span
-                  className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full"
-                  style={{ background: "#f0fdf4", color: "#15803d" }}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#15803d]" />
-                  {t.attendanceStatus.complete}
-                </span>
-                <p
-                  className="text-lg font-bold mt-1"
-                  style={{ color: "var(--primary)" }}
-                >
-                  {/* Collapse zero segments so the card shows just the
-                      meaningful part: "41m", "2j", or "2j 30m" — never
-                      "0j 41m" or "2j 0m". */}
-                  {workedH === 0
-                    ? `${workedM}${t.units.minuteShort}`
-                    : workedM === 0
-                    ? `${workedH}${t.units.hourShort}`
-                    : `${workedH}${t.units.hourShort} ${workedM}${t.units.minuteShort}`}
-                </p>
-              </div>
-            )}
-            {log.latitude && (
-              <a
-                href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs mt-1 justify-end"
-                style={{ color: "var(--primary)" }}
-              >
-                <MapPin size={12} />
-                {t.attendanceStatus.viewLocation}
-              </a>
-            )}
-          </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+
+        <div className="text-right shrink-0">
+          {isOpen ? (
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-display font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border-2 border-foreground bg-tertiary text-foreground">
+              <span className="size-1.5 rounded-full bg-foreground animate-pulse" />
+              {t.attendanceStatus.inProgress}
+            </span>
+          ) : (
+            <div className="text-right">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-display font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border-2 border-foreground bg-quaternary text-foreground">
+                <span className="size-1.5 rounded-full bg-foreground" />
+                {t.attendanceStatus.complete}
+              </span>
+              <p className="font-display text-xl font-extrabold mt-1.5 text-primary">
+                {workedH === 0
+                  ? `${workedM}${t.units.minuteShort}`
+                  : workedM === 0
+                  ? `${workedH}${t.units.hourShort}`
+                  : `${workedH}${t.units.hourShort} ${workedM}${t.units.minuteShort}`}
+              </p>
+            </div>
+          )}
+          {log.latitude && (
+            <a
+              href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs mt-1.5 justify-end text-primary font-bold hover:underline"
+            >
+              <MapPin size={12} strokeWidth={2.5} />
+              {t.attendanceStatus.viewLocation}
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -273,8 +273,8 @@ function CoordsPreview({
   }
   if (state.status === "ok") {
     return (
-      <p className="flex items-center gap-1.5 text-xs" style={{ color: "#15803d" }}>
-        <Check size={12} />
+      <p className="flex items-center gap-1.5 text-xs text-quaternary font-bold">
+        <Check size={12} strokeWidth={3} />
         <span>
           {tl.mapsLinkDetected}{" "}
           <span className="tabular-nums">
@@ -285,8 +285,8 @@ function CoordsPreview({
     );
   }
   return (
-    <p className="flex items-center gap-1.5 text-xs" style={{ color: "#b91c1c" }}>
-      <CircleAlert size={12} />
+    <p className="flex items-center gap-1.5 text-xs text-destructive font-bold">
+      <CircleAlert size={12} strokeWidth={2.5} />
       {state.message}
     </p>
   );

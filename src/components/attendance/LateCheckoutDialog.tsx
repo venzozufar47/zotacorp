@@ -115,8 +115,7 @@ export function LateCheckoutDialog({
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-xs px-2 py-0.5 rounded-full font-medium"
-        style={{ background: "#fef3c7", color: "#92400e" }}
+        className="text-[10px] font-display font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border-2 border-foreground bg-tertiary text-foreground hover:-translate-y-0.5 transition-transform shadow-hard-sm"
       >
         Missing — Add checkout
       </button>
@@ -151,15 +150,16 @@ export function LateCheckoutDialog({
           </div>
 
           {eligibleForOvertime && (
-            <div className="space-y-2 p-3 rounded-xl bg-[#f5f5f7]">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="space-y-2 p-4 rounded-2xl border-2 border-foreground bg-tertiary/30">
+              <label className="flex items-center gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={isOvertime}
                   onChange={(e) => setIsOvertime(e.target.checked)}
+                  className="w-5 h-5 rounded border-2 border-foreground accent-primary"
                 />
-                <span className="text-sm font-medium">
-                  Count this as overtime (past {workEndTime?.slice(0, 5)})
+                <span className="font-display text-sm font-bold uppercase tracking-wide">
+                  Count as overtime (past {workEndTime?.slice(0, 5)})
                 </span>
               </label>
               {isOvertime && (
@@ -181,7 +181,6 @@ export function LateCheckoutDialog({
           <Button
             onClick={handleSubmit}
             disabled={isPending || !time || !reason.trim()}
-            style={{ background: "var(--primary)" }}
           >
             {isPending ? "Saving…" : "Submit"}
           </Button>

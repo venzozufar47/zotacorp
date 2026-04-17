@@ -64,8 +64,8 @@ export function PayslipBreakdownDetails({
   return (
     <div className="space-y-4">
       {/* Overtime section */}
-      <section className="rounded-lg bg-[#f5f5f7] p-3 space-y-2">
-        <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <section className="rounded-2xl border-2 border-foreground bg-muted p-4 space-y-2">
+        <h4 className="flex items-center gap-2 font-display text-[0.6875rem] font-bold uppercase tracking-wider text-foreground">
           <Clock size={14} />
           {bt.overtimeTitle}
         </h4>
@@ -81,7 +81,7 @@ export function PayslipBreakdownDetails({
                 <Fragment3 key={row.date}>
                   <span>{formatDate(row.date, lang)}</span>
                   <span className="text-right tabular-nums">{formatMinutes(row.minutes, hShort, mShort)}</span>
-                  <span className="text-right tabular-nums text-green-700">
+                  <span className="text-right tabular-nums text-quaternary font-bold">
                     + {formatIDR(row.pay)}
                   </span>
                 </Fragment3>
@@ -92,7 +92,7 @@ export function PayslipBreakdownDetails({
               <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
                 {formatMinutes(totalOtMin, hShort, mShort)}
               </span>
-              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-green-700">
+              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-quaternary font-bold">
                 + {formatIDR(totalOvertimePay)}
               </span>
             </div>
@@ -104,8 +104,8 @@ export function PayslipBreakdownDetails({
           extra-work pay this month. Same row format as overtime but with
           the kind label instead of duration. */}
       {breakdown.extra_work_days && breakdown.extra_work_days.length > 0 && (
-        <section className="rounded-lg bg-[#f5f5f7] p-3 space-y-2">
-          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <section className="rounded-2xl border-2 border-foreground bg-muted p-4 space-y-2">
+          <h4 className="flex items-center gap-2 font-display text-[0.6875rem] font-bold uppercase tracking-wider text-foreground">
             <ShoppingBag size={14} />
             {bt.extraWorkTitle}
           </h4>
@@ -120,7 +120,7 @@ export function PayslipBreakdownDetails({
                   <span className="text-right capitalize">
                     {bt.kindLabels[row.kind as keyof typeof bt.kindLabels] ?? row.kind}
                   </span>
-                  <span className="text-right tabular-nums text-green-700">
+                  <span className="text-right tabular-nums text-quaternary font-bold">
                     + {formatIDR(row.pay)}
                   </span>
                 </Fragment3>
@@ -131,7 +131,7 @@ export function PayslipBreakdownDetails({
               <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
                 {breakdown.extra_work_days.length}
               </span>
-              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-green-700">
+              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-quaternary font-bold">
                 + {formatIDR(totalExtraWorkPay)}
               </span>
             </div>
@@ -140,8 +140,8 @@ export function PayslipBreakdownDetails({
       )}
 
       {/* Late section */}
-      <section className="rounded-lg bg-[#f5f5f7] p-3 space-y-2">
-        <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <section className="rounded-2xl border-2 border-foreground bg-muted p-4 space-y-2">
+        <h4 className="flex items-center gap-2 font-display text-[0.6875rem] font-bold uppercase tracking-wider text-foreground">
           <AlertTriangle size={14} />
           {bt.lateTitle}
         </h4>
@@ -159,7 +159,7 @@ export function PayslipBreakdownDetails({
                   <span className="flex items-center gap-1.5">
                     {formatDate(row.date, lang)}
                     {row.excused && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground border-2 border-foreground font-display font-bold uppercase tracking-wider">
                         {bt.excused}
                       </span>
                     )}
@@ -168,7 +168,7 @@ export function PayslipBreakdownDetails({
                   <span className="text-right tabular-nums text-muted-foreground">
                     {row.excused ? "—" : formatMinutes(row.after_grace_minutes, hShort, mShort)}
                   </span>
-                  <span className="text-right tabular-nums text-red-600">
+                  <span className="text-right tabular-nums text-destructive font-bold">
                     {row.penalty > 0 ? `- ${formatIDR(row.penalty)}` : "—"}
                   </span>
                 </Fragment3>
@@ -182,7 +182,7 @@ export function PayslipBreakdownDetails({
               <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
                 {formatMinutes(totalAfterGrace, hShort, mShort)}
               </span>
-              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-red-600">
+              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-destructive font-bold">
                 - {formatIDR(totalLatePenalty)}
               </span>
             </div>

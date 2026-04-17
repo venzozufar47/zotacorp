@@ -131,7 +131,7 @@ export default async function DashboardPage() {
             className="h-px flex-1 ml-3 bg-gradient-to-r from-border to-transparent"
           />
         </div>
-        <div className="panel-soft p-5 space-y-4">
+        <div className="panel-sticker p-5 space-y-4">
           <AttendanceStatusCard
             log={todayLog}
             timezone={settings?.timezone}

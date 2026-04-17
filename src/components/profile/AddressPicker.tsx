@@ -268,7 +268,7 @@ function Field({
         children
       ) : (
         <p
-          className={`text-sm py-2 px-3 rounded-md bg-[#f5f5f7] min-h-[36px] ${
+          className={`text-sm font-medium py-2.5 px-3.5 rounded-xl border-2 border-border bg-muted min-h-[44px] ${
             isEmpty ? "text-muted-foreground italic" : "text-foreground"
           }`}
         >

@@ -121,53 +121,55 @@ export function LocationsManager({ initialLocations, allEmployees }: Props) {
       </div>
 
       {initialLocations.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border px-6 py-12 text-center bg-white">
-          <MapPin size={32} className="mx-auto mb-3 text-muted-foreground/50" />
-          <h3 className="font-medium text-foreground mb-1">{tl.emptyTitle}</h3>
-          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+        <div className="rounded-2xl border-2 border-dashed border-foreground/30 px-6 py-12 text-center bg-card">
+          <span className="inline-flex items-center justify-center size-14 rounded-full border-2 border-foreground bg-quaternary mb-3">
+            <MapPin size={22} strokeWidth={2.5} className="text-foreground" />
+          </span>
+          <h3 className="font-display font-bold text-foreground mb-1 text-lg">{tl.emptyTitle}</h3>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto font-medium">
             {tl.emptyDescription}
           </p>
         </div>
       ) : (
-        <div className="rounded-2xl bg-white ring-1 ring-foreground/6 overflow-hidden">
+        <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40">
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-medium">
+            <thead className="bg-primary text-primary-foreground border-b-2 border-foreground">
+              <tr className="text-left font-display text-[0.6875rem] uppercase tracking-wider">
+                <th className="px-4 py-3 font-bold">
                   <SortBtn label={tl.colName} k="name" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
                 </th>
-                <th className="px-4 py-3 font-medium">{tl.colCoords}</th>
-                <th className="px-4 py-3 font-medium">
+                <th className="px-4 py-3 font-bold">{tl.colCoords}</th>
+                <th className="px-4 py-3 font-bold">
                   <SortBtn label={tl.colRadius} k="radius_m" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
                 </th>
-                <th className="px-4 py-3 font-medium">
+                <th className="px-4 py-3 font-bold">
                   <SortBtn label={tl.colEmployees} k="assigned_count" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
                 </th>
-                <th className="px-4 py-3 font-medium text-right">{tl.colActions}</th>
+                <th className="px-4 py-3 font-bold text-right">{tl.colActions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {displayRows.map((row) => (
-                <tr key={row.id} className="hover:bg-muted/20">
-                  <td className="px-4 py-3 font-medium">{row.name}</td>
+                <tr key={row.id} className="hover:bg-muted/40 transition-colors">
+                  <td className="px-4 py-3 font-display font-bold">{row.name}</td>
                   <td className="px-4 py-3 text-muted-foreground tabular-nums">
                     <a
                       href={`https://www.google.com/maps/@${row.latitude},${row.longitude},17z`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="hover:underline"
+                      className="hover:underline text-primary font-medium"
                     >
                       {row.latitude}, {row.longitude}
                     </a>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground tabular-nums">
+                  <td className="px-4 py-3 text-muted-foreground tabular-nums font-medium">
                     {row.radius_m} m
                   </td>
                   <td className="px-4 py-3">
                     <button
                       type="button"
                       onClick={() => setEditingEmployees(row)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-[#f5f5f7] hover:text-foreground hover:border-foreground/20 transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-full border-2 border-foreground bg-pop-pink px-3 py-1 text-[10px] font-display font-bold uppercase tracking-wider text-foreground hover:-translate-y-0.5 transition-transform shadow-hard-sm"
                       aria-label={tl.employeesDialogTitle}
                     >
                       {row.assigned_count} {tl.employeeSuffix}
@@ -252,7 +254,7 @@ export function LocationsManager({ initialLocations, allEmployees }: Props) {
             <Button
               onClick={confirmDelete}
               disabled={pending}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
             >
               {pending ? tl.deleting : tl.deleteCta}
             </Button>

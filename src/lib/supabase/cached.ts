@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createClient } from "./server";
 import type { AttendanceSettings, Profile } from "./types";
+import { DEFAULT_THEME, getTheme, type ThemeName } from "@/lib/themes";
 
 /**
  * React cache() wrappers that dedupe expensive Supabase reads per request.
@@ -57,3 +58,25 @@ export const getCachedAttendanceSettings = cache(
     return data;
   }
 );
+
+/**
+ * Resolves the org-wide UI theme for the `<html data-theme="...">` attribute.
+ *
+ * Read-once per request via React cache(). Uses the `get_ui_theme()` RPC
+ * (SECURITY DEFINER) so it works on the logged-out auth pages too —
+ * otherwise the row-level-security policy on `attendance_settings`
+ * blocks anonymous reads and the auth pages fall back to the default
+ * theme regardless of what the admin picked.
+ *
+ * Falls back to `DEFAULT_THEME` if the RPC fails or the stored value
+ * isn't a known theme.
+ */
+export const getCachedTheme = cache(async (): Promise<ThemeName> => {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("get_ui_theme");
+    return getTheme(typeof data === "string" ? data : null);
+  } catch {
+    return DEFAULT_THEME;
+  }
+});

@@ -54,37 +54,37 @@ export function AttendanceFilters({
     searchParams.has("end");
 
   return (
-    <div className="bg-white rounded-xl border p-4 space-y-3">
+    <div className="bg-card rounded-2xl border-2 border-foreground shadow-hard p-4 space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Date range */}
-        <div className="space-y-1">
-          <Label className="text-xs">From</Label>
+        <div className="space-y-2">
+          <Label>From</Label>
           <Input
             type="date"
             value={startDate}
             onChange={(e) => updateParams({ start: e.target.value })}
-            className="text-sm h-9"
+            className="text-sm h-10"
           />
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs">To</Label>
+        <div className="space-y-2">
+          <Label>To</Label>
           <Input
             type="date"
             value={endDate}
             onChange={(e) => updateParams({ end: e.target.value })}
-            className="text-sm h-9"
+            className="text-sm h-10"
           />
         </div>
 
         {/* Employee dropdown */}
-        <div className="space-y-1">
-          <Label className="text-xs">Employee</Label>
+        <div className="space-y-2">
+          <Label>Employee</Label>
           <select
             value={selectedUserId || "all"}
             onChange={(e) => updateParams({ userId: e.target.value === "all" ? "" : e.target.value })}
             className={cn(
-              "flex w-full items-center rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm h-9 outline-none",
-              "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              "flex w-full items-center rounded-xl border-2 border-border bg-white px-3.5 py-2 text-sm font-medium h-10 outline-none transition-all",
+              "focus-visible:border-primary focus-visible:shadow-hard-violet"
             )}
           >
             <option value="all">All employees</option>

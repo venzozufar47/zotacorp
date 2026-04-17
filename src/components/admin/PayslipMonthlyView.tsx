@@ -295,11 +295,11 @@ export function PayslipMonthlyView({
   const isFinalized = payslip?.status === "finalized";
 
   return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-5 space-y-4">
+    <Card>
+      <CardContent className="space-y-4">
         {/* Header + Month Navigation */}
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-base font-semibold">Monthly Payslip</h2>
+          <h2 className="font-display text-lg font-bold">Monthly Payslip</h2>
           <div className="flex items-center gap-2 ml-auto">
             <Button variant="outline" size="sm" onClick={prevMonth}>&larr;</Button>
             <span className="text-sm font-medium min-w-[130px] text-center">{monthLabel}</span>
@@ -332,18 +332,18 @@ export function PayslipMonthlyView({
           <div className="space-y-4">
             {/* Status */}
             {isFinalized ? (
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0fdf4", color: "#15803d" }}>
+              <span className="text-[10px] font-display font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border-2 border-foreground bg-quaternary text-foreground">
                 Finalized
               </span>
             ) : (
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#eff6ff", color: "#1d4ed8" }}>
+              <span className="text-[10px] font-display font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border-2 border-foreground bg-primary text-primary-foreground">
                 Draft
               </span>
             )}
 
             {/* Attendance-side breakdown */}
             {showsAttendance && (
-              <div className="space-y-2 p-3 rounded-lg bg-[#f5f5f7]">
+              <div className="space-y-2 p-4 rounded-2xl border-2 border-foreground bg-muted">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attendance Breakdown</p>
                 <div className="space-y-1 text-sm">
                   <Row label="Work Days" value={`${payslip.actual_work_days} / ${payslip.expected_work_days}`} />
@@ -396,7 +396,7 @@ export function PayslipMonthlyView({
 
             {/* Deliverables section */}
             {showsDeliverables && (
-              <div className="space-y-2 p-3 rounded-lg bg-[#ecfeff]">
+              <div className="space-y-2 p-4 rounded-2xl border-2 border-foreground bg-quaternary/15">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deliverables</p>
                   <span className="text-xs text-muted-foreground">
@@ -449,7 +449,7 @@ export function PayslipMonthlyView({
                         const real = parseFloat(r.realization) || 0;
                         const ach = target > 0 ? (real / target) * 100 : 0;
                         return (
-                          <div key={idx} className="p-2 rounded-lg bg-white border border-[#e5e7eb] space-y-2">
+                          <div key={idx} className="p-3 rounded-xl bg-card border-2 border-foreground/30 space-y-2">
                             <div className="flex items-center gap-2">
                               <Input
                                 value={r.name}
@@ -521,7 +521,7 @@ export function PayslipMonthlyView({
             )}
 
             {/* Manual Adjustments */}
-            <div className="space-y-3 p-3 rounded-lg bg-[#f5f5f7]">
+            <div className="space-y-3 p-3 rounded-lg bg-muted">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Manual Adjustments</p>
 
               {isFinalized ? (
@@ -567,9 +567,9 @@ export function PayslipMonthlyView({
             </div>
 
             {/* Net Total */}
-            <div className="flex items-center justify-between p-3 rounded-lg" style={{ background: "var(--primary)", color: "white" }}>
-              <span className="text-sm font-semibold">Net Total</span>
-              <span className="text-lg font-bold">{formatIDR(Number(payslip.net_total))}</span>
+            <div className="flex items-center justify-between p-4 rounded-2xl border-2 border-foreground bg-primary text-primary-foreground shadow-hard">
+              <span className="font-display font-bold uppercase tracking-wide">Net Total</span>
+              <span className="font-display text-2xl font-extrabold tabular-nums">{formatIDR(Number(payslip.net_total))}</span>
             </div>
 
             {/* Actions */}
@@ -609,10 +609,10 @@ function Row({
 }) {
   return (
     <div className="flex justify-between">
-      <span className={highlight ? "font-medium" : ""}>{label}</span>
+      <span className={highlight ? "font-display font-bold" : "font-medium"}>{label}</span>
       <span
         className={
-          highlight ? "font-semibold" : positive ? "text-green-700" : negative ? "text-red-600" : ""
+          highlight ? "font-display font-bold tabular-nums" : positive ? "text-quaternary font-bold tabular-nums" : negative ? "text-destructive font-bold tabular-nums" : "font-medium tabular-nums"
         }
       >
         {value}

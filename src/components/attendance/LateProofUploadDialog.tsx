@@ -68,21 +68,16 @@ export function LateProofUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <button
-          className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1.5 min-h-[32px] rounded transition-all hover:bg-blue-50"
-          style={{ color: "#3b82f6" }}
-        >
-          {hasExistingProof ? (
-            <>
-              <FileText size={14} /> {lp.uploadedBadge}
-            </>
-          ) : (
-            <>
-              <Upload size={14} /> {lp.uploadButton}
-            </>
-          )}
-        </button>
+      <DialogTrigger className="inline-flex items-center gap-1.5 text-[10px] font-display font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border-2 border-foreground bg-pop-pink text-foreground hover:-translate-y-0.5 transition-transform shadow-hard-sm">
+        {hasExistingProof ? (
+          <>
+            <FileText size={12} strokeWidth={2.5} /> {lp.uploadedBadge}
+          </>
+        ) : (
+          <>
+            <Upload size={12} strokeWidth={2.5} /> {lp.uploadButton}
+          </>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -94,21 +89,23 @@ export function LateProofUploadDialog({
 
         <div className="space-y-3 py-2">
           <div
-            className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all hover:border-[var(--primary)] hover:bg-[var(--accent)]"
+            className="border-2 border-dashed border-foreground/40 rounded-2xl p-6 text-center cursor-pointer transition-all hover:border-primary hover:bg-accent"
             onClick={() => inputRef.current?.click()}
           >
             {file ? (
               <div className="flex items-center justify-center gap-2 text-sm">
-                <FileText size={18} style={{ color: "var(--primary)" }} />
-                <span className="font-medium truncate max-w-[200px]">{file.name}</span>
+                <FileText size={18} className="text-primary" strokeWidth={2.5} />
+                <span className="font-bold truncate max-w-[200px]">{file.name}</span>
                 <span className="text-xs text-muted-foreground">
                   ({(file.size / 1024).toFixed(0)} KB)
                 </span>
               </div>
             ) : (
-              <div className="space-y-1">
-                <Upload size={24} className="mx-auto text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
+              <div className="space-y-1.5">
+                <span className="inline-flex items-center justify-center size-12 rounded-full border-2 border-foreground bg-tertiary mx-auto mb-1">
+                  <Upload size={20} strokeWidth={2.5} className="text-foreground" />
+                </span>
+                <p className="text-sm text-muted-foreground font-medium">
                   {lp.clickToSelect}
                 </p>
               </div>
@@ -128,11 +125,7 @@ export function LateProofUploadDialog({
           <Button variant="outline" onClick={() => setOpen(false)}>
             {lp.cancel}
           </Button>
-          <Button
-            onClick={handleUpload}
-            disabled={!file || uploading}
-            style={{ background: "var(--primary)" }}
-          >
+          <Button onClick={handleUpload} disabled={!file || uploading}>
             {uploading ? lp.uploading : lp.upload}
           </Button>
         </DialogFooter>

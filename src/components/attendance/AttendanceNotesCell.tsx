@@ -67,28 +67,22 @@ export function AttendanceNotesCell({
         </div>
       )}
       {outsideNote && (
-        <div
-          className="rounded-md px-2 py-1.5"
-          style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}
-        >
+        <div className="rounded-xl border-2 border-foreground bg-tertiary/30 px-2.5 py-2">
           {mapsUrl ? (
             <a
               href={mapsUrl}
               target="_blank"
               rel="noopener noreferrer"
               aria-label={viewOnMapsAria}
-              className={`${pillClasses} hover:underline`}
-              style={{ color: "#b45309" }}
+              className={`${pillClasses} text-foreground hover:underline`}
             >
               {pillInner}
             </a>
           ) : (
-            <div className={pillClasses} style={{ color: "#b45309" }}>
-              {pillInner}
-            </div>
+            <div className={`${pillClasses} text-foreground`}>{pillInner}</div>
           )}
           <p
-            className="text-xs text-foreground leading-snug break-words mt-0.5"
+            className="text-xs text-foreground leading-snug break-words mt-0.5 font-medium"
             title={outsideNote}
           >
             {outsideNote}

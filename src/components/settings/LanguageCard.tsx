@@ -103,19 +103,23 @@ export function LanguageCard() {
               type="button"
               onClick={() => handleSelect(opt.value)}
               className={cn(
-                "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm transition-all",
+                "flex w-full items-center justify-between rounded-2xl border-2 px-4 py-3 text-sm transition-all duration-200",
                 active
-                  ? "border-primary bg-primary/5 text-foreground"
-                  : "border-border bg-white hover:border-foreground/20"
+                  ? "border-foreground bg-accent shadow-hard-sm font-bold"
+                  : "border-border bg-card hover:border-foreground/40 hover:bg-muted"
               )}
             >
               <span className="flex items-center gap-3">
-                <Flag className="h-4 w-6 rounded-sm shadow-sm ring-1 ring-black/5" />
-                <span className={active ? "font-semibold" : ""}>
+                <Flag className="h-5 w-7 rounded-sm border-2 border-foreground" />
+                <span className={active ? "font-display font-bold" : "font-medium"}>
                   {t.settings[opt.labelKey]}
                 </span>
               </span>
-              {active && <Check size={16} className="text-primary" />}
+              {active && (
+                <span className="flex items-center justify-center size-6 rounded-full border-2 border-foreground bg-quaternary">
+                  <Check size={12} strokeWidth={3} className="text-foreground" />
+                </span>
+              )}
             </button>
           );
         })}

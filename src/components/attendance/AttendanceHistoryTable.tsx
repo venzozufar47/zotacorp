@@ -1,6 +1,7 @@
 "use client";
 
 import { XCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -40,10 +41,10 @@ interface AttendanceHistoryTableProps {
   isFlexibleSchedule?: boolean;
 }
 
-const OT_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
-  pending: { bg: "#fff7ed", color: "#b45309" },
-  approved: { bg: "#f0fdf4", color: "#15803d" },
-  rejected: { bg: "#fef2f2", color: "#b91c1c" },
+const OT_BADGE_VARIANT: Record<string, "tertiary" | "quaternary" | "destructive"> = {
+  pending: "tertiary",
+  approved: "quaternary",
+  rejected: "destructive",
 };
 
 export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexibleSchedule }: AttendanceHistoryTableProps) {
@@ -61,27 +62,27 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
   }
 
   return (
-    <div className="rounded-xl border overflow-x-auto max-w-full">
+    <div className="max-w-full">
       <Table>
         <TableHeader>
-          <TableRow className="bg-[#f5f5f7]">
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">Date</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-in</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">Check-out</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">Status</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide w-[260px] max-w-[260px]">Overtime</TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide">{t.attendanceTable.colNotes}</TableHead>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Check-in</TableHead>
+            <TableHead>Check-out</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="w-[260px] max-w-[260px]">Overtime</TableHead>
+            <TableHead>{t.attendanceTable.colNotes}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {logs.map((log) => {
-            const otStyle = log.overtime_status
-              ? OT_STATUS_STYLES[log.overtime_status] ?? OT_STATUS_STYLES.pending
+            const otVariant = log.overtime_status
+              ? OT_BADGE_VARIANT[log.overtime_status] ?? OT_BADGE_VARIANT.pending
               : null;
 
             return (
-              <TableRow key={log.id} className="hover:bg-[#f5f5f7]/50">
-                <TableCell className="font-medium">
+              <TableRow key={log.id}>
+                <TableCell className="font-display font-bold text-foreground">
                   {formatLocalDate(log.date)}
                 </TableCell>
                 <TableCell>
@@ -95,20 +96,19 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                             title: formatLocalDate(log.date),
                           })
                         }
-                        className="underline-offset-2 hover:underline tabular-nums"
-                        style={{ color: "var(--primary)" }}
+                        className="font-medium tabular-nums text-primary underline-offset-2 hover:underline"
                       >
                         {formatTime(log.checked_in_at, timezone)}
                       </button>
                     ) : (
-                      formatTime(log.checked_in_at, timezone)
+                      <span className="font-medium tabular-nums">{formatTime(log.checked_in_at, timezone)}</span>
                     )}
                     {log.is_early_arrival && <EarlyArrivalPill />}
                   </div>
                 </TableCell>
                 <TableCell>
                   {log.checked_out_at ? (
-                    formatTime(log.checked_out_at, timezone)
+                    <span className="font-medium tabular-nums">{formatTime(log.checked_out_at, timezone)}</span>
                   ) : (
                     <LateCheckoutDialog
                       attendanceLogId={log.id}
@@ -134,22 +134,22 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                     {log.late_proof_url && (
                       <div>
                         {log.late_proof_status === "pending" && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#fff7ed", color: "#b45309" }}>
-                            📎 Proof pending review
-                          </span>
+                          <Badge variant="tertiary" className="text-[10px]">
+                            📎 Proof pending
+                          </Badge>
                         )}
                         {log.late_proof_status === "approved" && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#f0fdf4", color: "#15803d" }}>
+                          <Badge variant="quaternary" className="text-[10px]">
                             📎 Excuse accepted
-                          </span>
+                          </Badge>
                         )}
                         {log.late_proof_status === "rejected" && (
                           <div className="space-y-0.5">
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#fef2f2", color: "#b91c1c" }}>
+                            <Badge variant="destructive" className="text-[10px]">
                               📎 Excuse rejected
-                            </span>
+                            </Badge>
                             {log.late_proof_admin_note && (
-                              <p className="text-[10px] text-red-600 leading-tight break-words pl-1">
+                              <p className="text-[10px] text-destructive leading-tight break-words pl-1 font-medium">
                                 {log.late_proof_admin_note}
                               </p>
                             )}
@@ -166,18 +166,15 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                   </div>
                 </TableCell>
                 <TableCell className="w-[260px] max-w-[260px] overflow-hidden">
-                  {log.is_overtime && log.overtime_minutes > 0 && otStyle ? (
+                  {log.is_overtime && log.overtime_minutes > 0 && otVariant ? (
                     <div className="space-y-1">
-                      <Badge
-                        className="text-xs px-2"
-                        style={{ background: otStyle.bg, color: otStyle.color, border: "none" }}
-                      >
+                      <Badge variant={otVariant} className="text-[10px]">
                         {formatMinutesHuman(log.overtime_minutes)} ({log.overtime_status})
                       </Badge>
                       {log.overtime_status === "rejected" && log.overtime_admin_note && (
                         <div className="flex items-start gap-1 w-full">
-                          <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
-                          <p className="text-xs leading-tight break-words" style={{ color: "#b91c1c" }}>
+                          <XCircle size={10} className="mt-0.5 shrink-0 text-destructive" />
+                          <p className="text-xs leading-tight break-words text-destructive font-medium">
                             {log.overtime_admin_note}
                           </p>
                         </div>
@@ -185,15 +182,12 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                     </div>
                   ) : log.overtime_status === "rejected" && log.overtime_admin_note ? (
                     <div className="space-y-1">
-                      <Badge
-                        className="text-xs px-2"
-                        style={{ background: "#fef2f2", color: "#ff3b30", border: "none" }}
-                      >
+                      <Badge variant="destructive" className="text-[10px]">
                         Rejected
                       </Badge>
                       <div className="flex items-start gap-1 max-w-[260px]">
-                        <XCircle size={10} className="mt-0.5 shrink-0" style={{ color: "#b91c1c" }} />
-                        <p className="text-xs leading-tight" style={{ color: "#b91c1c" }}>
+                        <XCircle size={10} className="mt-0.5 shrink-0 text-destructive" />
+                        <p className="text-xs leading-tight text-destructive font-medium">
                           {log.overtime_admin_note}
                         </p>
                       </div>

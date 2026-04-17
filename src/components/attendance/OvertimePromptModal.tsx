@@ -55,14 +55,14 @@ export function OvertimePromptModal({
           <button
             type="button"
             onClick={() => setChoice("overtime")}
-            className="w-full p-3 rounded-xl border text-left transition-all text-sm"
-            style={{
-              borderColor: choice === "overtime" ? "var(--primary)" : "var(--border)",
-              background: choice === "overtime" ? "var(--accent)" : "transparent",
-            }}
+            className={`w-full p-4 rounded-2xl border-2 text-left transition-all text-sm ${
+              choice === "overtime"
+                ? "border-foreground bg-accent shadow-hard-sm"
+                : "border-border bg-background hover:border-foreground/40"
+            }`}
           >
-            <span className="font-semibold">I worked overtime</span>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <span className="font-display font-bold text-base block">I worked overtime</span>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">
               Submit an overtime request for admin approval
             </p>
           </button>
@@ -70,14 +70,14 @@ export function OvertimePromptModal({
           <button
             type="button"
             onClick={() => setChoice("forgot")}
-            className="w-full p-3 rounded-xl border text-left transition-all text-sm"
-            style={{
-              borderColor: choice === "forgot" ? "var(--primary)" : "var(--border)",
-              background: choice === "forgot" ? "var(--accent)" : "transparent",
-            }}
+            className={`w-full p-4 rounded-2xl border-2 text-left transition-all text-sm ${
+              choice === "forgot"
+                ? "border-foreground bg-accent shadow-hard-sm"
+                : "border-border bg-background hover:border-foreground/40"
+            }`}
           >
-            <span className="font-semibold">I just forgot to sign out</span>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <span className="font-display font-bold text-base block">I just forgot to sign out</span>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">
               Check out normally without overtime
             </p>
           </button>
@@ -107,7 +107,6 @@ export function OvertimePromptModal({
               submitting ||
               (choice === "overtime" && !reason.trim())
             }
-            style={{ background: "var(--primary)" }}
           >
             {submitting ? "Processing…" : "Confirm"}
           </Button>

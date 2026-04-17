@@ -63,9 +63,9 @@ export function AttendanceSettingsForm({ settings }: AttendanceSettingsFormProps
 
   return (
     <div className="space-y-5">
-      <Card className="border-0 shadow-sm">
+      <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Timezone</CardTitle>
+          <CardTitle className="text-lg">Timezone</CardTitle>
           {editing ? (
             <div className="flex items-center gap-1.5">
               <Button
@@ -81,7 +81,6 @@ export function AttendanceSettingsForm({ settings }: AttendanceSettingsFormProps
               <Button
                 size="sm"
                 className="h-7 px-3 text-xs"
-                style={{ background: "var(--primary)" }}
                 onClick={handleSave}
                 disabled={saving}
               >
@@ -118,7 +117,7 @@ export function AttendanceSettingsForm({ settings }: AttendanceSettingsFormProps
                 </SelectContent>
               </Select>
             ) : (
-              <p className="text-sm py-2 px-3 rounded-md bg-[#f5f5f7] min-h-[36px]">
+              <p className="text-sm font-medium py-2.5 px-3.5 rounded-xl border-2 border-border bg-muted min-h-[44px]">
                 {timezone}
               </p>
             )}

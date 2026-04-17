@@ -9,24 +9,21 @@ interface StatusBadgeProps {
   lateMinutes?: number;
 }
 
-const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
-  on_time: { bg: "#f0fdf4", color: "#15803d" },
-  late: { bg: "#fef2f2", color: "#b91c1c" },
-  late_excused: { bg: "#fefce8", color: "#92400e" },
-  flexible: { bg: "#f5f5f7", color: "#525252" },
-  unknown: { bg: "#f5f5f7", color: "#525252" },
+type StatusKey = "on_time" | "late" | "late_excused" | "flexible" | "unknown";
+
+const STATUS_VARIANT: Record<StatusKey, "quaternary" | "destructive" | "tertiary" | "muted" | "outline"> = {
+  on_time: "quaternary",
+  late: "destructive",
+  late_excused: "tertiary",
+  flexible: "muted",
+  unknown: "outline",
 };
 
 export function StatusBadge({ status, lateMinutes }: StatusBadgeProps) {
   const { t } = useTranslation();
-  const style = STATUS_STYLES[status] ?? STATUS_STYLES.unknown;
-  const key = (status in STATUS_STYLES ? status : "unknown") as
-    | "on_time"
-    | "late"
-    | "late_excused"
-    | "flexible"
-    | "unknown";
-  const labelMap: Record<typeof key, string> = {
+  const key = (status in STATUS_VARIANT ? status : "unknown") as StatusKey;
+  const variant = STATUS_VARIANT[key];
+  const labelMap: Record<StatusKey, string> = {
     on_time: t.statusBadge.onTime,
     late: t.statusBadge.late,
     late_excused: t.statusBadge.lateExcused,
@@ -40,10 +37,7 @@ export function StatusBadge({ status, lateMinutes }: StatusBadgeProps) {
       : labelMap[key];
 
   return (
-    <Badge
-      className="text-xs px-2 shrink-0"
-      style={{ background: style.bg, color: style.color, border: "none" }}
-    >
+    <Badge variant={variant} className="shrink-0">
       {label}
     </Badge>
   );

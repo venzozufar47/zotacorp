@@ -101,16 +101,16 @@ export function LocationAssignmentDialog({
             {allLocations.map((loc) => (
               <label
                 key={loc.id}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/40 cursor-pointer transition-colors"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 border-border hover:bg-muted hover:border-foreground/40 cursor-pointer transition-all"
               >
                 <input
                   type="checkbox"
                   checked={selected.has(loc.id)}
                   onChange={() => toggle(loc.id)}
-                  className="w-4 h-4 rounded accent-[var(--primary)]"
+                  className="w-5 h-5 rounded border-2 border-foreground accent-primary"
                 />
-                <MapPin size={14} className="text-muted-foreground" />
-                <span className="text-sm">{loc.name}</span>
+                <MapPin size={14} strokeWidth={2.5} className="text-muted-foreground" />
+                <span className="text-sm font-medium">{loc.name}</span>
               </label>
             ))}
           </div>
