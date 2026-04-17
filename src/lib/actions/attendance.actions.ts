@@ -15,7 +15,7 @@ import {
   isEarlyArrival,
   getEffectiveWorkEnd,
 } from "@/lib/utils/attendance-overtime";
-import { computeStreak, buildMilestoneMessage } from "@/lib/utils/streak";
+import { computeStreak, buildMilestoneMessage, type StreakLogInput } from "@/lib/utils/streak";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import { cookies } from "next/headers";
@@ -231,7 +231,7 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
       .limit(120);
 
     const snapshot = computeStreak({
-      logs: logs ?? [],
+      logs: (logs ?? []) as StreakLogInput[],
       storedPersonalBest: profile.streak_personal_best ?? 0,
       storedLastMilestone: profile.streak_last_milestone ?? 0,
     });
@@ -298,7 +298,7 @@ export async function getMyStreak() {
     .limit(120);
 
   return computeStreak({
-    logs: logs ?? [],
+    logs: (logs ?? []) as StreakLogInput[],
     storedPersonalBest: profile?.streak_personal_best ?? 0,
     storedLastMilestone: profile?.streak_last_milestone ?? 0,
   });

@@ -82,7 +82,7 @@ export default async function AdminPayslipUserPage({
           year={year}
           payslip={payslip}
           deliverables={deliverables}
-          basis={settings.calculation_basis}
+          basis={settings.calculation_basis as "presence" | "deliverables" | "both"}
           attendanceWeightPct={Number(settings.attendance_weight_pct)}
           deliverablesWeightPct={Number(settings.deliverables_weight_pct)}
           monthlyFixedAmount={Number(settings.monthly_fixed_amount)}

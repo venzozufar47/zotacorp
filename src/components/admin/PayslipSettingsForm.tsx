@@ -59,14 +59,14 @@ function countWeekdaysInMonth(month: number, year: number, weekdays: number[]): 
 
 function toForm(s: PayslipSettings | null): FormData {
   return {
-    calculation_basis: s?.calculation_basis ?? "presence",
+    calculation_basis: (s?.calculation_basis ?? "presence") as Basis,
     monthly_fixed_amount: String(s?.monthly_fixed_amount ?? 0),
-    expected_days_mode: s?.expected_days_mode ?? "manual",
+    expected_days_mode: (s?.expected_days_mode ?? "manual") as ExpectedDaysMode,
     expected_work_days: String(s?.expected_work_days ?? 22),
     expected_weekdays: s?.expected_weekdays ?? [],
-    overtime_mode: s?.overtime_mode ?? "hourly_tiered",
+    overtime_mode: (s?.overtime_mode ?? "hourly_tiered") as FormData["overtime_mode"],
     ot_fixed_daily_rate: String(s?.ot_fixed_daily_rate ?? 0),
-    late_penalty_mode: s?.late_penalty_mode ?? "none",
+    late_penalty_mode: (s?.late_penalty_mode ?? "none") as FormData["late_penalty_mode"],
     late_penalty_amount: String(s?.late_penalty_amount ?? 0),
     late_penalty_interval_min: String(s?.late_penalty_interval_min ?? 30),
     attendance_weight_pct: String(s?.attendance_weight_pct ?? 50),

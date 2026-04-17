@@ -195,8 +195,8 @@ function calculateFromAttendance(
   }
 
   const breakdown: PayslipBreakdown = {
-    overtime_mode: settings.overtime_mode,
-    late_penalty_mode: settings.late_penalty_mode,
+    overtime_mode: settings.overtime_mode as PayslipBreakdown["overtime_mode"],
+    late_penalty_mode: settings.late_penalty_mode as PayslipBreakdown["late_penalty_mode"],
     grace_period_min: gracePeriodMin,
     overtime_days: overtimeDays.sort((a, b) => a.date.localeCompare(b.date)),
     late_days: lateDaysBreakdown.sort((a, b) => a.date.localeCompare(b.date)),
@@ -369,7 +369,7 @@ export async function calculatePayslip(userId: string, month: number, year: numb
   if (!settings) return { error: "Payslip settings not found for this employee." };
   if (!settings.is_finalized) return { error: "Payslip settings must be finalized before calculating." };
 
-  const basis = settings.calculation_basis;
+  const basis = settings.calculation_basis as "presence" | "deliverables" | "both";
   const includesAttendance = basis === "presence" || basis === "both";
   const includesDeliverables = basis === "deliverables" || basis === "both";
   const baseSalary = Number(settings.monthly_fixed_amount);
@@ -386,8 +386,8 @@ export async function calculatePayslip(userId: string, month: number, year: numb
 
   // Attendance-side calculation (only when attendance is in play)
   const emptyBreakdown: PayslipBreakdown = {
-    overtime_mode: settings.overtime_mode,
-    late_penalty_mode: settings.late_penalty_mode,
+    overtime_mode: settings.overtime_mode as PayslipBreakdown["overtime_mode"],
+    late_penalty_mode: settings.late_penalty_mode as PayslipBreakdown["late_penalty_mode"],
     grace_period_min: 0,
     overtime_days: [],
     late_days: [],
@@ -676,7 +676,7 @@ export async function updatePayslipManualEntries(
     .single();
 
   const netTotal = computeNetTotal(
-    settings?.calculation_basis ?? "presence",
+    (settings?.calculation_basis ?? "presence") as "presence" | "deliverables" | "both",
     Number(settings?.attendance_weight_pct ?? 100),
     Number(settings?.deliverables_weight_pct ?? 0),
     {
