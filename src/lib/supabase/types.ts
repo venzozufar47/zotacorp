@@ -208,39 +208,6 @@ export type Database = {
         }
         Relationships: []
       }
-      celebration_reminder_sends: {
-        Row: {
-          id: string
-          recipient_id: string
-          celebrant_id: string
-          event_type: string
-          event_year: number
-          slot_date: string
-          slot_hour: number
-          sent_at: string
-        }
-        Insert: {
-          id?: string
-          recipient_id: string
-          celebrant_id: string
-          event_type?: string
-          event_year: number
-          slot_date: string
-          slot_hour: number
-          sent_at?: string
-        }
-        Update: {
-          id?: string
-          recipient_id?: string
-          celebrant_id?: string
-          event_type?: string
-          event_year?: number
-          slot_date?: string
-          slot_hour?: number
-          sent_at?: string
-        }
-        Relationships: []
-      }
       celebration_messages: {
         Row: {
           author_id: string

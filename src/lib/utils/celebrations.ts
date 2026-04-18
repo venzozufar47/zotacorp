@@ -301,21 +301,6 @@ export function buildAnniversaryWaMessage(
 }
 
 /**
- * Nudge sent 4×/day (09:00, 12:00, 15:00, 18:00 WIB) to coworkers who
- * haven't yet posted a greeting for today's birthday celebrant.
- * Indonesian-only by policy — every outbound WA the system sends is
- * in Bahasa Indonesia regardless of the recipient's in-app language.
- */
-export function buildReminderMessage(
-  recipientName: string,
-  celebrantName: string
-): string {
-  const me = (recipientName.split(" ")[0] ?? recipientName).trim() || recipientName;
-  const them = (celebrantName.split(" ")[0] ?? celebrantName).trim() || celebrantName;
-  return `💐 Halo ${me}, hari ini ${them} ulang tahun!\n\nYuk kasih ucapan di Zota App — walau singkat pasti bikin seneng ✨`;
-}
-
-/**
  * Short notification sent to the celebrant when someone posts a new
  * greeting on their celebration. The body preview is intentionally
  * omitted so the celebrant has to open the app — preserves the

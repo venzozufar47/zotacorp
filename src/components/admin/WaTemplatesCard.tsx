@@ -243,8 +243,6 @@ function sampleValuesFor(
         authorName: "Venzo",
         eventKind: "ulang tahun",
       };
-    case "celebration_reminder":
-      return { recipientName: "Diba", celebrantName: "Arifin" };
     case "streak_milestone":
       return { name: "Arifin", days: 10 };
     case "attendance_check_in_alert":
