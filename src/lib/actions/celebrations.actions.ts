@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -15,6 +16,7 @@ import {
   type CelebrationRow,
   buildBirthdayWaMessage,
   buildAnniversaryWaMessage,
+  buildGreetingNotificationMessage,
   getCelebrantsInWindow,
   getSelfCelebrationToday,
   isAnniversaryMilestone,
@@ -247,7 +249,76 @@ export async function postCelebrationMessage(input: {
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/dashboard");
+
+  // Fire-and-forget: notify the celebrant on WhatsApp that a new greeting
+  // landed. Only for `greeting` — broadcasts/replies are authored BY the
+  // celebrant, notifying them of their own messages would be noise.
+  if (input.kind === "greeting") {
+    const celebrantId = input.celebrantId;
+    const authorId = user.id;
+    const eventKind = input.eventType;
+    const bodySnapshot = body;
+    after(async () => {
+      try {
+        await notifyCelebrantOfGreeting({
+          celebrantId,
+          authorId,
+          eventKind,
+          body: bodySnapshot,
+        });
+      } catch (err) {
+        console.error("[celebrations] greeting WA notify failed", err);
+      }
+    });
+  }
+
   return { ok: true };
+}
+
+/**
+ * Sends a WhatsApp nudge to the celebrant telling them a new greeting
+ * has arrived, with a short preview. Uses the service-role client so it
+ * can read whatsapp_number across profiles regardless of the caller's
+ * RLS scope. Silently skips if the celebrant has no whatsapp_number set.
+ */
+async function notifyCelebrantOfGreeting(args: {
+  celebrantId: string;
+  authorId: string;
+  eventKind: CelebrationKind;
+  body: string;
+}) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn("[celebrations] missing SERVICE_ROLE key — skip greeting notify");
+    return;
+  }
+  const admin = createAdminClient<Database>(url, key);
+
+  const [{ data: celebrant }, { data: author }] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("full_name, nickname, whatsapp_number")
+      .eq("id", args.celebrantId)
+      .maybeSingle(),
+    admin
+      .from("profiles")
+      .select("full_name, nickname")
+      .eq("id", args.authorId)
+      .maybeSingle(),
+  ]);
+
+  if (!celebrant?.whatsapp_number) return;
+  const phone = normalizePhone(celebrant.whatsapp_number);
+  if (!phone) return;
+
+  const celebrantName = pickDisplayName(celebrant.full_name, celebrant.nickname);
+  const authorName = pickDisplayName(author?.full_name, author?.nickname);
+
+  await sendWhatsApp(
+    phone,
+    buildGreetingNotificationMessage("id", celebrantName, authorName, args.body, args.eventKind)
+  );
 }
 
 /**
