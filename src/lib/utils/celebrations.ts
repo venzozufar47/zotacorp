@@ -302,26 +302,24 @@ export function buildAnniversaryWaMessage(
 
 /**
  * Short notification sent to the celebrant when someone posts a new
- * greeting on their celebration. Includes a trimmed body preview so
- * they don't have to open the app just to feel the warmth.
+ * greeting on their celebration. The body preview is intentionally
+ * omitted so the celebrant has to open the app — preserves the
+ * surprise and drives them to the feed.
  */
 export function buildGreetingNotificationMessage(
   lang: Language,
   celebrantName: string,
   authorName: string,
-  body: string,
+  _body: string,
   eventKind: CelebrationKind
 ): string {
   const first = (celebrantName.split(" ")[0] ?? celebrantName).trim() || celebrantName;
-  const preview = body.trim().length > 140
-    ? body.trim().slice(0, 140).replace(/\s+\S*$/, "") + "…"
-    : body.trim();
   const author = authorName.trim() || "Seseorang";
   if (lang === "en") {
     const eventWord = eventKind === "birthday" ? "birthday" : "anniversary";
-    return `💌 ${first}, you've got a new ${eventWord} message from ${author}:\n\n"${preview}"\n\nOpen Zota to reply ✨`;
+    return `💌 ${first}, you've got a new ${eventWord} message from ${author}!\n\nOpen the Zota app to reply ✨`;
   }
   const eventWord = eventKind === "birthday" ? "ulang tahun" : "anniversary";
-  return `💌 ${first}, ada ucapan ${eventWord} baru dari ${author}:\n\n"${preview}"\n\nBuka Zota buat balas ✨`;
+  return `💌 ${first}, ada ucapan ${eventWord} baru dari ${author}!\n\nBuka Zota App buat balas ✨`;
 }
 
