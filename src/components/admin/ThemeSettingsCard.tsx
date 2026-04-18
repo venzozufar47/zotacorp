@@ -76,16 +76,31 @@ export function ThemeSettingsCard({ current }: ThemeSettingsCardProps) {
           {THEMES.map((theme) => {
             const active = selected === theme.id;
             const isCurrent = current === theme.id;
+            // Only Oceanic Editorial is actively maintained right now.
+            // Other themes are hidden behind a disabled state + "Soon"
+            // badge until they're brought back to parity with new features.
+            const isDisabled = theme.id !== "oceanic";
             return (
               <button
                 key={theme.id}
                 type="button"
-                onClick={() => setSelected(theme.id)}
+                onClick={() => {
+                  if (isDisabled) return;
+                  setSelected(theme.id);
+                }}
+                disabled={isDisabled}
                 aria-pressed={active}
-                aria-label={`Select ${theme.label} theme`}
+                aria-disabled={isDisabled}
+                aria-label={
+                  isDisabled
+                    ? `${theme.label} theme — coming soon`
+                    : `Select ${theme.label} theme`
+                }
                 className={cn(
                   "group/theme relative flex flex-col items-stretch gap-2 rounded-2xl border-2 p-2.5 text-left transition-all duration-200",
-                  active
+                  isDisabled
+                    ? "border-border bg-card opacity-50 grayscale cursor-not-allowed"
+                    : active
                     ? "border-foreground bg-accent shadow-hard"
                     : "border-border bg-card hover:border-foreground/50 hover:-translate-y-0.5"
                 )}
@@ -105,6 +120,11 @@ export function ThemeSettingsCard({ current }: ThemeSettingsCardProps) {
                     {isCurrent && (
                       <span className="text-[10px] font-display font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border-2 border-foreground bg-quaternary text-foreground">
                         Active
+                      </span>
+                    )}
+                    {isDisabled && (
+                      <span className="text-[10px] font-display font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                        Soon
                       </span>
                     )}
                     <span
