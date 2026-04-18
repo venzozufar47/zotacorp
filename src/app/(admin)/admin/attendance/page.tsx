@@ -12,9 +12,11 @@ import {
   getAllEmployees,
   type AdminAttendanceSortKey,
 } from "@/lib/actions/attendance.actions";
+import { getCelebrationsFeed } from "@/lib/actions/celebrations.actions";
 import { AttendanceRecapTable } from "@/components/admin/AttendanceRecapTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AttendanceFilters } from "@/components/admin/AttendanceFilters";
+import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface SearchParams {
@@ -63,6 +65,15 @@ export default async function AdminAttendancePage({
   let count = 0;
   let employees: Awaited<ReturnType<typeof getAllEmployees>> = [];
   let settings: Awaited<ReturnType<typeof getCachedAttendanceSettings>> = null;
+
+  // Celebrations feed for the admin: same component employees see, so
+  // admins can monitor today + upcoming birthdays/anniversaries and
+  // optionally post a greeting themselves. Fetched in parallel below.
+  const celebrationsFeed = await getCelebrationsFeed().catch(() => ({
+    today: [],
+    upcoming: [],
+    mySelfCelebration: null,
+  }));
 
   try {
     const [logsResult, emps, s] = await Promise.all([
@@ -147,6 +158,8 @@ export default async function AdminAttendancePage({
         title="Attendance Recap"
         subtitle={`Overview for all employees — ${format(new Date(startDate), "d MMM")} to ${format(new Date(endDate), "d MMM yyyy")}`}
       />
+
+      <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 
       <AttendanceFilters
         startDate={startDate}
