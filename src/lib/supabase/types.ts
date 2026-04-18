@@ -187,6 +187,60 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_templates: {
+        Row: {
+          template_key: string
+          body: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          template_key: string
+          body: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          template_key?: string
+          body?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      celebration_reminder_sends: {
+        Row: {
+          id: string
+          recipient_id: string
+          celebrant_id: string
+          event_type: string
+          event_year: number
+          slot_date: string
+          slot_hour: number
+          sent_at: string
+        }
+        Insert: {
+          id?: string
+          recipient_id: string
+          celebrant_id: string
+          event_type?: string
+          event_year: number
+          slot_date: string
+          slot_hour: number
+          sent_at?: string
+        }
+        Update: {
+          id?: string
+          recipient_id?: string
+          celebrant_id?: string
+          event_type?: string
+          event_year?: number
+          slot_date?: string
+          slot_hour?: number
+          sent_at?: string
+        }
+        Relationships: []
+      }
       celebration_messages: {
         Row: {
           author_id: string

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/celebration-reminders",
+      "schedule": "0 2,5,8,11 * * *"
+    }
+  ]
+}

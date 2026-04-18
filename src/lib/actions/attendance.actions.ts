@@ -15,10 +15,10 @@ import {
   isEarlyArrival,
   getEffectiveWorkEnd,
 } from "@/lib/utils/attendance-overtime";
-import { computeStreak, buildMilestoneMessage, type StreakLogInput } from "@/lib/utils/streak";
+import { computeStreak, type StreakLogInput } from "@/lib/utils/streak";
+import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
-import { cookies } from "next/headers";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -254,19 +254,11 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
     if (snapshot.milestoneHitNow > 0 && profile.whatsapp_number) {
       const phone = normalizePhone(profile.whatsapp_number);
       if (phone) {
-        // Respect the employee's preferred language cookie when building
-        // the copy. Falls back to Indonesian (the app default).
-        const store = await cookies();
-        const raw = store.get("zota_lang_v2")?.value;
-        const lang: "id" | "en" = raw === "en" ? "en" : "id";
-        await sendWhatsApp(
-          phone,
-          buildMilestoneMessage(
-            lang,
-            profile.full_name ?? (lang === "en" ? "there" : "teman"),
-            snapshot.milestoneHitNow
-          )
-        );
+        const message = await renderWaTemplate("streak_milestone", {
+          name: profile.full_name ?? "teman",
+          days: snapshot.milestoneHitNow,
+        });
+        await sendWhatsApp(phone, message);
       }
     }
   } catch (err) {

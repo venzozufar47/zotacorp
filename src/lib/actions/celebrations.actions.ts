@@ -14,16 +14,14 @@ import {
   type Celebrant,
   type CelebrationKind,
   type CelebrationRow,
-  buildBirthdayWaMessage,
-  buildAnniversaryWaMessage,
-  buildGreetingNotificationMessage,
   getCelebrantsInWindow,
   getSelfCelebrationToday,
-  isAnniversaryMilestone,
   isWithinActiveWindow,
   pickDisplayName,
+  resolveBirthdayThisYear,
   zonedDateString,
 } from "@/lib/utils/celebrations";
+import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 
@@ -315,10 +313,13 @@ async function notifyCelebrantOfGreeting(args: {
   const celebrantName = pickDisplayName(celebrant.full_name, celebrant.nickname);
   const authorName = pickDisplayName(author?.full_name, author?.nickname);
 
-  await sendWhatsApp(
-    phone,
-    buildGreetingNotificationMessage("id", celebrantName, authorName, args.body, args.eventKind)
-  );
+  const eventKindLabel = args.eventKind === "birthday" ? "ulang tahun" : "anniversary";
+  const message = await renderWaTemplate("celebration_greeting_notification", {
+    celebrantName,
+    authorName,
+    eventKind: eventKindLabel,
+  });
+  await sendWhatsApp(phone, message);
 }
 
 /**
@@ -400,11 +401,6 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     }
     const admin = createAdminClient<Database>(url, key);
 
-    // WA copy goes in Indonesian — the company default. Per-user language
-    // preference isn't stored on profiles, and the greeting reads fine to
-    // any Zota employee regardless of their in-app language choice.
-    const lang: "en" | "id" = "id";
-
     // Birthday candidates: anyone whose DOB MM-DD matches today.
     const { data: bCandidates } = await admin
       .from("profiles")
@@ -433,7 +429,10 @@ export async function dispatchTodaysGreetings(): Promise<void> {
       if (!phone) continue;
       const waName = pickDisplayName(claimed.full_name, claimed.nickname);
       try {
-        await sendWhatsApp(phone, buildBirthdayWaMessage(lang, waName));
+        const message = await renderWaTemplate("celebration_birthday_morning", {
+          name: waName,
+        });
+        await sendWhatsApp(phone, message);
       } catch (err) {
         console.error("[celebrations] birthday WA failed", err);
       }
@@ -470,10 +469,11 @@ export async function dispatchTodaysGreetings(): Promise<void> {
       if (!phone) continue;
       const waName = pickDisplayName(claimed.full_name, claimed.nickname);
       try {
-        await sendWhatsApp(
-          phone,
-          buildAnniversaryWaMessage(lang, waName, years, isAnniversaryMilestone(years))
+        const message = await renderWaTemplate(
+          "celebration_anniversary_morning",
+          { name: waName, years }
         );
+        await sendWhatsApp(phone, message);
       } catch (err) {
         console.error("[celebrations] anniversary WA failed", err);
       }
@@ -491,4 +491,160 @@ function normalizeMmddToToday(mmdd: string, year: number): string {
     return `${year}-02-28`;
   }
   return `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/**
+ * Construct a Supabase client bound to the service-role key so a
+ * dispatcher can read `whatsapp_number` across all profiles and run
+ * atomic claims outside the caller's RLS scope. Returns null when the
+ * key is missing — callers log + no-op rather than throwing so a misconfig
+ * never leaks to the user-facing request.
+ */
+function buildServiceRoleAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn("[celebrations] missing SERVICE_ROLE key");
+    return null;
+  }
+  return createAdminClient<Database>(url, key);
+}
+
+/**
+ * Fires 4× daily (09:00, 12:00, 15:00, 18:00 WIB) from
+ * /api/cron/celebration-reminders. Nudges every active coworker who
+ * hasn't yet posted a greeting for today's birthday celebrant(s) via
+ * WhatsApp.
+ *
+ * Dedupe: a unique index on (recipient, celebrant, event_type,
+ * event_year, slot_date, slot_hour) in `celebration_reminder_sends`
+ * acts as the atomic claim. On conflict (error code 23505) we silently
+ * skip — another concurrent dispatcher run (retry, manual poke) already
+ * claimed this pair for this slot.
+ *
+ * The celebrant themselves never get reminders. Anniversaries are out
+ * of scope for this feature.
+ */
+export async function sendCelebrationReminders(): Promise<{
+  slot: number | null;
+  celebrantCount: number;
+  attempted: number;
+  sent: number;
+}> {
+  const settings = await getCachedAttendanceSettings();
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const now = new Date();
+
+  // Slot gate. Cron should only fire us at these hours, but defend
+  // against manual pokes or near-hour drift landing at :59 of a non-slot.
+  const localHour = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      hour12: false,
+      timeZone: tz,
+    }).format(now)
+  );
+  if (![9, 12, 15, 18].includes(localHour)) {
+    return { slot: null, celebrantCount: 0, attempted: 0, sent: 0 };
+  }
+
+  const todayIso = zonedDateString(now, tz);
+  const [yearStr] = todayIso.split("-");
+  const eventYear = Number(yearStr);
+
+  const admin = buildServiceRoleAdmin();
+  if (!admin) {
+    return { slot: localHour, celebrantCount: 0, attempted: 0, sent: 0 };
+  }
+
+  // 1. Today's birthday celebrants (MM-DD match in app tz).
+  const { data: candidates } = await admin
+    .from("profiles")
+    .select("id, full_name, nickname, date_of_birth")
+    .not("date_of_birth", "is", null);
+
+  const celebrants = (candidates ?? []).filter((p) => {
+    if (!p.date_of_birth) return false;
+    const [, pm, pd] = p.date_of_birth.split("-").map(Number);
+    const pmmdd = `${String(pm).padStart(2, "0")}-${String(pd).padStart(2, "0")}`;
+    return resolveBirthdayThisYear(pmmdd, eventYear) === todayIso;
+  });
+  if (celebrants.length === 0) {
+    return { slot: localHour, celebrantCount: 0, attempted: 0, sent: 0 };
+  }
+
+  // 2. Recipients: every active employee with a WA number, minus the
+  //    celebrants themselves (they already got their morning greeting).
+  const celebrantIds = new Set(celebrants.map((c) => c.id));
+  const { data: allEmployees } = await admin
+    .from("profiles")
+    .select("id, full_name, nickname, whatsapp_number")
+    .eq("is_active", true)
+    .not("whatsapp_number", "is", null);
+  const recipients = (allEmployees ?? []).filter(
+    (e) => e.whatsapp_number?.trim() && !celebrantIds.has(e.id)
+  );
+
+  // 3. Who has already posted a greeting for any of today's celebrants
+  //    this event_year? One query, bucket in memory. Employees in this
+  //    set skip reminders for the matching celebrant for the rest of
+  //    the day (and future years, which is correct — event_year advances).
+  const { data: posted } = await admin
+    .from("celebration_messages")
+    .select("author_id, celebrant_id")
+    .eq("event_type", "birthday")
+    .eq("event_year", eventYear)
+    .eq("kind", "greeting")
+    .in("celebrant_id", [...celebrantIds]);
+  const postedSet = new Set(
+    (posted ?? []).map((r) => `${r.author_id}|${r.celebrant_id}`)
+  );
+
+  // 4. Per (recipient, celebrant): try the atomic claim, then send.
+  let attempted = 0;
+  let sent = 0;
+  for (const recipient of recipients) {
+    for (const celebrant of celebrants) {
+      if (postedSet.has(`${recipient.id}|${celebrant.id}`)) continue;
+      attempted++;
+
+      const { data: claimed, error } = await admin
+        .from("celebration_reminder_sends")
+        .insert({
+          recipient_id: recipient.id,
+          celebrant_id: celebrant.id,
+          event_type: "birthday",
+          event_year: eventYear,
+          slot_date: todayIso,
+          slot_hour: localHour,
+        })
+        .select("id")
+        .maybeSingle();
+
+      // 23505 = unique_violation. Another dispatcher run already claimed
+      // this slot for this (recipient, celebrant). Move on.
+      if (error?.code === "23505" || !claimed) continue;
+
+      const phone = normalizePhone(recipient.whatsapp_number ?? "");
+      if (!phone) continue;
+
+      try {
+        const message = await renderWaTemplate("celebration_reminder", {
+          recipientName: pickDisplayName(recipient.full_name, recipient.nickname),
+          celebrantName: pickDisplayName(celebrant.full_name, celebrant.nickname),
+        });
+        await sendWhatsApp(phone, message);
+        sent++;
+      } catch (err) {
+        console.error("[celebrations] reminder WA failed", err);
+      }
+    }
+  }
+
+  return {
+    slot: localHour,
+    celebrantCount: celebrants.length,
+    attempted,
+    sent,
+  };
 }

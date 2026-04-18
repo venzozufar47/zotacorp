@@ -9,9 +9,11 @@ import {
 import { AttendanceSettingsForm } from "@/components/admin/AttendanceSettingsForm";
 import { LanguageCard } from "@/components/settings/LanguageCard";
 import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCard";
+import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { ThemeSettingsCard } from "@/components/admin/ThemeSettingsCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { listWhatsAppRecipients } from "@/lib/actions/whatsapp-recipients.actions";
+import { listWaTemplates } from "@/lib/whatsapp/templates";
 import { getTheme } from "@/lib/themes";
 
 export default async function AdminSettingsPage() {
@@ -21,9 +23,10 @@ export default async function AdminSettingsPage() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [settings, waRecipients] = await Promise.all([
+  const [settings, waRecipients, waTemplates] = await Promise.all([
     getCachedAttendanceSettings(),
     listWhatsAppRecipients(),
+    listWaTemplates(),
   ]);
 
   if (!settings) {
@@ -53,6 +56,19 @@ export default async function AdminSettingsPage() {
       <AttendanceSettingsForm settings={settings} />
       <ThemeSettingsCard current={currentTheme} />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
+      <WaTemplatesCard
+        initialTemplates={waTemplates.map((t) => ({
+          key: t.key,
+          label: t.label,
+          description: t.description,
+          recipient: t.recipient,
+          placeholders: [...t.placeholders],
+          defaultBody: t.defaultBody,
+          body: t.body,
+          isCustomized: t.isCustomized,
+          updatedAt: t.updatedAt,
+        }))}
+      />
       <LanguageCard />
     </div>
   );

@@ -12,6 +12,7 @@ import {
   getAdminWhatsAppRecipients,
 } from "@/lib/whatsapp/fonnte";
 import { resolveLocationForEmployee } from "@/lib/location/resolve-location";
+import { renderWaTemplate } from "@/lib/whatsapp/templates";
 
 type AttendanceEvent = "in" | "out";
 
@@ -46,8 +47,6 @@ export async function notifyAdminAttendance(params: NotifyParams): Promise<void>
   const timezone = params.timezone ?? "Asia/Jakarta";
 
   const time = formatJakartaTime(at, timezone);
-  const verb = event === "in" ? "sign in" : "sign out";
-  const emoji = event === "in" ? "✅" : "🏁";
 
   // employeeId is optional defensively, but in practice it's always passed
   // by the call sites in attendance.actions.ts.
@@ -55,11 +54,23 @@ export async function notifyAdminAttendance(params: NotifyParams): Promise<void>
     ? await resolveLocationForEmployee(employeeId, latitude, longitude)
     : { label: "Lokasi tidak diketahui", mapsUrl: null, outside: false };
 
-  const lines = [`${emoji} ${fullName} ${verb} jam ${time} dari ${location.label}`];
-  if (params.outsideNote && location.outside) {
-    lines.push(`Catatan: ${params.outsideNote}`);
-  }
-  if (location.mapsUrl) lines.push(location.mapsUrl);
+  // Optional placeholders — each gets a leading newline when non-empty so
+  // admin-authored templates can drop `{note}{mapsUrl}` inline without
+  // having to handle the blank case.
+  const note = params.outsideNote && location.outside
+    ? `\nCatatan: ${params.outsideNote}`
+    : "";
+  const mapsUrl = location.mapsUrl ? `\n${location.mapsUrl}` : "";
 
-  await sendWhatsApp(recipients, lines.join("\n"));
+  const templateKey =
+    event === "in" ? "attendance_check_in_alert" : "attendance_check_out_alert";
+  const message = await renderWaTemplate(templateKey, {
+    fullName,
+    time,
+    location: location.label,
+    note,
+    mapsUrl,
+  });
+
+  await sendWhatsApp(recipients, message);
 }
