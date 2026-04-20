@@ -374,6 +374,23 @@ export function CashflowTable({
                     : "Auto-isi / override kategori & cabang"}
                 </Button>
               )}
+              {/* Always-available quick add — enters edit mode and
+                  inserts a blank row in one click, so admins don't
+                  have to toggle Edit first just to add a transaction.
+                  Mirrors the rules editor's persistent "add row" UX. */}
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setEditing(true);
+                  handleAddRow();
+                }}
+                disabled={pending}
+                className="gap-1.5"
+              >
+                <Plus size={12} />
+                Tambah baris
+              </Button>
               <Button
                 type="button"
                 size="sm"
