@@ -36,6 +36,30 @@ async function requireAdmin(): Promise<
   return { ok: true, userId: user.id };
 }
 
+/**
+ * Allow both admin and explicit assignees of `bankAccountId`. Used for
+ * transaction CRUD on per-rekening ACL'd accounts (currently cash
+ * rekening). Delete paths still call `requireAdmin` since assignees
+ * have read+input+edit permission only, not delete.
+ */
+async function requireAdminOrAssignee(
+  bankAccountId: string
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const { data: assignment } = await supabase
+    .from("bank_account_assignees")
+    .select("bank_account_id")
+    .eq("bank_account_id", bankAccountId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!assignment) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Bank accounts
 // ─────────────────────────────────────────────────────────────────────
@@ -271,9 +295,9 @@ export async function createManualTransaction(input: {
   category?: string | null;
   branch?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
   if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
+  const gate = await requireAdminOrAssignee(input.bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date))
     return { ok: false, error: "Format tanggal tidak valid (YYYY-MM-DD)" };
   if (typeof input.debit !== "number" || typeof input.credit !== "number")
@@ -428,11 +452,38 @@ export async function updateCashflowTransactions(
     branch?: string | null;
   }>
 ): Promise<ActionResult<{ updatedCount: number }>> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
   if (updates.length === 0) return { ok: true, data: { updatedCount: 0 } };
 
   const supabase = await createClient();
+
+  // Resolve the owning bank_account_id for every tx being touched and
+  // enforce the admin-or-assignee guard per account. RLS would block
+  // the UPDATE anyway; doing the check explicitly gives us a clean
+  // error message instead of a silent 0-row update.
+  const ids = updates.map((u) => u.id).filter(Boolean);
+  const { data: txRows } = await supabase
+    .from("cashflow_transactions")
+    .select("statement_id")
+    .in("id", ids);
+  const stmtIds = Array.from(
+    new Set((txRows ?? []).map((r) => r.statement_id).filter(Boolean))
+  );
+  const { data: stmtRows } = stmtIds.length
+    ? await supabase
+        .from("cashflow_statements")
+        .select("bank_account_id")
+        .in("id", stmtIds)
+    : { data: [] as Array<{ bank_account_id: string }> };
+  const uniqueAccounts = new Set(
+    (stmtRows ?? []).map((s) => s.bank_account_id)
+  );
+  for (const accountId of uniqueAccounts) {
+    const gate = await requireAdminOrAssignee(accountId);
+    if (!gate.ok) return { ok: false, error: gate.error };
+  }
+
   let updatedCount = 0;
   for (const u of updates) {
     if (!u.id) continue;
