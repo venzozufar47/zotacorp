@@ -290,8 +290,12 @@ export function StatementEditorClient({
               <tr>
                 <th className="text-left font-semibold px-3 py-2 w-32">Tanggal</th>
                 <th className="text-left font-semibold px-3 py-2">Keterangan</th>
-                <th className="text-right font-semibold px-3 py-2 w-36">Debit</th>
-                <th className="text-right font-semibold px-3 py-2 w-36">Kredit</th>
+                <th className="text-right font-semibold px-3 py-2 w-36">
+                  <span className="text-destructive">−</span> Debit
+                </th>
+                <th className="text-right font-semibold px-3 py-2 w-36">
+                  <span className="text-success">+</span> Kredit
+                </th>
                 <th className="text-right font-semibold px-3 py-2 w-36">Saldo</th>
                 <th className="text-left font-semibold px-3 py-2 w-48">Kategori</th>
                 {categoryPresets.branches.length > 0 && (

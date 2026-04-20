@@ -535,8 +535,15 @@ export function CashflowTable({
                 {showSource && <Th className="w-56">Sumber / Tujuan</Th>}
                 {showDetails && <Th className="w-56">Detail Transaksi</Th>}
                 <Th className="w-56">Catatan</Th>
-                <Th className="w-28 text-right">Debit</Th>
-                <Th className="w-28 text-right">Kredit</Th>
+                {/* +/− cues clarify direction at a glance: Debit = uang
+                    keluar (−), Kredit = uang masuk (+). Matches the
+                    red/green colouring on the amount cells. */}
+                <Th className="w-28 text-right">
+                  <span className="text-destructive">−</span> Debit
+                </Th>
+                <Th className="w-28 text-right">
+                  <span className="text-success">+</span> Kredit
+                </Th>
                 <Th className="w-32 text-right">Saldo</Th>
                 <Th className="w-44">Kategori</Th>
                 {showBranchColumn && categoryPresets.branches.length > 0 && (
