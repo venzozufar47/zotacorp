@@ -1,14 +1,21 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
 
-export default function EmployeeLayout({
+export default async function EmployeeLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Expose "Keuangan" in the rail only when the user is actually
+  // assigned to at least one rekening. Cheap single-column query; RLS
+  // scopes to the current user.
+  const assignedIds = await listMyAssignedBankAccountIds();
+  const hasFinance = assignedIds.length > 0;
+
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar className="hidden md:flex" />
+      <Sidebar className="hidden md:flex" hasFinance={hasFinance} />
       <main className="flex-1 min-w-0">
         {/* Matches the admin layout's fluid cap so the attendance history
             table gets room to breathe on 1440p / 1920p monitors. Pages
@@ -19,7 +26,7 @@ export default function EmployeeLayout({
           {children}
         </div>
       </main>
-      <BottomNav />
+      <BottomNav hasFinance={hasFinance} />
     </div>
   );
 }

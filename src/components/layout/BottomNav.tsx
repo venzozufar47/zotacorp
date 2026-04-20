@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu } from "./HamburgerMenu";
 
-export function BottomNav() {
+export function BottomNav({ hasFinance = false }: { hasFinance?: boolean }) {
   const pathname = usePathname();
   const { t } = useTranslation();
 
@@ -15,6 +15,16 @@ export function BottomNav() {
     { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home, color: "bg-primary" },
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
+    ...(hasFinance
+      ? [
+          {
+            href: "/admin/finance",
+            icon: Wallet,
+            label: "Keuangan",
+            color: "bg-pop-emerald",
+          },
+        ]
+      : []),
   ];
 
   return (

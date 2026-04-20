@@ -23,9 +23,6 @@ import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { getDictionary } from "@/lib/i18n/server";
-import { listMyAssignedBankAccounts } from "@/lib/actions/cashflow.actions";
-import Link from "next/link";
-import { Wallet } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -85,7 +82,6 @@ export default async function DashboardPage() {
     otReqRes,
     extraWorkRes,
     celebrationsFeed,
-    assignedRekening,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -105,7 +101,6 @@ export default async function DashboardPage() {
       .eq("date", todayDate)
       .order("created_at", { ascending: false }),
     getCelebrationsFeed(),
-    listMyAssignedBankAccounts(),
   ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -159,49 +154,6 @@ export default async function DashboardPage() {
       <ProfileCompletionCard missingSections={missingSections} />
 
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
-
-      {assignedRekening.length > 0 && (
-        <section
-          aria-label="Rekening yang di-assign"
-          className="animate-fade-up animate-fade-up-delay-1"
-        >
-          <div className="flex items-center justify-between px-1 mb-2.5">
-            <span className="eyebrow text-muted-foreground">Rekening kamu</span>
-            <span
-              aria-hidden
-              className="h-px flex-1 ml-3 bg-gradient-to-r from-border to-transparent"
-            />
-          </div>
-          <div className="panel-sticker p-5 space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Admin sudah meng-assign kamu ke rekening berikut. Klik untuk input
-              atau edit transaksi.
-            </p>
-            <ul className="space-y-2">
-              {assignedRekening.map((r) => (
-                <li key={r.id}>
-                  <Link
-                    href={`/admin/finance/rekening/${r.id}`}
-                    className="flex items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2.5 hover:bg-accent/30 transition"
-                  >
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Wallet size={14} />
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-semibold text-foreground truncate">
-                        {r.accountName}
-                      </span>
-                      <span className="block text-[11px] text-muted-foreground uppercase tracking-wider">
-                        {r.bank} · {r.businessUnit}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      )}
 
       {/* Attendance — magazine-style section with an eyebrow label and a soft
           white panel that floats above the page background. The section

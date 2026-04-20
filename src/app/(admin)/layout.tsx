@@ -3,6 +3,7 @@ import { AdminMobileNav } from "@/components/layout/AdminMobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { getCurrentRole } from "@/lib/supabase/cached";
+import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
 
 export default async function AdminLayout({
   children,
@@ -17,15 +18,17 @@ export default async function AdminLayout({
   const isAdmin = role === "admin";
 
   if (!isAdmin) {
+    const assignedIds = await listMyAssignedBankAccountIds();
+    const hasFinance = assignedIds.length > 0;
     return (
       <div className="flex min-h-screen bg-background">
-        <Sidebar className="hidden md:flex" />
+        <Sidebar className="hidden md:flex" hasFinance={hasFinance} />
         <main className="flex-1 min-w-0">
           <div className="max-w-[1700px] mx-auto px-4 py-6 pb-24 md:px-6 md:pb-8">
             {children}
           </div>
         </main>
-        <BottomNav />
+        <BottomNav hasFinance={hasFinance} />
       </div>
     );
   }
