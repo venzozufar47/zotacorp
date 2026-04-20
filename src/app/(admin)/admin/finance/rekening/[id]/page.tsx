@@ -138,8 +138,14 @@ export default async function RekeningDetailPage({
       chronological[0].credit +
       chronological[0].debit
     : 0;
+  // Latest balance is derived from the same credit−debit cumulation
+  // the table now renders per-row, so the summary's "Saldo akhir
+  // tercatat" stays in lockstep with the first (newest) row's Saldo
+  // cell in the table. Using a stored per-row runningBalance here
+  // would desync the two views whenever the user edits amounts
+  // without touching the stored balance column.
   const latestBalance = canVerify
-    ? chronological[chronological.length - 1].runningBalance
+    ? openingBalance + totalCredit - totalDebit
     : statementList[0]?.closing_balance ?? 0;
   const verification = canVerify
     ? verifyBalance(openingBalance, Number(latestBalance), txList)
