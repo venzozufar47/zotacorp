@@ -65,8 +65,12 @@ async function requireAdminOrAssignee(
 // ─────────────────────────────────────────────────────────────────────
 
 export async function listBankAccounts(businessUnit?: string) {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false as const, error: gate.error, data: [] };
+  // No admin gate here — RLS (bank_accounts_admin_or_assignee_select)
+  // already filters to the rows the current user can see. Gating on
+  // role here would hide assigned rekening from non-admin users on the
+  // /admin/finance carve-out.
+  const user = await getCurrentUser();
+  if (!user) return { ok: false as const, error: "Not signed in", data: [] };
   const supabase = await createClient();
   let query = supabase
     .from("bank_accounts")
@@ -161,8 +165,10 @@ export async function deleteBankAccount(id: string): Promise<ActionResult> {
 // ─────────────────────────────────────────────────────────────────────
 
 export async function listStatements(bankAccountId: string) {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false as const, error: gate.error, data: [] };
+  // RLS (cashflow_statements_admin_or_assignee_select) scopes the rows
+  // per user; no role gate needed here. See listBankAccounts note.
+  const user = await getCurrentUser();
+  if (!user) return { ok: false as const, error: "Not signed in", data: [] };
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("cashflow_statements")
