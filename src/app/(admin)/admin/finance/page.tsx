@@ -39,10 +39,15 @@ async function computeLatestBalance(
   const stmtIds = (stmts ?? []).map((s) => s.id);
   if (stmtIds.length === 0) return 0;
 
+  // Match the detail page's anchor semantics: pick the oldest row that
+  // actually has a stored running_balance. For cash rekening this comes
+  // back empty (baseline stays 0); for bank-imported rekening this is
+  // the earliest statement row we can trust.
   const { data: oldest } = await supabase
     .from("cashflow_transactions")
     .select("debit, credit, running_balance")
     .in("statement_id", stmtIds)
+    .not("running_balance", "is", null)
     .order("transaction_date", { ascending: true })
     .order("transaction_time", { ascending: true, nullsFirst: false })
     .order("sort_order", { ascending: false })
