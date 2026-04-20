@@ -43,6 +43,276 @@ export type Database = {
   }
   public: {
     Tables: {
+      bank_accounts: {
+        Row: {
+          id: string
+          business_unit: string
+          bank: string
+          account_number: string | null
+          account_name: string
+          is_active: boolean
+          created_by: string | null
+          pdf_password: string | null
+          source_url: string | null
+          source_sheet: string | null
+          default_branch: string | null
+          last_synced_at: string | null
+          custom_categories: unknown
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          business_unit: string
+          bank: string
+          account_number?: string | null
+          account_name: string
+          is_active?: boolean
+          created_by?: string | null
+          pdf_password?: string | null
+          source_url?: string | null
+          source_sheet?: string | null
+          default_branch?: string | null
+          last_synced_at?: string | null
+          custom_categories?: unknown
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          business_unit?: string
+          bank?: string
+          account_number?: string | null
+          account_name?: string
+          is_active?: boolean
+          created_by?: string | null
+          pdf_password?: string | null
+          source_url?: string | null
+          source_sheet?: string | null
+          default_branch?: string | null
+          last_synced_at?: string | null
+          custom_categories?: unknown
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      bank_account_assignees: {
+        Row: {
+          bank_account_id: string
+          user_id: string
+          assigned_at: string
+          assigned_by: string | null
+        }
+        Insert: {
+          bank_account_id: string
+          user_id: string
+          assigned_at?: string
+          assigned_by?: string | null
+        }
+        Update: {
+          bank_account_id?: string
+          user_id?: string
+          assigned_at?: string
+          assigned_by?: string | null
+        }
+        Relationships: []
+      }
+      cashflow_pusat_allocations: {
+        Row: {
+          id: string
+          business_unit: string
+          period_year: number
+          period_month: number
+          side: "credit" | "debit"
+          category: string
+          semarang_amount: number
+          pare_amount: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          business_unit: string
+          period_year: number
+          period_month: number
+          side: "credit" | "debit"
+          category: string
+          semarang_amount?: number
+          pare_amount?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          business_unit?: string
+          period_year?: number
+          period_month?: number
+          side?: "credit" | "debit"
+          category?: string
+          semarang_amount?: number
+          pare_amount?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cashflow_rules: {
+        Row: {
+          id: string
+          bank_account_id: string
+          priority: number
+          column_scope: "any" | "notes" | "sourceDestination" | "transactionDetails" | "description"
+          match_type: "contains" | "equals" | "starts_with"
+          match_value: string
+          case_sensitive: boolean
+          set_category: string | null
+          set_branch: string | null
+          active: boolean
+          side_filter: "any" | "debit" | "credit"
+          is_fallback: boolean
+          extra_conditions: unknown
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          bank_account_id: string
+          priority: number
+          column_scope: "any" | "notes" | "sourceDestination" | "transactionDetails" | "description"
+          match_type: "contains" | "equals" | "starts_with"
+          match_value: string
+          case_sensitive?: boolean
+          set_category?: string | null
+          set_branch?: string | null
+          active?: boolean
+          side_filter?: "any" | "debit" | "credit"
+          is_fallback?: boolean
+          extra_conditions?: unknown
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          bank_account_id?: string
+          priority?: number
+          column_scope?: "any" | "notes" | "sourceDestination" | "transactionDetails" | "description"
+          match_type?: "contains" | "equals" | "starts_with"
+          match_value?: string
+          case_sensitive?: boolean
+          set_category?: string | null
+          set_branch?: string | null
+          active?: boolean
+          side_filter?: "any" | "debit" | "credit"
+          is_fallback?: boolean
+          extra_conditions?: unknown
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cashflow_statements: {
+        Row: {
+          id: string
+          bank_account_id: string
+          period_month: number
+          period_year: number
+          opening_balance: number
+          closing_balance: number
+          pdf_path: string | null
+          status: string
+          created_by: string | null
+          confirmed_by: string | null
+          confirmed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          bank_account_id: string
+          period_month: number
+          period_year: number
+          opening_balance?: number
+          closing_balance?: number
+          pdf_path?: string | null
+          status?: string
+          created_by?: string | null
+          confirmed_by?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          bank_account_id?: string
+          period_month?: number
+          period_year?: number
+          opening_balance?: number
+          closing_balance?: number
+          pdf_path?: string | null
+          status?: string
+          created_by?: string | null
+          confirmed_by?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cashflow_transactions: {
+        Row: {
+          id: string
+          statement_id: string
+          transaction_date: string
+          transaction_time: string | null
+          source_destination: string | null
+          transaction_details: string | null
+          description: string
+          debit: number
+          credit: number
+          running_balance: number | null
+          category: string | null
+          branch: string | null
+          notes: string | null
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          statement_id: string
+          transaction_date: string
+          transaction_time?: string | null
+          source_destination?: string | null
+          transaction_details?: string | null
+          description: string
+          debit?: number
+          credit?: number
+          running_balance?: number | null
+          category?: string | null
+          branch?: string | null
+          notes?: string | null
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          statement_id?: string
+          transaction_date?: string
+          transaction_time?: string | null
+          source_destination?: string | null
+          transaction_details?: string | null
+          description?: string
+          debit?: number
+          credit?: number
+          running_balance?: number | null
+          category?: string | null
+          branch?: string | null
+          notes?: string | null
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
       attendance_locations: {
         Row: {
           created_at: string

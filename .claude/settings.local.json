@@ -9,7 +9,10 @@
       "Bash(npm run:*)",
       "Bash(curl -s http://localhost:3000 -o /dev/null -w \"%{http_code}\")",
       "Bash(rm -f .git/index.lock)",
-      "Bash(rtk git:*)"
+      "Bash(rtk git:*)",
+      "Bash(rtk npx:*)",
+      "Bash(npm i:*)",
+      "mcp__9cb94e68-491f-4827-9fc0-07d262af0158__apply_migration"
     ]
   }
 }

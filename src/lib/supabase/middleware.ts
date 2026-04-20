@@ -69,11 +69,20 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url);
       }
 
-      // Non-admin on admin route → send to employee home
+      // Non-admin on admin route → send to employee home, EXCEPT
+      // finance pages. Non-admin assignees of a cash rekening can
+      // access the finance landing + their assigned rekening details.
+      // The pages themselves enforce per-rekening permission.
       if (onAdminRoute && !isAdmin) {
-        const url = request.nextUrl.clone();
-        url.pathname = "/dashboard";
-        return NextResponse.redirect(url);
+        const isFinanceAssigneePath =
+          pathname === "/admin/finance" ||
+          pathname === "/admin/finance/" ||
+          pathname.startsWith("/admin/finance/rekening/");
+        if (!isFinanceAssigneePath) {
+          const url = request.nextUrl.clone();
+          url.pathname = "/dashboard";
+          return NextResponse.redirect(url);
+        }
       }
 
       // Admin on employee route → send to admin home

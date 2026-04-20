@@ -22,6 +22,13 @@ const nextConfig: NextConfig = {
       "@base-ui/react",
     ],
   },
+  /**
+   * `unpdf` (and its transitive `pdfjs-dist` dependency) ships a hefty
+   * bundle that's only loaded inside the rekening koran parser route.
+   * Mark it external so Next traces it from node_modules instead of
+   * trying to bundle via turbopack, which previously broke the worker.
+   */
+  serverExternalPackages: ["unpdf", "pdfjs-dist"],
 };
 
 export default nextConfig;
