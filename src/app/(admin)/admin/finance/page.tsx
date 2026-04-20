@@ -28,14 +28,23 @@ async function computeLatestBalance(
   supabase: SupabaseClient<Database>,
   bankAccountId: string
 ): Promise<number> {
+  // Fetch statement ids for this rekening first, then scope tx
+  // queries by statement_id. This is more robust than chaining
+  // `!inner(...).eq(...)` with ordering + paging — PostgREST can
+  // silently drop the inner filter on secondary queries.
+  const { data: stmts } = await supabase
+    .from("cashflow_statements")
+    .select("id")
+    .eq("bank_account_id", bankAccountId);
+  const stmtIds = (stmts ?? []).map((s) => s.id);
+  if (stmtIds.length === 0) return 0;
+
   const { data: oldest } = await supabase
     .from("cashflow_transactions")
-    .select(
-      "debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
-    )
-    .eq("cashflow_statements.bank_account_id", bankAccountId)
+    .select("debit, credit, running_balance")
+    .in("statement_id", stmtIds)
     .order("transaction_date", { ascending: true })
-    .order("transaction_time", { ascending: true, nullsFirst: true })
+    .order("transaction_time", { ascending: true, nullsFirst: false })
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -46,10 +55,8 @@ async function computeLatestBalance(
   for (let offset = 0; ; offset += PAGE) {
     const { data } = await supabase
       .from("cashflow_transactions")
-      .select(
-        "debit, credit, cashflow_statements!inner(bank_account_id)"
-      )
-      .eq("cashflow_statements.bank_account_id", bankAccountId)
+      .select("debit, credit")
+      .in("statement_id", stmtIds)
       .range(offset, offset + PAGE - 1);
     if (!data || data.length === 0) break;
     for (const t of data) {
