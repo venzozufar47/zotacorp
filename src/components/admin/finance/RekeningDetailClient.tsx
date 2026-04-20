@@ -142,16 +142,22 @@ export function RekeningDetailClient({ account, presets, isAdmin }: Props) {
           {account.bank === "mandiri" ? "Upload Excel" : "Upload PDF"}
         </Button>
       )}
-      <Button
-        type="button"
-        variant={isCash ? "default" : "ghost"}
-        onClick={() => setManualOpen(true)}
-        className="gap-1.5"
-        size="sm"
-      >
-        <Pencil size={14} />
-        Input manual
-      </Button>
+      {/* Cash rekening flows through the inline "Tambah baris" in the
+          table's edit mode (mirrors how rules are added inline), so the
+          dialog button is redundant there. Keep it for non-cash rekening
+          where the inline add still requires this entry point. */}
+      {!isCash && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setManualOpen(true)}
+          className="gap-1.5"
+          size="sm"
+        >
+          <Pencil size={14} />
+          Input manual
+        </Button>
+      )}
       {hasSheetSource && account.lastSyncedAt && (
         <span className="text-[11px] text-muted-foreground">
           Terakhir sync:{" "}
@@ -240,11 +246,13 @@ export function RekeningDetailClient({ account, presets, isAdmin }: Props) {
         presets={presets}
         onOpenChange={(open) => !open && setUploadOpen(false)}
       />
-      <ManualTransactionDialog
-        account={manualOpen ? account : null}
-        presets={presets}
-        onOpenChange={(open) => !open && setManualOpen(false)}
-      />
+      {!isCash && (
+        <ManualTransactionDialog
+          account={manualOpen ? account : null}
+          presets={presets}
+          onOpenChange={(open) => !open && setManualOpen(false)}
+        />
+      )}
     </div>
   );
 }
