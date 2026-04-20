@@ -30,6 +30,11 @@ interface AccountRow {
   accountName: string;
   isActive: boolean;
   statements: StatementRow[];
+  /** Derived from the same credit−debit cumulation the rekening detail
+   *  page renders, so the card stays in sync with the ledger even when
+   *  stored running_balance / statement closing_balance drift (cash
+   *  rekening never writes those columns). */
+  latestBalance: number;
 }
 
 interface Props {
@@ -184,7 +189,7 @@ export function FinanceLandingClient({
                     Saldo terakhir
                   </p>
                   <p className="font-mono tabular-nums text-lg font-semibold text-foreground">
-                    Rp {formatIDR(acc.statements[0]?.closing_balance ?? 0)}
+                    Rp {formatIDR(acc.latestBalance)}
                   </p>
                 </div>
                 <p className="mt-3 text-xs font-semibold text-primary inline-flex items-center gap-1 group-hover:gap-2 transition-all">
