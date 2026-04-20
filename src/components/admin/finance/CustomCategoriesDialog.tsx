@@ -29,6 +29,18 @@ interface Props {
  * column. On save, a router.refresh makes the new list show up in
  * every dropdown that reads from the rekening's presets.
  */
+/** Stable per-row id so React keys don't churn when users rename. */
+interface Item {
+  id: string;
+  value: string;
+}
+function newId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `cat_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function CustomCategoriesDialog({
   bankAccountId,
   accountName,
@@ -37,13 +49,15 @@ export function CustomCategoriesDialog({
   onOpenChange,
 }: Props) {
   const router = useRouter();
-  const [items, setItems] = useState<string[]>(initialCategories);
+  const [items, setItems] = useState<Item[]>(() =>
+    initialCategories.map((v) => ({ id: newId(), value: v }))
+  );
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setItems(initialCategories);
+      setItems(initialCategories.map((v) => ({ id: newId(), value: v })));
       setDraft("");
     }
   }, [open, initialCategories]);
@@ -51,11 +65,11 @@ export function CustomCategoriesDialog({
   function addDraft() {
     const v = draft.trim();
     if (!v) return;
-    if (items.includes(v)) {
+    if (items.some((it) => it.value === v)) {
       toast.error(`"${v}" sudah ada di daftar`);
       return;
     }
-    setItems((prev) => [...prev, v]);
+    setItems((prev) => [...prev, { id: newId(), value: v }]);
     setDraft("");
   }
 
@@ -64,7 +78,9 @@ export function CustomCategoriesDialog({
   }
 
   function rename(idx: number, next: string) {
-    setItems((prev) => prev.map((v, i) => (i === idx ? next : v)));
+    setItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, value: next } : it))
+    );
   }
 
   // Simple HTML5 drag-and-drop — small list, no dep needed.
@@ -89,7 +105,7 @@ export function CustomCategoriesDialog({
   async function handleSave() {
     setSaving(true);
     try {
-      const clean = items.map((v) => v.trim()).filter(Boolean);
+      const clean = items.map((it) => it.value.trim()).filter(Boolean);
       const res = await setBankAccountCustomCategories(bankAccountId, clean);
       if (!res.ok) {
         toast.error(res.error);
@@ -126,9 +142,9 @@ export function CustomCategoriesDialog({
                 Belum ada kategori. Tambah di bawah.
               </p>
             )}
-            {items.map((v, i) => (
+            {items.map((it, i) => (
               <div
-                key={`${v}-${i}`}
+                key={it.id}
                 draggable
                 onDragStart={() => onDragStart(i)}
                 onDragOver={onDragOver}
@@ -142,7 +158,7 @@ export function CustomCategoriesDialog({
                   <GripVertical size={12} />
                 </span>
                 <Input
-                  value={v}
+                  value={it.value}
                   onChange={(e) => rename(i, e.target.value)}
                   className="flex-1 h-8"
                 />
