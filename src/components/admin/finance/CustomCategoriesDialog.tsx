@@ -145,16 +145,23 @@ export function CustomCategoriesDialog({
             {items.map((it, i) => (
               <div
                 key={it.id}
-                draggable
-                onDragStart={() => onDragStart(i)}
                 onDragOver={onDragOver}
                 onDrop={() => onDrop(i)}
-                className={
-                  "flex items-center gap-2 rounded-lg border border-border p-1.5 bg-background " +
-                  (dragIdx === i ? "opacity-40" : "")
-                }
+                className="flex items-center gap-2 rounded-lg border border-border p-1.5 bg-background"
               >
-                <span className="text-muted-foreground cursor-grab">
+                {/*
+                 * Drag is scoped to the grip handle only — the input
+                 * stays free for text selection. Keeping `draggable`
+                 * on the whole row made every click-drag inside the
+                 * <Input> (selecting text) kick off a reorder.
+                 */}
+                <span
+                  draggable
+                  onDragStart={() => onDragStart(i)}
+                  onDragEnd={() => setDragIdx(null)}
+                  className="text-muted-foreground cursor-grab active:cursor-grabbing select-none"
+                  title="Seret untuk reorder"
+                >
                   <GripVertical size={12} />
                 </span>
                 <Input
