@@ -148,17 +148,12 @@ export async function fetchPnL(
     });
   }
 
-  // Aggregate tx totals: (monthKey, branch, category, side) → amount
-  type AggKey = {
-    monthKey: string;
-    branch: "Pusat" | "Semarang" | "Pare" | "unassigned";
-    category: string;
-    side: PnLSide;
-  };
-  const txTotals = new Map<string, number>();
-  function keyOf(k: AggKey): string {
-    return `${k.monthKey}|${k.branch}|${k.category}|${k.side}`;
-  }
+  // Aggregate tx totals, partitioned by monthKey. This way the
+  // per-month report build below is O(buckets_in_month) instead of
+  // O(total_tx_across_range) for every month iteration.
+  type BranchName = "Pusat" | "Semarang" | "Pare" | "unassigned";
+  type MonthBucket = Map<string, number>; // "<branch>|<category>|<side>" → amount
+  const byMonth = new Map<string, MonthBucket>();
 
   for (const t of (txs ?? []) as Array<{
     transaction_date: string;
@@ -174,7 +169,7 @@ export async function fetchPnL(
 
     const monthKey = ym(year, month);
     const branchRaw = (t.branch ?? "").trim();
-    const branch: AggKey["branch"] =
+    const branch: BranchName =
       branchRaw === "Pusat" || branchRaw === "Semarang" || branchRaw === "Pare"
         ? branchRaw
         : "unassigned";
@@ -182,13 +177,20 @@ export async function fetchPnL(
 
     const debit = Number(t.debit) || 0;
     const credit = Number(t.credit) || 0;
+    if (credit === 0 && debit === 0) continue;
+
+    let bucket = byMonth.get(monthKey);
+    if (!bucket) {
+      bucket = new Map();
+      byMonth.set(monthKey, bucket);
+    }
     if (credit > 0) {
-      const k = keyOf({ monthKey, branch, category, side: "credit" });
-      txTotals.set(k, (txTotals.get(k) ?? 0) + credit);
+      const k = `${branch}|${category}|credit`;
+      bucket.set(k, (bucket.get(k) ?? 0) + credit);
     }
     if (debit > 0) {
-      const k = keyOf({ monthKey, branch, category, side: "debit" });
-      txTotals.set(k, (txTotals.get(k) ?? 0) + debit);
+      const k = `${branch}|${category}|debit`;
+      bucket.set(k, (bucket.get(k) ?? 0) + debit);
     }
   }
 
@@ -222,16 +224,15 @@ export async function fetchPnL(
       branchAgg[branch].set(category, existing);
     };
 
-    // 1. Direct branch tx: iterate all (category, side) combinations
-    //    for this month's direct-branch rows.
-    for (const [k, amount] of txTotals) {
-      const [mk, branch, category, side] = k.split("|") as [
-        string,
-        AggKey["branch"],
+    const bucket = byMonth.get(monthKey) ?? new Map<string, number>();
+
+    // 1. Direct branch tx: iterate this month's partition only.
+    for (const [k, amount] of bucket) {
+      const [branch, category, side] = k.split("|") as [
+        BranchName,
         string,
         PnLSide,
       ];
-      if (mk !== monthKey) continue;
       if (branch !== "Semarang" && branch !== "Pare") continue;
       if (side === "credit") addToBranch(branch, category, amount, 0);
       else addToBranch(branch, category, 0, amount);
@@ -241,15 +242,13 @@ export async function fetchPnL(
     //    contribute to the branch totals; unbalanced/unallocated are
     //    skipped here and flagged in `pusatBreakdown`.
     const pusatBreakdown: PusatBreakdownRow[] = [];
-    const pusatCategories = new Set<string>();
-    for (const [k, amount] of txTotals) {
-      const [mk, branch, category, side] = k.split("|") as [
-        string,
-        AggKey["branch"],
+    for (const [k, amount] of bucket) {
+      const [branch, category, side] = k.split("|") as [
+        BranchName,
         string,
         PnLSide,
       ];
-      if (mk !== monthKey || branch !== "Pusat") continue;
+      if (branch !== "Pusat") continue;
       const allocKey = `${monthKey}|${side}|${category}`;
       const alloc = allocMap.get(allocKey);
       const pusatTotal = Math.round(amount);
@@ -270,7 +269,6 @@ export async function fetchPnL(
         unallocated,
         unbalanced,
       });
-      pusatCategories.add(`${category}|${side}`);
 
       if (balanced) {
         if (side === "credit") {

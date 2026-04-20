@@ -31,6 +31,7 @@ import {
   presetsFor,
 } from "@/lib/cashflow/categorize";
 import { sortChronologicalAsc } from "@/lib/cashflow/chronological";
+import { makeDedupeKey } from "@/lib/cashflow/dedupe";
 import type { BankCode } from "@/lib/cashflow/types";
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -242,23 +243,9 @@ export async function POST(req: Request) {
       "transaction_date, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
     )
     .eq("cashflow_statements.bank_account_id", bankAccountId);
-  const makeKey = (t: {
-    date?: string;
-    transaction_date?: string;
-    description: string;
-    debit: number;
-    credit: number;
-    running_balance?: number | null;
-    runningBalance?: number | null;
-  }) => {
-    const date = t.transaction_date ?? t.date ?? "";
-    const desc = t.description.trim().toLowerCase();
-    const rb = t.running_balance ?? t.runningBalance ?? "";
-    return `${date}|${desc}|${t.debit}|${t.credit}|${rb}`;
-  };
   const existingKeys = new Set(
     (existingTxs ?? []).map((t) =>
-      makeKey({
+      makeDedupeKey({
         transaction_date: t.transaction_date,
         description: t.description,
         debit: Number(t.debit),
@@ -270,7 +257,7 @@ export async function POST(req: Request) {
   );
 
   const newTransactions = parsed.transactions.filter(
-    (t) => !existingKeys.has(makeKey(t))
+    (t) => !existingKeys.has(makeDedupeKey(t))
   );
   const skippedCount = parsed.transactions.length - newTransactions.length;
 

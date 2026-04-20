@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/cashflow.actions";
 import type { CategoryPresets } from "@/lib/cashflow/categories";
 import { AutoCategorizeDialog } from "./AutoCategorizeDialog";
+import { formatIDR } from "@/lib/cashflow/format";
 import {
   EDIT_INPUT_CLS,
   EDIT_INPUT_NUM_CLS,
@@ -44,12 +45,6 @@ interface Props {
   bank: string;
 }
 
-function formatIDR(n: number): string {
-  return n.toLocaleString("id-ID", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-}
 
 // Focus-expand styles live in edit-input-styles.ts so every table
 // editor in the finance feature shares them.

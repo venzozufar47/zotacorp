@@ -9,14 +9,11 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { RekeningDetailClient } from "@/components/admin/finance/RekeningDetailClient";
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
 import { getCategoryPresets } from "@/lib/cashflow/categories";
+import { formatIDR } from "@/lib/cashflow/format";
 import { verifyBalance } from "@/lib/cashflow/parsers/shared";
 import { sortChronologicalDesc, sortChronologicalAsc } from "@/lib/cashflow/chronological";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-
-function formatIDR(n: number): string {
-  return n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
 
 const BANK_LABELS: Record<string, string> = {
   mandiri: "Bank Mandiri",

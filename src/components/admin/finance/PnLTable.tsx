@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PnLReport, PnLMonth, BranchPnL } from "@/lib/cashflow/pnl";
+import { formatIDR as sharedFormatIDR } from "@/lib/cashflow/format";
 
 interface Props {
   report: PnLReport;
@@ -24,9 +25,10 @@ const MONTH_NAMES = [
   "Des",
 ];
 
+/** PnL table renders zero as em-dash so the grid stays readable. */
 function formatIDR(n: number): string {
   if (n === 0) return "—";
-  return n.toLocaleString("id-ID", { maximumFractionDigits: 0 });
+  return sharedFormatIDR(n);
 }
 
 function monthLabel(year: number, month: number): string {

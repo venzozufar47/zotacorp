@@ -7,6 +7,7 @@ import { Building2, Plus, Banknote, ArrowRight, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BankAccountFormDialog } from "./BankAccountFormDialog";
+import { formatIDR } from "@/lib/cashflow/format";
 import type { BankCode } from "@/lib/cashflow/types";
 
 interface StatementRow {
@@ -57,10 +58,6 @@ const BANK_LABELS: Record<BankCode, string> = {
   cash: "Cash",
   other: "Bank lainnya",
 };
-
-function formatIDR(n: number): string {
-  return n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
 
 export function FinanceLandingClient({
   businessUnits,

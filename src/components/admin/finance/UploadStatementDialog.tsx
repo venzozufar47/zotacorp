@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { CategoryPresets } from "@/lib/cashflow/categories";
+import { formatIDR as sharedFormatIDR } from "@/lib/cashflow/format";
 
 interface Account {
   id: string;
@@ -77,9 +78,10 @@ interface PreviewResult {
   verification: PreviewVerification;
 }
 
-function formatIDR(n: number): string {
-  return n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
+/** Upload preview shows raw amounts that may carry fractional parts;
+ *  other tables round to integer rupiah. */
+const formatIDR = (n: number) =>
+  sharedFormatIDR(n, { decimals: 2 });
 
 /**
  * Low-level XHR upload with byte-progress callback. fetch() can't give

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { Database } from "@/lib/supabase/types";
+import { makeDedupeKey } from "@/lib/cashflow/dedupe";
 
 type BankAccountUpdate = Database["public"]["Tables"]["bank_accounts"]["Update"];
 type CashflowStatementUpdate = Database["public"]["Tables"]["cashflow_statements"]["Update"];
@@ -339,11 +340,24 @@ export async function createManualTransaction(input: {
       "transaction_date, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
     )
     .eq("cashflow_statements.bank_account_id", input.bankAccountId);
-  const key = `${input.date}|${description.trim().toLowerCase()}|${input.debit}|${input.credit}|${input.runningBalance ?? ""}`;
-  const isDup = (existingTxs ?? []).some((t) => {
-    const k = `${t.transaction_date}|${t.description.trim().toLowerCase()}|${Number(t.debit)}|${Number(t.credit)}|${t.running_balance !== null ? Number(t.running_balance) : ""}`;
-    return k === key;
+  const key = makeDedupeKey({
+    date: input.date,
+    description,
+    debit: input.debit,
+    credit: input.credit,
+    runningBalance: input.runningBalance,
   });
+  const isDup = (existingTxs ?? []).some(
+    (t) =>
+      makeDedupeKey({
+        transaction_date: t.transaction_date,
+        description: t.description,
+        debit: Number(t.debit),
+        credit: Number(t.credit),
+        running_balance:
+          t.running_balance !== null ? Number(t.running_balance) : null,
+      }) === key
+  );
   if (isDup) {
     return {
       ok: false,
@@ -950,21 +964,6 @@ export async function syncCashSheet(
   // SELECT at 1000 rows by default, so for rekening with more than
   // 1000 existing transactions we MUST paginate — otherwise the
   // dedupe set is incomplete and we re-insert duplicates / miss rows.
-  const makeKey = (t: {
-    transaction_date?: string;
-    date?: string;
-    description: string;
-    debit: number;
-    credit: number;
-    running_balance?: number | null;
-    runningBalance?: number | null;
-  }) => {
-    const date = t.transaction_date ?? t.date ?? "";
-    const desc = t.description.trim().toLowerCase();
-    const rb = t.running_balance ?? t.runningBalance ?? "";
-    return `${date}|${desc}|${t.debit}|${t.credit}|${rb}`;
-  };
-
   const existingKeys = new Set<string>();
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
@@ -978,7 +977,7 @@ export async function syncCashSheet(
     if (!page || page.length === 0) break;
     for (const t of page) {
       existingKeys.add(
-        makeKey({
+        makeDedupeKey({
           transaction_date: t.transaction_date,
           description: t.description,
           debit: Number(t.debit),
@@ -990,7 +989,7 @@ export async function syncCashSheet(
     }
     if (page.length < PAGE) break;
   }
-  const newTxs = txs.filter((t) => !existingKeys.has(makeKey(t)));
+  const newTxs = txs.filter((t) => !existingKeys.has(makeDedupeKey(t)));
 
   let statementId: string | null = null;
   if (newTxs.length > 0) {
@@ -1361,4 +1360,40 @@ export async function listMyAssignedBankAccountIds(): Promise<string[]> {
     .select("bank_account_id")
     .eq("user_id", user.id);
   return (data ?? []).map((r) => r.bank_account_id);
+}
+
+/**
+ * Richer lookup for the employee dashboard card: returns the assignee's
+ * rekening with human-readable fields so we can render a link without a
+ * second round-trip. RLS scopes this to rows the user can SELECT.
+ */
+export async function listMyAssignedBankAccounts(): Promise<
+  Array<{
+    id: string;
+    accountName: string;
+    bank: string;
+    businessUnit: string;
+  }>
+> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const supabase = await createClient();
+  const { data: assignments } = await supabase
+    .from("bank_account_assignees")
+    .select("bank_account_id")
+    .eq("user_id", user.id);
+  const ids = (assignments ?? []).map((r) => r.bank_account_id);
+  if (ids.length === 0) return [];
+  const { data: accounts } = await supabase
+    .from("bank_accounts")
+    .select("id, account_name, bank, business_unit, is_active")
+    .in("id", ids)
+    .eq("is_active", true)
+    .order("account_name", { ascending: true });
+  return (accounts ?? []).map((a) => ({
+    id: a.id,
+    accountName: a.account_name,
+    bank: a.bank,
+    businessUnit: a.business_unit,
+  }));
 }

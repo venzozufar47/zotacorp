@@ -14,6 +14,7 @@ import {
   EDIT_INPUT_H8_NUM_CLS,
   EDIT_SELECT_H8_CLS,
 } from "./edit-input-styles";
+import { formatIDR as sharedFormatIDR } from "@/lib/cashflow/format";
 import {
   saveStatementTransactions,
   deleteStatement,
@@ -61,9 +62,7 @@ function makeKey(): string {
   return `row_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function formatIDR(n: number): string {
-  return n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
+const formatIDR = (n: number) => sharedFormatIDR(n, { decimals: 2 });
 
 export function StatementEditorClient({
   statementId,

@@ -212,7 +212,13 @@ async function geminiAttempt(
         role: "user",
         parts: [
           { inlineData: { mimeType: "application/pdf", data: base64 } },
-          { text: PROMPT + referenceBlock + retryFeedback },
+          {
+            // Reference block (~30 historical rows) only on first
+            // attempt — it's ~2k tokens that Gemini doesn't need
+            // re-read on retries. Retries get the error feedback
+            // instead.
+            text: PROMPT + (attempt === 1 ? referenceBlock : "") + retryFeedback,
+          },
         ],
       },
     ],
