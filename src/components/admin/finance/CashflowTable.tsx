@@ -321,6 +321,33 @@ export function CashflowTable({
   const hasFilter =
     filterNoCategory || filterNoBranch || Boolean(searchQuery.trim());
 
+  // Auto-compute running balance per row so cash rekening (no stored
+  // balance) and freshly-added rows get a number instead of em-dash.
+  // Walk chronologically ascending and accumulate credit − debit from
+  // an anchor: if the oldest row has a stored runningBalance, we use
+  // it (minus its own net) as the baseline so bank-imported rows stay
+  // aligned with the bank's own figures; otherwise baseline = 0,
+  // which is the right answer for cash.
+  //
+  // Uses `working` so the number updates live as the user edits
+  // debit/credit in edit mode — matches the totals card behaviour in
+  // the statement editor.
+  const computedBalances = useMemo(() => {
+    const asc = [...working].reverse();
+    const map = new Map<string, number>();
+    if (asc.length === 0) return map;
+    const first = asc[0];
+    const firstNet = first.credit - first.debit;
+    const baseline =
+      first.runningBalance != null ? first.runningBalance - firstNet : 0;
+    let cum = baseline;
+    for (const r of asc) {
+      cum += r.credit - r.debit;
+      map.set(r.id, cum);
+    }
+    return map;
+  }, [working]);
+
   // Paginate. Slice the filtered list so only PAGE_SIZE rows hit the
   // DOM at a time. Total pages recomputes with the filter.
   const totalPages = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
@@ -729,11 +756,17 @@ export function CashflowTable({
                       )}
                     </Td>
 
-                    {/* Saldo — always read-only */}
+                    {/* Saldo — always read-only. Prefer the live
+                        computed balance (updates with edits + fills in
+                        for cash rows that never had a stored value);
+                        fall back to the stored DB value only if the
+                        row somehow isn't in the computed map. */}
                     <Td className="text-right font-mono tabular-nums whitespace-nowrap text-muted-foreground">
-                      {r.runningBalance != null
-                        ? formatIDR(r.runningBalance)
-                        : "—"}
+                      {(() => {
+                        const bal =
+                          computedBalances.get(r.id) ?? r.runningBalance;
+                        return bal != null ? formatIDR(bal) : "—";
+                      })()}
                     </Td>
 
                     {/* Kategori — dropdown when BU has preset, text otherwise */}
