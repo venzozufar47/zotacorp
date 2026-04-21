@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { History, Loader2, X } from "lucide-react";
+import { History, Loader2, Minus, Plus, Settings, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createPosSale,
   type PaymentMethod,
   type PosProduct,
+  type PosProductVariant,
+  type PosSaleItemInput,
 } from "@/lib/actions/pos.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 
@@ -15,65 +17,186 @@ interface Props {
   bankAccountId: string;
   accountName: string;
   products: PosProduct[];
+  /** Admin-only UI affordances (link ke /pos/produk, empty-state CTA). */
+  isAdmin: boolean;
+}
+
+interface CustomLine {
+  /** Local-only id, cukup untuk React key + edit/remove dari cart. */
+  localId: string;
+  name: string;
+  price: number;
+  qty: number;
 }
 
 const formatRp = (n: number) => formatIDR(n, { withRp: true });
 
+/** Cart key scheme: "p:<productId>" untuk produk tanpa varian,
+ *  "p:<productId>|v:<variantId>" untuk yang pakai varian. */
+function cartKey(productId: string, variantId?: string | null) {
+  return variantId ? `p:${productId}|v:${variantId}` : `p:${productId}`;
+}
+
+function parseCartKey(key: string): { productId: string; variantId: string | null } {
+  const [pPart, vPart] = key.split("|");
+  const productId = pPart.slice(2);
+  const variantId = vPart ? vPart.slice(2) : null;
+  return { productId, variantId };
+}
+
 /**
  * POS — satu layar, mobile-first. Karyawan tap blok produk untuk
- * menambah qty ke cart; sticky bottom bar menampilkan total + dua
- * tombol pembayaran besar (Cash / QRIS). Submit → createPosSale →
- * toast + cart reset.
+ * menambah qty ke cart; atau tap "Tambah custom" untuk input manual
+ * (nama + harga) item satu-kali. Produk dengan varian membuka modal
+ * pilih varian sebelum masuk cart. Sticky bottom bar menampilkan total
+ * + dua tombol pembayaran besar (Cash / QRIS).
  */
-export function POSClient({ bankAccountId, accountName, products }: Props) {
-  // Map<productId, qty> — gunakan Record biasa supaya re-render gampang.
+export function POSClient({ bankAccountId, accountName, products, isAdmin }: Props) {
+  // Catalog cart: Record<cartKey, qty>.
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [customItems, setCustomItems] = useState<CustomLine[]>([]);
   const [confirmMethod, setConfirmMethod] =
     useState<PaymentMethod | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  // productId yang sedang dibuka variant-pickernya; null = tertutup.
+  const [variantPickerFor, setVariantPickerFor] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // Lookup table from productId → { name, price } so total / cart
-  // line rendering is O(cart entries) not O(products) per render.
-  const productById = useMemo(() => {
-    const m = new Map<string, { name: string; price: number }>();
-    for (const p of products) m.set(p.id, { name: p.name, price: p.price });
+  // Lookup cartKey → { name, price } untuk total/rendering O(cart entries).
+  const lineByKey = useMemo(() => {
+    const m = new Map<string, { name: string; price: number; productId: string }>();
+    for (const p of products) {
+      if (p.variants.length === 0) {
+        m.set(cartKey(p.id), { name: p.name, price: p.price, productId: p.id });
+      } else {
+        for (const v of p.variants) {
+          m.set(cartKey(p.id, v.id), {
+            name: `${p.name} — ${v.name}`,
+            price: v.price,
+            productId: p.id,
+          });
+        }
+      }
+    }
     return m;
   }, [products]);
 
-  const { total, itemCount, cartLines } = useMemo(() => {
+  const { total, itemCount, cartLines, qtyByProductId } = useMemo(() => {
     let total = 0;
     let itemCount = 0;
-    const cartLines: Array<{ name: string; qty: number; subtotal: number }> = [];
-    for (const [id, qty] of Object.entries(cart)) {
+    const cartLines: Array<{
+      key: string;
+      name: string;
+      qty: number;
+      subtotal: number;
+      custom: boolean;
+    }> = [];
+    const qtyByProductId = new Map<string, number>();
+    for (const [key, qty] of Object.entries(cart)) {
       if (qty <= 0) continue;
-      const info = productById.get(id);
+      const info = lineByKey.get(key);
       if (!info) continue;
       const subtotal = info.price * qty;
       total += subtotal;
       itemCount += qty;
-      cartLines.push({ name: info.name, qty, subtotal });
+      cartLines.push({ key, name: info.name, qty, subtotal, custom: false });
+      qtyByProductId.set(
+        info.productId,
+        (qtyByProductId.get(info.productId) ?? 0) + qty
+      );
     }
-    return { total, itemCount, cartLines };
-  }, [cart, productById]);
+    for (const c of customItems) {
+      const subtotal = c.price * c.qty;
+      total += subtotal;
+      itemCount += c.qty;
+      cartLines.push({
+        key: `c:${c.localId}`,
+        name: c.name,
+        qty: c.qty,
+        subtotal,
+        custom: true,
+      });
+    }
+    return { total, itemCount, cartLines, qtyByProductId };
+  }, [cart, customItems, lineByKey]);
 
-  function inc(id: string) {
-    setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
+  function inc(key: string) {
+    setCart((c) => ({ ...c, [key]: (c[key] ?? 0) + 1 }));
   }
 
-  function dec(id: string) {
+  function dec(key: string) {
     setCart((c) => {
       const next = { ...c };
-      const n = (next[id] ?? 0) - 1;
-      if (n <= 0) delete next[id];
-      else next[id] = n;
+      const n = (next[key] ?? 0) - 1;
+      if (n <= 0) delete next[key];
+      else next[key] = n;
       return next;
     });
   }
 
+  function handleProductTap(p: PosProduct) {
+    if (p.variants.length === 0) {
+      inc(cartKey(p.id));
+      return;
+    }
+    // Kalau cuma 1 varian aktif, langsung inc tanpa modal — tidak ada
+    // ambiguitas. (Admin mungkin hapus varian lain, sisakan 1.)
+    if (p.variants.length === 1) {
+      inc(cartKey(p.id, p.variants[0].id));
+      return;
+    }
+    setVariantPickerFor(p.id);
+  }
+
+  function addCustom(name: string, price: number, qty: number) {
+    setCustomItems((arr) => [
+      ...arr,
+      {
+        localId: crypto.randomUUID(),
+        name: name.trim(),
+        price,
+        qty,
+      },
+    ]);
+  }
+
+  function updateCustomQty(localId: string, delta: number) {
+    setCustomItems((arr) =>
+      arr.flatMap((c) => {
+        if (c.localId !== localId) return [c];
+        const next = c.qty + delta;
+        if (next <= 0) return [];
+        return [{ ...c, qty: next }];
+      })
+    );
+  }
+
+  function removeCustom(localId: string) {
+    setCustomItems((arr) => arr.filter((c) => c.localId !== localId));
+  }
+
+  function resetCart() {
+    setCart({});
+    setCustomItems([]);
+  }
+
   function submit(method: PaymentMethod) {
-    const items = Object.entries(cart)
+    const catalogItems: PosSaleItemInput[] = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
-      .map(([productId, qty]) => ({ productId, qty }));
+      .map(([key, qty]) => {
+        const { productId, variantId } = parseCartKey(key);
+        return variantId
+          ? { productId, variantId, qty }
+          : { productId, qty };
+      });
+    const items: PosSaleItemInput[] = [
+      ...catalogItems,
+      ...customItems.map((c) => ({
+        customName: c.name,
+        customPrice: c.price,
+        qty: c.qty,
+      })),
+    ];
     if (items.length === 0) return;
     startTransition(async () => {
       const res = await createPosSale({
@@ -88,34 +211,67 @@ export function POSClient({ bankAccountId, accountName, products }: Props) {
       toast.success(
         `Tersimpan: ${formatRp(res.data?.total ?? 0)} — ${method === "cash" ? "Cash" : "QRIS"}`
       );
-      setCart({});
+      resetCart();
       setConfirmMethod(null);
     });
   }
 
-  if (products.length === 0) {
+  const showEmptyState = products.length === 0 && customItems.length === 0;
+
+  if (showEmptyState) {
     return (
       <div className="min-h-screen flex flex-col">
         <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-4 py-3">
           <h1 className="font-semibold text-foreground">{accountName} · POS</h1>
         </header>
         <div className="flex-1 flex items-center justify-center p-6 text-center">
-          <div>
-            <p className="text-sm text-muted-foreground mb-2">
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
               Belum ada produk aktif.
             </p>
-            <p className="text-xs text-muted-foreground">
-              Minta admin untuk menambahkan produk di <code>/pos/produk</code>.
-            </p>
+            <div className="flex flex-col gap-2 items-center">
+              {isAdmin && (
+                <Link
+                  href="/pos/produk"
+                  className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
+                >
+                  <Settings size={14} />
+                  Kelola katalog
+                </Link>
+              )}
+              <button
+                type="button"
+                onClick={() => setCustomOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl border border-border text-foreground text-sm font-semibold hover:bg-muted"
+              >
+                <Sparkles size={14} />
+                Tambah item custom
+              </button>
+              {!isAdmin && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Atau minta admin menambahkan produk di <code>/pos/produk</code>.
+                </p>
+              )}
+            </div>
           </div>
         </div>
+        {customOpen && (
+          <CustomItemDialog
+            onClose={() => setCustomOpen(false)}
+            onAdd={addCustom}
+          />
+        )}
       </div>
     );
   }
 
+  const pickerProduct =
+    variantPickerFor != null
+      ? products.find((p) => p.id === variantPickerFor) ?? null
+      : null;
+
   return (
     <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom))]">
-      {/* Header — sticky, compact. Link ke riwayat di kanan. */}
       <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-4 py-3 flex items-center justify-between">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -123,28 +279,42 @@ export function POSClient({ bankAccountId, accountName, products }: Props) {
           </p>
           <h1 className="font-semibold text-foreground text-sm">{accountName}</h1>
         </div>
-        <Link
-          href="/pos/riwayat"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <History size={14} />
-          Riwayat
-        </Link>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <Link
+              href="/pos/produk"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Settings size={14} />
+              Katalog
+            </Link>
+          )}
+          <Link
+            href="/pos/riwayat"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <History size={14} />
+            Riwayat
+          </Link>
+        </div>
       </header>
 
-      {/* Grid produk — 2 kolom di mobile, lebih banyak di viewport besar. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-3">
         {products.map((p) => {
-          const qty = cart[p.id] ?? 0;
-          const selected = qty > 0;
+          const hasVariants = p.variants.length > 0;
+          const totalQtyOnThisProduct = qtyByProductId.get(p.id) ?? 0;
+          const selected = totalQtyOnThisProduct > 0;
+          // Untuk produk tanpa varian, tampilkan [- qty +] pill di card.
+          // Untuk produk dengan varian, tap card buka modal — tidak ada
+          // inline pill (qty per varian dipilih di dalam modal).
+          const showInlinePill = !hasVariants && selected;
+          const singleKey = !hasVariants ? cartKey(p.id) : null;
+          const qtyOnSingleKey = singleKey ? cart[singleKey] ?? 0 : 0;
           return (
-            // Relative wrapper so we can place the decrement <button> as
-            // a sibling (not nested inside the increment <button>, which
-            // would be invalid HTML).
             <div key={p.id} className="relative">
               <button
                 type="button"
-                onClick={() => inc(p.id)}
+                onClick={() => handleProductTap(p)}
                 className={`w-full min-h-[120px] rounded-2xl border text-left p-3 transition-colors active:bg-muted ${
                   selected
                     ? "border-primary bg-primary/5"
@@ -155,25 +325,110 @@ export function POSClient({ bankAccountId, accountName, products }: Props) {
                   {p.name}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  {formatRp(p.price)}
+                  {hasVariants ? variantPriceLabel(p.variants) : formatRp(p.price)}
                 </div>
+                {hasVariants && (
+                  <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {p.variants.length} varian
+                    {totalQtyOnThisProduct > 0 && ` · ${totalQtyOnThisProduct} di cart`}
+                  </div>
+                )}
               </button>
-              {selected && (
-                <button
-                  type="button"
-                  aria-label="Kurangi"
-                  onClick={() => dec(p.id)}
-                  className="absolute top-2 right-2 min-w-[28px] h-7 px-2 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shadow"
-                >
-                  {qty}
-                </button>
+              {showInlinePill && singleKey && (
+                <div className="absolute bottom-2 right-2 flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
+                  <button
+                    type="button"
+                    aria-label="Kurangi"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      dec(singleKey);
+                    }}
+                    className="h-8 w-8 flex items-center justify-center rounded-l-full active:bg-primary/80"
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span className="min-w-[24px] text-center text-sm font-bold tabular-nums px-1">
+                    {qtyOnSingleKey}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Tambah"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      inc(singleKey);
+                    }}
+                    className="h-8 w-8 flex items-center justify-center rounded-r-full active:bg-primary/80"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
               )}
             </div>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setCustomOpen(true)}
+          className="min-h-[120px] rounded-2xl border-2 border-dashed border-border bg-muted/20 p-3 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground hover:border-primary/60 transition-colors active:bg-muted"
+        >
+          <Sparkles size={18} />
+          <span className="text-sm font-semibold">Tambah custom</span>
+          <span className="text-[10px] text-muted-foreground">
+            nama + harga manual
+          </span>
+        </button>
       </div>
 
-      {/* Bottom bar — sticky, safe-area-aware. */}
+      {customItems.length > 0 && (
+        <div className="px-3 pb-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+            Item custom
+          </p>
+          {customItems.map((c) => (
+            <div
+              key={c.localId}
+              className="rounded-xl border border-border bg-card p-3 flex items-center gap-2"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-foreground text-sm truncate">
+                  {c.name}
+                </p>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {formatRp(c.price)} × {c.qty} = {formatRp(c.price * c.qty)}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Kurangi"
+                onClick={() => updateCustomQty(c.localId, -1)}
+                className="h-8 w-8 rounded-full border border-border text-foreground flex items-center justify-center hover:bg-muted"
+              >
+                <Minus size={14} />
+              </button>
+              <span className="w-5 text-center text-sm font-semibold tabular-nums">
+                {c.qty}
+              </span>
+              <button
+                type="button"
+                aria-label="Tambah"
+                onClick={() => updateCustomQty(c.localId, 1)}
+                className="h-8 w-8 rounded-full border border-border text-foreground flex items-center justify-center hover:bg-muted"
+              >
+                <Plus size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label="Hapus"
+                onClick={() => removeCustom(c.localId)}
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="fixed bottom-0 inset-x-0 z-20 border-t border-border bg-background/95 backdrop-blur px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between mb-2">
           <div>
@@ -185,7 +440,7 @@ export function POSClient({ bankAccountId, accountName, products }: Props) {
           {itemCount > 0 && (
             <button
               type="button"
-              onClick={() => setCart({})}
+              onClick={resetCart}
               className="text-xs text-muted-foreground hover:text-destructive inline-flex items-center gap-1"
             >
               <X size={14} /> Kosongkan
@@ -212,7 +467,6 @@ export function POSClient({ bankAccountId, accountName, products }: Props) {
         </div>
       </div>
 
-      {/* Modal konfirmasi pembayaran. */}
       {confirmMethod && (
         <div
           className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
@@ -232,11 +486,16 @@ export function POSClient({ bankAccountId, accountName, products }: Props) {
               <ul className="space-y-1.5 text-sm">
                 {cartLines.map((line) => (
                   <li
-                    key={line.name}
+                    key={line.key}
                     className="flex items-center justify-between gap-3"
                   >
                     <span className="text-foreground">
                       {line.qty}× {line.name}
+                      {line.custom && (
+                        <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                          custom
+                        </span>
+                      )}
                     </span>
                     <span className="text-muted-foreground tabular-nums">
                       {formatRp(line.subtotal)}
@@ -278,6 +537,230 @@ export function POSClient({ bankAccountId, accountName, products }: Props) {
         </div>
       )}
 
+      {customOpen && (
+        <CustomItemDialog
+          onClose={() => setCustomOpen(false)}
+          onAdd={addCustom}
+        />
+      )}
+
+      {pickerProduct && (
+        <VariantPickerDialog
+          product={pickerProduct}
+          cart={cart}
+          onInc={(variantId) => inc(cartKey(pickerProduct.id, variantId))}
+          onDec={(variantId) => dec(cartKey(pickerProduct.id, variantId))}
+          onClose={() => setVariantPickerFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** "Rp 10.000" kalau semua varian sama harganya, "Rp 10.000 – Rp 15.000"
+ *  untuk rentang. Array diasumsikan non-empty (hanya dipanggil bila ada
+ *  varian). */
+function variantPriceLabel(variants: PosProductVariant[]): string {
+  const prices = variants.map((v) => v.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  return min === max ? formatRp(min) : `${formatRp(min)} – ${formatRp(max)}`;
+}
+
+/** Modal varian — karyawan +/- qty per varian, close untuk apply ke cart
+ *  (state langsung update parent via onInc/onDec). */
+function VariantPickerDialog({
+  product,
+  cart,
+  onInc,
+  onDec,
+  onClose,
+}: {
+  product: PosProduct;
+  cart: Record<string, number>;
+  onInc: (variantId: string) => void;
+  onDec: (variantId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold text-foreground">{product.name}</h2>
+          <p className="text-xs text-muted-foreground">
+            Pilih varian — tap +/- untuk qty.
+          </p>
+        </div>
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+          {product.variants.map((v) => {
+            const qty = cart[cartKey(product.id, v.id)] ?? 0;
+            return (
+              <div
+                key={v.id}
+                className={`rounded-xl border p-3 flex items-center gap-3 ${
+                  qty > 0
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-card"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-foreground text-sm truncate">
+                    {v.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {formatRp(v.price)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
+                  <button
+                    type="button"
+                    aria-label="Kurangi"
+                    onClick={() => onDec(v.id)}
+                    className="h-9 w-9 flex items-center justify-center rounded-l-full active:bg-primary/80 disabled:opacity-40"
+                    disabled={qty === 0}
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span className="min-w-[28px] text-center text-sm font-bold tabular-nums px-1">
+                    {qty}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Tambah"
+                    onClick={() => onInc(v.id)}
+                    className="h-9 w-9 flex items-center justify-center rounded-r-full active:bg-primary/80"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold"
+        >
+          Selesai
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Dialog input item custom — nama + harga + qty. Nama wajib, harga
+ * harus ≥ 0 (boleh 0 untuk freebie/promo), qty integer positif.
+ */
+function CustomItemDialog({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (name: string, price: number, qty: number) => void;
+}) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [qty, setQty] = useState("1");
+
+  function submit() {
+    const n = name.trim();
+    const p = Number(price);
+    const q = Number(qty);
+    if (!n) {
+      toast.error("Nama item wajib diisi");
+      return;
+    }
+    if (!Number.isFinite(p) || p < 0) {
+      toast.error("Harga tidak valid");
+      return;
+    }
+    if (!Number.isInteger(q) || q <= 0) {
+      toast.error("Qty harus bilangan bulat > 0");
+      return;
+    }
+    onAdd(n, p, q);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold text-foreground">Tambah item custom</h2>
+          <p className="text-xs text-muted-foreground">
+            Item satu-kali — tidak masuk katalog.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              Nama
+            </span>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Mis. Kue titipan"
+              className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-background text-sm"
+            />
+          </label>
+          <div className="grid grid-cols-[1fr_100px] gap-2">
+            <label className="block">
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                Harga
+              </span>
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="15000"
+                inputMode="numeric"
+                className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-background text-sm tabular-nums"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                Qty
+              </span>
+              <input
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                inputMode="numeric"
+                className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-background text-sm tabular-nums"
+              />
+            </label>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-xl border border-border text-foreground font-semibold hover:bg-muted"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            className="h-11 rounded-xl bg-primary text-primary-foreground font-semibold"
+          >
+            Tambahkan
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

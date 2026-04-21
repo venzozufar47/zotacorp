@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Save, X, Trash2, Wand2, ChevronLeft, ChevronRight, Search, Plus } from "lucide-react";
+import { Pencil, Save, X, Trash2, Wand2, ChevronLeft, ChevronRight, Search, Plus, CheckSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   createManualTransaction,
 } from "@/lib/actions/cashflow.actions";
 import type { CategoryPresets } from "@/lib/cashflow/categories";
+import { isAccrualEligible } from "@/lib/cashflow/categories";
 import { AutoCategorizeDialog } from "./AutoCategorizeDialog";
 import { formatIDR } from "@/lib/cashflow/format";
 import {
@@ -34,6 +35,11 @@ export interface CashflowRow {
   category: string | null;
   branch: string | null;
   notes: string | null;
+  /** Accrual-basis override: if set, PnL reports this tx in that
+   *  month instead of the tx date's month. Only meaningful for
+   *  categories in `ACCRUAL_ELIGIBLE_CATEGORIES`. */
+  effectivePeriodYear: number | null;
+  effectivePeriodMonth: number | null;
 }
 
 interface Props {
@@ -94,6 +100,16 @@ export function CashflowTable({
   // only 50 rendered at a time). Page resets to 1 on filter change.
   const PAGE_SIZE = 50;
   const [page, setPage] = useState(1);
+  // Multi-select for batch category change. Separate from edit mode —
+  // admin can select rows from the read-only view and bulk-assign a
+  // category without entering the full edit UI.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchCategory, setBatchCategory] = useState<string>("");
+  // Batch effective-period input — format "YYYY-MM". Empty string means
+  // "don't touch"; the sentinel "clear" means "unset the override on
+  // every selected row". We render two actions side-by-side (apply
+  // override vs clear override) so admin can both assign and revert.
+  const [batchEffPeriod, setBatchEffPeriod] = useState<string>("");
 
   // Working copy — mutated inline while editing. Reset on cancel, sent
   // as a diff on save. Indexed by id to avoid findIndex churn.
@@ -106,6 +122,13 @@ export function CashflowTable({
   // Keep working in sync when parent transactions change (router.refresh).
   useMemo(() => {
     setWorking(transactions);
+    // Drop any selected ids that no longer exist after the refresh.
+    setSelectedIds((prev) => {
+      const valid = new Set(transactions.map((t) => t.id));
+      const next = new Set<string>();
+      for (const id of prev) if (valid.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next;
+    });
   }, [transactions]);
 
   function updateRow(id: string, patch: Partial<CashflowRow>) {
@@ -138,6 +161,7 @@ export function CashflowTable({
       credit?: number;
       category?: string | null;
       branch?: string | null;
+      effectivePeriod?: { year: number; month: number } | null;
     }> = [];
     for (const row of existingRows) {
       const orig = initialMap.get(row.id);
@@ -178,6 +202,15 @@ export function CashflowTable({
       }
       if ((row.branch ?? "") !== (orig.branch ?? "")) {
         patch.branch = row.branch;
+        changed = true;
+      }
+      const origY = orig.effectivePeriodYear;
+      const origM = orig.effectivePeriodMonth;
+      const rowY = row.effectivePeriodYear;
+      const rowM = row.effectivePeriodMonth;
+      if (origY !== rowY || origM !== rowM) {
+        patch.effectivePeriod =
+          rowY != null && rowM != null ? { year: rowY, month: rowM } : null;
         changed = true;
       }
       if (changed) diffs.push(patch);
@@ -263,8 +296,103 @@ export function CashflowTable({
       category: null,
       branch: null,
       notes: null,
+      effectivePeriodYear: null,
+      effectivePeriodMonth: null,
     };
     setWorking((prev) => [blank, ...prev]);
+  }
+
+  // Union of credit + debit preset categories (deduped), used as the
+  // batch-apply dropdown. A selection may span both sides, so we show
+  // every available category rather than forcing the admin to pick a
+  // side first.
+  const allCategoryOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of categoryPresets.credit) s.add(c);
+    for (const c of categoryPresets.debit) s.add(c);
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [categoryPresets]);
+
+  function toggleRowSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setBatchCategory("");
+    setBatchEffPeriod("");
+  }
+
+  function handleBatchApplyCategory() {
+    if (selectedIds.size === 0 || !batchCategory) return;
+    const patches = Array.from(selectedIds)
+      // New (unsaved) rows have no DB id yet — skip and let the
+      // normal Save path persist them.
+      .filter((id) => !id.startsWith("new-"))
+      .map((id) => ({ id, category: batchCategory }));
+    if (patches.length === 0) {
+      toast.error("Baris baru belum disimpan — simpan dulu, lalu ulangi.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await updateCashflowTransactions(patches);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        `Kategori "${batchCategory}" diterapkan ke ${patches.length} baris`
+      );
+      clearSelection();
+      router.refresh();
+    });
+  }
+
+  /**
+   * Apply `batchEffPeriod` (YYYY-MM) to every selected persisted row.
+   * Passing `null` instead — via the second "clear" button — unsets
+   * the override so PnL bucketing falls back to tx date.
+   */
+  function handleBatchApplyEffPeriod(clear: boolean) {
+    if (selectedIds.size === 0) return;
+    let effective: { year: number; month: number } | null;
+    if (clear) {
+      effective = null;
+    } else {
+      if (!batchEffPeriod) return;
+      const [y, m] = batchEffPeriod.split("-").map((n) => Number(n));
+      if (!(y >= 2000 && y <= 2100) || !(m >= 1 && m <= 12)) {
+        toast.error("Periode efektif tidak valid");
+        return;
+      }
+      effective = { year: y, month: m };
+    }
+    const patches = Array.from(selectedIds)
+      .filter((id) => !id.startsWith("new-"))
+      .map((id) => ({ id, effectivePeriod: effective }));
+    if (patches.length === 0) {
+      toast.error("Baris baru belum disimpan — simpan dulu, lalu ulangi.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await updateCashflowTransactions(patches);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        clear
+          ? `Periode efektif dikosongkan untuk ${patches.length} baris`
+          : `Periode efektif diset ke ${batchEffPeriod} untuk ${patches.length} baris`
+      );
+      clearSelection();
+      router.refresh();
+    });
   }
 
   function handleDeleteRow(id: string) {
@@ -363,6 +491,26 @@ export function CashflowTable({
     setPage(1);
   }, [filterNoCategory, filterNoBranch, searchQuery]);
 
+  // Earliest → latest tx date across the whole dataset, for the header
+  // caption. Scans once; works on raw `transactions` (not filtered) so
+  // the admin sees the true coverage regardless of active filters.
+  const dateRangeLabel = useMemo(() => {
+    if (transactions.length === 0) return null;
+    let min = transactions[0].date;
+    let max = transactions[0].date;
+    for (const t of transactions) {
+      if (t.date < min) min = t.date;
+      if (t.date > max) max = t.date;
+    }
+    const fmt = (s: string) =>
+      new Date(s + "T00:00:00").toLocaleDateString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    return min === max ? fmt(min) : `${fmt(min)} — ${fmt(max)}`;
+  }, [transactions]);
+
   return (
     <div className="rounded-3xl border border-border bg-card overflow-hidden">
       {/* Header: title + edit mode toggle */}
@@ -377,6 +525,11 @@ export function CashflowTable({
               : `${transactions.length} transaksi tercatat`}
             {editing && " · mode edit aktif"}
           </p>
+          {dateRangeLabel && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Periode: <span className="text-foreground">{dateRangeLabel}</span>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!editing ? (
@@ -469,6 +622,81 @@ export function CashflowTable({
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-primary/10 flex-wrap">
+          <CheckSquare size={14} className="text-primary" />
+          <span className="text-xs font-semibold text-foreground">
+            {selectedIds.size} baris dipilih
+          </span>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-2">
+            Terapkan kategori:
+          </span>
+          <select
+            value={batchCategory}
+            onChange={(e) => setBatchCategory(e.target.value)}
+            disabled={pending}
+            className={EDIT_SELECT_CLS + " h-7 text-foreground min-w-[180px]"}
+          >
+            <option value="">— pilih kategori —</option>
+            {allCategoryOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleBatchApplyCategory}
+            disabled={pending || !batchCategory}
+            className="gap-1.5 h-7"
+          >
+            {pending ? "Menerapkan…" : "Terapkan"}
+          </Button>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-2 border-l border-border pl-2">
+            Periode efektif:
+          </span>
+          <input
+            type="month"
+            value={batchEffPeriod}
+            onChange={(e) => setBatchEffPeriod(e.target.value)}
+            disabled={pending}
+            className={EDIT_SELECT_CLS + " h-7 text-foreground w-[140px]"}
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => handleBatchApplyEffPeriod(false)}
+            disabled={pending || !batchEffPeriod}
+            className="gap-1.5 h-7"
+          >
+            {pending ? "Menerapkan…" : "Terapkan periode"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => handleBatchApplyEffPeriod(true)}
+            disabled={pending}
+            className="gap-1.5 h-7"
+            title="Kosongkan periode efektif di semua baris terpilih (kembali ke bulan tanggal transaksi)"
+          >
+            Kosongkan
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={clearSelection}
+            disabled={pending}
+            className="gap-1.5 h-7"
+          >
+            <X size={12} />
+            Batalkan pilihan
+          </Button>
+        </div>
+      )}
+
       {hasRows && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60 bg-muted/20 flex-wrap">
           {/* Keyword search — cari di sumber/tujuan, detail, catatan,
@@ -558,6 +786,37 @@ export function CashflowTable({
           <table className="w-full text-xs border-separate border-spacing-0">
             <thead className="text-muted-foreground uppercase tracking-wider">
               <tr>
+                <Th className="w-8 text-center">
+                  {/* Select-all toggles every row on the current page.
+                      Indeterminate when some but not all page rows are
+                      selected — modelled via the `ref` callback below. */}
+                  <input
+                    type="checkbox"
+                    aria-label="Pilih semua baris di halaman ini"
+                    checked={
+                      pagedRows.length > 0 &&
+                      pagedRows.every((r) => selectedIds.has(r.id))
+                    }
+                    ref={(el) => {
+                      if (!el) return;
+                      const some = pagedRows.some((r) => selectedIds.has(r.id));
+                      const all = pagedRows.every((r) => selectedIds.has(r.id));
+                      el.indeterminate = some && !all;
+                    }}
+                    onChange={(e) => {
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) {
+                          for (const r of pagedRows) next.add(r.id);
+                        } else {
+                          for (const r of pagedRows) next.delete(r.id);
+                        }
+                        return next;
+                      });
+                    }}
+                    className="cursor-pointer accent-primary"
+                  />
+                </Th>
                 <Th className="w-28">Tanggal & Jam</Th>
                 {showSource && <Th className="w-56">Sumber / Tujuan</Th>}
                 {showDetails && <Th className="w-56">Detail Transaksi</Th>}
@@ -576,6 +835,11 @@ export function CashflowTable({
                 {showBranchColumn && categoryPresets.branches.length > 0 && (
                   <Th className="w-28">Cabang</Th>
                 )}
+                <Th className="w-32">
+                  <span title="Untuk kategori Rent & Salaries: bulan di mana transaksi ini dianggap dikeluarkan untuk laporan PnL">
+                    Periode efektif
+                  </span>
+                </Th>
                 {editing && <Th className="w-10" />}
               </tr>
             </thead>
@@ -588,8 +852,27 @@ export function CashflowTable({
                   : isDebit
                   ? categoryPresets.debit
                   : [];
+                const selected = selectedIds.has(r.id);
                 return (
-                  <tr key={r.id} className="align-top hover:bg-accent/20 transition">
+                  <tr
+                    key={r.id}
+                    className={cn(
+                      "align-top transition",
+                      selected ? "bg-primary/5" : "hover:bg-accent/20"
+                    )}
+                  >
+                    {/* Per-row select checkbox. New (unsaved) rows can
+                        still be ticked, but the batch action skips
+                        them since they have no DB id. */}
+                    <Td className="text-center">
+                      <input
+                        type="checkbox"
+                        aria-label="Pilih baris"
+                        checked={selected}
+                        onChange={() => toggleRowSelected(r.id)}
+                        className="cursor-pointer accent-primary"
+                      />
+                    </Td>
                     {/* Tanggal & Jam */}
                     <Td>
                       {editing ? (
@@ -849,6 +1132,21 @@ export function CashflowTable({
                       </Td>
                     )}
 
+                    {/* Periode efektif — accrual-basis override for Rent
+                        & Salaries. Non-eligible categories show "—". */}
+                    <Td>
+                      <EffectivePeriodCell
+                        row={r}
+                        editing={editing}
+                        onChange={(yy, mm) =>
+                          updateRow(r.id, {
+                            effectivePeriodYear: yy,
+                            effectivePeriodMonth: mm,
+                          })
+                        }
+                      />
+                    </Td>
+
                     {/* Delete row action — only in edit mode */}
                     {editing && (
                       <Td className="text-center">
@@ -1051,5 +1349,106 @@ function Td({
     <td className={cn("px-3 py-2 border-t border-border/60", className)}>
       {children}
     </td>
+  );
+}
+
+const MONTH_NAMES_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+  "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+];
+
+/**
+ * Accrual-basis period cell. Only Rent & Salaries & Wages rows expose
+ * the picker — everything else shows "—". View-mode shows the label
+ * (or "bulan tx" fallback) in small text; edit-mode renders a
+ * <input type="month"> prefilled to the override or to the tx date's
+ * month. Clear the field with the ✕ button beside it.
+ */
+function EffectivePeriodCell({
+  row,
+  editing,
+  onChange,
+}: {
+  row: CashflowRow;
+  editing: boolean;
+  onChange: (year: number | null, month: number | null) => void;
+}) {
+  const eligible = isAccrualEligible(row.category);
+  const hasOverride =
+    row.effectivePeriodYear != null && row.effectivePeriodMonth != null;
+
+  if (!eligible && !hasOverride) {
+    return <span className="text-muted-foreground text-xs">—</span>;
+  }
+
+  const txYear = Number(row.date.slice(0, 4));
+  const txMonth = Number(row.date.slice(5, 7));
+  const activeYear = row.effectivePeriodYear ?? txYear;
+  const activeMonth = row.effectivePeriodMonth ?? txMonth;
+
+  if (!editing) {
+    if (!hasOverride) {
+      return (
+        <span
+          className="text-muted-foreground text-xs italic"
+          title="Belum di-override: default ke bulan transaksi"
+        >
+          {MONTH_NAMES_SHORT[txMonth - 1]} {txYear}
+        </span>
+      );
+    }
+    const overridden =
+      row.effectivePeriodYear !== txYear ||
+      row.effectivePeriodMonth !== txMonth;
+    return (
+      <span
+        className={cn(
+          "text-xs font-semibold",
+          overridden ? "text-primary" : "text-foreground"
+        )}
+        title={
+          overridden
+            ? `Di-override dari bulan tx ${MONTH_NAMES_SHORT[txMonth - 1]} ${txYear}`
+            : "Diset eksplisit ke bulan transaksi"
+        }
+      >
+        {MONTH_NAMES_SHORT[(row.effectivePeriodMonth as number) - 1]}{" "}
+        {row.effectivePeriodYear}
+      </span>
+    );
+  }
+
+  // Edit mode
+  const value = `${activeYear}-${String(activeMonth).padStart(2, "0")}`;
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="month"
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) {
+            onChange(null, null);
+            return;
+          }
+          const [yy, mm] = v.split("-").map(Number);
+          if (Number.isFinite(yy) && Number.isFinite(mm)) {
+            onChange(yy, mm);
+          }
+        }}
+        className="rounded-md border border-input bg-background px-1.5 h-7 text-xs w-full min-w-0"
+      />
+      {hasOverride && (
+        <button
+          type="button"
+          onClick={() => onChange(null, null)}
+          className="text-muted-foreground hover:text-destructive text-xs shrink-0"
+          title="Hapus override (pakai bulan transaksi)"
+          aria-label="Hapus override periode"
+        >
+          ✕
+        </button>
+      )}
+    </div>
   );
 }

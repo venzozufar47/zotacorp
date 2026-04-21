@@ -4,10 +4,11 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -42,6 +43,20 @@ function formatCompact(n: number): string {
   return String(n);
 }
 
+/**
+ * 10% padding around [min, max] so the shaded profit/loss bands
+ * extend slightly beyond the furthest data point. Returns [min, max]
+ * where both sides are clamped to 0 if all data is one-sided (avoids
+ * a loss-zone band appearing when no branch is loss-making).
+ */
+function computeDomain(values: number[]): [number, number] {
+  if (values.length === 0) return [0, 0];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const pad = Math.max(Math.abs(min), Math.abs(max)) * 0.1 || 1;
+  return [Math.min(min - pad, 0), Math.max(max + pad, 0)];
+}
+
 function formatTooltip(value: unknown): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
@@ -59,9 +74,17 @@ export function PnLCharts({ report }: Props) {
     month: `${MONTH_NAMES[m.month - 1]} ${String(m.year).slice(-2)}`,
     semarangProfit: m.byBranch.Semarang.operatingProfit,
     pareProfit: m.byBranch.Pare.operatingProfit,
-    semarangRevenue: m.byBranch.Semarang.operatingRevenue,
-    pareRevenue: m.byBranch.Pare.operatingRevenue,
+    semarangNetDiv: m.byBranch.Semarang.netDividen,
+    pareNetDiv: m.byBranch.Pare.netDividen,
   }));
+
+  // Compute symmetric y-domain padding so the zero-line sits mid-chart
+  // when values straddle it — the positive/negative shaded bands then
+  // read as equal visual weight.
+  const allProfit = data.flatMap((d) => [d.semarangProfit, d.pareProfit]);
+  const allNetDiv = data.flatMap((d) => [d.semarangNetDiv, d.pareNetDiv]);
+  const profitDomain = computeDomain(allProfit);
+  const netDivDomain = computeDomain(allNetDiv);
 
   if (data.length === 0) {
     return (
@@ -97,7 +120,28 @@ export function PnLCharts({ report }: Props) {
                 tick={{ fontSize: 10 }}
                 stroke="var(--muted-foreground)"
                 tickFormatter={formatCompact}
+                domain={profitDomain}
               />
+              {/* Profit/loss zone shading — green band above zero, red below. */}
+              {profitDomain[1] > 0 ? (
+                <ReferenceArea
+                  y1={0}
+                  y2={profitDomain[1]}
+                  fill="var(--success)"
+                  fillOpacity={0.06}
+                  ifOverflow="visible"
+                />
+              ) : null}
+              {profitDomain[0] < 0 ? (
+                <ReferenceArea
+                  y1={profitDomain[0]}
+                  y2={0}
+                  fill="var(--destructive)"
+                  fillOpacity={0.06}
+                  ifOverflow="visible"
+                />
+              ) : null}
+              <ReferenceLine y={0} stroke="var(--border)" strokeWidth={1} />
               <Tooltip
                 formatter={formatTooltip}
                 contentStyle={{
@@ -108,31 +152,17 @@ export function PnLCharts({ report }: Props) {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="semarangProfit" name="Semarang" fill="var(--primary)">
-                {data.map((d, i) => (
-                  <Cell
-                    key={`smg-${i}`}
-                    fill={
-                      d.semarangProfit >= 0
-                        ? "var(--success)"
-                        : "var(--destructive)"
-                    }
-                  />
-                ))}
-              </Bar>
-              <Bar dataKey="pareProfit" name="Pare" fill="var(--primary)">
-                {data.map((d, i) => (
-                  <Cell
-                    key={`pare-${i}`}
-                    fill={
-                      d.pareProfit >= 0
-                        ? "var(--success)"
-                        : "var(--destructive)"
-                    }
-                    fillOpacity={0.6}
-                  />
-                ))}
-              </Bar>
+              {/* Bars colored by branch identity (teal + amber) to
+                  match the Net Dividen line chart. Profit/loss sign
+                  is already conveyed by the shaded zones — coloring
+                  bars by sign would redundantly (and confusingly)
+                  overload the palette. */}
+              <Bar
+                dataKey="semarangProfit"
+                name="Semarang"
+                fill="var(--primary)"
+              />
+              <Bar dataKey="pareProfit" name="Pare" fill="#c2410c" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -141,7 +171,7 @@ export function PnLCharts({ report }: Props) {
       <div className="rounded-2xl border border-border bg-card p-3">
         <div className="px-1 pb-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Revenue trend
+            Net Dividen (Profit Owner)
           </p>
           <p className="text-sm font-semibold text-foreground">
             per bulan × cabang
@@ -160,7 +190,27 @@ export function PnLCharts({ report }: Props) {
                 tick={{ fontSize: 10 }}
                 stroke="var(--muted-foreground)"
                 tickFormatter={formatCompact}
+                domain={netDivDomain}
               />
+              {netDivDomain[1] > 0 ? (
+                <ReferenceArea
+                  y1={0}
+                  y2={netDivDomain[1]}
+                  fill="var(--success)"
+                  fillOpacity={0.06}
+                  ifOverflow="visible"
+                />
+              ) : null}
+              {netDivDomain[0] < 0 ? (
+                <ReferenceArea
+                  y1={netDivDomain[0]}
+                  y2={0}
+                  fill="var(--destructive)"
+                  fillOpacity={0.06}
+                  ifOverflow="visible"
+                />
+              ) : null}
+              <ReferenceLine y={0} stroke="var(--border)" strokeWidth={1} />
               <Tooltip
                 formatter={formatTooltip}
                 contentStyle={{
@@ -171,9 +221,13 @@ export function PnLCharts({ report }: Props) {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
+              {/* Stroke colors chosen to avoid green/red so they're
+                  not confused with the profit/loss zone shading.
+                  Teal (primary) + amber read as two distinct branches
+                  at a glance without either reading as "good/bad". */}
               <Line
                 type="monotone"
-                dataKey="semarangRevenue"
+                dataKey="semarangNetDiv"
                 name="Semarang"
                 stroke="var(--primary)"
                 strokeWidth={2}
@@ -181,9 +235,9 @@ export function PnLCharts({ report }: Props) {
               />
               <Line
                 type="monotone"
-                dataKey="pareRevenue"
+                dataKey="pareNetDiv"
                 name="Pare"
-                stroke="var(--success)"
+                stroke="#c2410c"
                 strokeWidth={2}
                 dot={{ r: 3 }}
               />

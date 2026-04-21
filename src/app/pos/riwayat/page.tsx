@@ -61,7 +61,13 @@ export default async function PosRiwayatPage() {
       ) : (
         <div className="space-y-4">
           {[...byDate.entries()].map(([date, rows]) => {
-            const dayTotal = rows.reduce((a, b) => a + b.total, 0);
+            // Hitung hanya sale yang masih aktif — yang di-void tidak
+            // lagi ada di ledger jadi tidak boleh ikut total harian.
+            const dayTotal = rows.reduce(
+              (a, b) => (b.voidedAt ? a : a + b.total),
+              0
+            );
+            const voidedCount = rows.filter((r) => r.voidedAt).length;
             return (
               <section key={date}>
                 <div className="flex items-center justify-between px-1 pb-1.5">
@@ -69,18 +75,27 @@ export default async function PosRiwayatPage() {
                     {formatDate(date)}
                   </h2>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {rows.length} · {formatRp(dayTotal)}
+                    {rows.length - voidedCount} · {formatRp(dayTotal)}
+                    {voidedCount > 0 && (
+                      <span className="ml-1 text-destructive/80">
+                        (+{voidedCount} dibatalkan)
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="space-y-1.5">
                   {rows.map((s) => (
                     <details
                       key={s.id}
-                      className="rounded-xl border border-border bg-card"
+                      className={`rounded-xl border bg-card ${
+                        s.voidedAt
+                          ? "border-destructive/30 bg-destructive/5"
+                          : "border-border"
+                      }`}
                     >
                       <summary className="cursor-pointer list-none p-3 flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
                               className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
                                 s.paymentMethod === "cash"
@@ -93,12 +108,34 @@ export default async function PosRiwayatPage() {
                             <span className="text-xs text-muted-foreground">
                               {formatTime(s.saleTime)}
                             </span>
+                            {s.voidedAt && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive uppercase tracking-wider">
+                                Dibatalkan
+                              </span>
+                            )}
                           </div>
-                          <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {s.items.map((it) => `${it.qty}× ${it.productName}`).join(", ")}
+                          <div
+                            className={`text-xs mt-0.5 truncate ${
+                              s.voidedAt
+                                ? "text-muted-foreground line-through"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {s.items
+                              .map(
+                                (it) =>
+                                  `${it.qty}× ${it.variantName ? `${it.productName} ${it.variantName}` : it.productName}`
+                              )
+                              .join(", ")}
                           </div>
                         </div>
-                        <span className="font-semibold text-foreground tabular-nums whitespace-nowrap">
+                        <span
+                          className={`font-semibold tabular-nums whitespace-nowrap ${
+                            s.voidedAt
+                              ? "text-muted-foreground line-through"
+                              : "text-foreground"
+                          }`}
+                        >
                           {formatRp(s.total)}
                         </span>
                       </summary>
@@ -110,6 +147,12 @@ export default async function PosRiwayatPage() {
                           >
                             <span className="text-foreground">
                               {it.qty}× {it.productName}
+                              {it.variantName && (
+                                <span className="text-muted-foreground">
+                                  {" "}
+                                  — {it.variantName}
+                                </span>
+                              )}
                             </span>
                             <span className="text-muted-foreground tabular-nums">
                               {formatRp(it.subtotal)}

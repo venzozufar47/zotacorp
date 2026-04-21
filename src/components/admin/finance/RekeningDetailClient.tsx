@@ -41,6 +41,8 @@ interface Account {
    *  the admin-curated list or the preset default. Used to pre-fill
    *  the "Atur kategori" dialog so admin sees the current state. */
   customCategories: string[];
+  /** POS-enabled → boleh assign user dengan scope 'pos_only'. */
+  posEnabled: boolean;
 }
 
 interface Props {
@@ -76,7 +78,9 @@ export function RekeningDetailClient({ account, presets, isAdmin }: Props) {
   // Admin-only manage buttons: rules, delete, assign. Non-admin
   // assignees get Input manual + CashflowTable edit mode only.
   const showRulesLink = isAdmin && !isCash;
-  const showAssignButton = isAdmin && isCash;
+  // Tombol assign muncul kalau admin + rekening bisa di-delegasikan
+  // (cash untuk scope full, atau pos_enabled untuk scope pos_only).
+  const showAssignButton = isAdmin && (isCash || account.posEnabled);
   const showEditCategoriesButton = isAdmin && isCash;
   const showDeleteButton = isAdmin;
 
@@ -226,6 +230,8 @@ export function RekeningDetailClient({ account, presets, isAdmin }: Props) {
         <AssignUsersDialog
           bankAccountId={account.id}
           accountName={account.accountName}
+          bank={account.bank}
+          posEnabled={account.posEnabled}
           open={assignOpen}
           onOpenChange={setAssignOpen}
         />

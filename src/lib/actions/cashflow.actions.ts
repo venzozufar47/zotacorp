@@ -1314,6 +1314,8 @@ export async function savePusatAllocation(input: {
 //  Bank account assignees (per-rekening ACL for cash rekening)
 // ─────────────────────────────────────────────────────────────────────
 
+export type AssigneeScope = "full" | "pos_only";
+
 export interface AssigneeCandidate {
   id: string;
   fullName: string | null;
@@ -1321,6 +1323,8 @@ export interface AssigneeCandidate {
   email: string | null;
   role: string;
   assigned: boolean;
+  /** Current scope jika `assigned=true`; null kalau belum ter-assign. */
+  scope: AssigneeScope | null;
 }
 
 /**
@@ -1342,60 +1346,90 @@ export async function listAssigneeCandidates(
       .order("full_name", { ascending: true }),
     supabase
       .from("bank_account_assignees")
-      .select("user_id")
+      .select("user_id, scope")
       .eq("bank_account_id", bankAccountId),
   ]);
 
-  const assignedIds = new Set((current ?? []).map((r) => r.user_id));
-  const rows = (profiles ?? []).map((p) => ({
+  const scopeByUser = new Map<string, AssigneeScope>();
+  for (const r of current ?? [])
+    scopeByUser.set(r.user_id, r.scope as AssigneeScope);
+  const rows: AssigneeCandidate[] = (profiles ?? []).map((p) => ({
     id: p.id,
     fullName: p.full_name,
     nickname: p.nickname,
     email: p.email,
     role: p.role,
-    assigned: assignedIds.has(p.id),
+    assigned: scopeByUser.has(p.id),
+    scope: scopeByUser.get(p.id) ?? null,
   }));
   return { ok: true, data: rows };
 }
 
+export interface AssigneeSelection {
+  userId: string;
+  scope: AssigneeScope;
+}
+
 /**
  * Replace the set of assignees for this rekening with exactly the
- * provided user IDs. Admin-only. Cash-only (prevents accidentally
- * sharing a bank statement account with staff).
+ * provided (userId, scope) pairs. Admin-only.
+ *
+ * - `scope='full'` tetap cash-only (user bisa lihat + input + edit
+ *   cashflow rekening, jadi harus cash supaya tidak bocorkan data
+ *   statement bank).
+ * - `scope='pos_only'` berlaku untuk rekening apa pun yang
+ *   `pos_enabled=true` (saat ini Cash Pare) — user hanya bisa akses
+ *   /pos, tidak bisa lihat cashflow rekening.
  */
 export async function setBankAccountAssignees(
   bankAccountId: string,
-  userIds: string[]
-): Promise<ActionResult<{ added: number; removed: number }>> {
+  selections: AssigneeSelection[]
+): Promise<ActionResult<{ added: number; removed: number; updated: number }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = await createClient();
 
-  // Guard: cash rekening only. Other rekening types have admin-only
-  // workflow (PDF/Excel parsing, PnL, rules) and should not be
-  // delegated.
   const { data: account } = await supabase
     .from("bank_accounts")
-    .select("id, bank")
+    .select("id, bank, pos_enabled")
     .eq("id", bankAccountId)
     .maybeSingle();
   if (!account) return { ok: false, error: "Rekening tidak ditemukan" };
-  if (account.bank !== "cash") {
+
+  const wantsFull = selections.some((s) => s.scope === "full");
+  const wantsPosOnly = selections.some((s) => s.scope === "pos_only");
+  if (wantsFull && account.bank !== "cash") {
     return {
       ok: false,
-      error: "Assign karyawan hanya tersedia untuk rekening Cash.",
+      error: "Akses Full hanya tersedia untuk rekening Cash.",
+    };
+  }
+  if (wantsPosOnly && !account.pos_enabled) {
+    return {
+      ok: false,
+      error: "Akses POS-only hanya tersedia untuk rekening POS-enabled.",
     };
   }
 
   const { data: existing } = await supabase
     .from("bank_account_assignees")
-    .select("user_id")
+    .select("user_id, scope")
     .eq("bank_account_id", bankAccountId);
-  const existingIds = new Set((existing ?? []).map((r) => r.user_id));
-  const nextIds = new Set(userIds);
+  const existingByUser = new Map<string, AssigneeScope>(
+    (existing ?? []).map((r) => [r.user_id, r.scope as AssigneeScope])
+  );
+  const nextByUser = new Map(selections.map((s) => [s.userId, s.scope]));
 
-  const toAdd = [...nextIds].filter((id) => !existingIds.has(id));
-  const toRemove = [...existingIds].filter((id) => !nextIds.has(id));
+  const toAdd: AssigneeSelection[] = [];
+  const toUpdate: AssigneeSelection[] = [];
+  for (const s of selections) {
+    const prev = existingByUser.get(s.userId);
+    if (prev === undefined) toAdd.push(s);
+    else if (prev !== s.scope) toUpdate.push(s);
+  }
+  const toRemove = [...existingByUser.keys()].filter(
+    (id) => !nextByUser.has(id)
+  );
 
   if (toRemove.length > 0) {
     const { error } = await supabase
@@ -1407,17 +1441,34 @@ export async function setBankAccountAssignees(
   }
   if (toAdd.length > 0) {
     const { error } = await supabase.from("bank_account_assignees").insert(
-      toAdd.map((uid) => ({
+      toAdd.map((s) => ({
         bank_account_id: bankAccountId,
-        user_id: uid,
+        user_id: s.userId,
         assigned_by: gate.userId,
+        scope: s.scope,
       }))
     );
     if (error) return { ok: false, error: error.message };
   }
+  for (const s of toUpdate) {
+    const { error } = await supabase
+      .from("bank_account_assignees")
+      .update({ scope: s.scope })
+      .eq("bank_account_id", bankAccountId)
+      .eq("user_id", s.userId);
+    if (error) return { ok: false, error: error.message };
+  }
 
   revalidatePath("/admin/finance", "layout");
-  return { ok: true, data: { added: toAdd.length, removed: toRemove.length } };
+  revalidatePath("/pos", "layout");
+  return {
+    ok: true,
+    data: {
+      added: toAdd.length,
+      removed: toRemove.length,
+      updated: toUpdate.length,
+    },
+  };
 }
 
 /**
@@ -1462,10 +1513,13 @@ export async function listMyAssignedBankAccountIds(): Promise<string[]> {
   const user = await getCurrentUser();
   if (!user) return [];
   const supabase = await createClient();
+  // Cashflow landing cuma relevan untuk scope='full' — pos_only user
+  // tidak perlu lihat rekening di /admin/finance.
   const { data } = await supabase
     .from("bank_account_assignees")
     .select("bank_account_id")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("scope", "full");
   return (data ?? []).map((r) => r.bank_account_id);
 }
 
@@ -1488,7 +1542,8 @@ export async function listMyAssignedBankAccounts(): Promise<
   const { data: assignments } = await supabase
     .from("bank_account_assignees")
     .select("bank_account_id")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("scope", "full");
   const ids = (assignments ?? []).map((r) => r.bank_account_id);
   if (ids.length === 0) return [];
   const { data: accounts } = await supabase

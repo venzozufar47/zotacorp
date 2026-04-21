@@ -1,10 +1,12 @@
 /**
  * Profit & Loss aggregation for a business unit.
  *
- * Scope rules (as requested by user):
- *   - Only transactions from Bank **Jago** accounts under the BU are
- *     counted. Mandiri accounts are a pass-through for QRIS revenue
- *     that's already moved to Jago; including them would double-count.
+ * Scope rules:
+ *   - Pulls transactions from ALL rekening (bank + cash) under the
+ *     BU. Inter-account transfers are classified as "Wealth Transfer"
+ *     (non-operating) so they wash out — no double-count. Cash-ledger
+ *     category labels are normalized to the unified PnL vocabulary
+ *     via `normalizePnLCategory` (e.g. "Haengbo Cust" → "Sales").
  *   - Three branches exist (Pusat, Semarang, Pare) but Pusat is NOT
  *     operating. Admin must allocate every Pusat (month × category ×
  *     side) bucket into a Semarang + Pare split. Unallocated or
@@ -18,7 +20,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
-import { getNonOperatingCategories } from "./categories";
+import { getNonOperatingCategories, normalizePnLCategory } from "./categories";
 
 export type PnLSide = "credit" | "debit";
 export type PnLCategoryClass = "operating" | "nonop";
@@ -36,9 +38,50 @@ export interface BranchPnL {
   operatingProfit: number;
   nonOpRevenue: number;
   nonOpExpense: number;
-  netCashFlow: number; // operatingProfit + (nonOpRevenue - nonOpExpense)
+  /**
+   * Net dividend from the owner's perspective — this IS the owner's
+   * profit line. Money leaving the business as dividend/payouts
+   * (debit) counts positive; money the owner puts in (Investment,
+   * credit) counts negative. Wealth Transfer is excluded because it's
+   * just a reshuffle between owned accounts — not a real dividend.
+   *
+   * Note: "Operating Profit" (revenue − expense) is the BUSINESS's
+   * performance, not the owner's profit. Dividend is how that
+   * business profit is distributed to the owner. Don't combine them
+   * into a single "total" — they're two separate views.
+   */
+  netDividen: number;
   byCategory: BranchCategoryBreakdown[];
 }
+
+/**
+ * Non-operating categories excluded from Net Dividen (treated as
+ * neutral wash). Wealth Transfer = reshuffle between owned accounts.
+ * Pinjaman / Pinjaman Mamaya = borrow/repay cash, not owner profit
+ * or capital injection.
+ */
+const NET_DIVIDEN_EXCLUDED = new Set([
+  "Wealth Transfer",
+  "Pinjaman",
+  "Pinjaman Mamaya",
+]);
+
+export interface PusatTxDetail {
+  date: string;
+  description: string;
+  amount: number;
+}
+
+/**
+ * Categories where admin wants to see the underlying Pusat
+ * transactions inline in the allocation editor (not just the
+ * aggregate). Useful for catch-all buckets like "Other Revenue"
+ * where the reason to allocate depends on the individual source.
+ */
+export const PUSAT_DETAIL_CATEGORIES = new Set([
+  "Other Revenue",
+  "Salaries & Wages",
+]);
 
 export interface PusatBreakdownRow {
   category: string;
@@ -51,6 +94,8 @@ export interface PusatBreakdownRow {
   unallocated: boolean;
   /** Has a row but sum ≠ pusatTotal. */
   unbalanced: boolean;
+  /** Populated only for categories in PUSAT_DETAIL_CATEGORIES. */
+  details?: PusatTxDetail[];
 }
 
 export interface PnLMonth {
@@ -107,24 +152,42 @@ export async function fetchPnL(
   from: { year: number; month: number },
   to: { year: number; month: number }
 ): Promise<PnLReport> {
-  const startDate = `${from.year}-${String(from.month).padStart(2, "0")}-01`;
-  // To-date is last day of to-month. Using first day of the following
-  // month minus 1 day at query time to avoid month-length math.
-  const afterTo =
-    to.month === 12
-      ? `${to.year + 1}-01-01`
-      : `${to.year}-${String(to.month + 1).padStart(2, "0")}-01`;
-
-  // Join chain filters tx to this BU's Jago accounts only.
-  const { data: txs } = await supabase
-    .from("cashflow_transactions")
-    .select(
-      "transaction_date, debit, credit, category, branch, cashflow_statements!inner(bank_account_id, bank_accounts!inner(business_unit, bank))"
-    )
-    .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
-    .eq("cashflow_statements.bank_accounts.bank", "jago")
-    .gte("transaction_date", startDate)
-    .lt("transaction_date", afterTo);
+  // Pull tx from ALL rekening for the BU (bank + cash). Inter-account
+  // transfers are classified as "Wealth Transfer" (non-operating) so
+  // they wash out in operating totals — no double-count. Cash
+  // rekening uses different category labels (Haengbo Cust, Slice
+  // Haengbo, etc.); we normalize them via `normalizePnLCategory` to
+  // the unified PnL vocabulary so a single "Sales" bucket aggregates
+  // all revenue sources.
+  // Paginate to bypass PostgREST's default 1000-row cap. `.range()`
+  // alone isn't reliable on managed Supabase because `db-max-rows`
+  // can be enforced server-side regardless of the Range header. Loop
+  // until we read a short page.
+  type PnLTxRow = {
+    transaction_date: string;
+    effective_period_year: number | null;
+    effective_period_month: number | null;
+    debit: string | number;
+    credit: string | number;
+    category: string | null;
+    branch: string | null;
+    description: string | null;
+  };
+  const txs: PnLTxRow[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data: page, error } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, cashflow_statements!inner(bank_account_id, bank_accounts!inner(business_unit))"
+      )
+      .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    const rows = (page ?? []) as PnLTxRow[];
+    txs.push(...rows);
+    if (rows.length < PAGE) break;
+  }
 
   const { data: allocsRaw } = await supabase
     .from("cashflow_pusat_allocations")
@@ -133,7 +196,8 @@ export async function fetchPnL(
     )
     .eq("business_unit", businessUnit)
     .gte("period_year", from.year)
-    .lte("period_year", to.year);
+    .lte("period_year", to.year)
+    .range(0, 99999);
 
   // allocs keyed by "year-month|side|category"
   const allocMap = new Map<
@@ -154,18 +218,34 @@ export async function fetchPnL(
   type BranchName = "Pusat" | "Semarang" | "Pare" | "unassigned";
   type MonthBucket = Map<string, number>; // "<branch>|<category>|<side>" → amount
   const byMonth = new Map<string, MonthBucket>();
+  // Per-bucket transaction details, only filled for Pusat buckets
+  // whose category is in PUSAT_DETAIL_CATEGORIES. Keyed identically
+  // to the main bucket map ("monthKey | <branch>|<category>|<side>")
+  // so lookup during report-build is a single map hit.
+  const detailsByBucket = new Map<string, PusatTxDetail[]>();
 
-  for (const t of (txs ?? []) as Array<{
-    transaction_date: string;
-    debit: string | number;
-    credit: string | number;
-    category: string | null;
-    branch: string | null;
-  }>) {
-    const [y, mStr] = t.transaction_date.split("-");
-    const year = Number(y);
-    const month = Number(mStr);
+  // Inclusive month range check for the effective-bucket filter.
+  const inRange = (y: number, m: number): boolean => {
+    if (y < from.year || y > to.year) return false;
+    if (y === from.year && m < from.month) return false;
+    if (y === to.year && m > to.month) return false;
+    return true;
+  };
+
+  for (const t of txs) {
+    // Resolved bucket = override if set, else the tx date's month.
+    let year: number;
+    let month: number;
+    if (t.effective_period_year != null && t.effective_period_month != null) {
+      year = t.effective_period_year;
+      month = t.effective_period_month;
+    } else {
+      const [y, mStr] = t.transaction_date.split("-");
+      year = Number(y);
+      month = Number(mStr);
+    }
     if (!Number.isFinite(year) || !Number.isFinite(month)) continue;
+    if (!inRange(year, month)) continue;
 
     const monthKey = ym(year, month);
     const branchRaw = (t.branch ?? "").trim();
@@ -173,7 +253,7 @@ export async function fetchPnL(
       branchRaw === "Pusat" || branchRaw === "Semarang" || branchRaw === "Pare"
         ? branchRaw
         : "unassigned";
-    const category = (t.category ?? "").trim() || "(tanpa kategori)";
+    const category = normalizePnLCategory(businessUnit, t.category);
 
     const debit = Number(t.debit) || 0;
     const credit = Number(t.credit) || 0;
@@ -184,13 +264,34 @@ export async function fetchPnL(
       bucket = new Map();
       byMonth.set(monthKey, bucket);
     }
+    const collectDetail = branch === "Pusat" && PUSAT_DETAIL_CATEGORIES.has(category);
     if (credit > 0) {
       const k = `${branch}|${category}|credit`;
       bucket.set(k, (bucket.get(k) ?? 0) + credit);
+      if (collectDetail) {
+        const dk = `${monthKey}|${k}`;
+        const list = detailsByBucket.get(dk) ?? [];
+        list.push({
+          date: t.transaction_date,
+          description: (t.description ?? "").trim() || "(tanpa deskripsi)",
+          amount: credit,
+        });
+        detailsByBucket.set(dk, list);
+      }
     }
     if (debit > 0) {
       const k = `${branch}|${category}|debit`;
       bucket.set(k, (bucket.get(k) ?? 0) + debit);
+      if (collectDetail) {
+        const dk = `${monthKey}|${k}`;
+        const list = detailsByBucket.get(dk) ?? [];
+        list.push({
+          date: t.transaction_date,
+          description: (t.description ?? "").trim() || "(tanpa deskripsi)",
+          amount: debit,
+        });
+        detailsByBucket.set(dk, list);
+      }
     }
   }
 
@@ -259,6 +360,12 @@ export async function fetchPnL(
       const balanced = !unallocated && Math.abs(sum - pusatTotal) <= 1;
       const unbalanced = !unallocated && !balanced;
 
+      const details = PUSAT_DETAIL_CATEGORIES.has(category)
+        ? detailsByBucket
+            .get(`${monthKey}|${k}`)
+            ?.slice()
+            .sort((a, b) => a.date.localeCompare(b.date))
+        : undefined;
       pusatBreakdown.push({
         category,
         side,
@@ -268,6 +375,7 @@ export async function fetchPnL(
         balanced,
         unallocated,
         unbalanced,
+        details,
       });
 
       if (balanced) {
@@ -296,6 +404,11 @@ export async function fetchPnL(
       let opExp = 0;
       let nopRev = 0;
       let nopExp = 0;
+      // Net dividen (owner-POV): only counts non-op cats NOT in the
+      // excluded set (Wealth Transfer). Signs flipped vs operating:
+      // debit = owner receives (+), credit = owner invests (−).
+      let netDivDebit = 0;
+      let netDivCredit = 0;
       for (const [category, totals] of bag) {
         const isNonOp = nonOpSet.has(category);
         byCategory.push({
@@ -307,6 +420,10 @@ export async function fetchPnL(
         if (isNonOp) {
           nopRev += totals.credit;
           nopExp += totals.debit;
+          if (!NET_DIVIDEN_EXCLUDED.has(category)) {
+            netDivDebit += totals.debit;
+            netDivCredit += totals.credit;
+          }
         } else {
           opRev += totals.credit;
           opExp += totals.debit;
@@ -324,7 +441,7 @@ export async function fetchPnL(
         operatingProfit: Math.round(opRev - opExp),
         nonOpRevenue: Math.round(nopRev),
         nonOpExpense: Math.round(nopExp),
-        netCashFlow: Math.round(opRev - opExp + nopRev - nopExp),
+        netDividen: Math.round(netDivDebit - netDivCredit),
         byCategory,
       };
     };

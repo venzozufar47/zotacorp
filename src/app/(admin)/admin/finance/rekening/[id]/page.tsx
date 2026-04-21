@@ -8,10 +8,12 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RekeningDetailClient } from "@/components/admin/finance/RekeningDetailClient";
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
+import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
 import { getCategoryPresets } from "@/lib/cashflow/categories";
 import { formatIDR } from "@/lib/cashflow/format";
 import { verifyBalance } from "@/lib/cashflow/parsers/shared";
 import { sortChronologicalDesc, sortChronologicalAsc } from "@/lib/cashflow/chronological";
+import { computeLatestBalance } from "@/lib/cashflow/balance";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
@@ -64,7 +66,7 @@ export default async function RekeningDetailPage({
   const { data: account } = await supabase
     .from("bank_accounts")
     .select(
-      "id, business_unit, bank, account_name, account_number, is_active, pdf_password, source_url, source_sheet, last_synced_at, default_branch, custom_categories"
+      "id, business_unit, bank, account_name, account_number, is_active, pdf_password, source_url, source_sheet, last_synced_at, default_branch, custom_categories, pos_enabled"
     )
     .eq("id", id)
     .maybeSingle();
@@ -85,7 +87,7 @@ export default async function RekeningDetailPage({
     supabase
       .from("cashflow_transactions")
       .select(
-        "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, cashflow_statements!inner(bank_account_id)"
+        "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, effective_period_year, effective_period_month, cashflow_statements!inner(bank_account_id)"
       )
       .eq("cashflow_statements.bank_account_id", id)
       // Newest first at the top. Within a single date, sort by time
@@ -112,6 +114,8 @@ export default async function RekeningDetailPage({
     category: t.category,
     branch: t.branch,
     notes: t.notes,
+    effectivePeriodYear: t.effective_period_year,
+    effectivePeriodMonth: t.effective_period_month,
   }));
   // Re-sort in memory with the balance-chain tiebreaker for rows
   // that share the same (date, time). SQL ORDER BY can't model the
@@ -119,9 +123,6 @@ export default async function RekeningDetailPage({
   // rule, so we apply it here to fix intra-minute ordering (e.g. a
   // pocket transfer + its counterpart debit at 18:50:00).
   const txList = sortChronologicalDesc(rawTxList);
-
-  const totalCredit = txList.reduce((s, t) => s + t.credit, 0);
-  const totalDebit = txList.reduce((s, t) => s + t.debit, 0);
 
   // Lifetime balance reconciliation. Opening = FIRST tx's pre-tx
   // balance, closing = LAST tx's runningBalance. Uses the same
@@ -138,15 +139,9 @@ export default async function RekeningDetailPage({
       chronological[0].credit +
       chronological[0].debit
     : 0;
-  // Latest balance is derived from the same credit−debit cumulation
-  // the table now renders per-row, so the summary's "Saldo akhir
-  // tercatat" stays in lockstep with the first (newest) row's Saldo
-  // cell in the table. Using a stored per-row runningBalance here
-  // would desync the two views whenever the user edits amounts
-  // without touching the stored balance column.
-  const latestBalance = canVerify
-    ? openingBalance + totalCredit - totalDebit
-    : statementList[0]?.closing_balance ?? 0;
+  // Shared helper — same anchor+cumulation rule as the landing card
+  // and the per-row Saldo column in CashflowTable.
+  const latestBalance = computeLatestBalance(txList);
   const verification = canVerify
     ? verifyBalance(openingBalance, Number(latestBalance), txList)
     : null;
@@ -165,30 +160,29 @@ export default async function RekeningDetailPage({
         subtitle={`${BANK_LABELS[account.bank] ?? account.bank}${account.account_number ? ` • ${account.account_number}` : ""} — ${account.business_unit}`}
       />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Single headline card — admin only cares about the running
+          balance. Credit/debit totals still drive the verification
+          invariant below, just kept off the top summary. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <SummaryCard
           label="Saldo terakhir"
           value={`Rp ${formatIDR(Number(latestBalance))}`}
         />
-        <SummaryCard
-          label="Total kredit (masuk)"
-          value={`+ Rp ${formatIDR(totalCredit)}`}
-          tone="success"
-        />
-        <SummaryCard
-          label="Total debit (keluar)"
-          value={`− Rp ${formatIDR(totalDebit)}`}
-          tone="destructive"
-        />
+        {/* Compact verification status — same invariant as before
+            (opening + credit − debit === closing) but collapsed to
+            a single row. Expands into the detailed breakdown only
+            when the books break, which is when admins actually
+            need to see the numbers. */}
+        {verification && (
+          <LifetimeBalanceStatus
+            openingBalance={openingBalance}
+            closingBalance={Number(latestBalance)}
+            verification={verification}
+          />
+        )}
       </div>
 
-      {/* Lifetime balance reconciliation — same invariant that guards
-          the upload preview, now running against every row that's
-          ever landed in this rekening. Surfaces silent corruption
-          (tx edited to a wrong amount, a duplicate slip through) the
-          moment it breaks the books. */}
-      {verification && (
+      {verification && !verification.match && (
         <LifetimeBalancePanel
           openingBalance={openingBalance}
           closingBalance={Number(latestBalance)}
@@ -227,10 +221,27 @@ export default async function RekeningDetailPage({
             (account.custom_categories as string[]).length > 0
               ? (account.custom_categories as string[])
               : [...resolvePresets(account).credit],
+          posEnabled: account.pos_enabled,
         }}
         presets={resolvePresets(account)}
         isAdmin={isAdmin}
       />
+
+      {/* Kategori pemasukan & pengeluaran — admin-only breakdown for
+          a user-picked date range. Non-admin assignees (e.g. kasir)
+          only need to see the raw ledger, not the business-level
+          category analytics. */}
+      {isAdmin && (
+        <CategoryBreakdownPanel
+          transactions={txList.map((t) => ({
+            date: t.date,
+            debit: t.debit,
+            credit: t.credit,
+            category: t.category,
+          }))}
+          businessUnit={account.business_unit}
+        />
+      )}
 
       {/* Lifetime transactions table — PDF-matching columns + edit mode */}
       <CashflowTable
@@ -313,6 +324,73 @@ function resolvePresets(account: {
     }
   }
   return fallback;
+}
+
+/**
+ * Compact single-card version of the balance verification — sits
+ * alongside "Saldo terakhir" in the top grid. When the books match
+ * this is all the admin sees; on mismatch the detailed panel
+ * (LifetimeBalancePanel) renders below with the full breakdown.
+ */
+function LifetimeBalanceStatus({
+  openingBalance,
+  closingBalance,
+  verification,
+}: {
+  openingBalance: number;
+  closingBalance: number;
+  verification: {
+    match: boolean;
+    computed: number;
+    diff: number;
+    sumCredit: number;
+    sumDebit: number;
+  };
+}) {
+  const { match, diff } = verification;
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-3 flex items-center gap-3",
+        match
+          ? "border-success/30 bg-success/5"
+          : "border-destructive/40 bg-destructive/5"
+      )}
+    >
+      {match ? (
+        <CheckCircle2 size={20} className="text-success shrink-0" />
+      ) : (
+        <AlertTriangle size={20} className="text-destructive shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p
+          className={cn(
+            "text-[10px] font-semibold uppercase tracking-wider",
+            match ? "text-success/80" : "text-destructive/80"
+          )}
+        >
+          Verifikasi saldo
+        </p>
+        <p
+          className={cn(
+            "text-sm font-semibold",
+            match ? "text-success" : "text-destructive"
+          )}
+        >
+          {match
+            ? "Saldo cocok — seluruh transaksi terverifikasi"
+            : `Selisih Rp ${diff.toLocaleString("id-ID")} — lihat rincian di bawah`}
+        </p>
+      </div>
+      {/* Keep the raw numbers referenced so TS doesn't flag them as
+          unused — they're load-bearing for the invariant even when
+          we don't render them on the happy path. */}
+      <span className="sr-only">
+        Saldo awal Rp {openingBalance.toLocaleString("id-ID")}, saldo akhir Rp{" "}
+        {closingBalance.toLocaleString("id-ID")}.
+      </span>
+    </div>
+  );
 }
 
 function LifetimeBalancePanel({

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
   findPosAccountForCurrentUser,
   listActivePosProducts,
@@ -21,13 +21,17 @@ export default async function PosPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const products = await listActivePosProducts(account.id);
+  const [products, role] = await Promise.all([
+    listActivePosProducts(account.id),
+    getCurrentRole(),
+  ]);
 
   return (
     <POSClient
       bankAccountId={account.id}
       accountName={account.accountName}
       products={products}
+      isAdmin={role === "admin"}
     />
   );
 }

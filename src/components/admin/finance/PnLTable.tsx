@@ -56,20 +56,25 @@ export function PnLTable({ report }: Props) {
       acc.smgRev += m.byBranch.Semarang.operatingRevenue;
       acc.smgExp += m.byBranch.Semarang.operatingExpense;
       acc.smgProfit += m.byBranch.Semarang.operatingProfit;
+      acc.smgNetDiv += m.byBranch.Semarang.netDividen;
       acc.pareRev += m.byBranch.Pare.operatingRevenue;
       acc.pareExp += m.byBranch.Pare.operatingExpense;
       acc.pareProfit += m.byBranch.Pare.operatingProfit;
-      acc.totalProfit += m.byBranch.Semarang.operatingProfit + m.byBranch.Pare.operatingProfit;
+      acc.pareNetDiv += m.byBranch.Pare.netDividen;
+      acc.totalNetDiv +=
+        m.byBranch.Semarang.netDividen + m.byBranch.Pare.netDividen;
       return acc;
     },
     {
       smgRev: 0,
       smgExp: 0,
       smgProfit: 0,
+      smgNetDiv: 0,
       pareRev: 0,
       pareExp: 0,
       pareProfit: 0,
-      totalProfit: 0,
+      pareNetDiv: 0,
+      totalNetDiv: 0,
     }
   );
 
@@ -79,15 +84,17 @@ export function PnLTable({ report }: Props) {
         <h2 className="font-display text-base font-semibold">
           Laporan Profit & Loss per Cabang
         </h2>
-        <p className="text-[11px] text-muted-foreground mt-0.5">
-          Angka Operasional saja. Aktivitas non-operasional (Wealth
-          Transfer, Investment, Dividend) ditampilkan di bawah per bulan
-          saat baris di-expand.
+        <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+          <strong>Profit Operasional</strong> = Revenue − Expense (performa
+          bisnis, di luar aktivitas non-operasional).{" "}
+          <strong>Net Dividen</strong> = Dividend diterima − Investment
+          disetor owner (Wealth Transfer & Pinjaman dikecualikan) — ini profit owner
+          yang riil diterima.
         </p>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-xs border-separate border-spacing-0 min-w-[900px]">
+        <table className="w-full text-xs border-separate border-spacing-0 min-w-[1100px]">
           <thead>
             <tr className="text-muted-foreground uppercase tracking-wider bg-muted/60">
               <th className="w-8 border-b border-border"></th>
@@ -95,41 +102,47 @@ export function PnLTable({ report }: Props) {
                 Bulan
               </th>
               <th
-                colSpan={3}
+                colSpan={4}
                 className="text-center font-semibold px-3 py-2 border-b border-l border-border"
               >
                 Semarang
               </th>
               <th
-                colSpan={3}
+                colSpan={4}
                 className="text-center font-semibold px-3 py-2 border-b border-l border-border"
               >
                 Pare
               </th>
               <th className="text-right font-semibold px-3 py-2.5 border-b border-l border-border w-32">
-                Total P&amp;L
+                Total Net Dividen
               </th>
             </tr>
             <tr className="text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/30">
               <th className="w-8 border-b border-border"></th>
               <th className="border-b border-border"></th>
-              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-28">
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
                 Revenue
               </th>
-              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-28">
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
                 Expense
               </th>
-              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-28">
-                Profit
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
+                Profit Op.
               </th>
-              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border w-28">
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
+                Net Dividen
+              </th>
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border w-24">
                 Revenue
               </th>
-              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-28">
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
                 Expense
               </th>
-              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-28">
-                Profit
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
+                Profit Op.
+              </th>
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
+                Net Dividen
               </th>
               <th className="border-b border-l border-border"></th>
             </tr>
@@ -138,15 +151,15 @@ export function PnLTable({ report }: Props) {
             {report.months.map((m) => {
               const key = `${m.year}-${m.month}`;
               const isOpen = expanded.has(key);
-              const monthTotalProfit =
-                m.byBranch.Semarang.operatingProfit +
-                m.byBranch.Pare.operatingProfit;
+              const monthTotalNetDiv =
+                m.byBranch.Semarang.netDividen +
+                m.byBranch.Pare.netDividen;
               return (
                 <FragmentRow
                   key={key}
                   rowKey={key}
                   month={m}
-                  monthTotalProfit={monthTotalProfit}
+                  monthTotalNetDiv={monthTotalNetDiv}
                   isOpen={isOpen}
                   onToggle={() => toggle(key)}
                 />
@@ -163,6 +176,11 @@ export function PnLTable({ report }: Props) {
                 tone={grand.smgProfit >= 0 ? "success" : "destructive"}
                 strong
               />
+              <AmountTd
+                value={grand.smgNetDiv}
+                tone={grand.smgNetDiv >= 0 ? "success" : "destructive"}
+                strong
+              />
               <AmountTd value={grand.pareRev} />
               <AmountTd value={-grand.pareExp} tone="destructive" />
               <AmountTd
@@ -171,8 +189,13 @@ export function PnLTable({ report }: Props) {
                 strong
               />
               <AmountTd
-                value={grand.totalProfit}
-                tone={grand.totalProfit >= 0 ? "success" : "destructive"}
+                value={grand.pareNetDiv}
+                tone={grand.pareNetDiv >= 0 ? "success" : "destructive"}
+                strong
+              />
+              <AmountTd
+                value={grand.totalNetDiv}
+                tone={grand.totalNetDiv >= 0 ? "success" : "destructive"}
                 strong
               />
             </tr>
@@ -184,15 +207,15 @@ export function PnLTable({ report }: Props) {
 }
 
 function FragmentRow({
-  rowKey,
+  rowKey: _rowKey,
   month,
-  monthTotalProfit,
+  monthTotalNetDiv,
   isOpen,
   onToggle,
 }: {
   rowKey: string;
   month: PnLMonth;
-  monthTotalProfit: number;
+  monthTotalNetDiv: number;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -226,6 +249,11 @@ function FragmentRow({
           tone={sem.operatingProfit >= 0 ? "success" : "destructive"}
           strong
         />
+        <AmountTd
+          value={sem.netDividen}
+          tone={sem.netDividen >= 0 ? "success" : "destructive"}
+          strong
+        />
         <AmountTd value={pare.operatingRevenue} />
         <AmountTd value={-pare.operatingExpense} tone="destructive" />
         <AmountTd
@@ -234,14 +262,19 @@ function FragmentRow({
           strong
         />
         <AmountTd
-          value={monthTotalProfit}
-          tone={monthTotalProfit >= 0 ? "success" : "destructive"}
+          value={pare.netDividen}
+          tone={pare.netDividen >= 0 ? "success" : "destructive"}
+          strong
+        />
+        <AmountTd
+          value={monthTotalNetDiv}
+          tone={monthTotalNetDiv >= 0 ? "success" : "destructive"}
           strong
         />
       </tr>
       {isOpen && (
         <tr className="bg-muted/20">
-          <td colSpan={9} className="p-0">
+          <td colSpan={11} className="p-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-border/60">
               <BranchDetail label="Semarang" branch={sem} />
               <BranchDetail label="Pare" branch={pare} />
@@ -280,14 +313,29 @@ function BranchDetail({
       {nonop.length > 0 && (
         <div>
           <p className="text-[10px] text-muted-foreground mb-1">
-            Aktivitas lain (non-operasional)
+            Aktivitas non-operasional
           </p>
           <CategoryList rows={nonop} />
-          <p className="text-[10px] text-muted-foreground mt-1 italic">
-            Non-operasional: Rp {branch.nonOpRevenue.toLocaleString("id-ID")}{" "}
-            masuk · Rp {branch.nonOpExpense.toLocaleString("id-ID")} keluar.
-            Tidak dihitung di operating profit.
-          </p>
+          <div className="mt-1.5 space-y-0.5 text-[10px] text-muted-foreground italic leading-snug">
+            <p>
+              Wealth Transfer (reshuffle antar rekening) & Pinjaman
+              (utang/bayar-utang) dikecualikan dari Net Dividen — bukan
+              profit owner.
+            </p>
+            <p>
+              Net Dividen cabang ini (profit owner):{" "}
+              <span
+                className={
+                  branch.netDividen >= 0
+                    ? "text-success font-semibold"
+                    : "text-destructive font-semibold"
+                }
+              >
+                {branch.netDividen >= 0 ? "+" : "−"} Rp{" "}
+                {Math.abs(branch.netDividen).toLocaleString("id-ID")}
+              </span>
+            </p>
+          </div>
         </div>
       )}
     </div>

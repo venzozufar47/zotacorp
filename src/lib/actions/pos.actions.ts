@@ -6,14 +6,21 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import type { Database } from "@/lib/supabase/types";
 import {
   requireAdmin,
-  requireAdminOrAssignee,
+  requireAdminOrPosAssignee,
   type ActionResult,
 } from "./_gates";
+import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
+type PosProductVariantUpdate =
+  Database["public"]["Tables"]["pos_product_variants"]["Update"];
 type PosProductRow = Pick<
   Database["public"]["Tables"]["pos_products"]["Row"],
   "id" | "bank_account_id" | "name" | "price" | "active" | "sort_order"
+>;
+type PosProductVariantRow = Pick<
+  Database["public"]["Tables"]["pos_product_variants"]["Row"],
+  "id" | "product_id" | "name" | "price" | "active" | "sort_order"
 >;
 
 export type PaymentMethod = "cash" | "qris";
@@ -53,6 +60,15 @@ function jakartaHHMM(d: Date): string {
 //  Types (exported for client components)
 // ─────────────────────────────────────────────────────────────────────
 
+export interface PosProductVariant {
+  id: string;
+  productId: string;
+  name: string;
+  price: number;
+  active: boolean;
+  sortOrder: number;
+}
+
 export interface PosProduct {
   id: string;
   bankAccountId: string;
@@ -60,6 +76,10 @@ export interface PosProduct {
   price: number;
   active: boolean;
   sortOrder: number;
+  /** Kalau length > 0, UI POS wajib pilih varian sebelum +1 ke cart.
+   *  Varian menggantikan `price` (harga base dipakai cuma kalau tak
+   *  ada varian sama sekali). */
+  variants: PosProductVariant[];
 }
 
 export interface PosSaleSummary {
@@ -68,15 +88,24 @@ export interface PosSaleSummary {
   saleTime: string;
   paymentMethod: PaymentMethod;
   total: number;
+  /** Non-null kalau cashflow_transactions yang terkait sudah dihapus
+   *  dari ledger utama. DB trigger `cashflow_tx_void_pos_sale` yang
+   *  set — bukan action POS. Row pos_sales + items tetap disimpan
+   *  untuk audit; UI tinggal render strike + badge. */
+  voidedAt: string | null;
   items: Array<{
     productName: string;
+    variantName: string | null;
     qty: number;
     unitPrice: number;
     subtotal: number;
   }>;
 }
 
-function mapPosProduct(r: PosProductRow): PosProduct {
+function mapPosProduct(
+  r: PosProductRow,
+  variants: PosProductVariant[] = []
+): PosProduct {
   return {
     id: r.id,
     bankAccountId: r.bank_account_id,
@@ -84,7 +113,43 @@ function mapPosProduct(r: PosProductRow): PosProduct {
     price: Number(r.price),
     active: r.active,
     sortOrder: r.sort_order,
+    variants,
   };
+}
+
+function mapPosVariant(r: PosProductVariantRow): PosProductVariant {
+  return {
+    id: r.id,
+    productId: r.product_id,
+    name: r.name,
+    price: Number(r.price),
+    active: r.active,
+    sortOrder: r.sort_order,
+  };
+}
+
+async function fetchVariantsForProducts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  productIds: string[],
+  opts: { activeOnly: boolean }
+): Promise<Map<string, PosProductVariant[]>> {
+  const byProduct = new Map<string, PosProductVariant[]>();
+  if (productIds.length === 0) return byProduct;
+  let q = supabase
+    .from("pos_product_variants")
+    .select("id, product_id, name, price, active, sort_order")
+    .in("product_id", productIds)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  if (opts.activeOnly) q = q.eq("active", true);
+  const { data } = await q;
+  for (const row of data ?? []) {
+    const v = mapPosVariant(row);
+    const arr = byProduct.get(v.productId) ?? [];
+    arr.push(v);
+    byProduct.set(v.productId, arr);
+  }
+  return byProduct;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -108,7 +173,12 @@ export async function listActivePosProducts(
     .order("name", { ascending: true })
     .limit(PRODUCT_LIST_LIMIT);
   if (error || !data) return [];
-  return data.map(mapPosProduct);
+  const variants = await fetchVariantsForProducts(
+    supabase,
+    data.map((d) => d.id),
+    { activeOnly: true }
+  );
+  return data.map((d) => mapPosProduct(d, variants.get(d.id) ?? []));
 }
 
 /** Admin katalog: termasuk yang inactive. */
@@ -125,7 +195,12 @@ export async function listAllPosProducts(
     .order("name", { ascending: true })
     .limit(PRODUCT_LIST_LIMIT);
   if (error || !data) return [];
-  return data.map(mapPosProduct);
+  const variants = await fetchVariantsForProducts(
+    supabase,
+    data.map((d) => d.id),
+    { activeOnly: false }
+  );
+  return data.map((d) => mapPosProduct(d, variants.get(d.id) ?? []));
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -227,6 +302,102 @@ export async function deletePosProduct(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Variant CRUD (admin only)
+// ─────────────────────────────────────────────────────────────────────
+
+export async function createPosProductVariant(input: {
+  productId: string;
+  name: string;
+  price: number;
+  sortOrder?: number;
+}): Promise<ActionResult<{ id: string }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Nama varian wajib diisi" };
+  if (!Number.isFinite(input.price) || input.price < 0)
+    return { ok: false, error: "Harga harus ≥ 0" };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("pos_product_variants")
+    .insert({
+      product_id: input.productId,
+      name,
+      price: input.price,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? "Gagal" };
+  revalidatePath("/pos", "layout");
+  return { ok: true, data: { id: data.id } };
+}
+
+export async function updatePosProductVariant(input: {
+  id: string;
+  name?: string;
+  price?: number;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const patch: PosProductVariantUpdate = {};
+  if (input.name !== undefined) {
+    const n = input.name.trim();
+    if (!n) return { ok: false, error: "Nama tidak boleh kosong" };
+    patch.name = n;
+  }
+  if (input.price !== undefined) {
+    if (!Number.isFinite(input.price) || input.price < 0)
+      return { ok: false, error: "Harga harus ≥ 0" };
+    patch.price = input.price;
+  }
+  if (input.active !== undefined) patch.active = input.active;
+  if (input.sortOrder !== undefined) patch.sort_order = input.sortOrder;
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("pos_product_variants")
+    .update(patch)
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true };
+}
+
+/** Soft-delete kalau varian sudah pernah terjual (supaya snapshot
+ *  historis di pos_sale_items tidak rusak), hard-delete kalau belum. */
+export async function deletePosProductVariant(
+  id: string
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("pos_sale_items")
+    .select("id", { count: "exact", head: true })
+    .eq("variant_id", id);
+  if ((count ?? 0) > 0) {
+    const { error } = await supabase
+      .from("pos_product_variants")
+      .update({ active: false })
+      .eq("id", id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("pos_product_variants")
+      .delete()
+      .eq("id", id);
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/pos", "layout");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Sale creation
 // ─────────────────────────────────────────────────────────────────────
 
@@ -243,10 +414,25 @@ export async function deletePosProduct(
  * Harga dihitung ulang server-side dari `pos_products` (client price
  * di-ignore untuk cegah tampering).
  */
+/**
+ * Item di cart bisa referensi produk katalog (pakai harga resmi) atau
+ * item custom satu-kali (nama + harga diinput manual; tidak menyentuh
+ * pos_products).
+ */
+export type PosSaleItemInput =
+  | { productId: string; variantId?: string | null; qty: number }
+  | { customName: string; customPrice: number; qty: number };
+
+function isCatalogItem(
+  it: PosSaleItemInput
+): it is { productId: string; variantId?: string | null; qty: number } {
+  return "productId" in it;
+}
+
 export async function createPosSale(input: {
   bankAccountId: string;
   paymentMethod: PaymentMethod;
-  items: Array<{ productId: string; qty: number }>;
+  items: PosSaleItemInput[];
 }): Promise<ActionResult<{ saleId: string; total: number }>> {
   if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
   if (input.paymentMethod !== "cash" && input.paymentMethod !== "qris")
@@ -254,44 +440,106 @@ export async function createPosSale(input: {
   if (!Array.isArray(input.items) || input.items.length === 0)
     return { ok: false, error: "Keranjang kosong" };
   for (const it of input.items) {
-    if (!it.productId) return { ok: false, error: "productId kosong" };
     if (!Number.isInteger(it.qty) || it.qty <= 0)
       return { ok: false, error: "Qty harus bilangan bulat > 0" };
+    if (isCatalogItem(it)) {
+      if (!it.productId) return { ok: false, error: "productId kosong" };
+    } else {
+      const name = it.customName?.trim();
+      if (!name) return { ok: false, error: "Nama item custom wajib diisi" };
+      if (!Number.isFinite(it.customPrice) || it.customPrice < 0)
+        return { ok: false, error: "Harga custom tidak valid" };
+    }
   }
 
-  const gate = await requireAdminOrAssignee(input.bankAccountId);
+  const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const supabase = await createClient();
 
-  // 1. Load produk (validasi milik rekening + active + ambil harga resmi).
-  const productIds = [...new Set(input.items.map((i) => i.productId))];
-  const { data: products, error: prodErr } = await supabase
-    .from("pos_products")
-    .select("id, name, price, active, bank_account_id")
-    .in("id", productIds);
-  if (prodErr) return { ok: false, error: prodErr.message };
-  const productMap = new Map(
-    (products ?? []).map((p) => [p.id, p as typeof products[number]])
-  );
-  for (const it of input.items) {
-    const p = productMap.get(it.productId);
-    if (!p) return { ok: false, error: "Produk tidak ditemukan" };
-    if (p.bank_account_id !== input.bankAccountId)
-      return { ok: false, error: "Produk tidak cocok dengan rekening" };
-    if (!p.active) return { ok: false, error: `Produk "${p.name}" tidak aktif` };
+  // 1. Load produk katalog yang direferensikan (validasi milik rekening
+  //    + active + ambil harga resmi). Custom items dilewati.
+  const catalogItems = input.items.filter(isCatalogItem);
+  const productIds = [...new Set(catalogItems.map((i) => i.productId))];
+  const productMap = new Map<
+    string,
+    { id: string; name: string; price: number | string; active: boolean; bank_account_id: string }
+  >();
+  const variantMap = new Map<
+    string,
+    { id: string; product_id: string; name: string; price: number | string; active: boolean }
+  >();
+  const productHasVariants = new Map<string, boolean>();
+  if (productIds.length > 0) {
+    const { data: products, error: prodErr } = await supabase
+      .from("pos_products")
+      .select("id, name, price, active, bank_account_id")
+      .in("id", productIds);
+    if (prodErr) return { ok: false, error: prodErr.message };
+    for (const p of products ?? []) productMap.set(p.id, p);
+    for (const it of catalogItems) {
+      const p = productMap.get(it.productId);
+      if (!p) return { ok: false, error: "Produk tidak ditemukan" };
+      if (p.bank_account_id !== input.bankAccountId)
+        return { ok: false, error: "Produk tidak cocok dengan rekening" };
+      if (!p.active) return { ok: false, error: `Produk "${p.name}" tidak aktif` };
+    }
+    // Ambil semua varian aktif untuk produk-produk ini. Digunakan
+    // untuk (a) deteksi "produk ini punya varian → wajib pilih" dan
+    // (b) validasi variantId yang dikirim client.
+    const { data: variants } = await supabase
+      .from("pos_product_variants")
+      .select("id, product_id, name, price, active")
+      .in("product_id", productIds)
+      .eq("active", true);
+    for (const v of variants ?? []) {
+      variantMap.set(v.id, v);
+      productHasVariants.set(v.product_id, true);
+    }
+    for (const it of catalogItems) {
+      const hasVariants = productHasVariants.get(it.productId) ?? false;
+      const p = productMap.get(it.productId)!;
+      if (hasVariants && !it.variantId)
+        return { ok: false, error: `Produk "${p.name}" wajib pilih varian` };
+      if (!hasVariants && it.variantId)
+        return { ok: false, error: `Produk "${p.name}" tidak punya varian` };
+      if (it.variantId) {
+        const v = variantMap.get(it.variantId);
+        if (!v) return { ok: false, error: "Varian tidak ditemukan / tidak aktif" };
+        if (v.product_id !== it.productId)
+          return { ok: false, error: "Varian tidak cocok dengan produk" };
+      }
+    }
   }
 
-  // 2. Hitung total server-side.
+  // 2. Hitung total server-side. Catalog items pakai harga DB (varian
+  //    kalau ada), custom items pakai harga dari input.
   let total = 0;
   const itemsResolved = input.items.map((it) => {
-    const p = productMap.get(it.productId)!;
-    const unitPrice = Number(p.price);
+    if (isCatalogItem(it)) {
+      const p = productMap.get(it.productId)!;
+      const v = it.variantId ? variantMap.get(it.variantId)! : null;
+      const unitPrice = Number(v ? v.price : p.price);
+      const subtotal = unitPrice * it.qty;
+      total += subtotal;
+      return {
+        productId: it.productId as string | null,
+        productName: p.name,
+        variantId: v?.id ?? null,
+        variantName: v?.name ?? null,
+        unitPrice,
+        qty: it.qty,
+        subtotal,
+      };
+    }
+    const unitPrice = it.customPrice;
     const subtotal = unitPrice * it.qty;
     total += subtotal;
     return {
-      productId: it.productId,
-      productName: p.name,
+      productId: null,
+      productName: it.customName.trim(),
+      variantId: null,
+      variantName: null,
       unitPrice,
       qty: it.qty,
       subtotal,
@@ -341,6 +589,8 @@ export async function createPosSale(input: {
       sale_id: sale.id,
       product_id: it.productId,
       product_name: it.productName,
+      variant_id: it.variantId,
+      variant_name: it.variantName,
       unit_price: it.unitPrice,
       qty: it.qty,
       subtotal: it.subtotal,
@@ -395,10 +645,16 @@ export async function createPosSale(input: {
     .maybeSingle();
   const nextSortOrder = (maxRow?.sort_order ?? -1) + 1;
 
-  // 9. Bangun description "POS Cash: 2x Cake A, 1x Cake B".
+  // 9. Bangun description "POS Cash: 2x Cake A, 1x Custom Item (custom)".
   const methodLabel = input.paymentMethod === "cash" ? "Cash" : "QRIS";
   const itemsLabel = itemsResolved
-    .map((it) => `${it.qty}x ${it.productName}`)
+    .map((it) => {
+      if (it.productId === null) return `${it.qty}x ${it.productName} (custom)`;
+      const name = it.variantName
+        ? `${it.productName} ${it.variantName}`
+        : it.productName;
+      return `${it.qty}x ${name}`;
+    })
     .join(", ");
   const description = `POS ${methodLabel}: ${itemsLabel}`;
 
@@ -413,7 +669,8 @@ export async function createPosSale(input: {
       debit: 0,
       credit: total,
       running_balance: null,
-      category: "Sales",
+      category:
+        input.paymentMethod === "cash" ? POS_CASH_CATEGORY : POS_QRIS_CATEGORY,
       branch: account.default_branch ?? "Pare",
       sort_order: nextSortOrder,
     })
@@ -463,8 +720,9 @@ export async function listRecentPosSales(
   // relationship entries.
   const { data: sales, error: salesErr } = await supabase
     .from("pos_sales")
-    .select("id, sale_date, sale_time, payment_method, total")
+    .select("id, sale_date, sale_time, payment_method, total, voided_at")
     .eq("bank_account_id", bankAccountId)
+    .order("sale_date", { ascending: false })
     .order("sale_time", { ascending: false })
     .limit(limit);
   if (salesErr || !sales || sales.length === 0) return [];
@@ -472,7 +730,7 @@ export async function listRecentPosSales(
   const saleIds = sales.map((s) => s.id);
   const { data: items } = await supabase
     .from("pos_sale_items")
-    .select("sale_id, product_name, qty, unit_price, subtotal")
+    .select("sale_id, product_name, variant_name, qty, unit_price, subtotal")
     .in("sale_id", saleIds);
 
   const itemsBySale = new Map<string, PosSaleSummary["items"]>();
@@ -480,6 +738,7 @@ export async function listRecentPosSales(
     const arr = itemsBySale.get(it.sale_id) ?? [];
     arr.push({
       productName: it.product_name,
+      variantName: it.variant_name,
       qty: it.qty,
       unitPrice: Number(it.unit_price),
       subtotal: Number(it.subtotal),
@@ -493,6 +752,7 @@ export async function listRecentPosSales(
     saleTime: s.sale_time,
     paymentMethod: s.payment_method as PaymentMethod,
     total: Number(s.total),
+    voidedAt: s.voided_at,
     items: itemsBySale.get(s.id) ?? [],
   }));
 }

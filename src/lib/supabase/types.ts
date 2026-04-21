@@ -144,6 +144,7 @@ export type Database = {
           total: number
           created_by: string | null
           created_at: string
+          voided_at: string | null
         }
         Insert: {
           id?: string
@@ -155,6 +156,7 @@ export type Database = {
           total: number
           created_by?: string | null
           created_at?: string
+          voided_at?: string | null
         }
         Update: {
           id?: string
@@ -166,6 +168,7 @@ export type Database = {
           total?: number
           created_by?: string | null
           created_at?: string
+          voided_at?: string | null
         }
         Relationships: []
       }
@@ -178,6 +181,8 @@ export type Database = {
           unit_price: number
           qty: number
           subtotal: number
+          variant_id: string | null
+          variant_name: string | null
         }
         Insert: {
           id?: string
@@ -187,6 +192,8 @@ export type Database = {
           unit_price: number
           qty: number
           subtotal: number
+          variant_id?: string | null
+          variant_name?: string | null
         }
         Update: {
           id?: string
@@ -196,6 +203,41 @@ export type Database = {
           unit_price?: number
           qty?: number
           subtotal?: number
+          variant_id?: string | null
+          variant_name?: string | null
+        }
+        Relationships: []
+      }
+      pos_product_variants: {
+        Row: {
+          id: string
+          product_id: string
+          name: string
+          price: number
+          active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          name: string
+          price: number
+          active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          name?: string
+          price?: number
+          active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -205,18 +247,21 @@ export type Database = {
           user_id: string
           assigned_at: string
           assigned_by: string | null
+          scope: "full" | "pos_only"
         }
         Insert: {
           bank_account_id: string
           user_id: string
           assigned_at?: string
           assigned_by?: string | null
+          scope?: "full" | "pos_only"
         }
         Update: {
           bank_account_id?: string
           user_id?: string
           assigned_at?: string
           assigned_by?: string | null
+          scope?: "full" | "pos_only"
         }
         Relationships: []
       }
