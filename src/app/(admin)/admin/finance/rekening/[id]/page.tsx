@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { RekeningDetailClient } from "@/components/admin/finance/RekeningDetailClient";
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
-import { getCategoryPresets } from "@/lib/cashflow/categories";
+import { getCategoryPresets, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { formatIDR } from "@/lib/cashflow/format";
 import { verifyBalance } from "@/lib/cashflow/parsers/shared";
 import { sortChronologicalDesc, sortChronologicalAsc } from "@/lib/cashflow/chronological";
@@ -87,7 +87,7 @@ export default async function RekeningDetailPage({
     supabase
       .from("cashflow_transactions")
       .select(
-        "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, effective_period_year, effective_period_month, cashflow_statements!inner(bank_account_id)"
+        "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, effective_period_year, effective_period_month, attachment_path, cashflow_statements!inner(bank_account_id)"
       )
       .eq("cashflow_statements.bank_account_id", id)
       // Newest first at the top. Within a single date, sort by time
@@ -116,6 +116,7 @@ export default async function RekeningDetailPage({
     notes: t.notes,
     effectivePeriodYear: t.effective_period_year,
     effectivePeriodMonth: t.effective_period_month,
+    attachmentPath: t.attachment_path,
   }));
   // Re-sort in memory with the balance-chain tiebreaker for rows
   // that share the same (date, time). SQL ORDER BY can't model the
@@ -141,7 +142,19 @@ export default async function RekeningDetailPage({
     : 0;
   // Shared helper — same anchor+cumulation rule as the landing card
   // and the per-row Saldo column in CashflowTable.
+  //
+  // Cash rekening twist: rekening Cash Pare nampung cash + QRIS sale
+  // POS. QRIS nambahin balance rekening tapi tidak fisik di laci, jadi
+  // "Saldo terakhir" yang dikonsumsi admin = saldo kas fisik, exclude
+  // row kategori QRIS. Verification tetap pakai total (full rekening
+  // balance) supaya invariant opening+Σ−Σ=closing tetap valid.
   const latestBalance = computeLatestBalance(txList);
+  const tillRows =
+    account.bank === "cash"
+      ? txList.filter((t) => t.category !== POS_QRIS_CATEGORY)
+      : txList;
+  const displayBalance =
+    account.bank === "cash" ? computeLatestBalance(tillRows) : latestBalance;
   const verification = canVerify
     ? verifyBalance(openingBalance, Number(latestBalance), txList)
     : null;
@@ -165,8 +178,8 @@ export default async function RekeningDetailPage({
           invariant below, just kept off the top summary. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <SummaryCard
-          label="Saldo terakhir"
-          value={`Rp ${formatIDR(Number(latestBalance))}`}
+          label={account.bank === "cash" ? "Saldo kas fisik" : "Saldo terakhir"}
+          value={`Rp ${formatIDR(Number(displayBalance))}`}
         />
         {/* Compact verification status — same invariant as before
             (opening + credit − debit === closing) but collapsed to

@@ -40,6 +40,9 @@ export interface CashflowRow {
    *  categories in `ACCRUAL_ELIGIBLE_CATEGORIES`. */
   effectivePeriodYear: number | null;
   effectivePeriodMonth: number | null;
+  /** Path di bucket `cashflow-receipts`. null = belum ada lampiran.
+   *  Kolom Bukti cuma tampil pada rekening cash. */
+  attachmentPath: string | null;
 }
 
 interface Props {
@@ -85,6 +88,10 @@ export function CashflowTable({
   const showAutoCategorize = bank !== "cash";
   // Filter chip "Tanpa cabang" only matters when branch column exists.
   const showBranchFilter = showBranchColumn;
+  // Kolom bukti / receipt foto — saat ini hanya untuk rekening cash
+  // (Pare), di mana tidak ada PDF rekening koran. Bank rekening sudah
+  // punya PDF sumber yang terlampir di statement level.
+  const showAttachment = bank === "cash";
   const router = useRouter();
   const [autoDialogOpen, setAutoDialogOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -298,6 +305,7 @@ export function CashflowTable({
       notes: null,
       effectivePeriodYear: null,
       effectivePeriodMonth: null,
+      attachmentPath: null,
     };
     setWorking((prev) => [blank, ...prev]);
   }
@@ -840,6 +848,7 @@ export function CashflowTable({
                     Periode efektif
                   </span>
                 </Th>
+                {showAttachment && <Th className="w-24">Bukti</Th>}
                 {editing && <Th className="w-10" />}
               </tr>
             </thead>
@@ -1147,6 +1156,20 @@ export function CashflowTable({
                       />
                     </Td>
 
+                    {/* Bukti / receipt — hanya pada rekening cash.
+                        Upload / delete lewat action sendiri (tidak
+                        ikut diff-save row) supaya admin bisa tempel
+                        bon tanpa masuk edit-mode penuh. */}
+                    {showAttachment && (
+                      <Td>
+                        <AttachmentCell
+                          transactionId={r.id}
+                          attachmentPath={r.attachmentPath}
+                          disabled={r.id.startsWith("new-")}
+                        />
+                      </Td>
+                    )}
+
                     {/* Delete row action — only in edit mode */}
                     {editing && (
                       <Td className="text-center">
@@ -1450,5 +1473,123 @@ function EffectivePeriodCell({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Cell untuk lampiran bukti transaksi. Dipisah dari siklus edit-save
+ * utama: upload / hapus langsung commit via server action sendiri,
+ * supaya admin boleh tempel bon kapan saja tanpa harus masuk edit
+ * mode. Saat row belum persist (id "new-..."), disable dulu — butuh
+ * txId yang sudah ada di DB.
+ */
+function AttachmentCell({
+  transactionId,
+  attachmentPath,
+  disabled,
+}: {
+  transactionId: string;
+  attachmentPath: string | null;
+  disabled: boolean;
+}) {
+  const router = useRouter();
+  const [busy, startTransition] = useTransition();
+
+  async function handleFile(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    // Reset dulu supaya user boleh pilih file yang sama lagi setelah
+    // dihapus dan mau upload ulang.
+    ev.target.value = "";
+    if (!file) return;
+    const form = new FormData();
+    form.set("transactionId", transactionId);
+    form.set("file", file);
+    const { uploadCashflowAttachment } = await import(
+      "@/lib/actions/cashflow-attachments.actions"
+    );
+    startTransition(async () => {
+      const res = await uploadCashflowAttachment(form);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Lampiran diunggah");
+      router.refresh();
+    });
+  }
+
+  async function handleOpen() {
+    const { getCashflowAttachmentUrl } = await import(
+      "@/lib/actions/cashflow-attachments.actions"
+    );
+    const res = await getCashflowAttachmentUrl(transactionId);
+    if (!res.ok || !res.data) {
+      toast.error(res.ok ? "Gagal membuka lampiran" : res.error);
+      return;
+    }
+    window.open(res.data.url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleRemove() {
+    if (!confirm("Hapus lampiran bukti?")) return;
+    const { removeCashflowAttachment } = await import(
+      "@/lib/actions/cashflow-attachments.actions"
+    );
+    startTransition(async () => {
+      const res = await removeCashflowAttachment(transactionId);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Lampiran dihapus");
+      router.refresh();
+    });
+  }
+
+  if (disabled) {
+    return <span className="text-[10px] text-muted-foreground italic">—</span>;
+  }
+
+  if (attachmentPath) {
+    return (
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="text-xs text-primary hover:underline"
+          title="Buka lampiran"
+        >
+          Lihat
+        </button>
+        <button
+          type="button"
+          onClick={handleRemove}
+          disabled={busy}
+          className="text-muted-foreground hover:text-destructive text-xs disabled:opacity-50"
+          title="Hapus lampiran"
+          aria-label="Hapus lampiran"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <label
+      className={cn(
+        "inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer",
+        busy && "opacity-50 cursor-wait"
+      )}
+    >
+      <input
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        onChange={handleFile}
+        disabled={busy}
+        className="hidden"
+      />
+      {busy ? "Mengunggah…" : "+ Bukti"}
+    </label>
   );
 }

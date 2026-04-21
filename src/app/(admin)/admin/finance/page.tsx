@@ -16,6 +16,7 @@ import { FinanceLandingClient } from "@/components/admin/finance/FinanceLandingC
 import type { BankCode } from "@/lib/cashflow/types";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { computeLatestBalance as computeLatestBalanceFromRows } from "@/lib/cashflow/balance";
+import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 
 /**
  * Fetch every tx row for a rekening (paginated to dodge PostgREST's
@@ -25,7 +26,8 @@ import { computeLatestBalance as computeLatestBalanceFromRows } from "@/lib/cash
  */
 async function computeAccountSummary(
   supabase: SupabaseClient<Database>,
-  bankAccountId: string
+  bankAccountId: string,
+  bank: string
 ): Promise<{ latestBalance: number; minDate: string | null; maxDate: string | null }> {
   // Two-step fetch (statements → transactions) is more robust than a
   // `!inner(...).eq(...)` chain: PostgREST can silently drop the
@@ -44,11 +46,16 @@ async function computeAccountSummary(
   for (let offset = 0; ; offset += PAGE) {
     const { data } = await supabase
       .from("cashflow_transactions")
-      .select("transaction_date, transaction_time, debit, credit, running_balance")
+      .select("transaction_date, transaction_time, debit, credit, running_balance, category")
       .in("statement_id", stmtIds)
       .range(offset, offset + PAGE - 1);
     if (!data || data.length === 0) break;
     for (const t of data) {
+      // Rekening cash menampung cash + QRIS sale POS dalam satu
+      // ledger. "Saldo terakhir" yang admin tampilkan = saldo kas
+      // fisik, bukan balance rekening — jadi row berkategori QRIS
+      // non-operasional dikeluarkan dari agregasi khusus untuk cash.
+      if (bank === "cash" && t.category === POS_QRIS_CATEGORY) continue;
       rows.push({
         date: t.transaction_date,
         time: t.transaction_time,
@@ -119,7 +126,7 @@ export default async function AdminFinancePage({
     scopedAccounts.map(async (acc) => {
       const [{ data: statements }, summary] = await Promise.all([
         listStatements(acc.id),
-        computeAccountSummary(supabase, acc.id),
+        computeAccountSummary(supabase, acc.id, acc.bank),
       ]);
       return {
         id: acc.id,

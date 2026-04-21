@@ -425,6 +425,7 @@ export type Database = {
           created_at: string
           effective_period_year: number | null
           effective_period_month: number | null
+          attachment_path: string | null
         }
         Insert: {
           id?: string
@@ -444,6 +445,7 @@ export type Database = {
           created_at?: string
           effective_period_year?: number | null
           effective_period_month?: number | null
+          attachment_path?: string | null
         }
         Update: {
           id?: string
@@ -463,6 +465,7 @@ export type Database = {
           created_at?: string
           effective_period_year?: number | null
           effective_period_month?: number | null
+          attachment_path?: string | null
         }
         Relationships: []
       }
