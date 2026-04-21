@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, Plus, Banknote, ArrowRight, TrendingUp } from "lucide-react";
+import { Building2, Plus, Banknote, ArrowRight, TrendingUp, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BankAccountFormDialog } from "./BankAccountFormDialog";
@@ -29,12 +29,17 @@ interface AccountRow {
   accountNumber: string | null;
   accountName: string;
   isActive: boolean;
+  posEnabled: boolean;
   statements: StatementRow[];
   /** Derived from the same credit−debit cumulation the rekening detail
    *  page renders, so the card stays in sync with the ledger even when
    *  stored running_balance / statement closing_balance drift (cash
    *  rekening never writes those columns). */
   latestBalance: number;
+  /** Earliest + latest tx date across all statements, for the card's
+   *  "Periode" caption. null when the rekening has no transactions. */
+  minDate: string | null;
+  maxDate: string | null;
 }
 
 interface Props {
@@ -53,6 +58,16 @@ const BU_AVAILABILITY: Record<string, boolean> = {
   "Yeobo Booth": false,
   Gritamora: false,
 };
+
+function formatDateRange(from: string, to: string): string {
+  const fmt = (s: string) =>
+    new Date(s + "T00:00:00").toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  return from === to ? fmt(from) : `${fmt(from)} — ${fmt(to)}`;
+}
 
 const BANK_LABELS: Record<BankCode, string> = {
   mandiri: "Bank Mandiri",
@@ -192,11 +207,45 @@ export function FinanceLandingClient({
                     Rp {formatIDR(acc.latestBalance)}
                   </p>
                 </div>
+                {acc.minDate && acc.maxDate && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Periode:{" "}
+                    <span className="text-foreground">
+                      {formatDateRange(acc.minDate, acc.maxDate)}
+                    </span>
+                  </p>
+                )}
                 <p className="mt-3 text-xs font-semibold text-primary inline-flex items-center gap-1 group-hover:gap-2 transition-all">
                   Lihat cashflow
                   <ArrowRight size={12} />
                 </p>
               </div>
+
+              {/* POS shortcut — muncul hanya untuk rekening pos_enabled.
+                  Pakai <span role="button"> bukan <Link> untuk menghindari
+                  nested-anchor HTML yang invalid (card parent sudah Link). */}
+              {acc.posEnabled && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    router.push("/pos");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      router.push("/pos");
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/15 transition cursor-pointer"
+                >
+                  <Smartphone size={12} />
+                  Buka POS
+                </span>
+              )}
             </Link>
           ))}
         </div>

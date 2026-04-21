@@ -74,7 +74,7 @@ export async function listBankAccounts(businessUnit?: string) {
   const supabase = await createClient();
   let query = supabase
     .from("bank_accounts")
-    .select("id, business_unit, bank, account_number, account_name, is_active, created_at")
+    .select("id, business_unit, bank, account_number, account_name, is_active, pos_enabled, created_at")
     .order("created_at", { ascending: true });
   if (businessUnit) query = query.eq("business_unit", businessUnit);
   const { data, error } = await query;
@@ -456,6 +456,8 @@ export async function updateCashflowTransactions(
     runningBalance?: number | null;
     category?: string | null;
     branch?: string | null;
+    /** Accrual-basis override: null clears, {year,month} sets. undefined = no change. */
+    effectivePeriod?: { year: number; month: number } | null;
   }>
 ): Promise<ActionResult<{ updatedCount: number }>> {
   const user = await getCurrentUser();
@@ -523,6 +525,24 @@ export async function updateCashflowTransactions(
       patch.running_balance = u.runningBalance;
     if (u.category !== undefined) patch.category = u.category?.trim() || null;
     if (u.branch !== undefined) patch.branch = u.branch?.trim() || null;
+    if (u.effectivePeriod !== undefined) {
+      if (u.effectivePeriod === null) {
+        patch.effective_period_year = null;
+        patch.effective_period_month = null;
+      } else {
+        const { year, month } = u.effectivePeriod;
+        if (
+          !Number.isInteger(year) ||
+          !Number.isInteger(month) ||
+          month < 1 ||
+          month > 12
+        ) {
+          return { ok: false, error: `Periode efektif tidak valid: ${year}-${month}` };
+        }
+        patch.effective_period_year = year;
+        patch.effective_period_month = month;
+      }
+    }
     if (Object.keys(patch).length === 0) continue;
 
     const { error } = await supabase
@@ -692,7 +712,7 @@ export async function saveStatementTransactions(
 //  Categorization rules
 // ─────────────────────────────────────────────────────────────────────
 
-import { getCategoryPresets } from "@/lib/cashflow/categories";
+import { getCategoryPresets, normalizePnLCategory } from "@/lib/cashflow/categories";
 import type {
   RuleColumnScope,
   RuleMatchType,
@@ -1205,27 +1225,57 @@ export async function savePusatAllocation(input: {
   // Compute Pusat total for validation. Server-side gate — client UI
   // also shows balanced/unbalanced, but we re-check here so a
   // tampered payload can't slip an unbalanced split into DB.
-  const startDate = `${input.periodYear}-${String(input.periodMonth).padStart(2, "0")}-01`;
-  const afterDate =
-    input.periodMonth === 12
-      ? `${input.periodYear + 1}-01-01`
-      : `${input.periodYear}-${String(input.periodMonth + 1).padStart(2, "0")}-01`;
-
+  //
+  // Must mirror fetchPnL exactly: pull from ALL rekening under the
+  // BU (no bank filter) and normalize each tx's category before
+  // matching. Otherwise the client's auto-calc total (which comes
+  // from fetchPnL) won't agree with this validator's total — the
+  // admin types a balanced split but save is rejected as unbalanced.
+  //
+  // Also: effective_period_year/month override the tx date's month
+  // for bucketing. Filter by effective period if set, else by the
+  // tx date's month.
   const amountCol = input.side === "credit" ? "credit" : "debit";
-  const { data: pusatRows } = await supabase
-    .from("cashflow_transactions")
-    .select(
-      `${amountCol}, cashflow_statements!inner(bank_account_id, bank_accounts!inner(business_unit, bank))`
-    )
-    .eq("cashflow_statements.bank_accounts.business_unit", input.businessUnit)
-    .eq("cashflow_statements.bank_accounts.bank", "jago")
-    .eq("branch", "Pusat")
-    .eq("category", input.category)
-    .gte("transaction_date", startDate)
-    .lt("transaction_date", afterDate);
+  // Paginate: `db-max-rows` on managed Supabase can cap single
+  // queries at 1000 rows. Loop until a short page is returned.
+  const pusatRows: Array<Record<string, unknown>> = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data: page, error: pageErr } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        `${amountCol}, transaction_date, effective_period_year, effective_period_month, category, cashflow_statements!inner(bank_account_id, bank_accounts!inner(business_unit))`
+      )
+      .eq("cashflow_statements.bank_accounts.business_unit", input.businessUnit)
+      .eq("branch", "Pusat")
+      .range(offset, offset + PAGE - 1);
+    if (pageErr) return { ok: false, error: pageErr.message };
+    const rows = (page ?? []) as Array<Record<string, unknown>>;
+    pusatRows.push(...rows);
+    if (rows.length < PAGE) break;
+  }
 
-  const pusatTotal = (pusatRows ?? []).reduce((s, r) => {
-    const v = (r as Record<string, unknown>)[amountCol];
+  const pusatTotal = pusatRows.reduce((s, r) => {
+    const row = r as Record<string, unknown>;
+    const effY = row.effective_period_year as number | null;
+    const effM = row.effective_period_month as number | null;
+    let y: number;
+    let m: number;
+    if (effY != null && effM != null) {
+      y = effY;
+      m = effM;
+    } else {
+      const [yy, mm] = String(row.transaction_date).split("-");
+      y = Number(yy);
+      m = Number(mm);
+    }
+    if (y !== input.periodYear || m !== input.periodMonth) return s;
+    const normalized = normalizePnLCategory(
+      input.businessUnit,
+      (row.category as string | null) ?? null
+    );
+    if (normalized !== input.category) return s;
+    const v = row[amountCol];
     return s + (typeof v === "number" ? v : Number(v) || 0);
   }, 0);
   const roundedPusat = Math.round(pusatTotal);

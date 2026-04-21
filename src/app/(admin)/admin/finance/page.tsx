@@ -14,71 +14,58 @@ import { BUSINESS_UNITS } from "@/lib/utils/constants";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FinanceLandingClient } from "@/components/admin/finance/FinanceLandingClient";
 import type { BankCode } from "@/lib/cashflow/types";
+import type { ChronoRow } from "@/lib/cashflow/chronological";
+import { computeLatestBalance as computeLatestBalanceFromRows } from "@/lib/cashflow/balance";
 
 /**
- * Sum credit − debit across all tx of a rekening, anchored at the
- * oldest row's stored running_balance when present. Matches the
- * per-row Saldo chain the detail page renders, so the landing card
- * always agrees with what the user sees after clicking through.
- *
- * Paginated to dodge PostgREST's 1000-row default cap. One extra
- * oldest-row query gives us the anchor for bank-imported rekening.
+ * Fetch every tx row for a rekening (paginated to dodge PostgREST's
+ * 1000-row cap) and return latest balance + earliest/latest tx dates
+ * in a single pass. Same chain + anchor rules as the detail page's
+ * summary card.
  */
-async function computeLatestBalance(
+async function computeAccountSummary(
   supabase: SupabaseClient<Database>,
   bankAccountId: string
-): Promise<number> {
-  // Fetch statement ids for this rekening first, then scope tx
-  // queries by statement_id. This is more robust than chaining
-  // `!inner(...).eq(...)` with ordering + paging — PostgREST can
-  // silently drop the inner filter on secondary queries.
+): Promise<{ latestBalance: number; minDate: string | null; maxDate: string | null }> {
+  // Two-step fetch (statements → transactions) is more robust than a
+  // `!inner(...).eq(...)` chain: PostgREST can silently drop the
+  // inner filter on secondary queries.
   const { data: stmts } = await supabase
     .from("cashflow_statements")
     .select("id")
     .eq("bank_account_id", bankAccountId);
   const stmtIds = (stmts ?? []).map((s) => s.id);
-  if (stmtIds.length === 0) return 0;
+  if (stmtIds.length === 0) return { latestBalance: 0, minDate: null, maxDate: null };
 
-  // Match the detail page's anchor semantics: pick the oldest row that
-  // actually has a stored running_balance. For cash rekening this comes
-  // back empty (baseline stays 0); for bank-imported rekening this is
-  // the earliest statement row we can trust.
-  const { data: oldest } = await supabase
-    .from("cashflow_transactions")
-    .select("debit, credit, running_balance")
-    .in("statement_id", stmtIds)
-    .not("running_balance", "is", null)
-    .order("transaction_date", { ascending: true })
-    .order("transaction_time", { ascending: true, nullsFirst: false })
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let sumCredit = 0;
-  let sumDebit = 0;
+  const rows: ChronoRow[] = [];
+  let minDate: string | null = null;
+  let maxDate: string | null = null;
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
     const { data } = await supabase
       .from("cashflow_transactions")
-      .select("debit, credit")
+      .select("transaction_date, transaction_time, debit, credit, running_balance")
       .in("statement_id", stmtIds)
       .range(offset, offset + PAGE - 1);
     if (!data || data.length === 0) break;
     for (const t of data) {
-      sumCredit += Number(t.credit);
-      sumDebit += Number(t.debit);
+      rows.push({
+        date: t.transaction_date,
+        time: t.transaction_time,
+        debit: Number(t.debit),
+        credit: Number(t.credit),
+        runningBalance: t.running_balance !== null ? Number(t.running_balance) : null,
+      });
+      if (minDate === null || t.transaction_date < minDate) minDate = t.transaction_date;
+      if (maxDate === null || t.transaction_date > maxDate) maxDate = t.transaction_date;
     }
     if (data.length < PAGE) break;
   }
-
-  let baseline = 0;
-  if (oldest && oldest.running_balance !== null) {
-    baseline =
-      Number(oldest.running_balance) -
-      Number(oldest.credit) +
-      Number(oldest.debit);
-  }
-  return baseline + sumCredit - sumDebit;
+  return {
+    latestBalance: computeLatestBalanceFromRows(rows),
+    minDate,
+    maxDate,
+  };
 }
 
 interface SearchParams {
@@ -130,9 +117,9 @@ export default async function AdminFinancePage({
   const supabase = await createClient();
   const accountsWithStatements = await Promise.all(
     scopedAccounts.map(async (acc) => {
-      const [{ data: statements }, latestBalance] = await Promise.all([
+      const [{ data: statements }, summary] = await Promise.all([
         listStatements(acc.id),
-        computeLatestBalance(supabase, acc.id),
+        computeAccountSummary(supabase, acc.id),
       ]);
       return {
         id: acc.id,
@@ -141,8 +128,11 @@ export default async function AdminFinancePage({
         accountNumber: acc.account_number,
         accountName: acc.account_name,
         isActive: acc.is_active,
+        posEnabled: acc.pos_enabled,
         statements: (statements ?? []).slice(0, 12),
-        latestBalance,
+        latestBalance: summary.latestBalance,
+        minDate: summary.minDate,
+        maxDate: summary.maxDate,
       };
     })
   );

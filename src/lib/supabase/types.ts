@@ -58,6 +58,7 @@ export type Database = {
           default_branch: string | null
           last_synced_at: string | null
           custom_categories: unknown
+          pos_enabled: boolean
           created_at: string
           updated_at: string
         }
@@ -75,6 +76,7 @@ export type Database = {
           default_branch?: string | null
           last_synced_at?: string | null
           custom_categories?: unknown
+          pos_enabled?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -92,8 +94,108 @@ export type Database = {
           default_branch?: string | null
           last_synced_at?: string | null
           custom_categories?: unknown
+          pos_enabled?: boolean
           created_at?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      pos_products: {
+        Row: {
+          id: string
+          bank_account_id: string
+          name: string
+          price: number
+          active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          bank_account_id: string
+          name: string
+          price: number
+          active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          bank_account_id?: string
+          name?: string
+          price?: number
+          active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pos_sales: {
+        Row: {
+          id: string
+          bank_account_id: string
+          cashflow_transaction_id: string | null
+          sale_date: string
+          sale_time: string
+          payment_method: "cash" | "qris"
+          total: number
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          bank_account_id: string
+          cashflow_transaction_id?: string | null
+          sale_date: string
+          sale_time?: string
+          payment_method: "cash" | "qris"
+          total: number
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          bank_account_id?: string
+          cashflow_transaction_id?: string | null
+          sale_date?: string
+          sale_time?: string
+          payment_method?: "cash" | "qris"
+          total?: number
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      pos_sale_items: {
+        Row: {
+          id: string
+          sale_id: string
+          product_id: string | null
+          product_name: string
+          unit_price: number
+          qty: number
+          subtotal: number
+        }
+        Insert: {
+          id?: string
+          sale_id: string
+          product_id?: string | null
+          product_name: string
+          unit_price: number
+          qty: number
+          subtotal: number
+        }
+        Update: {
+          id?: string
+          sale_id?: string
+          product_id?: string | null
+          product_name?: string
+          unit_price?: number
+          qty?: number
+          subtotal?: number
         }
         Relationships: []
       }
@@ -276,6 +378,8 @@ export type Database = {
           notes: string | null
           sort_order: number
           created_at: string
+          effective_period_year: number | null
+          effective_period_month: number | null
         }
         Insert: {
           id?: string
@@ -293,6 +397,8 @@ export type Database = {
           notes?: string | null
           sort_order?: number
           created_at?: string
+          effective_period_year?: number | null
+          effective_period_month?: number | null
         }
         Update: {
           id?: string
@@ -310,6 +416,8 @@ export type Database = {
           notes?: string | null
           sort_order?: number
           created_at?: string
+          effective_period_year?: number | null
+          effective_period_month?: number | null
         }
         Relationships: []
       }
