@@ -2,13 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import type { PosShiftSummary } from "@/lib/actions/pos.actions";
-import { formatIDR } from "@/lib/cashflow/format";
+import { formatRp } from "@/lib/cashflow/format";
 import { formatDateTime } from "@/lib/utils/date";
-
-const formatRp = (n: number) => formatIDR(n, { withRp: true });
 
 interface Props {
   accountName: string;
@@ -18,7 +16,6 @@ interface Props {
 export default function PosShiftClient({ accountName, summary }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [spinning, setSpinning] = useState(false);
 
   const {
     asOf,
@@ -33,11 +30,8 @@ export default function PosShiftClient({ accountName, summary }: Props) {
   } = summary;
 
   const handleRefresh = () => {
-    setSpinning(true);
     startTransition(() => {
       router.refresh();
-      // Spinner dirilis begitu transition selesai.
-      setTimeout(() => setSpinning(false), 400);
     });
   };
 
@@ -106,7 +100,7 @@ export default function PosShiftClient({ accountName, summary }: Props) {
         disabled={isPending}
         className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
       >
-        <RefreshCw size={12} className={spinning ? "animate-spin" : ""} />
+        <RefreshCw size={12} className={isPending ? "animate-spin" : ""} />
         Refresh
       </button>
     </div>

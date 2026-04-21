@@ -2,7 +2,7 @@
 
 import { Clock, AlertTriangle, ShoppingBag } from "lucide-react";
 import type { PayslipBreakdown } from "@/lib/supabase/types";
-import { formatIDR } from "@/lib/utils/currency";
+import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface Props {

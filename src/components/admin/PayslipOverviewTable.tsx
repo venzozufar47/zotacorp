@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { formatIDR } from "@/lib/utils/currency";
+import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import { calculatePayslip } from "@/lib/actions/payslip.actions";
 import { toast } from "sonner";
 import { useTransition } from "react";

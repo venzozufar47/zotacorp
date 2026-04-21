@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import { getEmployeePayslips, getPayslipDeliverables } from "@/lib/actions/payslip.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatIDR } from "@/lib/utils/currency";
+import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 import type { PayslipBreakdown } from "@/lib/supabase/types";
 import { getDictionary } from "@/lib/i18n/server";

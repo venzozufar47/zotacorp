@@ -12,7 +12,7 @@ import {
   finalizePayslipSettings,
 } from "@/lib/actions/payslip.actions";
 import type { PayslipSettings } from "@/lib/supabase/types";
-import { formatIDR } from "@/lib/utils/currency";
+import { formatRp as formatIDR } from "@/lib/cashflow/format";
 
 interface Props {
   userId: string;

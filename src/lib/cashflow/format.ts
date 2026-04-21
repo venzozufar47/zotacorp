@@ -20,3 +20,8 @@ export function formatIDR(n: number, opts: FormatIDROptions = {}): string {
   });
   return withRp ? `Rp ${body}` : body;
 }
+
+/** Shorthand for `formatIDR(n, { withRp: true })` — "Rp 1.234.567". */
+export function formatRp(n: number): string {
+  return formatIDR(n, { withRp: true });
+}

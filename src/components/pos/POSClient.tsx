@@ -11,7 +11,7 @@ import {
   type PosProductVariant,
   type PosSaleItemInput,
 } from "@/lib/actions/pos.actions";
-import { formatIDR } from "@/lib/cashflow/format";
+import { formatRp } from "@/lib/cashflow/format";
 
 interface Props {
   bankAccountId: string;
@@ -28,8 +28,6 @@ interface CustomLine {
   price: number;
   qty: number;
 }
-
-const formatRp = (n: number) => formatIDR(n, { withRp: true });
 
 /** Cart key scheme: "p:<productId>" untuk produk tanpa varian,
  *  "p:<productId>|v:<variantId>" untuk yang pakai varian. */

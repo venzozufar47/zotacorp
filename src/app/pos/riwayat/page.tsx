@@ -8,10 +8,8 @@ import {
   findPosAccountForCurrentUser,
   listRecentPosSales,
 } from "@/lib/actions/pos.actions";
-import { formatIDR } from "@/lib/cashflow/format";
+import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
-
-const formatRp = (n: number) => formatIDR(n, { withRp: true });
 
 function formatDate(iso: string): string {
   const d = new Date(iso + "T00:00:00");

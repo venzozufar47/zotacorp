@@ -21,15 +21,13 @@ import {
   type PosProduct,
   type PosProductVariant,
 } from "@/lib/actions/pos.actions";
-import { formatIDR } from "@/lib/cashflow/format";
+import { formatRp } from "@/lib/cashflow/format";
 
 interface Props {
   bankAccountId: string;
   accountName: string;
   initialProducts: PosProduct[];
 }
-
-const formatRp = (n: number) => formatIDR(n, { withRp: true });
 
 export function ProductCatalogClient({
   bankAccountId,

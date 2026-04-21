@@ -14,7 +14,7 @@ import {
   reopenPayslip,
   saveDeliverables,
 } from "@/lib/actions/payslip.actions";
-import { formatIDR } from "@/lib/utils/currency";
+import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import type { Payslip, PayslipDeliverable, PayslipBreakdown } from "@/lib/supabase/types";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 

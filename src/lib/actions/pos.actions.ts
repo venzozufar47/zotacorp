@@ -10,6 +10,7 @@ import {
   type ActionResult,
 } from "./_gates";
 import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
+import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -28,37 +29,6 @@ export type PaymentMethod = "cash" | "qris";
 // Hard cap on product lists — keeps the POS grid responsive and
 // guards against accidental runaway catalogs.
 const PRODUCT_LIST_LIMIT = 500;
-
-/**
- * Date string (YYYY-MM-DD) for *now* in Asia/Jakarta. Using
- * toISOString would return UTC, which can drift a day for sales
- * rung up between 00:00–07:00 WIB.
- */
-function jakartaDateString(d: Date): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(d);
-  const y = parts.find((p) => p.type === "year")!.value;
-  const m = parts.find((p) => p.type === "month")!.value;
-  const day = parts.find((p) => p.type === "day")!.value;
-  return `${y}-${m}-${day}`;
-}
-
-function jakartaHHMM(d: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
-}
-
-// ─────────────────────────────────────────────────────────────────────
-//  Types (exported for client components)
-// ─────────────────────────────────────────────────────────────────────
 
 export interface PosProductVariant {
   id: string;
@@ -774,6 +744,7 @@ export async function findPosAccountForCurrentUser(): Promise<
     .select("id, account_name")
     .eq("pos_enabled", true)
     .eq("is_active", true)
+    .order("created_at", { ascending: true })
     .limit(1);
   if (error || !data || data.length === 0) return null;
   return { id: data[0].id, accountName: data[0].account_name };
