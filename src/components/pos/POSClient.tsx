@@ -328,10 +328,31 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                   {hasVariants ? variantPriceLabel(p.variants) : formatRp(p.price)}
                 </div>
                 {hasVariants && (
-                  <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {p.variants.length} varian
-                    {totalQtyOnThisProduct > 0 && ` · ${totalQtyOnThisProduct} di cart`}
-                  </div>
+                  <>
+                    <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {p.variants.length} varian
+                      {totalQtyOnThisProduct > 0 && ` · ${totalQtyOnThisProduct} di cart`}
+                    </div>
+                    {totalQtyOnThisProduct > 0 && (
+                      <ul className="mt-1.5 space-y-0.5">
+                        {p.variants
+                          .map((v) => ({
+                            v,
+                            qty: cart[cartKey(p.id, v.id)] ?? 0,
+                          }))
+                          .filter((x) => x.qty > 0)
+                          .map(({ v, qty }) => (
+                            <li
+                              key={v.id}
+                              className="text-xs text-primary tabular-nums"
+                            >
+                              <span className="font-semibold">{qty}×</span>{" "}
+                              {v.name}
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </>
                 )}
               </button>
               {showInlinePill && singleKey && (
