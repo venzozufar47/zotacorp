@@ -778,3 +778,133 @@ export async function findPosAccountForCurrentUser(): Promise<
   if (error || !data || data.length === 0) return null;
   return { id: data[0].id, accountName: data[0].account_name };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+//  Shift balance check
+// ─────────────────────────────────────────────────────────────────────
+
+export interface PosShiftSummary {
+  /** Jakarta date saat query (YYYY-MM-DD) */
+  today: string;
+  /** ISO timestamp saat server menghitung — dirender sebagai jam WIB di UI. */
+  asOf: string;
+  /** Kas fisik di 00:00 WIB hari ini. null kalau statement bulan ini
+   *  belum ada — UI warn "admin perlu set saldo awal bulan". */
+  openingTill: number | null;
+  cashCreditsToday: number;
+  cashSalesCount: number;
+  qrisCreditsToday: number;
+  qrisSalesCount: number;
+  debitsToday: number;
+  debitsCount: number;
+  /** openingTill + cashCreditsToday − debitsToday. null kalau openingTill null. */
+  expectedTill: number | null;
+}
+
+/**
+ * Ringkasan saldo kas untuk cek shift kasir. Cash Pare menampung cash
+ * + QRIS dalam rekening yang sama, jadi "balance rekening" ≠ "uang di
+ * laci". Fungsi ini memisahkan keduanya: `expectedTill` hanya
+ * memasukkan credit cash, sementara QRIS dipisah sebagai info.
+ *
+ * Statement-only — tidak perlu lintas bulan karena opening_balance
+ * bulan ini sudah mengkalkulasi semua bulan sebelumnya.
+ */
+export async function getPosShiftSummary(
+  bankAccountId: string
+): Promise<ActionResult<PosShiftSummary>> {
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const supabase = await createClient();
+  const now = new Date();
+  const today = jakartaDateString(now);
+  const [yearStr, monthStr] = today.split("-");
+  const periodYear = Number(yearStr);
+  const periodMonth = Number(monthStr);
+
+  const { data: statement } = await supabase
+    .from("cashflow_statements")
+    .select("id, opening_balance")
+    .eq("bank_account_id", bankAccountId)
+    .eq("period_year", periodYear)
+    .eq("period_month", periodMonth)
+    .maybeSingle();
+
+  if (!statement) {
+    return {
+      ok: true,
+      data: {
+        today,
+        asOf: now.toISOString(),
+        openingTill: null,
+        cashCreditsToday: 0,
+        cashSalesCount: 0,
+        qrisCreditsToday: 0,
+        qrisSalesCount: 0,
+        debitsToday: 0,
+        debitsCount: 0,
+        expectedTill: null,
+      },
+    };
+  }
+
+  const { data: rows } = await supabase
+    .from("cashflow_transactions")
+    .select("transaction_date, debit, credit, category")
+    .eq("statement_id", statement.id)
+    .lte("transaction_date", today);
+
+  let beforeCreditNonQris = 0;
+  let beforeDebit = 0;
+  let cashCreditsToday = 0;
+  let cashSalesCount = 0;
+  let qrisCreditsToday = 0;
+  let qrisSalesCount = 0;
+  let debitsToday = 0;
+  let debitsCount = 0;
+
+  for (const r of rows ?? []) {
+    const debit = Number(r.debit) || 0;
+    const credit = Number(r.credit) || 0;
+    const isQris = r.category === POS_QRIS_CATEGORY;
+    if (r.transaction_date === today) {
+      if (debit > 0) {
+        debitsToday += debit;
+        debitsCount += 1;
+      }
+      if (credit > 0) {
+        if (isQris) {
+          qrisCreditsToday += credit;
+          qrisSalesCount += 1;
+        } else {
+          cashCreditsToday += credit;
+          cashSalesCount += 1;
+        }
+      }
+    } else {
+      if (!isQris) beforeCreditNonQris += credit;
+      beforeDebit += debit;
+    }
+  }
+
+  const openingTill =
+    Number(statement.opening_balance) + beforeCreditNonQris - beforeDebit;
+  const expectedTill = openingTill + cashCreditsToday - debitsToday;
+
+  return {
+    ok: true,
+    data: {
+      today,
+      asOf: now.toISOString(),
+      openingTill,
+      cashCreditsToday,
+      cashSalesCount,
+      qrisCreditsToday,
+      qrisSalesCount,
+      debitsToday,
+      debitsCount,
+      expectedTill,
+    },
+  };
+}

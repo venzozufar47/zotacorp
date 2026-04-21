@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { History, Loader2, Minus, Plus, Settings, Sparkles, X } from "lucide-react";
+import { History, Loader2, Minus, Plus, Settings, Sparkles, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createPosSale,
@@ -289,6 +289,13 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
               Katalog
             </Link>
           )}
+          <Link
+            href="/pos/shift"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Wallet size={14} />
+            Saldo
+          </Link>
           <Link
             href="/pos/riwayat"
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
