@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Boxes, History, Loader2, Minus, Plus, Settings, Sparkles, Wallet, X } from "lucide-react";
+import { Boxes, Camera, History, Loader2, Minus, Plus, Settings, Sparkles, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createPosSale,
@@ -11,6 +11,7 @@ import {
   type PosProductVariant,
   type PosSaleItemInput,
 } from "@/lib/actions/pos.actions";
+import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
 
 interface Props {
@@ -55,6 +56,9 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
   const [confirmMethod, setConfirmMethod] =
     useState<PaymentMethod | null>(null);
+  // QRIS wajib upload foto nota customer sebagai bukti — state-nya
+  // di-reset setiap kali konfirmasi dibuka/ditutup.
+  const [qrisReceipt, setQrisReceipt] = useState<File | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   // productId yang sedang dibuka variant-pickernya; null = tertutup.
   const [variantPickerFor, setVariantPickerFor] = useState<string | null>(null);
@@ -196,6 +200,10 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       })),
     ];
     if (items.length === 0) return;
+    if (method === "qris" && !qrisReceipt) {
+      toast.error("QRIS wajib foto nota customer");
+      return;
+    }
     startTransition(async () => {
       const res = await createPosSale({
         bankAccountId,
@@ -206,11 +214,28 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
         toast.error(res.error ?? "Gagal menyimpan penjualan");
         return;
       }
+      if (method === "qris" && qrisReceipt && res.data?.saleId) {
+        const form = new FormData();
+        form.set("saleId", res.data.saleId);
+        form.set("file", qrisReceipt);
+        const att = await attachPosQrisReceipt(form);
+        if (!att.ok) {
+          // Sale sudah committed — kasir perlu tahu supaya bisa
+          // re-upload lewat admin panel; jangan void sale karena
+          // customer sudah bayar.
+          toast.error(`Tersimpan tapi foto gagal upload: ${att.error}`);
+          resetCart();
+          setConfirmMethod(null);
+          setQrisReceipt(null);
+          return;
+        }
+      }
       toast.success(
         `Tersimpan: ${formatRp(res.data?.total ?? 0)} — ${method === "cash" ? "Cash" : "QRIS"}`
       );
       resetCart();
       setConfirmMethod(null);
+      setQrisReceipt(null);
     });
   }
 
@@ -503,7 +528,11 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       {confirmMethod && (
         <div
           className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-          onClick={() => !pending && setConfirmMethod(null)}
+          onClick={() => {
+            if (pending) return;
+            setConfirmMethod(null);
+            setQrisReceipt(null);
+          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4"
@@ -545,18 +574,76 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                 </span>
               </div>
             </div>
+            {confirmMethod === "qris" && (
+              <div className="mb-3">
+                <p className="text-xs font-medium text-foreground mb-1.5">
+                  Foto nota QRIS dari customer{" "}
+                  <span className="text-destructive">*</span>
+                </p>
+                <label
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition ${
+                    qrisReceipt
+                      ? "border-success/50 bg-success/10"
+                      : "border-dashed border-border bg-muted/30 hover:bg-muted"
+                  } ${pending ? "opacity-50 pointer-events-none" : ""}`}
+                >
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      if (f && f.size > 5 * 1024 * 1024) {
+                        toast.error("Foto maksimal 5MB");
+                        e.target.value = "";
+                        return;
+                      }
+                      setQrisReceipt(f);
+                    }}
+                  />
+                  <Camera size={16} className="text-foreground shrink-0" />
+                  <span className="text-sm text-foreground truncate flex-1">
+                    {qrisReceipt ? qrisReceipt.name : "Ambil foto / pilih gambar"}
+                  </span>
+                  {qrisReceipt && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setQrisReceipt(null);
+                      }}
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      aria-label="Hapus foto"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </label>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Wajib sebagai bukti audit — foto bisa di-review admin di
+                  rekap finance.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => setConfirmMethod(null)}
+                onClick={() => {
+                  setConfirmMethod(null);
+                  setQrisReceipt(null);
+                }}
                 className="h-11 rounded-xl border border-border text-foreground font-semibold hover:bg-muted disabled:opacity-50"
               >
                 Batal
               </button>
               <button
                 type="button"
-                disabled={pending}
+                disabled={
+                  pending ||
+                  (confirmMethod === "qris" && !qrisReceipt)
+                }
                 onClick={() => submit(confirmMethod)}
                 className={`h-11 rounded-xl font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-60 ${
                   confirmMethod === "cash" ? "bg-success" : "bg-primary"
