@@ -104,11 +104,16 @@ export function CategoryBreakdownPanel({ transactions, businessUnit }: Props) {
           net: v.debit - v.credit,
         }))
         .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
-      // Wealth Transfer is just shuffling money between owned accounts —
-      // not income nor a real dividend payout — so it's listed for
-      // visibility but excluded from the Net Dividen total.
+      // Wealth Transfer cuma geser duit antar rekening sendiri; QRIS
+      // (non-operasional) adalah settlement yang sudah dihitung sebagai
+      // Sales di rekening Mandiri. Keduanya ditampilkan untuk audit
+      // tapi di-exclude dari total Net Dividen.
       const net = nonOpArr
-        .filter((r) => r.category !== "Wealth Transfer")
+        .filter(
+          (r) =>
+            r.category !== "Wealth Transfer" &&
+            r.category !== "QRIS (non-operasional)"
+        )
         .reduce((s, r) => s + r.net, 0);
       return {
         income: toSortedArray(incomeMap),
@@ -225,7 +230,9 @@ export function CategoryBreakdownPanel({ transactions, businessUnit }: Props) {
           </div>
           <ul className="space-y-1.5">
             {nonOpRows.map((r) => {
-              const excluded = r.category === "Wealth Transfer";
+              const excluded =
+                r.category === "Wealth Transfer" ||
+                r.category === "QRIS (non-operasional)";
               return (
               <li
                 key={r.category}

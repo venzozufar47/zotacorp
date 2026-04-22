@@ -82,6 +82,10 @@ export const HAENGBOCAKE_NON_OPERATING_CATEGORIES = [
   "Dividend",
   "Pinjaman",
   "Pinjaman Mamaya",
+  // QRIS proceeds hit cash Pare as a credit, but the actual bank
+  // settlement for the same QRIS money lands on the Mandiri rekening
+  // as "Sales" — counting both sides would double-book revenue.
+  "QRIS (non-operasional)",
 ] as const;
 
 export function getNonOperatingCategories(bu: string): readonly string[] {
