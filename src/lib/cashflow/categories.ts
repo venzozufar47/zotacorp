@@ -53,10 +53,12 @@ export const HAENGBOCAKE_BRANCHES = ["Pusat", "Semarang", "Pare"] as const;
  * row POS tidak cocok dengan option di dropdown dan admin perlu
  * re-categorize manual.
  */
-export const POS_CASH_CATEGORY = "Cash" as const;
+export const POS_CASH_CATEGORY = "Sales" as const;
 export const POS_QRIS_CATEGORY = "QRIS (non-operasional)" as const;
 
 export const HAENGBOCAKE_CASH_CATEGORIES = [
+  "Sales",
+  "QRIS (non-operasional)",
   "Haengbo Cust",
   "Haengbo Non-Cust",
   "Pinjaman Mamaya",
