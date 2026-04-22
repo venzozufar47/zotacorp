@@ -63,6 +63,12 @@ export interface PosSaleSummary {
    *  set — bukan action POS. Row pos_sales + items tetap disimpan
    *  untuk audit; UI tinggal render strike + badge. */
   voidedAt: string | null;
+  /** Untuk QRIS: status upload bukti foto nota customer ke
+   *  `cashflow_transactions.attachment_path`. Null kalau sale bukan
+   *  QRIS atau tidak punya cashflow_transaction_id (edge case).
+   *  Dipakai di /pos/riwayat supaya kasir tahu mana yang belum
+   *  upload bukti. */
+  receiptUploaded: boolean | null;
   items: Array<{
     productName: string;
     variantName: string | null;
@@ -690,7 +696,9 @@ export async function listRecentPosSales(
   // relationship entries.
   const { data: sales, error: salesErr } = await supabase
     .from("pos_sales")
-    .select("id, sale_date, sale_time, payment_method, total, voided_at")
+    .select(
+      "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
+    )
     .eq("bank_account_id", bankAccountId)
     .order("sale_date", { ascending: false })
     .order("sale_time", { ascending: false })
@@ -698,6 +706,22 @@ export async function listRecentPosSales(
   if (salesErr || !sales || sales.length === 0) return [];
 
   const saleIds = sales.map((s) => s.id);
+  // Ambil attachment_path ledger hanya untuk QRIS — cash tidak wajib
+  // bukti. Query terpisah (bukan embed) karena types.ts hand-written
+  // tidak expose relationship; tetap satu round-trip dengan `.in(...)`.
+  const qrisTxIds = sales
+    .filter((s) => s.payment_method === "qris" && s.cashflow_transaction_id)
+    .map((s) => s.cashflow_transaction_id as string);
+  const uploadedTxIds = new Set<string>();
+  if (qrisTxIds.length > 0) {
+    const { data: txs } = await supabase
+      .from("cashflow_transactions")
+      .select("id, attachment_path")
+      .in("id", qrisTxIds);
+    for (const t of txs ?? []) {
+      if (t.attachment_path) uploadedTxIds.add(t.id);
+    }
+  }
   const { data: items } = await supabase
     .from("pos_sale_items")
     .select("sale_id, product_name, variant_name, qty, unit_price, subtotal")
@@ -723,6 +747,10 @@ export async function listRecentPosSales(
     paymentMethod: s.payment_method as PaymentMethod,
     total: Number(s.total),
     voidedAt: s.voided_at,
+    receiptUploaded:
+      s.payment_method === "qris" && s.cashflow_transaction_id
+        ? uploadedTxIds.has(s.cashflow_transaction_id)
+        : null,
     items: itemsBySale.get(s.id) ?? [],
   }));
 }
