@@ -720,16 +720,24 @@ export async function listRecentPosSales(
     // lulus. Karena kita sudah scope ke sale milik bankAccountId yang
     // valid (gate dipanggil di page level), aman baca attachment_path
     // via service role — hanya satu kolom, tidak bocor data lain.
-    const admin = createAdminClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    const { data: txs } = await admin
-      .from("cashflow_transactions")
-      .select("id, attachment_path")
-      .in("id", qrisTxIds);
-    for (const t of txs ?? []) {
-      if (t.attachment_path) uploadedTxIds.add(t.id);
+    // Dibungkus try/catch supaya kegagalan lookup bukti (env missing,
+    // network) tidak membuat riwayat page crash — daftar sale tetap
+    // tampil, badge bukti fallback ke false.
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (url && key) {
+        const admin = createAdminClient<Database>(url, key);
+        const { data: txs } = await admin
+          .from("cashflow_transactions")
+          .select("id, attachment_path")
+          .in("id", qrisTxIds);
+        for (const t of txs ?? []) {
+          if (t.attachment_path) uploadedTxIds.add(t.id);
+        }
+      }
+    } catch (e) {
+      console.error("[listRecentPosSales] attachment lookup failed", e);
     }
   }
   const { data: items } = await supabase

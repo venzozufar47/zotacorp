@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Camera, CameraOff, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -88,20 +88,25 @@ function ReceiptDialog({
   onUploaded: () => void;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [loadedUrl, setLoadedUrl] = useState(false);
+  const [urlLoading, setUrlLoading] = useState(currentlyUploaded);
   const [file, setFile] = useState<File | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // Lazy-load signed URL sekali pas dialog pertama dibuka (kalau
-  // sudah ada bukti). Tidak dibungkus useEffect — server action
-  // boleh langsung dipanggil dari render gate pakai useTransition.
-  if (currentlyUploaded && !loadedUrl && !pending) {
-    setLoadedUrl(true);
-    startTransition(async () => {
+  // Lazy-load signed URL saat dialog dibuka kalau sale sudah punya
+  // bukti — sekali saja per lifetime dialog.
+  useEffect(() => {
+    if (!currentlyUploaded) return;
+    let cancelled = false;
+    (async () => {
       const res = await getPosQrisReceiptUrl(saleId);
+      if (cancelled) return;
       if (res.ok && res.data?.url) setSignedUrl(res.data.url);
-    });
-  }
+      setUrlLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [saleId, currentlyUploaded]);
 
   const handleUpload = () => {
     if (!file) {
@@ -147,8 +152,13 @@ function ReceiptDialog({
 
         {currentlyUploaded && (
           <div className="rounded-xl border border-border bg-muted/30 overflow-hidden">
-            {signedUrl ? (
-              signedUrl.endsWith(".pdf") ? (
+            {urlLoading ? (
+              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                <Loader2 size={16} className="animate-spin mr-2" />
+                Memuat bukti...
+              </div>
+            ) : signedUrl ? (
+              signedUrl.includes(".pdf") ? (
                 <a
                   href={signedUrl}
                   target="_blank"
@@ -166,9 +176,8 @@ function ReceiptDialog({
                 />
               )
             ) : (
-              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-                <Loader2 size={16} className="animate-spin mr-2" />
-                Memuat bukti...
+              <div className="py-6 text-center text-xs text-muted-foreground italic">
+                Tidak bisa memuat bukti.
               </div>
             )}
           </div>
