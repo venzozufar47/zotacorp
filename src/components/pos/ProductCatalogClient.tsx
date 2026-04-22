@@ -229,12 +229,12 @@ export function ProductCatalogClient({
         <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
           Tambah produk
         </p>
-        <div className="grid grid-cols-[1fr_120px_auto] gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-[1fr_120px_auto] gap-2">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Nama produk"
-            className="h-10 px-3 rounded-lg border border-border bg-background text-sm"
+            className="col-span-2 sm:col-span-1 h-10 px-3 rounded-lg border border-border bg-background text-sm"
           />
           <input
             value={newPrice}
@@ -247,7 +247,7 @@ export function ProductCatalogClient({
             type="button"
             disabled={pending}
             onClick={addProduct}
-            className="h-10 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-1 disabled:opacity-50"
+            className="h-10 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center justify-center gap-1 disabled:opacity-50"
           >
             <Plus size={14} /> Tambah
           </button>
@@ -281,7 +281,7 @@ export function ProductCatalogClient({
                 <button
                   type="button"
                   onClick={() => toggleExpand(p.id)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground shrink-0"
                   aria-label={isExpanded ? "Tutup varian" : "Buka varian"}
                 >
                   {isExpanded ? (
@@ -290,49 +290,48 @@ export function ProductCatalogClient({
                     <ChevronRight size={16} />
                   )}
                 </button>
-                <input
-                  value={nameDrafts[p.id] ?? p.name}
-                  onChange={(e) =>
-                    setNameDrafts((d) => ({ ...d, [p.id]: e.target.value }))
-                  }
-                  onBlur={(e) => {
-                    const n = e.target.value.trim();
-                    setNameDrafts((d) => {
-                      const next = { ...d };
-                      delete next[p.id];
-                      return next;
-                    });
-                    if (n && n !== p.name) updateField(p.id, { name: n });
-                  }}
-                  className="flex-1 h-9 px-2 rounded-lg border border-transparent hover:border-border focus:border-primary bg-transparent text-sm font-medium"
-                />
-                <input
-                  value={priceDrafts[p.id] ?? String(p.price)}
-                  inputMode="numeric"
-                  onChange={(e) =>
-                    setPriceDrafts((d) => ({ ...d, [p.id]: e.target.value }))
-                  }
-                  onBlur={(e) => {
-                    const v = Number(e.target.value);
-                    setPriceDrafts((d) => {
-                      const next = { ...d };
-                      delete next[p.id];
-                      return next;
-                    });
-                    if (Number.isFinite(v) && v >= 0 && v !== p.price)
-                      updateField(p.id, { price: v });
-                  }}
-                  className="w-28 h-9 px-2 rounded-lg border border-transparent hover:border-border focus:border-primary bg-transparent text-sm tabular-nums text-right"
-                  title={
-                    variantCount > 0
-                      ? "Harga base diabaikan saat produk punya varian"
-                      : undefined
-                  }
-                />
-                <span className="text-xs text-muted-foreground hidden sm:inline">
-                  {formatRp(p.price)}
-                </span>
-                <label className="inline-flex items-center gap-1 text-xs">
+                <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                  <input
+                    value={nameDrafts[p.id] ?? p.name}
+                    onChange={(e) =>
+                      setNameDrafts((d) => ({ ...d, [p.id]: e.target.value }))
+                    }
+                    onBlur={(e) => {
+                      const n = e.target.value.trim();
+                      setNameDrafts((d) => {
+                        const next = { ...d };
+                        delete next[p.id];
+                        return next;
+                      });
+                      if (n && n !== p.name) updateField(p.id, { name: n });
+                    }}
+                    className="min-w-0 flex-1 h-9 px-2 rounded-lg border border-transparent hover:border-border focus:border-primary bg-transparent text-sm font-medium"
+                  />
+                  <input
+                    value={priceDrafts[p.id] ?? String(p.price)}
+                    inputMode="numeric"
+                    onChange={(e) =>
+                      setPriceDrafts((d) => ({ ...d, [p.id]: e.target.value }))
+                    }
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      setPriceDrafts((d) => {
+                        const next = { ...d };
+                        delete next[p.id];
+                        return next;
+                      });
+                      if (Number.isFinite(v) && v >= 0 && v !== p.price)
+                        updateField(p.id, { price: v });
+                    }}
+                    className="w-full sm:w-28 h-9 px-2 rounded-lg border border-border sm:border-transparent hover:border-border focus:border-primary bg-transparent text-sm tabular-nums text-right"
+                    title={
+                      variantCount > 0
+                        ? "Harga base diabaikan saat produk punya varian"
+                        : undefined
+                    }
+                  />
+                </div>
+                <label className="inline-flex items-center gap-1 text-xs shrink-0">
                   <input
                     type="checkbox"
                     checked={p.active}
@@ -345,7 +344,7 @@ export function ProductCatalogClient({
                 <button
                   type="button"
                   onClick={() => removeProduct(p.id)}
-                  className="text-muted-foreground hover:text-destructive p-1"
+                  className="text-muted-foreground hover:text-destructive p-1 shrink-0"
                   aria-label="Hapus"
                 >
                   <Trash2 size={14} />
@@ -444,41 +443,43 @@ function VariantSection({
               v.active ? "" : "opacity-60"
             }`}
           >
-            <input
-              value={nameDrafts[v.id] ?? v.name}
-              onChange={(e) =>
-                setNameDrafts((d) => ({ ...d, [v.id]: e.target.value }))
-              }
-              onBlur={(e) => {
-                const n = e.target.value.trim();
-                setNameDrafts((d) => {
-                  const next = { ...d };
-                  delete next[v.id];
-                  return next;
-                });
-                if (n && n !== v.name) onUpdate(v.id, { name: n });
-              }}
-              className="flex-1 h-8 px-2 rounded-md border border-transparent hover:border-border focus:border-primary bg-transparent text-sm"
-            />
-            <input
-              value={priceDrafts[draftKey] ?? String(v.price)}
-              inputMode="numeric"
-              onChange={(e) =>
-                setPriceDrafts((d) => ({ ...d, [draftKey]: e.target.value }))
-              }
-              onBlur={(e) => {
-                const n = Number(e.target.value);
-                setPriceDrafts((d) => {
-                  const next = { ...d };
-                  delete next[draftKey];
-                  return next;
-                });
-                if (Number.isFinite(n) && n >= 0 && n !== v.price)
-                  onUpdate(v.id, { price: n });
-              }}
-              className="w-24 h-8 px-2 rounded-md border border-transparent hover:border-border focus:border-primary bg-transparent text-sm tabular-nums text-right"
-            />
-            <label className="inline-flex items-center gap-1 text-[11px]">
+            <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+              <input
+                value={nameDrafts[v.id] ?? v.name}
+                onChange={(e) =>
+                  setNameDrafts((d) => ({ ...d, [v.id]: e.target.value }))
+                }
+                onBlur={(e) => {
+                  const n = e.target.value.trim();
+                  setNameDrafts((d) => {
+                    const next = { ...d };
+                    delete next[v.id];
+                    return next;
+                  });
+                  if (n && n !== v.name) onUpdate(v.id, { name: n });
+                }}
+                className="min-w-0 flex-1 h-8 px-2 rounded-md border border-transparent hover:border-border focus:border-primary bg-transparent text-sm"
+              />
+              <input
+                value={priceDrafts[draftKey] ?? String(v.price)}
+                inputMode="numeric"
+                onChange={(e) =>
+                  setPriceDrafts((d) => ({ ...d, [draftKey]: e.target.value }))
+                }
+                onBlur={(e) => {
+                  const n = Number(e.target.value);
+                  setPriceDrafts((d) => {
+                    const next = { ...d };
+                    delete next[draftKey];
+                    return next;
+                  });
+                  if (Number.isFinite(n) && n >= 0 && n !== v.price)
+                    onUpdate(v.id, { price: n });
+                }}
+                className="w-full sm:w-24 h-8 px-2 rounded-md border border-border sm:border-transparent hover:border-border focus:border-primary bg-transparent text-sm tabular-nums text-right"
+              />
+            </div>
+            <label className="inline-flex items-center gap-1 text-[11px] shrink-0">
               <input
                 type="checkbox"
                 checked={v.active}
@@ -489,7 +490,7 @@ function VariantSection({
             <button
               type="button"
               onClick={() => onDelete(v.id)}
-              className="text-muted-foreground hover:text-destructive p-1"
+              className="text-muted-foreground hover:text-destructive p-1 shrink-0"
               aria-label="Hapus varian"
             >
               <Trash2 size={13} />
@@ -497,12 +498,12 @@ function VariantSection({
           </div>
         );
       })}
-      <div className="grid grid-cols-[1fr_100px_auto] gap-2 pt-1">
+      <div className="grid grid-cols-2 sm:grid-cols-[1fr_100px_auto] gap-2 pt-1">
         <input
           value={vName}
           onChange={(e) => setVName(e.target.value)}
           placeholder="Nama varian (mis. Regular)"
-          className="h-9 px-2 rounded-md border border-border bg-background text-sm"
+          className="col-span-2 sm:col-span-1 h-9 px-2 rounded-md border border-border bg-background text-sm"
         />
         <input
           value={vPrice}
@@ -515,7 +516,7 @@ function VariantSection({
           type="button"
           disabled={pending}
           onClick={submit}
-          className="h-9 px-2.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-50"
+          className="h-9 px-2.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold inline-flex items-center justify-center gap-1 disabled:opacity-50"
         >
           <Plus size={13} /> Tambah
         </button>
