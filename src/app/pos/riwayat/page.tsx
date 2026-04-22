@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { PosNavLink } from "@/components/pos/PosNavLink";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import {
   findPosAccountForCurrentUser,
@@ -40,12 +40,12 @@ export default async function PosRiwayatPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
       <header>
-        <Link
+        <PosNavLink
           href="/pos"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
         >
           <ArrowLeft size={12} /> Kembali ke POS
-        </Link>
+        </PosNavLink>
         <h1 className="font-semibold text-foreground">Riwayat Penjualan</h1>
         <p className="text-xs text-muted-foreground">
           {account.accountName} · 50 transaksi terakhir
