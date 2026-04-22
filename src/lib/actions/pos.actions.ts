@@ -757,9 +757,17 @@ export async function listRecentPosSales(
     paymentMethod: s.payment_method as PaymentMethod,
     total: Number(s.total),
     voidedAt: s.voided_at,
+    // Untuk QRIS selalu return boolean (true/false) supaya badge muncul
+    // di UI — termasuk sale lama yang mungkin tidak punya
+    // cashflow_transaction_id (data pre-link). Null khusus untuk cash
+    // karena bukti tidak wajib. Kasir tetap bisa upload lewat dialog;
+    // attach action akan resolve cashflow tx dari sale.
     receiptUploaded:
-      s.payment_method === "qris" && s.cashflow_transaction_id
-        ? uploadedTxIds.has(s.cashflow_transaction_id)
+      s.payment_method === "qris"
+        ? !!(
+            s.cashflow_transaction_id &&
+            uploadedTxIds.has(s.cashflow_transaction_id)
+          )
         : null,
     items: itemsBySale.get(s.id) ?? [],
   }));
