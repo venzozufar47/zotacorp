@@ -13,4 +13,4 @@ export const QRIS_RECEIPT_AT_CHECKOUT = true;
  * Match by (date + time) belum stabil saat admin edit nominal di ledger.
  * Flip ke `true` setelah lookup di pos-receipt.actions.ts verified.
  */
-export const QRIS_RECEIPT_FROM_RIWAYAT = false;
+export const QRIS_RECEIPT_FROM_RIWAYAT = true;

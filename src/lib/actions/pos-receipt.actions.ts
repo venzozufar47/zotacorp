@@ -48,7 +48,7 @@ export async function attachPosQrisReceipt(
     const { data: sale } = await supabase
       .from("pos_sales")
       .select(
-        "id, bank_account_id, payment_method, cashflow_transaction_id, sale_date, total"
+        "id, bank_account_id, payment_method, cashflow_transaction_id, sale_date, sale_time, total"
       )
       .eq("id", saleId)
       .maybeSingle();
@@ -68,15 +68,45 @@ export async function attachPosQrisReceipt(
     // lalu relink via service role.
     let cashflowTxId = sale.cashflow_transaction_id;
     if (!cashflowTxId) {
-      const { data: candidates } = await admin
-        .from("cashflow_transactions")
-        .select("id, statement_id, cashflow_statements!inner(bank_account_id)")
-        .eq("transaction_date", sale.sale_date)
-        .eq("credit", sale.total)
-        .eq("cashflow_statements.bank_account_id", sale.bank_account_id);
-      // Buang tx yang sudah ter-link ke sale lain.
-      const candidateIds = (candidates ?? []).map((c) => c.id);
-      let free = candidateIds;
+      // Step 1: ambil semua statement milik bank account ini.
+      // PostgREST nested-join filter tidak reliabel di semua versi —
+      // dua-step lebih predictable.
+      const { data: stmts } = await admin
+        .from("cashflow_statements")
+        .select("id")
+        .eq("bank_account_id", sale.bank_account_id);
+      const stmtIds = (stmts ?? []).map((s) => s.id);
+      // Step 2: match primer = (transaction_date + transaction_time).
+      // Pakai jam (HH:mm) bukan credit karena admin kadang edit nominal
+      // di ledger untuk koreksi, tapi hampir tidak pernah mengubah jam.
+      // Sale_time stored sebagai "HH:mm" string, sama formatnya dengan
+      // transaction_time — match exact aman.
+      let candidates: Array<{
+        id: string;
+        transaction_time: string | null;
+        credit: number;
+        description: string;
+      }> = [];
+      if (stmtIds.length > 0 && sale.sale_time) {
+        const { data } = await admin
+          .from("cashflow_transactions")
+          .select("id, transaction_time, credit, description")
+          .in("statement_id", stmtIds)
+          .eq("transaction_date", sale.sale_date)
+          .eq("transaction_time", sale.sale_time);
+        candidates = data ?? [];
+      }
+      console.error("[attachPosQrisReceipt] relink lookup", {
+        saleId: sale.id,
+        bankAccountId: sale.bank_account_id,
+        saleDate: sale.sale_date,
+        saleTime: sale.sale_time,
+        total: sale.total,
+        stmtIds: stmtIds.length,
+        candidates: candidates.length,
+      });
+      const candidateIds = candidates.map((c) => c.id);
+      let free = candidates;
       if (candidateIds.length > 0) {
         const { data: linked } = await admin
           .from("pos_sales")
@@ -87,21 +117,31 @@ export async function attachPosQrisReceipt(
             .map((l) => l.cashflow_transaction_id)
             .filter((x): x is string => !!x)
         );
-        free = candidateIds.filter((id) => !taken.has(id));
+        free = candidates.filter((c) => !taken.has(c.id));
       }
       if (free.length === 1) {
-        cashflowTxId = free[0];
+        cashflowTxId = free[0].id;
         await admin
           .from("pos_sales")
           .update({ cashflow_transaction_id: cashflowTxId })
           .eq("id", sale.id);
+      } else if (free.length > 1) {
+        // Surface detail kandidat supaya admin bisa link manual
+        // (nominal sudah diedit, jadi jam pun ambigu — kemungkinan
+        // ada beberapa sale di jam yang sama).
+        const list = free
+          .map(
+            (c) => `Rp${Number(c.credit).toLocaleString("id-ID")} — ${c.description.slice(0, 60)}`
+          )
+          .join("; ");
+        return {
+          ok: false,
+          error: `Ambigu ${free.length} transaksi jam ${sale.sale_time}: ${list}. Admin perlu link manual.`,
+        };
       } else {
         return {
           ok: false,
-          error:
-            free.length > 1
-              ? "Transaksi cashflow ambigu, hubungi admin untuk link manual"
-              : "Sale belum punya transaksi cashflow",
+          error: `Tidak ada transaksi cashflow cocok di ${sale.sale_date} jam ${sale.sale_time}. Cek /admin/finance.`,
         };
       }
     }
