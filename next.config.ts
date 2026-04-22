@@ -21,6 +21,16 @@ const nextConfig: NextConfig = {
       "date-fns-tz",
       "@base-ui/react",
     ],
+    /**
+     * Default Server Actions body limit adalah 1 MB — terlalu kecil
+     * untuk upload bukti QRIS dari kamera HP (foto JPEG modern rata-
+     * rata 2-5 MB). Naikkan ke 8 MB supaya sesuai dengan MAX_SIZE 5 MB
+     * di attachPosQrisReceipt + sedikit headroom untuk overhead
+     * multipart. Batas keras tetap di server action.
+     */
+    serverActions: {
+      bodySizeLimit: "8mb",
+    },
   },
   /**
    * `unpdf` (and its transitive `pdfjs-dist` dependency) ships a hefty

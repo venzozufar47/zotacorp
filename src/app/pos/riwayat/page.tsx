@@ -28,7 +28,16 @@ export default async function PosRiwayatPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const sales = await listRecentPosSales(account.id, 50);
+  // Defensive: kalau listRecentPosSales throw (DB hiccup, attachment
+  // lookup edge case), jangan trigger error.tsx — fallback ke list
+  // kosong supaya kasir masih bisa navigate kembali ke /pos. Detail
+  // error ter-log ke Vercel runtime logs untuk diagnosa.
+  let sales: Awaited<ReturnType<typeof listRecentPosSales>> = [];
+  try {
+    sales = await listRecentPosSales(account.id, 50);
+  } catch (e) {
+    console.error("[PosRiwayatPage] listRecentPosSales failed", e);
+  }
 
   // Group by sale_date untuk tampilan per hari.
   const byDate = new Map<string, typeof sales>();
