@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PosNavLink } from "./PosNavLink";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Boxes, Plus, RotateCcw, X } from "lucide-react";
@@ -53,12 +53,12 @@ export function StockLandingClient({
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <header>
-        <Link
+        <PosNavLink
           href="/pos"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
         >
           <ArrowLeft size={12} /> Kembali ke POS
-        </Link>
+        </PosNavLink>
         <h1 className="font-semibold text-foreground flex items-center gap-2">
           <Boxes size={16} /> Stok
         </h1>
@@ -360,12 +360,12 @@ function MovementPanel({
 function OpnamePanel({ rows }: { rows: StockOpnameSummary[] }) {
   return (
     <div className="space-y-3">
-      <Link
+      <PosNavLink
         href="/pos/stok/opname/new"
         className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium hover:opacity-90"
       >
         <Plus size={14} /> Opname Baru
-      </Link>
+      </PosNavLink>
       {rows.length === 0 ? (
         <Empty text="Belum ada opname." />
       ) : (
@@ -378,7 +378,7 @@ function OpnamePanel({ rows }: { rows: StockOpnameSummary[] }) {
                 ? "text-success"
                 : "text-muted-foreground";
             return (
-              <Link
+              <PosNavLink
                 key={o.id}
                 href={`/pos/stok/opname/${o.id}`}
                 className="block rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted"
@@ -400,7 +400,7 @@ function OpnamePanel({ rows }: { rows: StockOpnameSummary[] }) {
                   {o.itemCount} SKU · selisih qty {o.totalDiffQty > 0 ? "+" : ""}
                   {o.totalDiffQty}
                 </p>
-              </Link>
+              </PosNavLink>
             );
           })}
         </div>

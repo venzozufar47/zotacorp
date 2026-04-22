@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PosNavLink } from "./PosNavLink";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
@@ -38,12 +38,12 @@ export default function PosShiftClient({ accountName, summary }: Props) {
   return (
     <div className="max-w-md mx-auto px-4 py-5 space-y-4">
       <header>
-        <Link
+        <PosNavLink
           href="/pos"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
         >
           <ArrowLeft size={12} /> Kembali ke POS
-        </Link>
+        </PosNavLink>
         <h1 className="font-semibold text-foreground">Cek Saldo Shift</h1>
         <p className="text-xs text-muted-foreground">
           {accountName} · {formatDateTime(asOf)} WIB
@@ -104,12 +104,12 @@ export default function PosShiftClient({ accountName, summary }: Props) {
           <RefreshCw size={12} className={isPending ? "animate-spin" : ""} />
           Refresh
         </button>
-        <Link
+        <PosNavLink
           href="/pos/stok/opname/new"
-          className="text-xs font-medium text-primary hover:underline"
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
         >
           Selesai shift? Input opname stok →
-        </Link>
+        </PosNavLink>
       </div>
     </div>
   );

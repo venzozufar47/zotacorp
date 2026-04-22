@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PosNavLink } from "./PosNavLink";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ClipboardCheck, Plus, X } from "lucide-react";
@@ -105,12 +105,12 @@ export function StockOpnameForm({ bankAccountId, accountName, skus }: Props) {
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <header>
-        <Link
+        <PosNavLink
           href="/pos/stok"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
         >
           <ArrowLeft size={12} /> Kembali ke Stok
-        </Link>
+        </PosNavLink>
         <h1 className="font-semibold text-foreground flex items-center gap-2">
           <ClipboardCheck size={16} /> Opname Baru
         </h1>

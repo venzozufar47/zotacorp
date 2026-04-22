@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
+import { PosNavLink } from "./PosNavLink";
 import { Boxes, Camera, History, Loader2, Minus, Plus, Settings, Sparkles, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -254,13 +254,13 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
             </p>
             <div className="flex flex-col gap-2 items-center">
               {isAdmin && (
-                <Link
+                <PosNavLink
                   href="/pos/produk"
                   className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
                 >
                   <Settings size={14} />
                   Kelola katalog
-                </Link>
+                </PosNavLink>
               )}
               <button
                 type="button"
@@ -295,48 +295,24 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
 
   return (
     <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom))]">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-4 py-3 flex items-center justify-between">
-        <div>
+      <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
             POS
           </p>
-          <h1 className="font-semibold text-foreground text-sm">{accountName}</h1>
+          <h1 className="font-semibold text-foreground text-sm truncate">{accountName}</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <nav className="flex items-center gap-1 sm:gap-3 shrink-0">
           {isAdmin && (
-            <Link
-              href="/pos/produk"
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <Settings size={14} />
-              Katalog
-            </Link>
+            <HeaderNavLink href="/pos/produk" icon={<Settings size={16} />} label="Katalog" />
           )}
-          <Link
-            href="/pos/shift"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Wallet size={14} />
-            Saldo
-          </Link>
-          <Link
-            href="/pos/stok"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Boxes size={14} />
-            Stok
-          </Link>
-          <Link
-            href="/pos/riwayat"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <History size={14} />
-            Riwayat
-          </Link>
-        </div>
+          <HeaderNavLink href="/pos/shift" icon={<Wallet size={16} />} label="Saldo" />
+          <HeaderNavLink href="/pos/stok" icon={<Boxes size={16} />} label="Stok" />
+          <HeaderNavLink href="/pos/riwayat" icon={<History size={16} />} label="Riwayat" />
+        </nav>
       </header>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
         {products.map((p) => {
           const hasVariants = p.variants.length > 0;
           const totalQtyOnThisProduct = qtyByProductId.get(p.id) ?? 0;
@@ -352,16 +328,16 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
               <button
                 type="button"
                 onClick={() => handleProductTap(p)}
-                className={`w-full min-h-[120px] rounded-2xl border text-left p-3 transition-colors active:bg-muted ${
+                className={`w-full min-h-[104px] sm:min-h-[120px] rounded-2xl border text-left p-2.5 sm:p-3 transition-colors active:bg-muted ${
                   selected
                     ? "border-primary bg-primary/5"
                     : "border-border bg-card"
                 }`}
               >
-                <div className="font-semibold text-foreground text-base leading-tight pr-8">
+                <div className="font-semibold text-foreground text-sm sm:text-base leading-tight pr-8">
                   {p.name}
                 </div>
-                <div className="mt-1 text-sm text-muted-foreground">
+                <div className="mt-1 text-xs sm:text-sm text-muted-foreground">
                   {hasVariants ? variantPriceLabel(p.variants) : formatRp(p.price)}
                 </div>
                 {hasVariants && (
@@ -427,7 +403,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
         <button
           type="button"
           onClick={() => setCustomOpen(true)}
-          className="min-h-[120px] rounded-2xl border-2 border-dashed border-border bg-muted/20 p-3 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground hover:border-primary/60 transition-colors active:bg-muted"
+          className="min-h-[104px] sm:min-h-[120px] rounded-2xl border-2 border-dashed border-border bg-muted/20 p-2.5 sm:p-3 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground hover:border-primary/60 transition-colors active:bg-muted"
         >
           <Sparkles size={18} />
           <span className="text-sm font-semibold">Tambah custom</span>
@@ -882,5 +858,25 @@ function CustomItemDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+function HeaderNavLink({
+  href,
+  icon,
+  label,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <PosNavLink
+      href={href}
+      className="inline-flex items-center gap-1 h-9 px-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+    </PosNavLink>
   );
 }
