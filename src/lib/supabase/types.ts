@@ -108,6 +108,7 @@ export type Database = {
           price: number
           active: boolean
           sort_order: number
+          track_stock: boolean
           created_at: string
           updated_at: string
         }
@@ -118,6 +119,7 @@ export type Database = {
           price: number
           active?: boolean
           sort_order?: number
+          track_stock?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -128,6 +130,7 @@ export type Database = {
           price?: number
           active?: boolean
           sort_order?: number
+          track_stock?: boolean
           created_at?: string
           updated_at?: string
         }

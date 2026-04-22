@@ -186,6 +186,7 @@ async function listActiveSkus(
     .select("id, name, price, sort_order")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
+    .eq("track_stock", true)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   const productIds = (products ?? []).map((p) => p.id);
@@ -565,4 +566,65 @@ export async function listOpnameFormSkus(
 ): Promise<OpnameFormSku[]> {
   const supabase = await createClient();
   return listActiveSkus(supabase, bankAccountId);
+}
+
+export interface ExcludedStockProduct {
+  productId: string;
+  productName: string;
+}
+
+/** Produk yang di-exclude dari perhitungan stok (track_stock=false). */
+export async function listExcludedStockProducts(
+  bankAccountId: string
+): Promise<ExcludedStockProduct[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("pos_products")
+    .select("id, name")
+    .eq("bank_account_id", bankAccountId)
+    .eq("active", true)
+    .eq("track_stock", false)
+    .order("name", { ascending: true });
+  return (data ?? []).map((p) => ({ productId: p.id, productName: p.name }));
+}
+
+/**
+ * Toggle apakah produk dihitung di sistem stok. Saat di-exclude (track=false),
+ * semua jejak stok produk tsb (opname_items + stock_movements) dihapus supaya
+ * tidak muncul lagi di history — user secara eksplisit bilang tidak mau hitung.
+ * Restore (track=true) tidak mengembalikan data yang sudah di-purge.
+ */
+export async function setProductStockTracking(input: {
+  productId: string;
+  track: boolean;
+}): Promise<ActionResult<void>> {
+  const supabase = await createClient();
+  const { data: product } = await supabase
+    .from("pos_products")
+    .select("id, bank_account_id")
+    .eq("id", input.productId)
+    .maybeSingle();
+  if (!product) return { ok: false, error: "Produk tidak ditemukan" };
+  const gate = await requireAdminOrPosAssignee(product.bank_account_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  if (!input.track) {
+    await supabase
+      .from("pos_stock_opname_items")
+      .delete()
+      .eq("product_id", input.productId);
+    await supabase
+      .from("pos_stock_movements")
+      .delete()
+      .eq("product_id", input.productId)
+      .eq("bank_account_id", product.bank_account_id);
+  }
+
+  const { error } = await supabase
+    .from("pos_products")
+    .update({ track_stock: input.track })
+    .eq("id", input.productId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true, data: undefined };
 }

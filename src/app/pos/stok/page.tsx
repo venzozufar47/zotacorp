@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { findPosAccountForCurrentUser, listActivePosProducts } from "@/lib/actions/pos.actions";
 import {
+  listExcludedStockProducts,
   listStockMovements,
   listStockOnHand,
   listStockOpnames,
@@ -17,11 +18,12 @@ export default async function PosStockPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const [onHand, movements, opnames, products] = await Promise.all([
+  const [onHand, movements, opnames, products, excluded] = await Promise.all([
     listStockOnHand(account.id),
     listStockMovements(account.id, 100),
     listStockOpnames(account.id, 50),
     listActivePosProducts(account.id),
+    listExcludedStockProducts(account.id),
   ]);
 
   return (
@@ -32,6 +34,7 @@ export default async function PosStockPage() {
       movements={movements}
       opnames={opnames}
       products={products}
+      excluded={excluded}
     />
   );
 }
