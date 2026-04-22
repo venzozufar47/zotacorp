@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import type { Database } from "@/lib/supabase/types";
@@ -714,7 +715,16 @@ export async function listRecentPosSales(
     .map((s) => s.cashflow_transaction_id as string);
   const uploadedTxIds = new Set<string>();
   if (qrisTxIds.length > 0) {
-    const { data: txs } = await supabase
+    // Admin client: RLS `cashflow_transactions_admin_or_assignee_select`
+    // hanya lolos untuk scope='full', sedangkan kasir pos_only tidak
+    // lulus. Karena kita sudah scope ke sale milik bankAccountId yang
+    // valid (gate dipanggil di page level), aman baca attachment_path
+    // via service role — hanya satu kolom, tidak bocor data lain.
+    const admin = createAdminClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data: txs } = await admin
       .from("cashflow_transactions")
       .select("id, attachment_path")
       .in("id", qrisTxIds);

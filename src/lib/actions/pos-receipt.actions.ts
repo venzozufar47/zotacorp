@@ -79,6 +79,50 @@ export async function attachPosQrisReceipt(
   }
 
   revalidatePath("/pos", "layout");
+  revalidatePath("/pos/riwayat");
   revalidatePath("/admin/finance", "layout");
   return { ok: true, data: { path } };
+}
+
+/**
+ * Ambil signed URL untuk bukti QRIS sebuah sale (1 jam berlaku) —
+ * supaya kasir bisa preview foto yang sudah diupload sebelumnya dari
+ * /pos/riwayat tanpa harus buka admin finance. Return null kalau sale
+ * bukan QRIS / belum punya cashflow tx / attachment_path kosong.
+ */
+export async function getPosQrisReceiptUrl(
+  saleId: string
+): Promise<ActionResult<{ url: string | null; path: string | null }>> {
+  if (!saleId) return { ok: false, error: "saleId wajib" };
+
+  const supabase = await createClient();
+  const { data: sale } = await supabase
+    .from("pos_sales")
+    .select("id, bank_account_id, payment_method, cashflow_transaction_id")
+    .eq("id", saleId)
+    .maybeSingle();
+  if (!sale) return { ok: false, error: "Sale tidak ditemukan" };
+  if (sale.payment_method !== "qris")
+    return { ok: false, error: "Sale ini bukan QRIS" };
+
+  const gate = await requireAdminOrPosAssignee(sale.bank_account_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  if (!sale.cashflow_transaction_id)
+    return { ok: true, data: { url: null, path: null } };
+
+  const admin = adminClient();
+  const { data: tx } = await admin
+    .from("cashflow_transactions")
+    .select("attachment_path")
+    .eq("id", sale.cashflow_transaction_id)
+    .maybeSingle();
+  if (!tx?.attachment_path)
+    return { ok: true, data: { url: null, path: null } };
+
+  const { data: signed, error } = await admin.storage
+    .from(BUCKET)
+    .createSignedUrl(tx.attachment_path, 60 * 60);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: { url: signed.signedUrl, path: tx.attachment_path } };
 }

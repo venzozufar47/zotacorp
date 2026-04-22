@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { ArrowLeft, Camera, CameraOff } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { PosNavLink } from "@/components/pos/PosNavLink";
+import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import {
   findPosAccountForCurrentUser,
@@ -111,21 +112,11 @@ export default async function PosRiwayatPage() {
                                 Dibatalkan
                               </span>
                             )}
-                            {s.receiptUploaded === true && (
-                              <span
-                                className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-success/15 text-success uppercase tracking-wider"
-                                title="Bukti QRIS sudah diupload"
-                              >
-                                <Camera size={10} /> Bukti
-                              </span>
-                            )}
-                            {s.receiptUploaded === false && (
-                              <span
-                                className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-warning/15 text-warning uppercase tracking-wider"
-                                title="Bukti QRIS belum diupload — hubungi admin"
-                              >
-                                <CameraOff size={10} /> Belum
-                              </span>
+                            {s.receiptUploaded !== null && !s.voidedAt && (
+                              <QrisReceiptBadge
+                                saleId={s.id}
+                                initialUploaded={s.receiptUploaded}
+                              />
                             )}
                           </div>
                           <div

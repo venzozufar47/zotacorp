@@ -566,7 +566,6 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
-                    capture="environment"
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0] ?? null;
