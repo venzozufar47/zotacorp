@@ -659,8 +659,16 @@ export async function createPosSale(input: {
     return { ok: false, error: txErr?.message ?? "Gagal membuat transaksi" };
   }
 
-  // 11. Link sale ke tx.
-  const { error: linkErr } = await supabase
+  // 11. Link sale ke tx. WAJIB pakai admin client — RLS pos_sales
+  //     update di migration 034 hanya lolos untuk admin, sedangkan
+  //     createPosSale dipanggil kasir pos_only. Tanpa service role,
+  //     update diam-diam ter-block (0 rows affected, no error), sale
+  //     ditinggalkan tanpa FK → bukti QRIS tidak bisa di-attach nanti.
+  const adminDb = createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { error: linkErr } = await adminDb
     .from("pos_sales")
     .update({ cashflow_transaction_id: tx.id })
     .eq("id", sale.id);

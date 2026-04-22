@@ -47,23 +47,68 @@ export async function attachPosQrisReceipt(
     const supabase = await createClient();
     const { data: sale } = await supabase
       .from("pos_sales")
-      .select("id, bank_account_id, payment_method, cashflow_transaction_id")
+      .select(
+        "id, bank_account_id, payment_method, cashflow_transaction_id, sale_date, total"
+      )
       .eq("id", saleId)
       .maybeSingle();
     if (!sale) return { ok: false, error: "Sale tidak ditemukan" };
     if (sale.payment_method !== "qris")
       return { ok: false, error: "Sale ini bukan QRIS" };
-    if (!sale.cashflow_transaction_id)
-      return { ok: false, error: "Sale belum punya transaksi cashflow" };
 
     const gate = await requireAdminOrPosAssignee(sale.bank_account_id);
     if (!gate.ok) return { ok: false, error: gate.error };
 
     const admin = adminClient();
+
+    // Auto-relink orphan sale: kasir pos_only sebelum fix RLS tidak
+    // bisa UPDATE pos_sales.cashflow_transaction_id saat createPosSale,
+    // jadi banyak sale lama kehilangan FK-nya. Cari tx cashflow yang
+    // match by (bank_account_id via statement, tanggal, total credit),
+    // lalu relink via service role.
+    let cashflowTxId = sale.cashflow_transaction_id;
+    if (!cashflowTxId) {
+      const { data: candidates } = await admin
+        .from("cashflow_transactions")
+        .select("id, statement_id, cashflow_statements!inner(bank_account_id)")
+        .eq("transaction_date", sale.sale_date)
+        .eq("credit", sale.total)
+        .eq("cashflow_statements.bank_account_id", sale.bank_account_id);
+      // Buang tx yang sudah ter-link ke sale lain.
+      const candidateIds = (candidates ?? []).map((c) => c.id);
+      let free = candidateIds;
+      if (candidateIds.length > 0) {
+        const { data: linked } = await admin
+          .from("pos_sales")
+          .select("cashflow_transaction_id")
+          .in("cashflow_transaction_id", candidateIds);
+        const taken = new Set(
+          (linked ?? [])
+            .map((l) => l.cashflow_transaction_id)
+            .filter((x): x is string => !!x)
+        );
+        free = candidateIds.filter((id) => !taken.has(id));
+      }
+      if (free.length === 1) {
+        cashflowTxId = free[0];
+        await admin
+          .from("pos_sales")
+          .update({ cashflow_transaction_id: cashflowTxId })
+          .eq("id", sale.id);
+      } else {
+        return {
+          ok: false,
+          error:
+            free.length > 1
+              ? "Transaksi cashflow ambigu, hubungi admin untuk link manual"
+              : "Sale belum punya transaksi cashflow",
+        };
+      }
+    }
     const ext = (file.name.split(".").pop() ?? "bin")
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
-    const path = `${sale.bank_account_id}/${sale.cashflow_transaction_id}-${Date.now()}.${ext || "bin"}`;
+    const path = `${sale.bank_account_id}/${cashflowTxId}-${Date.now()}.${ext || "bin"}`;
     const buffer = Buffer.from(await file.arrayBuffer());
     const { error: upErr } = await admin.storage
       .from(BUCKET)
@@ -73,7 +118,7 @@ export async function attachPosQrisReceipt(
     const { error: dbErr } = await admin
       .from("cashflow_transactions")
       .update({ attachment_path: path })
-      .eq("id", sale.cashflow_transaction_id);
+      .eq("id", cashflowTxId);
     if (dbErr) {
       await admin.storage.from(BUCKET).remove([path]);
       return { ok: false, error: dbErr.message };
