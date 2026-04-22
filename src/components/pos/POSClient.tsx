@@ -13,6 +13,7 @@ import {
 } from "@/lib/actions/pos.actions";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
+import { QRIS_RECEIPT_ENABLED } from "@/lib/pos/flags";
 
 interface Props {
   bankAccountId: string;
@@ -35,6 +36,7 @@ interface CustomLine {
 function cartKey(productId: string, variantId?: string | null) {
   return variantId ? `p:${productId}|v:${variantId}` : `p:${productId}`;
 }
+
 
 function parseCartKey(key: string): { productId: string; variantId: string | null } {
   const [pPart, vPart] = key.split("|");
@@ -200,7 +202,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       })),
     ];
     if (items.length === 0) return;
-    if (method === "qris" && !qrisReceipt) {
+    if (QRIS_RECEIPT_ENABLED && method === "qris" && !qrisReceipt) {
       toast.error("QRIS wajib foto nota customer");
       return;
     }
@@ -214,7 +216,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
         toast.error(res.error ?? "Gagal menyimpan penjualan");
         return;
       }
-      if (method === "qris" && qrisReceipt && res.data?.saleId) {
+      if (QRIS_RECEIPT_ENABLED && method === "qris" && qrisReceipt && res.data?.saleId) {
         const form = new FormData();
         form.set("saleId", res.data.saleId);
         form.set("file", qrisReceipt);
@@ -550,7 +552,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                 </span>
               </div>
             </div>
-            {confirmMethod === "qris" && (
+            {QRIS_RECEIPT_ENABLED && confirmMethod === "qris" && (
               <div className="mb-3">
                 <p className="text-xs font-medium text-foreground mb-1.5">
                   Foto nota QRIS dari customer{" "}
@@ -617,7 +619,9 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                 type="button"
                 disabled={
                   pending ||
-                  (confirmMethod === "qris" && !qrisReceipt)
+                  (QRIS_RECEIPT_ENABLED &&
+                    confirmMethod === "qris" &&
+                    !qrisReceipt)
                 }
                 onClick={() => submit(confirmMethod)}
                 className={`h-11 rounded-xl font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-60 ${
