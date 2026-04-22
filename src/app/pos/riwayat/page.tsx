@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { PosNavLink } from "@/components/pos/PosNavLink";
 import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
-import { QRIS_RECEIPT_ENABLED } from "@/lib/pos/flags";
+import { QRIS_RECEIPT_FROM_RIWAYAT } from "@/lib/pos/flags";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import {
   findPosAccountForCurrentUser,
@@ -122,7 +122,7 @@ export default async function PosRiwayatPage() {
                                 Dibatalkan
                               </span>
                             )}
-                            {QRIS_RECEIPT_ENABLED &&
+                            {QRIS_RECEIPT_FROM_RIWAYAT &&
                               s.receiptUploaded !== null &&
                               !s.voidedAt && (
                                 <QrisReceiptBadge

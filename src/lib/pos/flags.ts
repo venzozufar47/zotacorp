@@ -1,11 +1,16 @@
 /**
- * TEMPORARY FLAG: fitur upload foto bukti QRIS dinonaktifkan sementara
- * sampai auto-relink orphan sale stabil (match by date+time masih
- * mengandung edge case saat admin edit nominal di ledger). Kasir tetap
- * bisa transaksi QRIS tanpa foto; admin bisa attach bukti manual dari
- * /admin/finance. Set ke `true` setelah fix siap.
- *
- * Di-share antara POSClient (entry point upload saat sale) dan
- * /pos/riwayat page (badge upload ulang di history).
+ * Upload foto bukti QRIS saat checkout di POSClient. Aman menyala —
+ * createPosSale sekarang link cashflow_transaction_id via admin client
+ * (fix RLS di commit 91cbd7f), jadi attachPosQrisReceipt langsung
+ * menemukan tx-nya, tidak perlu fuzzy relink.
  */
-export const QRIS_RECEIPT_ENABLED = false;
+export const QRIS_RECEIPT_AT_CHECKOUT = true;
+
+/**
+ * Upload ulang bukti QRIS dari /pos/riwayat (badge 'Bukti'/'Belum').
+ * DINONAKTIFKAN sementara: sale lama yang orphan (cashflow_transaction_id
+ * null akibat RLS bug sebelum fix) perlu fuzzy-match ke tx cashflow.
+ * Match by (date + time) belum stabil saat admin edit nominal di ledger.
+ * Flip ke `true` setelah lookup di pos-receipt.actions.ts verified.
+ */
+export const QRIS_RECEIPT_FROM_RIWAYAT = false;
