@@ -13,7 +13,7 @@ import {
   createManualTransaction,
 } from "@/lib/actions/cashflow.actions";
 import type { CategoryPresets } from "@/lib/cashflow/categories";
-import { isAccrualEligible } from "@/lib/cashflow/categories";
+import { isAccrualEligible, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { AutoCategorizeDialog } from "./AutoCategorizeDialog";
 import { formatIDR } from "@/lib/cashflow/format";
 import {
@@ -469,20 +469,32 @@ export function CashflowTable({
   // debit/credit in edit mode — matches the totals card behaviour in
   // the statement editor.
   const computedBalances = useMemo(() => {
+    // Pada rekening cash, kolom diubah jadi "Saldo Kas" — QRIS masuk
+    // rekening yang sama tapi bukan uang laci, jadi di-skip dari running
+    // balance. Row QRIS-nya sendiri tetap menampilkan saldo kas terakhir
+    // (tidak naik / turun) supaya kasir bisa trace uang fisik dengan jelas.
+    const skipRow = (r: CashflowRow) =>
+      bank === "cash" && r.category === POS_QRIS_CATEGORY;
     const asc = [...working].reverse();
     const map = new Map<string, number>();
     if (asc.length === 0) return map;
-    const first = asc[0];
-    const firstNet = first.credit - first.debit;
-    const baseline =
-      first.runningBalance != null ? first.runningBalance - firstNet : 0;
+    // Anchor baseline ke row non-skip pertama yang punya stored balance.
+    // Kalau nggak ada, baseline = 0 (match cash profile).
+    let baseline = 0;
+    for (const r of asc) {
+      if (skipRow(r)) continue;
+      if (r.runningBalance != null) {
+        baseline = r.runningBalance - (r.credit - r.debit);
+      }
+      break;
+    }
     let cum = baseline;
     for (const r of asc) {
-      cum += r.credit - r.debit;
+      if (!skipRow(r)) cum += r.credit - r.debit;
       map.set(r.id, cum);
     }
     return map;
-  }, [working]);
+  }, [working, bank]);
 
   // Paginate. Slice the filtered list so only PAGE_SIZE rows hit the
   // DOM at a time. Total pages recomputes with the filter.
@@ -838,7 +850,9 @@ export function CashflowTable({
                 <Th className="w-28 text-right">
                   <span className="text-success">+</span> Kredit
                 </Th>
-                <Th className="w-32 text-right">Saldo</Th>
+                <Th className="w-32 text-right">
+                  {bank === "cash" ? "Saldo Kas" : "Saldo"}
+                </Th>
                 <Th className="w-44">Kategori</Th>
                 {showBranchColumn && categoryPresets.branches.length > 0 && (
                   <Th className="w-28">Cabang</Th>
