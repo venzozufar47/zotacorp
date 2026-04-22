@@ -241,6 +241,114 @@ export type Database = {
         }
         Relationships: []
       }
+      pos_stock_movements: {
+        Row: {
+          id: string
+          bank_account_id: string
+          product_id: string
+          variant_id: string | null
+          type: "production" | "withdrawal"
+          qty: number
+          notes: string | null
+          movement_date: string
+          movement_time: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          bank_account_id: string
+          product_id: string
+          variant_id?: string | null
+          type: "production" | "withdrawal"
+          qty: number
+          notes?: string | null
+          movement_date: string
+          movement_time?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          bank_account_id?: string
+          product_id?: string
+          variant_id?: string | null
+          type?: "production" | "withdrawal"
+          qty?: number
+          notes?: string | null
+          movement_date?: string
+          movement_time?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      pos_stock_opnames: {
+        Row: {
+          id: string
+          bank_account_id: string
+          opname_date: string
+          opname_time: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          bank_account_id: string
+          opname_date: string
+          opname_time?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          bank_account_id?: string
+          opname_date?: string
+          opname_time?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      pos_stock_opname_items: {
+        Row: {
+          id: string
+          opname_id: string
+          product_id: string
+          variant_id: string | null
+          product_name_snapshot: string
+          variant_name_snapshot: string | null
+          unit_price_snapshot: number
+          physical_count: number
+          expected_count: number
+        }
+        Insert: {
+          id?: string
+          opname_id: string
+          product_id: string
+          variant_id?: string | null
+          product_name_snapshot: string
+          variant_name_snapshot?: string | null
+          unit_price_snapshot: number
+          physical_count: number
+          expected_count: number
+        }
+        Update: {
+          id?: string
+          opname_id?: string
+          product_id?: string
+          variant_id?: string | null
+          product_name_snapshot?: string
+          variant_name_snapshot?: string | null
+          unit_price_snapshot?: number
+          physical_count?: number
+          expected_count?: number
+        }
+        Relationships: []
+      }
       bank_account_assignees: {
         Row: {
           bank_account_id: string

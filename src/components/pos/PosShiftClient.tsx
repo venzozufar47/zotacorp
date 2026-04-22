@@ -94,15 +94,23 @@ export default function PosShiftClient({ accountName, summary }: Props) {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={handleRefresh}
-        disabled={isPending}
-        className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
-      >
-        <RefreshCw size={12} className={isPending ? "animate-spin" : ""} />
-        Refresh
-      </button>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={isPending}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={isPending ? "animate-spin" : ""} />
+          Refresh
+        </button>
+        <Link
+          href="/pos/stok/opname/new"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Selesai shift? Input opname stok →
+        </Link>
+      </div>
     </div>
   );
 }
