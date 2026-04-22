@@ -722,20 +722,27 @@ export async function listRecentPosSales(
     .filter((s) => s.payment_method === "qris" && s.cashflow_transaction_id)
     .map((s) => s.cashflow_transaction_id as string);
   const uploadedTxIds = new Set<string>();
-  if (qrisTxIds.length > 0) {
-    // Admin client: RLS `cashflow_transactions_admin_or_assignee_select`
-    // hanya lolos untuk scope='full', sedangkan kasir pos_only tidak
-    // lulus. Karena kita sudah scope ke sale milik bankAccountId yang
-    // valid (gate dipanggil di page level), aman baca attachment_path
-    // via service role — hanya satu kolom, tidak bocor data lain.
-    // Dibungkus try/catch supaya kegagalan lookup bukti (env missing,
-    // network) tidak membuat riwayat page crash — daftar sale tetap
-    // tampil, badge bukti fallback ke false.
-    try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (url && key) {
-        const admin = createAdminClient<Database>(url, key);
+  // Untuk sale orphan (QRIS tapi cashflow_transaction_id null), kita
+  // fuzzy-match by (date + HH:mm WIB) → key "YYYY-MM-DD|HH:mm".
+  // Set berisi key yang kita tahu ada tx dengan attachment_path.
+  const uploadedOrphanKeys = new Set<string>();
+  const orphanQrisSales = sales.filter(
+    (s) => s.payment_method === "qris" && !s.cashflow_transaction_id
+  );
+  // Admin client: RLS `cashflow_transactions_admin_or_assignee_select`
+  // hanya lolos untuk scope='full', sedangkan kasir pos_only tidak
+  // lulus. Karena kita sudah scope ke sale milik bankAccountId yang
+  // valid (gate dipanggil di page level), aman baca attachment_path
+  // via service role — hanya satu kolom, tidak bocor data lain.
+  // Dibungkus try/catch supaya kegagalan lookup bukti (env missing,
+  // network) tidak membuat riwayat page crash — daftar sale tetap
+  // tampil, badge bukti fallback ke false.
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (url && key && (qrisTxIds.length > 0 || orphanQrisSales.length > 0)) {
+      const admin = createAdminClient<Database>(url, key);
+      if (qrisTxIds.length > 0) {
         const { data: txs } = await admin
           .from("cashflow_transactions")
           .select("id, attachment_path")
@@ -744,9 +751,34 @@ export async function listRecentPosSales(
           if (t.attachment_path) uploadedTxIds.add(t.id);
         }
       }
-    } catch (e) {
-      console.error("[listRecentPosSales] attachment lookup failed", e);
+      if (orphanQrisSales.length > 0) {
+        // Ambil statement_ids rekening ini sekali, lalu query tx di
+        // rentang tanggal sale orphan untuk cari match by HH:mm.
+        const { data: stmts } = await admin
+          .from("cashflow_statements")
+          .select("id")
+          .eq("bank_account_id", bankAccountId);
+        const stmtIds = (stmts ?? []).map((s) => s.id);
+        const orphanDates = Array.from(
+          new Set(orphanQrisSales.map((s) => s.sale_date))
+        );
+        if (stmtIds.length > 0 && orphanDates.length > 0) {
+          const { data: txs } = await admin
+            .from("cashflow_transactions")
+            .select("transaction_date, transaction_time, attachment_path")
+            .in("statement_id", stmtIds)
+            .in("transaction_date", orphanDates);
+          for (const t of txs ?? []) {
+            if (!t.attachment_path || !t.transaction_time) continue;
+            uploadedOrphanKeys.add(
+              `${t.transaction_date}|${t.transaction_time}`
+            );
+          }
+        }
+      }
     }
+  } catch (e) {
+    console.error("[listRecentPosSales] attachment lookup failed", e);
   }
   const { data: items } = await supabase
     .from("pos_sale_items")
@@ -780,10 +812,15 @@ export async function listRecentPosSales(
     // attach action akan resolve cashflow tx dari sale.
     receiptUploaded:
       s.payment_method === "qris"
-        ? !!(
-            s.cashflow_transaction_id &&
-            uploadedTxIds.has(s.cashflow_transaction_id)
-          )
+        ? s.cashflow_transaction_id
+          ? uploadedTxIds.has(s.cashflow_transaction_id)
+          : // Orphan sale — match by (date + HH:mm WIB). Fallback ke
+            // false kalau sale_time kosong atau lookup env tidak set.
+            s.sale_time
+            ? uploadedOrphanKeys.has(
+                `${s.sale_date}|${jakartaHHMM(new Date(s.sale_time))}`
+              )
+            : false
         : null,
     items: itemsBySale.get(s.id) ?? [],
   }));

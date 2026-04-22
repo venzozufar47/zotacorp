@@ -5,6 +5,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
+import { jakartaHHMM } from "@/lib/utils/jakarta";
 
 /**
  * Upload bukti foto QRIS ke sale POS. Dipanggil client POSClient tepat
@@ -87,20 +88,26 @@ export async function attachPosQrisReceipt(
         credit: number;
         description: string;
       }> = [];
-      if (stmtIds.length > 0 && sale.sale_time) {
+      // sale.sale_time stored as timestamptz (full ISO) — konversi ke
+      // WIB "HH:mm" dulu supaya match dengan transaction_time yang
+      // format "HH:mm" string.
+      const saleHHmm = sale.sale_time
+        ? jakartaHHMM(new Date(sale.sale_time))
+        : null;
+      if (stmtIds.length > 0 && saleHHmm) {
         const { data } = await admin
           .from("cashflow_transactions")
           .select("id, transaction_time, credit, description")
           .in("statement_id", stmtIds)
           .eq("transaction_date", sale.sale_date)
-          .eq("transaction_time", sale.sale_time);
+          .eq("transaction_time", saleHHmm);
         candidates = data ?? [];
       }
       console.error("[attachPosQrisReceipt] relink lookup", {
         saleId: sale.id,
         bankAccountId: sale.bank_account_id,
         saleDate: sale.sale_date,
-        saleTime: sale.sale_time,
+        saleHHmm,
         total: sale.total,
         stmtIds: stmtIds.length,
         candidates: candidates.length,
@@ -136,12 +143,12 @@ export async function attachPosQrisReceipt(
           .join("; ");
         return {
           ok: false,
-          error: `Ambigu ${free.length} transaksi jam ${sale.sale_time}: ${list}. Admin perlu link manual.`,
+          error: `Ambigu ${free.length} transaksi jam ${saleHHmm}: ${list}. Admin perlu link manual.`,
         };
       } else {
         return {
           ok: false,
-          error: `Tidak ada transaksi cashflow cocok di ${sale.sale_date} jam ${sale.sale_time}. Cek /admin/finance.`,
+          error: `Tidak ada transaksi cashflow cocok di ${sale.sale_date} jam ${saleHHmm}. Cek /admin/finance.`,
         };
       }
     }
@@ -196,7 +203,9 @@ export async function getPosQrisReceiptUrl(
   const supabase = await createClient();
   const { data: sale } = await supabase
     .from("pos_sales")
-    .select("id, bank_account_id, payment_method, cashflow_transaction_id")
+    .select(
+      "id, bank_account_id, payment_method, cashflow_transaction_id, sale_date, sale_time"
+    )
     .eq("id", saleId)
     .maybeSingle();
   if (!sale) return { ok: false, error: "Sale tidak ditemukan" };
@@ -206,21 +215,44 @@ export async function getPosQrisReceiptUrl(
   const gate = await requireAdminOrPosAssignee(sale.bank_account_id);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  if (!sale.cashflow_transaction_id)
-    return { ok: true, data: { url: null, path: null } };
-
   const admin = adminClient();
-  const { data: tx } = await admin
-    .from("cashflow_transactions")
-    .select("attachment_path")
-    .eq("id", sale.cashflow_transaction_id)
-    .maybeSingle();
-  if (!tx?.attachment_path)
-    return { ok: true, data: { url: null, path: null } };
+
+  let attachmentPath: string | null = null;
+  if (sale.cashflow_transaction_id) {
+    const { data: tx } = await admin
+      .from("cashflow_transactions")
+      .select("attachment_path")
+      .eq("id", sale.cashflow_transaction_id)
+      .maybeSingle();
+    attachmentPath = tx?.attachment_path ?? null;
+  } else if (sale.sale_time) {
+    // Orphan sale (legacy, FK null) — fuzzy match by date + HH:mm WIB.
+    // Tidak relink di sini (read-only); cukup ambil attachment dari tx
+    // yang match supaya UI bisa tampilkan preview. Relink terjadi saat
+    // kasir upload file baru lewat attachPosQrisReceipt.
+    const saleHHmm = jakartaHHMM(new Date(sale.sale_time));
+    const { data: stmts } = await admin
+      .from("cashflow_statements")
+      .select("id")
+      .eq("bank_account_id", sale.bank_account_id);
+    const stmtIds = (stmts ?? []).map((s) => s.id);
+    if (stmtIds.length > 0) {
+      const { data: txs } = await admin
+        .from("cashflow_transactions")
+        .select("attachment_path")
+        .in("statement_id", stmtIds)
+        .eq("transaction_date", sale.sale_date)
+        .eq("transaction_time", saleHHmm);
+      const withAttach = (txs ?? []).find((t) => t.attachment_path);
+      attachmentPath = withAttach?.attachment_path ?? null;
+    }
+  }
+
+  if (!attachmentPath) return { ok: true, data: { url: null, path: null } };
 
   const { data: signed, error } = await admin.storage
     .from(BUCKET)
-    .createSignedUrl(tx.attachment_path, 60 * 60);
+    .createSignedUrl(attachmentPath, 60 * 60);
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: { url: signed.signedUrl, path: tx.attachment_path } };
+  return { ok: true, data: { url: signed.signedUrl, path: attachmentPath } };
 }
