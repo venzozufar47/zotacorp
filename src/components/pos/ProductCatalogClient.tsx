@@ -21,6 +21,7 @@ import {
   type PosProduct,
   type PosProductVariant,
 } from "@/lib/actions/pos.actions";
+import { setProductStockAggregateVariants } from "@/lib/actions/pos-stock.actions";
 import { formatRp } from "@/lib/cashflow/format";
 
 interface Props {
@@ -86,6 +87,8 @@ export function ProductCatalogClient({
           price,
           active: true,
           sortOrder: maxOrder + 1,
+          trackStock: true,
+          stockAggregateVariants: false,
           variants: [],
         },
       ]);
@@ -363,6 +366,32 @@ export function ProductCatalogClient({
                     updateVariantField(p.id, variantId, patch)
                   }
                   onDelete={(variantId) => removeVariant(p.id, variantId)}
+                  onToggleAggregate={(aggregate) => {
+                    // Optimistic update — rollback on error.
+                    setProducts((ps) =>
+                      ps.map((x) =>
+                        x.id === p.id
+                          ? { ...x, stockAggregateVariants: aggregate }
+                          : x
+                      )
+                    );
+                    startTransition(async () => {
+                      const res = await setProductStockAggregateVariants({
+                        productId: p.id,
+                        aggregate,
+                      });
+                      if (!res.ok) {
+                        toast.error(res.error ?? "Gagal");
+                        setProducts((ps) =>
+                          ps.map((x) =>
+                            x.id === p.id
+                              ? { ...x, stockAggregateVariants: !aggregate }
+                              : x
+                          )
+                        );
+                      }
+                    });
+                  }}
                   pending={pending}
                 />
               )}
@@ -389,6 +418,7 @@ function VariantSection({
   onAdd,
   onUpdate,
   onDelete,
+  onToggleAggregate,
   pending,
 }: {
   product: PosProduct;
@@ -402,6 +432,7 @@ function VariantSection({
     patch: Partial<Pick<PosProductVariant, "name" | "price" | "active">>
   ) => void;
   onDelete: (variantId: string) => void;
+  onToggleAggregate: (aggregate: boolean) => void;
   pending: boolean;
 }) {
   const [vName, setVName] = useState("");
@@ -428,6 +459,22 @@ function VariantSection({
       <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
         Varian
       </p>
+      {product.variants.length > 0 && (
+        <label className="flex items-start gap-2 rounded-md border border-dashed border-border bg-card px-2 py-1.5 text-[11px] text-muted-foreground">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={product.stockAggregateVariants}
+            disabled={pending}
+            onChange={(e) => onToggleAggregate(e.target.checked)}
+          />
+          <span>
+            Stok dihitung di level produk (varian hanya untuk penjualan).
+            Contoh: Croissant dipanggang plain, varian (Coklat/Keju) dipilih saat
+            disajikan.
+          </span>
+        </label>
+      )}
       {product.variants.length === 0 && (
         <p className="text-xs text-muted-foreground italic">
           Belum ada varian. Tambah di bawah kalau produk ini punya beberapa

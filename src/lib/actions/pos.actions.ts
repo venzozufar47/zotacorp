@@ -18,7 +18,14 @@ type PosProductVariantUpdate =
   Database["public"]["Tables"]["pos_product_variants"]["Update"];
 type PosProductRow = Pick<
   Database["public"]["Tables"]["pos_products"]["Row"],
-  "id" | "bank_account_id" | "name" | "price" | "active" | "sort_order"
+  | "id"
+  | "bank_account_id"
+  | "name"
+  | "price"
+  | "active"
+  | "sort_order"
+  | "track_stock"
+  | "stock_aggregate_variants"
 >;
 type PosProductVariantRow = Pick<
   Database["public"]["Tables"]["pos_product_variants"]["Row"],
@@ -47,6 +54,12 @@ export interface PosProduct {
   price: number;
   active: boolean;
   sortOrder: number;
+  /** Produk dihitung di sistem stok (on-hand, opname, produksi, penarikan). */
+  trackStock: boolean;
+  /** Produksi/penarikan/opname dicatat di level produk (variant_id=null);
+   *  varian hanya relevan saat jual. Contoh: Croissant dipanggang plain,
+   *  varian (Coklat/Keju) baru dipilih saat penyajian ke customer. */
+  stockAggregateVariants: boolean;
   /** Kalau length > 0, UI POS wajib pilih varian sebelum +1 ke cart.
    *  Varian menggantikan `price` (harga base dipakai cuma kalau tak
    *  ada varian sama sekali). */
@@ -90,6 +103,8 @@ function mapPosProduct(
     price: Number(r.price),
     active: r.active,
     sortOrder: r.sort_order,
+    trackStock: r.track_stock,
+    stockAggregateVariants: r.stock_aggregate_variants,
     variants,
   };
 }
@@ -143,7 +158,7 @@ export async function listActivePosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
     .order("sort_order", { ascending: true })
@@ -165,7 +180,7 @@ export async function listAllPosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants")
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("sort_order", { ascending: true })

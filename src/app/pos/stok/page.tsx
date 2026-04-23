@@ -26,6 +26,15 @@ export default async function PosStockPage() {
     listExcludedStockProducts(account.id),
   ]);
 
+  // Dialog Produksi/Penarikan cuma butuh produk yang dihitung di stok,
+  // dan untuk produk aggregate-variants varian di-strip supaya pilihan
+  // tampil di level produk saja (Croissant → 1 opsi, bukan per varian).
+  const movementProducts = products
+    .filter((p) => p.trackStock)
+    .map((p) =>
+      p.stockAggregateVariants ? { ...p, variants: [] } : p
+    );
+
   return (
     <StockLandingClient
       bankAccountId={account.id}
@@ -33,7 +42,7 @@ export default async function PosStockPage() {
       onHand={onHand}
       movements={movements}
       opnames={opnames}
-      products={products}
+      products={movementProducts}
       excluded={excluded}
     />
   );

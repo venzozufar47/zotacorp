@@ -103,7 +103,8 @@ async function computeExpectedCounts(
   sinceIso: string | null,
   untilIso: string,
   skus: Sku[],
-  baselineByKey: Map<SkuKey, number>
+  baselineByKey: Map<SkuKey, number>,
+  aggregateProductIds: Set<string>
 ): Promise<Map<SkuKey, number>> {
   const result = new Map<SkuKey, number>();
   for (const s of skus) {
@@ -120,7 +121,11 @@ async function computeExpectedCounts(
     if (sinceIso) q = q.gt("created_at", sinceIso);
     const { data } = await q;
     for (const m of data ?? []) {
-      const key = skuKey(m.product_id, m.variant_id);
+      // Aggregate-mode: movement pasti variant_id=null (enforced di
+      // createStockMovement). Tapi data legacy mungkin ada variant_id
+      // sebelum toggle — paksa collapse supaya tetap masuk bucket.
+      const vId = aggregateProductIds.has(m.product_id) ? null : m.variant_id;
+      const key = skuKey(m.product_id, vId);
       if (!result.has(key)) continue;
       const prev = result.get(key) ?? 0;
       result.set(key, prev + (m.type === "production" ? m.qty : -m.qty));
@@ -128,6 +133,8 @@ async function computeExpectedCounts(
   }
 
   // Sales — join pos_sales untuk filter voided + created_at cut-off.
+  // Untuk aggregate product, sale variant_id di-collapse ke null supaya
+  // penjualan varian tetap mengurangi bucket level-produk.
   {
     let q = supabase
       .from("pos_sale_items")
@@ -139,7 +146,8 @@ async function computeExpectedCounts(
     const { data } = await q;
     for (const it of data ?? []) {
       if (!it.product_id) continue;
-      const key = skuKey(it.product_id, it.variant_id);
+      const vId = aggregateProductIds.has(it.product_id) ? null : it.variant_id;
+      const key = skuKey(it.product_id, vId);
       if (!result.has(key)) continue;
       const prev = result.get(key) ?? 0;
       result.set(key, prev - it.qty);
@@ -176,20 +184,35 @@ async function loadBaseline(
   return { cutoffIso: last.created_at, baseline, opnameId: last.id };
 }
 
-/** Daftar SKU aktif (produk aktif × varian aktif, atau produk sendiri kalau tak ada varian). */
+/**
+ * Daftar SKU aktif untuk sistem stok.
+ *
+ * - Produk `track_stock=false` di-skip seluruhnya.
+ * - Produk `stock_aggregate_variants=true` → 1 SKU di level produk
+ *   (variantId=null), meskipun produk punya varian. Pakai harga base
+ *   produk (karena varian belum dipilih saat produksi).
+ * - Selain itu: satu SKU per varian aktif, atau satu SKU per produk
+ *   kalau tak ada varian.
+ *
+ * Return juga set `aggregateProductIds` supaya caller bisa men-collapse
+ * variant_id saat menghitung expected.
+ */
 async function listActiveSkus(
   supabase: Awaited<ReturnType<typeof createClient>>,
   bankAccountId: string
-): Promise<Sku[]> {
+): Promise<{ skus: Sku[]; aggregateProductIds: Set<string> }> {
   const { data: products } = await supabase
     .from("pos_products")
-    .select("id, name, price, sort_order")
+    .select("id, name, price, sort_order, stock_aggregate_variants")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
     .eq("track_stock", true)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   const productIds = (products ?? []).map((p) => p.id);
+  const aggregateProductIds = new Set(
+    (products ?? []).filter((p) => p.stock_aggregate_variants).map((p) => p.id)
+  );
   const { data: variants } = productIds.length
     ? await supabase
         .from("pos_product_variants")
@@ -208,7 +231,7 @@ async function listActiveSkus(
   const skus: Sku[] = [];
   for (const p of products ?? []) {
     const vs = variantsByProduct.get(p.id) ?? [];
-    if (vs.length === 0) {
+    if (vs.length === 0 || p.stock_aggregate_variants) {
       skus.push({
         productId: p.id,
         variantId: null,
@@ -228,17 +251,18 @@ async function listActiveSkus(
       }
     }
   }
-  return skus;
+  return { skus, aggregateProductIds };
 }
 
 export async function listStockOnHand(
   bankAccountId: string
 ): Promise<StockOnHand[]> {
   const supabase = await createClient();
-  const [skus, baseline] = await Promise.all([
+  const [skuResult, baseline] = await Promise.all([
     listActiveSkus(supabase, bankAccountId),
     loadBaseline(supabase, bankAccountId),
   ]);
+  const { skus, aggregateProductIds } = skuResult;
   const now = new Date().toISOString();
   const expected = await computeExpectedCounts(
     supabase,
@@ -246,7 +270,8 @@ export async function listStockOnHand(
     baseline.cutoffIso,
     now,
     skus,
-    baseline.baseline
+    baseline.baseline,
+    aggregateProductIds
   );
   return skus.map((s) => ({
     productId: s.productId,
@@ -414,12 +439,23 @@ export async function createStockMovement(input: {
 
   const now = new Date();
   const supabase = await createClient();
+  // Aggregate mode: paksa variant_id=null meskipun caller kirim variant —
+  // produksi/penarikan memang di-track di level produk.
+  const { data: product } = await supabase
+    .from("pos_products")
+    .select("stock_aggregate_variants, track_stock")
+    .eq("id", input.productId)
+    .maybeSingle();
+  if (!product) return { ok: false, error: "Produk tidak ditemukan" };
+  if (!product.track_stock)
+    return { ok: false, error: "Produk tidak dihitung di sistem stok" };
+  const variantId = product.stock_aggregate_variants ? null : input.variantId ?? null;
   const { data, error } = await supabase
     .from("pos_stock_movements")
     .insert({
       bank_account_id: input.bankAccountId,
       product_id: input.productId,
-      variant_id: input.variantId ?? null,
+      variant_id: variantId,
       type: input.type,
       qty: input.qty,
       notes: input.notes?.trim() || null,
@@ -462,7 +498,7 @@ export async function createStockOpname(input: {
   const [{ data: products }, { data: variants }] = await Promise.all([
     supabase
       .from("pos_products")
-      .select("id, bank_account_id, name, price")
+      .select("id, bank_account_id, name, price, stock_aggregate_variants")
       .in("id", productIds),
     variantIds.length
       ? supabase
@@ -500,6 +536,10 @@ export async function createStockOpname(input: {
     };
   });
   const baseline = await loadBaseline(supabase, input.bankAccountId);
+  // Aggregate-mode set untuk sale collapse — ambil sekali dari katalog.
+  const aggregateProductIds = new Set(
+    (products ?? []).filter((p) => p.stock_aggregate_variants).map((p) => p.id)
+  );
   const now = new Date();
   const nowIso = now.toISOString();
   const expected = await computeExpectedCounts(
@@ -508,7 +548,8 @@ export async function createStockOpname(input: {
     baseline.cutoffIso,
     nowIso,
     skus,
-    baseline.baseline
+    baseline.baseline,
+    aggregateProductIds
   );
 
   // Insert header.
@@ -565,7 +606,8 @@ export async function listOpnameFormSkus(
   bankAccountId: string
 ): Promise<OpnameFormSku[]> {
   const supabase = await createClient();
-  return listActiveSkus(supabase, bankAccountId);
+  const { skus } = await listActiveSkus(supabase, bankAccountId);
+  return skus;
 }
 
 export interface ExcludedStockProduct {
@@ -623,6 +665,38 @@ export async function setProductStockTracking(input: {
   const { error } = await supabase
     .from("pos_products")
     .update({ track_stock: input.track })
+    .eq("id", input.productId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true, data: undefined };
+}
+
+/**
+ * Toggle mode aggregate-variants untuk produk. Saat diaktifkan (Croissant
+ * plain di produksi, varian di penjualan):
+ * - Movement lama yang punya variant_id di-collapse di compute (variant_id
+ *   tetap tersimpan untuk audit, tapi masuk bucket level-produk).
+ * - Opname lama yang per-varian sudah immutable, baseline tetap — tapi
+ *   opname berikutnya akan di-SKU level-produk.
+ * Flip off mengembalikan perilaku per-varian tanpa menyentuh data lama.
+ */
+export async function setProductStockAggregateVariants(input: {
+  productId: string;
+  aggregate: boolean;
+}): Promise<ActionResult<void>> {
+  const supabase = await createClient();
+  const { data: product } = await supabase
+    .from("pos_products")
+    .select("id, bank_account_id")
+    .eq("id", input.productId)
+    .maybeSingle();
+  if (!product) return { ok: false, error: "Produk tidak ditemukan" };
+  const gate = await requireAdminOrPosAssignee(product.bank_account_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const { error } = await supabase
+    .from("pos_products")
+    .update({ stock_aggregate_variants: input.aggregate })
     .eq("id", input.productId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/pos", "layout");
