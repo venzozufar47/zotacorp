@@ -650,9 +650,11 @@ export function PnLSankey({ report }: Props) {
         .sankey-card svg.sankey {
           margin-top: -4px;
           /* Jaga min canvas width supaya font di foreignObject legible
-             di mobile (kalau viewport < 960px, wrapper scroll horizontal). */
+             di mobile (kalau viewport < 960px, wrapper scroll horizontal).
+             max-height dilepas — sebelumnya 72vh / 640px membuat
+             SVG ngecil di layar lebar karena preserveAspectRatio
+             memilih dimensi pembatas terkecil. */
           min-width: 960px;
-          max-height: min(72vh, 640px);
         }
         .sankey-card .sankey-scope {
           margin-top: 8px; display: inline-flex; gap: 0;
