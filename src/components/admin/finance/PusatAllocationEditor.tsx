@@ -3,9 +3,19 @@
 import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  Lock,
+  Unlock,
+} from "lucide-react";
 import type { PnLReport, PusatBreakdownRow } from "@/lib/cashflow/pnl";
-import { savePusatAllocation } from "@/lib/actions/cashflow.actions";
+import {
+  savePusatAllocation,
+  setPusatAllocationLock,
+} from "@/lib/actions/cashflow.actions";
 
 interface Props {
   businessUnit: string;
@@ -102,6 +112,37 @@ function savePctKeys(keys: Set<string>): void {
 }
 
 /**
+ * Collapse state per-group di-persist di localStorage supaya refresh
+ * tidak reset ekspansi admin. Key: `${side}|${category}`.
+ */
+const COLLAPSED_STORAGE_KEY = "pusat-alloc-collapsed-groups";
+
+function loadCollapsedKeys(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedKeys(keys: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      COLLAPSED_STORAGE_KEY,
+      JSON.stringify([...keys])
+    );
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Inline editor: for every (month × category × side) Pusat bucket in
  * the report, show the current allocation and let admin type a new
  * Semarang/Pare split. Auto-save on blur — mirrors the spreadsheet
@@ -119,6 +160,62 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
   useEffect(() => {
     setRows(buildRows(report));
   }, [report]);
+
+  // Collapse state per group (side|category). Default: semua
+  // collapsed — group panjang (12 bulan × 10 kategori) lebih gampang
+  // scan kalau default-nya tertutup dan admin buka sesuai kebutuhan.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
+    loadCollapsedKeys()
+  );
+  function toggleGroup(groupKey: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      saveCollapsedKeys(next);
+      return next;
+    });
+  }
+
+  async function toggleLock(row: EditableAlloc) {
+    const key = toKey(row);
+    // Server yang decide validitas: kalau row belum pernah di-save
+    // (tidak ada di DB), setPusatAllocationLock return error yang
+    // jelas. Client tidak boleh gate via `row.unallocated` karena
+    // flag itu stale setelah admin baru saja auto-save — refresh
+    // report belum tentu selesai sebelum klik Lock.
+    const nextLocked = !row.locked;
+    setRows((prev) =>
+      prev.map((r) =>
+        toKey(r) === key ? { ...r, status: "saving" } : r
+      )
+    );
+    const res = await setPusatAllocationLock({
+      businessUnit,
+      periodYear: row.year,
+      periodMonth: row.month,
+      side: row.side,
+      category: row.category,
+      locked: nextLocked,
+    });
+    if (!res.ok) {
+      setRows((prev) =>
+        prev.map((r) =>
+          toKey(r) === key
+            ? { ...r, status: "error", errorMsg: res.error }
+            : r
+        )
+      );
+      toast.error(res.error);
+      return;
+    }
+    toast.success(
+      nextLocked
+        ? `Alokasi ${row.category} (${row.year}-${String(row.month).padStart(2, "0")}) di-lock`
+        : `Alokasi ${row.category} (${row.year}-${String(row.month).padStart(2, "0")}) di-unlock`
+    );
+    router.refresh();
+  }
 
   function updateDraft(key: string, patch: Partial<EditableAlloc>) {
     setRows((prev) =>
@@ -250,9 +347,13 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
             {orderedGroups.map(([gk, group]) => (
               <CategoryGroup
                 key={gk}
+                groupKey={gk}
+                collapsed={collapsedGroups.has(gk)}
+                onToggleGroup={() => toggleGroup(gk)}
                 rows={group}
                 onChange={updateDraft}
                 onBlurRow={persist}
+                onToggleLock={toggleLock}
               />
             ))}
           </tbody>
@@ -303,12 +404,14 @@ function AllocInput({
   valuePct,
   onChange,
   hint,
+  disabled = false,
 }: {
   mode: InputMode;
   valueRp: string;
   valuePct: string;
   onChange: (raw: string) => void;
   hint: string;
+  disabled?: boolean;
 }) {
   const isPct = mode === "pct";
   return (
@@ -323,8 +426,9 @@ function AllocInput({
           value={isPct ? valuePct : valueRp}
           onChange={(e) => onChange(e.target.value)}
           placeholder="0"
+          disabled={disabled}
           className={
-            "w-full h-8 text-xs text-right font-mono tabular-nums rounded-md border border-input bg-background px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 " +
+            "w-full h-8 text-xs text-right font-mono tabular-nums rounded-md border border-input bg-background px-2 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed " +
             (isPct ? "pr-5" : "")
           }
         />
@@ -348,16 +452,27 @@ function AllocInput({
  * allocations for that category.
  */
 function CategoryGroup({
+  groupKey,
+  collapsed,
+  onToggleGroup,
   rows,
   onChange,
   onBlurRow,
+  onToggleLock,
 }: {
+  groupKey: string;
+  collapsed: boolean;
+  onToggleGroup: () => void;
   rows: EditableAlloc[];
   onChange: (key: string, patch: Partial<EditableAlloc>) => void;
   onBlurRow: (key: string) => void;
+  onToggleLock: (row: EditableAlloc) => void;
 }) {
+  void groupKey;
   const first = rows[0];
   const aggregate = rows.reduce((s, r) => s + r.pusatTotal, 0);
+  const lockedCount = rows.filter((r) => r.locked).length;
+  const unallocatedCount = rows.filter((r) => r.unallocated).length;
   // Expansion state keyed by row. Details collapsed by default to
   // keep the editor scannable; admin opens only the months they want
   // to drill into.
@@ -386,6 +501,19 @@ function CategoryGroup({
       <tr className="bg-muted/40">
         <td colSpan={6} className="px-3 py-2">
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={onToggleGroup}
+              className="inline-flex items-center gap-1 rounded hover:bg-accent/20 p-0.5"
+              aria-label={collapsed ? "Buka grup" : "Tutup grup"}
+              title={collapsed ? "Buka grup" : "Tutup grup"}
+            >
+              {collapsed ? (
+                <ChevronRight size={14} className="text-muted-foreground" />
+              ) : (
+                <ChevronDown size={14} className="text-muted-foreground" />
+              )}
+            </button>
             <span
               className={
                 "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider " +
@@ -403,7 +531,24 @@ function CategoryGroup({
                 {aggregate.toLocaleString("id-ID")}
               </span>
             </span>
-            {hasAnyDetails ? (
+            {lockedCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+                title={`${lockedCount} bulan di-lock`}
+              >
+                <Lock size={10} />
+                {lockedCount}/{rows.length}
+              </span>
+            )}
+            {unallocatedCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded bg-warning/15 text-warning px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+                title={`${unallocatedCount} bulan belum teralokasi`}
+              >
+                {unallocatedCount} belum
+              </span>
+            )}
+            {!collapsed && hasAnyDetails ? (
               <button
                 type="button"
                 onClick={toggleAll}
@@ -423,7 +568,7 @@ function CategoryGroup({
           </div>
         </td>
       </tr>
-      {rows.map((r) => {
+      {collapsed ? null : rows.map((r) => {
         const key = toKey(r);
         const sumDraft = (Number(r.semarangDraft) || 0) + (Number(r.pareDraft) || 0);
         const diff = Math.round(sumDraft - r.pusatTotal);
@@ -579,6 +724,7 @@ function CategoryGroup({
                 valueRp={r.semarangDraft}
                 valuePct={r.semPctDraft}
                 onChange={handleSemChange}
+                disabled={r.locked}
                 hint={
                   isPct
                     ? (Number(r.semarangDraft) || 0).toLocaleString("id-ID")
@@ -592,6 +738,7 @@ function CategoryGroup({
                 valueRp={r.pareDraft}
                 valuePct={r.parePctDraft}
                 onChange={handlePareChange}
+                disabled={r.locked}
                 hint={
                   isPct
                     ? (Number(r.pareDraft) || 0).toLocaleString("id-ID")
@@ -603,8 +750,9 @@ function CategoryGroup({
               <button
                 type="button"
                 onClick={toggleMode}
+                disabled={r.locked}
                 className={
-                  "inline-flex h-7 min-w-[40px] items-center justify-center rounded-md border px-2 text-[10px] font-bold uppercase tracking-wider transition " +
+                  "inline-flex h-7 min-w-[40px] items-center justify-center rounded-md border px-2 text-[10px] font-bold uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed " +
                   (isPct
                     ? "border-primary/40 bg-primary/10 text-primary"
                     : "border-border bg-background text-muted-foreground hover:bg-accent/20")
@@ -615,29 +763,46 @@ function CategoryGroup({
               </button>
             </td>
             <td className="px-3 py-2 text-center">
-              {r.status === "saving" ? (
-                <Loader2 size={12} className="inline text-muted-foreground animate-spin" />
-              ) : r.status === "saved" ? (
-                <Check size={12} className="inline text-success" />
-              ) : r.semarangDraft.trim() === "" && r.pareDraft.trim() === "" ? (
-                // Both inputs empty → treat as BELUM regardless of DB
-                // state. Once admin types anything we evaluate
-                // live-balanced instead of sticking on the stale
-                // `unallocated` flag from the initial report.
-                <span className="text-[10px] font-bold text-warning">
-                  BELUM
-                </span>
-              ) : balancedLive ? (
-                <Check size={12} className="inline text-success" />
-              ) : (
-                <span
-                  className="text-[10px] font-bold text-destructive"
-                  title={`Selisih ${diff.toLocaleString("id-ID")}`}
+              <div className="inline-flex items-center gap-1.5">
+                {r.status === "saving" ? (
+                  <Loader2 size={12} className="text-muted-foreground animate-spin" />
+                ) : r.status === "saved" ? (
+                  <Check size={12} className="text-success" />
+                ) : r.semarangDraft.trim() === "" && r.pareDraft.trim() === "" ? (
+                  <span className="text-[10px] font-bold text-warning">
+                    BELUM
+                  </span>
+                ) : balancedLive ? (
+                  <Check size={12} className="text-success" />
+                ) : (
+                  <span
+                    className="text-[10px] font-bold text-destructive"
+                    title={`Selisih ${diff.toLocaleString("id-ID")}`}
+                  >
+                    ✗ {diff > 0 ? "+" : ""}
+                    {diff.toLocaleString("id-ID")}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onToggleLock(r)}
+                  disabled={r.status === "saving"}
+                  className={
+                    "inline-flex items-center justify-center size-6 rounded-md border transition disabled:opacity-40 " +
+                    (r.locked
+                      ? "border-success/40 bg-success/10 text-success hover:bg-success/20"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent/20")
+                  }
+                  title={
+                    r.locked
+                      ? "Alokasi ini sudah di-lock. Klik untuk unlock dan edit."
+                      : "Lock alokasi ini supaya tidak ke-edit accidental"
+                  }
+                  aria-label={r.locked ? "Unlock alokasi" : "Lock alokasi"}
                 >
-                  ✗ {diff > 0 ? "+" : ""}
-                  {diff.toLocaleString("id-ID")}
-                </span>
-              )}
+                  {r.locked ? <Lock size={11} /> : <Unlock size={11} />}
+                </button>
+              </div>
             </td>
           </tr>
           {r.details && r.details.length > 0 && expandedKeys.has(key) ? (

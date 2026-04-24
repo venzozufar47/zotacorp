@@ -72,10 +72,57 @@ export default async function RekeningDetailPage({
     .maybeSingle();
   if (!account) notFound();
 
-  // Load everything in parallel. The transactions query joins through
-  // cashflow_statements to scope by bank_account_id without fetching
-  // unused statement columns.
-  const [{ data: statements }, { data: transactions }] = await Promise.all([
+  // Load statements + transactions in parallel. PostgREST default
+  // (dan `db-max-rows`) nge-cap response ke 1000 row, jadi untuk
+  // rekening dengan history panjang (Jago: ratusan+per-bulan) kita
+  // paginate via `.range()` sampai dapat partial page. Tanpa loop
+  // ini admin cuma bisa lihat 1000 tx paling baru — halaman 21+ hilang.
+  type TxRow = {
+    id: string;
+    transaction_date: string;
+    transaction_time: string | null;
+    source_destination: string | null;
+    transaction_details: string | null;
+    description: string;
+    debit: string | number;
+    credit: string | number;
+    running_balance: string | number | null;
+    category: string | null;
+    branch: string | null;
+    notes: string | null;
+    sort_order: number;
+    effective_period_year: number | null;
+    effective_period_month: number | null;
+    attachment_path: string | null;
+  };
+  async function fetchAllTransactions(): Promise<TxRow[]> {
+    const PAGE = 1000;
+    const out: TxRow[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase
+        .from("cashflow_transactions")
+        .select(
+          "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, effective_period_year, effective_period_month, attachment_path, cashflow_statements!inner(bank_account_id)"
+        )
+        .eq("cashflow_statements.bank_account_id", id)
+        // Newest first at the top. Within a single date, sort by time
+        // desc so 22:29 appears above 10:50. Rows without a time fall
+        // back to sort_order ASC — the parser writes rows in the order
+        // the PDF prints them (Jago prints newest-first), so sort_order
+        // 0 is the newest row of its batch.
+        .order("transaction_date", { ascending: false })
+        .order("transaction_time", { ascending: false, nullsFirst: false })
+        .order("sort_order", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (error) throw error;
+      const rows = (data ?? []) as TxRow[];
+      out.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+    return out;
+  }
+
+  const [{ data: statements }, transactions] = await Promise.all([
     supabase
       .from("cashflow_statements")
       .select(
@@ -84,20 +131,7 @@ export default async function RekeningDetailPage({
       .eq("bank_account_id", id)
       .order("period_year", { ascending: false })
       .order("period_month", { ascending: false }),
-    supabase
-      .from("cashflow_transactions")
-      .select(
-        "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, effective_period_year, effective_period_month, attachment_path, cashflow_statements!inner(bank_account_id)"
-      )
-      .eq("cashflow_statements.bank_account_id", id)
-      // Newest first at the top. Within a single date, sort by time
-      // desc so 22:29 appears above 10:50. Rows without a time fall
-      // back to sort_order ASC — the parser writes rows in the order
-      // the PDF prints them (Jago prints newest-first), so sort_order
-      // 0 is the newest row of its batch.
-      .order("transaction_date", { ascending: false })
-      .order("transaction_time", { ascending: false, nullsFirst: false })
-      .order("sort_order", { ascending: true }),
+    fetchAllTransactions(),
   ]);
 
   const statementList = statements ?? [];

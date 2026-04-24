@@ -88,6 +88,12 @@ export interface PusatBreakdownRow {
   unallocated: boolean;
   /** Has a row but sum ≠ pusatTotal. */
   unbalanced: boolean;
+  /**
+   * Admin menge-lock row ini setelah nilainya final. Input di editor
+   * jadi read-only kecuali admin unlock dulu. Server action
+   * `savePusatAllocation` juga tolak update ke row locked.
+   */
+  locked: boolean;
   /** Populated only for categories in PUSAT_DETAIL_CATEGORIES. */
   details?: PusatTxDetail[];
 }
@@ -214,7 +220,7 @@ export async function fetchPnL(
   const { data: allocsRaw } = await supabase
     .from("cashflow_pusat_allocations")
     .select(
-      "period_year, period_month, side, category, semarang_amount, pare_amount"
+      "period_year, period_month, side, category, semarang_amount, pare_amount, locked"
     )
     .eq("business_unit", businessUnit)
     .gte("period_year", from.year)
@@ -224,13 +230,14 @@ export async function fetchPnL(
   // allocs keyed by "year-month|side|category"
   const allocMap = new Map<
     string,
-    { semarang: number; pare: number }
+    { semarang: number; pare: number; locked: boolean }
   >();
   for (const a of allocsRaw ?? []) {
     const key = `${ym(a.period_year, a.period_month)}|${a.side}|${a.category}`;
     allocMap.set(key, {
       semarang: Number(a.semarang_amount),
       pare: Number(a.pare_amount),
+      locked: Boolean(a.locked),
     });
   }
 
@@ -463,6 +470,7 @@ export async function fetchPnL(
         balanced,
         unallocated,
         unbalanced,
+        locked: Boolean(alloc?.locked),
         details,
       });
 

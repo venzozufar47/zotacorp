@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { PnLReport } from "@/lib/cashflow/pnl";
+
+type SankeyScope = "all" | "Semarang" | "Pare";
 
 /**
  * Sankey-style Income Statement — port of the Claude Design mockup
@@ -91,17 +93,26 @@ interface Flow {
 }
 
 export function PnLSankey({ report }: Props) {
+  const [scope, setScope] = useState<SankeyScope>("all");
+
   const computed = useMemo(() => {
     // Agregat operating revenue & expense per-kategori lintas semua
-    // bulan & kedua cabang. Non-op (Wealth Transfer/Pinjaman) di-skip
-    // karena Sankey ini khusus income statement operating.
+    // bulan, filtered per scope. Non-op (Wealth Transfer/Pinjaman)
+    // di-skip karena Sankey ini khusus income statement operating.
+    // Investment/Dividend (company-wide) hanya dihitung saat
+    // scope==="all" — di view per-cabang, Net Dividen tidak
+    // diallocasi, jadi seluruh Operating Profit masuk ke Retained.
     const revByCat = new Map<string, number>();
     const expByCat = new Map<string, number>();
     let companyNetDividen = 0;
 
     for (const m of report.months) {
-      companyNetDividen += m.companyNetDividen;
-      for (const branch of [m.byBranch.Semarang, m.byBranch.Pare]) {
+      if (scope === "all") companyNetDividen += m.companyNetDividen;
+      const branches =
+        scope === "all"
+          ? [m.byBranch.Semarang, m.byBranch.Pare]
+          : [m.byBranch[scope]];
+      for (const branch of branches) {
         for (const c of branch.byCategory) {
           if (c.kind !== "operating") continue;
           if (c.credit > 0) {
@@ -139,7 +150,16 @@ export function PnLSankey({ report }: Props) {
       .sort((a, b) => b.amt - a.amt);
 
     const opexTotal = opexLeaves.reduce((s, r) => s + r.amt, 0);
-    const opProfit = Math.max(0, grossProfit - opexTotal);
+    // Kalau opex > grossProfit (kasus umum di view per-cabang dengan
+    // revenue kecil), sebagian opex ditutup dari dana di luar laba
+    // operasi cabang itu — kas akumulasi, subsidi antar-cabang, atau
+    // pinjaman. Kita split: `opexFromGross` = bagian yang bisa ditutup
+    // dari gross profit cabang; `opexShortfall` = kekurangan yang
+    // ditarik dari sumber lain → divisualisasi sebagai flow dari node
+    // "Subsidi dana" ke opex (analog shortfall dividen).
+    const opexFromGross = Math.min(grossProfit, opexTotal);
+    const opexShortfall = Math.max(0, opexTotal - grossProfit);
+    const opProfit = Math.max(0, grossProfit - opexFromGross);
     const actualNetDividen = Math.max(0, companyNetDividen);
     // Shortfall = dividen dibayarkan melebihi laba operasi. Biasanya
     // berarti owner menarik dari saldo kas akumulasi (retained
@@ -159,12 +179,14 @@ export function PnLSankey({ report }: Props) {
       opexLeaves,
       opexTotal,
       opProfit,
+      opexFromGross,
+      opexShortfall,
       actualNetDividen,
       dividendFromOp,
       shortfall,
       retained,
     };
-  }, [report]);
+  }, [report, scope]);
 
   // Jika belum ada revenue sama sekali, tampilkan placeholder dan
   // skip geometry calculation (yang akan bagi-nol pada PX_PER_UNIT).
@@ -184,7 +206,18 @@ export function PnLSankey({ report }: Props) {
   const CH_TOP = 170;
   const CH_BOT = 790;
   const CH_H = CH_BOT - CH_TOP;
-  const PX_PER_UNIT = CH_H / computed.revenueTotal;
+  // Vertical scale. Kolom yang paling "padat" menentukan skala pixel
+  // supaya semua node muat dalam CH_H tanpa chart melar ke bawah.
+  // Di scope per-cabang kalau opex > gross profit, kolom gross harus
+  // menampung grossProfit + cogs (= revenueTotal) + subsidi dana
+  // (= opexShortfall). Jadi pakai revenueTotal + opexShortfall
+  // sebagai denominator: chart tetap satu-layar, subsidi masuk tanpa
+  // memotong bagian bawah.
+  const axisMax = Math.max(
+    computed.revenueTotal,
+    computed.revenueTotal + computed.opexShortfall
+  );
+  const PX_PER_UNIT = CH_H / axisMax;
   const BAR_W = 18;
   const GAP = 14;
 
@@ -255,6 +288,25 @@ export function PnLSankey({ report }: Props) {
     "exp",
     { label: "Cost of revenues", sub: "Cost of Goods Sold" }
   );
+
+  // Subsidi dana: node baru kalau opex > gross profit. Ditempatkan
+  // di COL.gross di bawah cogsNode, flow ke opexNode (sama seperti
+  // gross→opex tapi dari sumber berbeda). Analog prevRetained untuk
+  // dividen shortfall.
+  const externalFundingNode =
+    computed.opexShortfall > 0
+      ? makeNode(
+          "externalFunding",
+          COL.gross,
+          cogsNode.y + cogsNode.h + GAP * 2,
+          computed.opexShortfall,
+          "ink",
+          {
+            label: "Subsidi dana",
+            sub: "Saldo akumulasi / cabang lain / pinjaman",
+          }
+        )
+      : null;
   const opProfitNode = makeNode("op", COL.op, CH_TOP, computed.opProfit, "profit", {
     label: "Operating profit",
     yy: `${Math.round((computed.opProfit / computed.revenueTotal) * 100)}% margin`,
@@ -300,18 +352,24 @@ export function PnLSankey({ report }: Props) {
   // actualNetDividen — shortfall (kalau ada) divisualisasi sebagai
   // ribbon tambahan dari `prevRetained` node ke Net Dividen.
   let ly = opProfitNode.y;
-  const netDivNode = makeNode(
-    "dividend",
-    COL.leaf,
-    ly,
-    computed.actualNetDividen,
-    "profit",
-    {
-      label: "Net Dividen",
-      sub: "Owner payout (company-wide)",
-    }
-  );
-  ly += netDivNode.h + GAP;
+  // Dalam view per-cabang, Net Dividen company-wide tidak dialokasi
+  // ke cabang — jadi Op Profit langsung 100% ke Retained. Skip
+  // netDivNode + prevRetainedNode dalam scope ini.
+  const showNetDividen = scope === "all" && computed.actualNetDividen > 0;
+  const netDivNode = showNetDividen
+    ? makeNode(
+        "dividend",
+        COL.leaf,
+        ly,
+        computed.actualNetDividen,
+        "profit",
+        {
+          label: "Net Dividen",
+          sub: "Owner payout (company-wide)",
+        }
+      )
+    : null;
+  if (netDivNode) ly += netDivNode.h + GAP;
   const retainedNode = makeNode("retained", COL.leaf, ly, computed.retained, "ink", {
     label: "Retained",
     sub: "Tersimpan di bisnis",
@@ -341,12 +399,13 @@ export function PnLSankey({ report }: Props) {
     revNode,
     grossNode,
     cogsNode,
-    opProfitNode,
+    ...(computed.opProfit > 0 ? [opProfitNode] : []),
     opexNode,
-    netDivNode,
-    retainedNode,
+    ...(netDivNode ? [netDivNode] : []),
+    ...(computed.retained > 0 ? [retainedNode] : []),
     ...opexLeafNodes,
     ...(prevRetainedNode ? [prevRetainedNode] : []),
+    ...(externalFundingNode ? [externalFundingNode] : []),
   ];
 
   // Opex leaves numpuk ke bawah: kalau jumlah kategori banyak atau
@@ -373,9 +432,21 @@ export function PnLSankey({ report }: Props) {
   }
   flows.push({ f: "revenue", t: "gross", a: computed.grossProfit, c: "profit" });
   flows.push({ f: "revenue", t: "cogs", a: computed.cogs, c: "exp" });
-  flows.push({ f: "gross", t: "op", a: computed.opProfit, c: "profit" });
-  flows.push({ f: "gross", t: "opex", a: computed.opexTotal, c: "exp" });
-  flows.push({ f: "op", t: "dividend", a: computed.dividendFromOp, c: "profit" });
+  if (computed.opProfit > 0) {
+    flows.push({ f: "gross", t: "op", a: computed.opProfit, c: "profit" });
+  }
+  flows.push({ f: "gross", t: "opex", a: computed.opexFromGross, c: "exp" });
+  if (externalFundingNode) {
+    flows.push({
+      f: "externalFunding",
+      t: "opex",
+      a: computed.opexShortfall,
+      c: "ink",
+    });
+  }
+  if (netDivNode) {
+    flows.push({ f: "op", t: "dividend", a: computed.dividendFromOp, c: "profit" });
+  }
   if (prevRetainedNode) {
     // Shortfall ribbon: masuk setelah op→dividend jadi dia isi bagian
     // BAWAH bar Net Dividen (order di `flows` menentukan stacking).
@@ -386,7 +457,9 @@ export function PnLSankey({ report }: Props) {
       c: "ink",
     });
   }
-  flows.push({ f: "op", t: "retained", a: computed.retained, c: "ink" });
+  if (computed.retained > 0) {
+    flows.push({ f: "op", t: "retained", a: computed.retained, c: "ink" });
+  }
   for (const d of computed.opexLeaves) {
     flows.push({ f: "opex", t: d.id, a: d.amt, c: "exp" });
   }
@@ -465,9 +538,13 @@ export function PnLSankey({ report }: Props) {
   }
   labels.push({ key: "lbl:revenue", props: { node: revNode, side: "top", topOffset: 70, w: 200 } });
   labels.push({ key: "lbl:gross", props: { node: grossNode, side: "top", topOffset: 70, w: 200 } });
-  labels.push({ key: "lbl:op", props: { node: opProfitNode, side: "top", topOffset: 70, w: 200 } });
+  if (computed.opProfit > 0) {
+    labels.push({ key: "lbl:op", props: { node: opProfitNode, side: "top", topOffset: 70, w: 200 } });
+  }
   labels.push({ key: "lbl:opex", props: { node: opexNode, side: "top", topOffset: 38, w: 170, sm: true } });
-  labels.push({ key: "lbl:netdiv", props: { node: netDivNode, side: "right", w: 220 } });
+  if (netDivNode) {
+    labels.push({ key: "lbl:netdiv", props: { node: netDivNode, side: "right", w: 220 } });
+  }
   if (computed.retained > 0) {
     labels.push({
       key: "lbl:retained",
@@ -478,6 +555,12 @@ export function PnLSankey({ report }: Props) {
     labels.push({
       key: "lbl:prevRetained",
       props: { node: prevRetainedNode, side: "left", w: 170, h: 60, sm: true },
+    });
+  }
+  if (externalFundingNode) {
+    labels.push({
+      key: "lbl:externalFunding",
+      props: { node: externalFundingNode, side: "left", w: 180, h: 70, sm: true },
     });
   }
   for (const n of opexLeafNodes) {
@@ -560,8 +643,45 @@ export function PnLSankey({ report }: Props) {
           text-transform: uppercase; letter-spacing: 0.06em;
           color: var(--muted-foreground);
         }
-        .sankey-card svg.sankey { margin-top: -4px; }
+        .sankey-card .sankey-scroll {
+          overflow-x: auto; overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+        }
+        .sankey-card svg.sankey {
+          margin-top: -4px;
+          /* Jaga min canvas width supaya font di foreignObject legible
+             di mobile (kalau viewport < 960px, wrapper scroll horizontal). */
+          min-width: 960px;
+          max-height: min(72vh, 640px);
+        }
+        .sankey-card .sankey-scope {
+          margin-top: 8px; display: inline-flex; gap: 0;
+          border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+          background: var(--card);
+        }
+        .sankey-card .sankey-scope-btn {
+          appearance: none; border: 0; background: transparent;
+          padding: 5px 12px; font-size: 11px; font-weight: 700;
+          color: var(--muted-foreground);
+          cursor: pointer; transition: background 0.15s, color 0.15s;
+        }
+        .sankey-card .sankey-scope-btn + .sankey-scope-btn {
+          border-left: 1px solid var(--border);
+        }
+        .sankey-card .sankey-scope-btn:hover { background: var(--accent); }
+        .sankey-card .sankey-scope-active {
+          background: var(--primary); color: var(--primary-foreground, #fff);
+        }
+        .sankey-card .sankey-scope-active:hover {
+          background: var(--primary); color: var(--primary-foreground, #fff);
+        }
         .sankey-card svg.sankey { display: block; width: 100%; height: auto; }
+        @media (max-width: 640px) {
+          .sankey-card .sankey-head { padding: 10px 14px 0; }
+          .sankey-card h3.sankey-title {
+            font-size: clamp(14px, 4.2vw, 20px);
+          }
+        }
         .sankey-card .sankey-lbl { font-family: inherit; line-height: 1.15; color: var(--foreground); }
         .sankey-card .sankey-lbl .sankey-amt { font-size: 19px; font-weight: 800; }
         .sankey-card .sankey-lbl .sankey-nm  { font-size: 16px; font-weight: 800; }
@@ -604,9 +724,25 @@ export function PnLSankey({ report }: Props) {
         <h3 className="sankey-title">{report.businessUnit} Income Statement</h3>
         <div className="sankey-sub">
           {periodLabel(report.from, report.to)}
+          {scope !== "all" ? ` · cabang ${scope}` : ""}
+        </div>
+        <div className="sankey-scope">
+          {(["all", "Semarang", "Pare"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setScope(s)}
+              className={
+                "sankey-scope-btn" + (scope === s ? " sankey-scope-active" : "")
+              }
+            >
+              {s === "all" ? "Semua" : s}
+            </button>
+          ))}
         </div>
       </div>
 
+      <div className="sankey-scroll">
       <svg
         className="sankey"
         viewBox={`0 0 1600 ${viewBoxH}`}
@@ -636,6 +772,7 @@ export function PnLSankey({ report }: Props) {
           {renderMidLabel(cogsNode)}
         </g>
       </svg>
+      </div>
 
     </div>
   );

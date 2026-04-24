@@ -228,26 +228,45 @@ export async function POST(req: Request) {
   // warnings only reference rows the admin actually sees.
   parsed.warnings.push(...validateZeroSum(parsed.transactions));
 
-  // Lookup existing transactions for dedupe preview. Join via statement
-  // table because transactions aren't directly FK'd to bank_accounts.
-  const { data: existingTxs } = await supabase
-    .from("cashflow_transactions")
-    .select(
-      "transaction_date, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
-    )
-    .eq("cashflow_statements.bank_account_id", bankAccountId);
-  const existingKeys = new Set(
-    (existingTxs ?? []).map((t) =>
-      makeDedupeKey({
-        transaction_date: t.transaction_date,
-        description: t.description,
-        debit: Number(t.debit),
-        credit: Number(t.credit),
-        running_balance:
-          t.running_balance !== null ? Number(t.running_balance) : null,
-      })
-    )
-  );
+  // Lookup existing transactions for dedupe preview — paginate karena
+  // PostgREST cap default 1000 row. Rekening dengan history panjang
+  // (Jago full-export) punya 1000+ tx sebelumnya; tanpa paginasi,
+  // dedupe miss pada tx tua → upload ulang jadi counted sebagai "baru"
+  // walau sebenarnya duplikat.
+  type ExistingRow = {
+    transaction_date: string;
+    description: string;
+    debit: string | number;
+    credit: string | number;
+    running_balance: string | number | null;
+  };
+  const existingKeys = new Set<string>();
+  {
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      const { data } = await supabase
+        .from("cashflow_transactions")
+        .select(
+          "transaction_date, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
+        )
+        .eq("cashflow_statements.bank_account_id", bankAccountId)
+        .range(offset, offset + PAGE - 1);
+      const rows = (data ?? []) as ExistingRow[];
+      for (const t of rows) {
+        existingKeys.add(
+          makeDedupeKey({
+            transaction_date: t.transaction_date,
+            description: t.description,
+            debit: Number(t.debit),
+            credit: Number(t.credit),
+            running_balance:
+              t.running_balance !== null ? Number(t.running_balance) : null,
+          })
+        );
+      }
+      if (rows.length < PAGE) break;
+    }
+  }
 
   // Dedupe flags: tandai tiap tx yang sudah ada di DB, TAPI tetap
   // render semuanya di preview table — supaya sum di panel verifikasi

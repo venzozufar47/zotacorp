@@ -180,6 +180,10 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
   // Two-step flow state
   const [preview, setPreview] = useState<PreviewResult | null>(null);
 
+  const [batch, setBatch] = useState<BatchItem[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchIdx, setBatchIdx] = useState<number>(-1);
+
   const isJago = account?.bank === "jago";
   const isMandiri = account?.bank === "mandiri";
 
@@ -204,6 +208,99 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
     setStage("idle");
     setUploadPct(0);
     setEditPassword(false);
+    setBatch([]);
+    setBatchRunning(false);
+    setBatchIdx(-1);
+  }
+
+  /**
+   * Process satu file dalam batch: preview → kalau lolos verifikasi,
+   * auto-commit. File gagal verifikasi ditandai "error" supaya admin
+   * bisa re-upload manual nanti, tapi batch tetap jalan ke file
+   * berikutnya. Password dipakai sama dari input form / saved password.
+   */
+  async function processBatchItem(idx: number): Promise<void> {
+    if (!account) return;
+    const item = batch[idx];
+    if (!item) return;
+    const update = (patch: Partial<BatchItem>) =>
+      setBatch((prev) => prev.map((b, i) => (i === idx ? { ...b, ...patch } : b)));
+    update({ status: "uploading", message: undefined });
+    try {
+      const formData = new FormData();
+      formData.append("bankAccountId", account.id);
+      formData.append("pdf", item.file);
+      if (pdfPassword) formData.append("pdfPassword", pdfPassword);
+      const { status, body } = await uploadWithProgress({
+        url: "/api/admin/cashflow/preview",
+        formData,
+        onProgress: () => {},
+        onUploadFinished: () => update({ status: "parsing" }),
+      });
+      if (status === 401 && body?.passwordRequired) {
+        update({ status: "error", message: body.wrongPassword ? "Password salah" : "Perlu password" });
+        return;
+      }
+      if (status < 200 || status >= 300 || !body?.ok) {
+        update({ status: "error", message: body?.error ?? `HTTP ${status}` });
+        return;
+      }
+      if (!body.verification?.canVerify || !body.verification?.match) {
+        update({
+          status: "error",
+          message: body.verification?.canVerify
+            ? `Saldo tidak cocok (selisih Rp ${Math.round(body.verification.diff).toLocaleString("id-ID")})`
+            : "Saldo awal/akhir tidak terbaca",
+        });
+        return;
+      }
+      const transactions = body.transactions ?? [];
+      update({ status: "committing" });
+      const res = await fetch("/api/admin/cashflow/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bankAccountId: account.id,
+          periodMonth: body.periodMonth,
+          periodYear: body.periodYear,
+          openingBalance: body.openingBalance,
+          closingBalance: body.closingBalance,
+          transactions,
+        }),
+      });
+      const commitBody = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        addedCount?: number;
+        skippedCount?: number;
+        error?: string;
+      };
+      if (!res.ok || !commitBody.ok) {
+        update({ status: "error", message: commitBody.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      update({
+        status: "done",
+        addedCount: commitBody.addedCount ?? 0,
+        skippedCount: commitBody.skippedCount ?? 0,
+      });
+    } catch (err) {
+      update({
+        status: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleRunBatch() {
+    if (!account || batch.length === 0 || batchRunning) return;
+    setBatchRunning(true);
+    for (let i = 0; i < batch.length; i++) {
+      setBatchIdx(i);
+      await processBatchItem(i);
+    }
+    setBatchIdx(-1);
+    setBatchRunning(false);
+    router.refresh();
   }
 
   async function handlePreview() {
@@ -391,6 +488,11 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
             <FormStep
               file={file}
               setFile={setFile}
+              onMultiFiles={(files) => {
+                setBatch(
+                  files.map((f) => ({ file: f, status: "pending" as const }))
+                );
+              }}
               pdfPassword={pdfPassword}
               setPdfPassword={setPdfPassword}
               showPassword={showPassword}
@@ -409,7 +511,16 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
               editPassword={editPassword || passwordChallenge === "wrong"}
               setEditPassword={setEditPassword}
             />
-            {stage !== "idle" && (
+            {batch.length > 0 && (
+              <BatchUploadList
+                batch={batch}
+                currentIdx={batchIdx}
+                onRemove={(idx) =>
+                  setBatch((prev) => prev.filter((_, i) => i !== idx))
+                }
+              />
+            )}
+            {stage !== "idle" && batch.length === 0 && (
               <UploadProgress
                 stage={stage}
                 uploadPct={uploadPct}
@@ -470,6 +581,33 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
                   : `Konfirmasi & simpan (${preview.newCount})`}
               </Button>
             </>
+          ) : batch.length > 0 ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                disabled={batchRunning}
+              >
+                Tutup
+              </Button>
+              {batch.every((b) => b.status === "done" || b.status === "error") &&
+              !batchRunning ? (
+                <Button type="button" onClick={() => reset()}>
+                  Upload lagi
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleRunBatch}
+                  disabled={batchRunning || batch.length === 0}
+                >
+                  {batchRunning
+                    ? `Memproses ${batchIdx + 1}/${batch.length}…`
+                    : `Mulai upload (${batch.length} file)`}
+                </Button>
+              )}
+            </>
           ) : (
             <>
               <Button
@@ -506,9 +644,141 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
 //  co-located with the dialog that owns it.
 // ───────────────────────────────────────────────────────────────────────
 
+/**
+ * Batch upload Mandiri: multi-file flow. Setiap file e-Statement
+ * Mandiri = 1 bulan, self-contained balance. Admin pilih banyak
+ * sekaligus, password-nya sama, commit sequential.
+ */
+export interface BatchItem {
+  file: File;
+  status:
+    | "pending"
+    | "uploading"
+    | "parsing"
+    | "committing"
+    | "done"
+    | "skipped"
+    | "error";
+  message?: string;
+  addedCount?: number;
+  skippedCount?: number;
+}
+
+function BatchUploadList({
+  batch,
+  currentIdx,
+  onRemove,
+}: {
+  batch: BatchItem[];
+  currentIdx: number;
+  onRemove: (idx: number) => void;
+}) {
+  const statusMeta = (s: BatchItem["status"]) => {
+    switch (s) {
+      case "pending":
+        return { label: "Menunggu", cls: "text-muted-foreground" };
+      case "uploading":
+        return { label: "Mengupload…", cls: "text-primary" };
+      case "parsing":
+        return { label: "Parsing…", cls: "text-primary" };
+      case "committing":
+        return { label: "Menyimpan…", cls: "text-primary" };
+      case "done":
+        return { label: "Sukses", cls: "text-success" };
+      case "skipped":
+        return { label: "Dilewati", cls: "text-muted-foreground" };
+      case "error":
+        return { label: "Gagal", cls: "text-destructive" };
+    }
+  };
+  return (
+    <div className="rounded-xl border border-border bg-muted/20 overflow-hidden">
+      <div className="px-3 py-2 border-b border-border flex items-center justify-between text-xs">
+        <span className="font-semibold text-foreground">
+          Batch upload — {batch.length} file
+        </span>
+        <span className="text-muted-foreground">
+          Sukses{" "}
+          <strong className="text-success">
+            {batch.filter((b) => b.status === "done").length}
+          </strong>{" "}
+          · Gagal{" "}
+          <strong className="text-destructive">
+            {batch.filter((b) => b.status === "error").length}
+          </strong>
+        </span>
+      </div>
+      <ul className="divide-y divide-border/60 max-h-[min(50vh,420px)] overflow-y-auto">
+        {batch.map((item, idx) => {
+          const meta = statusMeta(item.status);
+          const active = idx === currentIdx;
+          const removable =
+            item.status === "pending" ||
+            item.status === "error" ||
+            item.status === "skipped";
+          return (
+            <li
+              key={`${item.file.name}-${idx}`}
+              className={
+                "flex items-center gap-3 px-3 py-2 text-xs " +
+                (active ? "bg-primary/10" : "")
+              }
+            >
+              <span
+                className="flex-1 min-w-0 text-foreground truncate"
+                title={item.file.name}
+              >
+                {item.file.name}{" "}
+                <span className="text-muted-foreground">
+                  · {(item.file.size / 1024).toFixed(0)} KB
+                </span>
+              </span>
+              <span className={"font-semibold whitespace-nowrap " + meta.cls}>
+                {meta.label}
+              </span>
+              {item.status === "done" && (
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  +{item.addedCount ?? 0}
+                  {item.skippedCount
+                    ? ` (${item.skippedCount} dup)`
+                    : ""}
+                </span>
+              )}
+              {item.status === "error" && item.message && (
+                <span
+                  className="text-[10px] text-destructive max-w-[240px] truncate"
+                  title={item.message}
+                >
+                  {item.message}
+                </span>
+              )}
+              {removable && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(idx)}
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label="Hapus dari batch"
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 interface FormStepProps {
   file: File | null;
   setFile: (f: File | null) => void;
+  /**
+   * Dipanggil khusus saat admin pilih >1 file (hanya enabled untuk
+   * Mandiri). Parent akan mem-populate `batch` state dan render
+   * BatchUploadProgress view.
+   */
+  onMultiFiles?: (files: File[]) => void;
   pdfPassword: string;
   setPdfPassword: (v: string) => void;
   showPassword: boolean;
@@ -530,7 +800,7 @@ interface FormStepProps {
 
 function FormStep(props: FormStepProps) {
   const {
-    file, setFile,
+    file, setFile, onMultiFiles,
     pdfPassword, setPdfPassword,
     showPassword, setShowPassword,
     passwordChallenge, setPasswordChallenge,
@@ -581,7 +851,16 @@ function FormStep(props: FormStepProps) {
             type="file"
             accept={fileAccept}
             required
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            multiple={isMandiri}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 1 && onMultiFiles) {
+                onMultiFiles(files);
+                setFile(null);
+              } else {
+                setFile(files[0] ?? null);
+              }
+            }}
             className="cursor-pointer"
           />
           {file && (
@@ -592,8 +871,9 @@ function FormStep(props: FormStepProps) {
           )}
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Maksimal 10MB. File tidak disimpan — hanya dipakai sekali untuk
-          mengekstrak transaksi.
+          {isMandiri
+            ? "Maksimal 10MB/file. Bisa pilih banyak file sekaligus (Ctrl/Shift+klik) untuk batch upload per bulan."
+            : "Maksimal 10MB. File tidak disimpan — hanya dipakai sekali untuk mengekstrak transaksi."}
         </p>
       </div>
 

@@ -10,7 +10,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
-import { BUSINESS_UNITS } from "@/lib/utils/constants";
+import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FinanceLandingClient } from "@/components/admin/finance/FinanceLandingClient";
 import type { BankCode } from "@/lib/cashflow/types";
@@ -105,10 +105,17 @@ export default async function AdminFinancePage({
   }
 
   const params = await searchParams;
+  const allBusinessUnits = await listBusinessUnits();
+  const buNames = allBusinessUnits.map((b) => b.name);
+  // Default preferen: Haengbocake (finance-ready), lalu Yeobo Space,
+  // baru fallback ke BU pertama yang ada. listBusinessUnits sort
+  // alphabetical jadi buNames[0] kadang "Gritamora" — yang finance-nya
+  // belum aktif — sehingga fallback murni alfabetis salah.
+  const PREFERRED = ["Haengbocake", "Yeobo Space"] as const;
+  const defaultBu =
+    PREFERRED.find((b) => buNames.includes(b)) ?? buNames[0] ?? "Haengbocake";
   const businessUnit =
-    params.bu && BUSINESS_UNITS.includes(params.bu as (typeof BUSINESS_UNITS)[number])
-      ? params.bu
-      : "Haengbocake";
+    params.bu && buNames.includes(params.bu) ? params.bu : defaultBu;
 
   const { data: accounts } = await listBankAccounts(businessUnit);
 
@@ -151,7 +158,7 @@ export default async function AdminFinancePage({
         subtitle="Cashflow per rekening & per business unit"
       />
       <FinanceLandingClient
-        businessUnits={[...BUSINESS_UNITS]}
+        businessUnits={buNames}
         activeBusinessUnit={businessUnit}
         accounts={accountsWithStatements}
         isAdmin={isAdmin}

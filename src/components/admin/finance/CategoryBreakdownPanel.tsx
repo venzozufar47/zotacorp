@@ -228,6 +228,18 @@ export function CategoryBreakdownPanel({ transactions, businessUnit }: Props) {
               </span>
             </div>
           </div>
+          {/* Legenda tanda: owner-POV. + = masuk ke owner, − = keluar
+              dari owner. Untuk Dividend (owner menarik) biasanya +,
+              Investment (owner menyetor) biasanya −. Wealth Transfer
+              cuma geser antar rekening sendiri jadi tidak ikut
+              total — ditampilkan pisah dengan keterangan arah. */}
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Tanda mengikuti POV owner:{" "}
+            <span className="text-success font-semibold">+</span> berarti owner
+            menerima dana (mis. dividen),{" "}
+            <span className="text-destructive font-semibold">−</span> berarti
+            owner menyetor dana (mis. investasi).
+          </p>
           <ul className="space-y-1.5">
             {nonOpRows.map((r) => {
               const excluded =
@@ -237,31 +249,51 @@ export function CategoryBreakdownPanel({ transactions, businessUnit }: Props) {
               <li
                 key={r.category}
                 className={cn(
-                  "grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 text-xs py-1",
-                  excluded && "opacity-60"
+                  "flex items-baseline justify-between gap-3 text-xs py-1",
+                  excluded && "opacity-70"
                 )}
               >
-                <span className="text-foreground truncate" title={r.category}>
+                <span className="text-foreground truncate flex-1 min-w-0" title={r.category}>
                   {r.category}
                   {excluded && (
                     <span className="ml-1.5 text-[10px] text-muted-foreground italic">
-                      (tidak dihitung)
+                      (tidak dihitung di Net Dividen)
                     </span>
                   )}
                 </span>
-                <span className="font-mono tabular-nums text-destructive whitespace-nowrap">
-                  {r.credit > 0 ? `− Rp ${formatIDR(r.credit)}` : "—"}
-                </span>
-                <span className="font-mono tabular-nums text-success whitespace-nowrap">
-                  {r.debit > 0 ? `+ Rp ${formatIDR(r.debit)}` : "—"}
-                </span>
-                <span
-                  className={cn(
-                    "font-mono tabular-nums font-semibold whitespace-nowrap min-w-[110px] text-right",
-                    r.net >= 0 ? "text-success" : "text-destructive"
+                <span className="flex items-baseline gap-3 whitespace-nowrap">
+                  {excluded ? (
+                    // Wealth Transfer / QRIS — arus 2-arah (bukan
+                    // dividen/investasi), tampilkan Masuk & Keluar
+                    // terpisah dengan label biar tidak dikira net.
+                    <>
+                      {r.credit > 0 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          Masuk{" "}
+                          <span className="font-mono tabular-nums text-foreground">
+                            Rp {formatIDR(r.credit)}
+                          </span>
+                        </span>
+                      )}
+                      {r.debit > 0 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          Keluar{" "}
+                          <span className="font-mono tabular-nums text-foreground">
+                            Rp {formatIDR(r.debit)}
+                          </span>
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span
+                      className={cn(
+                        "font-mono tabular-nums font-semibold min-w-[110px] text-right",
+                        r.net >= 0 ? "text-success" : "text-destructive"
+                      )}
+                    >
+                      {r.net >= 0 ? "+" : "−"} Rp {formatIDR(Math.abs(r.net))}
+                    </span>
                   )}
-                >
-                  {r.net >= 0 ? "+" : "−"} Rp {formatIDR(Math.abs(r.net))}
                 </span>
               </li>
               );

@@ -10,7 +10,7 @@ import {
   getCategoryPresets,
   getNonOperatingCategories,
 } from "@/lib/cashflow/categories";
-import { BUSINESS_UNITS } from "@/lib/utils/constants";
+import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PnLClient } from "@/components/admin/finance/PnLClient";
 
@@ -47,10 +47,15 @@ export default async function PnLPage({
   if (role !== "admin") redirect("/dashboard");
 
   const params = await searchParams;
+  const allBusinessUnits = await listBusinessUnits();
+  const buNames = allBusinessUnits.map((b) => b.name);
+  // Default ke BU yang memang finance-ready; buNames[0] alphabetical
+  // bisa jadi "Gritamora" (belum aktif) yang bikin dashboard kosong.
+  const PREFERRED = ["Haengbocake", "Yeobo Space"] as const;
+  const defaultBu =
+    PREFERRED.find((b) => buNames.includes(b)) ?? buNames[0] ?? "Haengbocake";
   const businessUnit =
-    params.bu && BUSINESS_UNITS.includes(params.bu as (typeof BUSINESS_UNITS)[number])
-      ? params.bu
-      : "Haengbocake";
+    params.bu && buNames.includes(params.bu) ? params.bu : defaultBu;
 
   // Default range: dari bulan paling awal ada data di BU sampai bulan
   // kalender sekarang. Kalau belum ada transaksi sama sekali, fallback

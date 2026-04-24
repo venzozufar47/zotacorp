@@ -54,7 +54,7 @@ const MONTHS_ID: Record<string, number> = {
   feb: 2, februari: 2,
   mar: 3, maret: 3,
   apr: 4, april: 4,
-  mei: 5,
+  mei: 5, may: 5,
   jun: 6, juni: 6,
   jul: 7, juli: 7,
   agu: 8, agt: 8, agustus: 8, aug: 8, august: 8,

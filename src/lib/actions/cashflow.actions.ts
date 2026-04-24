@@ -1289,6 +1289,24 @@ export async function savePusatAllocation(input: {
     };
   }
 
+  // Lock check: tolak update kalau row sudah di-lock. Admin harus
+  // explicit unlock dulu via setPusatAllocationLock({locked:false}).
+  const { data: existing } = await supabase
+    .from("cashflow_pusat_allocations")
+    .select("locked")
+    .eq("business_unit", input.businessUnit)
+    .eq("period_year", input.periodYear)
+    .eq("period_month", input.periodMonth)
+    .eq("side", input.side)
+    .eq("category", input.category)
+    .maybeSingle();
+  if (existing?.locked) {
+    return {
+      ok: false,
+      error: "Alokasi ini sudah di-lock. Unlock dulu sebelum edit.",
+    };
+  }
+
   const { error } = await supabase
     .from("cashflow_pusat_allocations")
     .upsert(
@@ -1306,6 +1324,44 @@ export async function savePusatAllocation(input: {
       }
     );
   if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/finance", "layout");
+  return { ok: true };
+}
+
+/**
+ * Toggle lock state untuk satu alokasi (bulan × kategori × side).
+ * Row yang di-lock tidak bisa di-edit sampai di-unlock. Kalau row
+ * belum pernah di-save (unallocated), function ini reject — admin
+ * harus save value dulu baru bisa lock.
+ */
+export async function setPusatAllocationLock(input: {
+  businessUnit: string;
+  periodYear: number;
+  periodMonth: number;
+  side: "credit" | "debit";
+  category: string;
+  locked: boolean;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("cashflow_pusat_allocations")
+    .update({ locked: input.locked })
+    .eq("business_unit", input.businessUnit)
+    .eq("period_year", input.periodYear)
+    .eq("period_month", input.periodMonth)
+    .eq("side", input.side)
+    .eq("category", input.category)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: "Alokasi belum disimpan. Isi split Semarang+Pare dulu, baru lock.",
+    };
+  }
   revalidatePath("/admin/finance", "layout");
   return { ok: true };
 }

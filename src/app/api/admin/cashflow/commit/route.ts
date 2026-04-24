@@ -11,7 +11,9 @@
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 30;
+// Upload CSV Jago full-history (4000+ row) butuh waktu lebih lama
+// buat fetch existing + bulk insert → naikkan limit ke 60s.
+export const maxDuration = 60;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -141,27 +143,46 @@ export async function POST(req: Request) {
     );
   }
 
-  // Server-side dedupe — protects against double-submits and against
-  // the client sending stale preview data after another admin imported
-  // the same period.
-  const { data: existingTxs } = await supabase
-    .from("cashflow_transactions")
-    .select(
-      "transaction_date, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
-    )
-    .eq("cashflow_statements.bank_account_id", body.bankAccountId);
-  const existingKeys = new Set(
-    (existingTxs ?? []).map((t) =>
-      makeDedupeKey({
-        transaction_date: t.transaction_date,
-        description: t.description,
-        debit: Number(t.debit),
-        credit: Number(t.credit),
-        running_balance:
-          t.running_balance !== null ? Number(t.running_balance) : null,
-      })
-    )
-  );
+  // Server-side dedupe — paginate supaya rekening dengan history >1000
+  // tx tetap punya existingKeys lengkap. Tanpa loop ini, PostgREST
+  // cuma kirim 1000 row pertama → tx lama dianggap "new" → double insert.
+  type ExistingRow = {
+    transaction_date: string;
+    description: string;
+    debit: string | number;
+    credit: string | number;
+    running_balance: string | number | null;
+  };
+  const existingKeys = new Set<string>();
+  {
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase
+        .from("cashflow_transactions")
+        .select(
+          "transaction_date, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
+        )
+        .eq("cashflow_statements.bank_account_id", body.bankAccountId)
+        .range(offset, offset + PAGE - 1);
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      const rows = (data ?? []) as ExistingRow[];
+      for (const t of rows) {
+        existingKeys.add(
+          makeDedupeKey({
+            transaction_date: t.transaction_date,
+            description: t.description,
+            debit: Number(t.debit),
+            credit: Number(t.credit),
+            running_balance:
+              t.running_balance !== null ? Number(t.running_balance) : null,
+          })
+        );
+      }
+      if (rows.length < PAGE) break;
+    }
+  }
 
   const newTransactions = body.transactions.filter(
     (t) => !existingKeys.has(makeDedupeKey(t))
@@ -217,7 +238,9 @@ export async function POST(req: Request) {
     statementId = inserted.id;
   }
 
-  // Insert new transactions.
+  // Insert new transactions. Bulk insert Supabase batas payload
+  // praktis ~500-1000 row per request — chunk untuk aman di upload
+  // besar (CSV Jago full-history bisa 3000+ row baru).
   if (newTransactions.length > 0) {
     const rows = newTransactions.map((t, idx) => ({
       statement_id: statementId,
@@ -234,11 +257,14 @@ export async function POST(req: Request) {
       branch: t.branch?.trim() || null,
       sort_order: idx,
     }));
-    const { error: insertError } = await supabase
-      .from("cashflow_transactions")
-      .insert(rows);
-    if (insertError)
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    const CHUNK = 500;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const { error: insertError } = await supabase
+        .from("cashflow_transactions")
+        .insert(rows.slice(i, i + CHUNK));
+      if (insertError)
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({

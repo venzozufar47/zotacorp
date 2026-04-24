@@ -82,7 +82,7 @@ export async function parseJagoStatement(
     const transactionDetails =
       cols.details !== -1 ? stripIdHash(cellStr(row[cols.details])) : "";
     const notes = cols.notes !== -1 ? cellStr(row[cols.notes]) : "";
-    const balance = parseSignedAmount(row[cols.balance]).value;
+    const balance = parseUnsignedAmount(row[cols.balance]);
 
     const descFields = [sourceDestination, transactionDetails, notes].filter(
       Boolean
@@ -98,7 +98,10 @@ export async function parseJagoStatement(
       description,
       debit,
       credit,
-      runningBalance: balance !== 0 ? balance : undefined,
+      // Balance 0 adalah nilai valid (pocket bisa di-drain sampai 0
+      // rupiah). Set undefined hanya kalau cell balance benar-benar
+      // kosong (parseUnsignedAmount return null dalam kasus itu).
+      runningBalance: balance ?? undefined,
     });
   }
 
@@ -188,17 +191,57 @@ function parseDateTime(raw: string): { date: string | null; time?: string } {
   return { date: isoDate, time };
 }
 
+/**
+ * Parse Amount cell yang bisa ter-kontaminasi leakage dari kolom
+ * notes: export Jago kadang bikin sel jadi `"1        -1.500.000"`
+ * atau `"t         -1.964.967"` karena notes-nya ketipu truncation.
+ * Ambil token angka bertanda TERAKHIR di string — itu yang value
+ * asli. Kalau tidak ada tanda, fallback ke token numeric terakhir
+ * (whitespace-terpisah).
+ */
 function parseSignedAmount(raw: string): { sign: "+" | "-"; value: number } {
   const trimmed = raw.trim();
   if (!trimmed) return { sign: "+", value: 0 };
-  const negative = /^-/.test(trimmed);
-  const stripped = trimmed.replace(/^[+\-]\s*/, "");
-  const normalized = normalizeJagoNumber(stripped);
-  const n = parseIndoAmount(normalized);
+  // Prioritas: token yang punya +/− eksplisit (signed). "g" flag + walk
+  // supaya dapat match terakhir kalau ada leakage sebelum nominal asli.
+  const signedRe = /([+\-])\s*(\d[\d.,]*)/g;
+  let lastSigned: RegExpExecArray | null = null;
+  let m;
+  while ((m = signedRe.exec(trimmed)) !== null) lastSigned = m;
+  if (lastSigned) {
+    const sign = lastSigned[1] === "-" ? ("-" as const) : ("+" as const);
+    const body = lastSigned[2];
+    const n = parseIndoAmount(normalizeJagoNumber(body));
+    return { sign, value: Math.max(0, Math.round(Math.abs(n))) };
+  }
+  // Tidak ada sign — ambil token whitespace-terpisah terakhir.
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  const last = tokens[tokens.length - 1] ?? "";
+  const n = parseIndoAmount(normalizeJagoNumber(last));
   return {
-    sign: negative ? "-" : "+",
+    sign: n < 0 ? "-" : "+",
     value: Math.max(0, Math.round(Math.abs(n))),
   };
+}
+
+/**
+ * Parse Balance cell — selalu unsigned. Sama treatment dengan Amount
+ * untuk leakage: kalau sel berisi `"1         5.390.687"`, ambil
+ * token whitespace-terpisah terakhir (`"5.390.687"`), bukan digabung
+ * jadi `15.390.687`.
+ */
+function parseUnsignedAmount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Split by whitespace, ambil token terakhir yang mengandung digit.
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const tok = tokens[i];
+    if (!/\d/.test(tok)) continue;
+    const n = parseIndoAmount(normalizeJagoNumber(tok));
+    if (Number.isFinite(n)) return Math.round(n);
+  }
+  return null;
 }
 
 /**

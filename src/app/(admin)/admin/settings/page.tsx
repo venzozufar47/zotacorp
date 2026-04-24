@@ -11,8 +11,10 @@ import { LanguageCard } from "@/components/settings/LanguageCard";
 import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCard";
 import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { ThemeSettingsCard } from "@/components/admin/ThemeSettingsCard";
+import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { listWhatsAppRecipients } from "@/lib/actions/whatsapp-recipients.actions";
+import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { listWaTemplates } from "@/lib/whatsapp/templates";
 import { getTheme } from "@/lib/themes";
 
@@ -23,10 +25,11 @@ export default async function AdminSettingsPage() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [settings, waRecipients, waTemplates] = await Promise.all([
+  const [settings, waRecipients, waTemplates, businessUnits] = await Promise.all([
     getCachedAttendanceSettings(),
     listWhatsAppRecipients(),
     listWaTemplates(),
+    listBusinessUnits(),
   ]);
 
   if (!settings) {
@@ -54,6 +57,7 @@ export default async function AdminSettingsPage() {
         subtitle="Configure working hours, grace period, and schedule rules"
       />
       <AttendanceSettingsForm settings={settings} />
+      <BusinessUnitsCard initial={businessUnits} />
       <ThemeSettingsCard current={currentTheme} />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard

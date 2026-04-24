@@ -1,18 +1,8 @@
-export const BUSINESS_UNITS = [
-  "Haengbocake",
-  "Yeobo Space",
-  "Yeobo Booth",
-  "Gritamora",
-] as const;
-
-export type BusinessUnit = (typeof BUSINESS_UNITS)[number];
-
-export const BUSINESS_UNIT_ROLES: Record<BusinessUnit, readonly string[]> = {
-  Haengbocake: ["Admin", "Baker", "Cake Artist"],
-  "Yeobo Space": ["Admin", "Editor", "Content Creator", "Manager"],
-  "Yeobo Booth": ["Admin", "Graphic Designer", "Freelance"],
-  Gritamora: ["Admin", "Storage"],
-};
+// Business units + roles sudah di-migrasi ke DB (tabel
+// `business_units` + `business_unit_roles`). Admin atur runtime via
+// `/admin/settings`, consumer fetch lewat `listBusinessUnits()`.
+// Seed awal ada di migration — const hard-coded dihapus untuk
+// menghindari drift.
 
 export const GENDERS = ["Female", "Male"] as const;
 

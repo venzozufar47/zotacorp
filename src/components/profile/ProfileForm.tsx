@@ -24,21 +24,26 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import Image from "next/image";
-import {
-  BUSINESS_UNITS,
-  BUSINESS_UNIT_ROLES,
-  GENDERS,
-  SHIRT_SIZES,
-  type BusinessUnit,
-} from "@/lib/utils/constants";
+import { GENDERS, SHIRT_SIZES } from "@/lib/utils/constants";
 import type { Profile } from "@/lib/supabase/types";
 import { AddressPicker, type AddressValues } from "./AddressPicker";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import type { Dictionary } from "@/lib/i18n/dictionary";
 
+export interface BusinessUnitOption {
+  name: string;
+  roles: string[];
+}
+
 interface ProfileFormProps {
   profile: Profile;
   targetId?: string;
+  /**
+   * Business units + role-list tiap BU, di-fetch parent (server
+   * component) dari DB via `listBusinessUnits`. Admin ubah di
+   * `/admin/settings` → berubah live di sini tanpa deploy.
+   */
+  businessUnits: BusinessUnitOption[];
 }
 
 type FormState = {
@@ -130,7 +135,11 @@ function asalMatchesDomisili(s: FormState): boolean {
   );
 }
 
-export function ProfileForm({ profile, targetId }: ProfileFormProps) {
+export function ProfileForm({
+  profile,
+  targetId,
+  businessUnits,
+}: ProfileFormProps) {
   const router = useRouter();
   const { t } = useTranslation();
   const pf = t.profileForm;
@@ -139,10 +148,16 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
   const [editing, setEditing] = useState<CardSection | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const rolesByBu = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const b of businessUnits) map.set(b.name, b.roles);
+    return map;
+  }, [businessUnits]);
+
   const availableJobRoles = useMemo(() => {
     if (!state.business_unit) return [];
-    return BUSINESS_UNIT_ROLES[state.business_unit as BusinessUnit] ?? [];
-  }, [state.business_unit]);
+    return rolesByBu.get(state.business_unit) ?? [];
+  }, [state.business_unit, rolesByBu]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setState((s) => ({ ...s, [key]: value }));
@@ -416,7 +431,7 @@ export function ProfileForm({ profile, targetId }: ProfileFormProps) {
                 <SelectValue placeholder={pf.selectBusinessUnit} />
               </SelectTrigger>
               <SelectContent>
-                {BUSINESS_UNITS.map((bu) => (
+                {businessUnits.map((b) => b.name).map((bu) => (
                   <SelectItem key={bu} value={bu}>{bu}</SelectItem>
                 ))}
               </SelectContent>

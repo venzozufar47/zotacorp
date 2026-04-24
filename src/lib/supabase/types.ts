@@ -6,35 +6,6 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-/**
- * Per-day transparency snapshot stored on payslips.breakdown_json. Captured at
- * calculation time so finalized payslips remain immutable even if settings or
- * raw attendance data change later.
- */
-export type PayslipBreakdown = {
-  overtime_mode: "hourly_tiered" | "fixed_per_day";
-  late_penalty_mode: "per_minutes" | "per_day" | "none";
-  grace_period_min: number;
-  overtime_days: Array<{
-    date: string; // YYYY-MM-DD
-    minutes: number;
-    pay: number;
-  }>;
-  late_days: Array<{
-    date: string; // YYYY-MM-DD
-    raw_minutes: number;
-    after_grace_minutes: number;
-    penalty: number;
-    excused: boolean;
-  }>;
-  extra_work_days?: Array<{
-    date: string; // YYYY-MM-DD
-    kind: string;
-    pay: number;
-  }>;
-  extra_work_rate_idr?: number;
-};
-
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -43,546 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      bank_accounts: {
-        Row: {
-          id: string
-          business_unit: string
-          bank: string
-          account_number: string | null
-          account_name: string
-          is_active: boolean
-          created_by: string | null
-          pdf_password: string | null
-          source_url: string | null
-          source_sheet: string | null
-          default_branch: string | null
-          last_synced_at: string | null
-          custom_categories: unknown
-          pos_enabled: boolean
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          business_unit: string
-          bank: string
-          account_number?: string | null
-          account_name: string
-          is_active?: boolean
-          created_by?: string | null
-          pdf_password?: string | null
-          source_url?: string | null
-          source_sheet?: string | null
-          default_branch?: string | null
-          last_synced_at?: string | null
-          custom_categories?: unknown
-          pos_enabled?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          business_unit?: string
-          bank?: string
-          account_number?: string | null
-          account_name?: string
-          is_active?: boolean
-          created_by?: string | null
-          pdf_password?: string | null
-          source_url?: string | null
-          source_sheet?: string | null
-          default_branch?: string | null
-          last_synced_at?: string | null
-          custom_categories?: unknown
-          pos_enabled?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      pos_products: {
-        Row: {
-          id: string
-          bank_account_id: string
-          name: string
-          price: number
-          active: boolean
-          sort_order: number
-          track_stock: boolean
-          stock_aggregate_variants: boolean
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          bank_account_id: string
-          name: string
-          price: number
-          active?: boolean
-          sort_order?: number
-          track_stock?: boolean
-          stock_aggregate_variants?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          bank_account_id?: string
-          name?: string
-          price?: number
-          active?: boolean
-          sort_order?: number
-          track_stock?: boolean
-          stock_aggregate_variants?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      pos_sales: {
-        Row: {
-          id: string
-          bank_account_id: string
-          cashflow_transaction_id: string | null
-          sale_date: string
-          sale_time: string
-          payment_method: "cash" | "qris"
-          total: number
-          created_by: string | null
-          created_at: string
-          voided_at: string | null
-        }
-        Insert: {
-          id?: string
-          bank_account_id: string
-          cashflow_transaction_id?: string | null
-          sale_date: string
-          sale_time?: string
-          payment_method: "cash" | "qris"
-          total: number
-          created_by?: string | null
-          created_at?: string
-          voided_at?: string | null
-        }
-        Update: {
-          id?: string
-          bank_account_id?: string
-          cashflow_transaction_id?: string | null
-          sale_date?: string
-          sale_time?: string
-          payment_method?: "cash" | "qris"
-          total?: number
-          created_by?: string | null
-          created_at?: string
-          voided_at?: string | null
-        }
-        Relationships: []
-      }
-      pos_sale_items: {
-        Row: {
-          id: string
-          sale_id: string
-          product_id: string | null
-          product_name: string
-          unit_price: number
-          qty: number
-          subtotal: number
-          variant_id: string | null
-          variant_name: string | null
-        }
-        Insert: {
-          id?: string
-          sale_id: string
-          product_id?: string | null
-          product_name: string
-          unit_price: number
-          qty: number
-          subtotal: number
-          variant_id?: string | null
-          variant_name?: string | null
-        }
-        Update: {
-          id?: string
-          sale_id?: string
-          product_id?: string | null
-          product_name?: string
-          unit_price?: number
-          qty?: number
-          subtotal?: number
-          variant_id?: string | null
-          variant_name?: string | null
-        }
-        Relationships: []
-      }
-      pos_product_variants: {
-        Row: {
-          id: string
-          product_id: string
-          name: string
-          price: number
-          active: boolean
-          sort_order: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          product_id: string
-          name: string
-          price: number
-          active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          product_id?: string
-          name?: string
-          price?: number
-          active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      pos_stock_movements: {
-        Row: {
-          id: string
-          bank_account_id: string
-          product_id: string
-          variant_id: string | null
-          type: "production" | "withdrawal"
-          qty: number
-          notes: string | null
-          movement_date: string
-          movement_time: string | null
-          created_by: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          bank_account_id: string
-          product_id: string
-          variant_id?: string | null
-          type: "production" | "withdrawal"
-          qty: number
-          notes?: string | null
-          movement_date: string
-          movement_time?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          bank_account_id?: string
-          product_id?: string
-          variant_id?: string | null
-          type?: "production" | "withdrawal"
-          qty?: number
-          notes?: string | null
-          movement_date?: string
-          movement_time?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Relationships: []
-      }
-      pos_stock_opnames: {
-        Row: {
-          id: string
-          bank_account_id: string
-          opname_date: string
-          opname_time: string | null
-          notes: string | null
-          created_by: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          bank_account_id: string
-          opname_date: string
-          opname_time?: string | null
-          notes?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          bank_account_id?: string
-          opname_date?: string
-          opname_time?: string | null
-          notes?: string | null
-          created_by?: string | null
-          created_at?: string
-        }
-        Relationships: []
-      }
-      pos_stock_opname_items: {
-        Row: {
-          id: string
-          opname_id: string
-          product_id: string
-          variant_id: string | null
-          product_name_snapshot: string
-          variant_name_snapshot: string | null
-          unit_price_snapshot: number
-          physical_count: number
-          expected_count: number
-        }
-        Insert: {
-          id?: string
-          opname_id: string
-          product_id: string
-          variant_id?: string | null
-          product_name_snapshot: string
-          variant_name_snapshot?: string | null
-          unit_price_snapshot: number
-          physical_count: number
-          expected_count: number
-        }
-        Update: {
-          id?: string
-          opname_id?: string
-          product_id?: string
-          variant_id?: string | null
-          product_name_snapshot?: string
-          variant_name_snapshot?: string | null
-          unit_price_snapshot?: number
-          physical_count?: number
-          expected_count?: number
-        }
-        Relationships: []
-      }
-      bank_account_assignees: {
-        Row: {
-          bank_account_id: string
-          user_id: string
-          assigned_at: string
-          assigned_by: string | null
-          scope: "full" | "pos_only"
-        }
-        Insert: {
-          bank_account_id: string
-          user_id: string
-          assigned_at?: string
-          assigned_by?: string | null
-          scope?: "full" | "pos_only"
-        }
-        Update: {
-          bank_account_id?: string
-          user_id?: string
-          assigned_at?: string
-          assigned_by?: string | null
-          scope?: "full" | "pos_only"
-        }
-        Relationships: []
-      }
-      cashflow_pusat_allocations: {
-        Row: {
-          id: string
-          business_unit: string
-          period_year: number
-          period_month: number
-          side: "credit" | "debit"
-          category: string
-          semarang_amount: number
-          pare_amount: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          business_unit: string
-          period_year: number
-          period_month: number
-          side: "credit" | "debit"
-          category: string
-          semarang_amount?: number
-          pare_amount?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          business_unit?: string
-          period_year?: number
-          period_month?: number
-          side?: "credit" | "debit"
-          category?: string
-          semarang_amount?: number
-          pare_amount?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      cashflow_rules: {
-        Row: {
-          id: string
-          bank_account_id: string
-          priority: number
-          column_scope: "any" | "notes" | "sourceDestination" | "transactionDetails" | "description"
-          match_type: "contains" | "equals" | "starts_with"
-          match_value: string
-          case_sensitive: boolean
-          set_category: string | null
-          set_branch: string | null
-          active: boolean
-          side_filter: "any" | "debit" | "credit"
-          is_fallback: boolean
-          extra_conditions: unknown
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          bank_account_id: string
-          priority: number
-          column_scope: "any" | "notes" | "sourceDestination" | "transactionDetails" | "description"
-          match_type: "contains" | "equals" | "starts_with"
-          match_value: string
-          case_sensitive?: boolean
-          set_category?: string | null
-          set_branch?: string | null
-          active?: boolean
-          side_filter?: "any" | "debit" | "credit"
-          is_fallback?: boolean
-          extra_conditions?: unknown
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          bank_account_id?: string
-          priority?: number
-          column_scope?: "any" | "notes" | "sourceDestination" | "transactionDetails" | "description"
-          match_type?: "contains" | "equals" | "starts_with"
-          match_value?: string
-          case_sensitive?: boolean
-          set_category?: string | null
-          set_branch?: string | null
-          active?: boolean
-          side_filter?: "any" | "debit" | "credit"
-          is_fallback?: boolean
-          extra_conditions?: unknown
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      cashflow_statements: {
-        Row: {
-          id: string
-          bank_account_id: string
-          period_month: number
-          period_year: number
-          opening_balance: number
-          closing_balance: number
-          pdf_path: string | null
-          status: string
-          created_by: string | null
-          confirmed_by: string | null
-          confirmed_at: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          bank_account_id: string
-          period_month: number
-          period_year: number
-          opening_balance?: number
-          closing_balance?: number
-          pdf_path?: string | null
-          status?: string
-          created_by?: string | null
-          confirmed_by?: string | null
-          confirmed_at?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          bank_account_id?: string
-          period_month?: number
-          period_year?: number
-          opening_balance?: number
-          closing_balance?: number
-          pdf_path?: string | null
-          status?: string
-          created_by?: string | null
-          confirmed_by?: string | null
-          confirmed_at?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      cashflow_transactions: {
-        Row: {
-          id: string
-          statement_id: string
-          transaction_date: string
-          transaction_time: string | null
-          source_destination: string | null
-          transaction_details: string | null
-          description: string
-          debit: number
-          credit: number
-          running_balance: number | null
-          category: string | null
-          branch: string | null
-          notes: string | null
-          sort_order: number
-          created_at: string
-          effective_period_year: number | null
-          effective_period_month: number | null
-          attachment_path: string | null
-        }
-        Insert: {
-          id?: string
-          statement_id: string
-          transaction_date: string
-          transaction_time?: string | null
-          source_destination?: string | null
-          transaction_details?: string | null
-          description: string
-          debit?: number
-          credit?: number
-          running_balance?: number | null
-          category?: string | null
-          branch?: string | null
-          notes?: string | null
-          sort_order?: number
-          created_at?: string
-          effective_period_year?: number | null
-          effective_period_month?: number | null
-          attachment_path?: string | null
-        }
-        Update: {
-          id?: string
-          statement_id?: string
-          transaction_date?: string
-          transaction_time?: string | null
-          source_destination?: string | null
-          transaction_details?: string | null
-          description?: string
-          debit?: number
-          credit?: number
-          running_balance?: number | null
-          category?: string | null
-          branch?: string | null
-          notes?: string | null
-          sort_order?: number
-          created_at?: string
-          effective_period_year?: number | null
-          effective_period_month?: number | null
-          attachment_path?: string | null
-        }
-        Relationships: []
-      }
       attendance_locations: {
         Row: {
           created_at: string
@@ -692,7 +123,29 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "attendance_logs_matched_location_id_fkey"
+            columns: ["matched_location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       attendance_settings: {
         Row: {
@@ -727,26 +180,446 @@ export type Database = {
         }
         Relationships: []
       }
-      whatsapp_templates: {
+      bank_account_assignees: {
         Row: {
-          template_key: string
-          body: string
-          updated_at: string
-          updated_by: string | null
+          assigned_at: string
+          assigned_by: string | null
+          bank_account_id: string
+          scope: string
+          user_id: string
         }
         Insert: {
-          template_key: string
-          body: string
-          updated_at?: string
-          updated_by?: string | null
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id: string
+          scope?: string
+          user_id: string
         }
         Update: {
-          template_key?: string
-          body?: string
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id?: string
+          scope?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_account_assignees_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_account_assignees_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_account_assignees_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_account_assignees_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_account_assignees_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_accounts: {
+        Row: {
+          account_name: string
+          account_number: string | null
+          bank: string
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          custom_categories: Json | null
+          default_branch: string | null
+          id: string
+          is_active: boolean
+          last_synced_at: string | null
+          pdf_password: string | null
+          pos_enabled: boolean
+          source_sheet: string | null
+          source_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_name: string
+          account_number?: string | null
+          bank: string
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          custom_categories?: Json | null
+          default_branch?: string | null
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          pdf_password?: string | null
+          pos_enabled?: boolean
+          source_sheet?: string | null
+          source_url?: string | null
           updated_at?: string
-          updated_by?: string | null
+        }
+        Update: {
+          account_name?: string
+          account_number?: string | null
+          bank?: string
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          custom_categories?: Json | null
+          default_branch?: string | null
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          pdf_password?: string | null
+          pos_enabled?: boolean
+          source_sheet?: string | null
+          source_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_unit_roles: {
+        Row: {
+          business_unit_id: string
+          created_at: string
+          id: string
+          role_name: string
+        }
+        Insert: {
+          business_unit_id: string
+          created_at?: string
+          id?: string
+          role_name: string
+        }
+        Update: {
+          business_unit_id?: string
+          created_at?: string
+          id?: string
+          role_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_unit_roles_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_units: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
         }
         Relationships: []
+      }
+      cashflow_pusat_allocations: {
+        Row: {
+          business_unit: string
+          category: string
+          created_at: string
+          id: string
+          locked: boolean
+          pare_amount: number
+          period_month: number
+          period_year: number
+          semarang_amount: number
+          side: string
+          updated_at: string
+        }
+        Insert: {
+          business_unit: string
+          category: string
+          created_at?: string
+          id?: string
+          locked?: boolean
+          pare_amount?: number
+          period_month: number
+          period_year: number
+          semarang_amount?: number
+          side: string
+          updated_at?: string
+        }
+        Update: {
+          business_unit?: string
+          category?: string
+          created_at?: string
+          id?: string
+          locked?: boolean
+          pare_amount?: number
+          period_month?: number
+          period_year?: number
+          semarang_amount?: number
+          side?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cashflow_rules: {
+        Row: {
+          active: boolean
+          bank_account_id: string
+          case_sensitive: boolean
+          column_scope: string
+          created_at: string
+          extra_conditions: Json
+          id: string
+          is_fallback: boolean
+          match_type: string
+          match_value: string
+          priority: number
+          set_branch: string | null
+          set_category: string | null
+          side_filter: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          bank_account_id: string
+          case_sensitive?: boolean
+          column_scope: string
+          created_at?: string
+          extra_conditions?: Json
+          id?: string
+          is_fallback?: boolean
+          match_type: string
+          match_value: string
+          priority: number
+          set_branch?: string | null
+          set_category?: string | null
+          side_filter?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          bank_account_id?: string
+          case_sensitive?: boolean
+          column_scope?: string
+          created_at?: string
+          extra_conditions?: Json
+          id?: string
+          is_fallback?: boolean
+          match_type?: string
+          match_value?: string
+          priority?: number
+          set_branch?: string | null
+          set_category?: string | null
+          side_filter?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashflow_rules_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cashflow_statements: {
+        Row: {
+          bank_account_id: string
+          closing_balance: number
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          opening_balance: number
+          pdf_path: string | null
+          period_month: number
+          period_year: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          bank_account_id: string
+          closing_balance?: number
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opening_balance?: number
+          pdf_path?: string | null
+          period_month: number
+          period_year: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          bank_account_id?: string
+          closing_balance?: number
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          opening_balance?: number
+          pdf_path?: string | null
+          period_month?: number
+          period_year?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashflow_statements_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashflow_statements_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashflow_statements_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashflow_statements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashflow_statements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cashflow_transactions: {
+        Row: {
+          attachment_path: string | null
+          branch: string | null
+          category: string | null
+          created_at: string
+          credit: number
+          debit: number
+          description: string
+          effective_period_month: number | null
+          effective_period_year: number | null
+          id: string
+          notes: string | null
+          running_balance: number | null
+          sort_order: number
+          source_destination: string | null
+          statement_id: string
+          transaction_date: string
+          transaction_details: string | null
+          transaction_time: string | null
+        }
+        Insert: {
+          attachment_path?: string | null
+          branch?: string | null
+          category?: string | null
+          created_at?: string
+          credit?: number
+          debit?: number
+          description: string
+          effective_period_month?: number | null
+          effective_period_year?: number | null
+          id?: string
+          notes?: string | null
+          running_balance?: number | null
+          sort_order?: number
+          source_destination?: string | null
+          statement_id: string
+          transaction_date: string
+          transaction_details?: string | null
+          transaction_time?: string | null
+        }
+        Update: {
+          attachment_path?: string | null
+          branch?: string | null
+          category?: string | null
+          created_at?: string
+          credit?: number
+          debit?: number
+          description?: string
+          effective_period_month?: number | null
+          effective_period_year?: number | null
+          id?: string
+          notes?: string | null
+          running_balance?: number | null
+          sort_order?: number
+          source_destination?: string | null
+          statement_id?: string
+          transaction_date?: string
+          transaction_details?: string | null
+          transaction_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashflow_transactions_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_statements"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       celebration_messages: {
         Row: {
@@ -782,7 +655,43 @@ export type Database = {
           kind?: string
           parent_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "celebration_messages_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "celebration_messages_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "celebration_messages_celebrant_id_fkey"
+            columns: ["celebrant_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "celebration_messages_celebrant_id_fkey"
+            columns: ["celebrant_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "celebration_messages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "celebration_messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       employee_locations: {
         Row: {
@@ -800,7 +709,29 @@ export type Database = {
           employee_id?: string
           location_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "employee_locations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_locations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_locations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       extra_work_logs: {
         Row: {
@@ -824,7 +755,22 @@ export type Database = {
           kind?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "extra_work_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_work_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       overtime_requests: {
         Row: {
@@ -869,7 +815,43 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "overtime_requests_attendance_log_id_fkey"
+            columns: ["attendance_log_id"]
+            isOneToOne: true
+            referencedRelation: "attendance_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payslip_deliverables: {
         Row: {
@@ -905,7 +887,15 @@ export type Database = {
           updated_at?: string | null
           weight_pct?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payslip_deliverables_payslip_id_fkey"
+            columns: ["payslip_id"]
+            isOneToOne: false
+            referencedRelation: "payslips"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payslip_settings: {
         Row: {
@@ -980,7 +970,22 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payslip_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payslip_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payslips: {
         Row: {
@@ -1067,7 +1072,382 @@ export type Database = {
           user_id?: string
           year?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payslips_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payslips_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_product_variants: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          price: number
+          product_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          price: number
+          product_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          price?: number
+          product_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_product_variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "pos_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_products: {
+        Row: {
+          active: boolean
+          bank_account_id: string
+          created_at: string
+          id: string
+          name: string
+          price: number
+          sort_order: number
+          stock_aggregate_variants: boolean
+          track_stock: boolean
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          bank_account_id: string
+          created_at?: string
+          id?: string
+          name: string
+          price: number
+          sort_order?: number
+          stock_aggregate_variants?: boolean
+          track_stock?: boolean
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          bank_account_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          price?: number
+          sort_order?: number
+          stock_aggregate_variants?: boolean
+          track_stock?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_products_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_sale_items: {
+        Row: {
+          id: string
+          product_id: string | null
+          product_name: string
+          qty: number
+          sale_id: string
+          subtotal: number
+          unit_price: number
+          variant_id: string | null
+          variant_name: string | null
+        }
+        Insert: {
+          id?: string
+          product_id?: string | null
+          product_name: string
+          qty: number
+          sale_id: string
+          subtotal: number
+          unit_price: number
+          variant_id?: string | null
+          variant_name?: string | null
+        }
+        Update: {
+          id?: string
+          product_id?: string | null
+          product_name?: string
+          qty?: number
+          sale_id?: string
+          subtotal?: number
+          unit_price?: number
+          variant_id?: string | null
+          variant_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_sale_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "pos_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "pos_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sale_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "pos_product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_sales: {
+        Row: {
+          bank_account_id: string
+          cashflow_transaction_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          payment_method: string
+          sale_date: string
+          sale_time: string
+          total: number
+          voided_at: string | null
+        }
+        Insert: {
+          bank_account_id: string
+          cashflow_transaction_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          payment_method: string
+          sale_date: string
+          sale_time?: string
+          total: number
+          voided_at?: string | null
+        }
+        Update: {
+          bank_account_id?: string
+          cashflow_transaction_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          payment_method?: string
+          sale_date?: string
+          sale_time?: string
+          total?: number
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_sales_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_cashflow_transaction_id_fkey"
+            columns: ["cashflow_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_stock_movements: {
+        Row: {
+          bank_account_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          movement_date: string
+          movement_time: string | null
+          notes: string | null
+          product_id: string
+          qty: number
+          type: string
+          variant_id: string | null
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          movement_date: string
+          movement_time?: string | null
+          notes?: string | null
+          product_id: string
+          qty: number
+          type: string
+          variant_id?: string | null
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          movement_date?: string
+          movement_time?: string | null
+          notes?: string | null
+          product_id?: string
+          qty?: number
+          type?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_stock_movements_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "pos_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_stock_movements_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "pos_product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_stock_opname_items: {
+        Row: {
+          expected_count: number
+          id: string
+          opname_id: string
+          physical_count: number
+          product_id: string
+          product_name_snapshot: string
+          unit_price_snapshot: number
+          variant_id: string | null
+          variant_name_snapshot: string | null
+        }
+        Insert: {
+          expected_count: number
+          id?: string
+          opname_id: string
+          physical_count: number
+          product_id: string
+          product_name_snapshot: string
+          unit_price_snapshot: number
+          variant_id?: string | null
+          variant_name_snapshot?: string | null
+        }
+        Update: {
+          expected_count?: number
+          id?: string
+          opname_id?: string
+          physical_count?: number
+          product_id?: string
+          product_name_snapshot?: string
+          unit_price_snapshot?: number
+          variant_id?: string | null
+          variant_name_snapshot?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_stock_opname_items_opname_id_fkey"
+            columns: ["opname_id"]
+            isOneToOne: false
+            referencedRelation: "pos_stock_opnames"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_stock_opname_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "pos_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_stock_opname_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "pos_product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_stock_opnames: {
+        Row: {
+          bank_account_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          opname_date: string
+          opname_time: string | null
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          opname_date: string
+          opname_time?: string | null
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          opname_date?: string
+          opname_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_stock_opnames_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -1228,6 +1608,42 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_templates: {
+        Row: {
+          body: string
+          template_key: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          body: string
+          template_key: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          body?: string
+          template_key?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       profiles_celebrations_public: {
@@ -1238,12 +1654,31 @@ export type Database = {
           id: string | null
           nickname: string | null
         }
+        Insert: {
+          dob_month_day?: never
+          first_day_of_work?: string | null
+          full_name?: string | null
+          id?: string | null
+          nickname?: string | null
+        }
+        Update: {
+          dob_month_day?: never
+          first_day_of_work?: string | null
+          full_name?: string | null
+          id?: string | null
+          nickname?: string | null
+        }
         Relationships: []
       }
     }
     Functions: {
       get_ui_theme: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
+      is_admin_or_assignee: { Args: { account_id: string }; Returns: boolean }
+      is_admin_or_pos_assignee: {
+        Args: { account_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
@@ -1254,25 +1689,150 @@ export type Database = {
   }
 }
 
-export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-export type AttendanceLog =
-  Database["public"]["Tables"]["attendance_logs"]["Row"];
-export type AttendanceSettings =
-  Database["public"]["Tables"]["attendance_settings"]["Row"];
-export type OvertimeRequest =
-  Database["public"]["Tables"]["overtime_requests"]["Row"];
-export type PayslipSettings =
-  Database["public"]["Tables"]["payslip_settings"]["Row"];
-export type Payslip = Database["public"]["Tables"]["payslips"]["Row"];
-export type PayslipDeliverable =
-  Database["public"]["Tables"]["payslip_deliverables"]["Row"];
-export type ExtraWorkLog =
-  Database["public"]["Tables"]["extra_work_logs"]["Row"];
-export type AttendanceLocation =
-  Database["public"]["Tables"]["attendance_locations"]["Row"];
-export type EmployeeLocation =
-  Database["public"]["Tables"]["employee_locations"]["Row"];
-export type WhatsAppNotificationRecipient =
-  Database["public"]["Tables"]["whatsapp_notification_recipients"]["Row"];
-export type CelebrationMessageRow =
-  Database["public"]["Tables"]["celebration_messages"]["Row"];
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
+
+/**
+ * Per-day transparency snapshot stored on payslips.breakdown_json.
+ */
+export type PayslipBreakdown = {
+  overtime_mode: 'hourly_tiered' | 'fixed_per_day';
+  late_penalty_mode: 'per_minutes' | 'per_day' | 'none';
+  grace_period_min: number;
+  overtime_days: Array<{ date: string; minutes: number; pay: number }>;
+  late_days: Array<{ date: string; raw_minutes: number; after_grace_minutes: number; penalty: number; excused: boolean }>;
+  extra_work_days?: Array<{ date: string; kind: string; pay: number }>;
+  extra_work_rate_idr?: number;
+};
+export type Profile = Database['public']['Tables']['profiles']['Row'];
+export type AttendanceLog = Database['public']['Tables']['attendance_logs']['Row'];
+export type AttendanceSettings = Database['public']['Tables']['attendance_settings']['Row'];
+export type OvertimeRequest = Database['public']['Tables']['overtime_requests']['Row'];
+export type PayslipSettings = Database['public']['Tables']['payslip_settings']['Row'];
+export type Payslip = Database['public']['Tables']['payslips']['Row'];
+export type PayslipDeliverable = Database['public']['Tables']['payslip_deliverables']['Row'];
+export type ExtraWorkLog = Database['public']['Tables']['extra_work_logs']['Row'];
+export type AttendanceLocation = Database['public']['Tables']['attendance_locations']['Row'];
+export type EmployeeLocation = Database['public']['Tables']['employee_locations']['Row'];
+export type WhatsAppNotificationRecipient = Database['public']['Tables']['whatsapp_notification_recipients']['Row'];
+export type CelebrationMessageRow = Database['public']['Tables']['celebration_messages']['Row'];

@@ -103,15 +103,24 @@ export function CashflowTable({
   // Free-text search across row fields. Case-insensitive substring
   // match against source/details/notes/description/category/branch.
   const [searchQuery, setSearchQuery] = useState("");
-  // Pagination. Default 50/page keeps DOM light (even 10k rows →
-  // only 50 rendered at a time). Page resets to 1 on filter change.
-  const PAGE_SIZE = 50;
+  // Pagination. Default 50/page keeps DOM light; user bisa naikkan ke
+  // 100/150/200 via dropdown kalau butuh scrolling lebih panjang di
+  // satu page. Page reset ke 1 setiap pageSize atau filter berubah
+  // supaya tidak nyasar ke halaman yang sudah tidak ada.
+  const PAGE_SIZE_OPTIONS = [50, 100, 150, 200] as const;
+  const [pageSize, setPageSize] = useState<number>(50);
+  const PAGE_SIZE = pageSize;
   const [page, setPage] = useState(1);
   // Multi-select for batch category change. Separate from edit mode —
   // admin can select rows from the read-only view and bulk-assign a
   // category without entering the full edit UI.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchCategory, setBatchCategory] = useState<string>("");
+  // Batch branch — sama konsepnya dengan batchCategory: dropdown
+  // terpisah, apply ke semua row terpilih dalam satu call. Penting
+  // untuk workflow "alokasi Pusat" di mana admin label puluhan tx
+  // sekaligus ke Semarang atau Pare.
+  const [batchBranch, setBatchBranch] = useState<string>("");
   // Batch effective-period input — format "YYYY-MM". Empty string means
   // "don't touch"; the sentinel "clear" means "unset the override on
   // every selected row". We render two actions side-by-side (apply
@@ -333,70 +342,88 @@ export function CashflowTable({
   function clearSelection() {
     setSelectedIds(new Set());
     setBatchCategory("");
+    setBatchBranch("");
     setBatchEffPeriod("");
   }
 
-  function handleBatchApplyCategory() {
-    if (selectedIds.size === 0 || !batchCategory) return;
-    const patches = Array.from(selectedIds)
-      // New (unsaved) rows have no DB id yet — skip and let the
-      // normal Save path persist them.
-      .filter((id) => !id.startsWith("new-"))
-      .map((id) => ({ id, category: batchCategory }));
-    if (patches.length === 0) {
-      toast.error("Baris baru belum disimpan — simpan dulu, lalu ulangi.");
-      return;
-    }
-    startTransition(async () => {
-      const res = await updateCashflowTransactions(patches);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(
-        `Kategori "${batchCategory}" diterapkan ke ${patches.length} baris`
-      );
-      clearSelection();
-      router.refresh();
-    });
-  }
-
   /**
-   * Apply `batchEffPeriod` (YYYY-MM) to every selected persisted row.
-   * Passing `null` instead — via the second "clear" button — unsets
-   * the override so PnL bucketing falls back to tx date.
+   * Single apply-all. Hanya field yang ter-set yang di-ikutkan ke
+   * patch. Sentinel `__clear__` pada dropdown kategori/cabang dan
+   * `__clear__` pada batchEffPeriod berarti unset field tersebut
+   * (simpan `null`). Field yang dibiarkan kosong di UI → tidak ikut
+   * patch, value lama tidak berubah.
    */
-  function handleBatchApplyEffPeriod(clear: boolean) {
+  function handleBatchApplyAll() {
     if (selectedIds.size === 0) return;
-    let effective: { year: number; month: number } | null;
-    if (clear) {
-      effective = null;
-    } else {
-      if (!batchEffPeriod) return;
+
+    const patchBase: {
+      category?: string | null;
+      branch?: string | null;
+      effectivePeriod?: { year: number; month: number } | null;
+    } = {};
+
+    // Category
+    if (batchCategory) {
+      patchBase.category = batchCategory === "__clear__" ? null : batchCategory;
+    }
+    // Branch
+    if (batchBranch) {
+      patchBase.branch = batchBranch === "__clear__" ? null : batchBranch;
+    }
+    // Periode efektif
+    if (batchEffPeriod === "__clear__") {
+      patchBase.effectivePeriod = null;
+    } else if (batchEffPeriod) {
       const [y, m] = batchEffPeriod.split("-").map((n) => Number(n));
       if (!(y >= 2000 && y <= 2100) || !(m >= 1 && m <= 12)) {
         toast.error("Periode efektif tidak valid");
         return;
       }
-      effective = { year: y, month: m };
+      patchBase.effectivePeriod = { year: y, month: m };
     }
+
+    const fieldsSet = Object.keys(patchBase).length;
+    if (fieldsSet === 0) {
+      toast.error("Isi minimal 1 setting sebelum Terapkan");
+      return;
+    }
+
     const patches = Array.from(selectedIds)
       .filter((id) => !id.startsWith("new-"))
-      .map((id) => ({ id, effectivePeriod: effective }));
+      .map((id) => ({ id, ...patchBase }));
     if (patches.length === 0) {
       toast.error("Baris baru belum disimpan — simpan dulu, lalu ulangi.");
       return;
     }
+
     startTransition(async () => {
       const res = await updateCashflowTransactions(patches);
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
+      const summary: string[] = [];
+      if ("category" in patchBase) {
+        summary.push(
+          patchBase.category === null
+            ? "kategori kosong"
+            : `kategori ${patchBase.category}`
+        );
+      }
+      if ("branch" in patchBase) {
+        summary.push(
+          patchBase.branch === null ? "cabang kosong" : `cabang ${patchBase.branch}`
+        );
+      }
+      if ("effectivePeriod" in patchBase) {
+        summary.push(
+          patchBase.effectivePeriod === null
+            ? "periode efektif kosong"
+            : `periode ${batchEffPeriod}`
+        );
+      }
       toast.success(
-        clear
-          ? `Periode efektif dikosongkan untuk ${patches.length} baris`
-          : `Periode efektif diset ke ${batchEffPeriod} untuk ${patches.length} baris`
+        `${summary.join(" + ")} diterapkan ke ${patches.length} baris`
       );
       clearSelection();
       router.refresh();
@@ -643,65 +670,90 @@ export function CashflowTable({
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-primary/10 flex-wrap">
-          <CheckSquare size={14} className="text-primary" />
-          <span className="text-xs font-semibold text-foreground">
-            {selectedIds.size} baris dipilih
-          </span>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-2">
-            Terapkan kategori:
+        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border bg-primary/10 flex-wrap text-xs">
+          <CheckSquare size={12} className="text-primary shrink-0" />
+          <span className="font-semibold text-foreground whitespace-nowrap">
+            {selectedIds.size} baris
           </span>
           <select
             value={batchCategory}
             onChange={(e) => setBatchCategory(e.target.value)}
             disabled={pending}
-            className={EDIT_SELECT_CLS + " h-7 text-foreground min-w-[180px]"}
+            className={EDIT_SELECT_CLS + " h-7 text-foreground min-w-[150px]"}
+            aria-label="Kategori batch"
           >
-            <option value="">— pilih kategori —</option>
+            <option value="">Kategori…</option>
             {allCategoryOptions.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
+            <option value="__clear__">— kosongkan —</option>
           </select>
+          {categoryPresets.branches.length > 0 && (
+            <select
+              value={batchBranch}
+              onChange={(e) => setBatchBranch(e.target.value)}
+              disabled={pending}
+              className={EDIT_SELECT_CLS + " h-7 text-foreground min-w-[120px]"}
+              aria-label="Cabang batch"
+            >
+              <option value="">Cabang…</option>
+              {categoryPresets.branches.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+              <option value="__clear__">— kosongkan —</option>
+            </select>
+          )}
+          {batchEffPeriod === "__clear__" ? (
+            <span
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-border bg-background text-muted-foreground"
+              title="Periode efektif akan dikosongkan saat Terapkan"
+            >
+              Periode: —
+              <button
+                type="button"
+                onClick={() => setBatchEffPeriod("")}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Batal kosongkan periode"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ) : (
+            <>
+              <input
+                type="month"
+                value={batchEffPeriod}
+                onChange={(e) => setBatchEffPeriod(e.target.value)}
+                disabled={pending}
+                className={EDIT_SELECT_CLS + " h-7 text-foreground w-[130px]"}
+                aria-label="Periode efektif batch"
+                placeholder="Periode…"
+              />
+              <button
+                type="button"
+                onClick={() => setBatchEffPeriod("__clear__")}
+                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                title="Kosongkan periode efektif di semua baris terpilih"
+              >
+                kosongkan
+              </button>
+            </>
+          )}
           <Button
             type="button"
             size="sm"
-            onClick={handleBatchApplyCategory}
-            disabled={pending || !batchCategory}
-            className="gap-1.5 h-7"
+            onClick={handleBatchApplyAll}
+            disabled={
+              pending ||
+              (!batchCategory && !batchBranch && !batchEffPeriod)
+            }
+            className="gap-1.5 h-7 ml-1"
           >
             {pending ? "Menerapkan…" : "Terapkan"}
-          </Button>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-2 border-l border-border pl-2">
-            Periode efektif:
-          </span>
-          <input
-            type="month"
-            value={batchEffPeriod}
-            onChange={(e) => setBatchEffPeriod(e.target.value)}
-            disabled={pending}
-            className={EDIT_SELECT_CLS + " h-7 text-foreground w-[140px]"}
-          />
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => handleBatchApplyEffPeriod(false)}
-            disabled={pending || !batchEffPeriod}
-            className="gap-1.5 h-7"
-          >
-            {pending ? "Menerapkan…" : "Terapkan periode"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => handleBatchApplyEffPeriod(true)}
-            disabled={pending}
-            className="gap-1.5 h-7"
-            title="Kosongkan periode efektif di semua baris terpilih (kembali ke bulan tanggal transaksi)"
-          >
-            Kosongkan
           </Button>
           <Button
             type="button"
@@ -709,19 +761,21 @@ export function CashflowTable({
             variant="ghost"
             onClick={clearSelection}
             disabled={pending}
-            className="gap-1.5 h-7"
+            className="gap-1 h-7 ml-auto"
+            title="Batalkan pilihan"
           >
             <X size={12} />
-            Batalkan pilihan
           </Button>
         </div>
       )}
 
       {hasRows && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60 bg-muted/20 flex-wrap">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60 bg-muted/20 overflow-x-auto whitespace-nowrap">
           {/* Keyword search — cari di sumber/tujuan, detail, catatan,
-              kategori, cabang, tanggal. Case-insensitive substring. */}
-          <div className="relative flex-1 min-w-[200px] max-w-[360px]">
+              kategori, cabang, tanggal. Case-insensitive substring.
+              Fixed width supaya filter chips tetap sejajar horizontal
+              tanpa wrap ke baris baru. */}
+          <div className="relative shrink-0 w-[220px]">
             <Search
               size={12}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
@@ -744,7 +798,7 @@ export function CashflowTable({
               </button>
             )}
           </div>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
             Filter:
           </span>
           <FilterChip
@@ -800,6 +854,11 @@ export function CashflowTable({
           start={pageStart}
           end={Math.min(pageEnd, visibleRows.length)}
           onChange={setPage}
+          onPageSizeChange={(n) => {
+            setPageSize(n);
+            setPage(1);
+          }}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
           position="top"
         />
         <div className="overflow-x-auto">
@@ -1212,6 +1271,11 @@ export function CashflowTable({
           start={pageStart}
           end={Math.min(pageEnd, visibleRows.length)}
           onChange={setPage}
+          onPageSizeChange={(n) => {
+            setPageSize(n);
+            setPage(1);
+          }}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
           position="bottom"
         />
         </>
@@ -1245,6 +1309,8 @@ function PaginationBar({
   start,
   end,
   onChange,
+  onPageSizeChange,
+  pageSizeOptions,
   position,
 }: {
   page: number;
@@ -1254,10 +1320,15 @@ function PaginationBar({
   start: number;
   end: number;
   onChange: (next: number) => void;
+  onPageSizeChange?: (next: number) => void;
+  pageSizeOptions?: readonly number[];
   position: "top" | "bottom";
 }) {
-  // Hide pagination entirely when everything fits on a single page.
-  if (total <= pageSize) return null;
+  // Kalau pageSize tidak bisa diubah (opsi tidak disuplai) DAN
+  // semua row muat di satu page, sembunyikan paginator penuh. Tapi
+  // selalu tampilkan kalau ada selector — user mungkin mau ganti
+  // ukuran meski saat ini satu halaman saja.
+  if (total <= pageSize && !pageSizeOptions) return null;
   const borderCls =
     position === "top"
       ? "border-b border-border/60"
@@ -1269,17 +1340,36 @@ function PaginationBar({
         borderCls
       )}
     >
-      <span className="text-muted-foreground">
-        Menampilkan{" "}
-        <strong className="text-foreground tabular-nums">
-          {start + 1}
-          {"–"}
-          {end}
-        </strong>{" "}
-        dari{" "}
-        <strong className="text-foreground tabular-nums">{total}</strong>{" "}
-        transaksi
-      </span>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-muted-foreground">
+          Menampilkan{" "}
+          <strong className="text-foreground tabular-nums">
+            {start + 1}
+            {"–"}
+            {end}
+          </strong>{" "}
+          dari{" "}
+          <strong className="text-foreground tabular-nums">{total}</strong>{" "}
+          transaksi
+        </span>
+        {pageSizeOptions && onPageSizeChange ? (
+          <label className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <span>Tampilkan</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="h-7 rounded-md border border-input bg-background px-1.5 text-foreground font-mono tabular-nums"
+            >
+              {pageSizeOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+            <span>per halaman</span>
+          </label>
+        ) : null}
+      </div>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
@@ -1337,7 +1427,7 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition border",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition border shrink-0",
         active
           ? "bg-primary text-primary-foreground border-primary"
           : "bg-background text-foreground border-border hover:border-primary/50"

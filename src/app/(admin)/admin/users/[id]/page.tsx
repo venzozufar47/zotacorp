@@ -12,6 +12,7 @@ import {
   listLocations,
   getEmployeeLocationIds,
 } from "@/lib/actions/location.actions";
+import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import type { Profile } from "@/lib/supabase/types";
 
 export default async function AdminEditUserPage({
@@ -38,9 +39,10 @@ export default async function AdminEditUserPage({
 
   // Locations data is fetched in parallel with the profile so the page
   // doesn't add a noticeable round-trip when assignment is the new section.
-  const [{ data: allLocations }, assignedIds] = await Promise.all([
+  const [{ data: allLocations }, assignedIds, businessUnits] = await Promise.all([
     listLocations(),
     getEmployeeLocationIds(id),
+    listBusinessUnits(),
   ]);
 
   return (
@@ -56,7 +58,11 @@ export default async function AdminEditUserPage({
         title={`Edit ${profile.full_name || profile.email}`}
         subtitle={profile.email}
       />
-      <ProfileForm profile={profile as Profile} targetId={id} />
+      <ProfileForm
+        profile={profile as Profile}
+        targetId={id}
+        businessUnits={businessUnits}
+      />
       <EmployeeLocationAssignment
         employeeId={id}
         allLocations={(allLocations ?? []).map((l) => ({ id: l.id, name: l.name }))}
