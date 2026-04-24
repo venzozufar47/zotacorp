@@ -75,6 +75,7 @@ export interface PusatTxDetail {
 export const PUSAT_DETAIL_CATEGORIES = new Set([
   "Other Revenue",
   "Salaries & Wages",
+  "Advertising",
 ]);
 
 export interface PusatBreakdownRow {
