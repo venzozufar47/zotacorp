@@ -52,10 +52,31 @@ export default async function PnLPage({
       ? params.bu
       : "Haengbocake";
 
-  // Default range: trailing 12 months ending this calendar month.
+  // Default range: dari bulan paling awal ada data di BU sampai bulan
+  // kalender sekarang. Kalau belum ada transaksi sama sekali, fallback
+  // trailing-12 supaya picker tetap punya nilai valid.
+  const supabase = await createClient();
   const now = new Date();
   const defaultTo = { year: now.getFullYear(), month: now.getMonth() + 1 };
-  const defaultFrom = (() => {
+  const defaultFrom = await (async () => {
+    const { data: earliest } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "transaction_date, cashflow_statements!inner(bank_accounts!inner(business_unit))"
+      )
+      .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
+      .order("transaction_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (earliest?.transaction_date) {
+      const [y, m] = earliest.transaction_date.split("-");
+      const year = Number(y);
+      const month = Number(m);
+      if (Number.isFinite(year) && Number.isFinite(month)) {
+        return { year, month };
+      }
+    }
+    // Fallback: trailing 12 months.
     let y = defaultTo.year;
     let m = defaultTo.month - 11;
     while (m < 1) {
@@ -66,8 +87,6 @@ export default async function PnLPage({
   })();
   const from = parseYM(params.from) ?? defaultFrom;
   const to = parseYM(params.to) ?? defaultTo;
-
-  const supabase = await createClient();
   const report = await fetchPnL(supabase, businessUnit, from, to);
   const presets = getCategoryPresets(businessUnit);
   const nonOp = getNonOperatingCategories(businessUnit);

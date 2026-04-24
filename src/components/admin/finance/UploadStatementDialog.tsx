@@ -54,6 +54,12 @@ interface PreviewTx {
   runningBalance?: number | null;
   category?: string | null;
   branch?: string | null;
+  /**
+   * True kalau tx ini sudah ada di DB (dedup hit). Tetap ditampilkan
+   * di tabel preview supaya verifikasi saldo match dengan apa yang
+   * user lihat; saat commit, row duplicate di-skip.
+   */
+  duplicate?: boolean;
 }
 
 interface PreviewVerification {
@@ -76,6 +82,14 @@ interface PreviewResult {
   transactions: PreviewTx[];
   warnings: string[];
   verification: PreviewVerification;
+}
+
+/** Kata benda file sesuai bank: Mandiri = Excel, Jago = CSV, lainnya
+ *  = PDF. Dipakai di label progress bar + tombol. */
+function fileNounFor(bank: BankCode | null | undefined): string {
+  if (bank === "mandiri") return "Excel";
+  if (bank === "jago") return "CSV";
+  return "PDF";
 }
 
 /** Upload preview shows raw amounts that may carry fractional parts;
@@ -195,7 +209,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
   async function handlePreview() {
     if (!account) return;
     if (!file) {
-      toast.error("Pilih file PDF dulu sebelum Preview");
+      toast.error("Pilih file dulu sebelum Preview");
       return;
     }
     if (file.size === 0) {
@@ -243,7 +257,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
         toast.error(
           body.wrongPassword
             ? "Password salah. Coba lagi."
-            : "PDF ini diproteksi password. Masukkan password lalu klik Preview lagi."
+            : "File ini diproteksi password. Masukkan password lalu klik Preview lagi."
         );
         setParsing(false);
         setStage("idle");
@@ -298,9 +312,11 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
           periodYear: preview.periodYear,
           openingBalance: preview.openingBalance,
           closingBalance: preview.closingBalance,
-          // Preview transactions already include any inline overrides
-          // the admin made to Kategori / Cabang dropdowns — they ride
-          // through to the DB insert.
+          // Kirim SEMUA tx (termasuk yang flagged duplicate) supaya
+          // verifikasi saldo server-side dapat ALL rows — kalau hanya
+          // yang non-dup, net-effect dupes hilang dari reconciliation
+          // dan checksum gagal. Server-side dedupe yang sudah ada
+          // tetap filter dupes sebelum insert.
           transactions: preview.transactions,
         }),
       });
@@ -397,8 +413,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
               <UploadProgress
                 stage={stage}
                 uploadPct={uploadPct}
-                usesAi={isJago}
-                isXlsx={isMandiri}
+                bank={account?.bank ?? null}
               />
             )}
           </>
@@ -471,11 +486,11 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
                 disabled={!file || parsing}
               >
                 {stage === "uploading"
-                  ? `Mengupload ${isMandiri ? "Excel" : "PDF"}… ${uploadPct}%`
+                  ? `Mengupload ${fileNounFor(account?.bank)}… ${uploadPct}%`
                   : stage === "parsing"
-                  ? `Memparse ${isMandiri ? "Excel" : "PDF"}…`
+                  ? `Memparse ${fileNounFor(account?.bank)}…`
                   : !file
-                  ? "Pilih PDF dulu"
+                  ? `Pilih ${fileNounFor(account?.bank)} dulu`
                   : "Preview"}
               </Button>
             </>
@@ -525,16 +540,23 @@ function FormStep(props: FormStepProps) {
     isJago, isMandiri,
     savedPassword, editPassword, setEditPassword,
   } = props;
-  // Mandiri ships e-Statements as password-protected .xlsx, every
-  // other bank we support ships PDF. Accept + labels switch based on
-  // the account's bank.
-  const isXlsx = isMandiri;
-  const fileLabel = isXlsx ? "File Excel (.xlsx)" : "File PDF";
-  const fileAccept = isXlsx
+  // Per-bank format + password behaviour:
+  //   Mandiri → e-Statement Excel, selalu password-protected.
+  //   Jago    → CSV export dari app (plain, tidak perlu password).
+  //   Lainnya → PDF rekening koran.
+  const fileLabel = isMandiri
+    ? "File Excel (.xlsx)"
+    : isJago
+    ? "File CSV (.csv)"
+    : "File PDF";
+  const fileAccept = isMandiri
     ? ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+    : isJago
+    ? ".csv,text/csv,text/plain"
     : "application/pdf";
-  const passwordLabel = isXlsx ? "Password Excel" : "Password PDF";
-  const passwordHint = isXlsx
+  const showPasswordField = !isJago;
+  const passwordLabel = isMandiri ? "Password Excel" : "Password PDF";
+  const passwordHint = isMandiri
     ? "E-Statement Mandiri selalu password-protected. Ketik passwordnya di sini — akan tersimpan otomatis setelah parse sukses."
     : "Password disimpan per rekening setelah parse sukses — tidak perlu diketik ulang di upload berikutnya.";
 
@@ -575,6 +597,7 @@ function FormStep(props: FormStepProps) {
         </p>
       </div>
 
+      {showPasswordField && (
       <div className="space-y-1.5">
         <Label htmlFor="pdf-password" className="flex items-center gap-1.5">
           <Lock size={12} />
@@ -624,7 +647,7 @@ function FormStep(props: FormStepProps) {
                 placeholder={
                   savedPassword
                     ? "Ketik password baru"
-                    : "Kosongkan kalau PDF tidak diproteksi"
+                    : "Kosongkan kalau file tidak diproteksi"
                 }
                 autoComplete="off"
                 className={
@@ -660,6 +683,7 @@ function FormStep(props: FormStepProps) {
           {passwordHint}
         </p>
       </div>
+      )}
 
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
@@ -673,8 +697,8 @@ function FormStep(props: FormStepProps) {
         </label>
         {isJago && (
           <p className="text-[11px] text-muted-foreground leading-snug pl-6">
-            Rekening koran Bank Jago berisi seluruh history sejak rekening
-            dibuka. Centang ini untuk ambil periode tertentu saja.
+            File CSV export dari app Jago berisi seluruh history sejak
+            rekening dibuka. Centang ini untuk ambil periode tertentu saja.
           </p>
         )}
         {useRange && (
@@ -798,9 +822,27 @@ function PreviewStep({
               </thead>
               <tbody>
                 {preview.transactions.map((t, idx) => (
-                  <tr key={idx} className="align-top">
+                  <tr
+                    key={idx}
+                    className={
+                      "align-top " +
+                      (t.duplicate ? "bg-muted/40 opacity-70" : "")
+                    }
+                    title={
+                      t.duplicate
+                        ? "Duplikat — sudah ada di DB, tidak akan ditambah lagi saat commit"
+                        : undefined
+                    }
+                  >
                     <td className="px-3 py-2 text-foreground whitespace-nowrap font-mono tabular-nums border-t border-border/60">
-                      <div>{t.date}</div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span>{t.date}</span>
+                        {t.duplicate && (
+                          <span className="text-[9px] font-sans font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                            Dup
+                          </span>
+                        )}
+                      </div>
                       {t.time && (
                         <div className="text-muted-foreground text-[10px]">
                           {t.time}
@@ -844,19 +886,31 @@ function PreviewStep({
                         : "—"}
                     </td>
                     <td className="px-3 py-2 border-t border-border/60">
-                      <CategoryCell
-                        tx={t}
-                        presets={presets}
-                        onChange={(v) => onPatchRow(idx, { category: v })}
-                      />
+                      {t.duplicate ? (
+                        <span className="text-[10px] text-muted-foreground italic">
+                          (sudah di DB)
+                        </span>
+                      ) : (
+                        <CategoryCell
+                          tx={t}
+                          presets={presets}
+                          onChange={(v) => onPatchRow(idx, { category: v })}
+                        />
+                      )}
                     </td>
                     {presets.branches.length > 0 && (
                       <td className="px-3 py-2 border-t border-border/60">
-                        <BranchCell
-                          value={t.branch ?? null}
-                          branches={presets.branches}
-                          onChange={(v) => onPatchRow(idx, { branch: v })}
-                        />
+                        {t.duplicate ? (
+                          <span className="text-[10px] text-muted-foreground italic">
+                            —
+                          </span>
+                        ) : (
+                          <BranchCell
+                            value={t.branch ?? null}
+                            branches={presets.branches}
+                            onChange={(v) => onPatchRow(idx, { branch: v })}
+                          />
+                        )}
                       </td>
                     )}
                   </tr>
@@ -896,7 +950,7 @@ function ReconciliationPanel({ preview }: { preview: PreviewResult }) {
           Tidak bisa verifikasi saldo
         </p>
         <p className="text-xs text-foreground leading-snug">
-          Saldo awal dan/atau saldo akhir tidak terbaca dari PDF. Tanpa
+          Saldo awal dan/atau saldo akhir tidak terbaca dari file. Tanpa
           dua angka ini, sistem tidak bisa memastikan semua transaksi
           tercatat dengan benar. Konfirmasi & simpan di-nonaktifkan
           sampai nilainya bisa terbaca atau kamu pakai Input manual.
@@ -940,7 +994,7 @@ function ReconciliationPanel({ preview }: { preview: PreviewResult }) {
           strong
         />
         <BalRow
-          label="Saldo akhir PDF"
+          label="Saldo akhir file"
           value={preview.closingBalance}
           tone={v.match ? "success" : "destructive"}
           strong
@@ -1072,33 +1126,26 @@ function BranchCell({
 /**
  * Two-stage progress UI during preview:
  *   1. "uploading" — real byte progress from XHR.upload.onprogress
- *   2. "parsing"   — indeterminate animated bar (AI call is opaque)
+ *   2. "parsing"   — indeterminate animated bar (server parse is fast,
+ *      tidak ada progress signal — UX theater yang jujur).
  * Shown only while `stage` is not idle.
  */
 function UploadProgress({
   stage,
   uploadPct,
-  usesAi,
-  isXlsx,
+  bank,
 }: {
   stage: "uploading" | "parsing";
   uploadPct: number;
-  /** True for banks whose parse step calls Gemini (Jago). */
-  usesAi: boolean;
-  /** True for .xlsx uploads (Mandiri). Shifts copy from "PDF" → "Excel". */
-  isXlsx: boolean;
+  bank: BankCode | null;
 }) {
   const isUploading = stage === "uploading";
-  const fileNoun = isXlsx ? "Excel" : "PDF";
+  const fileNoun = fileNounFor(bank);
   const label = isUploading
     ? `Mengupload ${fileNoun}… ${uploadPct}%`
-    : usesAi
-    ? `Memparse ${fileNoun} dengan AI — biasanya 10–30 detik…`
     : `Memparse ${fileNoun}…`;
   const sublabel = isUploading
     ? "Jangan tutup dialog. File sedang dikirim ke server."
-    : usesAi
-    ? "Model membaca setiap halaman dan mengekstrak transaksi."
     : "Server sedang mengekstrak transaksi dari file.";
   return (
     <div className="rounded-xl border border-border bg-accent/30 p-3 space-y-2">

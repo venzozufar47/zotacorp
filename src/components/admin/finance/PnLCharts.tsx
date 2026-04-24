@@ -74,15 +74,14 @@ export function PnLCharts({ report }: Props) {
     month: `${MONTH_NAMES[m.month - 1]} ${String(m.year).slice(-2)}`,
     semarangProfit: m.byBranch.Semarang.operatingProfit,
     pareProfit: m.byBranch.Pare.operatingProfit,
-    semarangNetDiv: m.byBranch.Semarang.netDividen,
-    pareNetDiv: m.byBranch.Pare.netDividen,
+    companyNetDiv: m.companyNetDividen,
   }));
 
   // Compute symmetric y-domain padding so the zero-line sits mid-chart
   // when values straddle it — the positive/negative shaded bands then
   // read as equal visual weight.
   const allProfit = data.flatMap((d) => [d.semarangProfit, d.pareProfit]);
-  const allNetDiv = data.flatMap((d) => [d.semarangNetDiv, d.pareNetDiv]);
+  const allNetDiv = data.map((d) => d.companyNetDiv);
   const profitDomain = computeDomain(allProfit);
   const netDivDomain = computeDomain(allNetDiv);
 
@@ -174,7 +173,7 @@ export function PnLCharts({ report }: Props) {
             Net Dividen (Profit Owner)
           </p>
           <p className="text-sm font-semibold text-foreground">
-            per bulan × cabang
+            company-wide per bulan
           </p>
         </div>
         <div className="h-[260px]">
@@ -221,24 +220,14 @@ export function PnLCharts({ report }: Props) {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              {/* Stroke colors chosen to avoid green/red so they're
-                  not confused with the profit/loss zone shading.
-                  Teal (primary) + amber read as two distinct branches
-                  at a glance without either reading as "good/bad". */}
+              {/* Satu garis saja: Investment/Dividend dihitung
+                  company-wide dan tidak dipecah per-cabang. */}
               <Line
                 type="monotone"
-                dataKey="semarangNetDiv"
-                name="Semarang"
+                dataKey="companyNetDiv"
+                name="Net Dividen"
                 stroke="var(--primary)"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="pareNetDiv"
-                name="Pare"
-                stroke="#c2410c"
-                strokeWidth={2}
+                strokeWidth={2.5}
                 dot={{ r: 3 }}
               />
             </LineChart>

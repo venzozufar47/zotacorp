@@ -7,6 +7,7 @@ import type { PnLReport } from "@/lib/cashflow/pnl";
 import { PusatAllocationEditor } from "./PusatAllocationEditor";
 import { PnLTable } from "./PnLTable";
 import { PnLCharts } from "./PnLCharts";
+import { PnLSankey } from "./PnLSankey";
 
 interface Props {
   businessUnit: string;
@@ -165,6 +166,10 @@ export function PnLClient({
           </ul>
         </div>
       )}
+
+      {/* Sankey income statement — summary satu pandangan
+          (revenue → gross → op → net dividen / retained). */}
+      <PnLSankey report={report} />
 
       {/* Charts */}
       <PnLCharts report={report} />

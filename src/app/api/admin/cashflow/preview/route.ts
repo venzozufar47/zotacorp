@@ -26,7 +26,6 @@ import { validateZeroSum, verifyBalance } from "@/lib/cashflow/parsers/shared";
 import {
   applyCategorization,
   fetchHistoricalMap,
-  fetchReferenceExamples,
   fetchRules,
   presetsFor,
 } from "@/lib/cashflow/categorize";
@@ -76,7 +75,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bankAccountId wajib" }, { status: 400 });
   }
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "File PDF tidak ditemukan" }, { status: 400 });
+    return NextResponse.json({ error: "File tidak ditemukan" }, { status: 400 });
   }
   if (file.size > MAX_PDF_BYTES) {
     return NextResponse.json(
@@ -96,27 +95,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Rekening tidak ditemukan" }, { status: 404 });
   }
 
-  // File-format validation is bank-aware: Mandiri e-Statements ship as
-  // password-protected .xlsx, not PDF; every other bank we support
-  // today expects a PDF. This gates before parsing so the admin gets
-  // a clear error instead of a cryptic parser failure.
+  // File-format validation per-bank. Mandiri + Jago sekarang keduanya
+  // pakai Excel (.xlsx) — Mandiri dari e-Statement, Jago dari export
+  // app. Bank lain yang belum didukung akan gagal di dispatcher.
   const lowerName = file.name.toLowerCase();
-  if (bankAccount.bank === "mandiri") {
-    const looksXlsx =
-      lowerName.endsWith(".xlsx") ||
-      lowerName.endsWith(".xls") ||
-      file.type.includes("sheet") ||
-      file.type.includes("excel");
-    if (!looksXlsx) {
-      return NextResponse.json(
-        { error: "Untuk rekening Mandiri, unggah file Excel (.xlsx) e-Statement" },
-        { status: 400 }
-      );
-    }
-  } else {
-    if (!file.type.includes("pdf") && !lowerName.endsWith(".pdf")) {
-      return NextResponse.json({ error: "Format file harus PDF" }, { status: 400 });
-    }
+  const looksXlsx =
+    lowerName.endsWith(".xlsx") ||
+    lowerName.endsWith(".xls") ||
+    file.type.includes("sheet") ||
+    file.type.includes("excel");
+  if (bankAccount.bank === "mandiri" && !looksXlsx) {
+    return NextResponse.json(
+      { error: "Untuk rekening Mandiri, unggah file Excel (.xlsx) e-Statement" },
+      { status: 400 }
+    );
+  }
+  const looksCsv =
+    lowerName.endsWith(".csv") ||
+    file.type.includes("csv") ||
+    file.type === "text/plain";
+  if (bankAccount.bank === "jago" && !looksCsv && !looksXlsx) {
+    return NextResponse.json(
+      { error: "Untuk rekening Bank Jago, unggah file CSV hasil export dari app Jago (.csv)" },
+      { status: 400 }
+    );
   }
 
   // If admin didn't type a password this upload but the rekening has
@@ -127,21 +129,12 @@ export async function POST(req: Request) {
 
   const buffer = new Uint8Array(await file.arrayBuffer());
 
-  // Gather few-shot reference examples from this rekening's existing
-  // rows so Gemini can mimic the formatting conventions already in
-  // use (counterparty naming, label wording, notes style). Fires once
-  // per upload — ~30 rows max, minimal input-token cost.
-  const referenceExamples = await fetchReferenceExamples(
-    supabase,
-    bankAccountId
-  );
-
   let parsed;
   try {
     parsed = await parseRekeningKoran(
       bankAccount.bank as BankCode,
       buffer,
-      { password: effectivePassword, referenceExamples }
+      { password: effectivePassword }
     );
   } catch (err) {
     if (err instanceof PdfPasswordRequiredError) {
@@ -157,7 +150,7 @@ export async function POST(req: Request) {
     console.error("[cashflow/preview] parse failed", err);
     const detail = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: `Gagal membaca PDF: ${detail}` },
+      { error: `Gagal membaca file: ${detail}` },
       { status: 422 }
     );
   }
@@ -256,10 +249,15 @@ export async function POST(req: Request) {
     )
   );
 
-  const newTransactions = parsed.transactions.filter(
-    (t) => !existingKeys.has(makeDedupeKey(t))
+  // Dedupe flags: tandai tiap tx yang sudah ada di DB, TAPI tetap
+  // render semuanya di preview table — supaya sum di panel verifikasi
+  // (pakai SEMUA tx) konsisten dengan angka yang user lihat di row
+  // table. Commit endpoint filter ulang berdasarkan flag `duplicate`.
+  const dupFlags = parsed.transactions.map((t) =>
+    existingKeys.has(makeDedupeKey(t))
   );
-  const skippedCount = parsed.transactions.length - newTransactions.length;
+  const newTransactions = parsed.transactions.filter((_, i) => !dupFlags[i]);
+  const skippedCount = dupFlags.filter(Boolean).length;
 
   // Auto-categorize + auto-branch using admin-owned rule engine +
   // historical exact-match. Rules are scoped per bank account (each
@@ -278,7 +276,27 @@ export async function POST(req: Request) {
     historical,
     presets
   );
-  const categorizedTransactions = categorized.transactions;
+  // Merge back preserving original chronological order: duplicates
+  // passthrough tanpa categorization, non-dup ambil versi yang sudah
+  // categorized. Output: SEMUA tx (dup + new) dengan flag `duplicate`.
+  type MergedTx = (typeof parsed.transactions)[number] & {
+    duplicate: boolean;
+  };
+  const mergedTransactions: MergedTx[] = [];
+  {
+    let newPtr = 0;
+    for (let i = 0; i < parsed.transactions.length; i++) {
+      if (dupFlags[i]) {
+        mergedTransactions.push({ ...parsed.transactions[i], duplicate: true });
+      } else {
+        mergedTransactions.push({
+          ...categorized.transactions[newPtr],
+          duplicate: false,
+        });
+        newPtr++;
+      }
+    }
+  }
 
   // End-to-end balance verification — runs against ALL parsed
   // transactions in the filtered range (not just the deduped `new`
@@ -307,7 +325,7 @@ export async function POST(req: Request) {
     // Full transaction list — admin reviews this, then sends it to the
     // commit endpoint if they approve. Category/branch pre-filled from
     // rules + historical when applicable; admin can override inline.
-    transactions: categorizedTransactions,
+    transactions: mergedTransactions,
     warnings: [
       ...parsed.warnings,
       ...(categorized.summary.ruleMatched > 0 ||

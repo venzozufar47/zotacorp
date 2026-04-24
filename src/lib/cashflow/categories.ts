@@ -96,6 +96,24 @@ export function getNonOperatingCategories(bu: string): readonly string[] {
 }
 
 /**
+ * Kategori non-operasional yang dianggap terpusat — tidak di-alokasi
+ * per-cabang karena secara bisnis memang milik owner di level
+ * perusahaan (bukan kinerja cabang). Net Dividen dihitung company-wide
+ * dari kategori-kategori ini; cabang tidak punya kolom Net Dividen
+ * sendiri. Branch tagging yang sempat tersimpan pada transaksi
+ * Investment/Dividend (legacy) di-ignore saat agregasi.
+ */
+export const COMPANY_CENTRALIZED_CATEGORIES = new Set([
+  "Investment",
+  "Dividend",
+]);
+
+export function isCompanyCentralized(category: string | null): boolean {
+  if (!category) return false;
+  return COMPANY_CENTRALIZED_CATEGORIES.has(category);
+}
+
+/**
  * Map cash-rekening category labels to the unified PnL vocabulary
  * used by bank rekening. Cash ledger uses register-level labels
  * (Haengbo Cust, Slice Haengbo, Diambil mas Venzo, …) while bank

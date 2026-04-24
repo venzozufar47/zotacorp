@@ -21,9 +21,34 @@ export interface DedupeKeyable {
   runningBalance?: number | null;
 }
 
+/**
+ * Peta confusable letter Yunani/Cyrillic → Latin. Sebelumnya data
+ * Jago di-parse pakai Gemini yang kadang hallucinate glyph
+ * bentuk-mirip (Β Ν Ι Α Ρ Τ — Greek uppercase mirip B N I A P T).
+ * Agar row yang sudah-di-DB tetap dedupe terhadap re-upload CSV
+ * native, kita fold semua lookalike ke bentuk Latin sebelum jadi key.
+ */
+const CONFUSABLES: Record<string, string> = {
+  // Greek uppercase → Latin
+  Α: "A", Β: "B", Ε: "E", Ζ: "Z", Η: "H", Ι: "I",
+  Κ: "K", Μ: "M", Ν: "N", Ο: "O", Ρ: "P", Τ: "T",
+  Υ: "Y", Χ: "X",
+  // Cyrillic uppercase → Latin
+  А: "A", В: "B", Е: "E", К: "K", М: "M", Н: "H",
+  О: "O", Р: "P", С: "C", Т: "T", Х: "X",
+};
+
+function foldConfusables(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    out += CONFUSABLES[ch] ?? ch;
+  }
+  return out;
+}
+
 export function makeDedupeKey(t: DedupeKeyable): string {
   const date = t.transaction_date ?? t.date ?? "";
-  const desc = t.description.trim().toLowerCase();
+  const desc = foldConfusables(t.description).trim().toLowerCase();
   const rb = t.running_balance ?? t.runningBalance ?? "";
   return `${date}|${desc}|${t.debit}|${t.credit}|${rb}`;
 }

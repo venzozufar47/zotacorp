@@ -20,16 +20,35 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
-import { getNonOperatingCategories, normalizePnLCategory } from "./categories";
+import {
+  getNonOperatingCategories,
+  isCompanyCentralized,
+  normalizePnLCategory,
+} from "./categories";
 
 export type PnLSide = "credit" | "debit";
 export type PnLCategoryClass = "operating" | "nonop";
+
+export interface CategoryTxDetail {
+  date: string;
+  description: string;
+  /** Positive = credit (masuk). Negative = debit (keluar). */
+  amount: number;
+}
 
 export interface BranchCategoryBreakdown {
   category: string;
   credit: number;
   debit: number;
   kind: PnLCategoryClass;
+  /**
+   * Per-transaction breakdown for admin drill-down. Covers transaksi
+   * yang tagged langsung ke branch. Pusat-allocated portions yang
+   * di-split ke branch TIDAK muncul di sini (mereka agregat per
+   * kategori, bukan tx individual) — agregat tersebut tetap tercermin
+   * di `credit`/`debit`.
+   */
+  details?: CategoryTxDetail[];
 }
 
 export interface BranchPnL {
@@ -38,33 +57,8 @@ export interface BranchPnL {
   operatingProfit: number;
   nonOpRevenue: number;
   nonOpExpense: number;
-  /**
-   * Net dividend from the owner's perspective — this IS the owner's
-   * profit line. Money leaving the business as dividend/payouts
-   * (debit) counts positive; money the owner puts in (Investment,
-   * credit) counts negative. Wealth Transfer is excluded because it's
-   * just a reshuffle between owned accounts — not a real dividend.
-   *
-   * Note: "Operating Profit" (revenue − expense) is the BUSINESS's
-   * performance, not the owner's profit. Dividend is how that
-   * business profit is distributed to the owner. Don't combine them
-   * into a single "total" — they're two separate views.
-   */
-  netDividen: number;
   byCategory: BranchCategoryBreakdown[];
 }
-
-/**
- * Non-operating categories excluded from Net Dividen (treated as
- * neutral wash). Wealth Transfer = reshuffle between owned accounts.
- * Pinjaman / Pinjaman Mamaya = borrow/repay cash, not owner profit
- * or capital injection.
- */
-const NET_DIVIDEN_EXCLUDED = new Set([
-  "Wealth Transfer",
-  "Pinjaman",
-  "Pinjaman Mamaya",
-]);
 
 export interface PusatTxDetail {
   date: string;
@@ -109,6 +103,31 @@ export interface PnLMonth {
   /** Count of Pusat buckets still needing admin input this month. */
   unallocatedCount: number;
   unbalancedCount: number;
+  /**
+   * Net Dividen company-wide untuk bulan ini — dihitung dari SEMUA
+   * transaksi Investment + Dividend (lintas cabang & pusat) dengan
+   * konvensi owner-POV: debit Dividend (+), credit Investment (−).
+   * Categories ini tidak di-alokasi per-cabang karena secara bisnis
+   * milik owner di level perusahaan, bukan kinerja cabang.
+   */
+  companyNetDividen: number;
+  /**
+   * Rincian per-kategori untuk Net Dividen company-wide. Biasanya
+   * hanya berisi dua entry (Investment, Dividend) — disimpan dalam
+   * bentuk BranchCategoryBreakdown supaya bisa di-render dengan
+   * komponen kategori yang sama di PnLTable.
+   */
+  companyNetDividenByCategory: BranchCategoryBreakdown[];
+  /**
+   * Total QRIS credits recorded on the Pare cash ledger this month —
+   * pass-through rows (category "QRIS (non-operasional)") that do NOT
+   * hit operating PnL on the cash side because they settle as "Sales"
+   * on Bank Mandiri. Surfaced here as decision support: when admin
+   * allocates the Pusat "Sales" bucket to Semarang/Pare, this number
+   * is the minimum amount that demonstrably belongs to Pare (since
+   * that QRIS money was physically rung up at Pare's register).
+   */
+  qrisOperasionalPare: number;
 }
 
 export interface PnLReport {
@@ -172,6 +191,9 @@ export async function fetchPnL(
     category: string | null;
     branch: string | null;
     description: string | null;
+    cashflow_statements?: {
+      bank_accounts?: { account_name?: string | null } | null;
+    } | null;
   };
   const txs: PnLTxRow[] = [];
   const PAGE = 1000;
@@ -179,7 +201,7 @@ export async function fetchPnL(
     const { data: page, error } = await supabase
       .from("cashflow_transactions")
       .select(
-        "transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, cashflow_statements!inner(bank_account_id, bank_accounts!inner(business_unit))"
+        "transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, cashflow_statements!inner(bank_account_id, bank_accounts!inner(business_unit, account_name))"
       )
       .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
       .range(offset, offset + PAGE - 1);
@@ -223,6 +245,26 @@ export async function fetchPnL(
   // to the main bucket map ("monthKey | <branch>|<category>|<side>")
   // so lookup during report-build is a single map hit.
   const detailsByBucket = new Map<string, PusatTxDetail[]>();
+  // Per (monthKey | branch | category) transaction details for
+  // direct-branch tx — used to drill-down per category in PnLTable.
+  // Amount is signed: +credit, −debit. Pusat-allocated amounts NOT
+  // collected here (they're aggregate splits, not individual tx).
+  const branchDetailsByBucket = new Map<string, CategoryTxDetail[]>();
+  // Per (monthKey | category) transaction details for company-level
+  // Investment/Dividend drill-down.
+  const companyDetailsByBucket = new Map<string, CategoryTxDetail[]>();
+  // QRIS pass-through credits on the Pare cash ledger, keyed by
+  // monthKey. See PnLMonth.qrisOperasionalPare for why this is
+  // aggregated separately from the branch buckets.
+  const qrisParePerMonth = new Map<string, number>();
+  // Company-wide Investment/Dividend totals (owner-POV), keyed by
+  // monthKey → { "Investment"|"Dividend" → { credit, debit } }. These
+  // categories are NEVER routed to branch/pusat buckets; branch tag on
+  // the transaction is ignored.
+  const companyNonOp = new Map<
+    string,
+    Map<string, { credit: number; debit: number }>
+  >();
 
   // Inclusive month range check for the effective-bucket filter.
   const inRange = (y: number, m: number): boolean => {
@@ -248,6 +290,19 @@ export async function fetchPnL(
     if (!inRange(year, month)) continue;
 
     const monthKey = ym(year, month);
+    const accountName = t.cashflow_statements?.bank_accounts?.account_name ?? "";
+    const rawCategory = (t.category ?? "").trim();
+    const creditNum = Number(t.credit) || 0;
+    if (
+      accountName === "Cash Haengbocake Pare" &&
+      rawCategory === "QRIS (non-operasional)" &&
+      creditNum > 0
+    ) {
+      qrisParePerMonth.set(
+        monthKey,
+        (qrisParePerMonth.get(monthKey) ?? 0) + creditNum
+      );
+    }
     const branchRaw = (t.branch ?? "").trim();
     const branch: BranchName =
       branchRaw === "Pusat" || branchRaw === "Semarang" || branchRaw === "Pare"
@@ -259,12 +314,35 @@ export async function fetchPnL(
     const credit = Number(t.credit) || 0;
     if (credit === 0 && debit === 0) continue;
 
+    // Investment/Dividend: terpusat, tidak masuk branch/pusat buckets.
+    if (isCompanyCentralized(category)) {
+      let catMap = companyNonOp.get(monthKey);
+      if (!catMap) {
+        catMap = new Map();
+        companyNonOp.set(monthKey, catMap);
+      }
+      const entry = catMap.get(category) ?? { credit: 0, debit: 0 };
+      entry.credit += credit;
+      entry.debit += debit;
+      catMap.set(category, entry);
+      const cdk = `${monthKey}|${category}`;
+      const clist = companyDetailsByBucket.get(cdk) ?? [];
+      clist.push({
+        date: t.transaction_date,
+        description: (t.description ?? "").trim() || "(tanpa deskripsi)",
+        amount: credit > 0 ? credit : -debit,
+      });
+      companyDetailsByBucket.set(cdk, clist);
+      continue;
+    }
+
     let bucket = byMonth.get(monthKey);
     if (!bucket) {
       bucket = new Map();
       byMonth.set(monthKey, bucket);
     }
     const collectDetail = branch === "Pusat" && PUSAT_DETAIL_CATEGORIES.has(category);
+    const collectBranchDetail = branch === "Semarang" || branch === "Pare";
     if (credit > 0) {
       const k = `${branch}|${category}|credit`;
       bucket.set(k, (bucket.get(k) ?? 0) + credit);
@@ -292,6 +370,16 @@ export async function fetchPnL(
         });
         detailsByBucket.set(dk, list);
       }
+    }
+    if (collectBranchDetail && (credit > 0 || debit > 0)) {
+      const bdk = `${monthKey}|${branch}|${category}`;
+      const blist = branchDetailsByBucket.get(bdk) ?? [];
+      blist.push({
+        date: t.transaction_date,
+        description: (t.description ?? "").trim() || "(tanpa deskripsi)",
+        amount: credit > 0 ? credit : -debit,
+      });
+      branchDetailsByBucket.set(bdk, blist);
     }
   }
 
@@ -395,8 +483,11 @@ export async function fetchPnL(
       return a.category.localeCompare(b.category);
     });
 
-    // 3. Summarize each branch.
+    // 3. Summarize each branch. Investment/Dividend sudah di-route ke
+    //    companyNonOp di atas — jadi bag ini nggak pernah berisi
+    //    keduanya, dan branch summary tidak punya Net Dividen.
     const buildBranch = (
+      branchName: "Semarang" | "Pare",
       bag: Map<string, { credit: number; debit: number }>
     ): BranchPnL => {
       const byCategory: BranchCategoryBreakdown[] = [];
@@ -404,26 +495,23 @@ export async function fetchPnL(
       let opExp = 0;
       let nopRev = 0;
       let nopExp = 0;
-      // Net dividen (owner-POV): only counts non-op cats NOT in the
-      // excluded set (Wealth Transfer). Signs flipped vs operating:
-      // debit = owner receives (+), credit = owner invests (−).
-      let netDivDebit = 0;
-      let netDivCredit = 0;
       for (const [category, totals] of bag) {
         const isNonOp = nonOpSet.has(category);
+        const bdk = `${monthKey}|${branchName}|${category}`;
+        const details = branchDetailsByBucket
+          .get(bdk)
+          ?.slice()
+          .sort((a, b) => a.date.localeCompare(b.date));
         byCategory.push({
           category,
           credit: Math.round(totals.credit),
           debit: Math.round(totals.debit),
           kind: isNonOp ? "nonop" : "operating",
+          details,
         });
         if (isNonOp) {
           nopRev += totals.credit;
           nopExp += totals.debit;
-          if (!NET_DIVIDEN_EXCLUDED.has(category)) {
-            netDivDebit += totals.debit;
-            netDivCredit += totals.credit;
-          }
         } else {
           opRev += totals.credit;
           opExp += totals.debit;
@@ -441,21 +529,46 @@ export async function fetchPnL(
         operatingProfit: Math.round(opRev - opExp),
         nonOpRevenue: Math.round(nopRev),
         nonOpExpense: Math.round(nopExp),
-        netDividen: Math.round(netDivDebit - netDivCredit),
         byCategory,
       };
     };
+
+    // Company-level Net Dividen untuk bulan ini.
+    const companyCat = companyNonOp.get(monthKey) ?? new Map();
+    const companyNetDividenByCategory: BranchCategoryBreakdown[] = [];
+    let companyDebit = 0;
+    let companyCredit = 0;
+    for (const [category, totals] of companyCat) {
+      const cdk = `${monthKey}|${category}`;
+      const details = companyDetailsByBucket
+        .get(cdk)
+        ?.slice()
+        .sort((a, b) => a.date.localeCompare(b.date));
+      companyNetDividenByCategory.push({
+        category,
+        credit: Math.round(totals.credit),
+        debit: Math.round(totals.debit),
+        kind: "nonop",
+        details,
+      });
+      companyDebit += totals.debit;
+      companyCredit += totals.credit;
+    }
+    companyNetDividenByCategory.sort((a, b) => a.category.localeCompare(b.category));
 
     return {
       year,
       month,
       byBranch: {
-        Semarang: buildBranch(branchAgg.Semarang),
-        Pare: buildBranch(branchAgg.Pare),
+        Semarang: buildBranch("Semarang", branchAgg.Semarang),
+        Pare: buildBranch("Pare", branchAgg.Pare),
       },
       pusatBreakdown,
       unallocatedCount: pusatBreakdown.filter((p) => p.unallocated).length,
       unbalancedCount: pusatBreakdown.filter((p) => p.unbalanced).length,
+      qrisOperasionalPare: Math.round(qrisParePerMonth.get(monthKey) ?? 0),
+      companyNetDividen: Math.round(companyDebit - companyCredit),
+      companyNetDividenByCategory,
     };
   });
 

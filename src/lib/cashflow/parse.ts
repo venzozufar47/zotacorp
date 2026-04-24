@@ -7,17 +7,11 @@
 
 import { parseJagoStatement } from "./parsers/jago";
 import { parseMandiriXlsxStatement } from "./parsers/mandiri-xlsx";
-import type { ReferenceExample } from "./categorize";
 import type { BankCode, ParsedStatement } from "./types";
 
 /** Options passed through to individual parsers. */
 export interface ParseOptions {
   password?: string;
-  /**
-   * Sample of already-correct transactions from this rekening to use
-   * as few-shot reference. Only Gemini path consumes this today.
-   */
-  referenceExamples?: ReferenceExample[];
 }
 
 export async function parseRekeningKoran(
@@ -29,7 +23,7 @@ export async function parseRekeningKoran(
     case "mandiri":
       return parseMandiriXlsxStatement(buffer, options.password);
     case "jago":
-      return parseJagoStatement(buffer, options);
+      return parseJagoStatement(buffer, options.password);
     default: {
       const now = new Date();
       return {

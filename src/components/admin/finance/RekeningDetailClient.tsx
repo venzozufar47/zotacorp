@@ -143,7 +143,11 @@ export function RekeningDetailClient({ account, presets, isAdmin }: Props) {
           size="sm"
         >
           <Upload size={14} />
-          {account.bank === "mandiri" ? "Upload Excel" : "Upload PDF"}
+          {account.bank === "mandiri"
+            ? "Upload Excel"
+            : account.bank === "jago"
+            ? "Upload CSV"
+            : "Upload PDF"}
         </Button>
       )}
       {/* Cash rekening flows through the inline "Tambah baris" in the

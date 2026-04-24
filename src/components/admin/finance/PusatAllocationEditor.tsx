@@ -47,6 +47,13 @@ interface EditableAlloc extends PusatBreakdownRow {
   mode: InputMode;
   status: "idle" | "saving" | "saved" | "error";
   errorMsg?: string;
+  /**
+   * Sum of QRIS pass-through credits on the Pare cash ledger for this
+   * row's month. Used as a decision-support hint on Sales credit rows
+   * — the minimum amount that demonstrably belongs to Pare. Passed
+   * through for every row but only rendered for Sales + credit.
+   */
+  qrisOperasionalPare: number;
 }
 
 function pctOf(value: number, total: number): string {
@@ -61,6 +68,37 @@ function pctOf(value: number, total: number): string {
 
 function toKey(a: { year: number; month: number; side: string; category: string }): string {
   return `${a.year}-${a.month}-${a.side}-${a.category}`;
+}
+
+/**
+ * Mode toggle (Rp ↔ %) di-persist per-row di localStorage. User
+ * expectation: kalau sudah set ke % buat baris tertentu, refresh
+ * halaman tidak boleh reset ke Rp. Key: satu global storage key,
+ * isinya Set<toKey> untuk baris yang di-set ke % mode.
+ */
+const PCT_STORAGE_KEY = "pusat-alloc-pct-modes";
+
+function loadPctKeys(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(PCT_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function savePctKeys(keys: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PCT_STORAGE_KEY, JSON.stringify([...keys]));
+  } catch {
+    // Storage-full atau disabled — silently ignore; toggle tetap jalan
+    // di sesi aktif, cuma tidak persist lintas refresh.
+  }
 }
 
 /**
@@ -225,11 +263,18 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
 }
 
 function buildRows(report: PnLReport): EditableAlloc[] {
+  const pctKeys = loadPctKeys();
   const out: EditableAlloc[] = [];
   for (const m of report.months) {
     for (const p of m.pusatBreakdown) {
       const semNominal = p.unallocated ? "" : String(p.semarangAlloc);
       const pareNominal = p.unallocated ? "" : String(p.pareAlloc);
+      const key = toKey({
+        year: m.year,
+        month: m.month,
+        side: p.side,
+        category: p.category,
+      });
       out.push({
         ...p,
         year: m.year,
@@ -238,8 +283,9 @@ function buildRows(report: PnLReport): EditableAlloc[] {
         pareDraft: pareNominal,
         semPctDraft: p.unallocated ? "" : pctOf(p.semarangAlloc, p.pusatTotal),
         parePctDraft: p.unallocated ? "" : pctOf(p.pareAlloc, p.pusatTotal),
-        mode: "rp",
+        mode: pctKeys.has(key) ? "pct" : "rp",
         status: "idle",
+        qrisOperasionalPare: m.qrisOperasionalPare,
       });
     }
   }
@@ -386,7 +432,13 @@ function CategoryGroup({
         const toggleMode = () => {
           // On toggle, re-seed the opposite-mode drafts from the
           // current source-of-truth nominal so display stays in sync.
+          // Persist choice to localStorage supaya refresh tidak reset
+          // ke Rp buat row yang sudah di-toggle ke %.
           const nextMode: InputMode = isPct ? "rp" : "pct";
+          const pctKeys = loadPctKeys();
+          if (nextMode === "pct") pctKeys.add(key);
+          else pctKeys.delete(key);
+          savePctKeys(pctKeys);
           const sem = Number(r.semarangDraft) || 0;
           const pare = Number(r.pareDraft) || 0;
           onChange(key, {
@@ -461,7 +513,8 @@ function CategoryGroup({
               onBlurRow(key);
             }}
           >
-            <td className="px-3 py-2 text-foreground whitespace-nowrap">
+            <td className="px-3 py-2 text-foreground whitespace-nowrap align-top">
+              <div className="flex flex-col gap-0.5">
               {r.details && r.details.length > 0 ? (
                 <button
                   type="button"
@@ -495,6 +548,27 @@ function CategoryGroup({
                   {MONTH_NAMES[r.month - 1]} {r.year}
                 </span>
               )}
+              {r.category === "Sales" && r.side === "credit" ? (
+                <span
+                  className={
+                    "inline-flex items-center gap-1 rounded-sm px-1 py-0.5 mt-0.5 text-[9px] font-mono tabular-nums border " +
+                    (r.qrisOperasionalPare > 0
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-border bg-muted/40 text-muted-foreground")
+                  }
+                  title="Total QRIS masuk di kasir Pare bulan ini — minimum alokasi Sales yang jelas milik Pare."
+                >
+                  <span className="uppercase tracking-wider font-semibold">
+                    QRIS Pare
+                  </span>
+                  <span>
+                    {r.qrisOperasionalPare > 0
+                      ? `Rp ${r.qrisOperasionalPare.toLocaleString("id-ID")}`
+                      : "belum ada data"}
+                  </span>
+                </span>
+              ) : null}
+              </div>
             </td>
             <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
               {r.pusatTotal.toLocaleString("id-ID")}

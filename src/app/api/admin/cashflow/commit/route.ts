@@ -31,6 +31,13 @@ interface CommitTransaction {
   runningBalance?: number | null;
   category?: string | null;
   branch?: string | null;
+  /**
+   * Flag dari preview: row yang sudah ada di DB. Tetap ikut di payload
+   * supaya verifikasi saldo server-side punya ALL tx (kalau dupes
+   * di-skip, net-effect mereka hilang dari reconciliation). Row
+   * duplicate di-filter OUT sebelum insert — mereka sudah di DB.
+   */
+  duplicate?: boolean;
 }
 
 interface CommitBody {
