@@ -112,15 +112,18 @@ function savePctKeys(keys: Set<string>): void {
 }
 
 /**
- * Collapse state per-group di-persist di localStorage supaya refresh
- * tidak reset ekspansi admin. Key: `${side}|${category}`.
+ * Expanded-state per-group di-persist di localStorage supaya refresh
+ * tidak reset ekspansi admin. Semantik flip ke "expanded" (dulu
+ * "collapsed") sehingga default tanpa localStorage = semua tertutup.
+ * Admin buka grup yang diperlukan → key masuk set.
+ * Key: `${side}|${category}`.
  */
-const COLLAPSED_STORAGE_KEY = "pusat-alloc-collapsed-groups";
+const EXPANDED_STORAGE_KEY = "pusat-alloc-expanded-groups";
 
-function loadCollapsedKeys(): Set<string> {
+function loadExpandedKeys(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    const raw = window.localStorage.getItem(EXPANDED_STORAGE_KEY);
     if (!raw) return new Set();
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return new Set();
@@ -130,11 +133,11 @@ function loadCollapsedKeys(): Set<string> {
   }
 }
 
-function saveCollapsedKeys(keys: Set<string>): void {
+function saveExpandedKeys(keys: Set<string>): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
-      COLLAPSED_STORAGE_KEY,
+      EXPANDED_STORAGE_KEY,
       JSON.stringify([...keys])
     );
   } catch {
@@ -161,18 +164,19 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
     setRows(buildRows(report));
   }, [report]);
 
-  // Collapse state per group (side|category). Default: semua
-  // collapsed — group panjang (12 bulan × 10 kategori) lebih gampang
-  // scan kalau default-nya tertutup dan admin buka sesuai kebutuhan.
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
-    loadCollapsedKeys()
+  // Expanded-state per group (side|category). Default: semua
+  // collapsed (set kosong = semua tertutup) — group panjang (12 bulan
+  // × 10+ kategori) lebih gampang scan kalau default-nya tertutup dan
+  // admin buka sesuai kebutuhan. Key yang masuk set = expanded.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() =>
+    loadExpandedKeys()
   );
   function toggleGroup(groupKey: string) {
-    setCollapsedGroups((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(groupKey)) next.delete(groupKey);
       else next.add(groupKey);
-      saveCollapsedKeys(next);
+      saveExpandedKeys(next);
       return next;
     });
   }
@@ -348,7 +352,7 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
               <CategoryGroup
                 key={gk}
                 groupKey={gk}
-                collapsed={collapsedGroups.has(gk)}
+                collapsed={!expandedGroups.has(gk)}
                 onToggleGroup={() => toggleGroup(gk)}
                 rows={group}
                 onChange={updateDraft}
