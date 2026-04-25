@@ -156,12 +156,17 @@ export function PnLCharts({ report }: Props) {
                   is already conveyed by the shaded zones — coloring
                   bars by sign would redundantly (and confusingly)
                   overload the palette. */}
+              {/* Palet cabang dipisah dari var(--primary) (teal yang
+                  bisa tersugesti "profit"/"success") dan dari merah
+                  destructive. Tone editorial Oceanic: biru navy untuk
+                  Semarang, pink rose untuk Pare, amber untuk Net
+                  Dividen (company-wide). */}
               <Bar
                 dataKey="semarangProfit"
                 name="Semarang"
-                fill="var(--primary)"
+                fill="#1d4ed8"
               />
-              <Bar dataKey="pareProfit" name="Pare" fill="#c2410c" />
+              <Bar dataKey="pareProfit" name="Pare" fill="#be185d" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -222,11 +227,15 @@ export function PnLCharts({ report }: Props) {
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {/* Satu garis saja: Investment/Dividend dihitung
                   company-wide dan tidak dipecah per-cabang. */}
+              {/* Net Dividen company-wide: stroke warna berbeda dari
+                  Semarang (var(--primary) teal) supaya kalau user
+                  mental-overlap kedua chart, garis ini tidak tertukar
+                  dengan bar cabang. Amber khusus "company / owner". */}
               <Line
                 type="monotone"
                 dataKey="companyNetDiv"
                 name="Net Dividen"
-                stroke="var(--primary)"
+                stroke="#d97706"
                 strokeWidth={2.5}
                 dot={{ r: 3 }}
               />

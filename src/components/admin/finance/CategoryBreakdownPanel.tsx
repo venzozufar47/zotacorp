@@ -5,7 +5,10 @@ import { PieChart, TrendingUp, TrendingDown, Info, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { formatIDR } from "@/lib/cashflow/format";
-import { getNonOperatingCategories } from "@/lib/cashflow/categories";
+import {
+  getCategoryPresets,
+  getNonOperatingCategories,
+} from "@/lib/cashflow/categories";
 
 interface Tx {
   date: string;
@@ -58,16 +61,19 @@ export function CategoryBreakdownPanel({ transactions, businessUnit }: Props) {
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
 
+  const presets = useMemo(() => getCategoryPresets(businessUnit), [businessUnit]);
+  const debitCatSet = useMemo(() => new Set(presets.debit), [presets]);
+  const creditCatSet = useMemo(() => new Set(presets.credit), [presets]);
+
   const { income, expense, totalIncome, totalExpense, nonOpRows, nonOpNet } =
     useMemo(() => {
-      const incomeMap = new Map<string, number>();
-      const expenseMap = new Map<string, number>();
-      // Non-operating: tally credit (in) and debit (out) per category
-      // so the admin sees e.g. Investment +5jt vs Dividend −2jt separately,
-      // then net at the bottom.
+      // Aggregate per-category DULU (credit + debit), baru net di akhir.
+      // Net-logic: kategori ekspens (muncul di preset debit) yang juga
+      // punya credit (mis. Salaries & Wages refund dari staff, Sales
+      // Refund dikembalikan customer) → credit dikurangkan dari debit,
+      // hasilnya jadi net expense. Simetris untuk kategori revenue.
+      const opMap = new Map<string, { credit: number; debit: number }>();
       const nonOpMap = new Map<string, { credit: number; debit: number }>();
-      let ti = 0;
-      let te = 0;
       for (const t of transactions) {
         if (t.date < from || t.date > to) continue;
         if (t.category && nonOperatingSet.has(t.category)) {
@@ -78,13 +84,42 @@ export function CategoryBreakdownPanel({ transactions, businessUnit }: Props) {
           continue;
         }
         const key = t.category && t.category.trim() ? t.category : "(tanpa kategori)";
-        if (t.credit > 0) {
-          incomeMap.set(key, (incomeMap.get(key) ?? 0) + t.credit);
-          ti += t.credit;
-        }
-        if (t.debit > 0) {
-          expenseMap.set(key, (expenseMap.get(key) ?? 0) + t.debit);
-          te += t.debit;
+        const cur = opMap.get(key) ?? { credit: 0, debit: 0 };
+        cur.credit += t.credit;
+        cur.debit += t.debit;
+        opMap.set(key, cur);
+      }
+      const incomeMap = new Map<string, number>();
+      const expenseMap = new Map<string, number>();
+      let ti = 0;
+      let te = 0;
+      for (const [cat, v] of opMap) {
+        const isExpense = debitCatSet.has(cat);
+        const isRevenue = creditCatSet.has(cat);
+        if (isExpense && !isRevenue) {
+          const net = v.debit - v.credit;
+          if (net > 0) {
+            expenseMap.set(cat, net);
+            te += net;
+          }
+          // Net negatif (credit > debit, aneh untuk ekspens) di-suppress
+          // — tidak tampil di sisi revenue juga, biar tidak double-count.
+        } else if (isRevenue && !isExpense) {
+          const net = v.credit - v.debit;
+          if (net > 0) {
+            incomeMap.set(cat, net);
+            ti += net;
+          }
+        } else {
+          // Ambiguous — tampilkan split seperti semula.
+          if (v.credit > 0) {
+            incomeMap.set(cat, v.credit);
+            ti += v.credit;
+          }
+          if (v.debit > 0) {
+            expenseMap.set(cat, v.debit);
+            te += v.debit;
+          }
         }
       }
       const toSortedArray = (m: Map<string, number>) =>
@@ -123,7 +158,7 @@ export function CategoryBreakdownPanel({ transactions, businessUnit }: Props) {
         nonOpRows: nonOpArr,
         nonOpNet: net,
       };
-    }, [transactions, from, to, nonOperatingSet]);
+    }, [transactions, from, to, nonOperatingSet, debitCatSet, creditCatSet]);
 
   const rangeLabel = (() => {
     const fmt = (s: string) =>

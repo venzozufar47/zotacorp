@@ -21,6 +21,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import {
+  getCategoryPresets,
   getNonOperatingCategories,
   isCompanyCentralized,
   normalizePnLCategory,
@@ -392,6 +393,17 @@ export async function fetchPnL(
   }
 
   const nonOpSet = new Set(getNonOperatingCategories(businessUnit));
+  // Preset-based classification: kategori operating di-bagi expense-side
+  // (muncul di preset debit) vs revenue-side (muncul di preset credit).
+  // Ini dipakai agar tx "berlawanan arah" pada kategori ekspens (mis.
+  // Salaries & Wages credit karena refund kelebihan gaji, atau Sales
+  // Refund credit karena customer mengembalikan refund yang kelewat)
+  // di-NET ke sisi alaminya, bukan tampil sebagai baris pendapatan.
+  // Kategori yang muncul di dua preset atau di luar preset tetap pakai
+  // split asal (tidak ada heuristik yang aman untuk itu).
+  const presets = getCategoryPresets(businessUnit);
+  const debitCatSet = new Set(presets.debit);
+  const creditCatSet = new Set(presets.credit);
   const rangeMonths = monthsBetween(from, to);
 
   // Build per-month report.
@@ -511,17 +523,62 @@ export async function fetchPnL(
           .get(bdk)
           ?.slice()
           .sort((a, b) => a.date.localeCompare(b.date));
-        byCategory.push({
-          category,
-          credit: Math.round(totals.credit),
-          debit: Math.round(totals.debit),
-          kind: isNonOp ? "nonop" : "operating",
-          details,
-        });
+
         if (isNonOp) {
+          // Non-op tetap split asal (Wealth Transfer dst. punya arah
+          // yang berarti sendiri).
+          byCategory.push({
+            category,
+            credit: Math.round(totals.credit),
+            debit: Math.round(totals.debit),
+            kind: "nonop",
+            details,
+          });
           nopRev += totals.credit;
           nopExp += totals.debit;
+          continue;
+        }
+
+        // Operating: NET sisi berlawanan supaya refund/koreksi
+        // mengurangi total kategori di sisi alaminya.
+        //   Salaries & Wages (expense): debit = pengeluaran gaji, kalau
+        //   ada credit (mis. staff mengembalikan kelebihan) → kurangi.
+        //   Sales Refund (expense): debit = refund dibayarkan, kalau
+        //   ada credit (customer membatalkan refund) → kurangi.
+        //   Sales (revenue): credit = pemasukan, debit langka di
+        //   kategori revenue, tapi kalau ada (koreksi) → kurangi.
+        const isExpense = debitCatSet.has(category);
+        const isRevenue = creditCatSet.has(category);
+        if (isExpense && !isRevenue) {
+          const netDebit = totals.debit - totals.credit;
+          byCategory.push({
+            category,
+            credit: 0,
+            debit: Math.round(netDebit),
+            kind: "operating",
+            details,
+          });
+          opExp += netDebit;
+        } else if (isRevenue && !isExpense) {
+          const netCredit = totals.credit - totals.debit;
+          byCategory.push({
+            category,
+            credit: Math.round(netCredit),
+            debit: 0,
+            kind: "operating",
+            details,
+          });
+          opRev += netCredit;
         } else {
+          // Ambiguous (muncul di kedua preset atau tidak terdaftar)
+          // — tampilkan seperti semula tanpa net.
+          byCategory.push({
+            category,
+            credit: Math.round(totals.credit),
+            debit: Math.round(totals.debit),
+            kind: "operating",
+            details,
+          });
           opRev += totals.credit;
           opExp += totals.debit;
         }

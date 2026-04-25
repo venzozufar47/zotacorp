@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, LogOut, Users, Settings, Receipt, MapPin, Wallet } from "lucide-react";
+import { ClipboardList, LogOut, Users, Settings, Receipt, MapPin, Wallet, PartyPopper } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -17,6 +17,7 @@ export function AdminSidebar() {
     { href: "/admin/users", icon: Users, label: t.nav.users, color: "bg-pop-pink" },
     { href: "/admin/locations", icon: MapPin, label: t.nav.locations, color: "bg-quaternary" },
     { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },
+    { href: "/admin/celebrations", icon: PartyPopper, label: "Celebrations", color: "bg-pop-pink" },
     { href: "/admin/settings", icon: Settings, label: t.nav.settings, color: "bg-card" },
   ];
 

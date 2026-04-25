@@ -1608,6 +1608,54 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_send_logs: {
+        Row: {
+          error_message: string | null
+          event_type: string
+          id: string
+          message_body: string
+          recipient_phone: string
+          recipient_profile_id: string | null
+          sent_at: string
+          status: string
+        }
+        Insert: {
+          error_message?: string | null
+          event_type: string
+          id?: string
+          message_body: string
+          recipient_phone: string
+          recipient_profile_id?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Update: {
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          message_body?: string
+          recipient_phone?: string
+          recipient_profile_id?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_send_logs_recipient_profile_id_fkey"
+            columns: ["recipient_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_send_logs_recipient_profile_id_fkey"
+            columns: ["recipient_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_templates: {
         Row: {
           body: string
@@ -1812,9 +1860,7 @@ export const Constants = {
   },
 } as const
 
-/**
- * Per-day transparency snapshot stored on payslips.breakdown_json.
- */
+/** Per-day transparency snapshot for payslips.breakdown_json. */
 export type PayslipBreakdown = {
   overtime_mode: 'hourly_tiered' | 'fixed_per_day';
   late_penalty_mode: 'per_minutes' | 'per_day' | 'none';

@@ -258,7 +258,30 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
           name: profile.full_name ?? "teman",
           days: snapshot.milestoneHitNow,
         });
-        await sendWhatsApp(phone, message);
+        let status: "sent" | "failed" = "sent";
+        let errorMessage: string | null = null;
+        try {
+          await sendWhatsApp(phone, message);
+        } catch (err) {
+          status = "failed";
+          errorMessage = err instanceof Error ? err.message : String(err);
+        }
+        // Log ke whatsapp_send_logs supaya muncul di tab admin
+        // monitoring. Pakai service-level Supabase client di sini
+        // bisa, tapi authenticated client (RLS bypass via service)
+        // juga ok karena kita sudah di "use server" + admin gate.
+        try {
+          await supabase.from("whatsapp_send_logs").insert({
+            recipient_profile_id: userId,
+            recipient_phone: phone,
+            event_type: "streak_milestone",
+            message_body: message,
+            status,
+            error_message: errorMessage,
+          });
+        } catch (logErr) {
+          console.error("[streak] WA log insert failed", logErr);
+        }
       }
     }
   } catch (err) {
@@ -393,9 +416,27 @@ interface CheckOutPayload {
   /** Fresh GPS captured at the moment of checkout (not the check-in coords). */
   latitude?: number | null;
   longitude?: number | null;
-  /** Required when employee is outside all assigned geofences. */
+  /**
+   * Wajib kalau: (a) employee di luar geofence, ATAU (b) sekarang sudah
+   * lewat > 30 menit dari jam kerja selesai. Isi catatan dari karyawan
+   * menjelaskan kenapa.
+   */
   outsideLocationNote?: string;
+  /**
+   * Jam checkout sebenarnya (HH:mm) — kalau karyawan baru ingat checkout
+   * hari itu. Kalau diberikan, `checked_out_at` disimpan di tanggal yang
+   * sama dengan check-in + jam ini (TZ-aware). Harus > jam check-in dan
+   * <= jam sekarang, kalau tidak server reject.
+   */
+  overrideCheckoutTime?: string;
 }
+
+/**
+ * Jeda toleransi (menit) antara jam kerja selesai dan "sekarang"
+ * sebelum kita menganggap checkout sudah cukup telat untuk meminta
+ * konfirmasi. Di bawah threshold ini, asumsi default = baru selesai.
+ */
+const LATE_CHECKOUT_CONFIRM_THRESHOLD_MIN = 30;
 
 export async function checkOut(payload?: CheckOutPayload) {
   const user = await getCurrentUser();
@@ -419,52 +460,169 @@ export async function checkOut(payload?: CheckOutPayload) {
     return { error: "You have already checked out today." };
   }
 
-  // Geofence soft-check: outside-radius requires a note from the employee.
-  // Returning `requiresNote: true` lets the client open a note prompt and
-  // resubmit without fully reloading.
   const checkoutLat = payload?.latitude ?? null;
   const checkoutLng = payload?.longitude ?? null;
   const note = payload?.outsideLocationNote?.trim() || null;
+  const overrideTime = payload?.overrideCheckoutTime?.trim() || null;
+
+  // Geofence soft-check tetap dilakukan, tapi kita treat sebagai
+  // "perlu konfirmasi" — bukan hard-fail. Kombinasi outside-location
+  // ATAU keterlambatan > 30 menit sama-sama trigger dialog konfirmasi
+  // di client yang menawarkan dua opsi: pakai jam sekarang atau input
+  // jam lebih awal.
   const decision = await evaluateCheckOut(user.id, checkoutLat, checkoutLng, note);
-  if (!decision.ok) {
-    return {
-      error: decision.error ?? "Catatan diperlukan untuk check out di luar lokasi.",
-      requiresNote: decision.requiresNote,
-    };
-  }
+  const outsideLocation = decision.requiresNote === true;
 
-  const now = new Date();
-  const isOvertime = payload?.isOvertime ?? false;
-  const overtimeReason = payload?.overtimeReason ?? "";
-
-  // Get per-user settings + name (used in WA notify). `work_start_time`
-  // is needed so `getEffectiveWorkEnd` can apply the early-arrival rule.
+  // Profile + settings dulu — dipakai baik untuk tahu jam kerja
+  // (threshold 30-menit) maupun untuk overtime calc di bawah.
   const { data: profile } = await supabase
     .from("profiles")
     .select("full_name, is_flexible_schedule, work_start_time, work_end_time")
     .eq("id", user.id)
     .single();
+  const settings = await getCachedAttendanceSettings();
+  const timezone = settings?.timezone ?? "Asia/Jakarta";
 
-  let overtimeMinutes = 0;
+  const now = new Date();
 
-  if (isOvertime && !profile?.is_flexible_schedule) {
-    const settings = await getCachedAttendanceSettings();
-    const timezone = settings?.timezone ?? "Asia/Jakarta";
-
+  // Threshold keterlambatan: karyawan flexible tidak punya jam akhir
+  // tetap → skip threshold check. Untuk jadwal tetap, kita hitung
+  // effectiveEnd dan compare ke `now`. Kalau > 30 menit, butuh
+  // konfirmasi juga (supaya karyawan yang baru ingat pulang tapi
+  // sebenarnya pulang jam 18 bisa koreksi).
+  let exceededLateThreshold = false;
+  let effectiveEndDate: Date | null = null;
+  if (!profile?.is_flexible_schedule) {
     try {
-      const checkoutLocal = new Date(
-        now.toLocaleString("en-US", { timeZone: timezone })
-      );
-      // Effective end = work_end_time for normal arrivals, or
-      // check_in_at + standard duration for early arrivals. A single
-      // code path that subsumes both cases.
-      const effectiveEnd = getEffectiveWorkEnd(
+      effectiveEndDate = getEffectiveWorkEnd(
         new Date(existing.checked_in_at),
         profile?.work_start_time ?? "09:00",
         profile?.work_end_time ?? "18:00",
         timezone,
         false
       );
+      if (effectiveEndDate) {
+        const nowLocal = new Date(
+          now.toLocaleString("en-US", { timeZone: timezone })
+        );
+        const diffMin =
+          (nowLocal.getTime() - effectiveEndDate.getTime()) / 60_000;
+        exceededLateThreshold = diffMin > LATE_CHECKOUT_CONFIRM_THRESHOLD_MIN;
+      }
+    } catch {
+      // Ignore — treat sebagai tidak melewati threshold
+    }
+  }
+
+  const needsConfirmation = outsideLocation || exceededLateThreshold;
+
+  // Kalau butuh konfirmasi tapi client belum kirim note / override,
+  // return signal supaya client buka dialog. Note wajib di semua
+  // skenario confirmation; override opsional.
+  if (needsConfirmation && !note && !overrideTime) {
+    const toHHMM = (d: Date) =>
+      `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const nowLocal = new Date(
+      now.toLocaleString("en-US", { timeZone: timezone })
+    );
+    const checkinLocal = new Date(
+      new Date(existing.checked_in_at).toLocaleString("en-US", {
+        timeZone: timezone,
+      })
+    );
+    return {
+      requiresConfirmation: true as const,
+      // Legacy flag dipertahankan untuk fallback client yang belum
+      // update — tetap dipaksa isi note di dialog baru.
+      requiresNote: true,
+      reasonCode: outsideLocation ? "outside_location" : "late_over_threshold",
+      currentTime: toHHMM(nowLocal),
+      workEndTime:
+        effectiveEndDate != null ? toHHMM(effectiveEndDate) : null,
+      checkinTime: toHHMM(checkinLocal),
+    };
+  }
+
+  // Sampai titik ini: user sudah kasih note (atau posisi dalam radius
+  // + tidak telat). Kalau note kosong saat outside/late masih butuh
+  // reject eksplisit.
+  if (needsConfirmation && !note) {
+    return {
+      error: "Catatan wajib diisi saat checkout di luar lokasi atau lewat 30 menit.",
+      requiresConfirmation: true as const,
+      requiresNote: true,
+    };
+  }
+  // decision.error muncul kalau evaluateCheckOut menolak karena reason
+  // lain selain "butuh catatan" (shouldn't happen in current flow),
+  // tetap propagate.
+  if (!decision.ok && !needsConfirmation) {
+    return {
+      error: decision.error ?? "Check out ditolak.",
+      requiresNote: decision.requiresNote,
+    };
+  }
+
+  const isOvertime = payload?.isOvertime ?? false;
+  const overtimeReason = payload?.overtimeReason ?? "";
+
+  // Compute jam checkout final (TZ-aware). Kalau override diberikan,
+  // pakai tanggal dari check-in + jam dari override. Kalau tidak,
+  // pakai `now`. Override-path validasi strict: > checkin dan <= now.
+  let checkoutInstant = now;
+  if (overrideTime) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(overrideTime);
+    if (!m) {
+      return { error: "Format jam checkout tidak valid (HH:mm)." };
+    }
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+      return { error: "Jam checkout tidak valid." };
+    }
+    const checkinDate = new Date(existing.checked_in_at);
+    const dateInTz = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(checkinDate);
+    const assumedUtc = new Date(`${dateInTz}T${overrideTime}:00Z`);
+    const utcWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: "UTC" }));
+    const tzWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: timezone }));
+    const offsetMs = tzWall.getTime() - utcWall.getTime();
+    checkoutInstant = new Date(assumedUtc.getTime() - offsetMs);
+    if (checkoutInstant.getTime() <= checkinDate.getTime()) {
+      return {
+        error: "Jam checkout harus SETELAH jam check-in.",
+      };
+    }
+    if (checkoutInstant.getTime() > now.getTime()) {
+      return {
+        error: "Jam checkout tidak boleh lebih dari jam sekarang.",
+      };
+    }
+  }
+
+  let overtimeMinutes = 0;
+
+  if (isOvertime && !profile?.is_flexible_schedule) {
+    try {
+      const checkoutLocal = new Date(
+        checkoutInstant.toLocaleString("en-US", { timeZone: timezone })
+      );
+      // Effective end = work_end_time for normal arrivals, or
+      // check_in_at + standard duration for early arrivals. A single
+      // code path that subsumes both cases.
+      const effectiveEnd =
+        effectiveEndDate ??
+        getEffectiveWorkEnd(
+          new Date(existing.checked_in_at),
+          profile?.work_start_time ?? "09:00",
+          profile?.work_end_time ?? "18:00",
+          timezone,
+          false
+        );
 
       if (effectiveEnd && checkoutLocal > effectiveEnd) {
         overtimeMinutes = Math.ceil(
@@ -480,10 +638,14 @@ export async function checkOut(payload?: CheckOutPayload) {
   const { data, error } = await supabase
     .from("attendance_logs")
     .update({
-      checked_out_at: now.toISOString(),
+      checked_out_at: checkoutInstant.toISOString(),
       checkout_latitude: checkoutLat,
       checkout_longitude: checkoutLng,
+      // Note disimpan juga ke `late_checkout_reason` supaya panel admin
+      // yang baca field itu tetap dapat konteks — legacy `checkout_outside_note`
+      // disimpan bersamaan buat audit GPS.
       checkout_outside_note: note,
+      late_checkout_reason: note,
       is_overtime: isOvertime && overtimeMinutes > 0,
       overtime_minutes: isOvertime ? overtimeMinutes : 0,
       overtime_status: isOvertime && overtimeMinutes > 0 ? "pending" : null,
@@ -579,6 +741,153 @@ export async function deleteAttendanceLogsBulk(logIds: string[]) {
 
   revalidatePath("/admin/attendance");
   return { deleted: count ?? ids.length };
+}
+
+// ---------------------------------------------------------------------------
+// Admin override — overwrite attendance_logs row. Admin boleh koreksi jam
+// check-in/check-out, status, late_minutes, overtime, dan catatan-catatan
+// setelah karyawan submit (mis. karyawan salah record, lupa checkout
+// dan baru ingat setelah sehari, dll). Dibatasi admin-only via RLS +
+// guard di sini.
+// ---------------------------------------------------------------------------
+
+interface AdminUpdateAttendancePayload {
+  attendanceLogId: string;
+  /** HH:mm di timezone admin. Null/undefined = tidak diubah. */
+  checkInTime?: string | null;
+  /** HH:mm di timezone admin. Null = unset (jadi belum checkout). */
+  checkOutTime?: string | null;
+  status?: "on_time" | "late" | "late_excused" | "flexible" | null;
+  lateMinutes?: number | null;
+  isOvertime?: boolean | null;
+  overtimeMinutes?: number | null;
+  overtimeStatus?: "approved" | "pending" | "rejected" | null;
+  lateCheckoutReason?: string | null;
+  lateProofAdminNote?: string | null;
+}
+
+export async function adminUpdateAttendanceLog(
+  payload: AdminUpdateAttendancePayload
+) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+
+  const supabase = await createClient();
+  const { data: log } = await supabase
+    .from("attendance_logs")
+    .select("id, user_id, date, checked_in_at")
+    .eq("id", payload.attendanceLogId)
+    .single();
+  if (!log) return { error: "Attendance record not found." };
+
+  const settings = await getCachedAttendanceSettings();
+  const timezone = settings?.timezone ?? "Asia/Jakarta";
+
+  /**
+   * Konversi `YYYY-MM-DD` + `HH:mm` di target timezone → UTC ISO
+   * string. Reuse trick yang sama dengan `lateCheckout`: parse as UTC
+   * lalu koreksi offset TZ.
+   */
+  function hhmmToUtc(dateIso: string, hhmm: string): string | null {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const mm = Number(m[2]);
+    if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+    const assumedUtc = new Date(`${dateIso}T${hhmm.padStart(5, "0")}:00Z`);
+    const utcWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: "UTC" }));
+    const tzWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: timezone }));
+    const offsetMs = tzWall.getTime() - utcWall.getTime();
+    return new Date(assumedUtc.getTime() - offsetMs).toISOString();
+  }
+
+  // Build patch object — hanya sertakan field yang diubah.
+  const patch: Record<string, unknown> = {};
+
+  if (payload.checkInTime !== undefined && payload.checkInTime !== null) {
+    const iso = hhmmToUtc(log.date, payload.checkInTime);
+    if (!iso) return { error: "Format jam check-in tidak valid (HH:mm)." };
+    patch.checked_in_at = iso;
+  }
+
+  if (payload.checkOutTime !== undefined) {
+    if (payload.checkOutTime === null || payload.checkOutTime === "") {
+      patch.checked_out_at = null;
+    } else {
+      const iso = hhmmToUtc(log.date, payload.checkOutTime);
+      if (!iso) return { error: "Format jam check-out tidak valid (HH:mm)." };
+      patch.checked_out_at = iso;
+    }
+  }
+
+  if (patch.checked_in_at && patch.checked_out_at) {
+    if (new Date(patch.checked_in_at as string).getTime() >=
+        new Date(patch.checked_out_at as string).getTime()) {
+      return { error: "Jam checkout harus SETELAH jam check-in." };
+    }
+  } else if (patch.checked_in_at && log) {
+    // Kalau hanya check-in yang diubah, validasi tetap konsisten
+    // dengan checkout existing (kalau ada).
+    const existingCheckout = (
+      await supabase
+        .from("attendance_logs")
+        .select("checked_out_at")
+        .eq("id", payload.attendanceLogId)
+        .single()
+    ).data?.checked_out_at;
+    if (
+      existingCheckout &&
+      new Date(patch.checked_in_at as string).getTime() >=
+        new Date(existingCheckout as string).getTime()
+    ) {
+      return { error: "Jam check-in harus SEBELUM jam checkout existing." };
+    }
+  }
+
+  if (payload.status !== undefined && payload.status !== null) patch.status = payload.status;
+  if (payload.lateMinutes !== undefined && payload.lateMinutes !== null) {
+    if (!Number.isFinite(payload.lateMinutes) || payload.lateMinutes < 0) {
+      return { error: "late_minutes tidak valid." };
+    }
+    patch.late_minutes = Math.round(payload.lateMinutes);
+  }
+  if (payload.isOvertime !== undefined && payload.isOvertime !== null) {
+    patch.is_overtime = payload.isOvertime;
+  }
+  if (payload.overtimeMinutes !== undefined && payload.overtimeMinutes !== null) {
+    if (!Number.isFinite(payload.overtimeMinutes) || payload.overtimeMinutes < 0) {
+      return { error: "overtime_minutes tidak valid." };
+    }
+    patch.overtime_minutes = Math.round(payload.overtimeMinutes);
+  }
+  if (payload.overtimeStatus !== undefined) patch.overtime_status = payload.overtimeStatus;
+  if (payload.lateCheckoutReason !== undefined) {
+    patch.late_checkout_reason = payload.lateCheckoutReason?.trim() || null;
+  }
+  if (payload.lateProofAdminNote !== undefined) {
+    patch.late_proof_admin_note = payload.lateProofAdminNote?.trim() || null;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { error: "Tidak ada perubahan." };
+  }
+
+  patch.updated_at = new Date().toISOString();
+
+  // Cast ke `any` karena Supabase typegen strict kolom-demi-kolom;
+  // kita sudah validasi masing-masing key di atas, jadi aman.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await supabase
+    .from("attendance_logs")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(patch as any)
+    .eq("id", payload.attendanceLogId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/attendance");
+  return { ok: true as const };
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ export type TemplateKey =
   | "celebration_birthday_morning"
   | "celebration_anniversary_morning"
   | "celebration_greeting_notification"
+  | "celebration_birthday_broadcast"
   | "streak_milestone"
   | "attendance_check_in_alert"
   | "attendance_check_out_alert";
@@ -83,6 +84,25 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "💌 {celebrantName}, ada ucapan {eventKind} baru dari {authorName}!\n\nBuka Zota App buat balas ✨",
+  },
+  celebration_birthday_broadcast: {
+    label: "Broadcast reminder ulang tahun (manual admin)",
+    description:
+      "Dikirim ke seluruh karyawan saat admin tap tombol Broadcast di tab Monitoring Karyawan. Mengajak ngucapin via Zota App. {recipientName} di-render personal per penerima; {celebrantNames} berisi yang berulang tahun hari itu.",
+    recipient: "Semua karyawan dengan nomor WA valid",
+    placeholders: [
+      {
+        key: "recipientName",
+        description: "Nama yang menerima pesan (nickname kalau ada)",
+      },
+      {
+        key: "celebrantNames",
+        description: "Nama-nama yang ulang tahun hari ini (dipisah koma)",
+      },
+      { key: "count", description: "Jumlah yang ulang tahun hari ini" },
+    ],
+    defaultBody:
+      "Halo {recipientName}!\n\n🎂 Hari ini {celebrantNames} ulang tahun. Yuk kasih ucapan via Zota App — tinggal buka dashboard dan tulis pesannya. Cukup 30 detik 💌",
   },
   streak_milestone: {
     label: "Streak milestone",

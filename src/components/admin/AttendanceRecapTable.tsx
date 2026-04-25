@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { CheckCircle, XCircle, MessageSquare, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
+import { CheckCircle, XCircle, MessageSquare, Pencil, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
+import { AdminEditAttendanceDialog } from "./AdminEditAttendanceDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
 import { SelfiePreviewDialog } from "@/components/attendance/SelfiePreviewDialog";
@@ -255,6 +256,7 @@ export function AttendanceRecapTable({
   const [proofPreview, setProofPreview] = useState<{ url: string; name: string } | null>(null);
   const [loadingProof, setLoadingProof] = useState<string | null>(null);
   const [rejectingProofId, setRejectingProofId] = useState<string | null>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [proofRejectMessage, setProofRejectMessage] = useState("");
 
   function handleLateProofReview(logId: string, decision: "approved" | "rejected", note?: string) {
@@ -708,16 +710,28 @@ export function AttendanceRecapTable({
                     />
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={`h-7 w-7 p-0 ${deletingId === row.id ? "!text-destructive" : "!text-muted-foreground"}`}
-                      onClick={() => handleDelete(row.id)}
-                      disabled={isPending}
-                      title={deletingId === row.id ? "Click again to confirm" : "Delete record"}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 !text-muted-foreground"
+                        onClick={() => setEditingRowId(row.id)}
+                        disabled={isPending}
+                        title="Edit data presensi"
+                      >
+                        <Pencil size={14} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 w-7 p-0 ${deletingId === row.id ? "!text-destructive" : "!text-muted-foreground"}`}
+                        onClick={() => handleDelete(row.id)}
+                        disabled={isPending}
+                        title={deletingId === row.id ? "Click again to confirm" : "Delete record"}
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
                     {deletingId === row.id && (
                       <p className="text-[10px] text-destructive mt-0.5 font-bold">Click to confirm</p>
                     )}
@@ -778,6 +792,30 @@ export function AttendanceRecapTable({
         logId={selfieLog?.id ?? null}
         title={selfieLog?.title ?? ""}
         onOpenChange={(o) => !o && setSelfieLog(null)}
+      />
+
+      <AdminEditAttendanceDialog
+        open={editingRowId !== null}
+        onOpenChange={(o) => !o && setEditingRowId(null)}
+        row={(() => {
+          const r = rows.find((x) => x.id === editingRowId);
+          if (!r) return null;
+          return {
+            id: r.id,
+            date: r.date,
+            checked_in_at: r.checked_in_at,
+            checked_out_at: r.checked_out_at,
+            status: r.status,
+            late_minutes: r.late_minutes,
+            is_overtime: r.is_overtime,
+            overtime_minutes: r.overtime_minutes,
+            overtime_status: r.overtime_status,
+            late_checkout_reason: r.late_checkout_reason,
+            late_proof_admin_note: r.late_proof_admin_note,
+            employeeName: r.profiles.full_name,
+          };
+        })()}
+        timezone={timezone}
       />
 
       <Dialog

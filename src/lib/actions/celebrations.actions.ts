@@ -24,6 +24,47 @@ import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 
+/**
+ * Wrap kirim WA + persist log ke `whatsapp_send_logs` supaya admin
+ * bisa audit kapan + ke siapa pesan dikirim. Pakai `admin` (service
+ * role) client supaya insert tetap jalan walau RLS authenticated
+ * tidak punya policy insert.
+ */
+async function logAndSendWhatsApp(
+  admin: ReturnType<typeof createAdminClient<Database>>,
+  args: {
+    recipientProfileId: string | null;
+    phone: string;
+    eventType:
+      | "birthday"
+      | "anniversary"
+      | "celebration_greeting_notification"
+      | "other";
+    body: string;
+  }
+) {
+  let status: "sent" | "failed" = "sent";
+  let errorMessage: string | null = null;
+  try {
+    await sendWhatsApp(args.phone, args.body);
+  } catch (err) {
+    status = "failed";
+    errorMessage = err instanceof Error ? err.message : String(err);
+  }
+  try {
+    await admin.from("whatsapp_send_logs").insert({
+      recipient_profile_id: args.recipientProfileId,
+      recipient_phone: args.phone,
+      event_type: args.eventType,
+      message_body: args.body,
+      status,
+      error_message: errorMessage,
+    });
+  } catch (err) {
+    console.error("[whatsapp-log] insert failed", err);
+  }
+}
+
 const WINDOW_DAYS = 8; // today + next 7 days
 
 export type CelebrationMessage = {
@@ -431,7 +472,12 @@ export async function dispatchTodaysGreetings(): Promise<void> {
         const message = await renderWaTemplate("celebration_birthday_morning", {
           name: waName,
         });
-        await sendWhatsApp(phone, message);
+        await logAndSendWhatsApp(admin, {
+          recipientProfileId: claimed.id,
+          phone,
+          eventType: "birthday",
+          body: message,
+        });
       } catch (err) {
         console.error("[celebrations] birthday WA failed", err);
       }
@@ -472,7 +518,12 @@ export async function dispatchTodaysGreetings(): Promise<void> {
           "celebration_anniversary_morning",
           { name: waName, years }
         );
-        await sendWhatsApp(phone, message);
+        await logAndSendWhatsApp(admin, {
+          recipientProfileId: claimed.id,
+          phone,
+          eventType: "anniversary",
+          body: message,
+        });
       } catch (err) {
         console.error("[celebrations] anniversary WA failed", err);
       }

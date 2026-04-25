@@ -5,16 +5,8 @@ import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { MapPin, MapPinOff, Clock } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { checkIn, checkOut } from "@/lib/actions/attendance.actions";
+import { CheckoutConfirmDialog } from "./CheckoutConfirmDialog";
 
 /**
  * The password-confirm modal pulls in @base-ui/react's Dialog, Input,
@@ -99,12 +91,19 @@ export function CheckInButton({
   const [overtimeChecked, setOvertimeChecked] = useState(false);
   const [overtimeReason, setOvertimeReason] = useState("");
   const [isPending, startTransition] = useTransition();
-  // Outside-radius checkout note flow. When the server reports
-  // `requiresNote: true`, we stash the GPS + overtime args and open a
-  // small modal asking the employee for the explanation; submitting it
-  // re-fires the same checkOut call with the note attached.
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [noteValue, setNoteValue] = useState("");
+  // Checkout confirmation flow. Server return `requiresConfirmation:
+  // true` kalau (a) posisi di luar geofence ATAU (b) sekarang lewat
+  // jam kerja selesai > 30 menit. Dialog menawarkan dua opsi: pakai
+  // jam sekarang atau input jam lebih awal. Note wajib.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmReason, setConfirmReason] = useState<
+    "outside_location" | "late_over_threshold" | null
+  >(null);
+  const [confirmTimes, setConfirmTimes] = useState<{
+    currentTime: string | null;
+    workEndTime: string | null;
+    checkinTime: string | null;
+  }>({ currentTime: null, workEndTime: null, checkinTime: null });
   const [pendingCheckout, setPendingCheckout] = useState<{
     isOvertime: boolean;
     overtimeReason: string;
@@ -290,6 +289,7 @@ export function CheckInButton({
     latitude: number | null;
     longitude: number | null;
     note: string | null;
+    overrideCheckoutTime?: string | null;
   }) {
     const result = await checkOut({
       isOvertime: args.isOvertime,
@@ -297,21 +297,36 @@ export function CheckInButton({
       latitude: args.latitude,
       longitude: args.longitude,
       outsideLocationNote: args.note ?? undefined,
+      overrideCheckoutTime: args.overrideCheckoutTime ?? undefined,
     });
 
+    // Server minta konfirmasi (outside location atau late > 30 min).
+    // Buka dialog pilihan jam + catatan.
+    const confirmResult = result as {
+      requiresConfirmation?: boolean;
+      reasonCode?: "outside_location" | "late_over_threshold";
+      currentTime?: string | null;
+      workEndTime?: string | null;
+      checkinTime?: string | null;
+    };
+    if (confirmResult?.requiresConfirmation) {
+      setPendingCheckout({
+        isOvertime: args.isOvertime,
+        overtimeReason: args.overtimeReason,
+        latitude: args.latitude,
+        longitude: args.longitude,
+      });
+      setConfirmReason(confirmResult.reasonCode ?? null);
+      setConfirmTimes({
+        currentTime: confirmResult.currentTime ?? null,
+        workEndTime: confirmResult.workEndTime ?? null,
+        checkinTime: confirmResult.checkinTime ?? null,
+      });
+      setConfirmOpen(true);
+      return;
+    }
+
     if (result?.error) {
-      // Outside-radius → open the note modal and stash args for retry.
-      if ((result as { requiresNote?: boolean }).requiresNote) {
-        setPendingCheckout({
-          isOvertime: args.isOvertime,
-          overtimeReason: args.overtimeReason,
-          latitude: args.latitude,
-          longitude: args.longitude,
-        });
-        setNoteValue("");
-        setNoteOpen(true);
-        return;
-      }
       toast.error(result.error);
       return;
     }
@@ -333,19 +348,22 @@ export function CheckInButton({
     }
   }
 
-  function submitNoteAndRetry() {
+  function submitConfirmAndRetry(args: {
+    note: string;
+    overrideTime: string | null;
+  }) {
     if (!pendingCheckout) return;
-    if (!noteValue.trim()) {
-      toast.error("Catatan wajib diisi.");
-      return;
-    }
-    const args = pendingCheckout;
-    const note = noteValue.trim();
+    const pending = pendingCheckout;
     startTransition(async () => {
-      await submitCheckout({ ...args, note });
-      setNoteOpen(false);
+      await submitCheckout({
+        ...pending,
+        note: args.note,
+        overrideCheckoutTime: args.overrideTime,
+      });
+      setConfirmOpen(false);
       setPendingCheckout(null);
-      setNoteValue("");
+      setConfirmReason(null);
+      setConfirmTimes({ currentTime: null, workEndTime: null, checkinTime: null });
     });
   }
 
@@ -470,40 +488,24 @@ export function CheckInButton({
         onConfirm={handleSelfieConfirmed}
       />
 
-      {/* Outside-radius checkout note prompt */}
-      <Dialog
-        open={noteOpen}
+      {/* Checkout konfirmasi: outside location atau telat > 30 menit */}
+      <CheckoutConfirmDialog
+        open={confirmOpen}
         onOpenChange={(o) => {
-          setNoteOpen(o);
+          setConfirmOpen(o);
           if (!o) {
             setPendingCheckout(null);
-            setNoteValue("");
+            setConfirmReason(null);
+            setConfirmTimes({ currentTime: null, workEndTime: null, checkinTime: null });
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Check out di luar lokasi</DialogTitle>
-            <DialogDescription>
-              Kamu sedang di luar lokasi kerja terdaftar. Isi catatan singkat untuk admin sebelum check out.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={noteValue}
-            onChange={(e) => setNoteValue(e.target.value)}
-            placeholder="Misal: lupa absen di kantor, baru sempet pas di rumah"
-            rows={3}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNoteOpen(false)} disabled={isPending}>
-              Batal
-            </Button>
-            <Button onClick={submitNoteAndRetry} disabled={isPending}>
-              {isPending ? "Mengirim…" : "Check out"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        reasonCode={confirmReason}
+        currentTime={confirmTimes.currentTime}
+        workEndTime={confirmTimes.workEndTime}
+        checkinTime={confirmTimes.checkinTime}
+        submitting={isPending}
+        onSubmit={submitConfirmAndRetry}
+      />
     </>
   );
 }
