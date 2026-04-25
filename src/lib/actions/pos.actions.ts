@@ -908,9 +908,8 @@ export async function listRecentPosSales(
   } catch (e) {
     console.error("[listRecentPosSales] attachment lookup failed", e);
   }
-  // Chunk `.in("sale_id", ...)` supaya URL panjang tidak meledak saat
-  // limit=null (history ribuan sale). PostgREST handle ~ratusan id per
-  // request dengan aman; 200 batch konservatif.
+  // Chunk `.in("sale_id", ...)` per 200 (PostgREST URL cap) lalu
+  // fetch paralel — lebih cepat dari serial saat history besar.
   const ITEM_CHUNK = 200;
   type ItemRow = {
     sale_id: string;
@@ -920,15 +919,21 @@ export async function listRecentPosSales(
     unit_price: number;
     subtotal: number;
   };
-  const items: ItemRow[] = [];
+  const slices: string[][] = [];
   for (let i = 0; i < saleIds.length; i += ITEM_CHUNK) {
-    const slice = saleIds.slice(i, i + ITEM_CHUNK);
-    const { data } = await supabase
-      .from("pos_sale_items")
-      .select("sale_id, product_name, variant_name, qty, unit_price, subtotal")
-      .in("sale_id", slice);
-    if (data) items.push(...(data as ItemRow[]));
+    slices.push(saleIds.slice(i, i + ITEM_CHUNK));
   }
+  const itemBatches = await Promise.all(
+    slices.map((slice) =>
+      supabase
+        .from("pos_sale_items")
+        .select("sale_id, product_name, variant_name, qty, unit_price, subtotal")
+        .in("sale_id", slice)
+    )
+  );
+  const items: ItemRow[] = itemBatches.flatMap(
+    (b) => (b.data ?? []) as ItemRow[]
+  );
 
   const itemsBySale = new Map<string, PosSaleSummary["items"]>();
   for (const it of items) {

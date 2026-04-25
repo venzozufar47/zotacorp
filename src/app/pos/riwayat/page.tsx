@@ -38,28 +38,30 @@ export default async function PosRiwayatPage({
 
   const sp = await searchParams;
   const requestedPage = Math.max(1, Number(sp.page) || 1);
+  const offsetGuess = (requestedPage - 1) * PAGE_SIZE;
 
-  // Total count dipakai untuk hitung jumlah halaman + clamp `page`
-  // kalau user request halaman > totalPages.
-  let totalCount = 0;
-  try {
-    totalCount = await countPosSales(account.id);
-  } catch (e) {
-    console.error("[PosRiwayatPage] countPosSales failed", e);
-  }
+  // Defensive fallback ke array kosong / 0 supaya kasir tidak kena
+  // error.tsx kalau DB hiccup. Run paralel — independent queries.
+  const [totalCount, salesRaw] = await Promise.all([
+    countPosSales(account.id).catch((e) => {
+      console.error("[PosRiwayatPage] countPosSales failed", e);
+      return 0;
+    }),
+    listRecentPosSales(account.id, PAGE_SIZE, offsetGuess).catch((e) => {
+      console.error("[PosRiwayatPage] listRecentPosSales failed", e);
+      return [] as Awaited<ReturnType<typeof listRecentPosSales>>;
+    }),
+  ]);
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
   const offset = (page - 1) * PAGE_SIZE;
-
-  // Defensive: kalau listRecentPosSales throw (DB hiccup, attachment
-  // lookup edge case), jangan trigger error.tsx — fallback ke list
-  // kosong supaya kasir masih bisa navigate kembali ke /pos.
-  let sales: Awaited<ReturnType<typeof listRecentPosSales>> = [];
-  try {
-    sales = await listRecentPosSales(account.id, PAGE_SIZE, offset);
-  } catch (e) {
-    console.error("[PosRiwayatPage] listRecentPosSales failed", e);
-  }
+  // Kalau user request page > totalPages, offset awal nge-miss; re-fetch
+  // halaman terakhir. Edge case langka, tidak perlu paralel.
+  const sales =
+    offset === offsetGuess
+      ? salesRaw
+      : await listRecentPosSales(account.id, PAGE_SIZE, offset).catch(() => []);
 
   // Group by sale_date untuk tampilan per hari.
   const byDate = new Map<string, typeof sales>();

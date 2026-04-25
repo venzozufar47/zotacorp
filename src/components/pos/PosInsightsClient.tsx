@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, TrendingUp, Trophy, Clock, Calendar } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
 import type { PosInsights } from "@/lib/actions/pos-insights.actions";
-import { formatRp } from "@/lib/cashflow/format";
+import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
 
 interface Props {
   accountName: string;
@@ -35,18 +35,40 @@ function formatPctOf(part: number, total: number): string {
   return `${Math.round((part / total) * 100)}%`;
 }
 
-/** Compact rupiah label untuk chart axis (e.g. 1.250.000 → "1.2jt"). */
-function formatRpCompact(n: number): string {
-  if (n === 0) return "0";
-  if (n >= 1_000_000) {
-    const v = n / 1_000_000;
-    return `${v >= 10 ? Math.round(v) : v.toFixed(1)}jt`;
+/**
+ * Trim daily series ke rentang aktif ±1 hari supaya hari-hari kosong
+ * tidak menelan space chart. Kalau seluruh periode kosong, fallback
+ * tampilkan full range.
+ */
+function trimToActiveDays<T extends { revenue: number }>(daily: T[]): T[] {
+  const firstActive = daily.findIndex((d) => d.revenue > 0);
+  if (firstActive === -1) return daily;
+  let lastActive = -1;
+  for (let i = daily.length - 1; i >= 0; i -= 1) {
+    if (daily[i].revenue > 0) {
+      lastActive = i;
+      break;
+    }
   }
-  if (n >= 1_000) {
-    const v = n / 1_000;
-    return `${v >= 10 ? Math.round(v) : v.toFixed(1)}rb`;
-  }
-  return String(Math.round(n));
+  return daily.slice(
+    Math.max(0, firstActive - 1),
+    Math.min(daily.length, lastActive + 2)
+  );
+}
+
+/**
+ * Trim hourly series ke operating hours saja (jam pertama–terakhir
+ * yang punya tx) + pad ±1 jam untuk konteks. Fallback 9–21 kalau tidak
+ * ada data sama sekali.
+ */
+function trimToOperatingHours<T extends { hour: number; txCount: number }>(
+  hourly: T[]
+): T[] {
+  const activeHours = hourly.filter((h) => h.txCount > 0);
+  if (activeHours.length === 0) return hourly.slice(9, 22);
+  const lo = Math.max(0, Math.min(...activeHours.map((h) => h.hour)) - 1);
+  const hi = Math.min(23, Math.max(...activeHours.map((h) => h.hour)) + 1);
+  return hourly.slice(lo, hi + 1);
 }
 
 export function PosInsightsClient({
@@ -133,16 +155,14 @@ function InsightsBody({ insights }: { insights: PosInsights }) {
   );
   const maxDow = useMemo(() => Math.max(1, ...dow.map((d) => d.txCount)), [dow]);
 
-  const peakHour = useMemo(() => {
-    let best = hourly[0];
-    for (const h of hourly) if (h.txCount > best.txCount) best = h;
-    return best;
-  }, [hourly]);
-  const peakDow = useMemo(() => {
-    let best = dow[0];
-    for (const d of dow) if (d.txCount > best.txCount) best = d;
-    return best;
-  }, [dow]);
+  const peakHour = useMemo(
+    () => hourly.reduce((a, b) => (b.txCount > a.txCount ? b : a)),
+    [hourly]
+  );
+  const peakDow = useMemo(
+    () => dow.reduce((a, b) => (b.txCount > a.txCount ? b : a)),
+    [dow]
+  );
 
   return (
     <>
@@ -222,27 +242,10 @@ function InsightsBody({ insights }: { insights: PosInsights }) {
         subtitle="Bar = revenue per tanggal — angka di atas bar"
       >
         {(() => {
-          // Trim ke rentang aktif ±1 hari supaya hari-hari kosong tidak
-          // menelan space chart. Kalau seluruh periode kosong, fallback
-          // tampilkan full range.
-          const firstActive = daily.findIndex((d) => d.revenue > 0);
-          const lastActive = (() => {
-            for (let i = daily.length - 1; i >= 0; i -= 1) {
-              if (daily[i].revenue > 0) return i;
-            }
-            return -1;
-          })();
-          const slice =
-            firstActive === -1
-              ? daily
-              : daily.slice(
-                  Math.max(0, firstActive - 1),
-                  Math.min(daily.length, lastActive + 2)
-                );
+          const slice = trimToActiveDays(daily);
           const peakRev = Math.max(0, ...slice.map((d) => d.revenue));
-          // Untuk chart yang masih banyak bar (>10), label tiap bar
-          // bakal saling tabrak — tampilkan hanya untuk peak + sample
-          // jarang. Untuk slice kecil (<=10), tampilkan tiap non-zero.
+          // Untuk slice padat (>10 bar) label tiap bar bakal saling
+          // tabrak — tampilkan hanya untuk peak + sample jarang.
           const dense = slice.length > 10;
           return (
             <>
@@ -318,20 +321,7 @@ function InsightsBody({ insights }: { insights: PosInsights }) {
         }
       >
         {(() => {
-          // Trim ke operating hours saja (jam pertama–terakhir yang
-          // punya tx) supaya bar tidak kekecilan terhimpit jam-jam mati.
-          // Pad ±1 jam untuk konteks. Kalau tidak ada data sama sekali,
-          // fallback 9–21.
-          const activeHours = hourly.filter((h) => h.txCount > 0);
-          const lo =
-            activeHours.length > 0
-              ? Math.max(0, Math.min(...activeHours.map((h) => h.hour)) - 1)
-              : 9;
-          const hi =
-            activeHours.length > 0
-              ? Math.min(23, Math.max(...activeHours.map((h) => h.hour)) + 1)
-              : 21;
-          const slice = hourly.slice(lo, hi + 1);
+          const slice = trimToOperatingHours(hourly);
           return (
             <div className="flex items-end gap-1.5 h-32">
               {slice.map((h) => {

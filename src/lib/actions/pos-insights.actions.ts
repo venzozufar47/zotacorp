@@ -2,7 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
-import { jakartaDateString, jakartaHour } from "@/lib/utils/jakarta";
+import {
+  jakartaDateMinusDays,
+  jakartaDateString,
+  jakartaHour,
+} from "@/lib/utils/jakarta";
 
 export interface PosInsightsSummary {
   /** Total revenue (rupiah) di periode, exclude voided. */
@@ -70,7 +74,7 @@ export async function getPosInsights(
   const today = jakartaDateString(new Date());
   const fromDate = jakartaDateMinusDays(today, periodDays - 1);
 
-  // 1. Sales di window (paginasi 1000-row PostgREST cap).
+  // Sales di window — paginasi 1000-row PostgREST cap.
   type SaleRow = {
     id: string;
     sale_date: string;
@@ -105,7 +109,7 @@ export async function getPosInsights(
   const voidedCount = sales.length - activeSales.length;
   const activeIds = activeSales.map((s) => s.id);
 
-  // 2. Items untuk active sales (chunked supaya URL tidak meledak).
+  // Items untuk active sales — chunked + parallel (PostgREST URL cap).
   type ItemRow = {
     sale_id: string;
     product_name: string;
@@ -113,20 +117,24 @@ export async function getPosInsights(
     qty: number;
     subtotal: number;
   };
-  const items: ItemRow[] = [];
+  let items: ItemRow[] = [];
   if (activeIds.length > 0) {
     const CHUNK = 200;
+    const slices: string[][] = [];
     for (let i = 0; i < activeIds.length; i += CHUNK) {
-      const slice = activeIds.slice(i, i + CHUNK);
-      const { data } = await supabase
-        .from("pos_sale_items")
-        .select("sale_id, product_name, variant_name, qty, subtotal")
-        .in("sale_id", slice);
-      if (data) items.push(...(data as ItemRow[]));
+      slices.push(activeIds.slice(i, i + CHUNK));
     }
+    const batches = await Promise.all(
+      slices.map((slice) =>
+        supabase
+          .from("pos_sale_items")
+          .select("sale_id, product_name, variant_name, qty, subtotal")
+          .in("sale_id", slice)
+      )
+    );
+    items = batches.flatMap((b) => (b.data ?? []) as ItemRow[]);
   }
 
-  // 3. Summary
   let revenue = 0;
   let cashRevenue = 0;
   let cashCount = 0;
@@ -154,7 +162,7 @@ export async function getPosInsights(
     voidedCount,
   };
 
-  // 4. Top products + top variants (level produk = aggregate variants)
+  // Top products + top variants — level produk meng-aggregate varian.
   const productMap = new Map<string, { qty: number; revenue: number }>();
   const variantMap = new Map<string, { qty: number; revenue: number }>();
   for (const it of items) {
@@ -179,7 +187,7 @@ export async function getPosInsights(
     .map(([name, v]) => ({ name, qty: v.qty, revenue: v.revenue }))
     .sort((a, b) => b.qty - a.qty);
 
-  // 5. Daily series (zero-fill)
+  // Daily series — zero-fill supaya chart tidak skip tanggal.
   const dailyMap = new Map<string, { revenue: number; txCount: number }>();
   for (const s of activeSales) {
     const d = dailyMap.get(s.sale_date) ?? { revenue: 0, txCount: 0 };
@@ -198,7 +206,6 @@ export async function getPosInsights(
     });
   }
 
-  // 6. Hour-of-day + day-of-week
   const hourly = Array.from({ length: 24 }, (_, hour) => ({
     hour,
     txCount: 0,
@@ -251,12 +258,3 @@ export async function getPosInsights(
   };
 }
 
-/**
- * Subtract `n` days from a YYYY-MM-DD WIB string. Pakai UTC math supaya
- * tidak terpengaruh TZ server.
- */
-function jakartaDateMinusDays(ymd: string, n: number): string {
-  const dt = new Date(ymd + "T00:00:00Z");
-  dt.setUTCDate(dt.getUTCDate() - n);
-  return dt.toISOString().slice(0, 10);
-}

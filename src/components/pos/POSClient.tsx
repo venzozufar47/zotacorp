@@ -130,6 +130,18 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
     return { total, itemCount, cartLines, qtyByProductId };
   }, [cart, customItems, lineByKey]);
 
+  const openPriceByProductId = useMemo(() => {
+    const m = new Map<string, { qty: number; lines: number }>();
+    for (const c of customItems) {
+      if (!c.productId) continue;
+      const e = m.get(c.productId) ?? { qty: 0, lines: 0 };
+      e.qty += c.qty;
+      e.lines += 1;
+      m.set(c.productId, e);
+    }
+    return m;
+  }, [customItems]);
+
   function inc(key: string) {
     setCart((c) => ({ ...c, [key]: (c[key] ?? 0) + 1 }));
   }
@@ -346,17 +358,13 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
         {products.map((p) => {
           const hasVariants = p.variants.length > 0;
           const totalQtyOnThisProduct = qtyByProductId.get(p.id) ?? 0;
-          // Open-price product punya line di customItems (bukan di
-          // `cart`); count lewat customItems supaya kartu menampilkan
-          // angka cart yang akurat.
-          const openPriceQty = p.isOpenPrice
-            ? customItems
-                .filter((c) => c.productId === p.id)
-                .reduce((s, c) => s + c.qty, 0)
-            : 0;
-          const openPriceLineCount = p.isOpenPrice
-            ? customItems.filter((c) => c.productId === p.id).length
-            : 0;
+          // Open-price lines hidup di customItems (bukan cart) —
+          // di-aggregate sekali via useMemo supaya O(1) per kartu.
+          const openPriceAgg = p.isOpenPrice
+            ? openPriceByProductId.get(p.id)
+            : undefined;
+          const openPriceQty = openPriceAgg?.qty ?? 0;
+          const openPriceLineCount = openPriceAgg?.lines ?? 0;
           const selected =
             totalQtyOnThisProduct > 0 || openPriceQty > 0;
           // Untuk produk tanpa varian (dan bukan open-price), tampilkan

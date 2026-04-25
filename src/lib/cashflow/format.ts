@@ -25,3 +25,18 @@ export function formatIDR(n: number, opts: FormatIDROptions = {}): string {
 export function formatRp(n: number): string {
   return formatIDR(n, { withRp: true });
 }
+
+/** Compact rupiah untuk axis label / chart — "1.250.000" → "1.2jt",
+ *  "15.000" → "15rb". */
+export function formatRpCompact(n: number): string {
+  if (n === 0) return "0";
+  if (n >= 1_000_000) {
+    const v = n / 1_000_000;
+    return `${v >= 10 ? Math.round(v) : v.toFixed(1)}jt`;
+  }
+  if (n >= 1_000) {
+    const v = n / 1_000;
+    return `${v >= 10 ? Math.round(v) : v.toFixed(1)}rb`;
+  }
+  return String(Math.round(n));
+}

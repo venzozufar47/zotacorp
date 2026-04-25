@@ -44,3 +44,11 @@ export function jakartaHour(d: Date): number {
   }).format(d);
   return Number(hh);
 }
+
+/** Subtract `n` days dari YYYY-MM-DD WIB string. UTC math supaya tidak
+ *  terpengaruh TZ server. */
+export function jakartaDateMinusDays(ymd: string, n: number): string {
+  const dt = new Date(ymd + "T00:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() - n);
+  return dt.toISOString().slice(0, 10);
+}
