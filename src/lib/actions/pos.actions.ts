@@ -778,6 +778,34 @@ export async function countPosSales(bankAccountId: string): Promise<number> {
 }
 
 /**
+ * Daftar tanggal unik yang punya minimal 1 sale, urutan terbaru →
+ * terlama. Dipakai untuk navigasi per-hari di /pos/riwayat (tiap
+ * halaman = 1 hari). Paginasi 1000-row PostgREST cap.
+ */
+export async function listPosSaleDates(
+  bankAccountId: string
+): Promise<string[]> {
+  const supabase = await createClient();
+  const dates = new Set<string>();
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("pos_sales")
+      .select("sale_date")
+      .eq("bank_account_id", bankAccountId)
+      .order("sale_date", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) return [];
+    const batch = data ?? [];
+    for (const r of batch) dates.add(r.sale_date);
+    if (batch.length < PAGE) break;
+    from += PAGE;
+  }
+  return [...dates].sort().reverse();
+}
+
+/**
  * Riwayat sale untuk rekening POS, default 50 terakhir. Dipakai di
  * /pos/riwayat — RLS sudah membatasi ke admin + assignee.
  *
@@ -788,7 +816,10 @@ export async function countPosSales(bankAccountId: string): Promise<number> {
 export async function listRecentPosSales(
   bankAccountId: string,
   limit: number | null = 50,
-  offset: number = 0
+  offset: number = 0,
+  /** Kalau di-set, filter ke sale_date tepat (YYYY-MM-DD WIB). Limit
+   *  diabaikan — semua sale di hari itu dikembalikan. */
+  saleDate: string | null = null
 ): Promise<PosSaleSummary[]> {
   const supabase = await createClient();
   // Dua query terpisah — embed `pos_sale_items(...)` tidak visible di
@@ -806,7 +837,26 @@ export async function listRecentPosSales(
     cashflow_transaction_id: string | null;
   };
   let sales: SaleRow[] = [];
-  if (limit === null) {
+  if (saleDate) {
+    const PAGE = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("pos_sales")
+        .select(
+          "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
+        )
+        .eq("bank_account_id", bankAccountId)
+        .eq("sale_date", saleDate)
+        .order("sale_time", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) return [];
+      const batch = (data ?? []) as SaleRow[];
+      sales.push(...batch);
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+  } else if (limit === null) {
     const PAGE = 1000;
     let from = 0;
     while (true) {
