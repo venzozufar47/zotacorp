@@ -1136,6 +1136,7 @@ export type Database = {
           bank_account_id: string
           created_at: string
           id: string
+          is_open_price: boolean
           name: string
           price: number
           sort_order: number
@@ -1148,6 +1149,7 @@ export type Database = {
           bank_account_id: string
           created_at?: string
           id?: string
+          is_open_price?: boolean
           name: string
           price: number
           sort_order?: number
@@ -1160,6 +1162,7 @@ export type Database = {
           bank_account_id?: string
           created_at?: string
           id?: string
+          is_open_price?: boolean
           name?: string
           price?: number
           sort_order?: number

@@ -29,6 +29,10 @@ interface CustomLine {
   name: string;
   price: number;
   qty: number;
+  /** Kalau diisi, line ini referensi produk katalog open-price; saat
+   *  submit dikirim sebagai `{ productId, customPrice, qty }`. Kosong
+   *  = item ad-hoc murni (`{ customName, customPrice, qty }`). */
+  productId?: string;
 }
 
 /** Cart key scheme: "p:<productId>" untuk produk tanpa varian,
@@ -64,6 +68,8 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   const [customOpen, setCustomOpen] = useState(false);
   // productId yang sedang dibuka variant-pickernya; null = tertutup.
   const [variantPickerFor, setVariantPickerFor] = useState<string | null>(null);
+  // productId open-price yang sedang dibuka dialog input harga; null = tertutup.
+  const [openPriceFor, setOpenPriceFor] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   // Lookup cartKey → { name, price } untuk total/rendering O(cart entries).
@@ -139,6 +145,12 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   }
 
   function handleProductTap(p: PosProduct) {
+    // Open-price: tiap tap buka dialog input harga; setiap submit
+    // jadi line baru di cart sehingga qty + harga bisa beda-beda.
+    if (p.isOpenPrice) {
+      setOpenPriceFor(p.id);
+      return;
+    }
     if (p.variants.length === 0) {
       inc(cartKey(p.id));
       return;
@@ -150,6 +162,19 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       return;
     }
     setVariantPickerFor(p.id);
+  }
+
+  function addOpenPriceLine(p: PosProduct, price: number, qty: number) {
+    setCustomItems((arr) => [
+      ...arr,
+      {
+        localId: crypto.randomUUID(),
+        name: p.name,
+        price,
+        qty,
+        productId: p.id,
+      },
+    ]);
   }
 
   function addCustom(name: string, price: number, qty: number) {
@@ -195,11 +220,11 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       });
     const items: PosSaleItemInput[] = [
       ...catalogItems,
-      ...customItems.map((c) => ({
-        customName: c.name,
-        customPrice: c.price,
-        qty: c.qty,
-      })),
+      ...customItems.map((c) =>
+        c.productId
+          ? { productId: c.productId, customPrice: c.price, qty: c.qty }
+          : { customName: c.name, customPrice: c.price, qty: c.qty }
+      ),
     ];
     if (items.length === 0) return;
     if (QRIS_RECEIPT_AT_CHECKOUT && method === "qris" && !qrisReceipt) {
@@ -321,12 +346,25 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
         {products.map((p) => {
           const hasVariants = p.variants.length > 0;
           const totalQtyOnThisProduct = qtyByProductId.get(p.id) ?? 0;
-          const selected = totalQtyOnThisProduct > 0;
-          // Untuk produk tanpa varian, tampilkan [- qty +] pill di card.
-          // Untuk produk dengan varian, tap card buka modal — tidak ada
-          // inline pill (qty per varian dipilih di dalam modal).
-          const showInlinePill = !hasVariants && selected;
-          const singleKey = !hasVariants ? cartKey(p.id) : null;
+          // Open-price product punya line di customItems (bukan di
+          // `cart`); count lewat customItems supaya kartu menampilkan
+          // angka cart yang akurat.
+          const openPriceQty = p.isOpenPrice
+            ? customItems
+                .filter((c) => c.productId === p.id)
+                .reduce((s, c) => s + c.qty, 0)
+            : 0;
+          const openPriceLineCount = p.isOpenPrice
+            ? customItems.filter((c) => c.productId === p.id).length
+            : 0;
+          const selected =
+            totalQtyOnThisProduct > 0 || openPriceQty > 0;
+          // Untuk produk tanpa varian (dan bukan open-price), tampilkan
+          // [- qty +] pill di card. Open-price tidak punya pill — tiap
+          // tap buka dialog harga baru. Variant: tap = modal varian.
+          const showInlinePill = !hasVariants && !p.isOpenPrice && selected;
+          const singleKey =
+            !hasVariants && !p.isOpenPrice ? cartKey(p.id) : null;
           const qtyOnSingleKey = singleKey ? cart[singleKey] ?? 0 : 0;
           return (
             <div key={p.id} className="relative">
@@ -343,8 +381,17 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                   {p.name}
                 </div>
                 <div className="mt-1 text-xs sm:text-sm text-muted-foreground">
-                  {hasVariants ? variantPriceLabel(p.variants) : formatRp(p.price)}
+                  {p.isOpenPrice
+                    ? "Harga custom"
+                    : hasVariants
+                      ? variantPriceLabel(p.variants)
+                      : formatRp(p.price)}
                 </div>
+                {p.isOpenPrice && openPriceLineCount > 0 && (
+                  <div className="mt-1 text-[10px] uppercase tracking-wider text-primary font-semibold">
+                    {openPriceLineCount} line · {openPriceQty}× di cart
+                  </div>
+                )}
                 {hasVariants && (
                   <>
                     <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -421,7 +468,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       {customItems.length > 0 && (
         <div className="px-3 pb-3 space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
-            Item custom
+            Item custom & harga custom
           </p>
           {customItems.map((c) => (
             <div
@@ -431,6 +478,11 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-foreground text-sm truncate">
                   {c.name}
+                  {c.productId && (
+                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                      open price
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-muted-foreground tabular-nums">
                   {formatRp(c.price)} × {c.qty} = {formatRp(c.price * c.qty)}
@@ -655,6 +707,18 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
           onClose={() => setVariantPickerFor(null)}
         />
       )}
+
+      {openPriceFor && (() => {
+        const p = products.find((x) => x.id === openPriceFor);
+        if (!p) return null;
+        return (
+          <OpenPriceDialog
+            product={p}
+            onAdd={(price, qty) => addOpenPriceLine(p, price, qty)}
+            onClose={() => setOpenPriceFor(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -860,6 +924,108 @@ function CustomItemDialog({
             className="h-11 rounded-xl bg-primary text-primary-foreground font-semibold"
           >
             Tambahkan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Dialog input harga untuk produk open-price. Tiap submit menambah
+ * line BARU ke cart — kasir bisa tap produk yang sama berkali-kali
+ * dengan harga berbeda (mis. discount per customer).
+ */
+function OpenPriceDialog({
+  product,
+  onAdd,
+  onClose,
+}: {
+  product: PosProduct;
+  onAdd: (price: number, qty: number) => void;
+  onClose: () => void;
+}) {
+  // Default suggestion = harga di katalog kalau di-set; kosong kalau 0.
+  const [price, setPrice] = useState(product.price > 0 ? String(product.price) : "");
+  const [qty, setQty] = useState("1");
+
+  function submit() {
+    const p = Number(price);
+    const q = Number(qty);
+    if (!Number.isFinite(p) || p < 0) {
+      toast.error("Harga tidak valid");
+      return;
+    }
+    if (!Number.isInteger(q) || q <= 0) {
+      toast.error("Qty harus bilangan bulat > 0");
+      return;
+    }
+    onAdd(p, q);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold text-foreground">{product.name}</h2>
+          <p className="text-xs text-muted-foreground">
+            Input harga + qty. Submit untuk tambah ke cart sebagai line baru —
+            kalau mau beda harga, tap produk lagi.
+          </p>
+        </div>
+        <div className="grid grid-cols-[1fr_100px] gap-2">
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              Harga
+            </span>
+            <input
+              autoFocus
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="contoh 25000"
+              inputMode="numeric"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+              }}
+              className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-background text-sm tabular-nums"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              Qty
+            </span>
+            <input
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              inputMode="numeric"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+              }}
+              className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-background text-sm tabular-nums"
+            />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-xl border border-border text-foreground font-semibold hover:bg-muted"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            className="h-11 rounded-xl bg-primary text-primary-foreground font-semibold"
+          >
+            Tambah ke cart
           </button>
         </div>
       </div>

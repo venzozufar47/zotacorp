@@ -26,6 +26,7 @@ type PosProductRow = Pick<
   | "sort_order"
   | "track_stock"
   | "stock_aggregate_variants"
+  | "is_open_price"
 >;
 type PosProductVariantRow = Pick<
   Database["public"]["Tables"]["pos_product_variants"]["Row"],
@@ -60,6 +61,11 @@ export interface PosProduct {
    *  varian hanya relevan saat jual. Contoh: Croissant dipanggang plain,
    *  varian (Coklat/Keju) baru dipilih saat penyajian ke customer. */
   stockAggregateVariants: boolean;
+  /** Kalau true, harga ditentukan kasir saat sale (tap → dialog input
+   *  harga). Field `price` di sini dipakai sebagai default suggestion.
+   *  Tidak kompatibel dengan `variants` — open-price = produk single-SKU
+   *  dengan harga dinamis. */
+  isOpenPrice: boolean;
   /** Kalau length > 0, UI POS wajib pilih varian sebelum +1 ke cart.
    *  Varian menggantikan `price` (harga base dipakai cuma kalau tak
    *  ada varian sama sekali). */
@@ -105,6 +111,7 @@ function mapPosProduct(
     sortOrder: r.sort_order,
     trackStock: r.track_stock,
     stockAggregateVariants: r.stock_aggregate_variants,
+    isOpenPrice: r.is_open_price,
     variants,
   };
 }
@@ -158,7 +165,7 @@ export async function listActivePosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
     .order("sort_order", { ascending: true })
@@ -180,7 +187,7 @@ export async function listAllPosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price")
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("sort_order", { ascending: true })
@@ -204,6 +211,7 @@ export async function createPosProduct(input: {
   name: string;
   price: number;
   sortOrder?: number;
+  isOpenPrice?: boolean;
 }): Promise<ActionResult<{ id: string }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -220,6 +228,7 @@ export async function createPosProduct(input: {
       name,
       price: input.price,
       sort_order: input.sortOrder ?? 0,
+      is_open_price: input.isOpenPrice ?? false,
     })
     .select("id")
     .single();
@@ -234,6 +243,7 @@ export async function updatePosProduct(input: {
   price?: number;
   active?: boolean;
   sortOrder?: number;
+  isOpenPrice?: boolean;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -250,6 +260,7 @@ export async function updatePosProduct(input: {
   }
   if (input.active !== undefined) patch.active = input.active;
   if (input.sortOrder !== undefined) patch.sort_order = input.sortOrder;
+  if (input.isOpenPrice !== undefined) patch.is_open_price = input.isOpenPrice;
   if (Object.keys(patch).length === 0) return { ok: true };
 
   const supabase = await createClient();
@@ -413,11 +424,22 @@ export async function deletePosProductVariant(
  */
 export type PosSaleItemInput =
   | { productId: string; variantId?: string | null; qty: number }
+  | {
+      productId: string;
+      /** Catalog product yang `is_open_price=true` — harga ditentukan
+       *  per sale (kasir input). Tidak boleh dipakai untuk produk
+       *  bervariasi atau yang bukan open-price. */
+      customPrice: number;
+      qty: number;
+    }
   | { customName: string; customPrice: number; qty: number };
 
-function isCatalogItem(
-  it: PosSaleItemInput
-): it is { productId: string; variantId?: string | null; qty: number } {
+type CatalogItemInput =
+  | { productId: string; variantId?: string | null; qty: number; customPrice?: undefined }
+  | { productId: string; customPrice: number; qty: number; variantId?: undefined };
+type CustomItemInput = { customName: string; customPrice: number; qty: number };
+
+function isCatalogItem(it: PosSaleItemInput): it is CatalogItemInput {
   return "productId" in it;
 }
 
@@ -436,10 +458,16 @@ export async function createPosSale(input: {
       return { ok: false, error: "Qty harus bilangan bulat > 0" };
     if (isCatalogItem(it)) {
       if (!it.productId) return { ok: false, error: "productId kosong" };
+      if (
+        it.customPrice !== undefined &&
+        (!Number.isFinite(it.customPrice) || it.customPrice < 0)
+      )
+        return { ok: false, error: "Harga custom tidak valid" };
     } else {
-      const name = it.customName?.trim();
+      const c = it as CustomItemInput;
+      const name = c.customName?.trim();
       if (!name) return { ok: false, error: "Nama item custom wajib diisi" };
-      if (!Number.isFinite(it.customPrice) || it.customPrice < 0)
+      if (!Number.isFinite(c.customPrice) || c.customPrice < 0)
         return { ok: false, error: "Harga custom tidak valid" };
     }
   }
@@ -455,7 +483,14 @@ export async function createPosSale(input: {
   const productIds = [...new Set(catalogItems.map((i) => i.productId))];
   const productMap = new Map<
     string,
-    { id: string; name: string; price: number | string; active: boolean; bank_account_id: string }
+    {
+      id: string;
+      name: string;
+      price: number | string;
+      active: boolean;
+      bank_account_id: string;
+      is_open_price: boolean;
+    }
   >();
   const variantMap = new Map<
     string,
@@ -465,7 +500,7 @@ export async function createPosSale(input: {
   if (productIds.length > 0) {
     const { data: products, error: prodErr } = await supabase
       .from("pos_products")
-      .select("id, name, price, active, bank_account_id")
+      .select("id, name, price, active, bank_account_id, is_open_price")
       .in("id", productIds);
     if (prodErr) return { ok: false, error: prodErr.message };
     for (const p of products ?? []) productMap.set(p.id, p);
@@ -491,10 +526,32 @@ export async function createPosSale(input: {
     for (const it of catalogItems) {
       const hasVariants = productHasVariants.get(it.productId) ?? false;
       const p = productMap.get(it.productId)!;
-      if (hasVariants && !it.variantId)
-        return { ok: false, error: `Produk "${p.name}" wajib pilih varian` };
-      if (!hasVariants && it.variantId)
-        return { ok: false, error: `Produk "${p.name}" tidak punya varian` };
+      if (it.customPrice !== undefined) {
+        // Open-price branch: produk wajib flagged is_open_price, dan
+        // tidak boleh kombinasi dengan varian (varian punya harga sendiri).
+        if (!p.is_open_price)
+          return {
+            ok: false,
+            error: `Produk "${p.name}" bukan produk harga custom`,
+          };
+        if (hasVariants)
+          return {
+            ok: false,
+            error: `Produk "${p.name}" punya varian — tidak bisa custom price`,
+          };
+        if (it.variantId)
+          return { ok: false, error: `Produk "${p.name}" tidak punya varian` };
+      } else {
+        if (hasVariants && !it.variantId)
+          return { ok: false, error: `Produk "${p.name}" wajib pilih varian` };
+        if (!hasVariants && it.variantId)
+          return { ok: false, error: `Produk "${p.name}" tidak punya varian` };
+        if (p.is_open_price)
+          return {
+            ok: false,
+            error: `Produk "${p.name}" wajib input harga (open price)`,
+          };
+      }
       if (it.variantId) {
         const v = variantMap.get(it.variantId);
         if (!v) return { ok: false, error: "Varian tidak ditemukan / tidak aktif" };
@@ -511,7 +568,10 @@ export async function createPosSale(input: {
     if (isCatalogItem(it)) {
       const p = productMap.get(it.productId)!;
       const v = it.variantId ? variantMap.get(it.variantId)! : null;
-      const unitPrice = Number(v ? v.price : p.price);
+      const unitPrice =
+        it.customPrice !== undefined
+          ? Number(it.customPrice)
+          : Number(v ? v.price : p.price);
       const subtotal = unitPrice * it.qty;
       total += subtotal;
       return {
@@ -524,16 +584,17 @@ export async function createPosSale(input: {
         subtotal,
       };
     }
-    const unitPrice = it.customPrice;
-    const subtotal = unitPrice * it.qty;
+    const c = it as CustomItemInput;
+    const unitPrice = c.customPrice;
+    const subtotal = unitPrice * c.qty;
     total += subtotal;
     return {
       productId: null,
-      productName: it.customName.trim(),
+      productName: c.customName.trim(),
       variantId: null,
       variantName: null,
       unitPrice,
-      qty: it.qty,
+      qty: c.qty,
       subtotal,
     };
   });
@@ -706,12 +767,30 @@ export async function createPosSale(input: {
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Hitung total sale (semua, termasuk voided) untuk rekening POS —
+ * dipakai untuk pagination footer di /pos/riwayat.
+ */
+export async function countPosSales(bankAccountId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("pos_sales")
+    .select("id", { count: "exact", head: true })
+    .eq("bank_account_id", bankAccountId);
+  return count ?? 0;
+}
+
+/**
  * Riwayat sale untuk rekening POS, default 50 terakhir. Dipakai di
  * /pos/riwayat — RLS sudah membatasi ke admin + assignee.
+ *
+ * Paging: kalau `offset` di-set + limit number, ambil window
+ * `[offset, offset+limit)`. Limit=null tetap supported untuk export
+ * full history (insights, dll).
  */
 export async function listRecentPosSales(
   bankAccountId: string,
-  limit: number | null = 50
+  limit: number | null = 50,
+  offset: number = 0
 ): Promise<PosSaleSummary[]> {
   const supabase = await createClient();
   // Dua query terpisah — embed `pos_sale_items(...)` tidak visible di
@@ -757,7 +836,7 @@ export async function listRecentPosSales(
       .eq("bank_account_id", bankAccountId)
       .order("sale_date", { ascending: false })
       .order("sale_time", { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
     if (error) return [];
     sales = (data ?? []) as SaleRow[];
   }

@@ -89,6 +89,7 @@ export function ProductCatalogClient({
           sortOrder: maxOrder + 1,
           trackStock: true,
           stockAggregateVariants: false,
+          isOpenPrice: false,
           variants: [],
         },
       ]);
@@ -100,7 +101,7 @@ export function ProductCatalogClient({
 
   function updateField(
     id: string,
-    patch: Partial<Pick<PosProduct, "name" | "price" | "active">>
+    patch: Partial<Pick<PosProduct, "name" | "price" | "active" | "isOpenPrice">>
   ) {
     const prev = products;
     setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -326,14 +327,38 @@ export function ProductCatalogClient({
                       if (Number.isFinite(v) && v >= 0 && v !== p.price)
                         updateField(p.id, { price: v });
                     }}
+                    placeholder={p.isOpenPrice ? "default (opsional)" : undefined}
                     className="w-full sm:w-28 h-9 px-2 rounded-lg border border-border sm:border-transparent hover:border-border focus:border-primary bg-transparent text-sm tabular-nums text-right"
                     title={
                       variantCount > 0
                         ? "Harga base diabaikan saat produk punya varian"
-                        : undefined
+                        : p.isOpenPrice
+                          ? "Open-price: harga ditentukan saat sale; field ini cuma default suggestion"
+                          : undefined
                     }
                   />
                 </div>
+                <label
+                  className={
+                    "inline-flex items-center gap-1 text-xs shrink-0 " +
+                    (variantCount > 0 ? "opacity-50 cursor-not-allowed" : "")
+                  }
+                  title={
+                    variantCount > 0
+                      ? "Produk dengan varian tidak bisa open-price (varian punya harga sendiri)"
+                      : "Kasir input harga saat sale"
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={p.isOpenPrice}
+                    disabled={variantCount > 0}
+                    onChange={(e) =>
+                      updateField(p.id, { isOpenPrice: e.target.checked })
+                    }
+                  />
+                  open price
+                </label>
                 <label className="inline-flex items-center gap-1 text-xs shrink-0">
                   <input
                     type="checkbox"
