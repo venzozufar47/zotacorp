@@ -375,7 +375,7 @@ export const dictionary = {
     },
     attendanceTable: {
       colNotes: "Notes",
-      lateCheckoutPrefix: "Late checkout",
+      lateCheckoutPrefix: "Note",
       selfieDialogTitle: "Check-in selfie",
       selfieLoadError: "Failed to load selfie.",
       earlyArrivalLabel: "Early arrival",
@@ -897,7 +897,7 @@ export const dictionary = {
     },
     attendanceTable: {
       colNotes: "Keterangan",
-      lateCheckoutPrefix: "Telat check-out",
+      lateCheckoutPrefix: "Catatan",
       selfieDialogTitle: "Selfie check-in",
       selfieLoadError: "Gagal memuat selfie.",
       earlyArrivalLabel: "Datang awal",
