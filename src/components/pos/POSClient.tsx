@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { PosNavLink } from "./PosNavLink";
-import { Boxes, Camera, History, Loader2, Minus, Plus, Settings, Sparkles, Wallet, X } from "lucide-react";
+import { BarChart3, Boxes, Camera, History, Loader2, Minus, Plus, Settings, Sparkles, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createPosSale,
@@ -311,6 +311,9 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
           <HeaderNavLink href="/pos/shift" icon={<Wallet size={16} />} label="Saldo" />
           <HeaderNavLink href="/pos/stok" icon={<Boxes size={16} />} label="Stok" />
           <HeaderNavLink href="/pos/riwayat" icon={<History size={16} />} label="Riwayat" />
+          {isAdmin && (
+            <HeaderNavLink href="/pos/insights" icon={<BarChart3 size={16} />} label="Insights" />
+          )}
         </nav>
       </header>
 

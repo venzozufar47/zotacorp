@@ -34,3 +34,13 @@ export function jakartaHHMM(d: Date): string {
     hour12: false,
   }).format(d);
 }
+
+/** Hour-of-day (0–23) untuk `d` di timezone Asia/Jakarta. */
+export function jakartaHour(d: Date): number {
+  const hh = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    hour12: false,
+  }).format(d);
+  return Number(hh);
+}

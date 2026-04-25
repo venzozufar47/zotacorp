@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Cake,
   Sparkles,
   Flame,
-  Trophy,
   MessageCircle,
-  ChevronDown,
-  ChevronRight,
   AlertTriangle,
 } from "lucide-react";
 import type { EmployeeMonitoringRow } from "@/lib/actions/employee-monitoring.actions";
@@ -35,8 +32,83 @@ function relativeDays(days: number | null | undefined): string {
   return `${days} hari lagi`;
 }
 
+function pickName(r: EmployeeMonitoringRow): string {
+  return r.nickname || r.fullName || "(tanpa nama)";
+}
+
+/**
+ * Tab admin monitoring perayaan, di-organisir per KATEGORI (Notice,
+ * Streak, Ulang Tahun, Anniversary, Log WA) — bukan per-karyawan.
+ * Setiap kategori punya rangkingnya sendiri sehingga admin bisa scan
+ * "siapa yang streaknya paling tinggi", "siapa ulang tahun terdekat",
+ * dst dalam satu pandangan.
+ */
 export function CelebrationsMonitoringTable({ rows }: Props) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const noticeRows = rows.filter((r) => r.notices.length > 0);
+  const [waQuery, setWaQuery] = useState("");
+
+  const streakRows = useMemo(
+    () =>
+      [...rows]
+        .filter((r) => r.streakCurrent > 0 || r.streakPersonalBest > 0)
+        .sort((a, b) => {
+          if (a.streakCurrent !== b.streakCurrent) {
+            return b.streakCurrent - a.streakCurrent;
+          }
+          return b.streakPersonalBest - a.streakPersonalBest;
+        }),
+    [rows]
+  );
+
+  const birthdayRows = useMemo(
+    () =>
+      [...rows]
+        .filter((r) => r.dateOfBirth)
+        .sort((a, b) => (a.daysToBirthday ?? 365) - (b.daysToBirthday ?? 365)),
+    [rows]
+  );
+
+  const anniversaryRows = useMemo(
+    () =>
+      [...rows]
+        .filter((r) => r.firstDayOfWork)
+        .sort(
+          (a, b) =>
+            (a.daysToAnniversary ?? 365) - (b.daysToAnniversary ?? 365)
+        ),
+    [rows]
+  );
+
+  const waLog = useMemo(() => {
+    const flat: Array<{
+      employeeId: string;
+      employeeName: string;
+      log: EmployeeMonitoringRow["recentWa"][number];
+    }> = [];
+    for (const r of rows) {
+      for (const log of r.recentWa) {
+        flat.push({
+          employeeId: r.id,
+          employeeName: pickName(r),
+          log,
+        });
+      }
+    }
+    flat.sort((a, b) => (a.log.sentAt < b.log.sentAt ? 1 : -1));
+    return flat;
+  }, [rows]);
+
+  const waLogFiltered = useMemo(() => {
+    const q = waQuery.trim().toLowerCase();
+    if (!q) return waLog;
+    return waLog.filter((entry) => {
+      if (entry.employeeName.toLowerCase().includes(q)) return true;
+      if (entry.log.body?.toLowerCase().includes(q)) return true;
+      if (eventBadgeLabel(entry.log.eventType).toLowerCase().includes(q)) return true;
+      if (entry.log.eventType.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [waLog, waQuery]);
 
   if (rows.length === 0) {
     return (
@@ -49,316 +121,313 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border flex items-baseline justify-between">
-        <h2 className="font-display text-base font-semibold">
-          {rows.length} karyawan
-        </h2>
-        <p className="text-[11px] text-muted-foreground">
-          Diurutkan: perayaan terdekat dulu
-        </p>
-      </div>
-      <ul className="divide-y divide-border">
-        {rows.map((r) => {
-          const expanded = expandedId === r.id;
-          return (
-            <li key={r.id}>
-              <button
-                type="button"
-                onClick={() => setExpandedId(expanded ? null : r.id)}
-                className="w-full text-left px-4 py-3 hover:bg-accent/20 transition flex items-start gap-3"
-              >
-                <span className="shrink-0 mt-0.5">
-                  {expanded ? (
-                    <ChevronDown size={14} className="text-muted-foreground" />
-                  ) : (
-                    <ChevronRight size={14} className="text-muted-foreground" />
-                  )}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className="font-semibold text-foreground">
-                      {r.fullName || "(tanpa nama)"}
-                    </span>
-                    {r.nickname ? (
-                      <span className="text-[11px] text-muted-foreground">
-                        {r.nickname}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-3 flex-wrap text-[11px]">
-                    <Pill
-                      icon={<Flame size={11} />}
-                      label="Streak"
-                      value={`${r.streakCurrent} hari`}
-                      tone={r.streakCurrent >= 5 ? "success" : "muted"}
-                    />
-                    <Pill
-                      icon={<Trophy size={11} />}
-                      label="Best"
-                      value={`${r.streakPersonalBest} hari`}
-                    />
-                    <Pill
-                      icon={<Cake size={11} />}
-                      label="Ultah"
-                      value={
-                        r.dateOfBirth
-                          ? `${formatDate(r.birthdayThisYear)} · ${relativeDays(r.daysToBirthday)}`
-                          : "—"
-                      }
-                      tone={
-                        r.daysToBirthday != null && r.daysToBirthday <= 7
-                          ? "warning"
-                          : undefined
-                      }
-                    />
-                    <Pill
-                      icon={<Sparkles size={11} />}
-                      label="Anniv"
-                      value={
-                        r.firstDayOfWork
-                          ? `${formatDate(r.anniversaryThisYear)} · ${relativeDays(r.daysToAnniversary)} · ${r.yearsOfService}th`
-                          : "—"
-                      }
-                      tone={
-                        r.daysToAnniversary != null && r.daysToAnniversary <= 7
-                          ? "warning"
-                          : undefined
-                      }
-                    />
-                    <Pill
-                      icon={<MessageCircle size={11} />}
-                      label="WA log"
-                      value={`${r.recentWa.length}`}
-                    />
-                    {r.notices.length > 0 && (
-                      <Pill
-                        icon={<AlertTriangle size={11} />}
-                        label="Notice"
-                        value={`${r.notices.length}`}
-                        tone="warning"
-                      />
-                    )}
-                  </div>
-                </div>
-              </button>
-              {expanded && (
-                <div className="px-4 pb-4 pt-0 space-y-3 bg-muted/20">
-                  {r.notices.length > 0 && (
-                    <div className="rounded-md border-2 border-warning/40 bg-warning/10 p-2.5 space-y-1.5 mt-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-warning flex items-center gap-1">
-                        <AlertTriangle size={11} />
-                        Perhatian
-                      </p>
-                      <ul className="space-y-1 text-[11px] text-foreground">
-                        {r.notices.map((n, i) => (
-                          <li key={i} className="flex items-baseline gap-1.5">
-                            <span className="text-warning">•</span>
-                            <span>{n.message}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-2">
-                    <DetailBlock title="Streak presensi">
-                      <DetailRow label="Saat ini" value={`${r.streakCurrent} hari`} />
-                      <DetailRow label="Personal best" value={`${r.streakPersonalBest} hari`} />
-                      <DetailRow
-                        label="Milestone terakhir"
-                        value={
-                          r.streakLastMilestone > 0
-                            ? `${r.streakLastMilestone} hari`
-                            : "Belum"
-                        }
-                      />
-                    </DetailBlock>
-                    <DetailBlock title="Ulang tahun">
-                      <DetailRow
-                        label="Tanggal lahir"
-                        value={r.dateOfBirth ? formatDate(r.dateOfBirth) : "—"}
-                      />
-                      <DetailRow
-                        label="Ulang tahun mendatang"
-                        value={
-                          r.birthdayThisYear
-                            ? `${formatDate(r.birthdayThisYear)} (${relativeDays(r.daysToBirthday)})`
-                            : "—"
-                        }
-                      />
-                      <DetailRow
-                        label="Terakhir di-greet"
-                        value={
-                          r.birthdayLastGreeted
-                            ? formatDate(r.birthdayLastGreeted)
-                            : "Belum pernah"
-                        }
-                      />
-                    </DetailBlock>
-                    <DetailBlock title="Anniversary tahun kerja">
-                      <DetailRow
-                        label="Mulai kerja"
-                        value={
-                          r.firstDayOfWork ? formatDate(r.firstDayOfWork) : "—"
-                        }
-                      />
-                      <DetailRow
-                        label="Anniversary mendatang"
-                        value={
-                          r.anniversaryThisYear
-                            ? `${formatDate(r.anniversaryThisYear)} (${relativeDays(r.daysToAnniversary)})`
-                            : "—"
-                        }
-                      />
-                      <DetailRow
-                        label="Tahun kerja saat ini"
-                        value={`${r.yearsOfService} tahun`}
-                      />
-                      <DetailRow
-                        label="Terakhir di-greet"
-                        value={
-                          r.anniversaryLastGreeted
-                            ? formatDate(r.anniversaryLastGreeted)
-                            : "Belum pernah"
-                        }
-                      />
-                    </DetailBlock>
-                    <DetailBlock title="Kontak">
-                      <DetailRow
-                        label="WhatsApp"
-                        value={r.whatsappNumber ?? "—"}
-                      />
-                    </DetailBlock>
-                  </div>
+    <div className="space-y-4">
+      {noticeRows.length > 0 && <NoticeSection rows={noticeRows} />}
 
-                  <div>
-                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                      Riwayat WA perayaan
-                    </h3>
-                    {r.recentWa.length === 0 ? (
-                      <p className="text-[11px] text-muted-foreground italic">
-                        Belum ada pesan WA perayaan terkirim ke karyawan ini.
-                      </p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {r.recentWa.map((log) => (
-                          <li
-                            key={log.id}
-                            className="rounded-md border border-border bg-background p-2.5"
-                          >
-                            <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                              <span
-                                className={
-                                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider " +
-                                  (log.eventType === "birthday"
-                                    ? "bg-pink-100 text-pink-700"
-                                    : log.eventType === "anniversary"
-                                    ? "bg-amber-100 text-amber-700"
-                                    : log.eventType === "streak_milestone"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : log.eventType === "celebration_greeting_notification"
-                                    ? "bg-purple-100 text-purple-700"
-                                    : "bg-muted text-muted-foreground")
-                                }
-                              >
-                                {log.eventType === "birthday"
-                                  ? "Birthday"
-                                  : log.eventType === "anniversary"
-                                  ? "Anniversary"
-                                  : log.eventType === "streak_milestone"
-                                  ? "Streak"
-                                  : log.eventType === "celebration_greeting_notification"
-                                  ? "Notif"
-                                  : log.eventType}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
-                                {new Date(log.sentAt).toLocaleString("id-ID", {
-                                  day: "numeric",
-                                  month: "short",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                              {log.status === "failed" && (
-                                <span className="text-[10px] text-destructive font-bold uppercase">
-                                  Gagal
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-1.5 text-[11px] text-foreground whitespace-pre-wrap leading-snug">
-                              {log.body}
-                            </p>
-                            {log.errorMessage && (
-                              <p className="mt-1 text-[10px] text-destructive">
-                                {log.errorMessage}
-                              </p>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <CategoryCard
+          title="Streak presensi"
+          icon={<Flame size={14} />}
+          accent="bg-emerald-50/60 border-emerald-300"
+          countLabel={`${streakRows.length} karyawan`}
+        >
+          {streakRows.length === 0 ? (
+            <Empty>Belum ada streak aktif.</Empty>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {streakRows.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10"
+                >
+                  <span className="flex-1 min-w-0 truncate text-foreground font-medium">
+                    {pickName(r)}
+                  </span>
+                  <span className="font-mono tabular-nums text-foreground">
+                    {r.streakCurrent} hari
+                  </span>
+                  <span className="text-muted-foreground text-[10px] whitespace-nowrap">
+                    best {r.streakPersonalBest} · ms{" "}
+                    {r.streakLastMilestone || "—"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CategoryCard>
+
+        <CategoryCard
+          title="Ulang tahun"
+          icon={<Cake size={14} />}
+          accent="bg-pink-50/60 border-pink-300"
+          countLabel={`${birthdayRows.length} karyawan`}
+        >
+          {birthdayRows.length === 0 ? (
+            <Empty>Belum ada tanggal lahir terisi.</Empty>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {birthdayRows.map((r) => {
+                const soon =
+                  r.daysToBirthday != null && r.daysToBirthday <= 7;
+                return (
+                  <li
+                    key={r.id}
+                    className={
+                      "flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10 " +
+                      (soon ? "bg-pink-50/40" : "")
+                    }
+                  >
+                    <span className="flex-1 min-w-0 truncate text-foreground font-medium">
+                      {pickName(r)}
+                    </span>
+                    <span className="text-muted-foreground text-[10px] whitespace-nowrap">
+                      {formatDate(r.birthdayThisYear)}
+                    </span>
+                    <span
+                      className={
+                        "text-[10px] whitespace-nowrap font-semibold " +
+                        (soon ? "text-pink-700" : "text-muted-foreground")
+                      }
+                    >
+                      {relativeDays(r.daysToBirthday)}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground italic whitespace-nowrap">
+                      {r.birthdayLastGreeted
+                        ? `greet ${formatDate(r.birthdayLastGreeted)}`
+                        : "blm greet"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CategoryCard>
+
+        <CategoryCard
+          title="Anniversary tahun kerja"
+          icon={<Sparkles size={14} />}
+          accent="bg-amber-50/60 border-amber-300"
+          countLabel={`${anniversaryRows.length} karyawan`}
+        >
+          {anniversaryRows.length === 0 ? (
+            <Empty>Belum ada tanggal mulai kerja terisi.</Empty>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {anniversaryRows.map((r) => {
+                const soon =
+                  r.daysToAnniversary != null && r.daysToAnniversary <= 7;
+                return (
+                  <li
+                    key={r.id}
+                    className={
+                      "flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10 " +
+                      (soon ? "bg-amber-50/40" : "")
+                    }
+                  >
+                    <span className="flex-1 min-w-0 truncate text-foreground font-medium">
+                      {pickName(r)}
+                    </span>
+                    <span className="text-muted-foreground text-[10px] whitespace-nowrap">
+                      {formatDate(r.anniversaryThisYear)}
+                    </span>
+                    <span
+                      className={
+                        "text-[10px] whitespace-nowrap font-semibold " +
+                        (soon ? "text-amber-700" : "text-muted-foreground")
+                      }
+                    >
+                      {relativeDays(r.daysToAnniversary)}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                      {r.yearsOfService}th
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CategoryCard>
+
+        <CategoryCard
+          title="Riwayat WA perayaan"
+          icon={<MessageCircle size={14} />}
+          accent="bg-indigo-50/60 border-indigo-300"
+          countLabel={
+            waQuery
+              ? `${waLogFiltered.length} / ${waLog.length} pesan`
+              : `${waLog.length} pesan`
+          }
+        >
+          <div className="px-3 pt-2 pb-1">
+            <input
+              type="search"
+              value={waQuery}
+              onChange={(e) => setWaQuery(e.target.value)}
+              placeholder="Cari nama, isi pesan, atau jenis (notif/streak/broadcast)…"
+              className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+          {waLog.length === 0 ? (
+            <Empty>Belum ada log WA perayaan.</Empty>
+          ) : waLogFiltered.length === 0 ? (
+            <Empty>Tidak ada hasil untuk &quot;{waQuery}&quot;.</Empty>
+          ) : (
+            <ul className="divide-y divide-border/60 max-h-[420px] overflow-y-auto">
+              {waLogFiltered.map((entry) => (
+                <li
+                  key={entry.log.id}
+                  className="px-3 py-2 text-xs hover:bg-accent/10"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-medium text-foreground truncate">
+                      {entry.employeeName}
+                    </span>
+                    <span
+                      className={
+                        "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider " +
+                        eventBadgeClass(entry.log.eventType)
+                      }
+                    >
+                      {eventBadgeLabel(entry.log.eventType)}
+                    </span>
+                    <span className="font-mono tabular-nums text-[10px] text-muted-foreground whitespace-nowrap">
+                      {new Date(entry.log.sentAt).toLocaleString("id-ID", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    {entry.log.status === "failed" && (
+                      <span className="text-[9px] font-bold text-destructive uppercase">
+                        Gagal
+                      </span>
                     )}
                   </div>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                  <p className="mt-1 text-[10px] text-muted-foreground whitespace-pre-wrap line-clamp-3">
+                    {entry.log.body}
+                  </p>
+                  {entry.log.errorMessage && (
+                    <p className="mt-0.5 text-[10px] text-destructive">
+                      {entry.log.errorMessage}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CategoryCard>
+      </div>
     </div>
   );
 }
 
-function Pill({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  tone?: "success" | "warning" | "muted";
-}) {
-  const cls =
-    tone === "success"
-      ? "border-success/40 bg-success/10 text-success"
-      : tone === "warning"
-      ? "border-warning/40 bg-warning/10 text-foreground"
-      : "border-border bg-muted/40 text-muted-foreground";
+function NoticeSection({ rows }: { rows: EmployeeMonitoringRow[] }) {
+  const [open, setOpen] = useState(true);
+  const totalNotices = rows.reduce((s, r) => s + r.notices.length, 0);
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${cls}`}
-    >
-      {icon}
-      <span className="uppercase tracking-wider font-semibold">{label}</span>
-      <span className="font-mono tabular-nums text-foreground">{value}</span>
-    </span>
+    <section className="rounded-2xl border-2 border-warning/40 bg-warning/10 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-warning/15 transition"
+      >
+        <span className="flex items-center gap-2 text-warning font-semibold">
+          <AlertTriangle size={14} />
+          {totalNotices} notice di {rows.length} karyawan
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {open ? "Klik untuk tutup" : "Klik untuk lihat"}
+        </span>
+      </button>
+      {open && (
+        <ul className="divide-y divide-warning/20 bg-card">
+          {rows.map((r) => (
+            <li key={r.id} className="px-4 py-2 text-xs">
+              <div className="font-medium text-foreground mb-0.5">
+                {pickName(r)}
+              </div>
+              <ul className="space-y-0.5 text-[11px]">
+                {r.notices.map((n, i) => (
+                  <li key={i} className="flex items-baseline gap-1.5">
+                    <span className="text-warning">•</span>
+                    <span>{n.message}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
-function DetailBlock({
+function CategoryCard({
   title,
+  icon,
+  accent,
+  countLabel,
   children,
 }: {
   title: string;
+  icon: React.ReactNode;
+  accent: string;
+  countLabel: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-border bg-background p-2.5 space-y-1">
-      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {title}
-      </h4>
-      {children}
-    </div>
+    <section className={`rounded-2xl border-2 overflow-hidden ${accent}`}>
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-card border-b border-border">
+        <h2 className="font-display text-sm font-semibold flex items-center gap-2">
+          {icon}
+          {title}
+        </h2>
+        <span className="text-[10px] text-muted-foreground">{countLabel}</span>
+      </div>
+      <div className="bg-card">{children}</div>
+    </section>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 text-[11px]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground font-medium tabular-nums">{value}</span>
-    </div>
+    <p className="px-3 py-6 text-xs text-muted-foreground italic text-center">
+      {children}
+    </p>
   );
+}
+
+function eventBadgeLabel(eventType: string): string {
+  switch (eventType) {
+    case "birthday":
+      return "Birthday";
+    case "anniversary":
+      return "Anniversary";
+    case "streak_milestone":
+      return "Streak";
+    case "celebration_greeting_notification":
+      return "Notif";
+    case "other":
+      return "Broadcast";
+    default:
+      return eventType;
+  }
+}
+
+function eventBadgeClass(eventType: string): string {
+  switch (eventType) {
+    case "birthday":
+      return "bg-pink-100 text-pink-700";
+    case "anniversary":
+      return "bg-amber-100 text-amber-700";
+    case "streak_milestone":
+      return "bg-emerald-100 text-emerald-700";
+    case "celebration_greeting_notification":
+      return "bg-purple-100 text-purple-700";
+    case "other":
+      return "bg-indigo-100 text-indigo-700";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
 }

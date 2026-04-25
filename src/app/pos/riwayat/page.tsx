@@ -35,7 +35,7 @@ export default async function PosRiwayatPage() {
   // error ter-log ke Vercel runtime logs untuk diagnosa.
   let sales: Awaited<ReturnType<typeof listRecentPosSales>> = [];
   try {
-    sales = await listRecentPosSales(account.id, 50);
+    sales = await listRecentPosSales(account.id, null);
   } catch (e) {
     console.error("[PosRiwayatPage] listRecentPosSales failed", e);
   }
@@ -59,7 +59,7 @@ export default async function PosRiwayatPage() {
         </PosNavLink>
         <h1 className="font-semibold text-foreground">Riwayat Penjualan</h1>
         <p className="text-xs text-muted-foreground">
-          {account.accountName} · 50 transaksi terakhir
+          {account.accountName} · {sales.length} transaksi
         </p>
       </header>
 

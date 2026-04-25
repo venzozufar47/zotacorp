@@ -208,12 +208,7 @@ export async function listEmployeeMonitoring(): Promise<{
   const { data: waLogs } = await supabase
     .from("whatsapp_send_logs")
     .select("id, recipient_profile_id, event_type, status, error_message, message_body, sent_at")
-    .in("event_type", [
-      "birthday",
-      "anniversary",
-      "streak_milestone",
-      "celebration_greeting_notification",
-    ])
+    .not("event_type", "in", "(attendance_check_in_alert,attendance_check_out_alert)")
     .order("sent_at", { ascending: false })
     .limit(800);
 
@@ -351,24 +346,41 @@ export async function listEmployeeMonitoring(): Promise<{
       }
     }
 
-    // Streak milestone WA: dua case warning.
+    // Streak milestone WA: tiga case warning.
     //   (a) streak.current >= 5 tapi `streak_last_milestone` < 5 →
     //       dispatcher belum jalan sama sekali untuk user ini.
-    //   (b) `streak_last_milestone` >= 5 (sudah crossed) tapi tidak
-    //       ada log streak_milestone → dispatcher fired sebelum
-    //       logging ada, atau insert log gagal.
+    //   (b) `streak_last_milestone` >= 5 tapi tidak ada log
+    //       streak_milestone → dispatcher fire tanpa log.
+    //   (c) Marker lebih tinggi dari milestone tertinggi yang
+    //       di-LOG (mis. marker 10 tapi log cuma punya 5) → ada
+    //       milestone yang di-crossed pre-logging atau insert log
+    //       gagal di salah satu tier.
     const lastMs = p.streak_last_milestone ?? 0;
-    const hasStreakLog = profLogs.some((l) => l.eventType === "streak_milestone");
+    const streakLogMilestones = profLogs
+      .filter((l) => l.eventType === "streak_milestone")
+      .map((l) => {
+        const m = /(\d+)\s*hari/.exec(l.body);
+        return m ? Number(m[1]) : 0;
+      });
+    const highestLoggedMilestone = streakLogMilestones.length
+      ? Math.max(...streakLogMilestones)
+      : 0;
     if (streak >= 5 && lastMs < 5) {
       notices.push({
         kind: "streak_milestone_no_wa",
         message: `Streak ${streak} hari sudah lewat threshold milestone (5) tapi WA milestone belum dikirim sama sekali.`,
         date: null,
       });
-    } else if (lastMs >= 5 && !hasStreakLog) {
+    } else if (lastMs >= 5 && streakLogMilestones.length === 0) {
       notices.push({
         kind: "streak_milestone_no_wa",
         message: `Milestone ${lastMs} hari sudah dicatat di profile tapi tidak ada log WA streak_milestone untuk karyawan ini.`,
+        date: null,
+      });
+    } else if (lastMs > highestLoggedMilestone && lastMs >= 5) {
+      notices.push({
+        kind: "streak_milestone_no_wa",
+        message: `Milestone tertinggi di profile = ${lastMs} hari, tapi log WA cuma sampai ${highestLoggedMilestone} hari. Tier ${lastMs} hari belum tercatat dikirim.`,
         date: null,
       });
     }

@@ -711,23 +711,57 @@ export async function createPosSale(input: {
  */
 export async function listRecentPosSales(
   bankAccountId: string,
-  limit: number = 50
+  limit: number | null = 50
 ): Promise<PosSaleSummary[]> {
   const supabase = await createClient();
   // Dua query terpisah — embed `pos_sale_items(...)` tidak visible di
   // generated types (Relationships kosong di hand-written types.ts).
   // Dua round-trip tapi jauh lebih sederhana dari menambah typed
   // relationship entries.
-  const { data: sales, error: salesErr } = await supabase
-    .from("pos_sales")
-    .select(
-      "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
-    )
-    .eq("bank_account_id", bankAccountId)
-    .order("sale_date", { ascending: false })
-    .order("sale_time", { ascending: false })
-    .limit(limit);
-  if (salesErr || !sales || sales.length === 0) return [];
+  // limit=null → ambil seluruh transaksi (paginasi 1000-row PostgREST cap).
+  type SaleRow = {
+    id: string;
+    sale_date: string;
+    sale_time: string | null;
+    payment_method: string;
+    total: number;
+    voided_at: string | null;
+    cashflow_transaction_id: string | null;
+  };
+  let sales: SaleRow[] = [];
+  if (limit === null) {
+    const PAGE = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("pos_sales")
+        .select(
+          "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
+        )
+        .eq("bank_account_id", bankAccountId)
+        .order("sale_date", { ascending: false })
+        .order("sale_time", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) return [];
+      const batch = (data ?? []) as SaleRow[];
+      sales.push(...batch);
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+  } else {
+    const { data, error } = await supabase
+      .from("pos_sales")
+      .select(
+        "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
+      )
+      .eq("bank_account_id", bankAccountId)
+      .order("sale_date", { ascending: false })
+      .order("sale_time", { ascending: false })
+      .limit(limit);
+    if (error) return [];
+    sales = (data ?? []) as SaleRow[];
+  }
+  if (sales.length === 0) return [];
 
   const saleIds = sales.map((s) => s.id);
   // Ambil attachment_path ledger hanya untuk QRIS — cash tidak wajib
@@ -795,13 +829,30 @@ export async function listRecentPosSales(
   } catch (e) {
     console.error("[listRecentPosSales] attachment lookup failed", e);
   }
-  const { data: items } = await supabase
-    .from("pos_sale_items")
-    .select("sale_id, product_name, variant_name, qty, unit_price, subtotal")
-    .in("sale_id", saleIds);
+  // Chunk `.in("sale_id", ...)` supaya URL panjang tidak meledak saat
+  // limit=null (history ribuan sale). PostgREST handle ~ratusan id per
+  // request dengan aman; 200 batch konservatif.
+  const ITEM_CHUNK = 200;
+  type ItemRow = {
+    sale_id: string;
+    product_name: string;
+    variant_name: string | null;
+    qty: number;
+    unit_price: number;
+    subtotal: number;
+  };
+  const items: ItemRow[] = [];
+  for (let i = 0; i < saleIds.length; i += ITEM_CHUNK) {
+    const slice = saleIds.slice(i, i + ITEM_CHUNK);
+    const { data } = await supabase
+      .from("pos_sale_items")
+      .select("sale_id, product_name, variant_name, qty, unit_price, subtotal")
+      .in("sale_id", slice);
+    if (data) items.push(...(data as ItemRow[]));
+  }
 
   const itemsBySale = new Map<string, PosSaleSummary["items"]>();
-  for (const it of items ?? []) {
+  for (const it of items) {
     const arr = itemsBySale.get(it.sale_id) ?? [];
     arr.push({
       productName: it.product_name,
@@ -816,7 +867,7 @@ export async function listRecentPosSales(
   return sales.map((s) => ({
     id: s.id,
     saleDate: s.sale_date,
-    saleTime: s.sale_time,
+    saleTime: s.sale_time ?? "",
     paymentMethod: s.payment_method as PaymentMethod,
     total: Number(s.total),
     voidedAt: s.voided_at,
