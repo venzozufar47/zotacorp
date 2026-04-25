@@ -427,8 +427,9 @@ export type PosSaleItemInput =
   | {
       productId: string;
       /** Catalog product yang `is_open_price=true` — harga ditentukan
-       *  per sale (kasir input). Tidak boleh dipakai untuk produk
-       *  bervariasi atau yang bukan open-price. */
+       *  per sale (kasir input). Bisa kombinasi dengan variantId kalau
+       *  produknya punya varian (kasir pilih varian + input harga). */
+      variantId?: string | null;
       customPrice: number;
       qty: number;
     }
@@ -436,7 +437,7 @@ export type PosSaleItemInput =
 
 type CatalogItemInput =
   | { productId: string; variantId?: string | null; qty: number; customPrice?: undefined }
-  | { productId: string; customPrice: number; qty: number; variantId?: undefined };
+  | { productId: string; variantId?: string | null; customPrice: number; qty: number };
 type CustomItemInput = { customName: string; customPrice: number; qty: number };
 
 function isCatalogItem(it: PosSaleItemInput): it is CatalogItemInput {
@@ -527,19 +528,16 @@ export async function createPosSale(input: {
       const hasVariants = productHasVariants.get(it.productId) ?? false;
       const p = productMap.get(it.productId)!;
       if (it.customPrice !== undefined) {
-        // Open-price branch: produk wajib flagged is_open_price, dan
-        // tidak boleh kombinasi dengan varian (varian punya harga sendiri).
+        // Open-price branch: produk wajib flagged is_open_price.
+        // Boleh + varian (varian dipilih, harga tetap input manual).
         if (!p.is_open_price)
           return {
             ok: false,
             error: `Produk "${p.name}" bukan produk harga custom`,
           };
-        if (hasVariants)
-          return {
-            ok: false,
-            error: `Produk "${p.name}" punya varian — tidak bisa custom price`,
-          };
-        if (it.variantId)
+        if (hasVariants && !it.variantId)
+          return { ok: false, error: `Produk "${p.name}" wajib pilih varian` };
+        if (!hasVariants && it.variantId)
           return { ok: false, error: `Produk "${p.name}" tidak punya varian` };
       } else {
         if (hasVariants && !it.variantId)

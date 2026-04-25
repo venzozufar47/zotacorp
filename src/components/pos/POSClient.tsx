@@ -33,6 +33,9 @@ interface CustomLine {
    *  submit dikirim sebagai `{ productId, customPrice, qty }`. Kosong
    *  = item ad-hoc murni (`{ customName, customPrice, qty }`). */
   productId?: string;
+  /** Optional varian untuk open-price + variant — submit-nya jadi
+   *  `{ productId, variantId, customPrice, qty }`. */
+  variantId?: string;
 }
 
 /** Cart key scheme: "p:<productId>" untuk produk tanpa varian,
@@ -68,8 +71,17 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   const [customOpen, setCustomOpen] = useState(false);
   // productId yang sedang dibuka variant-pickernya; null = tertutup.
   const [variantPickerFor, setVariantPickerFor] = useState<string | null>(null);
-  // productId open-price yang sedang dibuka dialog input harga; null = tertutup.
-  const [openPriceFor, setOpenPriceFor] = useState<string | null>(null);
+  // Open-price dialog target. variantId optional — diisi saat produk
+  // open-price punya varian (kasir pilih varian dulu).
+  const [openPriceFor, setOpenPriceFor] = useState<{
+    productId: string;
+    variantId: string | null;
+  } | null>(null);
+  // Variant picker untuk open-price product — beda dari variantPickerFor
+  // biasa karena tap variant buka OpenPriceDialog (bukan inc qty).
+  const [openPriceVariantFor, setOpenPriceVariantFor] = useState<string | null>(
+    null
+  );
   const [pending, startTransition] = useTransition();
 
   // Lookup cartKey → { name, price } untuk total/rendering O(cart entries).
@@ -157,10 +169,15 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   }
 
   function handleProductTap(p: PosProduct) {
-    // Open-price: tiap tap buka dialog input harga; setiap submit
-    // jadi line baru di cart sehingga qty + harga bisa beda-beda.
     if (p.isOpenPrice) {
-      setOpenPriceFor(p.id);
+      // Open-price + varian: pilih varian dulu, lalu input harga.
+      // Kalau cuma 1 varian, skip picker langsung ke dialog harga.
+      if (p.variants.length > 1) {
+        setOpenPriceVariantFor(p.id);
+        return;
+      }
+      const variantId = p.variants[0]?.id ?? null;
+      setOpenPriceFor({ productId: p.id, variantId });
       return;
     }
     if (p.variants.length === 0) {
@@ -176,15 +193,25 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
     setVariantPickerFor(p.id);
   }
 
-  function addOpenPriceLine(p: PosProduct, price: number, qty: number) {
+  function addOpenPriceLine(
+    p: PosProduct,
+    variantId: string | null,
+    price: number,
+    qty: number
+  ) {
+    const variant = variantId
+      ? p.variants.find((v) => v.id === variantId)
+      : null;
+    const name = variant ? `${p.name} — ${variant.name}` : p.name;
     setCustomItems((arr) => [
       ...arr,
       {
         localId: crypto.randomUUID(),
-        name: p.name,
+        name,
         price,
         qty,
         productId: p.id,
+        variantId: variantId ?? undefined,
       },
     ]);
   }
@@ -234,7 +261,12 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       ...catalogItems,
       ...customItems.map((c) =>
         c.productId
-          ? { productId: c.productId, customPrice: c.price, qty: c.qty }
+          ? {
+              productId: c.productId,
+              variantId: c.variantId ?? null,
+              customPrice: c.price,
+              qty: c.qty,
+            }
           : { customName: c.name, customPrice: c.price, qty: c.qty }
       ),
     ];
@@ -716,13 +748,34 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
         />
       )}
 
-      {openPriceFor && (() => {
-        const p = products.find((x) => x.id === openPriceFor);
+      {openPriceVariantFor && (() => {
+        const p = products.find((x) => x.id === openPriceVariantFor);
         if (!p) return null;
+        return (
+          <OpenPriceVariantPicker
+            product={p}
+            onPick={(variantId) => {
+              setOpenPriceVariantFor(null);
+              setOpenPriceFor({ productId: p.id, variantId });
+            }}
+            onClose={() => setOpenPriceVariantFor(null)}
+          />
+        );
+      })()}
+
+      {openPriceFor && (() => {
+        const p = products.find((x) => x.id === openPriceFor.productId);
+        if (!p) return null;
+        const variant = openPriceFor.variantId
+          ? p.variants.find((v) => v.id === openPriceFor.variantId) ?? null
+          : null;
         return (
           <OpenPriceDialog
             product={p}
-            onAdd={(price, qty) => addOpenPriceLine(p, price, qty)}
+            variant={variant}
+            onAdd={(price, qty) =>
+              addOpenPriceLine(p, openPriceFor.variantId, price, qty)
+            }
             onClose={() => setOpenPriceFor(null)}
           />
         );
@@ -946,15 +999,20 @@ function CustomItemDialog({
  */
 function OpenPriceDialog({
   product,
+  variant,
   onAdd,
   onClose,
 }: {
   product: PosProduct;
+  variant: PosProductVariant | null;
   onAdd: (price: number, qty: number) => void;
   onClose: () => void;
 }) {
-  // Default suggestion = harga di katalog kalau di-set; kosong kalau 0.
-  const [price, setPrice] = useState(product.price > 0 ? String(product.price) : "");
+  // Default suggestion: variant.price (kalau ada) atau product.price.
+  const defaultPrice = variant?.price ?? product.price;
+  const [price, setPrice] = useState(
+    defaultPrice > 0 ? String(defaultPrice) : ""
+  );
   const [qty, setQty] = useState("1");
 
   function submit() {
@@ -982,7 +1040,12 @@ function OpenPriceDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h2 className="font-semibold text-foreground">{product.name}</h2>
+          <h2 className="font-semibold text-foreground">
+            {product.name}
+            {variant && (
+              <span className="text-muted-foreground"> — {variant.name}</span>
+            )}
+          </h2>
           <p className="text-xs text-muted-foreground">
             Input harga + qty. Submit untuk tambah ke cart sebagai line baru —
             kalau mau beda harga, tap produk lagi.
@@ -1036,6 +1099,68 @@ function OpenPriceDialog({
             Tambah ke cart
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Modal pilih varian untuk produk open-price. Tap varian buka
+ * OpenPriceDialog dengan varian terpilih (parent yang switch state-nya).
+ */
+function OpenPriceVariantPicker({
+  product,
+  onPick,
+  onClose,
+}: {
+  product: PosProduct;
+  onPick: (variantId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold text-foreground">{product.name}</h2>
+          <p className="text-xs text-muted-foreground">
+            Pilih varian dulu — harga di-input di langkah berikutnya.
+          </p>
+        </div>
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+          {product.variants.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => onPick(v.id)}
+              className="w-full rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition p-3 flex items-center justify-between gap-3 text-left"
+            >
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground text-sm truncate">
+                  {v.name}
+                </p>
+                <p className="text-[10px] text-muted-foreground tabular-nums">
+                  default harga {formatRp(v.price)}
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-primary shrink-0">
+                Pilih →
+              </span>
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full h-11 rounded-xl border border-border text-foreground font-semibold hover:bg-muted"
+        >
+          Batal
+        </button>
       </div>
     </div>
   );

@@ -339,20 +339,16 @@ export function ProductCatalogClient({
                   />
                 </div>
                 <label
-                  className={
-                    "inline-flex items-center gap-1 text-xs shrink-0 " +
-                    (variantCount > 0 ? "opacity-50 cursor-not-allowed" : "")
-                  }
+                  className="inline-flex items-center gap-1 text-xs shrink-0"
                   title={
                     variantCount > 0
-                      ? "Produk dengan varian tidak bisa open-price (varian punya harga sendiri)"
+                      ? "Kasir pilih varian + input harga saat sale (harga varian di-ignore, jadi cuma default suggestion)"
                       : "Kasir input harga saat sale"
                   }
                 >
                   <input
                     type="checkbox"
                     checked={p.isOpenPrice}
-                    disabled={variantCount > 0}
                     onChange={(e) =>
                       updateField(p.id, { isOpenPrice: e.target.checked })
                     }
