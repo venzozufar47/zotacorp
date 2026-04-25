@@ -73,7 +73,6 @@ export function AdminEditAttendanceDialog({
   const [otMin, setOtMin] = useState<string>("");
   const [otStatus, setOtStatus] = useState<string>("");
   const [reason, setReason] = useState("");
-  const [adminNote, setAdminNote] = useState("");
 
   useEffect(() => {
     if (!row) return;
@@ -87,7 +86,6 @@ export function AdminEditAttendanceDialog({
     setOtMin(String(row.overtime_minutes ?? 0));
     setOtStatus(row.overtime_status ?? "");
     setReason(row.late_checkout_reason ?? "");
-    setAdminNote(row.late_proof_admin_note ?? "");
   }, [row, timezone]);
 
   function handleSave() {
@@ -104,7 +102,6 @@ export function AdminEditAttendanceDialog({
         overtimeStatus:
           otStatus === "" ? null : (otStatus as "approved" | "pending" | "rejected"),
         lateCheckoutReason: reason,
-        lateProofAdminNote: adminNote,
       });
       if (res.error) {
         toast.error(res.error);
@@ -213,22 +210,17 @@ export function AdminEditAttendanceDialog({
           </div>
 
           <div className="col-span-2 space-y-1">
-            <Label className="text-xs">Catatan karyawan (late_checkout_reason)</Label>
+            <Label className="text-xs">Catatan</Label>
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              rows={2}
-              placeholder="Kosongkan untuk hapus"
+              rows={3}
+              placeholder="Mis. Izin sakit, alasan overtime, koreksi jam pulang…"
             />
-          </div>
-          <div className="col-span-2 space-y-1">
-            <Label className="text-xs">Catatan admin (late_proof_admin_note)</Label>
-            <Textarea
-              value={adminNote}
-              onChange={(e) => setAdminNote(e.target.value)}
-              rows={2}
-              placeholder="Misal: koreksi jam pulang, dikonfirmasi via WhatsApp"
-            />
+            <p className="text-[10px] text-muted-foreground">
+              Catatan ini terlihat oleh karyawan di history mereka dan di
+              recap admin.
+            </p>
           </div>
         </div>
 
