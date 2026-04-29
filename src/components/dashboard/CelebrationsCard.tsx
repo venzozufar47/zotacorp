@@ -1,6 +1,7 @@
 import type { CelebrationsFeed } from "@/lib/actions/celebrations.actions";
 import { getDictionary } from "@/lib/i18n/server";
 import { ActiveCelebrationCard } from "./ActiveCelebrationCard";
+import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
@@ -76,7 +77,7 @@ export async function CelebrationsCard({ feed, viewerId }: Props) {
                     key={`${c.kind}-${c.id}-${c.eventYear}`}
                     className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/40 px-3 py-2"
                   >
-                    <Avatar name={c.fullName} />
+                    <EmployeeAvatar full_name={c.fullName} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground break-words">
                         {c.fullName}
@@ -97,19 +98,3 @@ export async function CelebrationsCard({ feed, viewerId }: Props) {
   );
 }
 
-function Avatar({ name }: { name: string }) {
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-  return (
-    <span
-      aria-hidden
-      className="size-9 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold inline-flex items-center justify-center"
-    >
-      {initials || "·"}
-    </span>
-  );
-}

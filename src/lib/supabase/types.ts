@@ -1589,6 +1589,8 @@ export type Database = {
           asal_kelurahan: string | null
           asal_kota: string | null
           asal_provinsi: string | null
+          avatar_seed: string | null
+          avatar_url: string | null
           birthday_last_greeted: string | null
           business_unit: string | null
           created_at: string
@@ -1634,6 +1636,8 @@ export type Database = {
           asal_kelurahan?: string | null
           asal_kota?: string | null
           asal_provinsi?: string | null
+          avatar_seed?: string | null
+          avatar_url?: string | null
           birthday_last_greeted?: string | null
           business_unit?: string | null
           created_at?: string
@@ -1679,6 +1683,8 @@ export type Database = {
           asal_kelurahan?: string | null
           asal_kota?: string | null
           asal_provinsi?: string | null
+          avatar_seed?: string | null
+          avatar_url?: string | null
           birthday_last_greeted?: string | null
           business_unit?: string | null
           created_at?: string

@@ -85,6 +85,8 @@ export default async function AdminUsersPage() {
       id: p.id,
       email: p.email,
       full_name: p.full_name,
+      avatar_url: p.avatar_url ?? null,
+      avatar_seed: p.avatar_seed ?? null,
       role: (p.role === "admin" ? "admin" : "employee") as "admin" | "employee",
       business_unit: p.business_unit ?? null,
       job_role: p.job_role ?? null,

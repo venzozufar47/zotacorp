@@ -7,11 +7,20 @@ import { Menu, User, Settings, LogOut, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 
 type Variant = "sidebar" | "bottom";
 
+export interface MenuViewer {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  avatar_seed: string | null;
+}
+
 interface HamburgerMenuProps {
   variant: Variant;
+  me?: MenuViewer | null;
 }
 
 /**
@@ -26,7 +35,7 @@ interface HamburgerMenuProps {
  *    bottom sheet with a backdrop so it reads as a distinct surface on
  *    mobile.
  */
-export function HamburgerMenu({ variant }: HamburgerMenuProps) {
+export function HamburgerMenu({ variant, me = null }: HamburgerMenuProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -83,15 +92,33 @@ export function HamburgerMenu({ variant }: HamburgerMenuProps) {
           aria-expanded={open}
           aria-haspopup="menu"
         >
-          <span
-            className={cn(
-              "flex items-center justify-center size-7 rounded-full border-2 border-foreground transition-transform duration-200",
-              open || anyChildActive ? "bg-pop-pink text-foreground" : "bg-card text-muted-foreground group-hover/btn:rotate-[-6deg]"
-            )}
-          >
-            <Menu size={14} strokeWidth={2.5} />
-          </span>
-          {t.nav.menu}
+          {me ? (
+            <EmployeeAvatar
+              size="sm"
+              id={me.id}
+              full_name={me.full_name}
+              avatar_url={me.avatar_url}
+              avatar_seed={me.avatar_seed}
+              className={cn(
+                "transition-transform duration-200",
+                open || anyChildActive
+                  ? ""
+                  : "group-hover/btn:rotate-[-6deg]"
+              )}
+            />
+          ) : (
+            <span
+              className={cn(
+                "flex items-center justify-center size-7 rounded-full border-2 border-foreground transition-transform duration-200",
+                open || anyChildActive
+                  ? "bg-pop-pink text-foreground"
+                  : "bg-card text-muted-foreground group-hover/btn:rotate-[-6deg]"
+              )}
+            >
+              <Menu size={14} strokeWidth={2.5} />
+            </span>
+          )}
+          {me?.full_name?.split(" ")[0] || t.nav.menu}
         </button>
 
         {open && (
@@ -149,21 +176,32 @@ export function HamburgerMenu({ variant }: HamburgerMenuProps) {
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <span
-          className={cn(
-            "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
-            anyChildActive ? "bg-pop-pink text-foreground" : "bg-card text-muted-foreground"
-          )}
-        >
-          <Menu size={18} strokeWidth={2.5} />
-        </span>
+        {me ? (
+          <EmployeeAvatar
+            id={me.id}
+            full_name={me.full_name}
+            avatar_url={me.avatar_url}
+            avatar_seed={me.avatar_seed}
+          />
+        ) : (
+          <span
+            className={cn(
+              "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
+              anyChildActive
+                ? "bg-pop-pink text-foreground"
+                : "bg-card text-muted-foreground"
+            )}
+          >
+            <Menu size={18} strokeWidth={2.5} />
+          </span>
+        )}
         <span
           className={cn(
             "font-display font-bold uppercase tracking-wide text-[0.625rem]",
             anyChildActive ? "text-foreground" : "text-muted-foreground"
           )}
         >
-          {t.nav.menu}
+          {me?.full_name?.split(" ")[0] || t.nav.menu}
         </span>
       </button>
 

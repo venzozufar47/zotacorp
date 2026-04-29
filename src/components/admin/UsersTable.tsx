@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import {
   Pencil,
   Trash2,
@@ -51,6 +52,8 @@ interface UserRow {
   id: string;
   email: string;
   full_name: string;
+  avatar_url: string | null;
+  avatar_seed: string | null;
   role: "employee" | "admin";
   business_unit: string | null;
   job_role: string | null;
@@ -227,18 +230,27 @@ export function UsersTable({
               return (
                 <TableRow key={row.id}>
                   <TableCell className="font-medium text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="font-display font-bold">{row.full_name || "—"}</span>
-                      {row.role === "admin" && (
-                        <span className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border-2 border-foreground bg-tertiary text-foreground">
-                          {tu.adminBadge}
-                        </span>
-                      )}
-                      {isSelf && (
-                        <span className="text-xs text-muted-foreground">
-                          {tu.selfTag}
-                        </span>
-                      )}
+                    <div className="flex items-center gap-2.5">
+                      <EmployeeAvatar
+                        size="sm"
+                        id={row.id}
+                        full_name={row.full_name}
+                        avatar_url={row.avatar_url}
+                        avatar_seed={row.avatar_seed}
+                      />
+                      <div className="min-w-0 flex flex-wrap items-center gap-2">
+                        <span className="font-display font-bold">{row.full_name || "—"}</span>
+                        {row.role === "admin" && (
+                          <span className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border-2 border-foreground bg-tertiary text-foreground">
+                            {tu.adminBadge}
+                          </span>
+                        )}
+                        {isSelf && (
+                          <span className="text-xs text-muted-foreground">
+                            {tu.selfTag}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>

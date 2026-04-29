@@ -5,15 +5,17 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Clock, Receipt, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
-import { HamburgerMenu } from "./HamburgerMenu";
+import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
 
 export function Sidebar({
   className,
   hasFinance = false,
+  me = null,
 }: {
   className?: string;
   /** Show the "Keuangan" tab for users with at least one rekening assignment. */
   hasFinance?: boolean;
+  me?: MenuViewer | null;
 }) {
   const pathname = usePathname();
   const { t } = useTranslation();
@@ -80,7 +82,7 @@ export function Sidebar({
       {/* Profile / Settings / Sign out — collapsed into one hamburger menu
           so the primary sidebar keeps a tight 3-item focus. */}
       <div className="px-3 py-4 border-t-2 border-foreground">
-        <HamburgerMenu variant="sidebar" />
+        <HamburgerMenu variant="sidebar" me={me} />
       </div>
     </aside>
   );

@@ -5,9 +5,15 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Clock, Receipt, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
-import { HamburgerMenu } from "./HamburgerMenu";
+import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
 
-export function BottomNav({ hasFinance = false }: { hasFinance?: boolean }) {
+export function BottomNav({
+  hasFinance = false,
+  me = null,
+}: {
+  hasFinance?: boolean;
+  me?: MenuViewer | null;
+}) {
   const pathname = usePathname();
   const { t } = useTranslation();
 
@@ -62,7 +68,7 @@ export function BottomNav({ hasFinance = false }: { hasFinance?: boolean }) {
         })}
         {/* Profile / Settings / Sign out consolidated into one bottom-sheet
             menu so the rail keeps a 4-tab max on small screens. */}
-        <HamburgerMenu variant="bottom" />
+        <HamburgerMenu variant="bottom" me={me} />
       </div>
     </nav>
   );
