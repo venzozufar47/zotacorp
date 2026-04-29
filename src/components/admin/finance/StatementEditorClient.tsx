@@ -208,7 +208,7 @@ export function StatementEditorClient({
             size="sm"
             variant="ghost"
             onClick={handleDelete}
-            disabled={pending}
+            disabled={pending} loading={pending}
             className="text-destructive hover:bg-destructive/10 gap-1.5"
           >
             <Trash2 size={12} />
@@ -441,7 +441,7 @@ export function StatementEditorClient({
             type="button"
             variant="ghost"
             onClick={() => handleSave(false)}
-            disabled={pending}
+            disabled={pending} loading={pending}
             className="gap-1.5"
           >
             <Save size={14} />

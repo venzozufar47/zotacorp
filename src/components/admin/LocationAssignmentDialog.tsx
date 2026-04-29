@@ -117,7 +117,7 @@ export function LocationAssignmentDialog({
         )}
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending} loading={pending}>
             {tu.locAssignCancel}
           </Button>
           <Button onClick={onSave} disabled={pending || allLocations.length === 0}>

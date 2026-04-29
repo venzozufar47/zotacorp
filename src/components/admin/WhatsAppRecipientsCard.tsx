@@ -127,7 +127,7 @@ export function WhatsAppRecipientsCard({ initialRecipients }: Props) {
           />
         </div>
         <div className="flex items-end">
-          <Button onClick={onAdd} disabled={pending} className="w-full sm:w-auto">
+          <Button onClick={onAdd} disabled={pending} loading={pending} className="w-full sm:w-auto">
             <Plus size={14} className="mr-1.5" />
             {tw.addCta}
           </Button>

@@ -126,11 +126,11 @@ export function CreateBlankStatementDialog({ account, onOpenChange }: Props) {
             type="button"
             variant="ghost"
             onClick={() => onOpenChange(false)}
-            disabled={pending}
+            disabled={pending} loading={pending}
           >
             Batal
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={pending}>
+          <Button type="button" onClick={handleSubmit} disabled={pending} loading={pending}>
             {pending ? "Membuat…" : "Buat & edit"}
           </Button>
         </div>

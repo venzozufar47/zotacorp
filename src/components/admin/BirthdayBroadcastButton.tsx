@@ -139,11 +139,11 @@ export function BirthdayBroadcastButton({
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
-              disabled={pending}
+              disabled={pending} loading={pending}
             >
               Batal
             </Button>
-            <Button type="button" onClick={handleSend} disabled={pending}>
+            <Button type="button" onClick={handleSend} disabled={pending} loading={pending}>
               {pending ? "Mengirim…" : "Ya, kirim broadcast"}
             </Button>
           </DialogFooter>

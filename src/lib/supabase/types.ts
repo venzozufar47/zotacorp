@@ -733,26 +733,89 @@ export type Database = {
           },
         ]
       }
-      extra_work_logs: {
+      extra_work_kinds: {
+        Row: {
+          active: boolean
+          created_at: string
+          daily_multiplier: number
+          fixed_rate_idr: number
+          formula_kind: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          daily_multiplier?: number
+          fixed_rate_idr?: number
+          formula_kind?: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          daily_multiplier?: number
+          fixed_rate_idr?: number
+          formula_kind?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      extra_work_kind_assignments: {
         Row: {
           created_at: string
-          date: string
-          id: string
-          kind: string
+          kind_id: string
           user_id: string
         }
         Insert: {
           created_at?: string
-          date: string
-          id?: string
-          kind: string
+          kind_id: string
           user_id: string
         }
         Update: {
           created_at?: string
+          kind_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      extra_work_logs: {
+        Row: {
+          created_at: string
+          custom_rate_idr: number | null
+          date: string
+          formula_override: string | null
+          id: string
+          kind: string
+          multiplier_override: number | null
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_rate_idr?: number | null
+          date: string
+          formula_override?: string | null
+          id?: string
+          kind: string
+          multiplier_override?: number | null
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_rate_idr?: number | null
           date?: string
+          formula_override?: string | null
           id?: string
           kind?: string
+          multiplier_override?: number | null
+          notes?: string | null
           user_id?: string
         }
         Relationships: [
@@ -897,6 +960,42 @@ export type Database = {
           },
         ]
       }
+      payslip_settings_disputes: {
+        Row: {
+          admin_response: string | null
+          created_at: string
+          current_value: string | null
+          field: string
+          id: string
+          message: string
+          resolved_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_response?: string | null
+          created_at?: string
+          current_value?: string | null
+          field: string
+          id?: string
+          message: string
+          resolved_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_response?: string | null
+          created_at?: string
+          current_value?: string | null
+          field?: string
+          id?: string
+          message?: string
+          resolved_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       payslip_settings: {
         Row: {
           attendance_weight_pct: number
@@ -994,6 +1093,7 @@ export type Database = {
           breakdown_json: Json | null
           created_at: string | null
           debt_deduction: number
+          debt_deduction_note: string | null
           deliverables_achievement_pct: number
           deliverables_pay: number
           expected_work_days: number
@@ -1022,6 +1122,7 @@ export type Database = {
           breakdown_json?: Json | null
           created_at?: string | null
           debt_deduction?: number
+          debt_deduction_note?: string | null
           deliverables_achievement_pct?: number
           deliverables_pay?: number
           expected_work_days?: number
@@ -1050,6 +1151,7 @@ export type Database = {
           breakdown_json?: Json | null
           created_at?: string | null
           debt_deduction?: number
+          debt_deduction_note?: string | null
           deliverables_achievement_pct?: number
           deliverables_pay?: number
           expected_work_days?: number
@@ -1483,6 +1585,7 @@ export type Database = {
           is_active: boolean
           is_flexible_schedule: boolean
           job_role: string | null
+          payslip_excluded: boolean
           motto: string | null
           nickname: string | null
           npwp: string | null
@@ -1527,6 +1630,7 @@ export type Database = {
           is_active?: boolean
           is_flexible_schedule?: boolean
           job_role?: string | null
+          payslip_excluded?: boolean
           motto?: string | null
           nickname?: string | null
           npwp?: string | null
@@ -1571,6 +1675,7 @@ export type Database = {
           is_active?: boolean
           is_flexible_schedule?: boolean
           job_role?: string | null
+          payslip_excluded?: boolean
           motto?: string | null
           nickname?: string | null
           npwp?: string | null

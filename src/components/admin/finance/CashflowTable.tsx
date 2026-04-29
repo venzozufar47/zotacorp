@@ -612,7 +612,7 @@ export function CashflowTable({
                   setEditing(true);
                   handleAddRow();
                 }}
-                disabled={pending}
+                disabled={pending} loading={pending}
                 className="gap-1.5"
               >
                 <Plus size={12} />
@@ -637,7 +637,7 @@ export function CashflowTable({
                 size="sm"
                 variant="ghost"
                 onClick={handleAddRow}
-                disabled={pending}
+                disabled={pending} loading={pending}
                 className="gap-1.5"
               >
                 <Plus size={12} />
@@ -648,7 +648,7 @@ export function CashflowTable({
                 size="sm"
                 variant="ghost"
                 onClick={handleCancel}
-                disabled={pending}
+                disabled={pending} loading={pending}
                 className="gap-1.5"
               >
                 <X size={12} />
@@ -658,7 +658,7 @@ export function CashflowTable({
                 type="button"
                 size="sm"
                 onClick={handleSave}
-                disabled={pending}
+                disabled={pending} loading={pending}
                 className="gap-1.5"
               >
                 <Save size={12} />
@@ -760,7 +760,7 @@ export function CashflowTable({
             size="sm"
             variant="ghost"
             onClick={clearSelection}
-            disabled={pending}
+            disabled={pending} loading={pending}
             className="gap-1 h-7 ml-auto"
             title="Batalkan pilihan"
           >

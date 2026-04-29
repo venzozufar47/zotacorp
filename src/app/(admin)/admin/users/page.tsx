@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { getDictionary } from "@/lib/i18n/server";
+import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { UsersTable } from "@/components/admin/UsersTable";
 
@@ -48,7 +49,7 @@ export default async function AdminUsersPage() {
   // generated Supabase types strongly-typed (`select(string[])` would
   // collapse to GenericStringError). The profiles row is small.
   const supabase = await createClient();
-  const [{ data: profiles }, { data: locations }, { data: assignments }] =
+  const [{ data: profiles }, { data: locations }, { data: assignments }, businessUnits] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -59,6 +60,7 @@ export default async function AdminUsersPage() {
         .select("id, name")
         .order("name", { ascending: true }),
       supabase.from("employee_locations").select("employee_id, location_id"),
+      listBusinessUnits(),
     ]);
 
   // Index assignments by employee so each row can pluck its own set in O(1).
@@ -95,7 +97,7 @@ export default async function AdminUsersPage() {
       grace_period_min: p.grace_period_min ?? 15,
       profile_complete: profileComplete,
       assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
-      extra_work_enabled: p.extra_work_enabled ?? false,
+      payslip_excluded: p.payslip_excluded ?? false,
     };
   });
 
@@ -112,6 +114,7 @@ export default async function AdminUsersPage() {
         rows={rows}
         currentUserId={user.id}
         allLocations={locations ?? []}
+        businessUnits={businessUnits}
       />
     </div>
   );

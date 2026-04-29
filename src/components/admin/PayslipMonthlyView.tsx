@@ -321,7 +321,7 @@ export function PayslipMonthlyView({
               size="sm"
               variant="outline"
               onClick={handleReopen}
-              disabled={isPending}
+              disabled={isPending} loading={isPending}
             >
               {isPending ? "Reopening..." : "Reopen to revise"}
             </Button>
@@ -462,7 +462,7 @@ export function PayslipMonthlyView({
                                   size="sm"
                                   variant="outline"
                                   onClick={() => removeRow(idx)}
-                                  disabled={isPending}
+                                  disabled={isPending} loading={isPending}
                                 >
                                   Remove
                                 </Button>
@@ -502,10 +502,10 @@ export function PayslipMonthlyView({
                       })}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" onClick={addRow} disabled={isPending}>
+                      <Button size="sm" variant="outline" onClick={addRow} disabled={isPending} loading={isPending}>
                         + Add deliverable
                       </Button>
-                      <Button size="sm" variant="outline" onClick={handleSaveDeliverables} disabled={isPending}>
+                      <Button size="sm" variant="outline" onClick={handleSaveDeliverables} disabled={isPending} loading={isPending}>
                         {isPending ? "Saving..." : "Save Deliverables"}
                       </Button>
                     </div>
@@ -575,10 +575,10 @@ export function PayslipMonthlyView({
             {/* Actions */}
             {!isFinalized && (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={handleSaveManual} disabled={isPending}>
+                <Button size="sm" variant="outline" onClick={handleSaveManual} disabled={isPending} loading={isPending}>
                   {isPending ? "Saving..." : "Save Adjustments"}
                 </Button>
-                <Button size="sm" onClick={handleFinalize} disabled={isPending}>
+                <Button size="sm" onClick={handleFinalize} disabled={isPending} loading={isPending}>
                   {isPending ? "Finalizing..." : "Save & Finalize"}
                 </Button>
               </div>

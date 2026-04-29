@@ -228,11 +228,11 @@ export function AdminEditAttendanceDialog({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={pending}
+            disabled={pending} loading={pending}
           >
             Batal
           </Button>
-          <Button onClick={handleSave} disabled={pending}>
+          <Button onClick={handleSave} disabled={pending} loading={pending}>
             {pending ? "Menyimpan…" : "Simpan perubahan"}
           </Button>
         </DialogFooter>

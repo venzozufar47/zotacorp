@@ -233,7 +233,7 @@ export function LocationFormDialog({ open, onOpenChange, initial, onSaved }: Pro
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending} loading={pending}>
             {tl.cancel}
           </Button>
           <Button onClick={onSubmit} disabled={pending || parse.status !== "ok"}>

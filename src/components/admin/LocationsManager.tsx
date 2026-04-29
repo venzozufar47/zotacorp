@@ -247,13 +247,13 @@ export function LocationsManager({ initialLocations, allEmployees }: Props) {
             <Button
               variant="outline"
               onClick={() => setPendingDelete(null)}
-              disabled={pending}
+              disabled={pending} loading={pending}
             >
               {tl.cancel}
             </Button>
             <Button
               onClick={confirmDelete}
-              disabled={pending}
+              disabled={pending} loading={pending}
               variant="destructive"
             >
               {pending ? tl.deleting : tl.deleteCta}

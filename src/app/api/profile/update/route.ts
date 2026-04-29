@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
@@ -36,6 +37,7 @@ const ALLOWED_FIELDS = [
   "asal_kelurahan",
   "asal_alamat",
   "extra_work_enabled",
+  "payslip_excluded",
 ] as const;
 
 function sanitize(body: Record<string, unknown>): ProfileUpdate {
@@ -97,6 +99,15 @@ export async function POST(request: Request) {
       console.error("Profile update error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Invalidate caches yang depend on profile state — admin pages list
+    // karyawan, employee dashboard, payslip variables editor (filter
+    // payslip_excluded), dll.
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/payslips");
+    revalidatePath("/admin/payslips/variables");
+    revalidatePath("/admin/attendance");
+    revalidatePath("/dashboard");
 
     return NextResponse.json({ ok: true });
   } catch (err) {

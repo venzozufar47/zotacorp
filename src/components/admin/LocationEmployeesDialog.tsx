@@ -122,7 +122,7 @@ export function LocationEmployeesDialog({
         )}
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending} loading={pending}>
             {tl.cancel}
           </Button>
           <Button onClick={onSave} disabled={pending || allEmployees.length === 0}>

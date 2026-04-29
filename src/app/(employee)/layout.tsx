@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
 import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
 
 export default async function EmployeeLayout({
@@ -15,6 +16,7 @@ export default async function EmployeeLayout({
 
   return (
     <div className="flex min-h-screen bg-background">
+      <RouteProgressBar />
       <Sidebar className="hidden md:flex" hasFinance={hasFinance} />
       <main className="flex-1 min-w-0">
         {/* Matches the admin layout's fluid cap so the attendance history

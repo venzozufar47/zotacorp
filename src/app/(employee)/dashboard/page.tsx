@@ -9,6 +9,7 @@ import {
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { getTodayAttendance, getMyStreak } from "@/lib/actions/attendance.actions";
+import { listExtraWorkKindsForUser } from "@/lib/actions/extra-work-kinds.actions";
 import {
   getCelebrationsFeed,
   dispatchTodaysGreetings,
@@ -96,7 +97,7 @@ export default async function DashboardPage() {
       .maybeSingle(),
     supabase
       .from("extra_work_logs")
-      .select("id, kind, created_at")
+      .select("id, kind, notes, created_at")
       .eq("user_id", user.id)
       .eq("date", todayDate)
       .order("created_at", { ascending: false }),
@@ -111,7 +112,14 @@ export default async function DashboardPage() {
   });
 
   const overtimeAdminNote = otReqRes.data?.admin_note ?? null;
-  const extraWorkToday = profile?.extra_work_enabled ? (extraWorkRes.data ?? []) : [];
+  // Feature gating sekarang lewat assignment kind ke user (admin atur
+  // di /admin/settings → Kerjaan tambahan). Karyawan tanpa assignment
+  // = dropdown kosong = tombol tidak muncul.
+  const extraWorkKindNames = (await listExtraWorkKindsForUser(user.id)).map(
+    (k) => k.name
+  );
+  const extraWorkToday =
+    extraWorkKindNames.length > 0 ? (extraWorkRes.data ?? []) : [];
 
   const missingSections = PROFILE_SECTIONS
     .filter(({ keys }) =>
@@ -186,8 +194,8 @@ export default async function DashboardPage() {
             workStartTime={profile?.work_start_time ?? null}
             workEndTime={profile?.work_end_time ?? null}
           />
-          {profile?.extra_work_enabled && (
-            <ExtraWorkButton todayEntries={extraWorkToday} />
+          {extraWorkKindNames.length > 0 && (
+            <ExtraWorkButton todayEntries={extraWorkToday} kinds={extraWorkKindNames} />
           )}
         </div>
       </section>

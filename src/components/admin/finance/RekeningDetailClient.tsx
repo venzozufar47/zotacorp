@@ -221,7 +221,7 @@ export function RekeningDetailClient({ account, presets, isAdmin }: Props) {
           type="button"
           variant="ghost"
           onClick={handleDelete}
-          disabled={pending}
+          disabled={pending} loading={pending}
           className="gap-1.5 text-destructive hover:bg-destructive/10 ml-auto"
           size="sm"
         >

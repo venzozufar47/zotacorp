@@ -12,11 +12,14 @@ import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCar
 import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { ThemeSettingsCard } from "@/components/admin/ThemeSettingsCard";
 import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
+import { ExtraWorkKindsCard } from "@/components/admin/ExtraWorkKindsCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { listWhatsAppRecipients } from "@/lib/actions/whatsapp-recipients.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
+import { listExtraWorkKinds } from "@/lib/actions/extra-work-kinds.actions";
 import { listWaTemplates } from "@/lib/whatsapp/templates";
 import { getTheme } from "@/lib/themes";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function AdminSettingsPage() {
   const user = await getCurrentUser();
@@ -25,12 +28,23 @@ export default async function AdminSettingsPage() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [settings, waRecipients, waTemplates, businessUnits] = await Promise.all([
-    getCachedAttendanceSettings(),
-    listWhatsAppRecipients(),
-    listWaTemplates(),
-    listBusinessUnits(),
-  ]);
+  const supabase = await createClient();
+  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes] =
+    await Promise.all([
+      getCachedAttendanceSettings(),
+      listWhatsAppRecipients(),
+      listWaTemplates(),
+      listBusinessUnits(),
+      listExtraWorkKinds(),
+      supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .order("full_name"),
+    ]);
+  const employees = (employeesRes.data ?? []).map((e) => ({
+    id: e.id,
+    name: e.full_name || e.email,
+  }));
 
   if (!settings) {
     return (
@@ -58,6 +72,7 @@ export default async function AdminSettingsPage() {
       />
       <AttendanceSettingsForm settings={settings} />
       <BusinessUnitsCard initial={businessUnits} />
+      <ExtraWorkKindsCard initial={extraWorkKinds} employees={employees} />
       <ThemeSettingsCard current={currentTheme} />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard

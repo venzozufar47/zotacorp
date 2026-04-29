@@ -93,7 +93,7 @@ export function BusinessUnitsCard({ initial }: Props) {
             }
           }}
         />
-        <Button type="button" onClick={onAddBu} disabled={pending} className="gap-1.5">
+        <Button type="button" onClick={onAddBu} disabled={pending} loading={pending} className="gap-1.5">
           <Plus size={14} />
           Tambah BU
         </Button>
@@ -212,7 +212,7 @@ function BusinessUnitRow({
               size="sm"
               variant="ghost"
               onClick={saveRename}
-              disabled={pending}
+              disabled={pending} loading={pending}
               className="gap-1"
             >
               <Check size={14} />
@@ -226,7 +226,7 @@ function BusinessUnitRow({
                 setEditing(false);
                 setDraftName(bu.name);
               }}
-              disabled={pending}
+              disabled={pending} loading={pending}
             >
               <X size={14} />
             </Button>
@@ -242,7 +242,7 @@ function BusinessUnitRow({
               size="sm"
               variant="ghost"
               onClick={() => setEditing(true)}
-              disabled={pending}
+              disabled={pending} loading={pending}
               className="gap-1"
             >
               <Pencil size={12} />
@@ -253,7 +253,7 @@ function BusinessUnitRow({
               size="sm"
               variant="ghost"
               onClick={onDelete}
-              disabled={pending}
+              disabled={pending} loading={pending}
               className="gap-1 text-destructive hover:text-destructive"
             >
               <Trash2 size={12} />
@@ -305,7 +305,7 @@ function BusinessUnitRow({
           size="sm"
           variant="outline"
           onClick={onAddRole}
-          disabled={pending}
+          disabled={pending} loading={pending}
           className="gap-1"
         >
           <Plus size={12} />

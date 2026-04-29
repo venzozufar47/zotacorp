@@ -397,11 +397,11 @@ export function ManualTransactionDialog({
             type="button"
             variant="ghost"
             onClick={() => onOpenChange(false)}
-            disabled={pending}
+            disabled={pending} loading={pending}
           >
             Batal
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={pending}>
+          <Button type="button" onClick={handleSubmit} disabled={pending} loading={pending}>
             {pending ? "Menyimpan…" : addAnother ? "Simpan & lanjut" : "Simpan"}
           </Button>
         </div>

@@ -218,7 +218,7 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
                           size="sm"
                           className="h-7 px-2 text-xs !text-quaternary"
                           onClick={() => handleApprove(row.id)}
-                          disabled={isPending}
+                          disabled={isPending} loading={isPending}
                         >
                           <CheckCircle size={14} className="mr-1" strokeWidth={2.5} />
                           Approve
@@ -228,7 +228,7 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
                           size="sm"
                           className="h-7 px-2 text-xs !text-destructive"
                           onClick={() => openReject(row.id)}
-                          disabled={isPending}
+                          disabled={isPending} loading={isPending}
                         >
                           <XCircle size={14} className="mr-1" strokeWidth={2.5} />
                           Reject
@@ -270,7 +270,7 @@ export function OvertimeRequestsTable({ rows, activeTab }: OvertimeRequestsTable
             </Button>
             <Button
               onClick={handleReject}
-              disabled={isPending}
+              disabled={isPending} loading={isPending}
               variant="destructive"
             >
               {isPending ? "Rejecting…" : "Reject"}

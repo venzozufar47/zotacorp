@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { CheckCircle, XCircle, MessageSquare, Pencil, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
+import { Bell, CheckCircle, XCircle, MessageSquare, Pencil, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
 import { AdminEditAttendanceDialog } from "./AdminEditAttendanceDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
@@ -323,12 +323,41 @@ export function AttendanceRecapTable({
     });
   }
 
+  const pendingItems = rows
+    .flatMap((r) => {
+      const items: Array<{
+        rowId: string;
+        kind: "late_proof" | "overtime";
+        employeeName: string;
+        date: string;
+      }> = [];
+      if (r.late_proof_url && r.late_proof_status === "pending") {
+        items.push({
+          rowId: r.id,
+          kind: "late_proof",
+          employeeName: r.profiles.full_name || r.profiles.email,
+          date: r.date,
+        });
+      }
+      if (r.is_overtime && r.overtime_status === "pending") {
+        items.push({
+          rowId: r.id,
+          kind: "overtime",
+          employeeName: r.profiles.full_name || r.profiles.email,
+          date: r.date,
+        });
+      }
+      return items;
+    });
+
   return (
     <div className="space-y-3 max-w-full">
       <div className="flex items-center gap-3">
         <p className="text-xs text-muted-foreground">
           {count} record{count !== 1 ? "s" : ""} · page {page} of {totalPages}
         </p>
+        <PendingConfirmationsButton items={pendingItems} />
+
         {selectedIds.size > 0 && (
           <>
             <span className="text-xs text-muted-foreground">·</span>
@@ -339,7 +368,7 @@ export function AttendanceRecapTable({
               size="sm"
               variant="outline"
               onClick={() => setSelectedIds(new Set())}
-              disabled={isPending}
+              disabled={isPending} loading={isPending}
               className="h-7 px-2 text-xs"
             >
               Clear
@@ -348,7 +377,7 @@ export function AttendanceRecapTable({
               size="sm"
               variant="destructive"
               onClick={() => setBulkConfirmOpen(true)}
-              disabled={isPending}
+              disabled={isPending} loading={isPending}
               className="h-7 px-3 text-xs"
             >
               <Trash2 size={12} className="mr-1" />
@@ -431,6 +460,7 @@ export function AttendanceRecapTable({
               return (
                 <TableRow
                   key={row.id}
+                  id={`att-row-${row.id}`}
                   className={
                     selectedIds.has(row.id)
                       ? "bg-accent"
@@ -520,7 +550,7 @@ export function AttendanceRecapTable({
                                         }
                                         handleLateProofReview(row.id, "rejected", proofRejectMessage.trim());
                                       }}
-                                      disabled={isPending}
+                                      disabled={isPending} loading={isPending}
                                       className="h-6 px-1.5 text-[11px] !text-destructive"
                                     >
                                       Confirm Reject
@@ -530,7 +560,7 @@ export function AttendanceRecapTable({
                                       size="sm"
                                       className="h-5 px-1.5 text-[11px] text-muted-foreground"
                                       onClick={() => { setRejectingProofId(null); setProofRejectMessage(""); }}
-                                      disabled={isPending}
+                                      disabled={isPending} loading={isPending}
                                     >
                                       Cancel
                                     </Button>
@@ -542,7 +572,7 @@ export function AttendanceRecapTable({
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleLateProofReview(row.id, "approved")}
-                                    disabled={isPending}
+                                    disabled={isPending} loading={isPending}
                                     className="h-6 px-1.5 text-[11px] !text-quaternary"
                                   >
                                     <CheckCircle size={10} className="mr-0.5" />
@@ -552,7 +582,7 @@ export function AttendanceRecapTable({
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => setRejectingProofId(row.id)}
-                                    disabled={isPending}
+                                    disabled={isPending} loading={isPending}
                                     className="h-6 px-1.5 text-[11px] !text-destructive"
                                   >
                                     <XCircle size={10} className="mr-0.5" />
@@ -624,7 +654,7 @@ export function AttendanceRecapTable({
                                       }
                                       handleOvertimeAction(otRequest.id, "rejected", rejectMessage.trim());
                                     }}
-                                    disabled={isPending}
+                                    disabled={isPending} loading={isPending}
                                     className="h-7 px-2 text-xs !text-destructive"
                                   >
                                     Confirm Reject
@@ -637,7 +667,7 @@ export function AttendanceRecapTable({
                                       setRejectingId(null);
                                       setRejectMessage("");
                                     }}
-                                    disabled={isPending}
+                                    disabled={isPending} loading={isPending}
                                   >
                                     Cancel
                                   </Button>
@@ -650,7 +680,7 @@ export function AttendanceRecapTable({
                                   size="sm"
                                   className="h-7 px-2 text-xs !text-quaternary"
                                   onClick={() => handleOvertimeAction(otRequest.id, "approved")}
-                                  disabled={isPending}
+                                  disabled={isPending} loading={isPending}
                                 >
                                   <CheckCircle size={10} className="mr-0.5" />
                                   Approve
@@ -660,7 +690,7 @@ export function AttendanceRecapTable({
                                   size="sm"
                                   className="h-7 px-2 text-xs !text-destructive"
                                   onClick={() => setRejectingId(otRequest.id)}
-                                  disabled={isPending}
+                                  disabled={isPending} loading={isPending}
                                 >
                                   <XCircle size={10} className="mr-0.5" />
                                   Reject
@@ -716,7 +746,7 @@ export function AttendanceRecapTable({
                         size="sm"
                         className="h-7 w-7 p-0 !text-muted-foreground"
                         onClick={() => setEditingRowId(row.id)}
-                        disabled={isPending}
+                        disabled={isPending} loading={isPending}
                         title="Edit data presensi"
                       >
                         <Pencil size={14} />
@@ -726,7 +756,7 @@ export function AttendanceRecapTable({
                         size="sm"
                         className={`h-7 w-7 p-0 ${deletingId === row.id ? "!text-destructive" : "!text-muted-foreground"}`}
                         onClick={() => handleDelete(row.id)}
-                        disabled={isPending}
+                        disabled={isPending} loading={isPending}
                         title={deletingId === row.id ? "Click again to confirm" : "Delete record"}
                       >
                         <Trash2 size={14} />
@@ -838,13 +868,13 @@ export function AttendanceRecapTable({
             <Button
               variant="outline"
               onClick={() => setBulkConfirmOpen(false)}
-              disabled={isPending}
+              disabled={isPending} loading={isPending}
             >
               Cancel
             </Button>
             <Button
               onClick={handleBulkDelete}
-              disabled={isPending}
+              disabled={isPending} loading={isPending}
               variant="destructive"
             >
               {isPending ? "Deleting…" : `Delete ${selectedIds.size}`}
@@ -852,6 +882,99 @@ export function AttendanceRecapTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Bell icon dengan badge count + dropdown listing semua row di halaman
+ * yang butuh konfirmasi admin (late proof pending / overtime pending).
+ * Tap item → smooth scroll + flash highlight ke row yang bersangkutan.
+ */
+function PendingConfirmationsButton({
+  items,
+}: {
+  items: Array<{
+    rowId: string;
+    kind: "late_proof" | "overtime";
+    employeeName: string;
+    date: string;
+  }>;
+}) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+
+  function jumpTo(rowId: string) {
+    setOpen(false);
+    const el = document.getElementById(`att-row-${rowId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Flash highlight via data-attribute toggling Tailwind ring kalau
+    // ada — fallback: temp inline style.
+    el.classList.add("ring-2", "ring-amber-400", "ring-offset-2");
+    window.setTimeout(() => {
+      el.classList.remove("ring-2", "ring-amber-400", "ring-offset-2");
+    }, 1800);
+  }
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="relative inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border-2 border-amber-400 bg-amber-50 text-amber-900 text-xs font-bold uppercase tracking-wider hover:bg-amber-100"
+        aria-label="Buka daftar konfirmasi pending"
+      >
+        <Bell size={12} />
+        Konfirmasi
+        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-600 text-white text-[10px] tabular-nums">
+          {items.length}
+        </span>
+      </button>
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-30"
+            onClick={() => setOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="absolute left-0 mt-1 z-40 w-[320px] rounded-xl border-2 border-amber-300 bg-card shadow-lg p-2">
+            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 pt-1 pb-2">
+              {items.length} butuh konfirmasi di halaman ini
+            </p>
+            <ul className="max-h-[60vh] overflow-y-auto divide-y divide-border/40">
+              {items.map((it) => (
+                <li key={`${it.rowId}-${it.kind}`}>
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(it.rowId)}
+                    className="w-full text-left p-2 rounded-md hover:bg-amber-50 flex items-start gap-2"
+                  >
+                    <span
+                      className={
+                        "shrink-0 mt-0.5 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider " +
+                        (it.kind === "late_proof"
+                          ? "bg-purple-100 text-purple-800"
+                          : "bg-sky-100 text-sky-800")
+                      }
+                    >
+                      {it.kind === "late_proof" ? "Late proof" : "Overtime"}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">
+                        {it.employeeName}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground tabular-nums">
+                        {formatLocalDate(it.date)}
+                      </p>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
     </div>
   );
 }

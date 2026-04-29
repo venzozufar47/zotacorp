@@ -1,5 +1,6 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -55,18 +56,40 @@ const buttonVariants = cva(
   }
 )
 
+interface ExtraButtonProps {
+  /**
+   * Render spinner + disable interactions saat true. Eksplisit (tidak
+   * auto-detect dari `disabled`) supaya validation-disabled tidak
+   * muncul spinner palsu. Pakai `loading={isPending}` di semua tombol
+   * yang trigger async action.
+   */
+  loading?: boolean
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  loading,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> &
+  ExtraButtonProps) {
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-loading={loading ? "true" : undefined}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {loading && (
+        <Loader2 aria-hidden="true" className="animate-spin" />
+      )}
+      {children}
+    </ButtonPrimitive>
   )
 }
 

@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ViewModeSwitch } from "./PayslipViewModeSwitch";
 import {
   Table,
   TableBody,
@@ -17,7 +18,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import { calculatePayslip } from "@/lib/actions/payslip.actions";
 import { toast } from "sonner";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import type { Payslip } from "@/lib/supabase/types";
 
 interface Summary {
@@ -55,6 +56,9 @@ export function PayslipOverviewTable({ summaries, month, year }: PayslipOverview
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(
+    null
+  );
 
   function changeMonth(m: number, y: number) {
     const params = new URLSearchParams(searchParams.toString());
@@ -78,11 +82,14 @@ export function PayslipOverviewTable({ summaries, month, year }: PayslipOverview
   function handleCalculateAll() {
     startTransition(async () => {
       const eligible = summaries.filter((s) => s.settings?.is_finalized);
+      setProgress({ done: 0, total: eligible.length });
       let count = 0;
-      for (const s of eligible) {
-        const result = await calculatePayslip(s.id, month, year);
+      for (let i = 0; i < eligible.length; i += 1) {
+        const result = await calculatePayslip(eligible[i].id, month, year);
         if (!result.error) count++;
+        setProgress({ done: i + 1, total: eligible.length });
       }
+      setProgress(null);
       toast.success(`Calculated ${count} payslip${count !== 1 ? "s" : ""}`);
       router.refresh();
     });
@@ -92,6 +99,8 @@ export function PayslipOverviewTable({ summaries, month, year }: PayslipOverview
 
   return (
     <div className="space-y-4 max-w-full">
+      <ViewModeSwitch current="employee" />
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon-sm" onClick={prevMonth}>&larr;</Button>
@@ -102,9 +111,14 @@ export function PayslipOverviewTable({ summaries, month, year }: PayslipOverview
           size="sm"
           onClick={handleCalculateAll}
           disabled={isPending}
+          loading={isPending}
           className="ml-auto"
         >
-          {isPending ? "Calculating..." : "Calculate All"}
+          {progress
+            ? `Calculating ${progress.done} / ${progress.total}…`
+            : isPending
+              ? "Calculating…"
+              : "Calculate All"}
         </Button>
       </div>
 

@@ -66,7 +66,8 @@ interface UserRow {
   assigned_location_ids: string[];
   /** When true, the employee sees the "Add extra work" button on their
    *  dashboard. Toggleable from this table. */
-  extra_work_enabled: boolean;
+  /** Kalau true, karyawan tidak muncul di /admin/payslips/variables. */
+  payslip_excluded: boolean;
 }
 
 interface LocationOption {
@@ -74,15 +75,27 @@ interface LocationOption {
   name: string;
 }
 
+interface BusinessUnitOption {
+  id: string;
+  name: string;
+  roles: string[];
+}
+
 interface UsersTableProps {
   rows: UserRow[];
   currentUserId: string;
   allLocations: LocationOption[];
+  businessUnits: BusinessUnitOption[];
 }
 
 type UserSortKey = "name" | "profile" | "business_unit" | "position";
 
-export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProps) {
+export function UsersTable({
+  rows,
+  currentUserId,
+  allLocations,
+  businessUnits,
+}: UsersTableProps) {
   const router = useRouter();
   const { t } = useTranslation();
   const tu = t.adminUsers;
@@ -200,8 +213,8 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
               <TableHead>
                 {tu.colLocations}
               </TableHead>
-              <TableHead>
-                {t.extraWork.adminColLabel}
+              <TableHead title="Toggle apakah karyawan masuk di /admin/payslips/variables">
+                Payslip
               </TableHead>
               <TableHead className="text-right">
                 {tu.colActions}
@@ -232,18 +245,19 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
                     <ProfileStatus complete={row.profile_complete} tu={tu} />
                   </TableCell>
                   <TableCell className="text-sm">
-                    {row.business_unit ? (
-                      row.business_unit
-                    ) : (
-                      <span className="text-muted-foreground/60">—</span>
-                    )}
+                    <BusinessUnitCell
+                      userId={row.id}
+                      initial={row.business_unit}
+                      businessUnits={businessUnits}
+                    />
                   </TableCell>
                   <TableCell className="text-sm">
-                    {row.job_role ? (
-                      row.job_role
-                    ) : (
-                      <span className="text-muted-foreground/60">—</span>
-                    )}
+                    <JobRoleCell
+                      userId={row.id}
+                      initialBu={row.business_unit}
+                      initial={row.job_role}
+                      businessUnits={businessUnits}
+                    />
                   </TableCell>
                   <TableCell>
                     <ScheduleCell row={row} onEdit={() => setEditing(row)} tu={tu} />
@@ -257,10 +271,9 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
                     />
                   </TableCell>
                   <TableCell>
-                    <ExtraWorkToggle
+                    <PayslipIncludeToggle
                       userId={row.id}
-                      initial={row.extra_work_enabled}
-                      ariaLabel={t.extraWork.adminToggleAria}
+                      initialExcluded={row.payslip_excluded}
                     />
                   </TableCell>
                   <TableCell className="text-right">
@@ -377,6 +390,213 @@ export function UsersTable({ rows, currentUserId, allLocations }: UsersTableProp
  * pill, semantically a `role="switch"`. Optimistically flips on click
  * and rolls back if the network call fails.
  */
+/**
+ * Generic helper: POST sebuah patch ke /api/profile/update + handle
+ * rollback toast. Dipakai oleh BusinessUnitCell + JobRoleCell.
+ */
+async function patchProfile(
+  userId: string,
+  fields: Record<string, string | boolean | null>
+): Promise<boolean> {
+  const res = await fetch("/api/profile/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetId: userId, ...fields }),
+  });
+  return res.ok;
+}
+
+/**
+ * Inline BU editor — dropdown ke daftar `business_units`. Saat BU
+ * berubah, job_role lama otomatis di-clear (karena role bound ke BU
+ * tertentu) supaya admin tidak biarkan kombinasi invalid.
+ */
+function BusinessUnitCell({
+  userId,
+  initial,
+  businessUnits,
+}: {
+  userId: string;
+  initial: string | null;
+  businessUnits: BusinessUnitOption[];
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(initial ?? "");
+  const [pending, startTransition] = useTransition();
+
+  function change(next: string) {
+    const prev = value;
+    if (next === prev) return;
+    setValue(next);
+    startTransition(async () => {
+      const ok = await patchProfile(userId, {
+        business_unit: next || null,
+        // BU berubah → role lama tidak valid lagi; clear.
+        job_role: null,
+      });
+      if (!ok) {
+        toast.error("Gagal update business unit");
+        setValue(prev);
+        return;
+      }
+      // Refresh supaya JobRoleCell sebelahnya dapat initialBu baru
+      // (role list di-derive dari BU; tanpa refresh jabatan tetap
+      // "set BU dulu" sampai user reload manual).
+      router.refresh();
+    });
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => change(e.target.value)}
+      disabled={pending}
+      className={cn(
+        "w-full h-8 px-2 rounded-md border border-transparent hover:border-border focus:border-primary bg-transparent text-sm focus:bg-background outline-none",
+        !value && "text-muted-foreground/60",
+        pending && "opacity-50"
+      )}
+    >
+      <option value="">—</option>
+      {businessUnits.map((bu) => (
+        <option key={bu.id} value={bu.name}>
+          {bu.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * Inline jabatan editor — dropdown role dari BU yang aktif. Disabled
+ * kalau BU karyawan belum di-set (tidak ada role list untuk dipilih).
+ */
+function JobRoleCell({
+  userId,
+  initialBu,
+  initial,
+  businessUnits,
+}: {
+  userId: string;
+  initialBu: string | null;
+  initial: string | null;
+  businessUnits: BusinessUnitOption[];
+}) {
+  const [value, setValue] = useState(initial ?? "");
+  const [pending, startTransition] = useTransition();
+
+  const bu = businessUnits.find((b) => b.name === initialBu);
+  const roles = bu?.roles ?? [];
+
+  function change(next: string) {
+    const prev = value;
+    if (next === prev) return;
+    setValue(next);
+    startTransition(async () => {
+      const ok = await patchProfile(userId, { job_role: next || null });
+      if (!ok) {
+        toast.error("Gagal update jabatan");
+        setValue(prev);
+      }
+    });
+  }
+
+  if (!bu) {
+    return (
+      <span className="text-muted-foreground/60 text-xs italic">
+        set BU dulu
+      </span>
+    );
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => change(e.target.value)}
+      disabled={pending}
+      className={cn(
+        "w-full h-8 px-2 rounded-md border border-transparent hover:border-border focus:border-primary bg-transparent text-sm focus:bg-background outline-none",
+        !value && "text-muted-foreground/60",
+        pending && "opacity-50"
+      )}
+    >
+      <option value="">—</option>
+      {/* Tampilkan value lama walau tidak ada di role list BU baru,
+          supaya admin sadar perlu re-pick. */}
+      {value && !roles.includes(value) && (
+        <option value={value} className="text-amber-700">
+          {value} (legacy)
+        </option>
+      )}
+      {roles.map((r) => (
+        <option key={r} value={r}>
+          {r}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * Toggle apakah karyawan masuk di payslip variables editor.
+ * `payslip_excluded=true` → tersembunyi; default false (included).
+ * UI menampilkan nilai inverse (Included/Excluded) supaya intuitif.
+ */
+function PayslipIncludeToggle({
+  userId,
+  initialExcluded,
+}: {
+  userId: string;
+  initialExcluded: boolean;
+}) {
+  const router = useRouter();
+  const [included, setIncluded] = useState(!initialExcluded);
+  const [pending, startTransition] = useTransition();
+
+  function flip() {
+    const next = !included;
+    setIncluded(next);
+    startTransition(async () => {
+      const ok = await patchProfile(userId, {
+        payslip_excluded: !next,
+      });
+      if (!ok) {
+        toast.error("Gagal update payslip include");
+        setIncluded(!next);
+        return;
+      }
+      // Refresh untuk re-fetch /admin/payslips/variables list saat
+      // user pindah ke sana — server cache sudah di-invalidate oleh
+      // /api/profile/update lewat revalidatePath.
+      router.refresh();
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={included}
+      aria-label="Toggle include/exclude di payslip"
+      disabled={pending}
+      onClick={flip}
+      title={included ? "Masuk di payslip editor" : "Tidak masuk di payslip editor"}
+      className={cn(
+        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+        included ? "bg-[color:var(--primary)]" : "bg-muted",
+        pending && "opacity-50"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-4 w-4 rounded-full bg-white transition-transform shadow-sm",
+          included ? "translate-x-4" : "translate-x-0.5"
+        )}
+      />
+    </button>
+  );
+}
+
 function ExtraWorkToggle({
   userId,
   initial,

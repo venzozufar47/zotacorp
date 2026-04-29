@@ -21,9 +21,9 @@ interface Props {
   workSchedule: string;
 }
 
-type Basis = "presence" | "deliverables" | "both";
+type Basis = "presence" | "deliverables" | "both" | "fixed";
 
-type ExpectedDaysMode = "manual" | "weekly_pattern";
+type ExpectedDaysMode = "manual" | "weekly_pattern" | "none";
 
 type FormData = {
   calculation_basis: Basis;
@@ -31,7 +31,7 @@ type FormData = {
   expected_days_mode: ExpectedDaysMode;
   expected_work_days: string;
   expected_weekdays: number[];
-  overtime_mode: "hourly_tiered" | "fixed_per_day";
+  overtime_mode: "hourly_tiered" | "fixed_per_day" | "half_daily";
   ot_fixed_daily_rate: string;
   late_penalty_mode: "per_minutes" | "per_day" | "none";
   late_penalty_amount: string;
@@ -95,6 +95,7 @@ function calcOtRates(form: FormData, standardWorkingHours: number) {
 }
 
 function effectiveExpectedDays(form: FormData, month: number, year: number): number {
+  if (form.expected_days_mode === "none") return 0;
   if (form.expected_days_mode === "weekly_pattern") {
     return countWeekdaysInMonth(month, year, form.expected_weekdays);
   }
@@ -222,6 +223,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                 <option value="presence">Presence (attendance-based)</option>
                 <option value="deliverables">Deliverables</option>
                 <option value="both">Both</option>
+                <option value="fixed">Gaji tetap</option>
               </select>
             </div>
 
@@ -284,6 +286,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                   >
                     <option value="manual">Fixed number (same every month)</option>
                     <option value="weekly_pattern">Weekly pattern (count matching weekdays per month)</option>
+                    <option value="none">Gaji tetap</option>
                   </select>
 
                   {form.expected_days_mode === "manual" && (
@@ -396,6 +399,7 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
                   >
                     <option value="hourly_tiered">Hourly tiered (1.5x 1st hr + 2x next hrs)</option>
                     <option value="fixed_per_day">Fixed per day</option>
+                    <option value="half_daily">50% gaji harian per hari OT</option>
                   </select>
                   {form.overtime_mode === "hourly_tiered" ? (
                     <p className="text-xs text-muted-foreground">
@@ -499,10 +503,10 @@ export function PayslipSettingsForm({ userId, settings, standardWorkingHours, wo
               <Button size="sm" variant="outline" onClick={() => { setForm(toForm(settings)); setEditing(false); }}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={handleSave} disabled={isPending}>
+              <Button size="sm" onClick={handleSave} disabled={isPending} loading={isPending}>
                 {isPending ? "Saving..." : "Save Draft"}
               </Button>
-              <Button size="sm" onClick={handleFinalize} disabled={isPending}>
+              <Button size="sm" onClick={handleFinalize} disabled={isPending} loading={isPending}>
                 {isPending ? "Saving..." : isFinalized ? "Re-finalize" : "Save & Finalize"}
               </Button>
             </div>

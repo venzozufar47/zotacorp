@@ -25,17 +25,19 @@ import {
   addExtraWorkEntry,
   deleteMyExtraWorkEntry,
 } from "@/lib/actions/extra-work.actions";
-import { EXTRA_WORK_KINDS } from "@/lib/utils/extra-work-kinds";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface TodayEntry {
   id: string;
   kind: string;
   created_at: string;
+  notes?: string | null;
 }
 
 interface Props {
   todayEntries: TodayEntry[];
+  /** Active extra-work kinds yang assigned ke karyawan ini (DB-filtered). */
+  kinds: string[];
 }
 
 /**
@@ -50,22 +52,24 @@ interface Props {
  *  - Existing entries are listed inside the dialog with a per-entry
  *    delete affordance, so a mistaken add can be undone immediately.
  */
-export function ExtraWorkButton({ todayEntries }: Props) {
+export function ExtraWorkButton({ todayEntries, kinds }: Props) {
   const router = useRouter();
   const { t } = useTranslation();
   const tx = t.extraWork;
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<string>(EXTRA_WORK_KINDS[0]);
+  const [kind, setKind] = useState<string>(kinds[0] ?? "");
+  const [notes, setNotes] = useState("");
   const [pending, startTransition] = useTransition();
 
   function onSubmit() {
     startTransition(async () => {
-      const result = await addExtraWorkEntry(kind);
+      const result = await addExtraWorkEntry(kind, notes.trim() || undefined);
       if (result.error) {
         toast.error(result.error);
         return;
       }
       toast.success(tx.addedToast);
+      setNotes("");
       router.refresh();
     });
   }
@@ -116,13 +120,27 @@ export function ExtraWorkButton({ todayEntries }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {EXTRA_WORK_KINDS.map((k) => (
+                  {kinds.map((k) => (
                     <SelectItem key={k} value={k}>
-                      {tx.kindLabels[k]}
+                      {tx.kindLabels[k as keyof typeof tx.kindLabels] ?? k}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="ew-notes" className="text-xs">
+                Catatan (opsional)
+              </Label>
+              <textarea
+                id="ew-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Mis. detail belanja / nominal / referensi"
+                className="w-full rounded-xl border-2 border-foreground/10 bg-background px-3 py-2 text-sm focus:border-foreground/40 outline-none resize-none"
+              />
             </div>
 
             {todayEntries.length > 0 && (
@@ -134,19 +152,26 @@ export function ExtraWorkButton({ todayEntries }: Props) {
                   {todayEntries.map((e) => (
                     <li
                       key={e.id}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-foreground/10 bg-muted/40"
+                      className="flex items-start gap-2 px-3 py-2 rounded-xl border-2 border-foreground/10 bg-muted/40"
                     >
-                      <span className="size-7 rounded-full border-2 border-foreground bg-pop-pink flex items-center justify-center">
+                      <span className="size-7 rounded-full border-2 border-foreground bg-pop-pink flex items-center justify-center shrink-0 mt-0.5">
                         <ShoppingBag size={12} strokeWidth={2.5} className="text-foreground" />
                       </span>
-                      <span className="text-sm flex-1 font-medium">
-                        {tx.kindLabels[e.kind as keyof typeof tx.kindLabels] ?? e.kind}
-                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">
+                          {tx.kindLabels[e.kind as keyof typeof tx.kindLabels] ?? e.kind}
+                        </p>
+                        {e.notes && (
+                          <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                            {e.notes}
+                          </p>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => onDelete(e.id)}
                         disabled={pending}
-                        className="size-7 rounded-full border-2 border-foreground bg-card text-muted-foreground hover:bg-destructive hover:text-white hover:border-destructive disabled:opacity-50 flex items-center justify-center transition-colors"
+                        className="size-7 rounded-full border-2 border-foreground bg-card text-muted-foreground hover:bg-destructive hover:text-white hover:border-destructive disabled:opacity-50 flex items-center justify-center transition-colors shrink-0"
                         aria-label={tx.deleteAria}
                       >
                         <Trash2 size={12} strokeWidth={2.5} />
@@ -159,10 +184,10 @@ export function ExtraWorkButton({ todayEntries }: Props) {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending} loading={pending}>
               {tx.close}
             </Button>
-            <Button onClick={onSubmit} disabled={pending}>
+            <Button onClick={onSubmit} disabled={pending} loading={pending}>
               {pending ? tx.adding : tx.addCta}
             </Button>
           </DialogFooter>

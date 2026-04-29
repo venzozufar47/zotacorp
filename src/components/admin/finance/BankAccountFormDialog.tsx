@@ -237,11 +237,11 @@ export function BankAccountFormDialog({ open, onOpenChange, businessUnit }: Prop
             type="button"
             variant="ghost"
             onClick={() => onOpenChange(false)}
-            disabled={pending}
+            disabled={pending} loading={pending}
           >
             Batal
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={pending}>
+          <Button type="button" onClick={handleSubmit} disabled={pending} loading={pending}>
             {pending ? "Menyimpan…" : "Simpan"}
           </Button>
         </div>
