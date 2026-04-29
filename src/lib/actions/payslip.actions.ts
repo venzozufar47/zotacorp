@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
@@ -9,6 +10,7 @@ import type {
   OvertimeRequest,
   PayslipDeliverable,
   PayslipBreakdown,
+  Database,
 } from "@/lib/supabase/types";
 
 // ---------------------------------------------------------------------------
@@ -52,65 +54,63 @@ function countWeekdaysInMonth(month: number, year: number, weekdays: number[]): 
  * Token matching tujuannya broad — admin sering nulis "di pinjem
  * mb intan", "DIPINJEM TASYA", dll. yang inkonsisten kapital + spasi.
  */
-async function detectLoanDebts(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  month: number,
-  year: number
-): Promise<{ total: number; note: string | null }> {
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("nickname, full_name")
-    .eq("id", userId)
-    .single();
-  if (!profile) return { total: 0, note: null };
+type CashflowMonthRow = {
+  debit: number | null;
+  description: string | null;
+  notes: string | null;
+  transaction_date: string;
+};
 
+/** Build the loan-match tokens for a karyawan (nickname + first name, lower). */
+function buildLoanTokens(profile: {
+  nickname?: string | null;
+  full_name?: string | null;
+}): Set<string> {
   const tokens = new Set<string>();
   if (profile.nickname) tokens.add(profile.nickname.toLowerCase().trim());
   if (profile.full_name) {
     const first = profile.full_name.trim().split(/\s+/)[0];
     if (first) tokens.add(first.toLowerCase());
   }
-  if (tokens.size === 0) return { total: 0, note: null };
+  return tokens;
+}
 
-  const start = `${year}-${String(month).padStart(2, "0")}-01`;
-  const end =
-    month === 12
-      ? `${year + 1}-01-01`
-      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
-
-  const { data } = await supabase
-    .from("cashflow_transactions")
-    .select("debit, description, notes, transaction_date")
-    .gte("transaction_date", start)
-    .lt("transaction_date", end)
-    .gt("debit", 0)
-    .or("description.ilike.%pinjem%,notes.ilike.%pinjem%")
-    .order("transaction_date", { ascending: true });
-
-  type Match = { date: string; debit: number; description: string };
+/**
+ * Pure version: filter pre-fetched cashflow_transactions to those that
+ * match a karyawan's loan tokens, then summarize. Used by both single
+ * and bulk paths (bulk fetches the month once, then matches per user
+ * in-memory).
+ */
+function matchLoanDebtsFromCashflow(
+  tokens: Set<string>,
+  cashflowMonth: CashflowMonthRow[]
+): { total: number; note: string | null; matches: CashflowMonthRow[] } {
+  if (tokens.size === 0) return { total: 0, note: null, matches: [] };
+  type Match = { date: string; debit: number; description: string; raw: CashflowMonthRow };
   const matches: Match[] = [];
-  for (const tx of data ?? []) {
+  for (const tx of cashflowMonth) {
+    if (!tx.debit || tx.debit <= 0) continue;
     const haystack = `${tx.description ?? ""} ${tx.notes ?? ""}`.toLowerCase();
+    if (!haystack.includes("pinjem")) continue;
     if ([...tokens].some((t) => haystack.includes(t))) {
       matches.push({
         date: tx.transaction_date,
         debit: Number(tx.debit ?? 0),
         description: (tx.description ?? tx.notes ?? "").trim(),
+        raw: tx,
       });
     }
   }
-  if (matches.length === 0) return { total: 0, note: null };
-
+  matches.sort((a, b) => a.date.localeCompare(b.date));
+  if (matches.length === 0) return { total: 0, note: null, matches: [] };
   const total = matches.reduce((s, m) => s + m.debit, 0);
-  // Format: "DD/MM Rp X — deskripsi" per baris.
   const lines = matches.map((m) => {
     const [, mm, dd] = m.date.split("-");
     const rupiah = m.debit.toLocaleString("id-ID");
     return `• ${dd}/${mm} Rp ${rupiah}${m.description ? ` — ${m.description}` : ""}`;
   });
   const note = `Auto-detect dari cashflow (${matches.length} transaksi):\n${lines.join("\n")}`;
-  return { total, note };
+  return { total, note, matches: matches.map((m) => m.raw) };
 }
 
 function resolveExpectedWorkDays(
@@ -295,12 +295,34 @@ function calculateFromAttendance(
     });
   }
 
+  // Cap per-day late penalty at the karyawan's daily pay — denda telat
+  // tidak boleh melebihi nilai gaji 1 hari. Total penalty diturunkan
+  // sesuai sum cap, supaya net_total konsisten dengan breakdown.
+  const dailyPayCap =
+    expected > 0 ? Math.round(baseSalary / expected) : Infinity;
+  let dailyPayCapApplied: number | undefined;
+  if (Number.isFinite(dailyPayCap) && dailyPayCap >= 0) {
+    dailyPayCapApplied = dailyPayCap;
+    let cappedTotal = 0;
+    for (const row of lateDaysBreakdown) {
+      // Preserve the pre-cap value so the breakdown UI can show "originally
+      // would have been Rp X" when the cap actually triggered.
+      if (row.penalty > dailyPayCap) {
+        row.penalty_pre_cap = row.penalty;
+        row.penalty = dailyPayCap;
+      }
+      cappedTotal += row.penalty;
+    }
+    latePenalty = cappedTotal;
+  }
+
   const breakdown: PayslipBreakdown = {
     overtime_mode: settings.overtime_mode as PayslipBreakdown["overtime_mode"],
     late_penalty_mode: settings.late_penalty_mode as PayslipBreakdown["late_penalty_mode"],
     grace_period_min: gracePeriodMin,
     overtime_days: overtimeDays.sort((a, b) => a.date.localeCompare(b.date)),
     late_days: lateDaysBreakdown.sort((a, b) => a.date.localeCompare(b.date)),
+    late_penalty_daily_cap: dailyPayCapApplied,
   };
 
   return {
@@ -390,6 +412,337 @@ function computeNetTotal(
     fields.debt_deduction -
     fields.other_penalty
   );
+}
+
+// ---------------------------------------------------------------------------
+// Pure compute pipeline (shared between single + bulk calc paths)
+// ---------------------------------------------------------------------------
+
+type ExtraWorkLogRow = {
+  id?: string;
+  date: string;
+  kind: string;
+  notes?: string | null;
+  formula_override: string | null;
+  custom_rate_idr: number | null;
+  multiplier_override: number | null;
+};
+
+type ExtraWorkKindMeta = {
+  formula_kind: string;
+  fixed_rate_idr: number;
+  daily_multiplier: number;
+};
+
+type ExistingPayslipManual = {
+  monthly_bonus: number | null;
+  monthly_bonus_note: string | null;
+  debt_deduction_manual: number | null;
+  other_penalty: number | null;
+  other_penalty_note: string | null;
+};
+
+type CalcInputs = {
+  userId: string;
+  month: number;
+  year: number;
+  settings: PayslipSettings;
+  profile: {
+    grace_period_min: number | null;
+    nickname: string | null;
+    full_name: string | null;
+  };
+  attendanceLogs: Pick<
+    AttendanceLog,
+    | "id"
+    | "date"
+    | "checked_out_at"
+    | "overtime_minutes"
+    | "overtime_status"
+    | "late_minutes"
+    | "status"
+    | "is_overtime"
+  >[];
+  overtimeRequests: Pick<
+    OvertimeRequest,
+    "attendance_log_id" | "overtime_minutes" | "status"
+  >[];
+  extraWorkLogs: ExtraWorkLogRow[];
+  kindsByName: Map<string, ExtraWorkKindMeta>;
+  existing: { id: string; status: string } & ExistingPayslipManual & {
+      updated_at?: string | null;
+    } | null;
+  deliverables: Pick<
+    PayslipDeliverable,
+    "target" | "realization" | "weight_pct"
+  >[];
+  cashflowMonth: CashflowMonthRow[];
+};
+
+type CalcOutput = {
+  fields: Record<string, unknown>;
+  signature: string;
+};
+
+/**
+ * Stable JSON.stringify with sorted keys — needed so signature is stable
+ * across refetches (Supabase may return columns in different order).
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value))
+    return "[" + value.map(stableStringify).join(",") + "]";
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  return (
+    "{" +
+    keys
+      .map(
+        (k) =>
+          JSON.stringify(k) +
+          ":" +
+          stableStringify((value as Record<string, unknown>)[k])
+      )
+      .join(",") +
+    "}"
+  );
+}
+
+/** SHA-256 of stable JSON of the inputs that materially affect the calc. */
+function computeInputsSignature(inputs: CalcInputs): string {
+  const s = inputs.settings;
+  const basis = {
+    s: {
+      mfa: s.monthly_fixed_amount,
+      cb: s.calculation_basis,
+      aw: s.attendance_weight_pct,
+      dw: s.deliverables_weight_pct,
+      ed: s.expected_work_days,
+      edm: s.expected_days_mode,
+      ewd: s.expected_weekdays,
+      om: s.overtime_mode,
+      ofh: s.ot_first_hour_rate,
+      onh: s.ot_next_hour_rate,
+      ofd: s.ot_fixed_daily_rate,
+      lpm: s.late_penalty_mode,
+      lpa: s.late_penalty_amount,
+      lpi: s.late_penalty_interval_min,
+      f: s.is_finalized,
+    },
+    p: {
+      g: inputs.profile.grace_period_min,
+      n: inputs.profile.nickname,
+      f: inputs.profile.full_name,
+    },
+    al: inputs.attendanceLogs
+      .map((l) => [
+        l.id,
+        l.date,
+        l.checked_out_at,
+        l.late_minutes,
+        l.overtime_minutes,
+        l.is_overtime,
+        l.status,
+        l.overtime_status,
+      ])
+      .sort(),
+    or: inputs.overtimeRequests
+      .map((o) => [o.attendance_log_id, o.overtime_minutes, o.status])
+      .sort(),
+    el: inputs.extraWorkLogs
+      .map((e) => [
+        e.id,
+        e.date,
+        e.kind,
+        e.formula_override,
+        e.custom_rate_idr,
+        e.multiplier_override,
+      ])
+      .sort(),
+    k: [...inputs.kindsByName.entries()]
+      .map(([n, m]) => [n, m.formula_kind, m.fixed_rate_idr, m.daily_multiplier])
+      .sort(),
+    d: inputs.deliverables
+      .map((d) => [d.target, d.realization, d.weight_pct])
+      .sort(),
+    cf: inputs.cashflowMonth
+      .map((c) => [c.transaction_date, c.debit, c.description, c.notes])
+      .sort(),
+    // Always emit the manual block normalized to defaults — signature
+    // must NOT differ between "no payslip yet" (existing=null) and
+    // "payslip just got inserted with 0 manual entries" (existing.manual
+    // all zero). Otherwise first-run-after-insert always re-recomputes.
+    m: {
+      mb: Number(inputs.existing?.monthly_bonus ?? 0),
+      mbn: inputs.existing?.monthly_bonus_note ?? null,
+      ddm: Number(inputs.existing?.debt_deduction_manual ?? 0),
+      op: Number(inputs.existing?.other_penalty ?? 0),
+      opn: inputs.existing?.other_penalty_note ?? null,
+    },
+  };
+  return createHash("sha256").update(stableStringify(basis)).digest("hex");
+}
+
+/**
+ * Pure function: takes pre-fetched inputs, returns the payslip row to
+ * upsert + signature. No DB I/O. Mirrors the original calculatePayslip
+ * body exactly, so single + bulk paths produce identical outputs.
+ */
+function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
+  const { settings, month, year } = inputs;
+  const basis = settings.calculation_basis as
+    | "presence"
+    | "deliverables"
+    | "both"
+    | "fixed";
+  const includesAttendance = basis === "presence" || basis === "both";
+  const includesDeliverables = basis === "deliverables" || basis === "both";
+  const baseSalary = Number(settings.monthly_fixed_amount);
+
+  const resolvedExpected = resolveExpectedWorkDays(settings, month, year);
+  const effectiveSettings: PayslipSettings = {
+    ...settings,
+    expected_work_days: resolvedExpected,
+  };
+
+  const emptyBreakdown: PayslipBreakdown = {
+    overtime_mode: settings.overtime_mode as PayslipBreakdown["overtime_mode"],
+    late_penalty_mode: settings.late_penalty_mode as PayslipBreakdown["late_penalty_mode"],
+    grace_period_min: 0,
+    overtime_days: [],
+    late_days: [],
+  };
+  let attCalc = {
+    actual_work_days: 0,
+    expected_work_days: resolvedExpected,
+    base_salary: baseSalary,
+    prorated_salary: 0,
+    total_overtime_minutes: 0,
+    overtime_pay: 0,
+    total_late_minutes: 0,
+    late_penalty: 0,
+    breakdown: emptyBreakdown,
+  };
+
+  if (includesAttendance) {
+    const gracePeriodMin = inputs.profile.grace_period_min ?? 0;
+    attCalc = calculateFromAttendance(
+      effectiveSettings,
+      inputs.attendanceLogs,
+      inputs.overtimeRequests,
+      gracePeriodMin
+    );
+  }
+
+  // Extra-work pay
+  let extraWorkPay = 0;
+  const extraWorkDays: NonNullable<PayslipBreakdown["extra_work_days"]> = [];
+  const dailyPay = resolvedExpected > 0 ? baseSalary / resolvedExpected : 0;
+  for (const row of inputs.extraWorkLogs) {
+    const meta = inputs.kindsByName.get(row.kind);
+    const formula = row.formula_override ?? meta?.formula_kind ?? "fixed";
+    let pay = 0;
+    if (formula === "fixed") {
+      pay =
+        row.custom_rate_idr != null
+          ? Number(row.custom_rate_idr)
+          : Number(meta?.fixed_rate_idr ?? 0);
+    } else if (formula === "custom") {
+      pay = row.custom_rate_idr != null ? Number(row.custom_rate_idr) : 0;
+    } else if (formula === "daily_multiplier") {
+      const explicit =
+        row.multiplier_override != null
+          ? Number(row.multiplier_override)
+          : Number(meta?.daily_multiplier ?? 0);
+      const mult = explicit > 0 ? explicit : 1;
+      pay = Math.round(mult * dailyPay);
+    }
+    extraWorkDays.push({ date: row.date, kind: row.kind, pay });
+    extraWorkPay += pay;
+  }
+  extraWorkDays.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Deliverables
+  let deliverablesAchievementPct = 0;
+  let deliverablesPay = 0;
+  if (includesDeliverables && inputs.deliverables.length > 0) {
+    deliverablesAchievementPct = computeDeliverablesAchievement(inputs.deliverables);
+    deliverablesPay = Math.round((deliverablesAchievementPct / 100) * baseSalary);
+  }
+
+  // Loan auto-detect (in-memory match against pre-fetched cashflow)
+  const tokens = buildLoanTokens(inputs.profile);
+  const detectedDebt = matchLoanDebtsFromCashflow(tokens, inputs.cashflowMonth);
+
+  const manualDebt = inputs.existing
+    ? Number(inputs.existing.debt_deduction_manual ?? 0)
+    : 0;
+  const totalDebt = detectedDebt.total + manualDebt;
+
+  const manualEntries = inputs.existing
+    ? {
+        monthly_bonus: Number(inputs.existing.monthly_bonus ?? 0),
+        monthly_bonus_note: inputs.existing.monthly_bonus_note,
+        debt_deduction: totalDebt,
+        debt_deduction_auto: detectedDebt.total,
+        debt_deduction_manual: manualDebt,
+        debt_deduction_note: detectedDebt.note,
+        other_penalty: Number(inputs.existing.other_penalty ?? 0),
+        other_penalty_note: inputs.existing.other_penalty_note,
+      }
+    : {
+        monthly_bonus: 0,
+        monthly_bonus_note: null,
+        debt_deduction: totalDebt,
+        debt_deduction_auto: detectedDebt.total,
+        debt_deduction_manual: manualDebt,
+        debt_deduction_note: detectedDebt.note,
+        other_penalty: 0,
+        other_penalty_note: null,
+      };
+
+  const netTotal = computeNetTotal(
+    basis,
+    Number(settings.attendance_weight_pct),
+    Number(settings.deliverables_weight_pct),
+    {
+      prorated_salary: attCalc.prorated_salary,
+      overtime_pay: attCalc.overtime_pay,
+      late_penalty: attCalc.late_penalty,
+      deliverables_pay: deliverablesPay,
+      monthly_bonus: manualEntries.monthly_bonus,
+      debt_deduction: manualEntries.debt_deduction,
+      other_penalty: manualEntries.other_penalty,
+      extra_work_pay: extraWorkPay,
+      base_salary: baseSalary,
+    }
+  );
+
+  const { breakdown: attBreakdown, ...attFields } = attCalc;
+  const breakdownToStore: PayslipBreakdown | null =
+    includesAttendance || extraWorkDays.length > 0
+      ? {
+          ...attBreakdown,
+          extra_work_days: extraWorkDays,
+          extra_work_rate_idr: 0,
+        }
+      : null;
+
+  const fields = {
+    ...attFields,
+    extra_day_bonus: 0,
+    deliverables_achievement_pct:
+      Math.round(deliverablesAchievementPct * 100) / 100,
+    deliverables_pay: deliverablesPay,
+    extra_work_pay: extraWorkPay,
+    ...manualEntries,
+    net_total: netTotal,
+    status: "draft" as const,
+    breakdown_json: breakdownToStore,
+    updated_at: new Date().toISOString(),
+  };
+
+  const signature = computeInputsSignature(inputs);
+  return { fields, signature };
 }
 
 // ---------------------------------------------------------------------------
@@ -483,39 +836,267 @@ export async function bulkFinalizePayslipSettings(): Promise<{
 }
 
 /**
- * Calculate (atau recalculate) payslip semua karyawan finalized untuk
- * (month, year) tertentu. Skip karyawan settings draft / no settings.
- * Loop sequential (karena calculatePayslip self-contained dan butuh
- * panggilan terpisah per user). Return jumlah berhasil + skipped.
+ * Bulk calc — fetches ALL inputs for the month in ~9 parallel queries,
+ * runs pure compute per employee in-memory, then batch-upserts. Skip-
+ * if-clean: if a user's `inputs_signature` matches the freshly-computed
+ * one, skip both compute (post-hash) and upsert. Use `force=true` to
+ * recompute everyone regardless of signature.
+ *
+ * Performance: prior version was O(N) sequential round-trips × ~10
+ * queries each. New version is O(1) DB round-trips.
  */
 export async function bulkCalculatePayslips(
   month: number,
-  year: number
+  year: number,
+  opts: { force?: boolean } = {}
 ): Promise<{
   calculatedCount: number;
+  cachedCount: number;
   skippedCount: number;
   errorCount: number;
 }> {
   const role = await getCurrentRole();
   adminGuard(role);
+  const force = opts.force === true;
 
   const supabase = await createClient();
-  const { data: finalizedSettings } = await supabase
-    .from("payslip_settings")
-    .select("user_id")
-    .eq("is_finalized", true);
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd =
+    month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
-  let calculatedCount = 0;
-  let errorCount = 0;
-  for (const s of finalizedSettings ?? []) {
-    const res = await calculatePayslip(s.user_id, month, year);
-    if (res.error) errorCount += 1;
-    else calculatedCount += 1;
+  // 1. Driver list — finalized settings only.
+  const { data: finalizedSettings, error: settingsErr } = await supabase
+    .from("payslip_settings")
+    .select("*")
+    .eq("is_finalized", true);
+  if (settingsErr)
+    return {
+      calculatedCount: 0,
+      cachedCount: 0,
+      skippedCount: 0,
+      errorCount: 1,
+    };
+  const settingsList = (finalizedSettings ?? []) as PayslipSettings[];
+  const userIds = settingsList.map((s) => s.user_id);
+  if (userIds.length === 0) {
+    return {
+      calculatedCount: 0,
+      cachedCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+    };
   }
-  const skippedCount = 0; // implicit: yang draft/no-settings tidak ter-fetch
+
+  // 2. Parallel-fetch all month-scoped inputs.
+  const [
+    profilesRes,
+    attendanceRes,
+    extraWorkRes,
+    kindsRes,
+    payslipsRes,
+    cashflowRes,
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, grace_period_min, nickname, full_name")
+      .in("id", userIds),
+    supabase
+      .from("attendance_logs")
+      .select(
+        "id, user_id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime"
+      )
+      .in("user_id", userIds)
+      .gte("date", monthStart)
+      .lt("date", monthEnd),
+    supabase
+      .from("extra_work_logs")
+      .select(
+        "id, user_id, date, kind, notes, formula_override, custom_rate_idr, multiplier_override"
+      )
+      .in("user_id", userIds)
+      .gte("date", monthStart)
+      .lt("date", monthEnd),
+    supabase
+      .from("extra_work_kinds")
+      .select("name, formula_kind, fixed_rate_idr, daily_multiplier"),
+    supabase
+      .from("payslips")
+      .select("*")
+      .eq("month", month)
+      .eq("year", year),
+    supabase
+      .from("cashflow_transactions")
+      .select("debit, description, notes, transaction_date")
+      .gte("transaction_date", monthStart)
+      .lt("transaction_date", monthEnd)
+      .gt("debit", 0)
+      .or("description.ilike.%pinjem%,notes.ilike.%pinjem%"),
+  ]);
+
+  // 3. Index everything by user_id.
+  const profileByUser = new Map(
+    (profilesRes.data ?? []).map((p) => [p.id, p])
+  );
+  const attendanceByUser = new Map<string, typeof attendanceRes.data>();
+  for (const log of attendanceRes.data ?? []) {
+    const arr = attendanceByUser.get(log.user_id) ?? [];
+    arr.push(log);
+    attendanceByUser.set(log.user_id, arr);
+  }
+  const extraByUser = new Map<string, typeof extraWorkRes.data>();
+  for (const ew of extraWorkRes.data ?? []) {
+    const arr = extraByUser.get(ew.user_id) ?? [];
+    arr.push(ew);
+    extraByUser.set(ew.user_id, arr);
+  }
+  const kindsByName = new Map<string, ExtraWorkKindMeta>(
+    (kindsRes.data ?? []).map((k) => [
+      k.name,
+      {
+        formula_kind: k.formula_kind,
+        fixed_rate_idr: Number(k.fixed_rate_idr),
+        daily_multiplier: Number(k.daily_multiplier),
+      },
+    ])
+  );
+  const payslipByUser = new Map(
+    (payslipsRes.data ?? []).map((p) => [p.user_id, p])
+  );
+
+  // 4. Wave 2 (parallel) — fetch overtime_requests + deliverables now
+  //    that we have IDs from wave 1. Both run together so signature can
+  //    be computed against COMPLETE inputs (no preliminary trick).
+  const allLogIds = (attendanceRes.data ?? []).map((l) => l.id);
+  const includesDelivIds = settingsList
+    .filter((s) => {
+      const b = s.calculation_basis;
+      const includesDel = b === "deliverables" || b === "both";
+      return includesDel && payslipByUser.has(s.user_id);
+    })
+    .map((s) => payslipByUser.get(s.user_id)!.id);
+
+  const [otRes, delRes] = await Promise.all([
+    allLogIds.length > 0
+      ? supabase
+          .from("overtime_requests")
+          .select("attendance_log_id, overtime_minutes, status")
+          .in("attendance_log_id", allLogIds)
+      : Promise.resolve({ data: [] as { attendance_log_id: string; overtime_minutes: number; status: string }[] }),
+    includesDelivIds.length > 0
+      ? supabase
+          .from("payslip_deliverables")
+          .select("*")
+          .in("payslip_id", includesDelivIds)
+      : Promise.resolve({ data: [] as PayslipDeliverable[] }),
+  ]);
+  const otReqsByLog = new Map<
+    string,
+    { attendance_log_id: string; overtime_minutes: number; status: string }[]
+  >();
+  for (const r of otRes.data ?? []) {
+    const arr = otReqsByLog.get(r.attendance_log_id) ?? [];
+    arr.push(r);
+    otReqsByLog.set(r.attendance_log_id, arr);
+  }
+  const deliverablesByPayslip = new Map<string, PayslipDeliverable[]>();
+  for (const d of (delRes.data ?? []) as PayslipDeliverable[]) {
+    const arr = deliverablesByPayslip.get(d.payslip_id) ?? [];
+    arr.push(d);
+    deliverablesByPayslip.set(d.payslip_id, arr);
+  }
+
+  // 5. Per-employee compute with COMPLETE inputs.
+  const cashflowMonth = (cashflowRes.data ?? []) as CashflowMonthRow[];
+  const finalUpserts: Record<string, unknown>[] = [];
+  let cachedCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+
+  for (const settings of settingsList) {
+    const userId = settings.user_id;
+    const profile = profileByUser.get(userId) ?? {
+      grace_period_min: null,
+      nickname: null,
+      full_name: null,
+    };
+    const existing = payslipByUser.get(userId) ?? null;
+    if (existing && existing.status === "finalized") {
+      skippedCount++;
+      continue;
+    }
+    const deliverables = existing
+      ? (deliverablesByPayslip.get(existing.id) ?? [])
+      : [];
+    const userLogs = attendanceByUser.get(userId) ?? [];
+    const userOT = userLogs.flatMap((l) => otReqsByLog.get(l.id) ?? []);
+
+    const inputs: CalcInputs = {
+      userId,
+      month,
+      year,
+      settings,
+      profile: {
+        grace_period_min: profile.grace_period_min ?? null,
+        nickname: profile.nickname ?? null,
+        full_name: profile.full_name ?? null,
+      },
+      attendanceLogs: userLogs,
+      overtimeRequests: userOT,
+      extraWorkLogs: extraByUser.get(userId) ?? [],
+      kindsByName,
+      existing,
+      deliverables,
+      cashflowMonth,
+    };
+    const sig = computeInputsSignature(inputs);
+    if (
+      !force &&
+      existing &&
+      existing.inputs_signature &&
+      existing.inputs_signature === sig
+    ) {
+      cachedCount++;
+      continue;
+    }
+
+    try {
+      const { fields } = computePayslipFromInputs(inputs);
+      finalUpserts.push({
+        user_id: userId,
+        month,
+        year,
+        ...(existing ? { id: existing.id } : {}),
+        ...fields,
+        inputs_signature: sig,
+      });
+    } catch (e) {
+      console.error("computePayslipFromInputs failed for", userId, e);
+      errorCount++;
+    }
+  }
+
+  // 8. Single batch upsert. Cast to satisfy the strict generated type —
+  //    the Insert shape has `month/year` required which are present in
+  //    every row we built.
+  if (finalUpserts.length > 0) {
+    const rows = finalUpserts as unknown as Database["public"]["Tables"]["payslips"]["Insert"][];
+    const { error: upsertErr } = await supabase
+      .from("payslips")
+      .upsert(rows, { onConflict: "user_id,month,year" });
+    if (upsertErr) {
+      errorCount += finalUpserts.length;
+    }
+  }
   revalidatePath("/admin/payslips");
   revalidatePath("/admin/payslips/variables");
-  return { calculatedCount, skippedCount, errorCount };
+  return {
+    calculatedCount: Math.max(0, finalUpserts.length - errorCount),
+    cachedCount,
+    skippedCount,
+    errorCount,
+  };
 }
 
 /**
@@ -549,273 +1130,178 @@ export async function bulkFinalizePayslipsForMonth(
 // Payslip Calculation
 // ---------------------------------------------------------------------------
 
-export async function calculatePayslip(userId: string, month: number, year: number) {
+export async function calculatePayslip(
+  userId: string,
+  month: number,
+  year: number,
+  opts: { force?: boolean } = {}
+) {
   const role = await getCurrentRole();
   adminGuard(role);
+  const force = opts.force === true;
 
   const supabase = await createClient();
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd =
+    month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
-  // Get settings
-  const { data: settings } = await supabase
-    .from("payslip_settings")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
+  // Parallel-fetch all inputs in one wave (settings is the gate; if
+  // missing/draft we bail before doing anything else).
+  const [
+    settingsRes,
+    profileRes,
+    attendanceRes,
+    extraWorkRes,
+    kindsRes,
+    existingRes,
+    cashflowRes,
+  ] = await Promise.all([
+    supabase
+      .from("payslip_settings")
+      .select("*")
+      .eq("user_id", userId)
+      .single(),
+    supabase
+      .from("profiles")
+      .select("grace_period_min, nickname, full_name")
+      .eq("id", userId)
+      .single(),
+    supabase
+      .from("attendance_logs")
+      .select(
+        "id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime"
+      )
+      .eq("user_id", userId)
+      .gte("date", monthStart)
+      .lt("date", monthEnd),
+    supabase
+      .from("extra_work_logs")
+      .select(
+        "id, date, kind, notes, formula_override, custom_rate_idr, multiplier_override"
+      )
+      .eq("user_id", userId)
+      .gte("date", monthStart)
+      .lt("date", monthEnd),
+    supabase
+      .from("extra_work_kinds")
+      .select("name, formula_kind, fixed_rate_idr, daily_multiplier"),
+    supabase
+      .from("payslips")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("month", month)
+      .eq("year", year)
+      .maybeSingle(),
+    supabase
+      .from("cashflow_transactions")
+      .select("debit, description, notes, transaction_date")
+      .gte("transaction_date", monthStart)
+      .lt("transaction_date", monthEnd)
+      .gt("debit", 0)
+      .or("description.ilike.%pinjem%,notes.ilike.%pinjem%"),
+  ]);
 
+  const settings = settingsRes.data as PayslipSettings | null;
   if (!settings) return { error: "Payslip settings not found for this employee." };
   if (!settings.is_finalized) return { error: "Payslip settings must be finalized before calculating." };
+  const existing = existingRes.data;
+  if (existing && existing.status === "finalized") {
+    return { error: "This payslip is already finalized. Reopen it first to recalculate." };
+  }
 
+  // Deliverables only fetched when needed AND when an existing payslip
+  // exists to attach them to.
   const basis = settings.calculation_basis as
     | "presence"
     | "deliverables"
     | "both"
     | "fixed";
-  // basis="fixed" skip semua attendance + deliverables — bayar base salary.
-  const includesAttendance = basis === "presence" || basis === "both";
   const includesDeliverables = basis === "deliverables" || basis === "both";
-  const baseSalary = Number(settings.monthly_fixed_amount);
-
-  // Resolve expected work days for this month according to the configured
-  // mode (manual number or weekly pattern). We override
-  // settings.expected_work_days locally so calculateFromAttendance sees the
-  // per-month value without changing the settings row.
-  const resolvedExpected = resolveExpectedWorkDays(settings, month, year);
-  const effectiveSettings: PayslipSettings = {
-    ...settings,
-    expected_work_days: resolvedExpected,
-  };
-
-  // Attendance-side calculation (only when attendance is in play)
-  const emptyBreakdown: PayslipBreakdown = {
-    overtime_mode: settings.overtime_mode as PayslipBreakdown["overtime_mode"],
-    late_penalty_mode: settings.late_penalty_mode as PayslipBreakdown["late_penalty_mode"],
-    grace_period_min: 0,
-    overtime_days: [],
-    late_days: [],
-  };
-  let attCalc = {
-    actual_work_days: 0,
-    expected_work_days: resolvedExpected,
-    base_salary: baseSalary,
-    prorated_salary: 0,
-    total_overtime_minutes: 0,
-    overtime_pay: 0,
-    total_late_minutes: 0,
-    late_penalty: 0,
-    breakdown: emptyBreakdown,
-  };
-
-  if (includesAttendance) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("grace_period_min")
-      .eq("id", userId)
-      .single();
-    const gracePeriodMin = profile?.grace_period_min ?? 0;
-
-    const startDate2 = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate2 = month === 12
-      ? `${year + 1}-01-01`
-      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
-
-    const { data: logs } = await supabase
-      .from("attendance_logs")
-      .select("id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime")
-      .eq("user_id", userId)
-      .gte("date", startDate2)
-      .lt("date", endDate2);
-
-    const logIds = (logs ?? []).map((l) => l.id);
-    let overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[] = [];
-    if (logIds.length > 0) {
-      const { data: otReqs } = await supabase
-        .from("overtime_requests")
-        .select("attendance_log_id, overtime_minutes, status")
-        .in("attendance_log_id", logIds);
-      overtimeRequests = otReqs ?? [];
-    }
-
-    attCalc = calculateFromAttendance(effectiveSettings, logs ?? [], overtimeRequests, gracePeriodMin);
-  }
-
-  // Extra-work pay: per-entry resolution. Tiap log pakai formula:
-  //   1. formula_override (kalau di-set admin di payslip review),
-  //   2. fallback ke kind.formula_kind (default).
-  // Formula:
-  //   - fixed → pay = fixed_rate_idr (atau custom_rate_idr kalau override='fixed')
-  //   - custom → pay = custom_rate_idr (admin set per-entry; null = 0)
-  //   - daily_multiplier → pay = (multiplier_override ?? kind.daily_multiplier)
-  //                              × (base_salary / expected_work_days)
-  // Independent dari calculation_basis — ini honor diskrit di luar
-  // skema gaji reguler.
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const endDate = month === 12
-    ? `${year + 1}-01-01`
-    : `${year}-${String(month + 1).padStart(2, "0")}-01`;
-  let extraWorkPay = 0;
-  const extraWorkDays: NonNullable<PayslipBreakdown["extra_work_days"]> = [];
-  {
-    const { data: ewLogs } = await supabase
-      .from("extra_work_logs")
-      .select(
-        "date, kind, notes, formula_override, custom_rate_idr, multiplier_override"
-      )
-      .eq("user_id", userId)
-      .gte("date", startDate)
-      .lt("date", endDate);
-    // Lookup formula default per kind name (in-memory, biasanya cuma
-    // beberapa kind aktif).
-    const { data: kindRows } = await supabase
-      .from("extra_work_kinds")
-      .select("name, formula_kind, fixed_rate_idr, daily_multiplier");
-    type KindMeta = {
-      formula_kind: string;
-      fixed_rate_idr: number;
-      daily_multiplier: number;
-    };
-    const kindByName = new Map<string, KindMeta>(
-      (kindRows ?? []).map((k) => [
-        k.name,
-        {
-          formula_kind: k.formula_kind,
-          fixed_rate_idr: Number(k.fixed_rate_idr),
-          daily_multiplier: Number(k.daily_multiplier),
-        },
-      ])
-    );
-    const dailyPay =
-      resolvedExpected > 0 ? baseSalary / resolvedExpected : 0;
-
-    for (const row of ewLogs ?? []) {
-      const meta = kindByName.get(row.kind);
-      const formula =
-        row.formula_override ?? meta?.formula_kind ?? "fixed";
-      let pay = 0;
-      if (formula === "fixed") {
-        pay =
-          row.custom_rate_idr != null
-            ? Number(row.custom_rate_idr)
-            : Number(meta?.fixed_rate_idr ?? 0);
-      } else if (formula === "custom") {
-        pay = row.custom_rate_idr != null ? Number(row.custom_rate_idr) : 0;
-      } else if (formula === "daily_multiplier") {
-        const mult =
-          row.multiplier_override != null
-            ? Number(row.multiplier_override)
-            : Number(meta?.daily_multiplier ?? 0);
-        pay = Math.round(mult * dailyPay);
-      }
-      extraWorkDays.push({ date: row.date, kind: row.kind, pay });
-      extraWorkPay += pay;
-    }
-    extraWorkDays.sort((a, b) => a.date.localeCompare(b.date));
-  }
-
-  // Check existing payslip to preserve manual entries + deliverables
-  const { data: existing } = await supabase
-    .from("payslips")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("month", month)
-    .eq("year", year)
-    .maybeSingle();
-
-  if (existing && existing.status === "finalized") {
-    return { error: "This payslip is already finalized. Reopen it first to recalculate." };
-  }
-
-  // Load existing deliverables so we can recompute the deliverables pay
-  let deliverablesAchievementPct = 0;
-  let deliverablesPay = 0;
+  let deliverables: Pick<
+    PayslipDeliverable,
+    "target" | "realization" | "weight_pct"
+  >[] = [];
   if (includesDeliverables && existing) {
-    const { data: rows } = await supabase
+    const { data } = await supabase
       .from("payslip_deliverables")
       .select("target, realization, weight_pct")
       .eq("payslip_id", existing.id);
-    deliverablesAchievementPct = computeDeliverablesAchievement(rows ?? []);
-    deliverablesPay = Math.round((deliverablesAchievementPct / 100) * baseSalary);
+    deliverables = data ?? [];
   }
 
-  // Auto-detect pinjaman karyawan dari cashflow_transactions: ambil
-  // semua debit di bulan target yang description / notes match
-  // pattern "pinjem" + nickname/first-name karyawan. Override
-  // debt_deduction yang sebelumnya manual — auto-calc adalah source
-  // of truth supaya tiap recalc nge-pickup pinjaman terbaru.
-  const detectedDebt = await detectLoanDebts(supabase, userId, month, year);
+  // Overtime requests only when attendance is in play.
+  const includesAttendance = basis === "presence" || basis === "both";
+  const logs = attendanceRes.data ?? [];
+  let overtimeRequests: Pick<
+    OvertimeRequest,
+    "attendance_log_id" | "overtime_minutes" | "status"
+  >[] = [];
+  if (includesAttendance && logs.length > 0) {
+    const { data } = await supabase
+      .from("overtime_requests")
+      .select("attendance_log_id, overtime_minutes, status")
+      .in(
+        "attendance_log_id",
+        logs.map((l) => l.id)
+      );
+    overtimeRequests = data ?? [];
+  }
 
-  const manualEntries = existing
-    ? {
-        monthly_bonus: Number(existing.monthly_bonus),
-        monthly_bonus_note: existing.monthly_bonus_note,
-        debt_deduction: detectedDebt.total,
-        debt_deduction_note: detectedDebt.note,
-        other_penalty: Number(existing.other_penalty),
-        other_penalty_note: existing.other_penalty_note,
-      }
-    : {
-        monthly_bonus: 0,
-        monthly_bonus_note: null,
-        debt_deduction: detectedDebt.total,
-        debt_deduction_note: detectedDebt.note,
-        other_penalty: 0,
-        other_penalty_note: null,
-      };
-
-  const netTotal = computeNetTotal(
-    basis,
-    Number(settings.attendance_weight_pct),
-    Number(settings.deliverables_weight_pct),
-    {
-      prorated_salary: attCalc.prorated_salary,
-      overtime_pay: attCalc.overtime_pay,
-      late_penalty: attCalc.late_penalty,
-      deliverables_pay: deliverablesPay,
-      monthly_bonus: manualEntries.monthly_bonus,
-      debt_deduction: manualEntries.debt_deduction,
-      other_penalty: manualEntries.other_penalty,
-      extra_work_pay: extraWorkPay,
-      base_salary: baseSalary,
-    }
+  const kindsByName = new Map<string, ExtraWorkKindMeta>(
+    (kindsRes.data ?? []).map((k) => [
+      k.name,
+      {
+        formula_kind: k.formula_kind,
+        fixed_rate_idr: Number(k.fixed_rate_idr),
+        daily_multiplier: Number(k.daily_multiplier),
+      },
+    ])
   );
 
-  const { breakdown: attBreakdown, ...attFields } = attCalc;
-  // Merge the extra-work breakdown alongside attendance details so the
-  // payslip detail view can render a single consolidated breakdown.
-  const breakdownToStore: PayslipBreakdown | null =
-    includesAttendance || extraWorkDays.length > 0
-      ? {
-          ...attBreakdown,
-          extra_work_days: extraWorkDays,
-          // Legacy field — sekarang per-entry pay disimpan di
-          // extra_work_days[i].pay; rate aggregate sudah tidak relevan
-          // (formula bisa beda per kind/entry). Tetap dipertahankan
-          // untuk backward compat dengan UI lama yang masih membaca.
-          extra_work_rate_idr: 0,
-        }
-      : null;
-  const calcFields = {
-    ...attFields,
-    extra_day_bonus: 0,
-    deliverables_achievement_pct: Math.round(deliverablesAchievementPct * 100) / 100,
-    deliverables_pay: deliverablesPay,
-    extra_work_pay: extraWorkPay,
-    ...manualEntries,
-    net_total: netTotal,
-    status: "draft" as const,
-    breakdown_json: breakdownToStore,
-    updated_at: new Date().toISOString(),
+  const inputs: CalcInputs = {
+    userId,
+    month,
+    year,
+    settings,
+    profile: {
+      grace_period_min: profileRes.data?.grace_period_min ?? null,
+      nickname: profileRes.data?.nickname ?? null,
+      full_name: profileRes.data?.full_name ?? null,
+    },
+    attendanceLogs: logs,
+    overtimeRequests,
+    extraWorkLogs: extraWorkRes.data ?? [],
+    kindsByName,
+    existing,
+    deliverables,
+    cashflowMonth: (cashflowRes.data ?? []) as CashflowMonthRow[],
   };
+
+  // Skip-if-clean: if signature matches existing, no work needed.
+  const sig = computeInputsSignature(inputs);
+  if (
+    !force &&
+    existing &&
+    existing.inputs_signature &&
+    existing.inputs_signature === sig
+  ) {
+    return { cached: true as const };
+  }
+
+  const { fields } = computePayslipFromInputs(inputs);
 
   if (existing) {
     const { error } = await supabase
       .from("payslips")
-      .update(calcFields)
+      .update({ ...fields, inputs_signature: sig })
       .eq("id", existing.id);
     if (error) return { error: error.message };
   } else {
     const { error } = await supabase
       .from("payslips")
-      .insert({ user_id: userId, month, year, ...calcFields });
+      .insert({ user_id: userId, month, year, ...fields, inputs_signature: sig });
     if (error) return { error: error.message };
   }
 
@@ -926,9 +1412,16 @@ export async function updatePayslipManualEntries(
   if (!existing) return { error: "Payslip not found." };
   if (existing.status === "finalized") return { error: "Cannot edit a finalized payslip." };
 
+  // `fields.debt_deduction` from UI is the MANUAL portion only.
+  // Total = auto (preserved) + manual (this update).
+  const newManualDebt =
+    fields.debt_deduction ?? Number(existing.debt_deduction_manual ?? 0);
+  const autoDebt = Number(existing.debt_deduction_auto ?? 0);
+  const totalDebt = autoDebt + newManualDebt;
+
   const merged = {
     monthly_bonus: fields.monthly_bonus ?? Number(existing.monthly_bonus),
-    debt_deduction: fields.debt_deduction ?? Number(existing.debt_deduction),
+    debt_deduction: totalDebt,
     other_penalty: fields.other_penalty ?? Number(existing.other_penalty),
   };
 
@@ -964,6 +1457,8 @@ export async function updatePayslipManualEntries(
     .from("payslips")
     .update({
       ...fields,
+      debt_deduction: totalDebt,
+      debt_deduction_manual: newManualDebt,
       net_total: netTotal,
       updated_at: new Date().toISOString(),
     })
@@ -980,15 +1475,128 @@ export async function finalizePayslip(payslipId: string) {
   adminGuard(role);
 
   const supabase = await createClient();
+  // Re-finalize: reset employee_response to 'pending' so admin gets a
+  // fresh ack signal on every cycle. Payment status is intentionally
+  // NOT reset — real money already moved.
   const { error } = await supabase
     .from("payslips")
-    .update({ status: "finalized", updated_at: new Date().toISOString() })
+    .update({
+      status: "finalized",
+      employee_response: "pending",
+      employee_response_message: null,
+      employee_response_at: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", payslipId);
 
   if (error) return { error: error.message };
 
   revalidatePath("/admin/payslips");
   return {};
+}
+
+// ---------------------------------------------------------------------------
+// Employee response + admin payment tracking
+// ---------------------------------------------------------------------------
+
+export type EmployeeResponseKind = "pending" | "acknowledged" | "issue";
+
+/** Employee acks a finalized payslip or reports an issue. */
+export async function submitPayslipResponse(
+  payslipId: string,
+  kind: EmployeeResponseKind,
+  message?: string
+): Promise<{ ok: true } | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+  const supabase = await createClient();
+
+  // Verify ownership + finalized state. RLS also enforces this; this
+  // gives a friendlier error than a generic Postgres reject.
+  const { data: payslip } = await supabase
+    .from("payslips")
+    .select("user_id, status")
+    .eq("id", payslipId)
+    .maybeSingle();
+  if (!payslip) return { error: "Payslip not found" };
+  if (payslip.user_id !== user.id) return { error: "Not your payslip" };
+  if (payslip.status !== "finalized")
+    return { error: "Only finalized payslips can be responded to" };
+
+  const trimmed = (message ?? "").trim();
+  if (kind === "issue" && !trimmed)
+    return { error: "Tulis detail masalahnya dulu" };
+
+  const { error } = await supabase
+    .from("payslips")
+    .update({
+      employee_response: kind,
+      employee_response_message: kind === "issue" ? trimmed : null,
+      employee_response_at: kind === "pending" ? null : new Date().toISOString(),
+    })
+    .eq("id", payslipId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/payslips");
+  revalidatePath("/admin/payslips/variables");
+  return { ok: true };
+}
+
+export async function markPayslipPaid(
+  payslipId: string,
+  paid: boolean,
+  note?: string
+): Promise<{ ok: true } | { error: string }> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("payslips")
+    .update({
+      payment_status: paid ? "paid" : "unpaid",
+      payment_at: paid ? new Date().toISOString() : null,
+      payment_note: note?.trim() ? note.trim() : null,
+    })
+    .eq("id", payslipId);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/payslips/variables");
+  revalidatePath("/payslips");
+  return { ok: true };
+}
+
+export async function bulkMarkPayslipsPaid(
+  payslipIds: string[]
+): Promise<{ paidCount: number; error?: string }> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { paidCount: 0, error: "Forbidden" };
+  if (payslipIds.length === 0) return { paidCount: 0 };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("payslips")
+    .update({ payment_status: "paid", payment_at: new Date().toISOString() })
+    .in("id", payslipIds)
+    .eq("payment_status", "unpaid")
+    .select("id");
+  if (error) return { paidCount: 0, error: error.message };
+  revalidatePath("/admin/payslips/variables");
+  revalidatePath("/payslips");
+  return { paidCount: (data ?? []).length };
+}
+
+export async function setPayslipPaymentNote(
+  payslipId: string,
+  note: string
+): Promise<{ ok: true } | { error: string }> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("payslips")
+    .update({ payment_note: note.trim() || null })
+    .eq("id", payslipId);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/payslips/variables");
+  return { ok: true };
 }
 
 /**
@@ -1027,46 +1635,6 @@ export async function getPayslip(userId: string, month: number, year: number) {
     .eq("year", year)
     .maybeSingle();
   return data;
-}
-
-export async function getAllPayslipSummaries(month: number, year: number) {
-  const role = await getCurrentRole();
-  adminGuard(role);
-
-  const supabase = await createClient();
-
-  // Get all employees — exclude payslip-deactivated ones (admin
-  // toggle di /admin/users) supaya admin tidak lihat row kosong.
-  const { data: employees } = await supabase
-    .from("profiles")
-    .select("id, full_name, email")
-    .eq("payslip_excluded", false)
-    .order("full_name");
-
-  // Get all settings
-  const { data: allSettings } = await supabase
-    .from("payslip_settings")
-    .select("user_id, is_finalized");
-
-  // Get payslips for this month
-  const { data: payslips } = await supabase
-    .from("payslips")
-    .select("*")
-    .eq("month", month)
-    .eq("year", year);
-
-  const settingsMap = new Map(
-    (allSettings ?? []).map((s) => [s.user_id, s])
-  );
-  const payslipMap = new Map(
-    (payslips ?? []).map((p) => [p.user_id, p])
-  );
-
-  return (employees ?? []).map((emp) => ({
-    ...emp,
-    settings: settingsMap.get(emp.id) ?? null,
-    payslip: payslipMap.get(emp.id) ?? null,
-  }));
 }
 
 export async function getEmployeePayslips(userId: string) {

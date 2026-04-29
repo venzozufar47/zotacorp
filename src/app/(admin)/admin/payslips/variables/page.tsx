@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PayslipVariablesEditor } from "@/components/admin/PayslipVariablesEditor";
 import { PayslipDisputesPanel } from "@/components/admin/PayslipDisputesPanel";
+import { PayslipPaymentsTable, type PaymentRow } from "@/components/admin/PayslipPaymentsTable";
+import { PayslipTabsNav, type PayslipView } from "@/components/admin/PayslipTabsNav";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import type { PayslipSettings } from "@/lib/supabase/types";
 
@@ -13,6 +15,7 @@ interface SearchParams {
   month?: string;
   year?: string;
   scope?: string;
+  view?: string;
 }
 
 export default async function PayslipVariablesPage({
@@ -31,6 +34,7 @@ export default async function PayslipVariablesPage({
   const year = parseInt(sp.year ?? String(today.getFullYear()), 10);
   const scope: "settings" | "monthly" =
     sp.scope === "monthly" ? "monthly" : "settings";
+  const view: PayslipView = sp.view === "payments" ? "payments" : "variables";
 
   const supabase = await createClient();
   const { data: employees } = await supabase
@@ -77,6 +81,21 @@ export default async function PayslipVariablesPage({
     .gte("date", monthStart)
     .lt("date", monthEnd)
     .order("date", { ascending: true });
+
+  const { data: kinds } = await supabase
+    .from("extra_work_kinds")
+    .select("name, formula_kind, fixed_rate_idr, daily_multiplier");
+  const kindsByName: Record<
+    string,
+    { formulaKind: string; fixedRateIdr: number; dailyMultiplier: number }
+  > = {};
+  for (const k of kinds ?? []) {
+    kindsByName[k.name] = {
+      formulaKind: k.formula_kind,
+      fixedRateIdr: Number(k.fixed_rate_idr ?? 0),
+      dailyMultiplier: Number(k.daily_multiplier ?? 0),
+    };
+  }
 
   const settingsByUser = new Map(
     ((settings ?? []) as PayslipSettings[]).map((s) => [s.user_id, s])
@@ -125,22 +144,54 @@ export default async function PayslipVariablesPage({
     userName: userMap.get(d.userId) ?? "(karyawan tidak diketahui)",
   }));
 
+  // Pembayaran rows: only finalized payslips, joined with profile name + BU.
+  const paymentRows: PaymentRow[] = rows
+    .filter((r) => r.payslip?.status === "finalized")
+    .map((r) => ({
+      payslipId: r.payslip!.id,
+      userId: r.userId,
+      fullName: r.fullName,
+      businessUnit: r.businessUnit,
+      netTotal: Number(r.payslip!.net_total),
+      employeeResponse:
+        (r.payslip!.employee_response ?? "pending") as PaymentRow["employeeResponse"],
+      employeeResponseMessage: r.payslip!.employee_response_message ?? null,
+      employeeResponseAt: r.payslip!.employee_response_at ?? null,
+      paymentStatus:
+        (r.payslip!.payment_status ?? "unpaid") as PaymentRow["paymentStatus"],
+      paymentAt: r.payslip!.payment_at ?? null,
+      paymentNote: r.payslip!.payment_note ?? null,
+    }));
+
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
-        title="Edit per variabel"
-        subtitle="Edit satu variabel payslip lintas seluruh karyawan dalam satu tabel"
+        title="Slip gaji"
+        subtitle={
+          view === "payments"
+            ? "Tracking respon karyawan + status pembayaran"
+            : "Atur variabel payslip semua karyawan dalam satu tabel"
+        }
       />
 
-      <PayslipDisputesPanel disputes={disputesWithName} />
+      <PayslipTabsNav current={view} />
 
-      <PayslipVariablesEditor
-        rows={rows}
-        scope={scope}
-        month={month}
-        year={year}
-        monthLabel={monthLabel}
-      />
+      {view === "variables" && (
+        <>
+          <PayslipDisputesPanel disputes={disputesWithName} />
+
+          <PayslipVariablesEditor
+            rows={rows}
+            scope={scope}
+            month={month}
+            year={year}
+            monthLabel={monthLabel}
+            kindsByName={kindsByName}
+          />
+        </>
+      )}
+
+      {view === "payments" && <PayslipPaymentsTable rows={paymentRows} />}
     </div>
   );
 }

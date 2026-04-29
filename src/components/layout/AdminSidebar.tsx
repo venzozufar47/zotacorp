@@ -13,7 +13,7 @@ export function AdminSidebar() {
 
   const navItems = [
     { href: "/admin/attendance", icon: ClipboardList, label: t.nav.attendance, color: "bg-primary" },
-    { href: "/admin/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
+    { href: "/admin/payslips/variables", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     { href: "/admin/users", icon: Users, label: t.nav.users, color: "bg-pop-pink" },
     { href: "/admin/locations", icon: MapPin, label: t.nav.locations, color: "bg-quaternary" },
     { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },

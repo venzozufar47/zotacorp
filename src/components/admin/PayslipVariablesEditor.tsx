@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useMemo, useState, useTransition } from "react";
+import React, { createContext, useContext, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Lock, Save, RotateCcw } from "lucide-react";
-import { ViewModeSwitch } from "./PayslipViewModeSwitch";
 import {
   bulkUpsertPayslipSettings,
   bulkUpdateMonthlyEntries,
@@ -88,12 +87,21 @@ function groupByBusinessUnit(
   return sorted.map(([name, rows]) => ({ name, rows }));
 }
 
+interface ExtraWorkKindMeta {
+  formulaKind: string;
+  fixedRateIdr: number;
+  dailyMultiplier: number;
+}
+
+const KindsByNameContext = createContext<Record<string, ExtraWorkKindMeta>>({});
+
 interface Props {
   rows: EmployeeRow[];
   scope: "settings" | "monthly";
   month: number;
   year: number;
   monthLabel: string;
+  kindsByName?: Record<string, ExtraWorkKindMeta>;
 }
 
 const WEEKDAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
@@ -118,6 +126,7 @@ export function PayslipVariablesEditor({
   month,
   year,
   monthLabel,
+  kindsByName,
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -129,9 +138,8 @@ export function PayslipVariablesEditor({
   }
 
   return (
+    <KindsByNameContext.Provider value={kindsByName ?? {}}>
     <div className="space-y-5">
-      <ViewModeSwitch current="variable" />
-
       <ScopeAndPeriod
         scope={scope}
         month={month}
@@ -149,6 +157,7 @@ export function PayslipVariablesEditor({
         <MonthlyScope rows={rows} month={month} year={year} />
       )}
     </div>
+    </KindsByNameContext.Provider>
   );
 }
 
@@ -1001,13 +1010,17 @@ function MonthlyHeader({
     (r) => r.payslip?.status === "finalized"
   ).length;
 
-  function bulkCalc() {
+  function bulkCalc(force = false) {
     startTransition(async () => {
-      const res = await bulkCalculatePayslips(month, year);
-      if (res.errorCount > 0) {
-        toast.error(`${res.errorCount} gagal di-calculate`);
-      }
-      toast.success(`Calculated ${res.calculatedCount} payslip`);
+      const res = await bulkCalculatePayslips(month, year, { force });
+      const parts: string[] = [];
+      if (res.calculatedCount > 0) parts.push(`${res.calculatedCount} dihitung`);
+      if (res.cachedCount > 0) parts.push(`${res.cachedCount} cached`);
+      if (res.skippedCount > 0)
+        parts.push(`${res.skippedCount} skipped (finalized)`);
+      if (parts.length > 0) toast.success(parts.join(" · "));
+      if (res.errorCount > 0) toast.error(`${res.errorCount} gagal di-calculate`);
+      else if (parts.length === 0) toast.info("Tidak ada payslip untuk dihitung");
       router.refresh();
     });
   }
@@ -1041,11 +1054,21 @@ function MonthlyHeader({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={bulkCalc}
+          onClick={() => bulkCalc(false)}
           disabled={pending}
+          title="Hitung ulang hanya yang berubah (cache yang tidak berubah)"
           className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border text-xs font-semibold hover:bg-muted disabled:opacity-50"
         >
           {pending ? "Working…" : "Calculate / Recalculate semua"}
+        </button>
+        <button
+          type="button"
+          onClick={() => bulkCalc(true)}
+          disabled={pending}
+          title="Force: bypass cache, hitung ulang semua dari nol"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50"
+        >
+          Force recalc
         </button>
         <button
           type="button"
@@ -1207,11 +1230,15 @@ function MonthlyRow({
   function recalc() {
     startTransition(async () => {
       const res = await calculatePayslip(row.userId, month, year);
-      if (res.error) {
+      if ("error" in res && res.error) {
         toast.error(res.error);
         return;
       }
-      toast.success("Payslip ter-recalculate");
+      if ("cached" in res && res.cached) {
+        toast.success("Tidak ada perubahan — payslip sudah up-to-date");
+      } else {
+        toast.success("Payslip ter-recalculate");
+      }
       router.refresh();
     });
   }
@@ -1354,10 +1381,12 @@ function ExpandedDetail({
     other_penalty: string;
     other_penalty_note: string;
   };
+  const debtAuto = Number(payslip.debt_deduction_auto ?? 0);
+  const debtManualOriginal = Number(payslip.debt_deduction_manual ?? 0);
   const initial: Manual = {
     monthly_bonus: String(Number(payslip.monthly_bonus ?? 0)),
     monthly_bonus_note: payslip.monthly_bonus_note ?? "",
-    debt_deduction: String(Number(payslip.debt_deduction ?? 0)),
+    debt_deduction: String(debtManualOriginal),
     other_penalty: String(Number(payslip.other_penalty ?? 0)),
     other_penalty_note: payslip.other_penalty_note ?? "",
   };
@@ -1367,7 +1396,7 @@ function ExpandedDetail({
   const manualDirty =
     Number(manual.monthly_bonus) !== Number(payslip.monthly_bonus ?? 0) ||
     manual.monthly_bonus_note !== (payslip.monthly_bonus_note ?? "") ||
-    Number(manual.debt_deduction) !== Number(payslip.debt_deduction ?? 0) ||
+    Number(manual.debt_deduction) !== debtManualOriginal ||
     Number(manual.other_penalty) !== Number(payslip.other_penalty ?? 0) ||
     manual.other_penalty_note !== (payslip.other_penalty_note ?? "");
 
@@ -1415,22 +1444,35 @@ function ExpandedDetail({
               }
               disabled={finalized}
             />
+            <div className="col-span-2 grid grid-cols-2 gap-2 rounded-lg border border-border/60 bg-muted/20 p-2">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  Pinjaman kasir (auto, dari cashflow)
+                </label>
+                <p className="h-8 px-2 flex items-center text-sm font-medium tabular-nums text-foreground">
+                  {formatRp(debtAuto)}
+                </p>
+              </div>
+              <div className="text-[10px] text-muted-foreground self-end pb-1">
+                {payslip.debt_deduction_note ? (
+                  <pre className="whitespace-pre-wrap font-sans leading-snug">
+                    {payslip.debt_deduction_note}
+                  </pre>
+                ) : (
+                  <span className="italic">tidak ada pinjaman terdeteksi</span>
+                )}
+              </div>
+            </div>
             <ManualField
-              label="Debt (auto)"
+              label="Utang lain (manual)"
               value={manual.debt_deduction}
               onChange={(v) =>
                 setManual((m) => ({ ...m, debt_deduction: v }))
               }
               disabled={finalized}
             />
-            <div className="text-[10px] text-muted-foreground self-end">
-              {payslip.debt_deduction_note ? (
-                <pre className="whitespace-pre-wrap font-sans leading-snug">
-                  {payslip.debt_deduction_note}
-                </pre>
-              ) : (
-                <span className="italic">tidak ada pinjaman terdeteksi</span>
-              )}
+            <div className="text-[10px] text-muted-foreground self-end pb-1 italic">
+              Total debt = auto + manual = {formatRp(debtAuto + Number(manual.debt_deduction || 0))}
             </div>
             <ManualField
               label="Penalty"
@@ -1494,6 +1536,8 @@ function ExpandedDetail({
         <ExtraWorkEntriesEditor
           logs={row.extraWorkLogs}
           disabled={finalized}
+          monthlyFixedAmount={Number(row.settings?.monthly_fixed_amount ?? 0)}
+          expectedWorkDays={Number(row.settings?.expected_work_days ?? 0)}
         />
       )}
     </div>
@@ -1503,10 +1547,17 @@ function ExpandedDetail({
 function ExtraWorkEntriesEditor({
   logs,
   disabled,
+  monthlyFixedAmount,
+  expectedWorkDays,
 }: {
   logs: ExtraWorkLogRow[];
   disabled?: boolean;
+  monthlyFixedAmount: number;
+  expectedWorkDays: number;
 }) {
+  const kindsByName = useContext(KindsByNameContext);
+  const dailyBase =
+    expectedWorkDays > 0 ? monthlyFixedAmount / expectedWorkDays : 0;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [drafts, setDrafts] = useState<
@@ -1611,6 +1662,24 @@ function ExtraWorkEntriesEditor({
             {logs.map((log) => {
               const eff = effective(log);
               const dirty = isDirty(log);
+              const kindMeta = kindsByName[log.kind];
+              const resolvedFormula =
+                eff.formulaOverride !== ""
+                  ? eff.formulaOverride
+                  : (kindMeta?.formulaKind ?? "");
+              const isDailyMult = resolvedFormula === "daily_multiplier";
+              // Multiplier resolution: explicit override → kind default → fallback 1.
+              // Mirror server logic so UI preview matches actual paycheck.
+              const explicitMult =
+                eff.multiplier !== ""
+                  ? Number(eff.multiplier)
+                  : (kindMeta?.dailyMultiplier ?? 0);
+              const resolvedMultiplier =
+                isDailyMult && explicitMult <= 0 ? 1 : explicitMult;
+              const computedDailyPay =
+                isDailyMult && dailyBase > 0 && resolvedMultiplier > 0
+                  ? Math.round(dailyBase * resolvedMultiplier)
+                  : null;
               return (
                 <tr key={log.id} className="border-b border-border/50">
                   <td className="px-2 py-1 tabular-nums text-muted-foreground whitespace-nowrap">
@@ -1660,7 +1729,7 @@ function ExtraWorkEntriesEditor({
                       className="w-full h-7 px-1.5 rounded-md border border-border bg-background text-xs tabular-nums text-right disabled:bg-muted"
                     />
                   </td>
-                  <td className="px-2 py-1 w-20">
+                  <td className="px-2 py-1 w-28">
                     <input
                       type="number"
                       min={0}
@@ -1673,6 +1742,14 @@ function ExtraWorkEntriesEditor({
                       placeholder="—"
                       className="w-full h-7 px-1.5 rounded-md border border-border bg-background text-xs tabular-nums text-right disabled:bg-muted"
                     />
+                    {computedDailyPay !== null && (
+                      <p
+                        className="text-[10px] text-muted-foreground tabular-nums text-right mt-0.5"
+                        title={`Gapok harian ${formatRp(Math.round(dailyBase))} × ${resolvedMultiplier}${eff.multiplier === "" && (kindMeta?.dailyMultiplier ?? 0) <= 0 ? " (default 1×)" : ""}`}
+                      >
+                        = {formatRp(computedDailyPay)}
+                      </p>
+                    )}
                   </td>
                   <td className="px-2 py-1">
                     {dirty && (

@@ -154,25 +154,48 @@ export function PayslipBreakdownDetails({
               <span className="font-medium text-muted-foreground text-right">{bt.colLate}</span>
               <span className="font-medium text-muted-foreground text-right">{bt.colAfterGrace}</span>
               <span className="font-medium text-muted-foreground text-right">{bt.colPenalty}</span>
-              {breakdown.late_days.map((row) => (
-                <Fragment3 key={row.date}>
-                  <span className="flex items-center gap-1.5">
-                    {formatDate(row.date, lang)}
-                    {row.excused && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground border-2 border-foreground font-display font-bold uppercase tracking-wider">
-                        {bt.excused}
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-right tabular-nums">{formatMinutes(row.raw_minutes, hShort, mShort)}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">
-                    {row.excused ? "—" : formatMinutes(row.after_grace_minutes, hShort, mShort)}
-                  </span>
-                  <span className="text-right tabular-nums text-destructive font-bold">
-                    {row.penalty > 0 ? `- ${formatIDR(row.penalty)}` : "—"}
-                  </span>
-                </Fragment3>
-              ))}
+              {breakdown.late_days.map((row) => {
+                const wasCapped =
+                  row.penalty_pre_cap != null && row.penalty_pre_cap > row.penalty;
+                return (
+                  <Fragment3 key={row.date}>
+                    <span className="flex items-center gap-1.5 flex-wrap">
+                      {formatDate(row.date, lang)}
+                      {row.excused && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground border-2 border-foreground font-display font-bold uppercase tracking-wider">
+                          {bt.excused}
+                        </span>
+                      )}
+                      {wasCapped && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-display font-bold uppercase tracking-wider"
+                          title={`Aslinya ${formatIDR(row.penalty_pre_cap!)}, dipotong ke maksimal gaji 1 hari (${formatIDR(breakdown.late_penalty_daily_cap ?? 0)})`}
+                        >
+                          dicap
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-right tabular-nums">{formatMinutes(row.raw_minutes, hShort, mShort)}</span>
+                    <span className="text-right tabular-nums text-muted-foreground">
+                      {row.excused ? "—" : formatMinutes(row.after_grace_minutes, hShort, mShort)}
+                    </span>
+                    <span className="text-right tabular-nums text-destructive font-bold">
+                      {row.penalty > 0 ? (
+                        <>
+                          {wasCapped && (
+                            <span className="block text-[10px] font-normal text-muted-foreground line-through">
+                              {formatIDR(row.penalty_pre_cap!)}
+                            </span>
+                          )}
+                          - {formatIDR(row.penalty)}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+                  </Fragment3>
+                );
+              })}
               <span className="pt-1 border-t border-border text-muted-foreground font-medium">
                 {bt.totals}
               </span>
@@ -193,6 +216,16 @@ export function PayslipBreakdownDetails({
                 </p>
               )}
               {breakdown.late_penalty_mode === "per_day" && <p>{bt.perDayExplainer}</p>}
+              {breakdown.late_penalty_daily_cap != null &&
+                breakdown.late_penalty_daily_cap > 0 && (
+                  <p>
+                    Denda telat per hari maksimal{" "}
+                    <strong className="text-foreground">
+                      {formatIDR(breakdown.late_penalty_daily_cap)}
+                    </strong>{" "}
+                    (= gaji 1 hari).
+                  </p>
+                )}
             </div>
           </div>
         )}

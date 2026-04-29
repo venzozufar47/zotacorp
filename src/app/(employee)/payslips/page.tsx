@@ -14,7 +14,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 import { PayslipSettingsReview } from "@/components/payslip/PayslipSettingsReview";
+import { PayslipResponseWidget } from "@/components/payslip/PayslipResponseWidget";
 import type { PayslipBreakdown } from "@/lib/supabase/types";
+import type { EmployeeResponseKind } from "@/lib/actions/payslip.actions";
 import { getDictionary } from "@/lib/i18n/server";
 
 /** Field yang harus terisi sebelum karyawan boleh lihat payslip
@@ -267,6 +269,15 @@ export default async function EmployeePayslipsPage() {
                       {formatIDR(Number(p.net_total))}
                     </span>
                   </div>
+
+                  <PayslipResponseWidget
+                    payslipId={p.id}
+                    response={(p.employee_response ?? "pending") as EmployeeResponseKind}
+                    responseMessage={p.employee_response_message ?? null}
+                    responseAt={p.employee_response_at ?? null}
+                    paymentStatus={(p.payment_status ?? "unpaid") as "unpaid" | "paid"}
+                    paymentAt={p.payment_at ?? null}
+                  />
                 </CardContent>
               </Card>
             );

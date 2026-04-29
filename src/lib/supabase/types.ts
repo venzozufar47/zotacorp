@@ -1093,13 +1093,19 @@ export type Database = {
           breakdown_json: Json | null
           created_at: string | null
           debt_deduction: number
+          debt_deduction_auto: number
+          debt_deduction_manual: number
           debt_deduction_note: string | null
           deliverables_achievement_pct: number
           deliverables_pay: number
           expected_work_days: number
+          employee_response: string
+          employee_response_at: string | null
+          employee_response_message: string | null
           extra_day_bonus: number
           extra_work_pay: number
           id: string
+          inputs_signature: string | null
           late_penalty: number
           month: number
           monthly_bonus: number
@@ -1108,6 +1114,9 @@ export type Database = {
           other_penalty: number
           other_penalty_note: string | null
           overtime_pay: number
+          payment_at: string | null
+          payment_note: string | null
+          payment_status: string
           prorated_salary: number
           status: string
           total_late_minutes: number
@@ -1122,13 +1131,19 @@ export type Database = {
           breakdown_json?: Json | null
           created_at?: string | null
           debt_deduction?: number
+          debt_deduction_auto?: number
+          debt_deduction_manual?: number
           debt_deduction_note?: string | null
           deliverables_achievement_pct?: number
           deliverables_pay?: number
           expected_work_days?: number
+          employee_response?: string
+          employee_response_at?: string | null
+          employee_response_message?: string | null
           extra_day_bonus?: number
           extra_work_pay?: number
           id?: string
+          inputs_signature?: string | null
           late_penalty?: number
           month: number
           monthly_bonus?: number
@@ -1137,6 +1152,9 @@ export type Database = {
           other_penalty?: number
           other_penalty_note?: string | null
           overtime_pay?: number
+          payment_at?: string | null
+          payment_note?: string | null
+          payment_status?: string
           prorated_salary?: number
           status?: string
           total_late_minutes?: number
@@ -1151,13 +1169,19 @@ export type Database = {
           breakdown_json?: Json | null
           created_at?: string | null
           debt_deduction?: number
+          debt_deduction_auto?: number
+          debt_deduction_manual?: number
           debt_deduction_note?: string | null
           deliverables_achievement_pct?: number
           deliverables_pay?: number
           expected_work_days?: number
+          employee_response?: string
+          employee_response_at?: string | null
+          employee_response_message?: string | null
           extra_day_bonus?: number
           extra_work_pay?: number
           id?: string
+          inputs_signature?: string | null
           late_penalty?: number
           month?: number
           monthly_bonus?: number
@@ -1166,6 +1190,9 @@ export type Database = {
           other_penalty?: number
           other_penalty_note?: string | null
           overtime_pay?: number
+          payment_at?: string | null
+          payment_note?: string | null
+          payment_status?: string
           prorated_salary?: number
           status?: string
           total_late_minutes?: number
@@ -1974,7 +2001,10 @@ export type PayslipBreakdown = {
   late_penalty_mode: 'per_minutes' | 'per_day' | 'none';
   grace_period_min: number;
   overtime_days: Array<{ date: string; minutes: number; pay: number }>;
-  late_days: Array<{ date: string; raw_minutes: number; after_grace_minutes: number; penalty: number; excused: boolean }>;
+  late_days: Array<{ date: string; raw_minutes: number; after_grace_minutes: number; penalty: number; excused: boolean; penalty_pre_cap?: number }>;
+  /** Daily pay cap = monthly_fixed_amount / expected_work_days. Penalty
+   *  per hari di-cap di angka ini supaya total denda 1 hari ≤ gaji 1 hari. */
+  late_penalty_daily_cap?: number;
   extra_work_days?: Array<{ date: string; kind: string; pay: number }>;
   extra_work_rate_idr?: number;
 };
