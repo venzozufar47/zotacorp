@@ -1837,6 +1837,8 @@ export type Database = {
     Views: {
       profiles_celebrations_public: {
         Row: {
+          avatar_seed: string | null
+          avatar_url: string | null
           dob_month_day: string | null
           first_day_of_work: string | null
           full_name: string | null
@@ -1844,6 +1846,8 @@ export type Database = {
           nickname: string | null
         }
         Insert: {
+          avatar_seed?: string | null
+          avatar_url?: string | null
           dob_month_day?: never
           first_day_of_work?: string | null
           full_name?: string | null
@@ -1851,6 +1855,8 @@ export type Database = {
           nickname?: string | null
         }
         Update: {
+          avatar_seed?: string | null
+          avatar_url?: string | null
           dob_month_day?: never
           first_day_of_work?: string | null
           full_name?: string | null

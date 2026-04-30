@@ -24,6 +24,8 @@ export type Language = "en" | "id";
 export type Celebrant = {
   id: string;
   fullName: string;
+  avatarUrl?: string | null;
+  avatarSeed?: string | null;
   kind: CelebrationKind;
   /** ISO `yyyy-mm-dd` of this occurrence in app tz. */
   occursOn: string;
@@ -41,6 +43,8 @@ export type CelebrationRow = {
   /** Optional admin-set nickname. When present, shown in place of
    *  `full_name` everywhere in the celebrations UI. */
   nickname: string | null;
+  avatar_url: string | null;
+  avatar_seed: string | null;
   dob_month_day: string | null;
   first_day_of_work: string | null;
 };
@@ -159,6 +163,8 @@ export function getCelebrantsInWindow(
           out.push({
             id: row.id,
             fullName: pickDisplayName(row.full_name, row.nickname),
+            avatarUrl: row.avatar_url,
+            avatarSeed: row.avatar_seed,
             kind: "birthday",
             occursOn: iso,
             eventYear: yr,
@@ -180,6 +186,8 @@ export function getCelebrantsInWindow(
           out.push({
             id: row.id,
             fullName: pickDisplayName(row.full_name, row.nickname),
+            avatarUrl: row.avatar_url,
+            avatarSeed: row.avatar_seed,
             kind: "anniversary",
             occursOn: iso,
             eventYear: yr,
@@ -212,12 +220,24 @@ export function getSelfCelebrationToday(args: {
   id: string;
   fullName: string;
   nickname?: string | null;
+  avatarUrl?: string | null;
+  avatarSeed?: string | null;
   dateOfBirth: string | null;
   firstDayOfWork: string | null;
   today: Date;
   tz: string;
 }): Celebrant | null {
-  const { id, fullName, nickname, dateOfBirth, firstDayOfWork, today, tz } = args;
+  const {
+    id,
+    fullName,
+    nickname,
+    avatarUrl,
+    avatarSeed,
+    dateOfBirth,
+    firstDayOfWork,
+    today,
+    tz,
+  } = args;
   const displayName = pickDisplayName(fullName, nickname);
   const t = zonedParts(today, tz);
   const todayIso = zonedDateString(today, tz);
@@ -230,6 +250,8 @@ export function getSelfCelebrationToday(args: {
       return {
         id,
         fullName: displayName,
+        avatarUrl: avatarUrl ?? null,
+        avatarSeed: avatarSeed ?? null,
         kind: "birthday",
         occursOn: iso,
         eventYear: t.y,
@@ -245,6 +267,8 @@ export function getSelfCelebrationToday(args: {
       return {
         id,
         fullName: displayName,
+        avatarUrl: avatarUrl ?? null,
+        avatarSeed: avatarSeed ?? null,
         kind: "anniversary",
         occursOn: iso,
         eventYear: t.y,

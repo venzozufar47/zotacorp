@@ -72,6 +72,8 @@ export type CelebrationMessage = {
   celebrantId: string;
   authorId: string;
   authorName: string;
+  authorAvatarUrl: string | null;
+  authorAvatarSeed: string | null;
   eventType: CelebrationKind;
   eventYear: number;
   kind: "greeting" | "reply" | "broadcast";
@@ -109,7 +111,9 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     getCachedAttendanceSettings(),
     supabase
       .from("profiles_celebrations_public")
-      .select("id, full_name, nickname, dob_month_day, first_day_of_work"),
+      .select(
+        "id, full_name, nickname, avatar_url, avatar_seed, dob_month_day, first_day_of_work"
+      ),
   ]);
 
   const tz = settings?.timezone ?? "Asia/Jakarta";
@@ -125,6 +129,8 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
       id: r.id as string,
       full_name: r.full_name as string,
       nickname: r.nickname ?? null,
+      avatar_url: r.avatar_url ?? null,
+      avatar_seed: r.avatar_seed ?? null,
       dob_month_day: r.dob_month_day ?? null,
       first_day_of_work: r.first_day_of_work ?? null,
     }));
@@ -142,6 +148,8 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
         id: profileSelf.id,
         fullName: profileSelf.full_name ?? "",
         nickname: profileSelf.nickname ?? null,
+        avatarUrl: profileSelf.avatar_url ?? null,
+        avatarSeed: profileSelf.avatar_seed ?? null,
         dateOfBirth: profileSelf.date_of_birth ?? null,
         firstDayOfWork: profileSelf.first_day_of_work ?? null,
         today: now,
@@ -172,15 +180,27 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     const { data: authors } = authorIds.length
       ? await supabase
           .from("profiles_celebrations_public")
-          .select("id, full_name, nickname")
+          .select("id, full_name, nickname, avatar_url, avatar_seed")
           .in("id", authorIds)
-      : { data: [] as { id: string; full_name: string | null; nickname: string | null }[] };
-    const nameOf = new Map(
+      : {
+          data: [] as {
+            id: string;
+            full_name: string | null;
+            nickname: string | null;
+            avatar_url: string | null;
+            avatar_seed: string | null;
+          }[],
+        };
+    const authorBy = new Map(
       (authors ?? [])
         .filter((a) => a.id)
         .map((a) => [
           a.id as string,
-          pickDisplayName(a.full_name ?? "", a.nickname ?? null),
+          {
+            name: pickDisplayName(a.full_name ?? "", a.nickname ?? null),
+            avatarUrl: a.avatar_url ?? null,
+            avatarSeed: a.avatar_seed ?? null,
+          },
         ])
     );
 
@@ -193,18 +213,23 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
             m.event_type === c.kind &&
             m.event_year === c.eventYear
         )
-        .map((m) => ({
-          id: m.id,
-          celebrantId: m.celebrant_id,
-          authorId: m.author_id,
-          authorName: nameOf.get(m.author_id) ?? "Seseorang",
-          eventType: m.event_type as CelebrationKind,
-          eventYear: m.event_year,
-          kind: m.kind as CelebrationMessage["kind"],
-          parentId: m.parent_id,
-          body: m.body,
-          createdAt: m.created_at,
-        })),
+        .map((m) => {
+          const author = authorBy.get(m.author_id);
+          return {
+            id: m.id,
+            celebrantId: m.celebrant_id,
+            authorId: m.author_id,
+            authorName: author?.name ?? "Seseorang",
+            authorAvatarUrl: author?.avatarUrl ?? null,
+            authorAvatarSeed: author?.avatarSeed ?? null,
+            eventType: m.event_type as CelebrationKind,
+            eventYear: m.event_year,
+            kind: m.kind as CelebrationMessage["kind"],
+            parentId: m.parent_id,
+            body: m.body,
+            createdAt: m.created_at,
+          };
+        }),
     }));
   }
 

@@ -77,7 +77,12 @@ export async function CelebrationsCard({ feed, viewerId }: Props) {
                     key={`${c.kind}-${c.id}-${c.eventYear}`}
                     className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/40 px-3 py-2"
                   >
-                    <EmployeeAvatar full_name={c.fullName} />
+                    <EmployeeAvatar
+                      id={c.id}
+                      full_name={c.fullName}
+                      avatar_url={c.avatarUrl ?? null}
+                      avatar_seed={c.avatarSeed ?? null}
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground break-words">
                         {c.fullName}

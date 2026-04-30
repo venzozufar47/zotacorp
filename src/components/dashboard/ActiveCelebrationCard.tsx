@@ -3,6 +3,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { CelebrationComposer } from "./CelebrationComposer";
 import { ActiveCelebrationReplyIsland } from "./ActiveCelebrationReplyIsland";
 import { CelebrationBroadcastEditor } from "./CelebrationBroadcastEditor";
+import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 
 interface Props {
   celebrant: CelebrantWithMessages;
@@ -78,7 +79,16 @@ export async function ActiveCelebrationCard({ celebrant, viewerId }: Props) {
 
       {/* Header */}
       <header className="relative flex items-start gap-3">
-        {!isSelf && <Avatar name={celebrant.fullName} size="lg" />}
+        {!isSelf && (
+          <EmployeeAvatar
+            size="lg"
+            id={celebrant.id}
+            full_name={celebrant.fullName}
+            avatar_url={celebrant.avatarUrl ?? null}
+            avatar_seed={celebrant.avatarSeed ?? null}
+            className="size-12 ring-2 ring-primary-foreground/40"
+          />
+        )}
         <div className="min-w-0 flex-1 space-y-1">
           <h3 className="font-display text-lg sm:text-xl font-bold break-words leading-tight text-primary-foreground">
             {leadingEmoji && (
@@ -183,7 +193,13 @@ export async function ActiveCelebrationCard({ celebrant, viewerId }: Props) {
 function MessageBubble({ message, muted }: { message: CelebrationMessage; muted?: boolean }) {
   return (
     <div className="flex items-start gap-2.5">
-      <Avatar name={message.authorName} size="sm" />
+      <EmployeeAvatar
+        size="sm"
+        id={message.authorId}
+        full_name={message.authorName}
+        avatar_url={message.authorAvatarUrl}
+        avatar_seed={message.authorAvatarSeed}
+      />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-semibold text-foreground">{message.authorName}</p>
         <p
@@ -195,26 +211,5 @@ function MessageBubble({ message, muted }: { message: CelebrationMessage; muted?
         </p>
       </div>
     </div>
-  );
-}
-
-function Avatar({ name, size }: { name: string; size: "sm" | "lg" }) {
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-  const cls =
-    size === "lg"
-      ? "size-12 text-sm ring-2 ring-primary-foreground/40 bg-primary-foreground text-primary"
-      : "size-8 text-[11px] bg-primary/10 text-primary";
-  return (
-    <span
-      aria-hidden
-      className={`${cls} shrink-0 rounded-full font-semibold inline-flex items-center justify-center`}
-    >
-      {initials || "·"}
-    </span>
   );
 }
