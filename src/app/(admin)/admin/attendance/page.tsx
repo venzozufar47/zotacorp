@@ -17,6 +17,15 @@ import { AttendanceRecapTable } from "@/components/admin/AttendanceRecapTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AttendanceFilters } from "@/components/admin/AttendanceFilters";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
+import {
+  AttendanceViewTabs,
+  type AttendanceView,
+} from "@/components/admin/AttendanceViewTabs";
+import {
+  AttendanceMatrixView,
+  type MatrixEmployee,
+  type MatrixCell,
+} from "@/components/admin/AttendanceMatrixView";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface SearchParams {
@@ -29,6 +38,8 @@ interface SearchParams {
   sortBy?: string;
   sortDir?: string;
   focus?: string;
+  view?: string;
+  bu?: string;
 }
 
 const SORTABLE_KEYS: AdminAttendanceSortKey[] = [
@@ -81,6 +92,8 @@ export default async function AdminAttendancePage({
     ? (params.sortBy as AdminAttendanceSortKey)
     : undefined;
   const sortDir = params.sortDir === "asc" ? "asc" : "desc";
+  const view: AttendanceView = params.view === "matrix" ? "matrix" : "recap";
+  const selectedBU = params.bu ?? "";
 
   // Notif bell sends ?focus=<rowId>. Resolve the row's position under
   // the current sort/filter so we can land on the correct page (and the
@@ -225,6 +238,51 @@ export default async function AdminAttendancePage({
     employees = await getAllEmployees().catch(() => []);
   }
 
+  // Matrix view fetches: scoped to BU + month, only when view === 'matrix'.
+  let matrixEmployees: MatrixEmployee[] = [];
+  let matrixCells: MatrixCell[] = [];
+  let businessUnits: string[] = [];
+  if (view === "matrix") {
+    try {
+      const supabase = await createClient();
+      // List of BUs (distinct) for the selector — derived from active
+      // employees so we don't list orphan/legacy BU strings.
+      const { data: empRows } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, business_unit, avatar_url, avatar_seed")
+        .eq("is_active", true)
+        .order("full_name");
+      const allEmps = empRows ?? [];
+      businessUnits = Array.from(
+        new Set(
+          allEmps.map((e) => e.business_unit?.trim()).filter(Boolean) as string[]
+        )
+      ).sort();
+      const filteredEmps = selectedBU
+        ? allEmps.filter((e) => (e.business_unit ?? "") === selectedBU)
+        : allEmps;
+      matrixEmployees = filteredEmps.map((e) => ({
+        id: e.id,
+        full_name: e.full_name,
+        email: e.email,
+        avatar_url: e.avatar_url,
+        avatar_seed: e.avatar_seed,
+      }));
+      const empIds = matrixEmployees.map((e) => e.id);
+      if (empIds.length > 0) {
+        const { data: cells } = await supabase
+          .from("attendance_logs")
+          .select("user_id, date, status")
+          .in("user_id", empIds)
+          .gte("date", startDate)
+          .lte("date", endDate);
+        matrixCells = (cells ?? []) as MatrixCell[];
+      }
+    } catch (err) {
+      console.error("[attendance-page] matrix fetch error:", err);
+    }
+  }
+
   return (
     <div className="space-y-5 animate-fade-up overflow-x-hidden">
       <PageHeader
@@ -234,22 +292,37 @@ export default async function AdminAttendancePage({
 
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 
-      <AttendanceFilters
-        month={month}
-        year={year}
-        selectedUserId={params.userId ?? ""}
-        employees={employees}
-      />
+      <AttendanceViewTabs current={view} />
 
-      <AttendanceRecapTable
-        rows={rowsWithOt as Parameters<typeof AttendanceRecapTable>[0]["rows"]}
-        count={count}
-        page={page}
-        pageSize={pageSize}
-        timezone={settings?.timezone}
-        sortBy={sortBy ?? null}
-        sortDir={sortDir}
-      />
+      {view === "recap" ? (
+        <>
+          <AttendanceFilters
+            month={month}
+            year={year}
+            selectedUserId={params.userId ?? ""}
+            employees={employees}
+          />
+
+          <AttendanceRecapTable
+            rows={rowsWithOt as Parameters<typeof AttendanceRecapTable>[0]["rows"]}
+            count={count}
+            page={page}
+            pageSize={pageSize}
+            timezone={settings?.timezone}
+            sortBy={sortBy ?? null}
+            sortDir={sortDir}
+          />
+        </>
+      ) : (
+        <AttendanceMatrixView
+          month={month}
+          year={year}
+          businessUnits={businessUnits}
+          selectedBU={selectedBU}
+          employees={matrixEmployees}
+          cells={matrixCells}
+        />
+      )}
     </div>
   );
 }
