@@ -71,6 +71,9 @@ interface UserRow {
    *  dashboard. Toggleable from this table. */
   /** Kalau true, karyawan tidak muncul di /admin/payslips/variables. */
   payslip_excluded: boolean;
+  /** Probation = invisible from coworker celebration feeds (birthday +
+   *  anniversary). Self-celebration + system WA tetap nyala. */
+  is_probation: boolean;
 }
 
 interface LocationOption {
@@ -219,6 +222,9 @@ export function UsersTable({
               <TableHead title="Toggle apakah karyawan masuk di /admin/payslips/variables">
                 Payslip
               </TableHead>
+              <TableHead title="Karyawan probation tidak muncul di celebration feed coworker (ulang tahun, anniversary). Self-celebration & system WA tetap nyala.">
+                Probation
+              </TableHead>
               <TableHead className="text-right">
                 {tu.colActions}
               </TableHead>
@@ -243,6 +249,14 @@ export function UsersTable({
                         {row.role === "admin" && (
                           <span className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border-2 border-foreground bg-tertiary text-foreground">
                             {tu.adminBadge}
+                          </span>
+                        )}
+                        {row.is_probation && (
+                          <span
+                            className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300"
+                            title="Karyawan probation — tidak muncul di celebration feed coworker"
+                          >
+                            Probation
                           </span>
                         )}
                         {isSelf && (
@@ -286,6 +300,12 @@ export function UsersTable({
                     <PayslipIncludeToggle
                       userId={row.id}
                       initialExcluded={row.payslip_excluded}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <ProbationToggle
+                      userId={row.id}
+                      initial={row.is_probation}
                     />
                   </TableCell>
                   <TableCell className="text-right">
@@ -603,6 +623,66 @@ function PayslipIncludeToggle({
         className={cn(
           "inline-block h-4 w-4 rounded-full bg-white transition-transform shadow-sm",
           included ? "translate-x-4" : "translate-x-0.5"
+        )}
+      />
+    </button>
+  );
+}
+
+/**
+ * Probation flag — when ON, karyawan ini disembunyikan dari coworker
+ * celebration feeds (ulang tahun + anniversary). Self-celebration card
+ * di dashboard mereka sendiri tetap muncul, dan WA otomatis dari
+ * sistem ("tim Zota") tetap dikirim ke mereka.
+ */
+function ProbationToggle({
+  userId,
+  initial,
+}: {
+  userId: string;
+  initial: boolean;
+}) {
+  const router = useRouter();
+  const [probation, setProbation] = useState(initial);
+  const [pending, startTransition] = useTransition();
+
+  function flip() {
+    const next = !probation;
+    setProbation(next);
+    startTransition(async () => {
+      const ok = await patchProfile(userId, { is_probation: next });
+      if (!ok) {
+        toast.error("Gagal update status probation");
+        setProbation(!next);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={probation}
+      aria-label="Toggle probation status"
+      disabled={pending}
+      onClick={flip}
+      title={
+        probation
+          ? "Probation: tidak muncul di celebration feed coworker"
+          : "Regular: muncul normal di feed"
+      }
+      className={cn(
+        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+        probation ? "bg-amber-500" : "bg-muted",
+        pending && "opacity-50"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-4 w-4 rounded-full bg-white transition-transform shadow-sm",
+          probation ? "translate-x-4" : "translate-x-0.5"
         )}
       />
     </button>

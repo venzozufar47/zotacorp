@@ -100,6 +100,7 @@ export default async function AdminUsersPage() {
       profile_complete: profileComplete,
       assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
       payslip_excluded: p.payslip_excluded ?? false,
+      is_probation: p.is_probation ?? false,
     };
   });
 

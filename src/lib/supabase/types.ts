@@ -1613,6 +1613,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_flexible_schedule: boolean
+          is_probation: boolean
           job_role: string | null
           payslip_excluded: boolean
           motto: string | null
@@ -1660,6 +1661,7 @@ export type Database = {
           id: string
           is_active?: boolean
           is_flexible_schedule?: boolean
+          is_probation?: boolean
           job_role?: string | null
           payslip_excluded?: boolean
           motto?: string | null
@@ -1707,6 +1709,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_flexible_schedule?: boolean
+          is_probation?: boolean
           job_role?: string | null
           payslip_excluded?: boolean
           motto?: string | null
@@ -1843,6 +1846,7 @@ export type Database = {
           first_day_of_work: string | null
           full_name: string | null
           id: string | null
+          is_probation: boolean | null
           nickname: string | null
         }
         Insert: {
@@ -1852,6 +1856,7 @@ export type Database = {
           first_day_of_work?: string | null
           full_name?: string | null
           id?: string | null
+          is_probation?: boolean | null
           nickname?: string | null
         }
         Update: {
@@ -1861,6 +1866,7 @@ export type Database = {
           first_day_of_work?: string | null
           full_name?: string | null
           id?: string | null
+          is_probation?: boolean | null
           nickname?: string | null
         }
         Relationships: []

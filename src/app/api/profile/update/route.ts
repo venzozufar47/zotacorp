@@ -38,6 +38,7 @@ const ALLOWED_FIELDS = [
   "asal_alamat",
   "extra_work_enabled",
   "payslip_excluded",
+  "is_probation",
 ] as const;
 
 function sanitize(body: Record<string, unknown>): ProfileUpdate {

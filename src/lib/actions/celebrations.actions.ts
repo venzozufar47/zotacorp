@@ -112,8 +112,13 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     supabase
       .from("profiles_celebrations_public")
       .select(
-        "id, full_name, nickname, avatar_url, avatar_seed, dob_month_day, first_day_of_work"
-      ),
+        "id, full_name, nickname, avatar_url, avatar_seed, dob_month_day, first_day_of_work, is_probation"
+      )
+      // Probation employees are invisible to coworkers — they still see
+      // their own self-celebration hero (read directly from profileSelf
+      // a few lines below) but their birthday/anniversary doesn't appear
+      // in anyone else's feed.
+      .eq("is_probation", false),
   ]);
 
   const tz = settings?.timezone ?? "Asia/Jakarta";

@@ -452,6 +452,7 @@ async function findTodaysBirthdayCelebrants(): Promise<
     .from("profiles")
     .select("id, full_name, nickname, date_of_birth")
     .neq("role", "admin")
+    .eq("is_probation", false)
     .not("date_of_birth", "is", null);
 
   const celebrants: Array<{ id: string; full_name: string; nickname: string | null }> = [];
