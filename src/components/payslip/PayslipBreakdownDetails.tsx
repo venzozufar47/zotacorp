@@ -71,6 +71,30 @@ export function PayslipBreakdownDetails({
         </h4>
         {!hasOvertime ? (
           <p className="text-xs text-muted-foreground italic">{bt.noOvertime}</p>
+        ) : breakdown.overtime_mode === "fixed_per_day" ? (
+          // Fixed-per-day: durasi tidak relevan — admin sudah set rate
+          // tetap per hari OT terlepas dari berapa menit. Cukup tampil
+          // tanggal + bayaran supaya UI tidak misleading.
+          <div className="text-xs">
+            <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 items-center">
+              <span className="font-medium text-muted-foreground">{bt.colDate}</span>
+              <span className="font-medium text-muted-foreground text-right">{bt.colPay}</span>
+              {breakdown.overtime_days.map((row) => (
+                <Fragment2 key={row.date}>
+                  <span>{formatDate(row.date, lang)}</span>
+                  <span className="text-right tabular-nums text-quaternary font-bold">
+                    + {formatIDR(row.pay)}
+                  </span>
+                </Fragment2>
+              ))}
+              <span className="pt-1 border-t border-border text-muted-foreground font-medium">
+                {bt.totals} ({breakdown.overtime_days.length} hari)
+              </span>
+              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-quaternary font-bold">
+                + {formatIDR(totalOvertimePay)}
+              </span>
+            </div>
+          </div>
         ) : (
           <div className="text-xs">
             <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1 items-center">
@@ -216,7 +240,13 @@ export function PayslipBreakdownDetails({
                 </p>
               )}
               {breakdown.late_penalty_mode === "per_day" && <p>{bt.perDayExplainer}</p>}
-              {breakdown.late_penalty_daily_cap != null &&
+              {/* Cap disclaimer hanya tampil kalau ada penalty yang
+                 *  benar-benar diterapkan bulan ini (totalLatePenalty > 0).
+                 *  Karyawan tanpa formula denda (mode "none" / amount Rp 0)
+                 *  tidak perlu lihat info cap karena tidak relevan. */}
+              {totalLatePenalty > 0 &&
+                breakdown.late_penalty_mode !== "none" &&
+                breakdown.late_penalty_daily_cap != null &&
                 breakdown.late_penalty_daily_cap > 0 && (
                   <p>
                     Denda telat per hari maksimal{" "}
@@ -239,6 +269,10 @@ export function PayslipBreakdownDetails({
  * each row spans three columns cleanly without wrapper divs that would
  * break the grid layout.
  */
+function Fragment2({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
 function Fragment3({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }

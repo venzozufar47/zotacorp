@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock,
 } from "lucide-react";
@@ -33,6 +34,9 @@ export interface PaymentRow {
 
 interface Props {
   rows: PaymentRow[];
+  month: number;
+  year: number;
+  monthLabel: string;
 }
 
 function formatDateTime(iso: string | null): string {
@@ -58,9 +62,31 @@ function groupByBU(rows: PaymentRow[]): Array<{ name: string; rows: PaymentRow[]
     .map(([name, rows]) => ({ name, rows }));
 }
 
-export function PayslipPaymentsTable({ rows }: Props) {
+export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
   const router = useRouter();
+  const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
+
+  function setPeriod(m: number, y: number) {
+    const params = new URLSearchParams(sp.toString());
+    params.set("month", String(m));
+    params.set("year", String(y));
+    params.set("view", "payments");
+    router.push(`/admin/payslips/variables?${params.toString()}`);
+  }
+
+  function shiftMonth(delta: number) {
+    let m = month + delta;
+    let y = year;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    } else if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    setPeriod(m, y);
+  }
 
   const groups = useMemo(() => groupByBU(rows), [rows]);
 
@@ -94,19 +120,70 @@ export function PayslipPaymentsTable({ rows }: Props) {
     });
   }
 
+  const monthNav = (
+    <div className="rounded-2xl border border-border bg-card p-2.5 flex items-center gap-2 flex-wrap">
+      <button
+        type="button"
+        onClick={() => shiftMonth(-1)}
+        className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
+        aria-label="Bulan sebelumnya"
+      >
+        <ChevronLeft size={14} />
+      </button>
+      <select
+        value={month}
+        onChange={(e) => setPeriod(Number(e.target.value), year)}
+        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+      >
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+          <option key={m} value={m}>
+            {new Date(year, m - 1).toLocaleDateString("id-ID", { month: "long" })}
+          </option>
+        ))}
+      </select>
+      <select
+        value={year}
+        onChange={(e) => setPeriod(month, Number(e.target.value))}
+        className="h-8 rounded-md border border-border bg-background px-2 text-xs tabular-nums"
+      >
+        {Array.from({ length: 5 }, (_, i) => year - 2 + i).map((y) => (
+          <option key={y} value={y}>
+            {y}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => shiftMonth(1)}
+        className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
+        aria-label="Bulan berikutnya"
+      >
+        <ChevronRight size={14} />
+      </button>
+      <span className="text-xs font-display font-bold uppercase tracking-wider text-muted-foreground">
+        {monthLabel}
+      </span>
+    </div>
+  );
+
   if (rows.length === 0) {
     return (
-      <section className="rounded-2xl border border-border bg-card p-6 text-center">
-        <Clock size={20} className="mx-auto text-muted-foreground" />
-        <p className="text-sm text-muted-foreground mt-2">
-          Belum ada payslip ter-finalize untuk bulan ini.
-        </p>
-      </section>
+      <div className="space-y-3">
+        {monthNav}
+        <section className="rounded-2xl border border-border bg-card p-6 text-center">
+          <Clock size={20} className="mx-auto text-muted-foreground" />
+          <p className="text-sm text-muted-foreground mt-2">
+            Belum ada payslip ter-finalize untuk{" "}
+            <strong className="text-foreground">{monthLabel}</strong>.
+          </p>
+        </section>
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {monthNav}
       <div className="rounded-2xl border border-border bg-card p-3 flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-0 flex flex-wrap gap-3 text-xs">
           <Stat label="Total" value={`${rows.length} payslip`} />

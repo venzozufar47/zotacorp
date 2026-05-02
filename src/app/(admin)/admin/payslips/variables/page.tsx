@@ -191,7 +191,14 @@ export default async function PayslipVariablesPage({
         </>
       )}
 
-      {view === "payments" && <PayslipPaymentsTable rows={paymentRows} />}
+      {view === "payments" && (
+        <PayslipPaymentsTable
+          rows={paymentRows}
+          month={month}
+          year={year}
+          monthLabel={monthLabel}
+        />
+      )}
     </div>
   );
 }
