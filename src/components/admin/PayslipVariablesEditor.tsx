@@ -781,6 +781,8 @@ function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
 function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
   type Draft = {
     otMode?: OvertimeMode;
+    otFirstHour?: string;
+    otNextHour?: string;
     otFixedDaily?: string;
     lateMode?: LatePenaltyMode;
     lateAmount?: string;
@@ -796,6 +798,10 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
       otMode: (d.otMode ??
         r.settings?.overtime_mode ??
         "fixed_per_day") as OvertimeMode,
+      otFirstHour:
+        d.otFirstHour ?? String(r.settings?.ot_first_hour_rate ?? 0),
+      otNextHour:
+        d.otNextHour ?? String(r.settings?.ot_next_hour_rate ?? 0),
       otFixedDaily:
         d.otFixedDaily ?? String(r.settings?.ot_fixed_daily_rate ?? 0),
       lateMode: (d.lateMode ??
@@ -816,6 +822,10 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
         const eff = effective(r);
         const s = r.settings;
         if (eff.otMode !== (s?.overtime_mode ?? "fixed_per_day")) return true;
+        if (Number(eff.otFirstHour) !== Number(s?.ot_first_hour_rate ?? 0))
+          return true;
+        if (Number(eff.otNextHour) !== Number(s?.ot_next_hour_rate ?? 0))
+          return true;
         if (Number(eff.otFixedDaily) !== Number(s?.ot_fixed_daily_rate ?? 0))
           return true;
         if (eff.lateMode !== (s?.late_penalty_mode ?? "none")) return true;
@@ -839,6 +849,10 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
         userId: uid,
         fields: {
           overtime_mode: eff.otMode,
+          ot_first_hour_rate:
+            eff.otMode === "hourly_tiered" ? Number(eff.otFirstHour) : 0,
+          ot_next_hour_rate:
+            eff.otMode === "hourly_tiered" ? Number(eff.otNextHour) : 0,
           ot_fixed_daily_rate:
             eff.otMode === "fixed_per_day" ? Number(eff.otFixedDaily) : 0,
           late_penalty_mode: eff.lateMode,
@@ -880,6 +894,8 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
           cols={[
             "Karyawan",
             "OT mode",
+            "OT 1st hour (Rp)",
+            "OT next hour (Rp)",
             "OT fixed/day (Rp)",
             "Late mode",
             "Late amount (Rp)",
@@ -889,7 +905,7 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
         <tbody>
           <GroupedRows
             rows={rows}
-            colspan={6}
+            colspan={8}
             renderRow={(r) => {
               const eff = effective(r);
               return (
@@ -911,6 +927,40 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
                         50% gaji harian per hari OT
                       </option>
                     </select>
+                  </td>
+                  <td className="px-2 py-1.5 w-32">
+                    {eff.otMode === "hourly_tiered" ? (
+                      <input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        value={eff.otFirstHour}
+                        onChange={(e) =>
+                          setDraft(r.userId, { otFirstHour: e.target.value })
+                        }
+                        className="w-full h-8 px-2 rounded-md border border-border bg-background text-xs tabular-nums text-right"
+                      />
+                    ) : (
+                      <MutedCellText />
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 w-32">
+                    {eff.otMode === "hourly_tiered" ? (
+                      <input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        value={eff.otNextHour}
+                        onChange={(e) =>
+                          setDraft(r.userId, { otNextHour: e.target.value })
+                        }
+                        className="w-full h-8 px-2 rounded-md border border-border bg-background text-xs tabular-nums text-right"
+                      />
+                    ) : eff.otMode === "half_daily" ? (
+                      <MutedCellText>= 50% gapok/hari</MutedCellText>
+                    ) : (
+                      <MutedCellText />
+                    )}
                   </td>
                   <td className="px-2 py-1.5 w-32">
                     {eff.otMode === "fixed_per_day" ? (

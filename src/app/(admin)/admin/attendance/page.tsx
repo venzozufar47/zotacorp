@@ -20,12 +20,15 @@ import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface SearchParams {
+  month?: string;
+  year?: string;
   start?: string;
   end?: string;
   userId?: string;
   page?: string;
   sortBy?: string;
   sortDir?: string;
+  focus?: string;
 }
 
 const SORTABLE_KEYS: AdminAttendanceSortKey[] = [
@@ -50,16 +53,86 @@ export default async function AdminAttendancePage({
   const params = await searchParams;
 
   const today = new Date();
-  const startDate = params.start ?? format(startOfMonth(today), "yyyy-MM-dd");
-  const endDate = params.end ?? format(endOfMonth(today), "yyyy-MM-dd");
-  const page = parseInt(params.page ?? "1", 10);
+  // New filter is monthly. Resolution order:
+  //   1. ?month + ?year      → use those (the canonical filter)
+  //   2. ?start / ?end       → back-compat for old bookmarks; convert to month
+  //   3. neither             → current month
+  let month: number;
+  let year: number;
+  if (params.month && params.year) {
+    month = parseInt(params.month, 10);
+    year = parseInt(params.year, 10);
+  } else if (params.start) {
+    const d = new Date(params.start);
+    month = d.getMonth() + 1;
+    year = d.getFullYear();
+  } else {
+    month = today.getMonth() + 1;
+    year = today.getFullYear();
+  }
+  const monthAnchor = new Date(year, month - 1, 1);
+  const startDate = format(startOfMonth(monthAnchor), "yyyy-MM-dd");
+  const endDate = format(endOfMonth(monthAnchor), "yyyy-MM-dd");
   const pageSize = 25;
+  const page = parseInt(params.page ?? "1", 10);
   // Validate sort params against the whitelist so a malformed URL doesn't
   // crash the server action.
   const sortBy = SORTABLE_KEYS.includes(params.sortBy as AdminAttendanceSortKey)
     ? (params.sortBy as AdminAttendanceSortKey)
     : undefined;
   const sortDir = params.sortDir === "asc" ? "asc" : "desc";
+
+  // Notif bell sends ?focus=<rowId>. Resolve the row's position under
+  // the current sort/filter so we can land on the correct page (and the
+  // client effect then scrolls + flashes it).
+  if (params.focus) {
+    const supabase = await createClient();
+    const { data: focusRow } = await supabase
+      .from("attendance_logs")
+      .select("id, user_id, date, checked_in_at")
+      .eq("id", params.focus)
+      .maybeSingle();
+    if (focusRow) {
+      // If the row is outside the current filter, snap the filter to its
+      // month so it actually appears.
+      const fDate = new Date(focusRow.date);
+      const fMonth = fDate.getMonth() + 1;
+      const fYear = fDate.getFullYear();
+      if (fMonth !== month || fYear !== year) {
+        const next = new URLSearchParams();
+        next.set("month", String(fMonth));
+        next.set("year", String(fYear));
+        next.set("focus", params.focus);
+        if (params.userId) next.set("userId", params.userId);
+        redirect(`/admin/attendance?${next.toString()}`);
+      }
+      // Count rows that come BEFORE the focused row under the current
+      // sort (default: date DESC, then checked_in_at DESC). This decides
+      // which page to land on.
+      let beforeQuery = supabase
+        .from("attendance_logs")
+        .select("id", { count: "exact", head: true })
+        .gte("date", startDate)
+        .lte("date", endDate);
+      if (params.userId) beforeQuery = beforeQuery.eq("user_id", params.userId);
+      // Default sort is date desc → "before" = date strictly newer, or
+      // same date with later checked_in_at.
+      beforeQuery = beforeQuery.or(
+        `date.gt.${focusRow.date},and(date.eq.${focusRow.date},checked_in_at.gt.${focusRow.checked_in_at})`
+      );
+      const { count: beforeCount } = await beforeQuery;
+      const targetPage = Math.floor((beforeCount ?? 0) / 25) + 1;
+      if (targetPage !== parseInt(params.page ?? "1", 10)) {
+        const next = new URLSearchParams();
+        next.set("month", String(month));
+        next.set("year", String(year));
+        next.set("page", String(targetPage));
+        next.set("focus", params.focus);
+        if (params.userId) next.set("userId", params.userId);
+        redirect(`/admin/attendance?${next.toString()}`);
+      }
+    }
+  }
 
   let rowsWithOt: Parameters<typeof AttendanceRecapTable>[0]["rows"] = [];
   let count = 0;
@@ -162,8 +235,8 @@ export default async function AdminAttendancePage({
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 
       <AttendanceFilters
-        startDate={startDate}
-        endDate={endDate}
+        month={month}
+        year={year}
         selectedUserId={params.userId ?? ""}
         employees={employees}
       />
