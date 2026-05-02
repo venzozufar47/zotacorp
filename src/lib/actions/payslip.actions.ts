@@ -1603,22 +1603,47 @@ export async function setPayslipPaymentNote(
  * Reopen a finalized payslip so admin can recalculate and revise it.
  * Moves status back to 'draft'. Employee will no longer see it in their
  * finalized history until it's finalized again.
+ *
+ * Double-verification: when the employee has already acknowledged
+ * (`employee_response = 'acknowledged'`), reopening would invalidate
+ * their confirmation. The action returns `{ requiresConfirm: true }`
+ * unless the caller passes `confirm: true`, prompting the UI to ask
+ * the admin a second time.
  */
-export async function reopenPayslip(payslipId: string) {
+export async function reopenPayslip(
+  payslipId: string,
+  opts: { confirm?: boolean } = {}
+): Promise<
+  | { ok?: true; requiresConfirm?: boolean; employeeResponseAt?: string | null }
+  | { error: string }
+> {
   const role = await getCurrentRole();
   adminGuard(role);
 
   const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("payslips")
+    .select("employee_response, employee_response_at")
+    .eq("id", payslipId)
+    .maybeSingle();
+  if (!existing) return { error: "Payslip not found" };
+
+  if (existing.employee_response === "acknowledged" && !opts.confirm) {
+    return {
+      requiresConfirm: true,
+      employeeResponseAt: existing.employee_response_at,
+    };
+  }
+
   const { error } = await supabase
     .from("payslips")
     .update({ status: "draft", updated_at: new Date().toISOString() })
     .eq("id", payslipId);
-
   if (error) return { error: error.message };
 
   revalidatePath("/admin/payslips");
   revalidatePath("/payslips");
-  return {};
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

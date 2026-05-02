@@ -5,6 +5,7 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
+import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 
 export default async function AdminLayout({
   children,
@@ -35,11 +36,13 @@ export default async function AdminLayout({
     );
   }
 
+  const pendingConfirmations = await getPendingConfirmations();
+
   return (
     <div className="flex min-h-screen bg-background">
       <RouteProgressBar />
-      <AdminMobileNav />
-      <AdminSidebar />
+      <AdminMobileNav pendingConfirmations={pendingConfirmations} />
+      <AdminSidebar pendingConfirmations={pendingConfirmations} />
       <main className="flex-1 min-w-0">
         {/* Fluid width with a ceiling at ~1700px so the admin data tables
             breathe on 1440p / 1920p monitors instead of hitting a narrow

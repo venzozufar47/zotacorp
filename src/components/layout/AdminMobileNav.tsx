@@ -7,8 +7,14 @@ import { Menu, X, ClipboardList, Users, Settings, LogOut, Receipt, MapPin, Walle
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
+import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 
-export function AdminMobileNav() {
+export function AdminMobileNav({
+  pendingConfirmations = [],
+}: {
+  pendingConfirmations?: PendingConfirmationItem[];
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
@@ -42,13 +48,16 @@ export function AdminMobileNav() {
             Admin
           </span>
         </div>
-        <button
-          onClick={() => setOpen(!open)}
-          className="size-10 flex items-center justify-center rounded-full border-2 border-foreground bg-card transition-transform hover:rotate-12 active:scale-95"
-          aria-label="Menu"
-        >
-          {open ? <X size={18} strokeWidth={2.5} /> : <Menu size={18} strokeWidth={2.5} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <PendingConfirmationsBell items={pendingConfirmations} variant="compact" />
+          <button
+            onClick={() => setOpen(!open)}
+            className="size-10 flex items-center justify-center rounded-full border-2 border-foreground bg-card transition-transform hover:rotate-12 active:scale-95"
+            aria-label="Menu"
+          >
+            {open ? <X size={18} strokeWidth={2.5} /> : <Menu size={18} strokeWidth={2.5} />}
+          </button>
+        </div>
       </div>
 
       {/* Backdrop overlay */}

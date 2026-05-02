@@ -8,6 +8,7 @@ import { PayslipVariablesEditor } from "@/components/admin/PayslipVariablesEdito
 import { PayslipDisputesPanel } from "@/components/admin/PayslipDisputesPanel";
 import { PayslipPaymentsTable, type PaymentRow } from "@/components/admin/PayslipPaymentsTable";
 import { PayslipTabsNav, type PayslipView } from "@/components/admin/PayslipTabsNav";
+import { PayslipViewPersist } from "@/components/admin/PayslipViewPersist";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import type { PayslipSettings } from "@/lib/supabase/types";
 
@@ -165,6 +166,7 @@ export default async function PayslipVariablesPage({
 
   return (
     <div className="space-y-5 animate-fade-up">
+      <PayslipViewPersist />
       <PageHeader
         title="Slip gaji"
         subtitle={

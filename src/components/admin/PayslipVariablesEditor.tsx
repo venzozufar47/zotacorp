@@ -1246,14 +1246,45 @@ function MonthlyRow({
   function toggleFinalize() {
     if (!payslip) return;
     startTransition(async () => {
-      const res = await (finalized
-        ? reopenPayslip(payslip.id)
-        : finalizePayslip(payslip.id));
-      if (res.error) {
-        toast.error(res.error);
+      if (!finalized) {
+        const res = await finalizePayslip(payslip.id);
+        if ("error" in res && res.error) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success("Finalized");
+        router.refresh();
         return;
       }
-      toast.success(finalized ? "Reopened" : "Finalized");
+
+      // Reopen flow with double-verification when employee has acknowledged.
+      const first = await reopenPayslip(payslip.id);
+      if ("error" in first && first.error) {
+        toast.error(first.error);
+        return;
+      }
+      if ("requiresConfirm" in first && first.requiresConfirm) {
+        const ackAt = first.employeeResponseAt
+          ? new Date(first.employeeResponseAt).toLocaleString("id-ID", {
+              day: "2-digit",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "(tanpa timestamp)";
+        const proceed = confirm(
+          `⚠ Karyawan SUDAH mengkonfirmasi payslip ini (${ackAt}).\n\n` +
+            `Reopen akan membatalkan konfirmasi mereka — mereka harus konfirmasi ulang setelah kamu finalize lagi.\n\n` +
+            `Yakin lanjut reopen?`
+        );
+        if (!proceed) return;
+        const second = await reopenPayslip(payslip.id, { confirm: true });
+        if ("error" in second && second.error) {
+          toast.error(second.error);
+          return;
+        }
+      }
+      toast.success("Reopened");
       router.refresh();
     });
   }

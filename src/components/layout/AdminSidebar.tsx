@@ -6,8 +6,14 @@ import { ClipboardList, LogOut, Users, Settings, Receipt, MapPin, Wallet, PartyP
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
+import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  pendingConfirmations = [],
+}: {
+  pendingConfirmations?: PendingConfirmationItem[];
+}) {
   const pathname = usePathname();
   const { t } = useTranslation();
 
@@ -37,6 +43,11 @@ export function AdminSidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1.5">
+        {pendingConfirmations.length > 0 && (
+          <div className="pb-2 mb-2 border-b-2 border-foreground/10">
+            <PendingConfirmationsBell items={pendingConfirmations} variant="full" />
+          </div>
+        )}
         {navItems.map(({ href, icon: Icon, label, color }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (

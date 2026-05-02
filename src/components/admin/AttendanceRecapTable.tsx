@@ -107,6 +107,22 @@ export function AttendanceRecapTable({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
+  // When admin clicks a Konfirmasi item from the global nav bell, the
+  // attendance route gets `?focus=<rowId>` — scroll to that row and flash
+  // it once mounted. (Same effect as the in-table dropdown's jumpTo().)
+  useEffect(() => {
+    const focusId = searchParams?.get("focus");
+    if (!focusId) return;
+    const el = document.getElementById(`att-row-${focusId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-amber-400", "ring-offset-2");
+    const t = window.setTimeout(() => {
+      el.classList.remove("ring-2", "ring-amber-400", "ring-offset-2");
+    }, 1800);
+    return () => window.clearTimeout(t);
+  }, [searchParams]);
+
   /**
    * Build the URL for a target page, preserving the current filter query
    * (start, end, userId, etc.). Using `URLSearchParams` keeps us from
