@@ -60,6 +60,42 @@ interface EmployeeRow {
 /** Cell placeholder untuk field yang tidak relevan di mode terpilih
  *  (mis. OT fixed/day saat mode hourly_tiered). Menggantikan disabled
  *  greyed-out input → cleaner table. */
+/** Auto-derived hourly OT rate display (replaces input for hourly_tiered).
+ *  Shows the formula multiplier + the resolved Rp/jam so admin sees what
+ *  it'll cost without needing to do the math themselves. */
+function HourlyTieredCell({
+  baseSalary,
+  expectedDays,
+  stdHours,
+  multiplier,
+  suffix,
+}: {
+  baseSalary: number;
+  expectedDays: number;
+  stdHours: number;
+  multiplier: number;
+  suffix: string;
+}) {
+  const hourly =
+    expectedDays > 0 && stdHours > 0
+      ? Math.round((baseSalary / (expectedDays * stdHours)) * multiplier)
+      : null;
+  return (
+    <div className="text-right tabular-nums">
+      <p className="text-[11px] font-semibold">
+        {multiplier}
+        {suffix}
+      </p>
+      <p
+        className="text-[10px] text-muted-foreground"
+        title={`${baseSalary} / (${expectedDays} hari × ${stdHours} jam) × ${multiplier}`}
+      >
+        {hourly != null ? `≈ ${formatRp(hourly)}/jam` : "—"}
+      </p>
+    </div>
+  );
+}
+
 function MutedCellText({ children = "—" }: { children?: React.ReactNode }) {
   return (
     <span className="block text-center text-[10px] text-muted-foreground/40">
@@ -930,15 +966,12 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
                   </td>
                   <td className="px-2 py-1.5 w-32">
                     {eff.otMode === "hourly_tiered" ? (
-                      <input
-                        type="number"
-                        min={0}
-                        step={1000}
-                        value={eff.otFirstHour}
-                        onChange={(e) =>
-                          setDraft(r.userId, { otFirstHour: e.target.value })
-                        }
-                        className="w-full h-8 px-2 rounded-md border border-border bg-background text-xs tabular-nums text-right"
+                      <HourlyTieredCell
+                        baseSalary={Number(r.settings?.monthly_fixed_amount ?? 0)}
+                        expectedDays={Number(r.settings?.expected_work_days ?? 0)}
+                        stdHours={Number(r.settings?.standard_working_hours ?? 8)}
+                        multiplier={1.5}
+                        suffix="× gapok/jam"
                       />
                     ) : (
                       <MutedCellText />
@@ -946,15 +979,12 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
                   </td>
                   <td className="px-2 py-1.5 w-32">
                     {eff.otMode === "hourly_tiered" ? (
-                      <input
-                        type="number"
-                        min={0}
-                        step={1000}
-                        value={eff.otNextHour}
-                        onChange={(e) =>
-                          setDraft(r.userId, { otNextHour: e.target.value })
-                        }
-                        className="w-full h-8 px-2 rounded-md border border-border bg-background text-xs tabular-nums text-right"
+                      <HourlyTieredCell
+                        baseSalary={Number(r.settings?.monthly_fixed_amount ?? 0)}
+                        expectedDays={Number(r.settings?.expected_work_days ?? 0)}
+                        stdHours={Number(r.settings?.standard_working_hours ?? 8)}
+                        multiplier={2}
+                        suffix="× gapok/jam"
                       />
                     ) : eff.otMode === "half_daily" ? (
                       <MutedCellText>= 50% gapok/hari</MutedCellText>

@@ -167,6 +167,18 @@ function calculateFromAttendance(
   const overtimeDays: PayslipBreakdown["overtime_days"] = [];
 
   if (settings.overtime_mode === "hourly_tiered") {
+    // Derive hourly rate from base salary so admin doesn't have to
+    // manually re-enter it. Standard formula:
+    //   hourly = base_salary / (expected_work_days × standard_working_hours)
+    //   1st hour OT = 1.5 × hourly
+    //   next hours  = 2 × hourly
+    const stdHours = Number(settings.standard_working_hours ?? 8);
+    const hourlyRate =
+      expected > 0 && stdHours > 0
+        ? baseSalary / (expected * stdHours)
+        : 0;
+    const firstHourRate = hourlyRate * 1.5;
+    const nextHourRate = hourlyRate * 2;
     for (const log of completedLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
@@ -176,8 +188,7 @@ function calculateFromAttendance(
       const firstHour = Math.min(hours, 1);
       const nextHours = Math.max(hours - 1, 0);
       const dayPay = Math.round(
-        firstHour * Number(settings.ot_first_hour_rate) +
-        nextHours * Number(settings.ot_next_hour_rate)
+        firstHour * firstHourRate + nextHours * nextHourRate
       );
       overtimePay += dayPay;
       overtimeDays.push({ date: log.date, minutes: mins, pay: dayPay });
