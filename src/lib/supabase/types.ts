@@ -59,6 +59,7 @@ export type Database = {
           late_checkout_reason: string | null
           late_minutes: number
           late_proof_admin_note: string | null
+          late_proof_reason: string | null
           late_proof_status: string | null
           late_proof_url: string | null
           latitude: number | null
@@ -85,6 +86,7 @@ export type Database = {
           late_checkout_reason?: string | null
           late_minutes?: number
           late_proof_admin_note?: string | null
+          late_proof_reason?: string | null
           late_proof_status?: string | null
           late_proof_url?: string | null
           latitude?: number | null
@@ -111,6 +113,7 @@ export type Database = {
           late_checkout_reason?: string | null
           late_minutes?: number
           late_proof_admin_note?: string | null
+          late_proof_reason?: string | null
           late_proof_status?: string | null
           late_proof_url?: string | null
           latitude?: number | null
@@ -2019,7 +2022,7 @@ export type PayslipBreakdown = {
   late_penalty_mode: 'per_minutes' | 'per_day' | 'none';
   grace_period_min: number;
   overtime_days: Array<{ date: string; minutes: number; pay: number }>;
-  late_days: Array<{ date: string; raw_minutes: number; after_grace_minutes: number; penalty: number; excused: boolean; penalty_pre_cap?: number }>;
+  late_days: Array<{ date: string; raw_minutes: number; after_grace_minutes: number; penalty: number; excused: boolean; penalty_pre_cap?: number; excuse_note?: string | null }>;
   /** Daily pay cap = monthly_fixed_amount / expected_work_days. Penalty
    *  per hari di-cap di angka ini supaya total denda 1 hari ≤ gaji 1 hari. */
   late_penalty_daily_cap?: number;

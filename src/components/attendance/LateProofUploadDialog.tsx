@@ -30,17 +30,23 @@ export function LateProofUploadDialog({
   const lp = t.lateProof;
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [reason, setReason] = useState("");
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleUpload() {
     if (!file) return;
+    if (!reason.trim()) {
+      toast.error("Tulis alasan telat dulu");
+      return;
+    }
     setUploading(true);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("attendanceLogId", attendanceLogId);
+      formData.append("reason", reason.trim());
 
       const res = await fetch("/api/attendance/upload-proof", {
         method: "POST",
@@ -58,6 +64,7 @@ export function LateProofUploadDialog({
       toast.success(lp.uploadedToast);
       setOpen(false);
       setFile(null);
+      setReason("");
       setUploading(false);
       router.refresh();
     } catch (err) {
@@ -119,13 +126,34 @@ export function LateProofUploadDialog({
             className="hidden"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
+
+          <div className="space-y-1">
+            <label className="text-xs font-display font-bold uppercase tracking-wider text-muted-foreground">
+              Alasan telat *
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="Mis. Macet panjang di Jl. Pemuda karena kecelakaan, sudah ada foto buktinya."
+              className="w-full text-sm border-2 border-foreground/40 rounded-xl px-3 py-2 focus:outline-none focus:border-primary"
+              disabled={uploading}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Akan ditampilkan ke admin saat review, dan ke kamu sendiri di
+              slip gaji kalau alasan diterima.
+            </p>
+          </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
             {lp.cancel}
           </Button>
-          <Button onClick={handleUpload} disabled={!file || uploading}>
+          <Button
+            onClick={handleUpload}
+            disabled={!file || !reason.trim() || uploading}
+          >
             {uploading ? lp.uploading : lp.upload}
           </Button>
         </DialogFooter>

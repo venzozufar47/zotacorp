@@ -183,19 +183,26 @@ export function PayslipBreakdownDetails({
                   row.penalty_pre_cap != null && row.penalty_pre_cap > row.penalty;
                 return (
                   <Fragment3 key={row.date}>
-                    <span className="flex items-center gap-1.5 flex-wrap">
-                      {formatDate(row.date, lang)}
-                      {row.excused && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground border-2 border-foreground font-display font-bold uppercase tracking-wider">
-                          {bt.excused}
-                        </span>
-                      )}
-                      {wasCapped && (
+                    <span className="flex flex-col gap-0.5 min-w-0">
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        {formatDate(row.date, lang)}
+                        {row.excused && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground border-2 border-foreground font-display font-bold uppercase tracking-wider">
+                            {bt.excused}
+                          </span>
+                        )}
+                        {wasCapped && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-display font-bold uppercase tracking-wider"
                           title={`Aslinya ${formatIDR(row.penalty_pre_cap!)}, dipotong ke maksimal gaji 1 hari (${formatIDR(breakdown.late_penalty_daily_cap ?? 0)})`}
                         >
                           dicap
+                        </span>
+                      )}
+                      </span>
+                      {row.excused && row.excuse_note && (
+                        <span className="text-[10px] text-muted-foreground italic break-words leading-snug pl-0.5">
+                          “{row.excuse_note}”
                         </span>
                       )}
                     </span>

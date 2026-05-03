@@ -20,10 +20,17 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const attendanceLogId = formData.get("attendanceLogId") as string | null;
+    const reason = (formData.get("reason") as string | null)?.trim() ?? "";
 
     if (!file || !attendanceLogId) {
       return NextResponse.json(
         { error: "File and attendanceLogId are required" },
+        { status: 400 }
+      );
+    }
+    if (!reason) {
+      return NextResponse.json(
+        { error: "Alasan telat wajib diisi supaya admin tahu konteksnya" },
         { status: 400 }
       );
     }
@@ -105,6 +112,7 @@ export async function POST(request: Request) {
       .from("attendance_logs")
       .update({
         late_proof_url: filePath,
+        late_proof_reason: reason,
         late_proof_status: "pending",
         updated_at: new Date().toISOString(),
       })

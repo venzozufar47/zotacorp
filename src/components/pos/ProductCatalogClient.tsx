@@ -6,16 +6,36 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
+  GripVertical,
   Loader2,
   Plus,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   createPosProduct,
   createPosProductVariant,
   deletePosProduct,
   deletePosProductVariant,
+  reorderPosProducts,
+  reorderPosProductVariants,
   updatePosProduct,
   updatePosProductVariant,
   type PosProduct,
@@ -210,6 +230,62 @@ export function ProductCatalogClient({
     });
   }
 
+  // Drag-reorder: optimistic local + server persist + rollback on error.
+  function handleProductDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIdx = products.findIndex((p) => p.id === active.id);
+    const newIdx = products.findIndex((p) => p.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const prev = products;
+    const next = arrayMove(products, oldIdx, newIdx);
+    setProducts(next);
+    const orderedIds = next.map((p) => p.id);
+    startTransition(async () => {
+      const res = await reorderPosProducts(bankAccountId, orderedIds);
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal simpan urutan");
+        setProducts(prev);
+      } else {
+        toast.success("Urutan tersimpan");
+      }
+    });
+  }
+
+  function handleVariantDragEnd(productId: string, e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    const oldIdx = product.variants.findIndex((v) => v.id === active.id);
+    const newIdx = product.variants.findIndex((v) => v.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const prev = products;
+    const reorderedVariants = arrayMove(product.variants, oldIdx, newIdx);
+    setProducts((ps) =>
+      ps.map((p) =>
+        p.id === productId ? { ...p, variants: reorderedVariants } : p
+      )
+    );
+    const orderedIds = reorderedVariants.map((v) => v.id);
+    startTransition(async () => {
+      const res = await reorderPosProductVariants(productId, orderedIds);
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal simpan urutan varian");
+        setProducts(prev);
+      } else {
+        toast.success("Urutan varian tersimpan");
+      }
+    });
+  }
+
+  const sensors = useSensors(
+    // Require a small drag distance so click on input fields / buttons
+    // inside the row doesn't accidentally pick up a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
       <header className="flex items-center justify-between">
@@ -271,17 +347,39 @@ export function ProductCatalogClient({
             </p>
           </div>
         )}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleProductDragEnd}
+        >
+          <SortableContext
+            items={products.map((p) => p.id)}
+            strategy={verticalListSortingStrategy}
+          >
         {products.map((p) => {
           const isExpanded = expanded.has(p.id);
           const variantCount = p.variants.length;
           return (
-            <div
+            <SortableRow
               key={p.id}
+              id={p.id}
               className={`rounded-xl border border-border ${
                 p.active ? "bg-card" : "bg-muted/30 opacity-70"
               }`}
             >
+              {({ dragAttributes, dragListeners }) => (
+              <>
               <div className="p-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  {...dragAttributes}
+                  {...dragListeners}
+                  className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing touch-none"
+                  aria-label="Geser untuk reorder produk"
+                  title="Geser untuk reorder"
+                >
+                  <GripVertical size={14} />
+                </button>
                 <button
                   type="button"
                   onClick={() => toggleExpand(p.id)}
@@ -387,6 +485,8 @@ export function ProductCatalogClient({
                     updateVariantField(p.id, variantId, patch)
                   }
                   onDelete={(variantId) => removeVariant(p.id, variantId)}
+                  onReorder={(e) => handleVariantDragEnd(p.id, e)}
+                  sensors={sensors}
                   onToggleAggregate={(aggregate) => {
                     // Optimistic update — rollback on error.
                     setProducts((ps) =>
@@ -422,10 +522,47 @@ export function ProductCatalogClient({
                   {variantCount} varian — expand untuk kelola.
                 </p>
               )}
-            </div>
+              </>
+              )}
+            </SortableRow>
           );
         })}
+          </SortableContext>
+        </DndContext>
       </div>
+    </div>
+  );
+}
+
+/** Sortable wrapper — render-prop style so existing row JSX stays
+ *  intact and `dragAttributes` / `dragListeners` go only to the
+ *  GripVertical handle (the row itself has inputs/buttons). */
+function SortableRow({
+  id,
+  className,
+  children,
+}: {
+  id: string;
+  className?: string;
+  children: (props: {
+    dragAttributes: ReturnType<typeof useSortable>["attributes"];
+    dragListeners: ReturnType<typeof useSortable>["listeners"];
+  }) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 10 : "auto",
+      }}
+      className={className}
+    >
+      {children({ dragAttributes: attributes, dragListeners: listeners })}
     </div>
   );
 }
@@ -439,6 +576,8 @@ function VariantSection({
   onAdd,
   onUpdate,
   onDelete,
+  onReorder,
+  sensors,
   onToggleAggregate,
   pending,
 }: {
@@ -453,6 +592,8 @@ function VariantSection({
     patch: Partial<Pick<PosProductVariant, "name" | "price" | "active">>
   ) => void;
   onDelete: (variantId: string) => void;
+  onReorder: (e: DragEndEvent) => void;
+  sensors: ReturnType<typeof useSensors>;
   onToggleAggregate: (aggregate: boolean) => void;
   pending: boolean;
 }) {
@@ -502,15 +643,35 @@ function VariantSection({
           ukuran / harga.
         </p>
       )}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onReorder}
+      >
+        <SortableContext
+          items={product.variants.map((v) => v.id)}
+          strategy={verticalListSortingStrategy}
+        >
       {product.variants.map((v) => {
         const draftKey = `v:${v.id}`;
         return (
+          <SortableRow key={v.id} id={v.id}>
+            {({ dragAttributes, dragListeners }) => (
           <div
-            key={v.id}
             className={`flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5 ${
               v.active ? "" : "opacity-60"
             }`}
           >
+            <button
+              type="button"
+              {...dragAttributes}
+              {...dragListeners}
+              className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing touch-none"
+              aria-label="Geser untuk reorder varian"
+              title="Geser untuk reorder"
+            >
+              <GripVertical size={12} />
+            </button>
             <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
               <input
                 value={nameDrafts[v.id] ?? v.name}
@@ -564,8 +725,12 @@ function VariantSection({
               <Trash2 size={13} />
             </button>
           </div>
+            )}
+          </SortableRow>
         );
       })}
+        </SortableContext>
+      </DndContext>
       <div className="grid grid-cols-2 sm:grid-cols-[1fr_100px_auto] gap-2 pt-1">
         <input
           value={vName}

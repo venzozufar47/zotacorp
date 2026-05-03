@@ -401,6 +401,65 @@ export async function deletePosProductVariant(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Reorder (drag-sort from /pos/produk; cascades to all surfaces that
+//  list products / variants because every query already orders by
+//  sort_order ASC).
+// ─────────────────────────────────────────────────────────────────────
+
+export async function reorderPosProducts(
+  bankAccountId: string,
+  orderedIds: string[]
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0)
+    return { ok: true };
+
+  const supabase = await createClient();
+  // Update each product's sort_order = its position in the array.
+  // Run in parallel; bank_account_id pada filter ekstra untuk
+  // defense-in-depth supaya admin tidak bisa kena cross-account misuse.
+  const results = await Promise.all(
+    orderedIds.map((id, idx) =>
+      supabase
+        .from("pos_products")
+        .update({ sort_order: idx })
+        .eq("id", id)
+        .eq("bank_account_id", bankAccountId)
+    )
+  );
+  const firstErr = results.find((r) => r.error);
+  if (firstErr?.error) return { ok: false, error: firstErr.error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true };
+}
+
+export async function reorderPosProductVariants(
+  productId: string,
+  orderedIds: string[]
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0)
+    return { ok: true };
+
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, idx) =>
+      supabase
+        .from("pos_product_variants")
+        .update({ sort_order: idx })
+        .eq("id", id)
+        .eq("product_id", productId)
+    )
+  );
+  const firstErr = results.find((r) => r.error);
+  if (firstErr?.error) return { ok: false, error: firstErr.error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Sale creation
 // ─────────────────────────────────────────────────────────────────────
 

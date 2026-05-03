@@ -52,6 +52,7 @@ interface AttendanceRow {
   late_proof_url: string | null;
   late_proof_status: string | null;
   late_proof_admin_note: string | null;
+  late_proof_reason: string | null;
   late_checkout_reason: string | null;
   /** Mandatory note the employee filled in when checking out from outside
    *  all their assigned geofences. null = checkout was inside radius OR
@@ -543,6 +544,14 @@ export function AttendanceRecapTable({
                             <Paperclip size={12} />
                             {loadingProof === row.id ? "Loading…" : "View proof"}
                           </button>
+                          {row.late_proof_reason && (
+                            <p
+                              className="text-[10px] text-muted-foreground leading-tight break-words italic"
+                              title="Alasan dari karyawan — terlihat di slip gaji kalau excuse di-accept"
+                            >
+                              &ldquo;{row.late_proof_reason}&rdquo;
+                            </p>
+                          )}
                           {row.late_proof_status === "pending" && (
                             <>
                               {rejectingProofId === row.id ? (
@@ -858,6 +867,7 @@ export function AttendanceRecapTable({
             overtime_status: r.overtime_status,
             late_checkout_reason: r.late_checkout_reason,
             late_proof_admin_note: r.late_proof_admin_note,
+            late_proof_reason: r.late_proof_reason,
             employeeName: r.profiles.full_name,
           };
         })()}

@@ -132,7 +132,7 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                       />
                     )}
                     {log.late_proof_url && (
-                      <div>
+                      <div className="space-y-0.5">
                         {log.late_proof_status === "pending" && (
                           <Badge variant="tertiary" className="text-[10px]">
                             📎 Proof pending
@@ -142,6 +142,11 @@ export function AttendanceHistoryTable({ logs, timezone, workEndTime, isFlexible
                           <Badge variant="quaternary" className="text-[10px]">
                             📎 Excuse accepted
                           </Badge>
+                        )}
+                        {log.late_proof_reason && (
+                          <p className="text-[10px] text-muted-foreground italic break-words leading-tight">
+                            &ldquo;{log.late_proof_reason}&rdquo;
+                          </p>
                         )}
                         {log.late_proof_status === "rejected" && (
                           <div className="space-y-0.5">

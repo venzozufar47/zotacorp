@@ -138,7 +138,7 @@ function resolveExpectedWorkDays(
  */
 function calculateFromAttendance(
   settings: PayslipSettings,
-  logs: Pick<AttendanceLog, "date" | "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime">[],
+  logs: Pick<AttendanceLog, "date" | "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime" | "late_proof_admin_note" | "late_proof_reason">[],
   overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[],
   gracePeriodMin: number = 0
 ) {
@@ -239,6 +239,7 @@ function calculateFromAttendance(
     raw_minutes: number;
     after_grace_minutes: number;
     excused: boolean;
+    excuse_note: string | null;
   };
   const lateRows: LateRow[] = [];
 
@@ -252,6 +253,11 @@ function calculateFromAttendance(
         raw_minutes: log.late_minutes,
         after_grace_minutes: 0,
         excused: true,
+        // Surface karyawan's own submitted reason — itu yang relevan untuk
+        // transparansi. Admin biasanya hanya klik Accept tanpa nulis note,
+        // jadi kalau admin note kosong, fallback ke karyawan reason.
+        excuse_note:
+          log.late_proof_reason ?? log.late_proof_admin_note ?? null,
       });
     } else if (log.status === "late" && log.late_minutes > 0) {
       totalLateMinutes += log.late_minutes;
@@ -265,6 +271,7 @@ function calculateFromAttendance(
         raw_minutes: log.late_minutes,
         after_grace_minutes: penalized,
         excused: false,
+        excuse_note: null,
       });
     }
   }
@@ -473,6 +480,8 @@ type CalcInputs = {
     | "late_minutes"
     | "status"
     | "is_overtime"
+    | "late_proof_admin_note"
+    | "late_proof_reason"
   >[];
   overtimeRequests: Pick<
     OvertimeRequest,
@@ -554,6 +563,8 @@ function computeInputsSignature(inputs: CalcInputs): string {
         l.is_overtime,
         l.status,
         l.overtime_status,
+        l.late_proof_admin_note ?? "",
+        l.late_proof_reason ?? "",
       ])
       .sort(),
     or: inputs.overtimeRequests
@@ -916,7 +927,7 @@ export async function bulkCalculatePayslips(
     supabase
       .from("attendance_logs")
       .select(
-        "id, user_id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime"
+        "id, user_id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
       )
       .in("user_id", userIds)
       .gte("date", monthStart)
@@ -1182,7 +1193,7 @@ export async function calculatePayslip(
     supabase
       .from("attendance_logs")
       .select(
-        "id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime"
+        "id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
       )
       .eq("user_id", userId)
       .gte("date", monthStart)
