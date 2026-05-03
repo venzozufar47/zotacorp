@@ -1075,6 +1075,9 @@ export async function getAllAttendanceLogs(params: {
   startDate?: string;
   endDate?: string;
   userId?: string;
+  /** Optional set of user IDs (e.g. resolved from a BU filter). Combines
+   *  with `userId` if both are provided — the row must satisfy both. */
+  userIds?: string[];
   statusFilter?: string;
   page?: number;
   pageSize?: number;
@@ -1091,12 +1094,16 @@ export async function getAllAttendanceLogs(params: {
     startDate,
     endDate,
     userId,
+    userIds,
     statusFilter,
     page = 1,
     pageSize = 25,
     sortBy,
     sortDir = "desc",
   } = params;
+
+  // Empty userIds (BU filter that resolved to nobody) → short-circuit.
+  if (userIds && userIds.length === 0) return { data: [], count: 0 };
 
   let query = supabase
     .from("attendance_logs")
@@ -1133,6 +1140,7 @@ export async function getAllAttendanceLogs(params: {
   if (startDate) query = query.gte("date", startDate);
   if (endDate) query = query.lte("date", endDate);
   if (userId) query = query.eq("user_id", userId);
+  if (userIds && userIds.length > 0) query = query.in("user_id", userIds);
   if (statusFilter && statusFilter !== "all")
     query = query.eq("status", statusFilter as "on_time" | "late" | "late_excused" | "flexible" | "unknown");
 
@@ -1233,18 +1241,24 @@ export interface AttendanceMonthSummary {
   loggedHours: number;
   onTimeRate: number; // 0..1
   totalLogs: number;
+  /** All late incidents — `status IN ('late', 'late_excused')`.
+   *  Includes both forgiven and not-yet-forgiven. */
   lateCount: number;
-  /** Late incidents whose `late_proof_status` was approved by an admin. */
+  /** Late incidents the admin has forgiven — `status = 'late_excused'`.
+   *  `reviewLateProof(approved)` flips `late` → `late_excused`, so this
+   *  count tracks the forgiven subset of `lateCount`. */
   approvedLateCount: number;
 }
 
 /**
- * Aggregate stats shown above the Recap table. Single SELECT — fast
- * even for full month × 20+ employees.
+ * Aggregate stats shown above the Recap table. One SELECT scoped by
+ * date range and (optionally) a list of user IDs that the shared top
+ * filter resolved (single employee or all employees in a BU).
  */
 export async function getAttendanceMonthSummary(
   startDate: string,
-  endDate: string
+  endDate: string,
+  opts?: { userIds?: string[] | null }
 ): Promise<AttendanceMonthSummary> {
   const role = await getCurrentRole();
   const empty: AttendanceMonthSummary = {
@@ -1257,11 +1271,19 @@ export async function getAttendanceMonthSummary(
   if (role !== "admin") return empty;
 
   const supabase = await createClient();
-  const { data } = await supabase
+  // userIds === [] means "filter resolved to no employees" — return
+  // empty rather than running an unscoped query.
+  if (opts?.userIds && opts.userIds.length === 0) return empty;
+
+  let query = supabase
     .from("attendance_logs")
-    .select("status, checked_in_at, checked_out_at, late_proof_status")
+    .select("status, checked_in_at, checked_out_at")
     .gte("date", startDate)
     .lte("date", endDate);
+  if (opts?.userIds && opts.userIds.length > 0) {
+    query = query.in("user_id", opts.userIds);
+  }
+  const { data } = await query;
 
   const logs = data ?? [];
   let loggedMs = 0;
@@ -1275,9 +1297,10 @@ export async function getAttendanceMonthSummary(
         new Date(l.checked_in_at).getTime();
     }
     if (l.status === "on_time" || l.status === "flexible") onTime++;
-    else if (l.status === "late") {
-      late++;
-      if (l.late_proof_status === "approved") approvedLate++;
+    else if (l.status === "late") late++;
+    else if (l.status === "late_excused") {
+      late++; // still a late incident, just one the admin forgave
+      approvedLate++;
     }
   }
   return {
@@ -1293,6 +1316,7 @@ export interface LiveAttendanceRow {
   userId: string;
   fullName: string;
   position: string | null;
+  businessUnit: string | null;
   locationName: string | null;
   avatarUrl: string | null;
   avatarSeed: string | null;
@@ -1356,7 +1380,7 @@ export async function getLiveAttendanceToday(): Promise<LiveAttendanceSnapshot> 
     supabase
       .from("profiles")
       .select(
-        "id, full_name, avatar_url, avatar_seed, position, work_start_time, is_flexible_schedule, is_active, payslip_excluded"
+        "id, full_name, avatar_url, avatar_seed, position, business_unit, work_start_time, is_flexible_schedule, is_active, payslip_excluded"
       )
       .eq("is_active", true)
       .eq("payslip_excluded", false)
@@ -1414,6 +1438,7 @@ export async function getLiveAttendanceToday(): Promise<LiveAttendanceSnapshot> 
       userId: e.id,
       fullName: e.full_name,
       position: e.position || null,
+      businessUnit: e.business_unit ?? null,
       locationName: log?.attendance_locations?.name ?? null,
       avatarUrl: e.avatar_url,
       avatarSeed: e.avatar_seed,

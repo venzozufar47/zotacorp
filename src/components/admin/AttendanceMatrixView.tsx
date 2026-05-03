@@ -1,13 +1,130 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Check, Eye, EyeOff, Minus, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Eye, EyeOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import {
   AttendanceDayDrawer,
   type AttendanceDaySubject,
 } from "./AttendanceDayDrawer";
+
+const WEEKDAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
+
+interface CellTone {
+  bg: string;
+  border: string | undefined;
+  pip: boolean;
+  pipColor: string;
+}
+
+/** Map a matrix cell + day context to design tones from Hi-Fi · Attendance A. */
+function resolveCellTone({
+  cell,
+  isWeekend,
+  isFuture,
+}: {
+  cell: MatrixCell | undefined;
+  isWeekend: boolean;
+  isFuture: boolean;
+}): CellTone {
+  if (cell) {
+    if (cell.status === "late") {
+      return {
+        bg: "#f6c57f",
+        border: undefined,
+        pip: true,
+        pipColor: "rgba(255,255,255,0.7)",
+      };
+    }
+    if (cell.status === "absent") {
+      return {
+        bg: "#ec9090",
+        border: undefined,
+        pip: true,
+        pipColor: "rgba(255,255,255,0.7)",
+      };
+    }
+    if (cell.status === "late_excused") {
+      return {
+        bg: "var(--teal-200)",
+        border: undefined,
+        pip: true,
+        pipColor: "var(--teal-600)",
+      };
+    }
+    // on_time / flexible / anything else with a log
+    return {
+      bg: "var(--teal-300)",
+      border: undefined,
+      pip: true,
+      pipColor: "rgba(255,255,255,0.7)",
+    };
+  }
+  if (isFuture) {
+    return {
+      bg: "transparent",
+      border: "1px dashed var(--border)",
+      pip: false,
+      pipColor: "transparent",
+    };
+  }
+  if (isWeekend) {
+    return {
+      bg: "var(--muted)",
+      border: "1px solid var(--border)",
+      pip: false,
+      pipColor: "transparent",
+    };
+  }
+  // Past weekday with no log = unfilled / quiet white card
+  return {
+    bg: "var(--surface)",
+    border: "1px solid var(--border)",
+    pip: false,
+    pipColor: "transparent",
+  };
+}
+
+function cellTitle(
+  cell: MatrixCell | undefined,
+  isWeekend: boolean,
+  isFuture: boolean,
+  day: number,
+  emp: MatrixEmployee
+): string {
+  const name = emp.full_name || emp.email;
+  if (cell) return `${name} · day ${day} · ${cell.status}`;
+  if (isFuture) return `${name} · day ${day} · upcoming`;
+  if (isWeekend) return `${name} · day ${day} · weekend`;
+  return `${name} · day ${day} · no log`;
+}
+
+function LegendDot({
+  tone,
+  label,
+}: {
+  tone: "ok" | "late" | "absent" | "excused" | "off";
+  label: string;
+}) {
+  const swatchStyle: Record<typeof tone, React.CSSProperties> = {
+    ok: { background: "var(--teal-300)" },
+    late: { background: "#f6c57f" },
+    absent: { background: "#ec9090" },
+    excused: { background: "var(--teal-200)" },
+    off: { background: "var(--muted)", border: "1px solid var(--border)" },
+  };
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <span
+        className="size-3 rounded"
+        style={swatchStyle[tone]}
+        aria-hidden
+      />
+      {label}
+    </span>
+  );
+}
 
 export interface MatrixEmployee {
   id: string;
@@ -45,7 +162,10 @@ interface Props {
   cells: MatrixCell[];
 }
 
-const WEEKDAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const MONTHS_ID = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
 
 export function AttendanceMatrixView({
   month,
@@ -185,139 +305,154 @@ export function AttendanceMatrixView({
           </p>
         </section>
       ) : (
-        <section className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="text-xs border-collapse">
-              <thead>
-                <tr>
-                  <th
-                    className="sticky left-0 z-20 bg-muted/40 border-b-2 border-r-2 border-border px-3 py-2 text-left text-[10px] uppercase tracking-wider font-semibold text-muted-foreground min-w-[80px]"
-                  >
-                    Tgl
-                  </th>
-                  {visibleEmployees.map((emp) => (
-                    <th
-                      key={emp.id}
-                      className="group/col bg-muted/30 border-b-2 border-r border-border px-2 py-2 text-left font-semibold whitespace-nowrap min-w-[140px]"
-                    >
-                      <div className="flex items-center gap-2">
-                        <EmployeeAvatar
-                          size="sm"
-                          id={emp.id}
-                          full_name={emp.full_name}
-                          avatar_url={emp.avatar_url}
-                          avatar_seed={emp.avatar_seed}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-medium truncate max-w-[140px]">
-                            {emp.full_name || emp.email}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground tabular-nums">
-                            {totals[emp.id] ?? 0} / {daysInMonth} hari
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => hideEmployee(emp.id)}
-                          title={`Sembunyikan ${emp.full_name || emp.email}`}
-                          className="shrink-0 size-5 inline-flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/col:opacity-100 focus:opacity-100 transition"
-                        >
-                          <X size={11} />
-                        </button>
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {days.map((d) => {
-                  const dt = new Date(year, month - 1, d);
-                  const dow = dt.getDay();
-                  const isWeekend = dow === 0 || dow === 6;
-                  const isToday = d === todayDay;
-                  return (
-                    <tr key={d} className={isToday ? "bg-primary/5" : ""}>
-                      <td
-                        className={cn(
-                          "sticky left-0 z-10 border-r-2 border-b border-border px-3 py-1.5 text-[11px] tabular-nums whitespace-nowrap",
-                          isWeekend ? "bg-muted/30 text-muted-foreground" : "bg-card",
-                          isToday && "font-bold text-primary"
-                        )}
-                      >
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">
-                          {WEEKDAY_LABELS[dow]}
-                        </span>
-                        {String(d).padStart(2, "0")}
-                      </td>
-                      {visibleEmployees.map((emp) => {
-                        const cell = cellMap.get(`${emp.id}|${d}`);
-                        const status = cell?.status;
-                        const signed = !!cell;
-                        return (
-                          <td
-                            key={emp.id}
-                            className={cn(
-                              "border-r border-b border-border px-1 py-1 text-center",
-                              isWeekend && !signed && "bg-muted/20",
-                              signed && "cursor-pointer hover:bg-accent/40"
-                            )}
-                            title={
-                              signed
-                                ? `Sign in (${status}) — click for details`
-                                : isWeekend
-                                  ? "Weekend"
-                                  : "Tidak sign in"
-                            }
-                            onClick={
-                              signed && cell ? () => openCell(cell, emp) : undefined
-                            }
-                          >
-                            {signed ? (
-                              <Check
-                                size={14}
-                                className={cn(
-                                  "inline-block",
-                                  status === "late"
-                                    ? "text-amber-600"
-                                    : status === "late_excused"
-                                      ? "text-sky-600"
-                                      : "text-emerald-600"
-                                )}
-                                strokeWidth={3}
-                              />
-                            ) : (
-                              <Minus
-                                size={12}
-                                className="inline-block text-muted-foreground/30"
-                              />
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <section
+          className="rounded-2xl border border-border/70 bg-card overflow-hidden"
+          style={{
+            boxShadow:
+              "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)",
+          }}
+        >
+          {/* Legend strip — colored swatches per status */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 border-b border-border/60 bg-muted/30">
+            <LegendDot tone="ok" label="On time" />
+            <LegendDot tone="late" label="Late" />
+            <LegendDot tone="absent" label="Absent" />
+            <LegendDot tone="excused" label="Late (excused)" />
+            <LegendDot tone="off" label="Day off" />
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              {MONTHS_ID[month - 1]} {year} · click any cell
+            </span>
           </div>
 
-          <div className="px-4 py-3 border-t border-border bg-muted/10 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <Check size={11} strokeWidth={3} className="text-emerald-600" />
-              On time
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Check size={11} strokeWidth={3} className="text-amber-600" />
-              Late
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Check size={11} strokeWidth={3} className="text-sky-600" />
-              Late (excused)
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Minus size={10} className="text-muted-foreground/30" />
-              Tidak sign in
-            </span>
+          {/* Grid: 200px name column + 26px per day */}
+          <div className="overflow-x-auto px-4 py-4">
+            <div
+              className="grid gap-[3px]"
+              style={{
+                gridTemplateColumns: `200px repeat(${daysInMonth}, 26px)`,
+                minWidth: "max-content",
+              }}
+            >
+              {/* Header row */}
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground px-1 py-1.5 self-end">
+                Employee
+              </div>
+              {days.map((d) => {
+                const dt = new Date(year, month - 1, d);
+                const dow = dt.getDay();
+                const isWeekend = dow === 0 || dow === 6;
+                const isToday = d === todayDay;
+                return (
+                  <div
+                    key={`hd-${d}`}
+                    className={cn(
+                      "text-center font-mono rounded text-[10px] py-1",
+                      isWeekend && !isToday && "bg-muted/40",
+                      isToday && "text-white"
+                    )}
+                    style={
+                      isToday
+                        ? {
+                            background: "var(--teal-500)",
+                            boxShadow: "0 1px 4px rgba(17,122,140,0.3)",
+                          }
+                        : undefined
+                    }
+                  >
+                    <div
+                      className={cn(
+                        "text-[12px] font-semibold leading-none",
+                        !isToday && "text-foreground"
+                      )}
+                    >
+                      {d}
+                    </div>
+                    <div
+                      className={cn(
+                        "text-[9px] mt-0.5 opacity-70",
+                        !isToday && "text-muted-foreground"
+                      )}
+                    >
+                      {WEEKDAY_INITIAL[dow]}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Body rows — one per employee */}
+              {visibleEmployees.map((emp) => (
+                <Fragment key={emp.id}>
+                  <div className="group/row flex items-center gap-2 pr-2 py-1 min-w-0">
+                    <EmployeeAvatar
+                      size="sm"
+                      id={emp.id}
+                      full_name={emp.full_name}
+                      avatar_url={emp.avatar_url}
+                      avatar_seed={emp.avatar_seed}
+                    />
+                    <div className="min-w-0 flex-1 leading-tight">
+                      <div className="text-[12.5px] font-medium text-foreground truncate">
+                        {emp.full_name || emp.email}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground tabular-nums">
+                        {totals[emp.id] ?? 0} / {daysInMonth}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => hideEmployee(emp.id)}
+                      title={`Sembunyikan ${emp.full_name || emp.email}`}
+                      className="shrink-0 size-5 inline-flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/row:opacity-100 focus:opacity-100 transition"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                  {days.map((d) => {
+                    const dt = new Date(year, month - 1, d);
+                    const dow = dt.getDay();
+                    const isWeekend = dow === 0 || dow === 6;
+                    const isToday = d === todayDay;
+                    const isFuture = d > todayDay && isCurrentMonth;
+                    const cell = cellMap.get(`${emp.id}|${d}`);
+                    const tone = resolveCellTone({
+                      cell,
+                      isWeekend,
+                      isFuture,
+                    });
+                    return (
+                      <button
+                        key={`c-${emp.id}-${d}`}
+                        type="button"
+                        onClick={
+                          cell ? () => openCell(cell, emp) : undefined
+                        }
+                        disabled={!cell}
+                        title={cellTitle(cell, isWeekend, isFuture, d, emp)}
+                        className={cn(
+                          "matrix-cell h-8 rounded-md grid place-items-center transition-all relative",
+                          cell
+                            ? "cursor-pointer hover:scale-[1.15] hover:z-10 hover:shadow-[0_2px_8px_rgba(8,49,46,0.18)]"
+                            : "cursor-default",
+                          isToday &&
+                            "outline outline-2 outline-offset-1 outline-[var(--teal-500)]"
+                        )}
+                        style={{
+                          background: tone.bg,
+                          border: tone.border,
+                        }}
+                      >
+                        {tone.pip && (
+                          <span
+                            className="size-1.5 rounded-full"
+                            style={{ background: tone.pipColor }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </div>
           </div>
         </section>
       )}

@@ -9,7 +9,6 @@ import {
 } from "@/lib/supabase/cached";
 import {
   getAllAttendanceLogs,
-  getAllEmployees,
   getAttendanceMonthSummary,
   getLiveAttendanceToday,
   type AdminAttendanceSortKey,
@@ -154,28 +153,75 @@ export default async function AdminAttendancePage({
     }
   }
 
-  let rowsWithOt: Parameters<typeof AttendanceRecapTable>[0]["rows"] = [];
-  let count = 0;
-  let employees: Awaited<ReturnType<typeof getAllEmployees>> = [];
+  // Active employees + settings — needed by every sub-tab. Run in
+  // parallel; the logs query depends on the resolved scope so it
+  // follows in its own batch below.
+  let businessUnits: string[] = [];
+  let allActiveEmps: Array<{
+    id: string;
+    full_name: string;
+    email: string;
+    business_unit: string | null;
+    avatar_url: string | null;
+    avatar_seed: string | null;
+    position: string | null;
+  }> = [];
   let settings: Awaited<ReturnType<typeof getCachedAttendanceSettings>> = null;
-
   try {
-    const [logsResult, emps, s] = await Promise.all([
-      getAllAttendanceLogs({
-        startDate,
-        endDate,
-        userId: params.userId,
-        page,
-        pageSize,
-        sortBy,
-        sortDir,
-      }),
-      getAllEmployees(),
+    const supabase = await createClient();
+    const [empRowsRes, s] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, business_unit, avatar_url, avatar_seed, position")
+        .eq("is_active", true)
+        .order("full_name"),
       getCachedAttendanceSettings(),
     ]);
-
-    employees = emps;
+    allActiveEmps = (empRowsRes.data ?? []) as typeof allActiveEmps;
     settings = s;
+    businessUnits = Array.from(
+      new Set(
+        allActiveEmps.map((e) => e.business_unit?.trim()).filter(Boolean) as string[]
+      )
+    ).sort();
+  } catch (err) {
+    console.error("[attendance-page] employees fetch error:", err);
+  }
+
+  // Top-filter passes its own subset of `{id, full_name, email}`; reuse
+  // the richer active-emps list rather than re-querying via
+  // `getAllEmployees()` (was a redundant profiles SELECT).
+  const employees = allActiveEmps.map((e) => ({
+    id: e.id,
+    full_name: e.full_name,
+    email: e.email,
+  }));
+
+  // Resolve the shared filter to a scoped user-id set. Precedence:
+  //   1. ?userId  → single employee
+  //   2. ?bu      → all employees in that BU
+  //   3. neither  → null (no scoping; show everyone)
+  const scopedUserIds: string[] | null = params.userId
+    ? [params.userId]
+    : selectedBU
+      ? allActiveEmps
+          .filter((e) => (e.business_unit ?? "") === selectedBU)
+          .map((e) => e.id)
+      : null;
+
+  let rowsWithOt: Parameters<typeof AttendanceRecapTable>[0]["rows"] = [];
+  let count = 0;
+
+  try {
+    const logsResult = await getAllAttendanceLogs({
+      startDate,
+      endDate,
+      userIds: scopedUserIds ?? undefined,
+      page,
+      pageSize,
+      sortBy,
+      sortDir,
+    });
     const { data } = logsResult;
     count = logsResult.count;
 
@@ -232,48 +278,21 @@ export default async function AdminAttendancePage({
     })) as typeof rowsWithOt;
   } catch (err) {
     console.error("[attendance-page] data fetch error:", err);
-    // If anything fails, render with empty data — the table shows "No records found"
-    employees = await getAllEmployees().catch(() => []);
+    // If logs fetch fails, recap table renders empty. `employees` is
+    // already populated from the active-emps fetch above.
   }
 
-  // Matrix view fetches: scoped to BU + month, only when view === 'matrix'.
-  // BU list is needed by the shared top filter on every tab — fetch it
-  // unconditionally (one cheap query) so the filter renders on Recap +
-  // Live too, not just Matrix.
+  // Matrix view fetches: scoped employees (BU + employee filters
+  // applied) + month, only when view === 'matrix'.
   let matrixEmployees: MatrixEmployee[] = [];
   let matrixCells: MatrixCell[] = [];
-  let businessUnits: string[] = [];
-  let allActiveEmps: Array<{
-    id: string;
-    full_name: string;
-    email: string;
-    business_unit: string | null;
-    avatar_url: string | null;
-    avatar_seed: string | null;
-    position: string | null;
-  }> = [];
-  try {
-    const supabase = await createClient();
-    const { data: empRows } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, business_unit, avatar_url, avatar_seed, position")
-      .eq("is_active", true)
-      .order("full_name");
-    allActiveEmps = (empRows ?? []) as typeof allActiveEmps;
-    businessUnits = Array.from(
-      new Set(
-        allActiveEmps.map((e) => e.business_unit?.trim()).filter(Boolean) as string[]
-      )
-    ).sort();
-  } catch (err) {
-    console.error("[attendance-page] employees fetch error:", err);
-  }
 
   if (view === "matrix") {
     try {
       const supabase = await createClient();
-      const filteredEmps = selectedBU
-        ? allActiveEmps.filter((e) => (e.business_unit ?? "") === selectedBU)
+      const scopedSet = scopedUserIds ? new Set(scopedUserIds) : null;
+      const filteredEmps = scopedSet
+        ? allActiveEmps.filter((e) => scopedSet.has(e.id))
         : allActiveEmps;
       matrixEmployees = filteredEmps.map((e) => ({
         id: e.id,
@@ -326,6 +345,7 @@ export default async function AdminAttendancePage({
           <AttendanceSummaryCardsSection
             startDate={startDate}
             endDate={endDate}
+            userIds={scopedUserIds}
           />
 
           <AttendanceRecapTable
@@ -351,10 +371,7 @@ export default async function AdminAttendancePage({
       )}
 
       {view === "live" && (
-        <AttendanceLiveSection
-          userId={params.userId ?? ""}
-          businessUnit={selectedBU}
-        />
+        <AttendanceLiveSection scopedUserIds={scopedUserIds} />
       )}
     </div>
   );
@@ -363,30 +380,30 @@ export default async function AdminAttendancePage({
 async function AttendanceSummaryCardsSection({
   startDate,
   endDate,
+  userIds,
 }: {
   startDate: string;
   endDate: string;
+  userIds: string[] | null;
 }) {
-  const summary = await getAttendanceMonthSummary(startDate, endDate);
+  const summary = await getAttendanceMonthSummary(startDate, endDate, {
+    userIds,
+  });
   return <AttendanceSummaryCards summary={summary} />;
 }
 
 async function AttendanceLiveSection({
-  userId,
-  businessUnit,
+  scopedUserIds,
 }: {
-  userId: string;
-  businessUnit: string;
+  scopedUserIds: string[] | null;
 }) {
   const snapshot = await getLiveAttendanceToday();
-  // Apply client-of-the-server filter: scope rows to the chosen subject.
-  // Doing this here (rather than in the server action) keeps the action
-  // generic — same data backs auto-refresh + future variants.
-  const filteredRows = snapshot.rows.filter((r) => {
-    if (userId && r.userId !== userId) return false;
-    return true;
-  });
-  // Recompute counts on the filtered set so the stat cards stay honest.
+  // Apply the shared filter to the snapshot. The server action returns
+  // every active employee — filtering here keeps the action generic and
+  // means auto-refresh sees the same scope without extra plumbing.
+  const filteredRows = scopedUserIds
+    ? snapshot.rows.filter((r) => scopedUserIds.includes(r.userId))
+    : snapshot.rows;
   const counts = {
     in: filteredRows.filter((r) => r.status === "in").length,
     late: filteredRows.filter((r) => r.status === "late").length,
@@ -394,9 +411,6 @@ async function AttendanceLiveSection({
     sched: filteredRows.filter((r) => r.status === "sched").length,
     total: filteredRows.length,
   };
-  void businessUnit; // BU filtering for Live needs profile.business_unit
-  // hydrated into LiveAttendanceRow — deferred; userId filter covers the
-  // per-employee case admins typically need.
   return (
     <AttendanceLiveView
       snapshot={{ ...snapshot, rows: filteredRows, counts }}
