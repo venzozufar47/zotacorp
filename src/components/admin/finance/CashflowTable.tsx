@@ -1121,13 +1121,15 @@ export function CashflowTable({
                       )}
                     </Td>
 
-                    {/* Saldo — always read-only. Prefer the live
-                        computed balance (updates with edits + fills in
-                        for cash rows that never had a stored value);
-                        fall back to the stored DB value only if the
-                        row somehow isn't in the computed map. */}
+                    {/* Saldo — read-only. For rows yang tidak mempengaruhi
+                        saldo kas (mis. QRIS non-operasional di rekening
+                        cash), render "—" supaya admin tidak bingung
+                        lihat saldo yang sama berulang. */}
                     <Td className="text-right font-mono tabular-nums whitespace-nowrap text-muted-foreground">
                       {(() => {
+                        const skipsBalance =
+                          bank === "cash" && r.category === POS_QRIS_CATEGORY;
+                        if (skipsBalance) return "—";
                         const bal =
                           computedBalances.get(r.id) ?? r.runningBalance;
                         return bal != null ? formatIDR(bal) : "—";

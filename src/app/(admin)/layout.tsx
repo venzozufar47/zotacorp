@@ -1,11 +1,13 @@
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { AdminTopbar } from "@/components/layout/AdminTopbar";
 import { AdminMobileNav } from "@/components/layout/AdminMobileNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
-import { getCurrentRole } from "@/lib/supabase/cached";
+import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
+import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 
 export default async function AdminLayout({
   children,
@@ -36,20 +38,31 @@ export default async function AdminLayout({
     );
   }
 
-  const pendingConfirmations = await getPendingConfirmations();
+  const [pendingConfirmations, disputes, profile] = await Promise.all([
+    getPendingConfirmations(),
+    listOpenPayslipDisputes(),
+    getCurrentProfile(),
+  ]);
 
   return (
     <div className="flex min-h-screen bg-background">
       <RouteProgressBar />
       <AdminMobileNav pendingConfirmations={pendingConfirmations} />
-      <AdminSidebar pendingConfirmations={pendingConfirmations} />
-      <main className="flex-1 min-w-0">
+      <AdminSidebar
+        pendingCount={pendingConfirmations.length}
+        disputesCount={disputes.length}
+        profile={profile}
+      />
+      <main className="flex-1 min-w-0 flex flex-col">
+        <AdminTopbar pendingConfirmations={pendingConfirmations} />
         {/* Fluid width with a ceiling at ~1700px so the admin data tables
             breathe on 1440p / 1920p monitors instead of hitting a narrow
             6xl cap, while still keeping line lengths readable on ultra-
             wide displays. `min-w-0` on <main> above lets this grow past
             its flex sibling's intrinsic width. */}
-        <div className="max-w-[1700px] mx-auto px-4 pt-16 pb-6 md:px-6 md:pt-6">{children}</div>
+        <div className="flex-1 max-w-[1700px] w-full mx-auto px-4 pt-16 pb-6 md:px-6 md:pt-6">
+          {children}
+        </div>
       </main>
     </div>
   );

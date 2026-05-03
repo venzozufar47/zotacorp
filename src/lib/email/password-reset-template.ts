@@ -5,7 +5,7 @@
  *   - Email clients are a jungle: we stick to table layout + inline styles
  *     so Gmail / Outlook / Apple Mail / WhatsApp preview all render the
  *     same. No external CSS, no web fonts (clients strip both).
- *   - Brand palette matches the app (--primary #005a65 tosca).
+ *   - Brand palette matches the app (--primary #117a8c Lagoon teal).
  *   - Bilingual body (ID primary, EN secondary) since the workforce is
  *     Indonesian but the product ships in both languages. The CTA label
  *     is bilingual on one line so recipients don't have to pick.
@@ -23,8 +23,8 @@ export interface PasswordResetEmailParams {
   expiresIn?: string;
 }
 
-const BRAND_TOSCA = "#005a65";
-const BRAND_TOSCA_DARK = "#003d45";
+const BRAND_TOSCA = "#117a8c";
+const BRAND_TOSCA_DARK = "#0c5d6c";
 const INK = "#1d1d1f";
 const MUTED = "#6e6e73";
 const HAIRLINE = "#e5e5e7";

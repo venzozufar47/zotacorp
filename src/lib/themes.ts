@@ -58,7 +58,7 @@ export const THEMES: readonly ThemeDefinition[] = [
     label: "Oceanic Editorial",
     description:
       "The original Zota aesthetic — Apple-inspired editorial layout with oceanic teal gradients, soft blurred shadows, and Poppins display typography.",
-    swatch: ["#005a65", "#007a88", "#f5f5f7"],
+    swatch: ["#117a8c", "#1e9aaf", "#f5f5f7"],
     vibe: "Editorial · Calm · Professional",
   },
 ];

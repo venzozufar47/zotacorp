@@ -361,7 +361,7 @@ function OceanicPreview() {
           borderRadius: "10px",
           padding: "10px 12px",
           background:
-            "radial-gradient(120% 140% at 100% 0%, #0a7a88 0%, transparent 55%), radial-gradient(90% 120% at 0% 100%, #003d45 0%, transparent 60%), linear-gradient(135deg, #004651 0%, #005a65 55%, #007785 100%)",
+            "radial-gradient(120% 140% at 100% 0%, #1e9aaf 0%, transparent 55%), radial-gradient(90% 120% at 0% 100%, #06343f 0%, transparent 60%), linear-gradient(135deg, #08475a 0%, #117a8c 55%, #1e9aaf 100%)",
           color: "#ffffff",
         }}
       >
@@ -425,10 +425,10 @@ function OceanicPreview() {
             alignItems: "center",
             height: "28px",
             padding: "0 12px",
-            background: "#005a65",
+            background: "#117a8c",
             color: "#FFFFFF",
             borderRadius: "10px",
-            boxShadow: "0 2px 8px rgba(0,90,101,0.25)",
+            boxShadow: "0 2px 8px rgba(17,122,140,0.25)",
             fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
             fontSize: "11px",
             fontWeight: 600,
@@ -443,8 +443,8 @@ function OceanicPreview() {
             alignItems: "center",
             height: "22px",
             padding: "0 9px",
-            background: "#f0f8f9",
-            color: "#005a65",
+            background: "#eef7f9",
+            color: "#117a8c",
             borderRadius: "9999px",
             fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
             fontSize: "10px",

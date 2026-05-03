@@ -133,10 +133,11 @@
  * its Memphis decoration for the oceanic radial gradient.
  * ──────────────────────────────────────────────────────────────── */
 [data-theme="oceanic"] {
-  /* Brand — Oceanic Teal (original Zota) */
-  --primary: #005a65;
-  --primary-light: #007a88;
-  --primary-dark: #003d45;
+  /* Brand — Lagoon teal (refreshed from #005a65 → brighter, more cyan).
+     Source: Claude Design "Lagoon" preset. */
+  --primary: #117a8c;
+  --primary-light: #1e9aaf;
+  --primary-dark: #0c5d6c;
   --primary-foreground: #ffffff;
 
   /* Surfaces — pure white canvas, slate-50 section fill */
@@ -154,8 +155,8 @@
   --secondary-foreground: #1d1d1f;
   --muted: #f5f5f7;
   --muted-foreground: #6e6e73;
-  --accent: #f0f8f9;
-  --accent-foreground: #005a65;
+  --accent: #eef7f9;
+  --accent-foreground: #117a8c;
 
   /* Status (original palette) */
   --destructive: #ff3b30;
@@ -166,7 +167,7 @@
   /* Borders — apple-style soft greys */
   --border: #d2d2d7;
   --input: #d2d2d7;
-  --ring: #005a65;
+  --ring: #117a8c;
 
   /* Radii — generous rounded corners were the signature */
   --radius: 0.75rem;
@@ -178,6 +179,22 @@
   --pop-pink: #f5f5f7;
   --pop-amber: #ff9f0a;
   --pop-emerald: #34c759;
+
+  /* ── Lagoon scale + signature gradients ─────────────────────────────
+     Used by admin Shell A surfaces (sidebar brand, hero, KPI accents).
+     Verbatim values from the design's TEAL_PRESETS.lagoon block. */
+  --teal-50:  #eef7f9;
+  --teal-100: #daedf1;
+  --teal-200: #b5dde6;
+  --teal-300: #7fc8d6;
+  --teal-400: #48b8cc;
+  --teal-500: #117a8c;
+  --teal-600: #0c5d6c;
+  --teal-700: #08475a;
+  --teal-800: #06343f;
+  --teal-900: #04222b;
+  --grad-teal: linear-gradient(135deg, #117a8c 0%, #08475a 50%, #04222b 100%);
+  --grad-teal-soft: linear-gradient(135deg, #daedf1 0%, #b5dde6 100%);
 }
 
 [data-theme="minimal"] {
@@ -1649,12 +1666,12 @@
  * ───────────────────────────────────────────────────────────── */
 [data-theme="oceanic"] .hero-playful {
   background:
-    radial-gradient(120% 140% at 100% 0%, #0a7a88 0%, transparent 55%),
-    radial-gradient(90% 120% at 0% 100%, #003d45 0%, transparent 60%),
-    linear-gradient(135deg, #004651 0%, #005a65 55%, #007785 100%) !important;
+    radial-gradient(120% 140% at 100% 0%, #1e9aaf 0%, transparent 55%),
+    radial-gradient(90% 120% at 0% 100%, #06343f 0%, transparent 60%),
+    linear-gradient(135deg, #08475a 0%, #117a8c 55%, #1e9aaf 100%) !important;
   color: #ffffff !important;
-  border: 1px solid rgba(0, 90, 101, 0.3) !important;
-  box-shadow: 0 12px 40px -12px rgba(0, 58, 65, 0.35) !important;
+  border: 1px solid rgba(17, 122, 140, 0.3) !important;
+  box-shadow: 0 12px 40px -12px rgba(6, 52, 63, 0.35) !important;
   border-radius: 1.75rem !important;
   overflow: hidden;
   isolation: isolate;
@@ -1975,16 +1992,16 @@
   overflow: hidden;
   isolation: isolate;
   background:
-    radial-gradient(120% 140% at 100% 0%, #0a7a88 0%, transparent 55%),
-    radial-gradient(90% 120% at 0% 100%, #003d45 0%, transparent 60%),
-    linear-gradient(135deg, #004651 0%, #005a65 55%, #007785 100%) !important;
+    radial-gradient(120% 140% at 100% 0%, #1e9aaf 0%, transparent 55%),
+    radial-gradient(90% 120% at 0% 100%, #06343f 0%, transparent 60%),
+    linear-gradient(135deg, #08475a 0%, #117a8c 55%, #1e9aaf 100%) !important;
   color: #ffffff !important;
   border-width: 1px !important;
   border-color: rgba(255, 255, 255, 0.25) !important;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.1) inset,
-    0 4px 16px -2px rgba(0, 90, 101, 0.45),
-    0 1px 3px rgba(0, 58, 65, 0.12) !important;
+    0 4px 16px -2px rgba(17, 122, 140, 0.45),
+    0 1px 3px rgba(6, 52, 63, 0.12) !important;
   transition: transform 200ms cubic-bezier(0.2, 0, 0.2, 1),
     box-shadow 200ms cubic-bezier(0.2, 0, 0.2, 1) !important;
 }
