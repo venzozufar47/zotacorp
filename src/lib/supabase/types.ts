@@ -560,6 +560,7 @@ export type Database = {
           category: string | null
           created_at: string
           credit: number
+          custom_cake_included: boolean | null
           debit: number
           description: string
           effective_period_month: number | null
@@ -580,6 +581,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           credit?: number
+          custom_cake_included?: boolean | null
           debit?: number
           description: string
           effective_period_month?: number | null
@@ -600,6 +602,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           credit?: number
+          custom_cake_included?: boolean | null
           debit?: number
           description?: string
           effective_period_month?: number | null

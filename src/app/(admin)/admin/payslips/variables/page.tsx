@@ -9,6 +9,8 @@ import { PayslipDisputesPanel } from "@/components/admin/PayslipDisputesPanel";
 import { PayslipPaymentsTable, type PaymentRow } from "@/components/admin/PayslipPaymentsTable";
 import { PayslipTabsNav, type PayslipView } from "@/components/admin/PayslipTabsNav";
 import { PayslipViewPersist } from "@/components/admin/PayslipViewPersist";
+import { CustomCakeBonusView } from "@/components/admin/CustomCakeBonusView";
+import { getCustomCakeBonusMonth } from "@/lib/actions/custom-cake-bonus.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import type { PayslipSettings } from "@/lib/supabase/types";
 
@@ -35,7 +37,12 @@ export default async function PayslipVariablesPage({
   const year = parseInt(sp.year ?? String(today.getFullYear()), 10);
   const scope: "settings" | "monthly" =
     sp.scope === "monthly" ? "monthly" : "settings";
-  const view: PayslipView = sp.view === "payments" ? "payments" : "variables";
+  const view: PayslipView =
+    sp.view === "payments"
+      ? "payments"
+      : sp.view === "bonus-cake"
+        ? "bonus-cake"
+        : "variables";
 
   const supabase = await createClient();
   const { data: employees } = await supabase
@@ -201,6 +208,35 @@ export default async function PayslipVariablesPage({
           monthLabel={monthLabel}
         />
       )}
+
+      {view === "bonus-cake" && (
+        <CustomCakeBonusViewWrapper
+          month={month}
+          year={year}
+          monthLabel={monthLabel}
+        />
+      )}
     </div>
+  );
+}
+
+async function CustomCakeBonusViewWrapper({
+  month,
+  year,
+  monthLabel,
+}: {
+  month: number;
+  year: number;
+  monthLabel: string;
+}) {
+  const data = await getCustomCakeBonusMonth(month, year);
+  return (
+    <CustomCakeBonusView
+      month={month}
+      year={year}
+      monthLabel={monthLabel}
+      days={data.days}
+      totalBonus={data.totalBonus}
+    />
   );
 }

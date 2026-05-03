@@ -224,18 +224,28 @@ export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
               </tr>
             </thead>
             <tbody>
-              {groups.map((g) => (
-                <React.Fragment key={g.name}>
-                  <tr className="bg-muted/10">
-                    <td colSpan={6} className="py-1.5 px-3 text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-                      {g.name} ({g.rows.length})
-                    </td>
-                  </tr>
-                  {g.rows.map((r) => (
-                    <PaymentRowItem key={r.payslipId} row={r} />
-                  ))}
-                </React.Fragment>
-              ))}
+              {groups.map((g) => {
+                const buSubtotal = g.rows.reduce((s, r) => s + r.netTotal, 0);
+                return (
+                  <React.Fragment key={g.name}>
+                    <tr className="bg-muted/10">
+                      <td
+                        colSpan={2}
+                        className="py-1.5 px-3 text-[10px] uppercase tracking-wider font-bold text-muted-foreground"
+                      >
+                        {g.name} ({g.rows.length})
+                      </td>
+                      <td className="py-1.5 px-2 text-right tabular-nums text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {formatRp(buSubtotal)}
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+                    {g.rows.map((r) => (
+                      <PaymentRowItem key={r.payslipId} row={r} />
+                    ))}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

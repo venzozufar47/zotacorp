@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-export type PayslipView = "variables" | "payments";
+export type PayslipView = "variables" | "payments" | "bonus-cake";
 
 interface Props {
   current: PayslipView;
@@ -21,6 +21,7 @@ export function PayslipTabsNav({ current }: Props) {
   const tabs: Array<{ key: PayslipView; label: string }> = [
     { key: "variables", label: "Variabel" },
     { key: "payments", label: "Pembayaran" },
+    { key: "bonus-cake", label: "Bonus Cake" },
   ];
 
   return (
