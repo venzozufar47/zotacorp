@@ -66,6 +66,7 @@ async function logAndSendWhatsApp(
 }
 
 const WINDOW_DAYS = 8; // today + next 7 days
+const ADMIN_RADAR_WINDOW_DAYS = 31; // today + next 30 days for admin Home
 
 export type CelebrationMessage = {
   id: string;
@@ -239,6 +240,43 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
   }
 
   return { today, upcoming, mySelfCelebration: selfToday };
+}
+
+/**
+ * Wider-window celebrations radar for the admin Home dashboard. Returns
+ * only the upcoming list (no `today` slice with messages, no self-
+ * celebration) over a 30-day horizon. Cheaper than `getCelebrationsFeed`
+ * — single SELECT, no celebration_messages join.
+ */
+export async function getAdminCelebrationsRadar(): Promise<Celebrant[]> {
+  const supabase = await createClient();
+  const settings = await getCachedAttendanceSettings();
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const now = new Date();
+
+  const { data } = await supabase
+    .from("profiles_celebrations_public")
+    .select(
+      "id, full_name, nickname, avatar_url, avatar_seed, dob_month_day, first_day_of_work, is_probation"
+    )
+    .eq("is_probation", false);
+
+  const rows: CelebrationRow[] = (data ?? [])
+    .filter((r) => r.id && r.full_name)
+    .map((r) => ({
+      id: r.id as string,
+      full_name: r.full_name as string,
+      nickname: r.nickname ?? null,
+      avatar_url: r.avatar_url ?? null,
+      avatar_seed: r.avatar_seed ?? null,
+      dob_month_day: r.dob_month_day ?? null,
+      first_day_of_work: r.first_day_of_work ?? null,
+    }));
+
+  const all = getCelebrantsInWindow(rows, now, tz, ADMIN_RADAR_WINDOW_DAYS);
+  const todayIso = zonedDateString(now, tz);
+  // Drop "today" entries — admin sees those in the broadcast composer / Inbox elsewhere.
+  return all.filter((c) => c.occursOn !== todayIso);
 }
 
 /**

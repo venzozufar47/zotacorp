@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminHomeToday } from "@/lib/actions/admin-home.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
-import { getCelebrationsFeed } from "@/lib/actions/celebrations.actions";
+import { getAdminCelebrationsRadar } from "@/lib/actions/celebrations.actions";
 import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
 
 /**
@@ -22,12 +22,12 @@ export default async function AdminHomeRoute() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [profile, today, pending, disputes, celebrations] = await Promise.all([
+  const [profile, today, pending, disputes, radar] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
     getPendingConfirmations(),
     listOpenPayslipDisputes(),
-    getCelebrationsFeed(),
+    getAdminCelebrationsRadar(),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -63,7 +63,7 @@ export default async function AdminHomeRoute() {
       today={today}
       pendingConfirmations={pending}
       disputes={disputes}
-      upcomingCelebrants={celebrations.upcoming}
+      upcomingCelebrants={radar}
       userDirectory={userDirectory}
     />
   );

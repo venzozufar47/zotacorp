@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ArrowRight,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { EmployeeDrawer, type DrawerSubject } from "./EmployeeDrawer";
 import type { AdminHomeToday } from "@/lib/actions/admin-home.actions";
@@ -90,11 +91,14 @@ export function AdminHomePage({
           <p className="text-[11.5px] font-medium uppercase tracking-[0.22em] text-white/60">
             {greeting}, {greetingName}
           </p>
-          <div className="font-display font-semibold leading-none mt-1 tracking-[-0.04em] text-[64px] md:text-[86px]">
+          <div
+            className="font-display font-semibold leading-none mt-1 tracking-[-0.04em]"
+            style={{ fontSize: "clamp(44px, 9vw, 86px)" }}
+          >
             {heroTime}
             <span style={{ color: "var(--teal-200)" }}>.</span>
           </div>
-          <p className="text-[14px] text-white/80 mt-3.5 max-w-[480px] tracking-[-0.005em]">
+          <p className="text-[13px] sm:text-sm text-white/80 mt-3.5 max-w-[480px] tracking-[-0.005em]">
             <b className="text-white font-semibold">
               {today.clockedInNow.length}
             </b>{" "}
@@ -113,7 +117,7 @@ export function AdminHomePage({
       {/* PAGE HEAD */}
       <header className="flex items-end justify-between gap-5">
         <div>
-          <h1 className="font-display font-semibold text-foreground tracking-[-0.025em] text-[34px] md:text-[38px] leading-[1.05] m-0">
+          <h1 className="font-display font-semibold text-foreground tracking-[-0.025em] text-2xl sm:text-3xl lg:text-[34px] leading-[1.05] m-0">
             Today<span style={{ color: "var(--teal-500)" }}>.</span>
           </h1>
           <p className="text-[13px] text-muted-foreground mt-1.5">
@@ -152,6 +156,7 @@ export function AdminHomePage({
           value={formatRp(today.posSalesToday)}
           icon={<WalletIcon size={13} />}
           tone="default"
+          compact
         />
       </div>
 
@@ -269,7 +274,7 @@ export function AdminHomePage({
                   Nothing on the radar.
                 </li>
               ) : (
-                upcomingCelebrants.slice(0, 5).map((c) => (
+                upcomingCelebrants.slice(0, 3).map((c) => (
                   <li
                     key={`${c.id}-${c.kind}-${c.eventYear}`}
                     className="px-5 py-3 flex items-center gap-3"
@@ -352,7 +357,7 @@ function CardHead({ title, sub }: { title: string; sub?: string }) {
   return (
     <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3">
       <div>
-        <div className="font-display font-semibold text-[16px] text-foreground tracking-[-0.015em]">
+        <div className="font-display font-semibold text-[15px] lg:text-base text-foreground tracking-[-0.015em]">
           {title}
         </div>
         {sub && (
@@ -371,12 +376,15 @@ function Kpi({
   frac,
   icon,
   tone,
+  compact = false,
 }: {
   label: string;
   value: string;
   frac?: string;
   icon: React.ReactNode;
   tone: "default" | "warn" | "bad" | "good";
+  /** Currency or other long-string KPIs use a smaller font + nowrap. */
+  compact?: boolean;
 }) {
   const iconBg: Record<typeof tone, string> = {
     default: "bg-accent text-[var(--teal-600)]",
@@ -386,7 +394,7 @@ function Kpi({
   };
   return (
     <div
-      className="bg-card rounded-2xl border border-border/70 px-5 py-4 transition hover:-translate-y-0.5"
+      className="bg-card rounded-2xl border border-border/70 px-4 sm:px-5 py-4 transition hover:-translate-y-0.5 overflow-hidden"
       style={{
         boxShadow:
           "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)",
@@ -394,18 +402,28 @@ function Kpi({
     >
       <div className="flex items-center gap-2 mb-3">
         <span
-          className={`grid place-items-center size-[22px] rounded-md ${iconBg[tone]}`}
+          className={cn(
+            "grid place-items-center size-[22px] rounded-md",
+            iconBg[tone]
+          )}
         >
           {icon}
         </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <span className="text-[10.5px] sm:text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           {label}
         </span>
       </div>
-      <div className="font-display font-semibold text-[34px] md:text-[38px] leading-none tracking-[-0.025em] text-foreground">
+      <div
+        className={cn(
+          "font-display font-semibold leading-none tracking-[-0.025em] text-foreground tabular-nums",
+          compact
+            ? "text-lg sm:text-xl lg:text-[22px] whitespace-nowrap"
+            : "text-2xl sm:text-3xl lg:text-[32px]"
+        )}
+      >
         {value}
         {frac && (
-          <span className="text-muted-foreground text-[22px] font-medium">
+          <span className="text-muted-foreground font-medium text-base sm:text-lg lg:text-xl">
             {frac}
           </span>
         )}
@@ -473,21 +491,21 @@ function Pulse({
   buckets: number[];
   nowHour: number;
 }) {
+  // Pixel heights — sidesteps the "% of auto-height parent = 0" trap.
   const max = Math.max(1, ...buckets);
+  const barHeight = (v: number) =>
+    Math.max(v > 0 ? 6 : 3, Math.round((v / max) * 76));
   return (
-    <div className="flex items-end gap-1 h-24">
-      {buckets.map((v, i) => {
-        const h = Math.round((v / max) * 100);
-        const isNow = i === nowHour;
-        return (
-          <div
-            key={i}
-            className="flex-1 flex flex-col items-center justify-end gap-1"
-          >
+    <div className="space-y-1.5">
+      <div className="flex items-end gap-1 h-20">
+        {buckets.map((v, i) => {
+          const isNow = i === nowHour;
+          return (
             <div
-              className="w-full rounded-md transition"
+              key={i}
+              className="flex-1 rounded-md transition"
               style={{
-                height: `${Math.max(h, v > 0 ? 10 : 4)}%`,
+                height: `${barHeight(v)}px`,
                 background: isNow
                   ? "var(--teal-500)"
                   : v > 0
@@ -496,17 +514,24 @@ function Pulse({
               }}
               title={`${i + 7}:00 — ${v} check-ins`}
             />
-            <span
-              className={
-                "text-[9px] " +
-                (isNow ? "font-semibold text-foreground" : "text-muted-foreground/70")
-              }
-            >
-              {i + 7}
-            </span>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      <div className="flex gap-1">
+        {buckets.map((_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "flex-1 text-center text-[9px] sm:text-[10px]",
+              i === nowHour
+                ? "font-semibold text-foreground"
+                : "text-muted-foreground/70"
+            )}
+          >
+            {i + 7}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

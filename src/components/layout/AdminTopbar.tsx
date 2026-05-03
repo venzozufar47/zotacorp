@@ -2,8 +2,9 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useTransition } from "react";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
+import { QuickActionsMenu } from "@/components/admin/QuickActionsMenu";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 
 /**
@@ -86,18 +87,7 @@ export function AdminTopbar({
           items={pendingConfirmations}
           variant="compact"
         />
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-[12.5px] font-medium text-white shadow-sm transition hover:brightness-110"
-          style={{
-            background: "var(--grad-teal)",
-            boxShadow: "0 2px 10px rgba(17, 122, 140, 0.32)",
-          }}
-          title="Quick action"
-        >
-          <Sparkles size={13} strokeWidth={1.8} />
-          <span>Quick</span>
-        </button>
+        <QuickActionsMenu />
       </div>
     </div>
   );
