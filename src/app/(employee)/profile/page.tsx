@@ -11,7 +11,7 @@ import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 
 export default async function EmployeeProfilePage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const profile = await getCurrentProfile();
   if (!profile) redirect("/dashboard");

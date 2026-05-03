@@ -63,6 +63,7 @@ export function AdminHomePage({
 
   const inbox = buildInbox(pendingConfirmations, disputes, userDirectory);
   const totalPending = inbox.length;
+  const onDutyCount = today.clockedInNow.filter((p) => !p.checkedOut).length;
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -99,9 +100,7 @@ export function AdminHomePage({
             <span style={{ color: "var(--teal-200)" }}>.</span>
           </div>
           <p className="text-[13px] sm:text-sm text-white/80 mt-3.5 max-w-[480px] tracking-[-0.005em]">
-            <b className="text-white font-semibold">
-              {today.clockedInNow.length}
-            </b>{" "}
+            <b className="text-white font-semibold">{onDutyCount}</b>{" "}
             clocked in now ·{" "}
             <b className="text-white font-semibold">{totalPending}</b>{" "}
             waiting for you
@@ -134,7 +133,7 @@ export function AdminHomePage({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <Kpi
           label="Clocked in"
-          value={`${today.clockedInNow.length}`}
+          value={`${onDutyCount}`}
           frac={`/${today.totalEmployees}`}
           icon={<UsersIcon size={13} />}
           tone="default"
@@ -208,7 +207,11 @@ export function AdminHomePage({
           <Card>
             <CardHead
               title="Floor"
-              sub={`${today.clockedInNow.length} on duty`}
+              sub={
+                today.clockedInNow.length === 0
+                  ? "No one signed in today"
+                  : `${onDutyCount} on duty · ${today.clockedInNow.length} signed in today`
+              }
             />
             <div className="px-5 pb-5 flex flex-wrap gap-2">
               {today.clockedInNow.length === 0 ? (
@@ -226,16 +229,25 @@ export function AdminHomePage({
                         fullName: p.fullName,
                         avatarUrl: p.avatarUrl,
                         avatarSeed: p.avatarSeed,
-                        caption: `Clocked in · ${p.status}`,
+                        caption: p.checkedOut
+                          ? `Off duty · ${p.status}`
+                          : `Clocked in · ${p.status}`,
                       })
                     }
-                    className="inline-flex items-center gap-2 pl-1 pr-3 h-8 rounded-full bg-muted/50 hover:bg-muted border border-border/60 transition text-[12px] text-foreground"
+                    className={cn(
+                      "inline-flex items-center gap-2 pl-1 pr-3 h-8 rounded-full border border-border/60 transition text-[12px]",
+                      p.checkedOut
+                        ? "bg-muted/30 hover:bg-muted/60 text-muted-foreground opacity-60"
+                        : "bg-muted/50 hover:bg-muted text-foreground"
+                    )}
+                    title={p.checkedOut ? "Already checked out" : "On duty"}
                   >
                     <EmployeeAvatar
                       size="sm"
                       full_name={p.fullName}
                       avatar_url={p.avatarUrl}
                       avatar_seed={p.avatarSeed}
+                      className={p.checkedOut ? "grayscale" : undefined}
                     />
                     <span className="truncate max-w-[120px]">
                       {firstName(p.fullName)}

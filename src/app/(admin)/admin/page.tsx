@@ -6,8 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminHomeToday } from "@/lib/actions/admin-home.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
-import { getAdminCelebrationsRadar } from "@/lib/actions/celebrations.actions";
+import {
+  getAdminCelebrationsRadar,
+  getCelebrationsFeed,
+} from "@/lib/actions/celebrations.actions";
 import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
+import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 
 /**
  * Admin Home / Today — the new landing surface for admins.
@@ -18,17 +22,23 @@ import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
  */
 export default async function AdminHomeRoute() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [profile, today, pending, disputes, radar] = await Promise.all([
-    getCurrentProfile(),
-    getAdminHomeToday(),
-    getPendingConfirmations(),
-    listOpenPayslipDisputes(),
-    getAdminCelebrationsRadar(),
-  ]);
+  const [profile, today, pending, disputes, radar, celebrationsFeed] =
+    await Promise.all([
+      getCurrentProfile(),
+      getAdminHomeToday(),
+      getPendingConfirmations(),
+      listOpenPayslipDisputes(),
+      getAdminCelebrationsRadar(),
+      getCelebrationsFeed().catch(() => ({
+        today: [],
+        upcoming: [],
+        mySelfCelebration: null,
+      })),
+    ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
   // round-trip per row.
@@ -58,13 +68,18 @@ export default async function AdminHomeRoute() {
     "Admin";
 
   return (
-    <AdminHomePage
-      greetingName={greetingName}
-      today={today}
-      pendingConfirmations={pending}
-      disputes={disputes}
-      upcomingCelebrants={radar}
-      userDirectory={userDirectory}
-    />
+    <>
+      <AdminHomePage
+        greetingName={greetingName}
+        today={today}
+        pendingConfirmations={pending}
+        disputes={disputes}
+        upcomingCelebrants={radar}
+        userDirectory={userDirectory}
+      />
+      <div className="mt-5">
+        <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
+      </div>
+    </>
   );
 }

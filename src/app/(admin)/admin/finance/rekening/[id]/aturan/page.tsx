@@ -26,7 +26,7 @@ export default async function RekeningRulesPage({
   const { id } = await params;
 
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 

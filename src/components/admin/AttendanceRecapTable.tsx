@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Bell, CheckCircle, XCircle, MessageSquare, Pencil, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
 import { AdminEditAttendanceDialog } from "./AdminEditAttendanceDialog";
+import {
+  AttendanceDayDrawer,
+  type AttendanceDaySubject,
+} from "./AttendanceDayDrawer";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
 import { SelfiePreviewDialog } from "@/components/attendance/SelfiePreviewDialog";
@@ -42,6 +46,7 @@ import {
 
 interface AttendanceRow {
   id: string;
+  user_id: string;
   date: string;
   checked_in_at: string;
   checked_out_at: string | null;
@@ -69,7 +74,11 @@ interface AttendanceRow {
   profiles: {
     full_name: string;
     email: string;
+    avatar_url?: string | null;
+    avatar_seed?: string | null;
+    position?: string | null;
   };
+  attendance_locations?: { name: string } | null;
   overtime_requests?: {
     id: string;
     reason: string;
@@ -201,6 +210,28 @@ export function AttendanceRecapTable({
   const tl = t.adminLocations;
   // Selfie preview — shared across all rows; null = closed.
   const [selfieLog, setSelfieLog] = useState<{ id: string; title: string } | null>(null);
+  const [drawerSubject, setDrawerSubject] = useState<AttendanceDaySubject | null>(null);
+
+  function openDrawer(row: AttendanceRow) {
+    setDrawerSubject({
+      logId: row.id,
+      userId: row.user_id,
+      fullName: row.profiles.full_name,
+      avatarUrl: row.profiles.avatar_url ?? null,
+      avatarSeed: row.profiles.avatar_seed ?? null,
+      date: row.date,
+      status: row.status,
+      checkedInAt: row.checked_in_at,
+      checkedOutAt: row.checked_out_at,
+      position: row.profiles.position ?? null,
+      locationName: row.attendance_locations?.name ?? null,
+      lateMinutes: row.late_minutes ?? null,
+      lateProofUrl: row.late_proof_url,
+      lateProofReason: row.late_proof_reason,
+      lateProofStatus: row.late_proof_status,
+      selfiePath: row.selfie_path,
+    });
+  }
   // Batch selection. Scoped to the current page — changing pages clears it
   // (selections are derived from `rows`, which refreshes per page).
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -433,13 +464,6 @@ export function AttendanceRecapTable({
                 onSort={handleSort}
               />
               <SortableHeader<AdminAttendanceSortKey>
-                sortKey="date"
-                label="Date"
-                currentKey={sortBy}
-                currentDir={sortDir}
-                onSort={handleSort}
-              />
-              <SortableHeader<AdminAttendanceSortKey>
                 sortKey="checked_in_at"
                 label="Check-in"
                 currentKey={sortBy}
@@ -466,26 +490,41 @@ export function AttendanceRecapTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => {
+            {rows.map((row, idx) => {
               const isOpen = !row.checked_out_at;
               const otBadge = row.overtime_status
                 ? OT_BADGE_VARIANT[row.overtime_status] ?? OT_BADGE_VARIANT.pending
                 : null;
 
               const otRequest = row.overtime_requests?.[0];
+              // Date column was dropped — instead emit a sticky separator
+              // row whenever this row's date differs from the previous one.
+              // 8 = remaining column count after removing Date.
+              const prevDate = idx === 0 ? null : rows[idx - 1].date;
+              const showDateSeparator = row.date !== prevDate;
 
               return (
-                <TableRow
-                  key={row.id}
-                  id={`att-row-${row.id}`}
-                  className={
-                    selectedIds.has(row.id)
-                      ? "bg-accent"
-                      : isOpen
-                      ? "bg-tertiary/15"
-                      : ""
-                  }
-                >
+                <Fragment key={row.id}>
+                  {showDateSeparator && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell
+                        colSpan={8}
+                        className="bg-muted/40 border-t-2 border-foreground/10 py-1.5 px-3 text-[11px] font-display font-bold uppercase tracking-wider text-muted-foreground"
+                      >
+                        {formatLocalDate(row.date)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  <TableRow
+                    id={`att-row-${row.id}`}
+                    className={
+                      selectedIds.has(row.id)
+                        ? "bg-accent"
+                        : isOpen
+                        ? "bg-tertiary/15"
+                        : ""
+                    }
+                  >
                   <TableCell>
                     <input
                       type="checkbox"
@@ -496,13 +535,17 @@ export function AttendanceRecapTable({
                     />
                   </TableCell>
                   <TableCell>
-                    <div>
-                      <p className="font-display font-bold text-sm">{row.profiles.full_name}</p>
+                    <button
+                      type="button"
+                      onClick={() => openDrawer(row)}
+                      className="text-left group/emp"
+                      title="Open day preview"
+                    >
+                      <p className="font-display font-bold text-sm group-hover/emp:underline underline-offset-2 decoration-[var(--teal-500)]">
+                        {row.profiles.full_name}
+                      </p>
                       <p className="text-xs text-muted-foreground">{row.profiles.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm font-display font-bold">
-                    {formatLocalDate(row.date)}
+                    </button>
                   </TableCell>
                   <TableCell className="text-sm">
                     <div className="flex flex-col items-start gap-0.5">
@@ -791,7 +834,8 @@ export function AttendanceRecapTable({
                       <p className="text-[10px] text-destructive mt-0.5 font-bold">Click to confirm</p>
                     )}
                   </TableCell>
-                </TableRow>
+                  </TableRow>
+                </Fragment>
               );
             })}
           </TableBody>
@@ -847,6 +891,11 @@ export function AttendanceRecapTable({
         logId={selfieLog?.id ?? null}
         title={selfieLog?.title ?? ""}
         onOpenChange={(o) => !o && setSelfieLog(null)}
+      />
+
+      <AttendanceDayDrawer
+        subject={drawerSubject}
+        onClose={() => setDrawerSubject(null)}
       />
 
       <AdminEditAttendanceDialog

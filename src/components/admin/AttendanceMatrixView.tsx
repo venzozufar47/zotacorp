@@ -1,19 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  EyeOff,
-  Minus,
-  X,
-} from "lucide-react";
+import { Check, Eye, EyeOff, Minus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Label } from "@/components/ui/label";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import {
+  AttendanceDayDrawer,
+  type AttendanceDaySubject,
+} from "./AttendanceDayDrawer";
 
 export interface MatrixEmployee {
   id: string;
@@ -21,22 +15,31 @@ export interface MatrixEmployee {
   email: string;
   avatar_url: string | null;
   avatar_seed: string | null;
+  position: string | null;
 }
 
 export interface MatrixCell {
+  id: string;
   user_id: string;
   date: string;          // yyyy-mm-dd
   status: string;        // on_time / late / late_excused / etc.
+  checked_in_at: string;
+  checked_out_at: string | null;
+  late_minutes: number | null;
+  late_proof_url: string | null;
+  late_proof_status: string | null;
+  late_proof_reason: string | null;
+  selfie_path: string | null;
+  attendance_locations?: { name: string } | null;
 }
 
 interface Props {
   month: number;
   year: number;
-  /** Available BU options. */
-  businessUnits: string[];
-  /** Currently selected BU; empty = all. */
+  /** Currently selected BU (used as a key for the per-BU hidden-employees
+   *  localStorage namespace). Empty = all. */
   selectedBU: string;
-  /** Employees scoped to selectedBU (or all when "" ). */
+  /** Employees scoped to selected BU upstream (or all when none). */
   employees: MatrixEmployee[];
   /** Pre-fetched attendance for the month, scoped to those employees. */
   cells: MatrixCell[];
@@ -44,53 +47,13 @@ interface Props {
 
 const WEEKDAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
-const MONTHS_ID = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-];
-
 export function AttendanceMatrixView({
   month,
   year,
-  businessUnits,
   selectedBU,
   employees,
   cells,
 }: Props) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
-
-  function setBU(bu: string) {
-    const params = new URLSearchParams(sp.toString());
-    if (bu) params.set("bu", bu);
-    else params.delete("bu");
-    params.delete("page");
-    router.push(`${pathname}?${params.toString()}`);
-  }
-
-  function setPeriod(m: number, y: number) {
-    const params = new URLSearchParams(sp.toString());
-    params.set("month", String(m));
-    params.set("year", String(y));
-    params.delete("page");
-    params.delete("focus");
-    router.push(`${pathname}?${params.toString()}`);
-  }
-
-  function shiftMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 1) {
-      m = 12;
-      y -= 1;
-    } else if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-    setPeriod(m, y);
-  }
-
   const daysInMonth = new Date(year, month, 0).getDate();
   const days = useMemo(
     () => Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -123,6 +86,28 @@ export function AttendanceMatrixView({
   function unhideAll() {
     persistHidden([]);
   }
+  const [drawerSubject, setDrawerSubject] = useState<AttendanceDaySubject | null>(null);
+  function openCell(cell: MatrixCell, emp: MatrixEmployee) {
+    setDrawerSubject({
+      logId: cell.id,
+      userId: emp.id,
+      fullName: emp.full_name ?? emp.email,
+      avatarUrl: emp.avatar_url,
+      avatarSeed: emp.avatar_seed,
+      date: cell.date,
+      status: cell.status,
+      checkedInAt: cell.checked_in_at,
+      checkedOutAt: cell.checked_out_at,
+      position: emp.position,
+      locationName: cell.attendance_locations?.name ?? null,
+      lateMinutes: cell.late_minutes ?? null,
+      lateProofUrl: cell.late_proof_url,
+      lateProofReason: cell.late_proof_reason,
+      lateProofStatus: cell.late_proof_status,
+      selfiePath: cell.selfie_path,
+    });
+  }
+
   const hiddenSet = new Set(hidden);
   const visibleEmployees = useMemo(
     () => employees.filter((e) => !hiddenSet.has(e.id)),
@@ -133,12 +118,12 @@ export function AttendanceMatrixView({
     [employees, hidden]
   );
 
-  // Index attendance by user_id|day → status (presence of an entry = signed in).
+  // Index attendance by user_id|day → full cell record (presence = signed in).
   const cellMap = useMemo(() => {
-    const m = new Map<string, string>();
+    const m = new Map<string, MatrixCell>();
     for (const c of cells) {
       const day = parseInt(c.date.split("-")[2] ?? "0", 10);
-      if (day > 0) m.set(`${c.user_id}|${day}`, c.status);
+      if (day > 0) m.set(`${c.user_id}|${day}`, c);
     }
     return m;
   }, [cells]);
@@ -157,68 +142,7 @@ export function AttendanceMatrixView({
 
   return (
     <div className="space-y-3">
-      <div className="bg-card rounded-2xl border-2 border-foreground shadow-hard p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label>Bulan</Label>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => shiftMonth(-1)}
-                className="size-10 inline-flex items-center justify-center rounded-xl border-2 border-border bg-white hover:bg-muted"
-                aria-label="Bulan sebelumnya"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <select
-                value={month}
-                onChange={(e) => setPeriod(Number(e.target.value), year)}
-                className="flex-1 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-medium h-10 outline-none focus-visible:border-primary focus-visible:shadow-hard-violet"
-              >
-                {MONTHS_ID.map((label, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={year}
-                onChange={(e) => setPeriod(month, Number(e.target.value))}
-                className="rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-medium h-10 outline-none focus-visible:border-primary focus-visible:shadow-hard-violet tabular-nums"
-              >
-                {Array.from({ length: 5 }, (_, i) => year - 2 + i).map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => shiftMonth(1)}
-                className="size-10 inline-flex items-center justify-center rounded-xl border-2 border-border bg-white hover:bg-muted"
-                aria-label="Bulan berikutnya"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Business Unit</Label>
-            <select
-              value={selectedBU}
-              onChange={(e) => setBU(e.target.value)}
-              className="flex w-full items-center rounded-xl border-2 border-border bg-white px-3.5 py-2 text-sm font-medium h-10 outline-none focus-visible:border-primary focus-visible:shadow-hard-violet"
-            >
-              <option value="">Semua BU</option>
-              {businessUnits.map((bu) => (
-                <option key={bu} value={bu}>
-                  {bu}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
+      <div className="space-y-3">
         {hiddenEmployees.length > 0 && (
           <div className="rounded-xl border border-amber-300 bg-amber-50/40 p-2 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-amber-900 px-1">
@@ -326,21 +250,26 @@ export function AttendanceMatrixView({
                         {String(d).padStart(2, "0")}
                       </td>
                       {visibleEmployees.map((emp) => {
-                        const status = cellMap.get(`${emp.id}|${d}`);
-                        const signed = !!status;
+                        const cell = cellMap.get(`${emp.id}|${d}`);
+                        const status = cell?.status;
+                        const signed = !!cell;
                         return (
                           <td
                             key={emp.id}
                             className={cn(
                               "border-r border-b border-border px-1 py-1 text-center",
-                              isWeekend && !signed && "bg-muted/20"
+                              isWeekend && !signed && "bg-muted/20",
+                              signed && "cursor-pointer hover:bg-accent/40"
                             )}
                             title={
                               signed
-                                ? `Sign in (${status})`
+                                ? `Sign in (${status}) — click for details`
                                 : isWeekend
                                   ? "Weekend"
                                   : "Tidak sign in"
+                            }
+                            onClick={
+                              signed && cell ? () => openCell(cell, emp) : undefined
                             }
                           >
                             {signed ? (
@@ -392,6 +321,11 @@ export function AttendanceMatrixView({
           </div>
         </section>
       )}
+
+      <AttendanceDayDrawer
+        subject={drawerSubject}
+        onClose={() => setDrawerSubject(null)}
+      />
     </div>
   );
 }

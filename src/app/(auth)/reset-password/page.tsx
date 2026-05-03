@@ -83,10 +83,10 @@ export default function ResetPasswordPage() {
       }
       setDone(true);
       // Sign out the recovery session so the next login uses the new password
-      // on a clean slate, then bounce to /login after a short beat so the
-      // success message is visible.
+      // on a clean slate, then bounce to / (auth landing) after a short beat
+      // so the success message is visible.
       await supabase.auth.signOut();
-      setTimeout(() => router.replace("/login"), 1600);
+      setTimeout(() => router.replace("/"), 1600);
     } catch (err) {
       setError(err instanceof Error ? err.message : t.resetPassword.errGeneric);
       setLoading(false);
@@ -112,7 +112,7 @@ export default function ResetPasswordPage() {
         </CardHeader>
         <CardContent>
           <Link
-            href="/login"
+            href="/"
             className="inline-flex items-center justify-center w-full h-11 rounded-full border-2 border-foreground bg-primary text-primary-foreground font-display font-bold text-sm shadow-hard hover:-translate-y-0.5 hover:shadow-hard-hover transition-all"
           >
             {t.resetPassword.backToLogin}

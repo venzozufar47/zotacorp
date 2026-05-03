@@ -14,7 +14,7 @@ export default async function PosInsightsPage({
   searchParams: Promise<{ period?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   // Insights = data sensitif (revenue, ranking produk) — hanya admin.
   // Kasir lihat detail penjualannya cukup di /pos/riwayat.

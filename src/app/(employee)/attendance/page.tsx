@@ -16,7 +16,7 @@ import { getDictionary } from "@/lib/i18n/server";
 
 export default async function AttendancePage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const role = await getCurrentRole();
   if (role === "admin") redirect("/admin/attendance");

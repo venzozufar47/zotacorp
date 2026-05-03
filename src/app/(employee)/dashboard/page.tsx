@@ -66,7 +66,7 @@ const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   // Single parallel fetch — no sequential waterfalls. The overtime and
   // extra-work queries are cheap even when their results go unused, and

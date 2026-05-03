@@ -39,7 +39,7 @@ export default async function PosRiwayatPage({
   searchParams: Promise<{ date?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");

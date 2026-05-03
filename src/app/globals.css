@@ -1559,12 +1559,21 @@
   font-family: var(--font-poppins), system-ui, sans-serif;
   font-weight: 600 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.06em !important;
-  font-size: 0.75rem;
-  height: 44px;
+  letter-spacing: 0.14em !important;
+  font-size: 0.65rem;
+  height: 38px;
+}
+/* Compact body rows per Claude Design's Hi-Fi recap table:
+   tighter vertical padding, hairline border-bottom, subtle hover. */
+[data-theme="oceanic"] [data-slot="table-body"] [data-slot="table-row"] {
+  border-bottom: 1px solid rgba(29, 29, 31, 0.06) !important;
 }
 [data-theme="oceanic"] [data-slot="table-body"] [data-slot="table-row"]:hover {
   background-color: var(--surface-alt) !important;
+}
+[data-theme="oceanic"] [data-slot="table-cell"] {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
 }
 
 /* ── Dialog ──────────────────────────────────────────────────── */

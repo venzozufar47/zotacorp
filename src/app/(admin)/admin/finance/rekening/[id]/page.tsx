@@ -43,7 +43,7 @@ export default async function RekeningDetailPage({
   const { id } = await params;
 
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
   const role = await getCurrentRole();
   const isAdmin = role === "admin";
 

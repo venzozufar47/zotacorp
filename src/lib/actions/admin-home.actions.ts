@@ -28,6 +28,8 @@ export interface ClockedInEmployee {
   avatarSeed: string | null;
   status: string;
   checkedInAt: string;
+  /** True once the employee has clocked out for the day (drives "off duty" styling on the Floor card). */
+  checkedOut: boolean;
 }
 
 export async function getAdminHomeToday(): Promise<AdminHomeToday> {
@@ -81,8 +83,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     };
   }>;
 
+  // All employees with a log today — Floor card shows checked-out ones
+  // greyed out so admin sees the full day's roster, not just who's still
+  // on duty. Sort: still-on-duty first, then by check-in time.
   const clockedInNow: ClockedInEmployee[] = logs
-    .filter((l) => !l.checked_out_at)
     .map((l) => ({
       userId: l.user_id,
       fullName: l.profiles.full_name ?? "(tanpa nama)",
@@ -90,7 +94,12 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       avatarSeed: l.profiles.avatar_seed,
       status: l.status,
       checkedInAt: l.checked_in_at,
-    }));
+      checkedOut: !!l.checked_out_at,
+    }))
+    .sort((a, b) => {
+      if (a.checkedOut !== b.checkedOut) return a.checkedOut ? 1 : -1;
+      return a.checkedInAt.localeCompare(b.checkedInAt);
+    });
 
   const lateToday = logs.filter((l) => l.status === "late").length;
 

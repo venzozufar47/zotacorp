@@ -47,7 +47,7 @@ const REQUIRED_PROFILE_KEYS = [
 
 export default async function EmployeePayslipsPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const profile = await getCurrentProfile();
   const missingFields = REQUIRED_PROFILE_KEYS.filter((k) => {

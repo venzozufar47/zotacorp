@@ -10,13 +10,14 @@ import {
 import {
   getAllAttendanceLogs,
   getAllEmployees,
+  getAttendanceMonthSummary,
+  getLiveAttendanceToday,
   type AdminAttendanceSortKey,
 } from "@/lib/actions/attendance.actions";
-import { getCelebrationsFeed } from "@/lib/actions/celebrations.actions";
 import { AttendanceRecapTable } from "@/components/admin/AttendanceRecapTable";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { AttendanceFilters } from "@/components/admin/AttendanceFilters";
-import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
+import { AttendanceTopFilter } from "@/components/admin/AttendanceTopFilter";
+import { AttendanceSummaryCards } from "@/components/admin/AttendanceSummaryCards";
 import {
   AttendanceViewTabs,
   type AttendanceView,
@@ -26,6 +27,7 @@ import {
   type MatrixEmployee,
   type MatrixCell,
 } from "@/components/admin/AttendanceMatrixView";
+import { AttendanceLiveView } from "@/components/admin/AttendanceLiveView";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface SearchParams {
@@ -56,7 +58,7 @@ export default async function AdminAttendancePage({
   searchParams: Promise<SearchParams>;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
@@ -92,7 +94,12 @@ export default async function AdminAttendancePage({
     ? (params.sortBy as AdminAttendanceSortKey)
     : undefined;
   const sortDir = params.sortDir === "asc" ? "asc" : "desc";
-  const view: AttendanceView = params.view === "matrix" ? "matrix" : "recap";
+  const view: AttendanceView =
+    params.view === "matrix"
+      ? "matrix"
+      : params.view === "live"
+        ? "live"
+        : "recap";
   const selectedBU = params.bu ?? "";
 
   // Notif bell sends ?focus=<rowId>. Resolve the row's position under
@@ -151,15 +158,6 @@ export default async function AdminAttendancePage({
   let count = 0;
   let employees: Awaited<ReturnType<typeof getAllEmployees>> = [];
   let settings: Awaited<ReturnType<typeof getCachedAttendanceSettings>> = null;
-
-  // Celebrations feed for the admin: same component employees see, so
-  // admins can monitor today + upcoming birthdays/anniversaries and
-  // optionally post a greeting themselves. Fetched in parallel below.
-  const celebrationsFeed = await getCelebrationsFeed().catch(() => ({
-    today: [],
-    upcoming: [],
-    mySelfCelebration: null,
-  }));
 
   try {
     const [logsResult, emps, s] = await Promise.all([
@@ -239,44 +237,63 @@ export default async function AdminAttendancePage({
   }
 
   // Matrix view fetches: scoped to BU + month, only when view === 'matrix'.
+  // BU list is needed by the shared top filter on every tab — fetch it
+  // unconditionally (one cheap query) so the filter renders on Recap +
+  // Live too, not just Matrix.
   let matrixEmployees: MatrixEmployee[] = [];
   let matrixCells: MatrixCell[] = [];
   let businessUnits: string[] = [];
+  let allActiveEmps: Array<{
+    id: string;
+    full_name: string;
+    email: string;
+    business_unit: string | null;
+    avatar_url: string | null;
+    avatar_seed: string | null;
+    position: string | null;
+  }> = [];
+  try {
+    const supabase = await createClient();
+    const { data: empRows } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, business_unit, avatar_url, avatar_seed, position")
+      .eq("is_active", true)
+      .order("full_name");
+    allActiveEmps = (empRows ?? []) as typeof allActiveEmps;
+    businessUnits = Array.from(
+      new Set(
+        allActiveEmps.map((e) => e.business_unit?.trim()).filter(Boolean) as string[]
+      )
+    ).sort();
+  } catch (err) {
+    console.error("[attendance-page] employees fetch error:", err);
+  }
+
   if (view === "matrix") {
     try {
       const supabase = await createClient();
-      // List of BUs (distinct) for the selector — derived from active
-      // employees so we don't list orphan/legacy BU strings.
-      const { data: empRows } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, business_unit, avatar_url, avatar_seed")
-        .eq("is_active", true)
-        .order("full_name");
-      const allEmps = empRows ?? [];
-      businessUnits = Array.from(
-        new Set(
-          allEmps.map((e) => e.business_unit?.trim()).filter(Boolean) as string[]
-        )
-      ).sort();
       const filteredEmps = selectedBU
-        ? allEmps.filter((e) => (e.business_unit ?? "") === selectedBU)
-        : allEmps;
+        ? allActiveEmps.filter((e) => (e.business_unit ?? "") === selectedBU)
+        : allActiveEmps;
       matrixEmployees = filteredEmps.map((e) => ({
         id: e.id,
         full_name: e.full_name,
         email: e.email,
         avatar_url: e.avatar_url,
         avatar_seed: e.avatar_seed,
+        position: (e as { position?: string | null }).position ?? null,
       }));
       const empIds = matrixEmployees.map((e) => e.id);
       if (empIds.length > 0) {
         const { data: cells } = await supabase
           .from("attendance_logs")
-          .select("user_id, date, status")
+          .select(
+            "id, user_id, date, status, checked_in_at, checked_out_at, late_minutes, late_proof_url, late_proof_status, late_proof_reason, selfie_path, attendance_locations:matched_location_id(name)"
+          )
           .in("user_id", empIds)
           .gte("date", startDate)
           .lte("date", endDate);
-        matrixCells = (cells ?? []) as MatrixCell[];
+        matrixCells = (cells ?? []) as unknown as MatrixCell[];
       }
     } catch (err) {
       console.error("[attendance-page] matrix fetch error:", err);
@@ -290,17 +307,25 @@ export default async function AdminAttendancePage({
         subtitle={`Overview for all employees — ${format(new Date(startDate), "d MMM")} to ${format(new Date(endDate), "d MMM yyyy")}`}
       />
 
-      <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
-
-      <AttendanceViewTabs current={view} />
-
-      {view === "recap" ? (
-        <>
-          <AttendanceFilters
+      <div className="flex flex-wrap items-center gap-3">
+        <AttendanceViewTabs current={view} />
+        <div className="ml-auto">
+          <AttendanceTopFilter
             month={month}
             year={year}
             selectedUserId={params.userId ?? ""}
+            selectedBU={selectedBU}
             employees={employees}
+            businessUnits={businessUnits}
+          />
+        </div>
+      </div>
+
+      {view === "recap" && (
+        <>
+          <AttendanceSummaryCardsSection
+            startDate={startDate}
+            endDate={endDate}
           />
 
           <AttendanceRecapTable
@@ -313,16 +338,68 @@ export default async function AdminAttendancePage({
             sortDir={sortDir}
           />
         </>
-      ) : (
+      )}
+
+      {view === "matrix" && (
         <AttendanceMatrixView
           month={month}
           year={year}
-          businessUnits={businessUnits}
           selectedBU={selectedBU}
           employees={matrixEmployees}
           cells={matrixCells}
         />
       )}
+
+      {view === "live" && (
+        <AttendanceLiveSection
+          userId={params.userId ?? ""}
+          businessUnit={selectedBU}
+        />
+      )}
     </div>
+  );
+}
+
+async function AttendanceSummaryCardsSection({
+  startDate,
+  endDate,
+}: {
+  startDate: string;
+  endDate: string;
+}) {
+  const summary = await getAttendanceMonthSummary(startDate, endDate);
+  return <AttendanceSummaryCards summary={summary} />;
+}
+
+async function AttendanceLiveSection({
+  userId,
+  businessUnit,
+}: {
+  userId: string;
+  businessUnit: string;
+}) {
+  const snapshot = await getLiveAttendanceToday();
+  // Apply client-of-the-server filter: scope rows to the chosen subject.
+  // Doing this here (rather than in the server action) keeps the action
+  // generic — same data backs auto-refresh + future variants.
+  const filteredRows = snapshot.rows.filter((r) => {
+    if (userId && r.userId !== userId) return false;
+    return true;
+  });
+  // Recompute counts on the filtered set so the stat cards stay honest.
+  const counts = {
+    in: filteredRows.filter((r) => r.status === "in").length,
+    late: filteredRows.filter((r) => r.status === "late").length,
+    absent: filteredRows.filter((r) => r.status === "absent").length,
+    sched: filteredRows.filter((r) => r.status === "sched").length,
+    total: filteredRows.length,
+  };
+  void businessUnit; // BU filtering for Live needs profile.business_unit
+  // hydrated into LiveAttendanceRow — deferred; userId filter covers the
+  // per-employee case admins typically need.
+  return (
+    <AttendanceLiveView
+      snapshot={{ ...snapshot, rows: filteredRows, counts }}
+    />
   );
 }

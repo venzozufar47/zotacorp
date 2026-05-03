@@ -39,6 +39,26 @@ const nextConfig: NextConfig = {
    * trying to bundle via turbopack, which previously broke the worker.
    */
   serverExternalPackages: ["unpdf", "pdfjs-dist"],
+  /**
+   * HSTS preload — paired with the Lighthouse "Avoid multiple page
+   * redirects" fix that moved login UI to `/`. Once the domain is
+   * accepted into hstspreload.org, browsers shipping the preload
+   * list skip the HTTP→HTTPS hop entirely on first visit. The header
+   * itself helps any returning visitor within the 2-year max-age.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

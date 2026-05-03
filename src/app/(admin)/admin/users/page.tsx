@@ -39,7 +39,7 @@ const PROFILE_COMPLETION_KEYS = [
 
 export default async function AdminUsersPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");

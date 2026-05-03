@@ -40,7 +40,7 @@ export default function GlobalError({
             Try again
           </button>
           <a
-            href="/login"
+            href="/"
             className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 font-medium"
           >
             Go to login

@@ -11,7 +11,7 @@ import { ProductCatalogClient } from "@/components/pos/ProductCatalogClient";
 /** Katalog admin-only — edit nama, harga, aktif/non-aktif, tambah produk. */
 export default async function PosProductsPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/pos");
 

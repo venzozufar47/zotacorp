@@ -19,7 +19,7 @@ import { StreakDetail } from "@/components/attendance/StreakDetail";
  */
 export default async function StreakPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const role = await getCurrentRole();
   if (role === "admin") redirect("/admin/attendance");

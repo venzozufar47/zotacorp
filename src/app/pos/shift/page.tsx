@@ -10,7 +10,7 @@ import PosShiftClient from "@/components/pos/PosShiftClient";
 
 export default async function PosShiftPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");

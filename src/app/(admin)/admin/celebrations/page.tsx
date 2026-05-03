@@ -17,7 +17,7 @@ import { BirthdayBroadcastButton } from "@/components/admin/BirthdayBroadcastBut
  */
 export default async function AdminCelebrationsPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 

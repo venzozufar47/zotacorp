@@ -8,7 +8,7 @@ import { StockOpnameForm } from "@/components/pos/StockOpnameForm";
 
 export default async function PosStockOpnameNewPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");

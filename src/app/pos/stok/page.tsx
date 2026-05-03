@@ -13,7 +13,7 @@ import { StockLandingClient } from "@/components/pos/StockLandingClient";
 
 export default async function PosStockPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");

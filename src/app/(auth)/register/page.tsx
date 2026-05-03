@@ -164,7 +164,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-muted-foreground mt-5 font-medium">
           {tr.alreadyHave}{" "}
-          <Link href="/login" className="font-display font-bold text-primary hover:underline underline-offset-4">
+          <Link href="/" className="font-display font-bold text-primary hover:underline underline-offset-4">
             {tr.loginCta}
           </Link>
         </p>

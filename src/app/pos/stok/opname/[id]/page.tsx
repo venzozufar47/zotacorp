@@ -11,7 +11,7 @@ export default async function PosStockOpnameDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const { id } = await params;
   const res = await getStockOpname(id);

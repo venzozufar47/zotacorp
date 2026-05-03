@@ -20,7 +20,7 @@ import { LocationsManager } from "@/components/admin/LocationsManager";
  */
 export default async function AdminLocationsPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");

@@ -23,7 +23,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function AdminSettingsPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");

@@ -91,7 +91,7 @@ export default async function AdminFinancePage({
   searchParams: Promise<SearchParams>;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
   const role = await getCurrentRole();
   const isAdmin = role === "admin";
 

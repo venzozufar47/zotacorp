@@ -32,14 +32,19 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  const publicRoutes = ["/login", "/register"];
-  const isPublic = publicRoutes.some((r) => pathname.startsWith(r));
+  // `/` is the new auth landing (login form when anon, role redirect
+  // when authed — see app/(auth)/page.tsx). `/login` stays as a 308
+  // alias so external bookmarks survive.
+  const publicRoutes = ["/", "/login", "/register"];
+  const isPublic =
+    pathname === "/" ||
+    publicRoutes.some((r) => r !== "/" && pathname.startsWith(r));
   const isApi = pathname.startsWith("/api");
 
-  // Not logged in → force to login (except public routes and API routes)
+  // Not logged in → force to landing (except public routes and API routes)
   if (!user && !isPublic && !isApi) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/";
     return NextResponse.redirect(url);
   }
 
@@ -60,7 +65,7 @@ export async function updateSession(request: NextRequest) {
         .single();
 
       const isAdmin = profile?.role === "admin";
-      const home = isAdmin ? "/admin/attendance" : "/dashboard";
+      const home = isAdmin ? "/admin" : "/dashboard";
 
       // Logged-in user on public page → send to their home
       if (isPublic) {
@@ -88,7 +93,7 @@ export async function updateSession(request: NextRequest) {
       // Admin on employee route → send to admin home
       if (onEmployeeRoute && isAdmin) {
         const url = request.nextUrl.clone();
-        url.pathname = "/admin/attendance";
+        url.pathname = "/admin";
         return NextResponse.redirect(url);
       }
     }

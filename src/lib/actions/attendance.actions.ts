@@ -1103,7 +1103,8 @@ export async function getAllAttendanceLogs(params: {
     .select(
       `
       *,
-      profiles!inner(full_name, email)
+      profiles!inner(full_name, email, avatar_url, avatar_seed, position),
+      attendance_locations:matched_location_id(name)
     `,
       { count: "exact" }
     );
@@ -1222,4 +1223,232 @@ export async function getAllEmployees() {
     .order("full_name", { ascending: true });
 
   return data ?? [];
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Admin attendance Hi-Fi additions: Recap summary + Live timeline
+// ─────────────────────────────────────────────────────────────────────
+
+export interface AttendanceMonthSummary {
+  loggedHours: number;
+  onTimeRate: number; // 0..1
+  totalLogs: number;
+  lateCount: number;
+  /** Late incidents whose `late_proof_status` was approved by an admin. */
+  approvedLateCount: number;
+}
+
+/**
+ * Aggregate stats shown above the Recap table. Single SELECT — fast
+ * even for full month × 20+ employees.
+ */
+export async function getAttendanceMonthSummary(
+  startDate: string,
+  endDate: string
+): Promise<AttendanceMonthSummary> {
+  const role = await getCurrentRole();
+  const empty: AttendanceMonthSummary = {
+    loggedHours: 0,
+    onTimeRate: 0,
+    totalLogs: 0,
+    lateCount: 0,
+    approvedLateCount: 0,
+  };
+  if (role !== "admin") return empty;
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_logs")
+    .select("status, checked_in_at, checked_out_at, late_proof_status")
+    .gte("date", startDate)
+    .lte("date", endDate);
+
+  const logs = data ?? [];
+  let loggedMs = 0;
+  let onTime = 0;
+  let late = 0;
+  let approvedLate = 0;
+  for (const l of logs) {
+    if (l.checked_out_at) {
+      loggedMs +=
+        new Date(l.checked_out_at).getTime() -
+        new Date(l.checked_in_at).getTime();
+    }
+    if (l.status === "on_time" || l.status === "flexible") onTime++;
+    else if (l.status === "late") {
+      late++;
+      if (l.late_proof_status === "approved") approvedLate++;
+    }
+  }
+  return {
+    loggedHours: Math.round(loggedMs / 3_600_000),
+    onTimeRate: logs.length === 0 ? 0 : onTime / logs.length,
+    totalLogs: logs.length,
+    lateCount: late,
+    approvedLateCount: approvedLate,
+  };
+}
+
+export interface LiveAttendanceRow {
+  userId: string;
+  fullName: string;
+  position: string | null;
+  locationName: string | null;
+  avatarUrl: string | null;
+  avatarSeed: string | null;
+  status: "in" | "late" | "done" | "absent" | "sched" | "off";
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  /** Hour float, e.g. 9.0 = 09:00, 8.5 = 08:30. Null when employee has
+   *  no scheduled start (flexible schedule). */
+  scheduledStart: number | null;
+}
+
+export interface LiveAttendanceSnapshot {
+  rows: LiveAttendanceRow[];
+  nowIso: string;
+  todayIso: string;
+  counts: {
+    in: number;
+    late: number;
+    absent: number;
+    sched: number;
+    total: number;
+  };
+}
+
+/** Convert "HH:MM:SS" → hour float. Returns null on bad input. */
+function parseHourFloat(t: string | null | undefined): number | null {
+  if (!t) return null;
+  const [hStr, mStr] = t.split(":");
+  const h = Number(hStr);
+  const m = Number(mStr ?? "0");
+  if (!Number.isFinite(h)) return null;
+  return h + m / 60;
+}
+
+/**
+ * Live attendance snapshot for today — drives the Gantt-style timeline
+ * on the Live tab. One query for active employees + one for today's
+ * logs; status derived in-memory.
+ */
+export async function getLiveAttendanceToday(): Promise<LiveAttendanceSnapshot> {
+  const role = await getCurrentRole();
+  const settings = await getCachedAttendanceSettings();
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const now = new Date();
+  const todayIso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const empty: LiveAttendanceSnapshot = {
+    rows: [],
+    nowIso: now.toISOString(),
+    todayIso,
+    counts: { in: 0, late: 0, absent: 0, sched: 0, total: 0 },
+  };
+  if (role !== "admin") return empty;
+
+  const supabase = await createClient();
+  const [empRes, logsRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(
+        "id, full_name, avatar_url, avatar_seed, position, work_start_time, is_flexible_schedule, is_active, payslip_excluded"
+      )
+      .eq("is_active", true)
+      .eq("payslip_excluded", false)
+      .order("full_name"),
+    supabase
+      .from("attendance_logs")
+      .select(
+        "user_id, status, checked_in_at, checked_out_at, attendance_locations:matched_location_id(name)"
+      )
+      .eq("date", todayIso),
+  ]);
+
+  const employees = empRes.data ?? [];
+  const logs = (logsRes.data ?? []) as Array<{
+    user_id: string;
+    status: string;
+    checked_in_at: string;
+    checked_out_at: string | null;
+    attendance_locations: { name: string } | null;
+  }>;
+  const logByUser = new Map<string, (typeof logs)[number]>();
+  for (const l of logs) logByUser.set(l.user_id, l);
+
+  // Local hour float in org tz — for deciding "late" vs "scheduled"
+  const nowHourLocal = (() => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+    }).formatToParts(now);
+    const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    return h + m / 60;
+  })();
+
+  const rows: LiveAttendanceRow[] = employees.map((e) => {
+    const log = logByUser.get(e.id);
+    const scheduledStart = e.is_flexible_schedule
+      ? null
+      : parseHourFloat(e.work_start_time);
+    let status: LiveAttendanceRow["status"];
+    if (log) {
+      if (log.checked_out_at) status = "done";
+      else if (log.status === "late") status = "late";
+      else status = "in";
+    } else if (scheduledStart != null) {
+      status = nowHourLocal >= scheduledStart ? "absent" : "sched";
+    } else {
+      // Flexible schedule employee with no log yet — treat as scheduled
+      // until they check in (avoids over-flagging absent).
+      status = "sched";
+    }
+    return {
+      userId: e.id,
+      fullName: e.full_name,
+      position: e.position || null,
+      locationName: log?.attendance_locations?.name ?? null,
+      avatarUrl: e.avatar_url,
+      avatarSeed: e.avatar_seed,
+      status,
+      checkedInAt: log?.checked_in_at ?? null,
+      checkedOutAt: log?.checked_out_at ?? null,
+      scheduledStart,
+    };
+  });
+
+  // Sort: in/late first, then sched, then done, then absent, then off.
+  // Within each bucket: by scheduled start asc, then name.
+  const ORDER: Record<LiveAttendanceRow["status"], number> = {
+    in: 0,
+    late: 1,
+    sched: 2,
+    done: 3,
+    absent: 4,
+    off: 5,
+  };
+  rows.sort((a, b) => {
+    if (a.status !== b.status) return ORDER[a.status] - ORDER[b.status];
+    const sa = a.scheduledStart ?? 99;
+    const sb = b.scheduledStart ?? 99;
+    if (sa !== sb) return sa - sb;
+    return a.fullName.localeCompare(b.fullName);
+  });
+
+  const counts = {
+    in: rows.filter((r) => r.status === "in").length,
+    late: rows.filter((r) => r.status === "late").length,
+    absent: rows.filter((r) => r.status === "absent").length,
+    sched: rows.filter((r) => r.status === "sched").length,
+    total: rows.length,
+  };
+
+  return { rows, nowIso: now.toISOString(), todayIso, counts };
 }

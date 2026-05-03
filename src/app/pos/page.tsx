@@ -16,7 +16,7 @@ import { POSClient } from "@/components/pos/POSClient";
  */
 export default async function PosPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
