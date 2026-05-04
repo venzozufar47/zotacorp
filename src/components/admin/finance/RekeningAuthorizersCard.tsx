@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ShieldCheck, KeyRound } from "lucide-react";
+import { ChevronDown, ShieldCheck, KeyRound } from "lucide-react";
 import {
   setRekeningAuthorizers,
   type RekeningAuthorizerCandidate,
@@ -51,6 +51,14 @@ export function RekeningAuthorizersCard({
   const [pending, startTransition] = useTransition();
   const [resetPending, startReset] = useTransition();
   const [values, setValues] = useState<RekeningAuthorizers>(initial);
+  // One-time setting — collapse by default so the form doesn't dominate
+  // the page on every visit. Auto-expand when no authorizer is assigned
+  // yet so admin still discovers the feature on a fresh rekening.
+  const noneAssigned =
+    !initial.productionUserId &&
+    !initial.withdrawalUserId &&
+    !initial.opnameUserId;
+  const [open, setOpen] = useState(noneAssigned);
 
   function update(key: keyof RekeningAuthorizers, value: string) {
     setValues((prev) => ({
@@ -102,24 +110,57 @@ export function RekeningAuthorizersCard({
 
   const candidateById = new Map(candidates.map((c) => [c.userId, c]));
 
+  // Compact summary line shown when collapsed — gives admin a glance at
+  // the current assignment without unfolding the whole form.
+  const summary = (() => {
+    const labelFor = (id: string | null) =>
+      id ? candidateById.get(id)?.fullName?.split(/\s+/)[0] ?? "✓" : "—";
+    const parts = [
+      `Produksi: ${labelFor(initial.productionUserId)}`,
+      `Penarikan: ${labelFor(initial.withdrawalUserId)}`,
+      `Opname: ${labelFor(initial.opnameUserId)}`,
+    ];
+    return parts.join(" · ");
+  })();
+
   return (
     <section
-      className="rounded-2xl border border-border/70 bg-card p-5"
+      className="rounded-2xl border border-border/70 bg-card overflow-hidden"
       style={{
         boxShadow:
           "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)",
       }}
     >
-      <div className="flex items-center gap-2 mb-1">
-        <ShieldCheck size={16} className="text-[var(--teal-600)]" />
-        <h2 className="font-display font-semibold text-foreground">
-          Otorisasi POS
-        </h2>
-      </div>
-      <p className="text-[12.5px] text-muted-foreground mb-4">
-        Tetapkan satu karyawan yang harus memasukkan PIN untuk setiap
-        operasi non-penjualan. Kosongkan kalau operasi tidak butuh otorisasi.
-      </p>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-muted/30 transition"
+        aria-expanded={open}
+      >
+        <ShieldCheck size={16} className="text-[var(--teal-600)] shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="font-display font-semibold text-foreground text-[14px]">
+            Otorisasi POS
+          </div>
+          <div className="text-[11.5px] text-muted-foreground truncate">
+            {summary}
+          </div>
+        </div>
+        <ChevronDown
+          size={16}
+          className={cn(
+            "text-muted-foreground/70 shrink-0 transition-transform",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 pt-1 border-t border-border/60">
+          <p className="text-[12.5px] text-muted-foreground mb-4 mt-3">
+            Tetapkan satu karyawan yang harus memasukkan PIN untuk setiap
+            operasi non-penjualan. Kosongkan kalau operasi tidak butuh otorisasi.
+          </p>
 
       {candidates.length === 0 ? (
         <p className="text-[13px] text-muted-foreground italic">
@@ -194,6 +235,8 @@ export function RekeningAuthorizersCard({
               {pending ? "Menyimpan..." : "Simpan otorisasi"}
             </button>
           </div>
+        </div>
+      )}
         </div>
       )}
     </section>

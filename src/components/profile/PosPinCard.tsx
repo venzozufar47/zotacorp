@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck, ShieldOff } from "lucide-react";
 import { setPosPin, clearPosPin } from "@/lib/actions/pos-pin.actions";
+import { isValidPinFormat } from "@/lib/pos-pin-format";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -132,7 +133,7 @@ function SetPinForm({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!/^\d{4,6}$/.test(pin)) {
+    if (!isValidPinFormat(pin)) {
       setError("PIN baru harus 4–6 digit angka.");
       return;
     }

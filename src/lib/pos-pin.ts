@@ -1,12 +1,13 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 /**
- * Per-employee POS PIN hashing.
+ * Per-employee POS PIN hashing — server-only (uses `node:crypto`).
+ * Format helpers + operation enums live in `pos-pin-format.ts` so
+ * client components can share them without pulling node:crypto.
  *
- * Stored format: `${saltBase64}:${derivedKeyBase64}`. Scrypt is built
- * into Node — no extra dep. The cost factor is ATM-grade (4-digit PINs
- * have only 10000 possibilities, so the security comes from the
- * authorizer needing to be physically present, not the hash strength).
+ * Stored format: `${saltBase64}:${derivedKeyBase64}`. Cost factor is
+ * ATM-grade — security comes primarily from the authorizer being
+ * physically present, not the hash itself.
  */
 
 const KEYLEN = 32;
@@ -28,25 +29,9 @@ export function verifyPin(pin: string, stored: string): boolean {
   return timingSafeEqual(computed, expected);
 }
 
-/** 4–6 digit numeric PIN. Server-side guard against injection / non-digit. */
-export function isValidPinFormat(pin: string): boolean {
-  return /^\d{4,6}$/.test(pin);
-}
-
-/** The three operations gated by PIN. Sales (penjualan) is intentionally excluded. */
-export type PosOperation = "production" | "withdrawal" | "opname";
-
-export const POS_OPERATION_AUTHORIZER_COLUMN: Record<
-  PosOperation,
-  "production_authorizer_id" | "withdrawal_authorizer_id" | "opname_authorizer_id"
-> = {
-  production: "production_authorizer_id",
-  withdrawal: "withdrawal_authorizer_id",
-  opname: "opname_authorizer_id",
-};
-
-export const POS_OPERATION_LABEL_ID: Record<PosOperation, string> = {
-  production: "Produksi",
-  withdrawal: "Penarikan",
-  opname: "Opname",
-};
+export {
+  isValidPinFormat,
+  POS_OPERATION_AUTHORIZER_COLUMN,
+  POS_OPERATION_LABEL_ID,
+  type PosOperation,
+} from "./pos-pin-format";

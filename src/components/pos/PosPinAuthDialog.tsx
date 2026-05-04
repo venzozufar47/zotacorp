@@ -99,7 +99,12 @@ export function PosPinAuthDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 backdrop-blur-sm p-4 animate-fade-up">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 backdrop-blur-sm p-4 animate-fade-up"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Otorisasi ${operationLabel}`}
+    >
       <div
         className={cn(
           "w-[320px] max-w-full bg-card rounded-2xl border border-border/70 shadow-2xl overflow-hidden",

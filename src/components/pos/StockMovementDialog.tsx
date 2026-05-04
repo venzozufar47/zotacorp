@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { createStockMovement } from "@/lib/actions/pos-stock.actions";
+import { POS_OPERATION_LABEL_ID } from "@/lib/pos-pin-format";
 import { useRouter } from "next/navigation";
 import { PosPinAuthDialog } from "./PosPinAuthDialog";
 
@@ -59,7 +60,8 @@ export function StockMovementDialog({
     return out;
   }, [products]);
 
-  const title = type === "production" ? "Tambah Produksi" : "Tambah Penarikan";
+  const opLabel = POS_OPERATION_LABEL_ID[type];
+  const title = `Tambah ${opLabel}`;
 
   const sku = options.find((o) => o.key === skuKey);
   const qtyNum = parseInt(qty, 10);
@@ -196,7 +198,7 @@ export function StockMovementDialog({
       <PosPinAuthDialog
         open={pinOpen}
         authorizerName={authorizer?.fullName ?? null}
-        operationLabel={type === "production" ? "Produksi" : "Penarikan"}
+        operationLabel={opLabel}
         preview={previewLabel}
         pending={pending}
         error={pinError}
