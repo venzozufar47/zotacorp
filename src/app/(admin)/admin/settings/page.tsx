@@ -4,10 +4,12 @@ import { redirect } from "next/navigation";
 import {
   getCurrentUser,
   getCurrentRole,
+  getCurrentProfile,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { AttendanceSettingsForm } from "@/components/admin/AttendanceSettingsForm";
 import { LanguageCard } from "@/components/settings/LanguageCard";
+import { PosPinCard } from "@/components/profile/PosPinCard";
 import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCard";
 import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { ThemeSettingsCard } from "@/components/admin/ThemeSettingsCard";
@@ -29,7 +31,7 @@ export default async function AdminSettingsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes] =
+  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile] =
     await Promise.all([
       getCachedAttendanceSettings(),
       listWhatsAppRecipients(),
@@ -40,6 +42,7 @@ export default async function AdminSettingsPage() {
         .from("profiles")
         .select("id, full_name, email")
         .order("full_name"),
+      getCurrentProfile(),
     ]);
   const employees = (employeesRes.data ?? []).map((e) => ({
     id: e.id,
@@ -89,6 +92,7 @@ export default async function AdminSettingsPage() {
         }))}
       />
       <LanguageCard />
+      <PosPinCard hasPin={!!adminProfile?.pos_pin_hash} />
     </div>
   );
 }

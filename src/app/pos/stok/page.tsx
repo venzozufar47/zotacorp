@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { findPosAccountForCurrentUser, listActivePosProducts } from "@/lib/actions/pos.actions";
 import {
+  getPosAuthorizers,
   listExcludedStockProducts,
   listStockMovements,
   listStockOnHand,
@@ -18,13 +19,15 @@ export default async function PosStockPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const [onHand, movements, opnames, products, excluded] = await Promise.all([
-    listStockOnHand(account.id),
-    listStockMovements(account.id, 100),
-    listStockOpnames(account.id, 50),
-    listActivePosProducts(account.id),
-    listExcludedStockProducts(account.id),
-  ]);
+  const [onHand, movements, opnames, products, excluded, authorizers] =
+    await Promise.all([
+      listStockOnHand(account.id),
+      listStockMovements(account.id, 100),
+      listStockOpnames(account.id, 50),
+      listActivePosProducts(account.id),
+      listExcludedStockProducts(account.id),
+      getPosAuthorizers(account.id),
+    ]);
 
   // Dialog Produksi/Penarikan cuma butuh produk yang dihitung di stok,
   // dan untuk produk aggregate-variants varian di-strip supaya pilihan
@@ -44,6 +47,7 @@ export default async function PosStockPage() {
       opnames={opnames}
       products={movementProducts}
       excluded={excluded}
+      authorizers={authorizers}
     />
   );
 }

@@ -8,11 +8,15 @@ import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import type {
   ExcludedStockProduct,
+  PosAuthorizerInfo,
   StockMovementRow,
   StockOnHand,
   StockOpnameSummary,
 } from "@/lib/actions/pos-stock.actions";
-import { setProductStockTracking } from "@/lib/actions/pos-stock.actions";
+import {
+  deleteStockMovement,
+  setProductStockTracking,
+} from "@/lib/actions/pos-stock.actions";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { StockMovementDialog } from "./StockMovementDialog";
 
@@ -26,6 +30,7 @@ interface Props {
   opnames: StockOpnameSummary[];
   products: PosProduct[];
   excluded: ExcludedStockProduct[];
+  authorizers: PosAuthorizerInfo;
 }
 
 const TABS: { id: Tab; label: string }[] = [
@@ -43,6 +48,7 @@ export function StockLandingClient({
   opnames,
   products,
   excluded,
+  authorizers,
 }: Props) {
   const [tab, setTab] = useState<Tab>("on-hand");
   const [dialog, setDialog] = useState<"production" | "withdrawal" | null>(null);
@@ -86,6 +92,7 @@ export function StockLandingClient({
 
       {tab === "produksi" && (
         <MovementPanel
+          bankAccountId={bankAccountId}
           rows={produksi}
           type="production"
           onAdd={() => setDialog("production")}
@@ -94,6 +101,7 @@ export function StockLandingClient({
 
       {tab === "penarikan" && (
         <MovementPanel
+          bankAccountId={bankAccountId}
           rows={penarikan}
           type="withdrawal"
           onAdd={() => setDialog("withdrawal")}
@@ -107,6 +115,11 @@ export function StockLandingClient({
           bankAccountId={bankAccountId}
           products={products}
           type={dialog}
+          authorizer={
+            dialog === "production"
+              ? authorizers.production
+              : authorizers.withdrawal
+          }
           onClose={() => setDialog(null)}
         />
       )}
@@ -305,16 +318,35 @@ function OnHandPanel({
 }
 
 function MovementPanel({
+  bankAccountId,
   rows,
   type,
   onAdd,
 }: {
+  bankAccountId: string;
   rows: StockMovementRow[];
   type: "production" | "withdrawal";
   onAdd: () => void;
 }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const label = type === "production" ? "Produksi" : "Penarikan";
   const sign = type === "production" ? "+" : "−";
+
+  function handleDelete(movementId: string) {
+    startTransition(async () => {
+      const res = await deleteStockMovement({ bankAccountId, movementId });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`${label} dihapus.`);
+      setConfirmId(null);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-3">
       <button
@@ -328,29 +360,55 @@ function MovementPanel({
         <Empty text={`Belum ada ${label.toLowerCase()}.`} />
       ) : (
         <div className="space-y-1.5">
-          {rows.map((m) => (
-            <div
-              key={m.id}
-              className="rounded-xl border border-border bg-card px-4 py-3"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {skuLabel(m.productName, m.variantName)}
-                </p>
-                <p className="text-sm font-semibold tabular-nums shrink-0">
-                  {sign}
-                  {m.qty}
-                </p>
+          {rows.map((m) => {
+            const confirming = confirmId === m.id;
+            return (
+              <div
+                key={m.id}
+                className="group/row rounded-xl border border-border bg-card px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {skuLabel(m.productName, m.variantName)}
+                  </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <p className="text-sm font-semibold tabular-nums">
+                      {sign}
+                      {m.qty}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirming ? handleDelete(m.id) : setConfirmId(m.id)
+                      }
+                      onBlur={() => setConfirmId(null)}
+                      disabled={pending}
+                      title={confirming ? "Klik lagi untuk konfirmasi" : "Hapus"}
+                      className={`grid place-items-center size-7 rounded-full transition disabled:opacity-50 ${
+                        confirming
+                          ? "bg-destructive text-white"
+                          : "text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/row:opacity-100 focus:opacity-100"
+                      }`}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                  <span className="tabular-nums">
+                    {m.movementDate}
+                    {m.movementTime ? ` · ${m.movementTime}` : ""}
+                  </span>
+                  {m.notes && <span className="truncate italic">{m.notes}</span>}
+                </div>
+                {confirming && (
+                  <p className="mt-1 text-[10px] text-destructive font-medium">
+                    Klik X lagi untuk hapus
+                  </p>
+                )}
               </div>
-              <div className="mt-0.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                <span className="tabular-nums">
-                  {m.movementDate}
-                  {m.movementTime ? ` · ${m.movementTime}` : ""}
-                </span>
-                {m.notes && <span className="truncate italic">{m.notes}</span>}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

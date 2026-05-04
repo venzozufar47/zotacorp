@@ -6,11 +6,14 @@ import { toast } from "sonner";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { createStockMovement } from "@/lib/actions/pos-stock.actions";
 import { useRouter } from "next/navigation";
+import { PosPinAuthDialog } from "./PosPinAuthDialog";
 
 interface Props {
   bankAccountId: string;
   products: PosProduct[];
   type: "production" | "withdrawal";
+  /** Designated PIN authorizer for this op. Null = no PIN gate. */
+  authorizer: { userId: string; fullName: string } | null;
   onClose: () => void;
 }
 
@@ -26,6 +29,7 @@ export function StockMovementDialog({
   bankAccountId,
   products,
   type,
+  authorizer,
   onClose,
 }: Props) {
   const router = useRouter();
@@ -33,6 +37,8 @@ export function StockMovementDialog({
   const [skuKey, setSkuKey] = useState("");
   const [qty, setQty] = useState("");
   const [notes, setNotes] = useState("");
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const options = useMemo<SkuOption[]>(() => {
     const out: SkuOption[] = [];
@@ -55,14 +61,15 @@ export function StockMovementDialog({
 
   const title = type === "production" ? "Tambah Produksi" : "Tambah Penarikan";
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const sku = options.find((o) => o.key === skuKey);
-    if (!sku) return toast.error("Pilih SKU dulu");
-    const qtyNum = parseInt(qty, 10);
-    if (!Number.isInteger(qtyNum) || qtyNum <= 0)
-      return toast.error("Qty harus > 0");
+  const sku = options.find((o) => o.key === skuKey);
+  const qtyNum = parseInt(qty, 10);
+  const previewLabel =
+    sku && Number.isFinite(qtyNum) && qtyNum > 0
+      ? `${sku.label} ${type === "production" ? "+" : "−"}${qtyNum}`
+      : "";
 
+  function submitWithPin(pin: string | undefined) {
+    if (!sku) return;
     startTransition(async () => {
       const res = await createStockMovement({
         bankAccountId,
@@ -71,15 +78,35 @@ export function StockMovementDialog({
         type,
         qty: qtyNum,
         notes: notes.trim() || undefined,
+        pin,
       });
       if (!res.ok) {
-        toast.error(res.error);
+        if (pin !== undefined) {
+          // PIN failure → keep modal open with shake + error msg
+          setPinError(res.error);
+        } else {
+          toast.error(res.error);
+        }
         return;
       }
       toast.success(`${title} tersimpan`);
+      setPinOpen(false);
       onClose();
       router.refresh();
     });
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sku) return toast.error("Pilih SKU dulu");
+    if (!Number.isInteger(qtyNum) || qtyNum <= 0)
+      return toast.error("Qty harus > 0");
+    if (authorizer) {
+      setPinError(null);
+      setPinOpen(true);
+      return;
+    }
+    submitWithPin(undefined);
   };
 
   return (
@@ -165,6 +192,22 @@ export function StockMovementDialog({
           </div>
         </form>
       </div>
+
+      <PosPinAuthDialog
+        open={pinOpen}
+        authorizerName={authorizer?.fullName ?? null}
+        operationLabel={type === "production" ? "Produksi" : "Penarikan"}
+        preview={previewLabel}
+        pending={pending}
+        error={pinError}
+        onSubmit={(pin) => submitWithPin(pin)}
+        onClose={() => {
+          if (!pending) {
+            setPinOpen(false);
+            setPinError(null);
+          }
+        }}
+      />
     </div>
   );
 }

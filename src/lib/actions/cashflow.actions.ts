@@ -1615,3 +1615,112 @@ export async function listMyAssignedBankAccounts(): Promise<
     businessUnit: a.business_unit,
   }));
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// POS authorizer assignment — admin sets who's responsible for each
+// non-sales operation per rekening. Their PIN is required at submit.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface RekeningAuthorizerCandidate {
+  userId: string;
+  fullName: string;
+  hasPin: boolean;
+}
+
+/**
+ * List the bank account's POS-eligible assignees (full or pos_only)
+ * with a flag for whether each has a POS PIN set. Admin uses this to
+ * pick authorizers in the rekening's "Otorisasi POS" card.
+ */
+export async function listPosAuthorizerCandidates(
+  bankAccountId: string
+): Promise<RekeningAuthorizerCandidate[]> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return [];
+  const supabase = await createClient();
+  const { data: assignees } = await supabase
+    .from("bank_account_assignees")
+    .select("user_id")
+    .eq("bank_account_id", bankAccountId);
+  const ids = (assignees ?? []).map((a) => a.user_id);
+  if (ids.length === 0) return [];
+  const { data: profs } = await supabase
+    .from("profiles")
+    .select("id, full_name, pos_pin_hash")
+    .in("id", ids)
+    .order("full_name");
+  return (profs ?? []).map((p) => ({
+    userId: p.id,
+    fullName: p.full_name?.trim() || "(tanpa nama)",
+    hasPin: !!p.pos_pin_hash,
+  }));
+}
+
+export interface RekeningAuthorizers {
+  productionUserId: string | null;
+  withdrawalUserId: string | null;
+  opnameUserId: string | null;
+}
+
+export async function getRekeningAuthorizers(
+  bankAccountId: string
+): Promise<RekeningAuthorizers> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("bank_accounts")
+    .select(
+      "production_authorizer_id, withdrawal_authorizer_id, opname_authorizer_id"
+    )
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  return {
+    productionUserId: data?.production_authorizer_id ?? null,
+    withdrawalUserId: data?.withdrawal_authorizer_id ?? null,
+    opnameUserId: data?.opname_authorizer_id ?? null,
+  };
+}
+
+export async function setRekeningAuthorizers(input: {
+  bankAccountId: string;
+  productionUserId: string | null;
+  withdrawalUserId: string | null;
+  opnameUserId: string | null;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = await createClient();
+  // Validate any non-null assignees actually belong to this rekening.
+  const candidates = [
+    input.productionUserId,
+    input.withdrawalUserId,
+    input.opnameUserId,
+  ].filter((v): v is string => !!v);
+  if (candidates.length > 0) {
+    const { data: assignees } = await supabase
+      .from("bank_account_assignees")
+      .select("user_id")
+      .eq("bank_account_id", input.bankAccountId)
+      .in("user_id", candidates);
+    const valid = new Set((assignees ?? []).map((a) => a.user_id));
+    for (const id of candidates) {
+      if (!valid.has(id)) {
+        return {
+          ok: false,
+          error: "Authorizer harus ditugaskan dulu sebagai POS-assignee rekening ini.",
+        };
+      }
+    }
+  }
+  const { error } = await supabase
+    .from("bank_accounts")
+    .update({
+      production_authorizer_id: input.productionUserId,
+      withdrawal_authorizer_id: input.withdrawalUserId,
+      opname_authorizer_id: input.opnameUserId,
+    })
+    .eq("id", input.bankAccountId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/finance", "layout");
+  revalidatePath("/pos", "layout");
+  return { ok: true };
+}

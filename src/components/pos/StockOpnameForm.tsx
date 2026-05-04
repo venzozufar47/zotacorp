@@ -7,11 +7,14 @@ import { ArrowLeft, ClipboardCheck, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { OpnameFormSku } from "@/lib/actions/pos-stock.actions";
 import { createStockOpname } from "@/lib/actions/pos-stock.actions";
+import { PosPinAuthDialog } from "./PosPinAuthDialog";
 
 interface Props {
   bankAccountId: string;
   accountName: string;
   skus: OpnameFormSku[];
+  /** Designated PIN authorizer for opname. Null = no PIN gate. */
+  authorizer: { userId: string; fullName: string } | null;
 }
 
 function skuKey(s: OpnameFormSku) {
@@ -22,7 +25,12 @@ function skuLabel(s: OpnameFormSku) {
   return s.variantName ? `${s.productName} · ${s.variantName}` : s.productName;
 }
 
-export function StockOpnameForm({ bankAccountId, accountName, skus }: Props) {
+export function StockOpnameForm({
+  bankAccountId,
+  accountName,
+  skus,
+  authorizer,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [counts, setCounts] = useState<Record<string, string>>({});
@@ -33,6 +41,8 @@ export function StockOpnameForm({ bankAccountId, accountName, skus }: Props) {
     () => new Set(skus.map(skuKey))
   );
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const skuByKey = useMemo(() => {
     const map = new Map<string, OpnameFormSku>();
@@ -72,34 +82,45 @@ export function StockOpnameForm({ bankAccountId, accountName, skus }: Props) {
     setPickerOpen(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (includedSkus.length === 0)
-      return toast.error("Minimal satu SKU harus disertakan");
+  const items = includedSkus.map((s) => {
+    const raw = counts[skuKey(s)] ?? "";
+    const n = raw === "" ? 0 : parseInt(raw, 10);
+    return {
+      productId: s.productId,
+      variantId: s.variantId,
+      physicalCount: Number.isFinite(n) ? n : 0,
+    };
+  });
 
-    const items = includedSkus.map((s) => {
-      const raw = counts[skuKey(s)] ?? "";
-      const n = raw === "" ? 0 : parseInt(raw, 10);
-      return {
-        productId: s.productId,
-        variantId: s.variantId,
-        physicalCount: Number.isFinite(n) ? n : 0,
-      };
-    });
-
+  function submitWithPin(pin: string | undefined) {
     startTransition(async () => {
       const res = await createStockOpname({
         bankAccountId,
         notes: notes.trim() || undefined,
         items,
+        pin,
       });
       if (!res.ok) {
-        toast.error(res.error);
+        if (pin !== undefined) setPinError(res.error);
+        else toast.error(res.error);
         return;
       }
       toast.success("Opname tersimpan");
+      setPinOpen(false);
       router.push(`/pos/stok/opname/${res.data!.opnameId}`);
     });
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (includedSkus.length === 0)
+      return toast.error("Minimal satu SKU harus disertakan");
+    if (authorizer) {
+      setPinError(null);
+      setPinOpen(true);
+      return;
+    }
+    submitWithPin(undefined);
   };
 
   return (
@@ -256,6 +277,22 @@ export function StockOpnameForm({ bankAccountId, accountName, skus }: Props) {
           </div>
         </div>
       )}
+
+      <PosPinAuthDialog
+        open={pinOpen}
+        authorizerName={authorizer?.fullName ?? null}
+        operationLabel="Opname"
+        preview={`Opname ${includedSkus.length} SKU`}
+        pending={pending}
+        error={pinError}
+        onSubmit={(pin) => submitWithPin(pin)}
+        onClose={() => {
+          if (!pending) {
+            setPinOpen(false);
+            setPinError(null);
+          }
+        }}
+      />
     </div>
   );
 }

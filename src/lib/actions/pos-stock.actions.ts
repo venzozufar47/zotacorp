@@ -7,6 +7,60 @@ import {
   type ActionResult,
 } from "./_gates";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
+import {
+  verifyPin,
+  isValidPinFormat,
+  POS_OPERATION_AUTHORIZER_COLUMN,
+  POS_OPERATION_LABEL_ID,
+  type PosOperation,
+} from "@/lib/pos-pin";
+
+/**
+ * Authorization gate. If the rekening has an authorizer assigned for
+ * this operation, the submitter must provide that authorizer's PIN.
+ * If no authorizer is set, the operation runs without a PIN (back-compat).
+ */
+async function verifyAuthorization(
+  bankAccountId: string,
+  op: PosOperation,
+  pin: string | undefined
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const column = POS_OPERATION_AUTHORIZER_COLUMN[op];
+  const supabase = await createClient();
+  const { data: ba } = await supabase
+    .from("bank_accounts")
+    .select(column)
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  const authorizerId = (ba as Record<string, string | null> | null)?.[column];
+  if (!authorizerId) return { ok: true };
+  if (!pin) {
+    return { ok: false, error: "PIN authorization required" };
+  }
+  if (!isValidPinFormat(pin)) {
+    return { ok: false, error: "PIN harus 4–6 digit angka." };
+  }
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("pos_pin_hash, full_name")
+    .eq("id", authorizerId)
+    .maybeSingle();
+  if (!prof?.pos_pin_hash) {
+    const who = prof?.full_name?.trim() || "Authorizer";
+    return {
+      ok: false,
+      error: `${who} belum set PIN POS — minta dia buka halaman profil dulu.`,
+    };
+  }
+  if (!verifyPin(pin, prof.pos_pin_hash)) {
+    const opLabel = POS_OPERATION_LABEL_ID[op];
+    return {
+      ok: false,
+      error: `PIN ${opLabel} salah.`,
+    };
+  }
+  return { ok: true };
+}
 
 /**
  * POS stock opname subsystem.
@@ -431,11 +485,21 @@ export async function createStockMovement(input: {
   type: StockMovementType;
   qty: number;
   notes?: string;
+  /** Authorizer's PIN. Required when the rekening has the relevant
+   *  authorizer assigned (production_authorizer_id /
+   *  withdrawal_authorizer_id). Ignored when authorizer is null. */
+  pin?: string;
 }): Promise<ActionResult<{ id: string }>> {
   const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!Number.isInteger(input.qty) || input.qty <= 0)
     return { ok: false, error: "Qty harus bilangan bulat > 0" };
+  const auth = await verifyAuthorization(
+    input.bankAccountId,
+    input.type,
+    input.pin
+  );
+  if (!auth.ok) return { ok: false, error: auth.error };
 
   const now = new Date();
   const supabase = await createClient();
@@ -470,6 +534,74 @@ export async function createStockMovement(input: {
   return { ok: true, data: { id: data.id } };
 }
 
+/**
+ * Resolve the per-operation authorizer config for a rekening. The
+ * stock landing page passes this to the StockMovementDialog +
+ * StockOpnameForm so they know whether to surface the PIN modal.
+ */
+export interface PosAuthorizerInfo {
+  production: { userId: string; fullName: string } | null;
+  withdrawal: { userId: string; fullName: string } | null;
+  opname: { userId: string; fullName: string } | null;
+}
+
+export async function getPosAuthorizers(
+  bankAccountId: string
+): Promise<PosAuthorizerInfo> {
+  const supabase = await createClient();
+  const { data: ba } = await supabase
+    .from("bank_accounts")
+    .select(
+      "production_authorizer_id, withdrawal_authorizer_id, opname_authorizer_id"
+    )
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  const ids = [
+    ba?.production_authorizer_id,
+    ba?.withdrawal_authorizer_id,
+    ba?.opname_authorizer_id,
+  ].filter((v): v is string => !!v);
+  if (ids.length === 0) {
+    return { production: null, withdrawal: null, opname: null };
+  }
+  const { data: profs } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", ids);
+  const byId = new Map(
+    (profs ?? []).map((p) => [p.id, p.full_name?.trim() || "Authorizer"])
+  );
+  const resolve = (id: string | null | undefined) =>
+    id ? { userId: id, fullName: byId.get(id) ?? "Authorizer" } : null;
+  return {
+    production: resolve(ba?.production_authorizer_id),
+    withdrawal: resolve(ba?.withdrawal_authorizer_id),
+    opname: resolve(ba?.opname_authorizer_id),
+  };
+}
+
+/**
+ * Hard-delete a single produksi/penarikan entry. Stock balance is the
+ * sum of movements + last opname, so removing an entry simply rolls
+ * its qty out of the running tally — no soft-delete needed.
+ */
+export async function deleteStockMovement(input: {
+  bankAccountId: string;
+  movementId: string;
+}): Promise<ActionResult<{ id: string }>> {
+  const gate = await requireAdminOrPosAssignee(input.bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("pos_stock_movements")
+    .delete()
+    .eq("id", input.movementId)
+    .eq("bank_account_id", input.bankAccountId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true, data: { id: input.movementId } };
+}
+
 export async function createStockOpname(input: {
   bankAccountId: string;
   notes?: string;
@@ -478,6 +610,8 @@ export async function createStockOpname(input: {
     variantId?: string | null;
     physicalCount: number;
   }>;
+  /** Authorizer's PIN. Required when rekening has `opname_authorizer_id` set. */
+  pin?: string;
 }): Promise<ActionResult<{ opnameId: string }>> {
   const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -487,6 +621,8 @@ export async function createStockOpname(input: {
     if (!Number.isInteger(it.physicalCount) || it.physicalCount < 0)
       return { ok: false, error: "Jumlah fisik harus bilangan bulat ≥ 0" };
   }
+  const auth = await verifyAuthorization(input.bankAccountId, "opname", input.pin);
+  if (!auth.ok) return { ok: false, error: auth.error };
 
   const supabase = await createClient();
 

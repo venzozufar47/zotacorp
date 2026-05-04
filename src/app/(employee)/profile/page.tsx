@@ -5,6 +5,7 @@ import { getCurrentUser, getCurrentProfile } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { AvatarCard } from "@/components/profile/AvatarCard";
+import { PosPinCard } from "@/components/profile/PosPinCard";
 import type { Profile } from "@/lib/supabase/types";
 import { getDictionary } from "@/lib/i18n/server";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
@@ -35,6 +36,7 @@ export default async function EmployeeProfilePage() {
         avatarSeed={profile.avatar_seed ?? null}
       />
       <ProfileForm profile={profile as Profile} businessUnits={businessUnits} />
+      <PosPinCard hasPin={!!(profile as Profile).pos_pin_hash} />
     </div>
   );
 }

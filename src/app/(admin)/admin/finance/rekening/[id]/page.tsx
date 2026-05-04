@@ -7,6 +7,11 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RekeningDetailClient } from "@/components/admin/finance/RekeningDetailClient";
+import { RekeningAuthorizersCard } from "@/components/admin/finance/RekeningAuthorizersCard";
+import {
+  getRekeningAuthorizers,
+  listPosAuthorizerCandidates,
+} from "@/lib/actions/cashflow.actions";
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
 import { getCategoryPresets, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
@@ -273,6 +278,12 @@ export default async function RekeningDetailPage({
         presets={resolvePresets(account)}
         isAdmin={isAdmin}
       />
+
+      {/* Otorisasi POS — admin assigns one PIN-authorizer per
+          non-sales operation. Only relevant for POS-enabled rekening. */}
+      {isAdmin && account.pos_enabled && (
+        <RekeningAuthorizersSection bankAccountId={account.id} />
+      )}
 
       {/* Kategori pemasukan & pengeluaran — admin-only breakdown for
           a user-picked date range. Non-admin assignees (e.g. kasir)
@@ -549,5 +560,23 @@ function BalRow({
         {sign ?? ""} Rp {value.toLocaleString("id-ID")}
       </p>
     </div>
+  );
+}
+
+async function RekeningAuthorizersSection({
+  bankAccountId,
+}: {
+  bankAccountId: string;
+}) {
+  const [authorizers, candidates] = await Promise.all([
+    getRekeningAuthorizers(bankAccountId),
+    listPosAuthorizerCandidates(bankAccountId),
+  ]);
+  return (
+    <RekeningAuthorizersCard
+      bankAccountId={bankAccountId}
+      initial={authorizers}
+      candidates={candidates}
+    />
   );
 }

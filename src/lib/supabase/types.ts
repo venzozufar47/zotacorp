@@ -256,11 +256,14 @@ export type Database = {
           id: string
           is_active: boolean
           last_synced_at: string | null
+          opname_authorizer_id: string | null
           pdf_password: string | null
           pos_enabled: boolean
+          production_authorizer_id: string | null
           source_sheet: string | null
           source_url: string | null
           updated_at: string
+          withdrawal_authorizer_id: string | null
         }
         Insert: {
           account_name: string
@@ -274,11 +277,14 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_synced_at?: string | null
+          opname_authorizer_id?: string | null
           pdf_password?: string | null
           pos_enabled?: boolean
+          production_authorizer_id?: string | null
           source_sheet?: string | null
           source_url?: string | null
           updated_at?: string
+          withdrawal_authorizer_id?: string | null
         }
         Update: {
           account_name?: string
@@ -292,11 +298,14 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_synced_at?: string | null
+          opname_authorizer_id?: string | null
           pdf_password?: string | null
           pos_enabled?: boolean
+          production_authorizer_id?: string | null
           source_sheet?: string | null
           source_url?: string | null
           updated_at?: string
+          withdrawal_authorizer_id?: string | null
         }
         Relationships: [
           {
@@ -309,6 +318,48 @@ export type Database = {
           {
             foreignKeyName: "bank_accounts_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_opname_authorizer_id_fkey"
+            columns: ["opname_authorizer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_opname_authorizer_id_fkey"
+            columns: ["opname_authorizer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_production_authorizer_id_fkey"
+            columns: ["production_authorizer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_production_authorizer_id_fkey"
+            columns: ["production_authorizer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_withdrawal_authorizer_id_fkey"
+            columns: ["withdrawal_authorizer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_withdrawal_authorizer_id_fkey"
+            columns: ["withdrawal_authorizer_id"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
@@ -739,6 +790,46 @@ export type Database = {
           },
         ]
       }
+      extra_work_kind_assignments: {
+        Row: {
+          created_at: string
+          kind_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          kind_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "extra_work_kind_assignments_kind_id_fkey"
+            columns: ["kind_id"]
+            isOneToOne: false
+            referencedRelation: "extra_work_kinds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_work_kind_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extra_work_kind_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       extra_work_kinds: {
         Row: {
           active: boolean
@@ -769,24 +860,6 @@ export type Database = {
           id?: string
           name?: string
           sort_order?: number
-        }
-        Relationships: []
-      }
-      extra_work_kind_assignments: {
-        Row: {
-          created_at: string
-          kind_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          kind_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          kind_id?: string
-          user_id?: string
         }
         Relationships: []
       }
@@ -966,42 +1039,6 @@ export type Database = {
           },
         ]
       }
-      payslip_settings_disputes: {
-        Row: {
-          admin_response: string | null
-          created_at: string
-          current_value: string | null
-          field: string
-          id: string
-          message: string
-          resolved_at: string | null
-          status: string
-          user_id: string
-        }
-        Insert: {
-          admin_response?: string | null
-          created_at?: string
-          current_value?: string | null
-          field: string
-          id?: string
-          message: string
-          resolved_at?: string | null
-          status?: string
-          user_id: string
-        }
-        Update: {
-          admin_response?: string | null
-          created_at?: string
-          current_value?: string | null
-          field?: string
-          id?: string
-          message?: string
-          resolved_at?: string | null
-          status?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       payslip_settings: {
         Row: {
           attendance_weight_pct: number
@@ -1092,6 +1129,57 @@ export type Database = {
           },
         ]
       }
+      payslip_settings_disputes: {
+        Row: {
+          admin_response: string | null
+          created_at: string
+          current_value: string | null
+          field: string
+          id: string
+          message: string
+          resolved_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_response?: string | null
+          created_at?: string
+          current_value?: string | null
+          field: string
+          id?: string
+          message: string
+          resolved_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_response?: string | null
+          created_at?: string
+          current_value?: string | null
+          field?: string
+          id?: string
+          message?: string
+          resolved_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payslip_settings_disputes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payslip_settings_disputes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payslips: {
         Row: {
           actual_work_days: number
@@ -1104,10 +1192,10 @@ export type Database = {
           debt_deduction_note: string | null
           deliverables_achievement_pct: number
           deliverables_pay: number
-          expected_work_days: number
           employee_response: string
           employee_response_at: string | null
           employee_response_message: string | null
+          expected_work_days: number
           extra_day_bonus: number
           extra_work_pay: number
           id: string
@@ -1142,10 +1230,10 @@ export type Database = {
           debt_deduction_note?: string | null
           deliverables_achievement_pct?: number
           deliverables_pay?: number
-          expected_work_days?: number
           employee_response?: string
           employee_response_at?: string | null
           employee_response_message?: string | null
+          expected_work_days?: number
           extra_day_bonus?: number
           extra_work_pay?: number
           id?: string
@@ -1180,10 +1268,10 @@ export type Database = {
           debt_deduction_note?: string | null
           deliverables_achievement_pct?: number
           deliverables_pay?: number
-          expected_work_days?: number
           employee_response?: string
           employee_response_at?: string | null
           employee_response_message?: string | null
+          expected_work_days?: number
           extra_day_bonus?: number
           extra_work_pay?: number
           id?: string
@@ -1621,11 +1709,12 @@ export type Database = {
           is_flexible_schedule: boolean
           is_probation: boolean
           job_role: string | null
-          payslip_excluded: boolean
           motto: string | null
           nickname: string | null
           npwp: string | null
+          payslip_excluded: boolean
           place_of_birth: string | null
+          pos_pin_hash: string | null
           position: string
           role: string
           shirt_size: string | null
@@ -1669,11 +1758,12 @@ export type Database = {
           is_flexible_schedule?: boolean
           is_probation?: boolean
           job_role?: string | null
-          payslip_excluded?: boolean
           motto?: string | null
           nickname?: string | null
           npwp?: string | null
+          payslip_excluded?: boolean
           place_of_birth?: string | null
+          pos_pin_hash?: string | null
           position?: string
           role?: string
           shirt_size?: string | null
@@ -1717,11 +1807,12 @@ export type Database = {
           is_flexible_schedule?: boolean
           is_probation?: boolean
           job_role?: string | null
-          payslip_excluded?: boolean
           motto?: string | null
           nickname?: string | null
           npwp?: string | null
+          payslip_excluded?: boolean
           place_of_birth?: string | null
+          pos_pin_hash?: string | null
           position?: string
           role?: string
           shirt_size?: string | null
@@ -1762,6 +1853,7 @@ export type Database = {
         Row: {
           error_message: string | null
           event_type: string
+          fonnte_id: string | null
           id: string
           message_body: string
           recipient_phone: string
@@ -1772,6 +1864,7 @@ export type Database = {
         Insert: {
           error_message?: string | null
           event_type: string
+          fonnte_id?: string | null
           id?: string
           message_body: string
           recipient_phone: string
@@ -1782,6 +1875,7 @@ export type Database = {
         Update: {
           error_message?: string | null
           event_type?: string
+          fonnte_id?: string | null
           id?: string
           message_body?: string
           recipient_phone?: string
