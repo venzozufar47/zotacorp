@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -21,6 +21,7 @@ export function BottomNav({
     { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home, color: "bg-primary" },
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
+    { href: "/suara", icon: Radio, label: "Suara", color: "bg-pop-emerald" },
     ...(hasFinance
       ? [
           {
