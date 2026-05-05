@@ -92,6 +92,8 @@ export async function POST(req: Request) {
     roomId: r.id,
     userId: profile.id,
     displayName: profile.full_name ?? profile.email ?? "Karyawan",
+    avatarUrl: profile.avatar_url ?? null,
+    avatarSeed: profile.avatar_seed ?? null,
   });
 
   return NextResponse.json({

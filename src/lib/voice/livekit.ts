@@ -34,6 +34,16 @@ export function liveKitRoomName(roomId: string): string {
 }
 
 /**
+ * Shape of `participant.metadata` for our rooms. Carries the avatar
+ * info so the in-room UI can match what the user sees elsewhere
+ * (dashboard, lobby) without each client re-querying profiles.
+ */
+export interface VoiceParticipantMetadata {
+  avatarUrl: string | null;
+  avatarSeed: string | null;
+}
+
+/**
  * Mint a 1-hour participant token. Identity = profile id (lets LiveKit
  * boot duplicate connections automatically — same identity in twice
  * disconnects the older one). Name = display name for UI tiles.
@@ -43,13 +53,20 @@ export async function mintAccessToken(opts: {
   roomId: string;
   userId: string;
   displayName: string;
+  avatarUrl: string | null;
+  avatarSeed: string | null;
   /** Whether the user can publish audio. Always true for v1; flag is
    *  here for future "listen-only" rooms. */
   canPublish?: boolean;
 }): Promise<string> {
+  const metadata: VoiceParticipantMetadata = {
+    avatarUrl: opts.avatarUrl,
+    avatarSeed: opts.avatarSeed,
+  };
   const at = new AccessToken(opts.env.apiKey, opts.env.apiSecret, {
     identity: opts.userId,
     name: opts.displayName,
+    metadata: JSON.stringify(metadata),
     ttl: 60 * 60, // 1 hour
   });
   at.addGrant({

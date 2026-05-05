@@ -17,7 +17,29 @@ interface Props {
   room: VoiceRoom;
   myUserId: string;
   myDisplayName: string;
+  myAvatarUrl: string | null;
+  myAvatarSeed: string | null;
   onLeave: () => void;
+}
+
+/** Shape of participant.metadata we ship from the server. Mirrors
+ *  VoiceParticipantMetadata in `src/lib/voice/livekit.ts`. */
+interface ParticipantMetadata {
+  avatarUrl: string | null;
+  avatarSeed: string | null;
+}
+
+function parseParticipantMetadata(raw: string | undefined): ParticipantMetadata {
+  if (!raw) return { avatarUrl: null, avatarSeed: null };
+  try {
+    const parsed = JSON.parse(raw) as Partial<ParticipantMetadata>;
+    return {
+      avatarUrl: parsed.avatarUrl ?? null,
+      avatarSeed: parsed.avatarSeed ?? null,
+    };
+  } catch {
+    return { avatarUrl: null, avatarSeed: null };
+  }
 }
 
 /**
@@ -25,7 +47,14 @@ interface Props {
  * <LiveKitRoom>. The wrapped <RoomInner /> handles all in-room UX so
  * we only render the LiveKit context once a token is in hand.
  */
-export function RoomClient({ room, myUserId, myDisplayName, onLeave }: Props) {
+export function RoomClient({
+  room,
+  myUserId,
+  myDisplayName,
+  myAvatarUrl,
+  myAvatarSeed,
+  onLeave,
+}: Props) {
   const [token, setToken] = useState<string | null>(null);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +169,8 @@ export function RoomClient({ room, myUserId, myDisplayName, onLeave }: Props) {
         roomName={room.name}
         myUserId={myUserId}
         myDisplayName={myDisplayName}
+        myAvatarUrl={myAvatarUrl}
+        myAvatarSeed={myAvatarSeed}
         onLeave={handleLeave}
       />
     </LiveKitRoom>
@@ -150,11 +181,15 @@ function RoomInner({
   roomName,
   myUserId,
   myDisplayName,
+  myAvatarUrl,
+  myAvatarSeed,
   onLeave,
 }: {
   roomName: string;
   myUserId: string;
   myDisplayName: string;
+  myAvatarUrl: string | null;
+  myAvatarSeed: string | null;
   onLeave: () => void;
 }) {
   const { localParticipant } = useLocalParticipant();
@@ -230,6 +265,14 @@ function RoomInner({
             const isMe = p.identity === myUserId;
             const speaking = p.isSpeaking;
             const name = isMe ? myDisplayName : p.name || p.identity;
+            // Prefer our local profile data for the local tile —
+            // metadata round-trips after publish, so it can lag by a
+            // few ms on first render. Remote tiles read from the
+            // token-shipped metadata so they always match what the
+            // user sees in the lobby.
+            const meta = parseParticipantMetadata(p.metadata);
+            const avatarUrl = isMe ? myAvatarUrl : meta.avatarUrl;
+            const avatarSeed = isMe ? myAvatarSeed : meta.avatarSeed;
             return (
               <div
                 key={p.identity}
@@ -239,6 +282,8 @@ function RoomInner({
                   src={resolveAvatarSrc({
                     id: p.identity,
                     full_name: name,
+                    avatar_url: avatarUrl,
+                    avatar_seed: avatarSeed,
                   })}
                   alt={name}
                   width={64}

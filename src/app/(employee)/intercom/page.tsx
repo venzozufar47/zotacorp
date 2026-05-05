@@ -96,6 +96,8 @@ export default async function IntercomPage() {
       initialRooms={lobbyRooms}
       myUserId={user.id}
       myDisplayName={profile?.full_name ?? profile?.email ?? "Karyawan"}
+      myAvatarUrl={profile?.avatar_url ?? null}
+      myAvatarSeed={profile?.avatar_seed ?? null}
     />
   );
 }

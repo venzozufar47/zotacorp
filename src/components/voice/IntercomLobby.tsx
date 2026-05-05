@@ -12,6 +12,8 @@ interface Props {
   initialRooms: VoiceRoomWithMembers[];
   myUserId: string;
   myDisplayName: string;
+  myAvatarUrl: string | null;
+  myAvatarSeed: string | null;
 }
 
 /**
@@ -24,7 +26,13 @@ interface Props {
  * rooms; cheaper than one subscription per room and re-renders are
  * O(N rooms) which is tiny.
  */
-export function IntercomLobby({ initialRooms, myUserId, myDisplayName }: Props) {
+export function IntercomLobby({
+  initialRooms,
+  myUserId,
+  myDisplayName,
+  myAvatarUrl,
+  myAvatarSeed,
+}: Props) {
   const [rooms, setRooms] = useState(initialRooms);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
@@ -97,6 +105,8 @@ export function IntercomLobby({ initialRooms, myUserId, myDisplayName }: Props) 
         room={active.room}
         myUserId={myUserId}
         myDisplayName={myDisplayName}
+        myAvatarUrl={myAvatarUrl}
+        myAvatarSeed={myAvatarSeed}
         onLeave={() => setActiveRoomId(null)}
       />
     );
