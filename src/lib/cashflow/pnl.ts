@@ -222,7 +222,7 @@ export async function fetchPnL(
   const { data: allocsRaw } = await supabase
     .from("cashflow_pusat_allocations")
     .select(
-      "period_year, period_month, side, category, semarang_amount, pare_amount, locked"
+      "period_year, period_month, side, category, semarang_amount, pare_amount, locked, locked_pusat_total"
     )
     .eq("business_unit", businessUnit)
     .gte("period_year", from.year)
@@ -232,7 +232,12 @@ export async function fetchPnL(
   // allocs keyed by "year-month|side|category"
   const allocMap = new Map<
     string,
-    { semarang: number; pare: number; locked: boolean }
+    {
+      semarang: number;
+      pare: number;
+      locked: boolean;
+      lockedPusatTotal: number | null;
+    }
   >();
   for (const a of allocsRaw ?? []) {
     const key = `${ym(a.period_year, a.period_month)}|${a.side}|${a.category}`;
@@ -240,6 +245,8 @@ export async function fetchPnL(
       semarang: Number(a.semarang_amount),
       pare: Number(a.pare_amount),
       locked: Boolean(a.locked),
+      lockedPusatTotal:
+        a.locked_pusat_total != null ? Number(a.locked_pusat_total) : null,
     });
   }
 
@@ -406,6 +413,14 @@ export async function fetchPnL(
   const creditCatSet = new Set(presets.credit);
   const rangeMonths = monthsBetween(from, to);
 
+  // Track allocations whose locked snapshot drifted from the now-
+  // computed Pusat total. After the report is built we flip those rows'
+  // `locked` to false in DB so the editor un-greys them on next render.
+  const pendingAutoUnlocks = new Map<
+    string,
+    { year: number; month: number; side: PnLSide; category: string }
+  >();
+
   // Build per-month report.
   const months: PnLMonth[] = rangeMonths.map(({ year, month }) => {
     const monthKey = ym(year, month);
@@ -468,6 +483,29 @@ export async function fetchPnL(
       const balanced = !unallocated && Math.abs(sum - pusatTotal) <= 1;
       const unbalanced = !unallocated && !balanced;
 
+      // Auto-unlock guard: if the row was locked at a snapshot Pusat
+      // total that no longer matches (admin re-categorized / edited /
+      // deleted underlying transactions), flip locked → false so the
+      // editor un-greys the inputs and admin can re-split. Schedule
+      // the DB write for after the report is built.
+      let effectiveLocked = Boolean(alloc?.locked);
+      if (
+        alloc?.locked &&
+        alloc.lockedPusatTotal != null &&
+        alloc.lockedPusatTotal !== pusatTotal
+      ) {
+        effectiveLocked = false;
+        const drift = pendingAutoUnlocks.get(allocKey);
+        if (!drift) {
+          pendingAutoUnlocks.set(allocKey, {
+            year: parseInt(monthKey.split("-")[0], 10),
+            month: parseInt(monthKey.split("-")[1], 10),
+            side,
+            category,
+          });
+        }
+      }
+
       const details = PUSAT_DETAIL_CATEGORIES.has(category)
         ? detailsByBucket
             .get(`${monthKey}|${k}`)
@@ -483,7 +521,7 @@ export async function fetchPnL(
         balanced,
         unallocated,
         unbalanced,
-        locked: Boolean(alloc?.locked),
+        locked: effectiveLocked,
         details,
       });
 
@@ -637,6 +675,25 @@ export async function fetchPnL(
       companyNetDividenByCategory,
     };
   });
+
+  // Reconcile drifted locks. One UPDATE per drifted row — typically
+  // 0 rows on a steady page, low cost on busy days. Errors swallowed
+  // so a transient DB hiccup doesn't break the report; next page load
+  // tries again.
+  if (pendingAutoUnlocks.size > 0) {
+    await Promise.all(
+      Array.from(pendingAutoUnlocks.values()).map((d) =>
+        supabase
+          .from("cashflow_pusat_allocations")
+          .update({ locked: false, locked_pusat_total: null })
+          .eq("business_unit", businessUnit)
+          .eq("period_year", d.year)
+          .eq("period_month", d.month)
+          .eq("side", d.side)
+          .eq("category", d.category)
+      )
+    );
+  }
 
   return {
     businessUnit,

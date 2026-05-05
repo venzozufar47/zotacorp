@@ -73,19 +73,42 @@ export async function POST(req: Request) {
   }
   const bu = bankAccount.business_unit;
 
-  // Fetch all transactions for the account. We apply the scope filter
-  // in JS since "row has null in either column" is awkward with
-  // Supabase's filter chaining.
-  const { data: txRows, error: fetchErr } = await supabase
-    .from("cashflow_transactions")
-    .select(
-      "id, transaction_date, transaction_time, source_destination, transaction_details, notes, description, debit, credit, running_balance, category, branch, cashflow_statements!inner(bank_account_id)"
-    )
-    .eq("cashflow_statements.bank_account_id", body.bankAccountId);
-  if (fetchErr) {
-    return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  // Fetch all transactions for the account. PostgREST caps responses
+  // at 1000 rows by default, so we paginate via .range() to make sure
+  // every row is in scope — accounts that exceed 1000 (Jago: 1.5k+)
+  // were silently missing rows past the cutoff before this loop.
+  type TxRow = {
+    id: string;
+    transaction_date: string;
+    transaction_time: string | null;
+    source_destination: string | null;
+    transaction_details: string | null;
+    notes: string | null;
+    description: string;
+    debit: string | number;
+    credit: string | number;
+    running_balance: string | number | null;
+    category: string | null;
+    branch: string | null;
+  };
+  const PAGE = 1000;
+  const rows: TxRow[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "id, transaction_date, transaction_time, source_destination, transaction_details, notes, description, debit, credit, running_balance, category, branch, cashflow_statements!inner(bank_account_id)"
+      )
+      .eq("cashflow_statements.bank_account_id", body.bankAccountId)
+      .order("transaction_date", { ascending: false })
+      .range(offset, offset + PAGE - 1);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    const page = (data ?? []) as TxRow[];
+    rows.push(...page);
+    if (page.length < PAGE) break;
   }
-  const rows = txRows ?? [];
   const targets = scope === "all"
     ? rows
     : rows.filter((r) => r.category === null || r.branch === null);

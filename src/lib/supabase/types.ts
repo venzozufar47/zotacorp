@@ -426,6 +426,7 @@ export type Database = {
           created_at: string
           id: string
           locked: boolean
+          locked_pusat_total: number | null
           pare_amount: number
           period_month: number
           period_year: number
@@ -439,6 +440,7 @@ export type Database = {
           created_at?: string
           id?: string
           locked?: boolean
+          locked_pusat_total?: number | null
           pare_amount?: number
           period_month: number
           period_year: number
@@ -452,6 +454,7 @@ export type Database = {
           created_at?: string
           id?: string
           locked?: boolean
+          locked_pusat_total?: number | null
           pare_amount?: number
           period_month?: number
           period_year?: number
@@ -2130,8 +2133,6 @@ export type PayslipBreakdown = {
   grace_period_min: number;
   overtime_days: Array<{ date: string; minutes: number; pay: number }>;
   late_days: Array<{ date: string; raw_minutes: number; after_grace_minutes: number; penalty: number; excused: boolean; penalty_pre_cap?: number; excuse_note?: string | null }>;
-  /** Daily pay cap = monthly_fixed_amount / expected_work_days. Penalty
-   *  per hari di-cap di angka ini supaya total denda 1 hari ≤ gaji 1 hari. */
   late_penalty_daily_cap?: number;
   extra_work_days?: Array<{ date: string; kind: string; pay: number }>;
   extra_work_rate_idr?: number;

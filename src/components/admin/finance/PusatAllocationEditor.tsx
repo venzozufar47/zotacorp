@@ -201,6 +201,9 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
       side: row.side,
       category: row.category,
       locked: nextLocked,
+      // Snapshot the Pusat total at lock time so fetchPnL can auto-
+      // unlock when transactions later shift the cumulative value.
+      pusatTotal: nextLocked ? row.pusatTotal : undefined,
     });
     if (!res.ok) {
       setRows((prev) =>

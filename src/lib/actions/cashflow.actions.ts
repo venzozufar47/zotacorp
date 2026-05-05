@@ -1341,14 +1341,25 @@ export async function setPusatAllocationLock(input: {
   side: "credit" | "debit";
   category: string;
   locked: boolean;
+  /** Pusat total at lock time. Stored so fetchPnL can detect drift
+   *  (transactions added/edited/deleted) and auto-unlock the row.
+   *  Required when `locked === true`; ignored on unlock (cleared). */
+  pusatTotal?: number;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const supabase = await createClient();
+  const update: { locked: boolean; locked_pusat_total: number | null } = {
+    locked: input.locked,
+    locked_pusat_total:
+      input.locked && input.pusatTotal != null
+        ? Math.round(input.pusatTotal)
+        : null,
+  };
   const { data, error } = await supabase
     .from("cashflow_pusat_allocations")
-    .update({ locked: input.locked })
+    .update(update)
     .eq("business_unit", input.businessUnit)
     .eq("period_year", input.periodYear)
     .eq("period_month", input.periodMonth)
