@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentProfile } from "@/lib/supabase/cached";
 import { readLiveKitEnv } from "@/lib/voice/livekit";
 import type { VoiceRoom, VoiceRoomWithMembers } from "@/lib/voice/types";
-import { SuaraLobby } from "@/components/voice/SuaraLobby";
+import { IntercomLobby } from "@/components/voice/IntercomLobby";
 
 /**
  * Voice channel lobby. Lists rooms accessible to the user (cross-brand
@@ -13,7 +13,7 @@ import { SuaraLobby } from "@/components/voice/SuaraLobby";
  * one. Joining a room hands off to <RoomClient> which connects to
  * LiveKit and exposes the push-to-talk UI.
  */
-export default async function SuaraPage() {
+export default async function IntercomPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
@@ -23,9 +23,9 @@ export default async function SuaraPage() {
   if (!env) {
     return (
       <div className="max-w-md mx-auto py-12 text-center space-y-3">
-        <h1 className="text-xl font-semibold text-foreground">Suara</h1>
+        <h1 className="text-xl font-semibold text-foreground">Intercom</h1>
         <p className="text-sm text-muted-foreground">
-          Fitur voice channel belum dikonfigurasi. Admin perlu mengisi
+          Fitur intercom belum dikonfigurasi. Admin perlu mengisi
           variabel <code className="font-mono">LIVEKIT_API_KEY</code>,{" "}
           <code className="font-mono">LIVEKIT_API_SECRET</code>, dan{" "}
           <code className="font-mono">NEXT_PUBLIC_LIVEKIT_WS_URL</code> di{" "}
@@ -92,7 +92,7 @@ export default async function SuaraPage() {
   }
 
   return (
-    <SuaraLobby
+    <IntercomLobby
       initialRooms={lobbyRooms}
       myUserId={user.id}
       myDisplayName={profile?.full_name ?? profile?.email ?? "Karyawan"}

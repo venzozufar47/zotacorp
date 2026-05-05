@@ -198,28 +198,34 @@ function RoomInner({
   }, [openMic, setMic]);
 
   return (
-    <div className="fixed inset-0 z-40 bg-background flex flex-col">
-      <header className="flex items-center justify-between px-4 py-3 border-b-2 border-foreground">
-        <div>
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Voice room
+    <div
+      className="fixed inset-0 z-[60] bg-background flex flex-col"
+      style={{ height: "100svh" }}
+    >
+      <header
+        className="flex items-center justify-between px-4 py-3 border-b-2 border-foreground gap-2"
+        style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Intercom
           </div>
-          <h2 className="text-lg font-semibold text-foreground leading-none mt-0.5">
+          <h2 className="text-base sm:text-lg font-semibold text-foreground leading-tight mt-0.5 truncate">
             {roomName}
           </h2>
         </div>
         <button
           type="button"
           onClick={onLeave}
-          className="flex items-center gap-1.5 rounded-xl bg-destructive text-destructive-foreground border-2 border-foreground px-3 py-1.5 text-sm font-medium"
+          className="flex items-center gap-1.5 rounded-xl bg-destructive text-destructive-foreground border-2 border-foreground px-3 py-2 text-sm font-medium active:scale-95 transition-transform shrink-0"
         >
           <PhoneOff size={14} strokeWidth={2.5} />
-          Keluar
+          <span>Keluar</span>
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+        <div className="grid grid-cols-2 [@media(min-width:380px)]:grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3">
           {participants.map((p) => {
             const isMe = p.identity === myUserId;
             const speaking = p.isSpeaking;
@@ -260,7 +266,7 @@ function RoomInner({
       </div>
 
       <footer
-        className="border-t-2 border-foreground bg-card p-4 flex flex-col items-center gap-3"
+        className="border-t-2 border-foreground bg-card px-4 pt-3 pb-4 flex flex-col items-center gap-2 sm:gap-3"
         style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
       >
         <button
@@ -270,7 +276,8 @@ function RoomInner({
           onPointerCancel={onPttUp}
           onPointerLeave={onPttUp}
           disabled={openMic}
-          className={`size-24 rounded-full border-4 border-foreground flex items-center justify-center transition-all select-none touch-none ${
+          aria-pressed={transmitting}
+          className={`size-20 sm:size-24 rounded-full border-4 border-foreground flex items-center justify-center transition-all select-none touch-none ${
             transmitting
               ? "bg-pop-emerald scale-105"
               : openMic
@@ -279,7 +286,7 @@ function RoomInner({
           }`}
           aria-label="Tekan & tahan untuk bicara"
         >
-          <Mic size={36} strokeWidth={2.5} />
+          <Mic className="size-8 sm:size-9" strokeWidth={2.5} />
         </button>
         <p className="text-xs font-medium text-muted-foreground">
           {openMic

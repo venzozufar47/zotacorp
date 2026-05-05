@@ -24,7 +24,7 @@ interface Props {
  * rooms; cheaper than one subscription per room and re-renders are
  * O(N rooms) which is tiny.
  */
-export function SuaraLobby({ initialRooms, myUserId, myDisplayName }: Props) {
+export function IntercomLobby({ initialRooms, myUserId, myDisplayName }: Props) {
   const [rooms, setRooms] = useState(initialRooms);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
@@ -104,17 +104,17 @@ export function SuaraLobby({ initialRooms, myUserId, myDisplayName }: Props) {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center gap-3">
-        <span className="flex items-center justify-center size-10 rounded-full bg-primary text-primary-foreground border-2 border-foreground">
+      <header className="flex items-start gap-3">
+        <span className="flex items-center justify-center size-10 rounded-full bg-primary text-primary-foreground border-2 border-foreground shrink-0">
           <Radio size={20} strokeWidth={2.5} />
         </span>
-        <div>
-          <h1 className="text-xl font-semibold text-foreground leading-none">
-            Suara
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg sm:text-xl font-semibold text-foreground leading-tight">
+            Intercom
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Voice channel antar cabang. Tekan & tahan tombol mic untuk
-            bicara.
+          <p className="text-xs text-muted-foreground mt-1 leading-snug">
+            Saluran suara antar cabang. Tekan &amp; tahan tombol mic
+            untuk bicara.
           </p>
         </div>
       </header>
@@ -128,45 +128,52 @@ export function SuaraLobby({ initialRooms, myUserId, myDisplayName }: Props) {
           {rooms.map(({ room, members }) => (
             <li
               key={room.id}
-              className="rounded-2xl border-2 border-foreground bg-card p-4 flex items-center gap-3"
+              className="rounded-2xl border-2 border-foreground bg-card p-3 sm:p-4 flex flex-wrap sm:flex-nowrap items-center gap-3"
             >
-              <span className="flex items-center justify-center size-12 rounded-full bg-pop-emerald text-foreground border-2 border-foreground shrink-0">
-                <Mic size={20} strokeWidth={2.5} />
+              <span className="flex items-center justify-center size-11 sm:size-12 rounded-full bg-pop-emerald text-foreground border-2 border-foreground shrink-0">
+                <Mic size={18} strokeWidth={2.5} />
               </span>
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-foreground truncate">
                   {room.name}
                 </div>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-1.5 mt-1 min-w-0">
                   <Users size={12} className="text-muted-foreground shrink-0" />
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground shrink-0">
                     {members.length === 0
                       ? "Kosong"
                       : `${members.length} aktif`}
                   </span>
-                  <div className="flex -space-x-2 ml-1">
-                    {members.slice(0, 4).map((m) => (
-                      <Image
-                        key={m.user_id}
-                        src={resolveAvatarSrc({
-                          full_name: m.full_name,
-                          avatar_url: m.avatar_url,
-                          avatar_seed: m.avatar_seed,
-                        })}
-                        alt={m.full_name ?? "Karyawan"}
-                        width={20}
-                        height={20}
-                        className="size-5 rounded-full border border-foreground bg-card"
-                        unoptimized
-                      />
-                    ))}
-                  </div>
+                  {members.length > 0 && (
+                    <div className="flex -space-x-2 ml-1 min-w-0 overflow-hidden">
+                      {members.slice(0, 3).map((m) => (
+                        <Image
+                          key={m.user_id}
+                          src={resolveAvatarSrc({
+                            full_name: m.full_name,
+                            avatar_url: m.avatar_url,
+                            avatar_seed: m.avatar_seed,
+                          })}
+                          alt={m.full_name ?? "Karyawan"}
+                          width={20}
+                          height={20}
+                          className="size-5 rounded-full border border-foreground bg-card shrink-0"
+                          unoptimized
+                        />
+                      ))}
+                      {members.length > 3 && (
+                        <span className="size-5 rounded-full border border-foreground bg-muted text-[10px] font-semibold text-muted-foreground flex items-center justify-center shrink-0">
+                          +{members.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setActiveRoomId(room.id)}
-                className="rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-3 py-1.5 text-sm font-medium hover:opacity-90 shrink-0"
+                className="w-full sm:w-auto rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-4 py-2 text-sm font-medium hover:opacity-90 shrink-0 active:scale-95 transition-transform"
               >
                 Masuk
               </button>

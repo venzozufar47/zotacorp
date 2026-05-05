@@ -24,7 +24,7 @@ export function Sidebar({
     { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home, color: "bg-primary" },
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
-    { href: "/suara", icon: Radio, label: "Suara", color: "bg-pop-emerald" },
+    { href: "/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
     ...(hasFinance
       ? [
           {

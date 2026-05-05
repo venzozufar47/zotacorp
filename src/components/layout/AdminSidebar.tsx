@@ -14,6 +14,7 @@ import {
   Home as HomeIcon,
   Search,
   ChevronUp,
+  Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -91,6 +92,12 @@ export function AdminSidebar({
           icon: PartyPopper,
           label: "Celebrations",
         },
+      ],
+    },
+    {
+      label: "Comms",
+      items: [
+        { href: "/admin/intercom", icon: Radio, label: "Intercom" },
       ],
     },
     {

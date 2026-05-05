@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, ClipboardList, Users, Settings, LogOut, Receipt, MapPin, Wallet, PartyPopper } from "lucide-react";
+import { Menu, X, ClipboardList, Users, Settings, LogOut, Receipt, MapPin, Wallet, PartyPopper, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -26,6 +26,7 @@ export function AdminMobileNav({
     { href: "/admin/locations", icon: MapPin, label: t.nav.locations, color: "bg-quaternary" },
     { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },
     { href: "/admin/celebrations", icon: PartyPopper, label: "Celebrations", color: "bg-pop-pink" },
+    { href: "/admin/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
     { href: "/admin/settings", icon: Settings, label: t.nav.settings, color: "bg-card" },
   ];
 
