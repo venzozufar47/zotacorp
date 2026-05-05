@@ -347,7 +347,7 @@ function RoomInner({
             onChange={(e) => setOpenMic(e.target.checked)}
             className="size-4"
           />
-          Mic terbuka (matikan PTT)
+          Selalu nyalakan mic
         </label>
       </footer>
     </div>

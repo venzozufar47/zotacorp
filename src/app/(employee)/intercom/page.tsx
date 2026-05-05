@@ -57,30 +57,30 @@ export default async function IntercomPage() {
     members: [],
   }));
   if (roomIds.length > 0) {
-    const { data: rawPresence } = await supabase
-      .from("voice_room_presence" as never)
-      .select(
-        "room_id, user_id, joined_at, profiles!inner(full_name, avatar_url, avatar_seed)"
-      )
-      .in("room_id", roomIds);
+    // RPC bypasses profiles RLS (SECURITY DEFINER) and returns only
+    // the three lobby-safe columns. The previous `profiles!inner` join
+    // silently dropped every row whose profile the caller couldn't
+    // read, making rooms look empty when coworkers were inside.
+    const { data: rawPresence } = await supabase.rpc(
+      "get_intercom_presence" as never,
+      { room_ids: roomIds } as never
+    );
     const presence = (rawPresence ?? []) as unknown as Array<{
       room_id: string;
       user_id: string;
       joined_at: string;
-      profiles: {
-        full_name: string | null;
-        avatar_url: string | null;
-        avatar_seed: string | null;
-      };
+      full_name: string | null;
+      avatar_url: string | null;
+      avatar_seed: string | null;
     }>;
     const byRoom = new Map<string, VoiceRoomWithMembers["members"]>();
     for (const p of presence) {
       const arr = byRoom.get(p.room_id) ?? [];
       arr.push({
         user_id: p.user_id,
-        full_name: p.profiles?.full_name ?? null,
-        avatar_url: p.profiles?.avatar_url ?? null,
-        avatar_seed: p.profiles?.avatar_seed ?? null,
+        full_name: p.full_name,
+        avatar_url: p.avatar_url,
+        avatar_seed: p.avatar_seed,
         joined_at: p.joined_at,
       });
       byRoom.set(p.room_id, arr);
