@@ -97,6 +97,8 @@ export default async function AdminUsersPage() {
       work_start_time: toHHMM(p.work_start_time) ?? "09:00",
       work_end_time: toHHMM(p.work_end_time) ?? "18:00",
       grace_period_min: p.grace_period_min ?? 15,
+      workday_check_enabled: p.workday_check_enabled ?? false,
+      workdays: p.workdays ?? 126,
       profile_complete: profileComplete,
       assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
       payslip_excluded: p.payslip_excluded ?? false,

@@ -9,6 +9,7 @@ import {
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { isWorkdayFor, jakartaDayOfWeek } from "@/lib/utils/workdays";
 import { notifyAdminAttendance } from "@/lib/whatsapp/attendance-notify";
 import { evaluateCheckIn, evaluateCheckOut } from "@/lib/location/enforce";
 import {
@@ -37,12 +38,32 @@ function computeCheckInStatus(
   userSettings: {
     work_start_time: string;
     grace_period_min: number;
+    /** When true, non-workday check-ins land as `bonus`. Off = old
+     *  behaviour (every day uses work_start_time). */
+    workday_check_enabled?: boolean;
+    /** Bitmask of standard work weekdays. Only consulted when
+     *  `workday_check_enabled` is true. */
+    workdays?: number;
   },
   timezone: string,
   isFlexible: boolean
-): { status: "on_time" | "late" | "flexible" | "unknown"; late_minutes: number } {
+): {
+  status: "on_time" | "late" | "flexible" | "bonus" | "unknown";
+  late_minutes: number;
+  bonus_day: boolean;
+} {
   if (isFlexible) {
-    return { status: "flexible", late_minutes: 0 };
+    return { status: "flexible", late_minutes: 0, bonus_day: false };
+  }
+
+  // Opt-in workday gate: when enabled, a check-in falling on a day
+  // outside the employee's standard workdays bitmask lands as `bonus`
+  // — counted but not penalised. Streak engine skips it too.
+  if (userSettings.workday_check_enabled && userSettings.workdays != null) {
+    const dow = jakartaDayOfWeek(checkedInAt, timezone);
+    if (!isWorkdayFor(userSettings.workdays, dow)) {
+      return { status: "bonus", late_minutes: 0, bonus_day: true };
+    }
   }
 
   try {
@@ -66,15 +87,15 @@ function computeCheckInStatus(
     startTime.setHours(startH, startM, 0, 0);
 
     if (checkinLocal <= cutoff) {
-      return { status: "on_time", late_minutes: 0 };
+      return { status: "on_time", late_minutes: 0, bonus_day: false };
     }
 
     const lateMs = checkinLocal.getTime() - startTime.getTime();
     const lateMinutes = Math.floor(lateMs / 60_000);
 
-    return { status: "late", late_minutes: lateMinutes };
+    return { status: "late", late_minutes: lateMinutes, bonus_day: false };
   } catch {
-    return { status: "unknown", late_minutes: 0 };
+    return { status: "unknown", late_minutes: 0, bonus_day: false };
   }
 }
 
@@ -125,7 +146,7 @@ export async function checkIn(payload: CheckInPayload) {
   // Get profile for per-user working time settings + name (used in WA notify)
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, is_flexible_schedule, work_start_time, work_end_time, grace_period_min")
+    .select("full_name, is_flexible_schedule, work_start_time, work_end_time, grace_period_min, workday_check_enabled, workdays")
     .eq("id", user.id)
     .single();
 
@@ -134,17 +155,19 @@ export async function checkIn(payload: CheckInPayload) {
   const timezone = settings?.timezone ?? "Asia/Jakarta";
 
   const now = new Date();
-  const { status, late_minutes } = profile
+  const { status, late_minutes, bonus_day } = profile
     ? computeCheckInStatus(
         now,
         {
           work_start_time: profile.work_start_time,
           grace_period_min: profile.grace_period_min,
+          workday_check_enabled: profile.workday_check_enabled,
+          workdays: profile.workdays,
         },
         timezone,
         profile.is_flexible_schedule
       )
-    : { status: "unknown" as const, late_minutes: 0 };
+    : { status: "unknown" as const, late_minutes: 0, bonus_day: false };
 
   // Early-arrival flag: only meaningful on fixed schedules. Stamped at
   // check-in so later admin edits to work_start_time don't retroactively
@@ -178,6 +201,7 @@ export async function checkIn(payload: CheckInPayload) {
     late_checkout_reason: null,
     status,
     late_minutes,
+    bonus_day,
   };
   const result = reopen
     ? await supabase
@@ -247,7 +271,7 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
     // Last 120 days is more than any milestone window (100) and cheap.
     const { data: logs } = await supabase
       .from("attendance_logs")
-      .select("date, status")
+      .select("date, status, bonus_day")
       .eq("user_id", userId)
       .order("date", { ascending: false })
       .limit(120);
@@ -1318,7 +1342,7 @@ export async function getAttendanceMonthSummary(
         new Date(l.checked_out_at).getTime() -
         new Date(l.checked_in_at).getTime();
     }
-    if (l.status === "on_time" || l.status === "flexible") onTime++;
+    if (l.status === "on_time" || l.status === "flexible" || l.status === "bonus") onTime++;
     else if (l.status === "late") late++;
     else if (l.status === "late_excused") {
       late++; // still a late incident, just one the admin forgave
@@ -1498,4 +1522,82 @@ export async function getLiveAttendanceToday(): Promise<LiveAttendanceSnapshot> 
   };
 
   return { rows, nowIso: now.toISOString(), todayIso, counts };
+}
+
+
+/**
+ * Admin per-log workday classification override. Flipping `bonusDay`
+ * to true marks the row as a non-workday entry (status="bonus",
+ * late_minutes=0, no late penalty). Flipping back to false recomputes
+ * status + late_minutes against the row's `checked_in_at` and the
+ * employee's `work_start_time` / grace at that moment.
+ *
+ * Independent of `workday_check_enabled` — admin can flip any single
+ * log without changing the per-employee feature toggle.
+ */
+export async function setLogWorkdayClassification(
+  logId: string,
+  bonusDay: boolean
+): Promise<{ ok: true } | { error: string }> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+
+  const supabase = await createClient();
+  const { data: log } = await supabase
+    .from("attendance_logs")
+    .select("id, user_id, checked_in_at, status, late_minutes")
+    .eq("id", logId)
+    .maybeSingle();
+  if (!log) return { error: "Log tidak ditemukan." };
+
+  if (bonusDay) {
+    const { error } = await supabase
+      .from("attendance_logs")
+      .update({
+        bonus_day: true,
+        status: "bonus",
+        late_minutes: 0,
+        late_proof_status: null,
+        late_proof_admin_note: null,
+      })
+      .eq("id", logId);
+    if (error) return { error: error.message };
+  } else {
+    // Recompute status + late_minutes against the employee's schedule
+    // at the time of the original check-in. Same helper the runtime uses.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select(
+        "is_flexible_schedule, work_start_time, grace_period_min, workday_check_enabled, workdays"
+      )
+      .eq("id", log.user_id)
+      .maybeSingle();
+    const settings = await getCachedAttendanceSettings();
+    const tz = settings?.timezone ?? "Asia/Jakarta";
+    const recomputed = profile
+      ? computeCheckInStatus(
+          new Date(log.checked_in_at),
+          {
+            work_start_time: profile.work_start_time,
+            grace_period_min: profile.grace_period_min,
+            workday_check_enabled: profile.workday_check_enabled,
+            workdays: profile.workdays,
+          },
+          tz,
+          profile.is_flexible_schedule
+        )
+      : { status: "unknown" as const, late_minutes: 0, bonus_day: false };
+    const { error } = await supabase
+      .from("attendance_logs")
+      .update({
+        bonus_day: recomputed.bonus_day,
+        status: recomputed.status,
+        late_minutes: recomputed.late_minutes,
+      })
+      .eq("id", logId);
+    if (error) return { error: error.message };
+  }
+  revalidatePath("/admin/attendance");
+  revalidatePath("/attendance");
+  return { ok: true };
 }

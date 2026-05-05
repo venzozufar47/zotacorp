@@ -63,6 +63,11 @@ interface UserRow {
   /** HH:MM, normalized server-side. */
   work_end_time: string;
   grace_period_min: number;
+  /** Opt-in: when true, check-in consults the workdays bitmask and
+   *  classifies non-workday entries as `bonus` (no late penalty). */
+  workday_check_enabled: boolean;
+  /** Bitmask: bit 0=Sun … bit 6=Sat. Default 126 = Mon-Sat. */
+  workdays: number;
   profile_complete: boolean;
   /** IDs of attendance_locations this employee is allowed to check in at.
    *  Empty array = unrestricted (can check in anywhere). */
@@ -897,6 +902,8 @@ function ScheduleEditDialog({
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("18:00");
   const [grace, setGrace] = useState(15);
+  const [workdayCheckEnabled, setWorkdayCheckEnabled] = useState(false);
+  const [workdays, setWorkdays] = useState(126); // Mon–Sat default
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -908,6 +915,8 @@ function ScheduleEditDialog({
     setStart(row.work_start_time);
     setEnd(row.work_end_time);
     setGrace(row.grace_period_min);
+    setWorkdayCheckEnabled(row.workday_check_enabled);
+    setWorkdays(row.workdays);
     setError(null);
   }, [row]);
 
@@ -945,6 +954,8 @@ function ScheduleEditDialog({
           work_start_time: start,
           work_end_time: end,
           grace_period_min: Math.round(grace),
+          workday_check_enabled: workdayCheckEnabled,
+          workdays,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -1069,6 +1080,56 @@ function ScheduleEditDialog({
           {!flexible && (
             <div className="text-xs text-muted-foreground leading-relaxed">
               {tu.lateFormula}
+            </div>
+          )}
+
+          {/* Workday-aware check-in (opt-in) */}
+          {!flexible && (
+            <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={workdayCheckEnabled}
+                  onChange={(e) => setWorkdayCheckEnabled(e.target.checked)}
+                  className="size-4"
+                />
+                <span className="text-sm font-medium">
+                  Cek hari kerja saat check-in
+                </span>
+              </label>
+              <p className="text-[11.5px] text-muted-foreground leading-snug">
+                Jika aktif, check-in di hari di luar daftar di bawah akan
+                ditandai &ldquo;Bonus&rdquo; — tidak ada penalti telat,
+                dan tidak memengaruhi streak.
+              </p>
+              {workdayCheckEnabled && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {(["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"] as const).map(
+                    (label, dow) => {
+                      const on = (workdays & (1 << dow)) !== 0;
+                      return (
+                        <button
+                          key={dow}
+                          type="button"
+                          onClick={() =>
+                            setWorkdays((w) =>
+                              on ? w & ~(1 << dow) : w | (1 << dow)
+                            )
+                          }
+                          className={
+                            "h-8 px-2.5 rounded-full text-[11.5px] font-medium border transition " +
+                            (on
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-card text-muted-foreground border-border hover:bg-muted")
+                          }
+                        >
+                          {label}
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+              )}
             </div>
           )}
 

@@ -20,7 +20,10 @@ import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/utils/date";
 import { formatRp } from "@/lib/cashflow/format";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
-import { reviewLateProof } from "@/lib/actions/attendance.actions";
+import {
+  reviewLateProof,
+  setLogWorkdayClassification,
+} from "@/lib/actions/attendance.actions";
 import {
   getEmployeeDrawerData,
   type EmployeeDrawerData,
@@ -44,6 +47,8 @@ export interface AttendanceDaySubject {
   lateProofReason: string | null;
   lateProofStatus: string | null;
   selfiePath: string | null;
+  /** True when the row is classified as a non-workday (no late penalty). */
+  bonusDay?: boolean;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -96,6 +101,7 @@ export function AttendanceDayDrawer({
   const [stats, setStats] = useState<EmployeeDrawerData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [reviewing, setReviewing] = useState<"accept" | "reject" | null>(null);
+  const [classifying, setClassifying] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -160,6 +166,27 @@ export function AttendanceDayDrawer({
       }
     } finally {
       setReviewing(null);
+    }
+  }
+
+  async function handleClassify(bonusDay: boolean) {
+    if (!subject?.logId) return;
+    setClassifying(true);
+    try {
+      const res = await setLogWorkdayClassification(subject.logId, bonusDay);
+      if ("error" in res && res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success(
+          bonusDay
+            ? "Ditandai sebagai hari bonus."
+            : "Ditandai sebagai hari kerja standar."
+        );
+        router.refresh();
+        onClose();
+      }
+    } finally {
+      setClassifying(false);
     }
   }
 
@@ -233,6 +260,35 @@ export function AttendanceDayDrawer({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 text-[13px]">
+          {subject.logId && (
+            <Section title="Klasifikasi">
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] font-medium text-foreground">
+                    {subject.bonusDay
+                      ? "Hari bonus (tidak ada penalti telat)"
+                      : "Hari kerja standar"}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    Tandai bonus untuk check-in di hari libur — late
+                    di-reset, streak tidak terpengaruh.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleClassify(!subject.bonusDay)}
+                  disabled={classifying}
+                  className="shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium bg-card border border-border/70 hover:bg-muted transition disabled:opacity-50"
+                >
+                  {classifying
+                    ? "Memperbarui…"
+                    : subject.bonusDay
+                      ? "Tandai standar"
+                      : "Tandai bonus"}
+                </button>
+              </div>
+            </Section>
+          )}
           <Section title="Today's log">
             <div className="rounded-xl border border-border/60 divide-y divide-border/50 bg-muted/30">
               <LogRow

@@ -152,7 +152,7 @@ async function computeCurrentStreak(
 ): Promise<number> {
   const { data } = await supabase
     .from("attendance_logs")
-    .select("date, status")
+    .select("date, status, bonus_day")
     .eq("user_id", userId)
     .lte("date", todayIso)
     .order("date", { ascending: false })
@@ -166,7 +166,9 @@ async function computeCurrentStreak(
         | "late"
         | "late_excused"
         | "flexible"
+        | "bonus"
         | "unknown") ?? "unknown",
+      bonus_day: r.bonus_day,
     })),
     storedPersonalBest,
     storedLastMilestone,

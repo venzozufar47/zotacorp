@@ -46,6 +46,7 @@ export type Database = {
       }
       attendance_logs: {
         Row: {
+          bonus_day: boolean
           checked_in_at: string
           checked_out_at: string | null
           checkout_latitude: number | null
@@ -73,6 +74,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          bonus_day?: boolean
           checked_in_at: string
           checked_out_at?: string | null
           checkout_latitude?: number | null
@@ -100,6 +102,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          bonus_day?: boolean
           checked_in_at?: string
           checked_out_at?: string | null
           checkout_latitude?: number | null
@@ -1724,6 +1727,8 @@ export type Database = {
           whatsapp_number: string | null
           work_end_time: string
           work_start_time: string
+          workday_check_enabled: boolean
+          workdays: number
         }
         Insert: {
           anniversary_last_greeted?: string | null
@@ -1773,6 +1778,8 @@ export type Database = {
           whatsapp_number?: string | null
           work_end_time?: string
           work_start_time?: string
+          workday_check_enabled?: boolean
+          workdays?: number
         }
         Update: {
           anniversary_last_greeted?: string | null
@@ -1822,6 +1829,8 @@ export type Database = {
           whatsapp_number?: string | null
           work_end_time?: string
           work_start_time?: string
+          workday_check_enabled?: boolean
+          workdays?: number
         }
         Relationships: []
       }
@@ -2112,6 +2121,7 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
 
 /** Per-day transparency snapshot for payslips.breakdown_json. */
 export type PayslipBreakdown = {

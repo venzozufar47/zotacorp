@@ -71,6 +71,7 @@ interface AttendanceRow {
   is_overtime: boolean;
   overtime_minutes: number;
   overtime_status: string | null;
+  bonus_day?: boolean;
   profiles: {
     full_name: string;
     email: string;
@@ -230,6 +231,7 @@ export function AttendanceRecapTable({
       lateProofReason: row.late_proof_reason,
       lateProofStatus: row.late_proof_status,
       selfiePath: row.selfie_path,
+      bonusDay: row.bonus_day ?? false,
     });
   }
   // Batch selection. Scoped to the current page — changing pages clears it

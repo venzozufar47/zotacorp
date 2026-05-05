@@ -93,6 +93,13 @@ export function AdminTopbar({
   );
 }
 
+/**
+ * UUIDs (v4 format from Supabase) and other id-shaped segments are
+ * noise in a breadcrumb — every detail page has its own H1. Drop them.
+ */
+const ID_SHAPED =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function deriveCrumbs(pathname: string): string[] {
   const segs = pathname.split("/").filter(Boolean);
   if (segs.length === 0 || segs[0] !== "admin") return ["Admin"];
@@ -104,12 +111,19 @@ function deriveCrumbs(pathname: string): string[] {
     users: "Users",
     locations: "Locations",
     finance: "Finance",
+    rekening: "Rekening",
+    statements: "Statements",
+    aturan: "Aturan",
+    pnl: "PnL",
     celebrations: "Celebrations",
     settings: "Settings",
   };
   return [
     "Admin",
-    ...segs.slice(1).map((s) => labelMap[s] ?? capitalize(s)),
+    ...segs
+      .slice(1)
+      .filter((s) => !ID_SHAPED.test(s))
+      .map((s) => labelMap[s] ?? capitalize(s)),
   ];
 }
 

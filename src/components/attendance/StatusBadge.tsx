@@ -9,13 +9,14 @@ interface StatusBadgeProps {
   lateMinutes?: number;
 }
 
-type StatusKey = "on_time" | "late" | "late_excused" | "flexible" | "unknown";
+type StatusKey = "on_time" | "late" | "late_excused" | "flexible" | "bonus" | "unknown";
 
 const STATUS_VARIANT: Record<StatusKey, "quaternary" | "destructive" | "tertiary" | "muted" | "outline"> = {
   on_time: "quaternary",
   late: "destructive",
   late_excused: "tertiary",
   flexible: "muted",
+  bonus: "tertiary",
   unknown: "outline",
 };
 
@@ -28,6 +29,7 @@ export function StatusBadge({ status, lateMinutes }: StatusBadgeProps) {
     late: t.statusBadge.late,
     late_excused: t.statusBadge.lateExcused,
     flexible: t.statusBadge.flexible,
+    bonus: t.statusBadge.bonus,
     unknown: t.statusBadge.unknown,
   };
 

@@ -230,6 +230,7 @@ export const dictionary = {
       late: "Late",
       lateExcused: "Late (Excused)",
       flexible: "Flexible",
+      bonus: "Bonus",
       unknown: "—",
     },
     attendanceStatus: {
@@ -754,6 +755,7 @@ export const dictionary = {
       late: "Telat",
       lateExcused: "Telat (Dimaafkan)",
       flexible: "Fleksibel",
+      bonus: "Bonus",
       unknown: "—",
     },
     attendanceStatus: {

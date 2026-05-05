@@ -34,7 +34,10 @@ export type StreakMilestone = (typeof STREAK_MILESTONES)[number];
 export type StreakLogInput = {
   /** `YYYY-MM-DD` in the employee's timezone. */
   date: string;
-  status: "on_time" | "late" | "late_excused" | "flexible" | "unknown";
+  status: "on_time" | "late" | "late_excused" | "flexible" | "bonus" | "unknown";
+  /** Bonus-day logs are non-workday check-ins (or admin-flipped). They
+   *  neither extend nor break a streak — filtered out before counting. */
+  bonus_day?: boolean;
 };
 
 export type StreakSnapshot = {
@@ -76,7 +79,11 @@ export function computeStreak(args: {
   storedLastMilestone: number;
 }): StreakSnapshot {
   const { storedPersonalBest, storedLastMilestone } = args;
-  const logs = [...args.logs].sort((a, b) => (a.date < b.date ? 1 : -1));
+  // Bonus-day check-ins are non-workday entries — they should neither
+  // extend nor break a streak, so filter them out before counting.
+  const logs = [...args.logs]
+    .filter((l) => !l.bonus_day)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
 
   if (logs.length === 0) {
     return {

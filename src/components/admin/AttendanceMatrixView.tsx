@@ -45,7 +45,7 @@ function resolveCellTone({
         pipColor: "rgba(255,255,255,0.7)",
       };
     }
-    if (cell.status === "late_excused") {
+    if (cell.status === "late_excused" || cell.status === "bonus") {
       return {
         bg: "var(--teal-200)",
         border: undefined,
@@ -139,7 +139,7 @@ export interface MatrixCell {
   id: string;
   user_id: string;
   date: string;          // yyyy-mm-dd
-  status: string;        // on_time / late / late_excused / etc.
+  status: string;        // on_time / late / late_excused / bonus / etc.
   checked_in_at: string;
   checked_out_at: string | null;
   late_minutes: number | null;
@@ -147,6 +147,7 @@ export interface MatrixCell {
   late_proof_status: string | null;
   late_proof_reason: string | null;
   selfie_path: string | null;
+  bonus_day?: boolean;
   attendance_locations?: { name: string } | null;
 }
 
@@ -225,6 +226,7 @@ export function AttendanceMatrixView({
       lateProofReason: cell.late_proof_reason,
       lateProofStatus: cell.late_proof_status,
       selfiePath: cell.selfie_path,
+      bonusDay: cell.bonus_day ?? false,
     });
   }
 
@@ -317,7 +319,7 @@ export function AttendanceMatrixView({
             <LegendDot tone="ok" label="On time" />
             <LegendDot tone="late" label="Late" />
             <LegendDot tone="absent" label="Absent" />
-            <LegendDot tone="excused" label="Late (excused)" />
+            <LegendDot tone="excused" label="Late (excused) / Bonus" />
             <LegendDot tone="off" label="Day off" />
             <span className="ml-auto text-[11px] text-muted-foreground">
               {MONTHS_ID[month - 1]} {year} · click any cell

@@ -307,7 +307,7 @@ export default async function AdminAttendancePage({
         const { data: cells } = await supabase
           .from("attendance_logs")
           .select(
-            "id, user_id, date, status, checked_in_at, checked_out_at, late_minutes, late_proof_url, late_proof_status, late_proof_reason, selfie_path, attendance_locations:matched_location_id(name)"
+            "id, user_id, date, status, checked_in_at, checked_out_at, late_minutes, late_proof_url, late_proof_status, late_proof_reason, selfie_path, bonus_day, attendance_locations:matched_location_id(name)"
           )
           .in("user_id", empIds)
           .gte("date", startDate)

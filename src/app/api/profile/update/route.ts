@@ -26,6 +26,8 @@ const ALLOWED_FIELDS = [
   "work_start_time",
   "work_end_time",
   "grace_period_min",
+  "workday_check_enabled",
+  "workdays",
   "domisili_provinsi",
   "domisili_kota",
   "domisili_kecamatan",
