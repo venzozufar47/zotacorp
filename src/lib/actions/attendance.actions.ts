@@ -1565,6 +1565,9 @@ export async function setLogWorkdayClassification(
   } else {
     // Recompute status + late_minutes against the employee's schedule
     // at the time of the original check-in. Same helper the runtime uses.
+    // `is_early_arrival` is intentionally not refreshed here — it was
+    // stamped at the original check-in and feeds OT math; flipping the
+    // workday classification shouldn't retroactively shift OT credit.
     const { data: profile } = await supabase
       .from("profiles")
       .select(

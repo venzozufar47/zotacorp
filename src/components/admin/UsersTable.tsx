@@ -18,6 +18,11 @@ import { LocationAssignmentDialog } from "./LocationAssignmentDialog";
 import { SortableHeader, type SortDir } from "./SortableHeader";
 import { sortRows } from "@/lib/utils/sort";
 import {
+  WEEKDAY_LABELS_ID,
+  isWorkdayFor,
+  setWorkdayBit,
+} from "@/lib/utils/workdays";
+import {
   Table,
   TableBody,
   TableCell,
@@ -1104,30 +1109,26 @@ function ScheduleEditDialog({
               </p>
               {workdayCheckEnabled && (
                 <div className="flex flex-wrap gap-1 pt-1">
-                  {(["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"] as const).map(
-                    (label, dow) => {
-                      const on = (workdays & (1 << dow)) !== 0;
-                      return (
-                        <button
-                          key={dow}
-                          type="button"
-                          onClick={() =>
-                            setWorkdays((w) =>
-                              on ? w & ~(1 << dow) : w | (1 << dow)
-                            )
-                          }
-                          className={
-                            "h-8 px-2.5 rounded-full text-[11.5px] font-medium border transition " +
-                            (on
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-card text-muted-foreground border-border hover:bg-muted")
-                          }
-                        >
-                          {label}
-                        </button>
-                      );
-                    }
-                  )}
+                  {([0, 1, 2, 3, 4, 5, 6] as const).map((dow) => {
+                    const on = isWorkdayFor(workdays, dow);
+                    return (
+                      <button
+                        key={dow}
+                        type="button"
+                        onClick={() =>
+                          setWorkdays((w) => setWorkdayBit(w, dow, !on))
+                        }
+                        className={
+                          "h-8 px-2.5 rounded-full text-[11.5px] font-medium border transition " +
+                          (on
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-card text-muted-foreground border-border hover:bg-muted")
+                        }
+                      >
+                        {WEEKDAY_LABELS_ID[dow]}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
