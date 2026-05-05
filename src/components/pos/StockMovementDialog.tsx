@@ -114,7 +114,12 @@ export function StockMovementDialog({
   return (
     <div
       className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onClose}
+      onClick={(e) => {
+        // Only close on direct backdrop clicks. Without this guard,
+        // clicks bubbling up from inside (e.g. a child portal — see
+        // PosPinAuthDialog) would dismiss the dialog unexpectedly.
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         onClick={(e) => e.stopPropagation()}

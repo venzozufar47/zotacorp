@@ -115,9 +115,12 @@ export function PosPinAuthDialog({
       aria-modal="true"
       aria-label={`Otorisasi ${operationLabel}`}
       onClick={(e) => {
-        // Backdrop click closes — but stop here so it doesn't bubble to
-        // any ancestor click-to-close zone (the production/withdrawal
-        // submit dialog wraps its content in one).
+        // React events bubble through the component tree, not the DOM
+        // tree — so even though createPortal moves us under <body>, a
+        // click here still reaches the parent StockMovementDialog's
+        // onClose via React. Stop propagation so any keypad / backdrop
+        // click stays inside the PIN modal's subtree.
+        e.stopPropagation();
         if (e.target === e.currentTarget && !pending) onClose();
       }}
     >
