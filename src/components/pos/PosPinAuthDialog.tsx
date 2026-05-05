@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Delete, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -85,7 +86,16 @@ export function PosPinAuthDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, pin, onSubmit, onClose]);
 
-  if (!open) return null;
+  // Portal to <body> so the dialog escapes any parent click-to-close
+  // zone (StockMovementDialog wraps its content in such a div). Without
+  // this, every keypad click bubbled up to onClose and dismissed the
+  // parent before the server action could complete.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
 
   function tap(d: string) {
     setPin((p) => (p.length >= PIN_MAX ? p : p + d));
@@ -98,12 +108,18 @@ export function PosPinAuthDialog({
     onSubmit(pin);
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 backdrop-blur-sm p-4 animate-fade-up"
       role="dialog"
       aria-modal="true"
       aria-label={`Otorisasi ${operationLabel}`}
+      onClick={(e) => {
+        // Backdrop click closes — but stop here so it doesn't bubble to
+        // any ancestor click-to-close zone (the production/withdrawal
+        // submit dialog wraps its content in one).
+        if (e.target === e.currentTarget && !pending) onClose();
+      }}
     >
       <div
         className={cn(
@@ -202,7 +218,8 @@ export function PosPinAuthDialog({
         }
         .animate-shake-x { animation: shake-x 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }
 

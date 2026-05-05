@@ -443,14 +443,28 @@ export function CheckInButton({
         )}
 
         {state === "checked-out" && (
-          <div className="w-full h-[72px] rounded-full border-2 border-foreground bg-quaternary/30 flex items-center justify-center gap-2 shadow-hard-sm">
-            <span className="size-8 rounded-full border-2 border-foreground bg-quaternary flex items-center justify-center text-base">
-              ✓
-            </span>
-            <span className="font-display font-bold text-foreground uppercase tracking-wide text-sm">
-              {t.checkIn.completeToday}
-            </span>
-          </div>
+          <>
+            <div className="w-full h-[72px] rounded-full border-2 border-foreground bg-quaternary/30 flex items-center justify-center gap-2 shadow-hard-sm">
+              <span className="size-8 rounded-full border-2 border-foreground bg-quaternary flex items-center justify-center text-base">
+                ✓
+              </span>
+              <span className="font-display font-bold text-foreground uppercase tracking-wide text-sm">
+                {t.checkIn.completeToday}
+              </span>
+            </div>
+            {/* Recovery affordance for the "tap Check Out by mistake"
+                case. Re-check-in re-opens today's log (server resets
+                checked_out_at + overtime). Password modal still gates
+                the action to prevent a second human-error layer. */}
+            <button
+              type="button"
+              onClick={openCheckIn}
+              disabled={isPending}
+              className="w-full text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 py-1 disabled:opacity-50"
+            >
+              Tap di sini kalau check out tadi keliru — check in ulang
+            </button>
+          </>
         )}
 
         {/* Location status hint — only shown before check-in */}

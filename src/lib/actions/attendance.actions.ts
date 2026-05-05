@@ -8,7 +8,7 @@ import {
   getCurrentRole,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
-import { getTodayDateString } from "@/lib/utils/date";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import { notifyAdminAttendance } from "@/lib/whatsapp/attendance-notify";
 import { evaluateCheckIn, evaluateCheckOut } from "@/lib/location/enforce";
 import {
@@ -106,7 +106,7 @@ export async function checkIn(payload: CheckInPayload) {
   }
 
   const supabase = await createClient();
-  const today = getTodayDateString();
+  const today = jakartaDateString(new Date());
 
   const { data: existing } = await supabase
     .from("attendance_logs")
@@ -115,12 +115,12 @@ export async function checkIn(payload: CheckInPayload) {
     .eq("date", today)
     .maybeSingle();
 
-  if (existing) {
-    if (!existing.checked_out_at) {
-      return { error: "You are already checked in. Please check out first." };
-    }
-    return { error: "You have already completed attendance for today." };
+  if (existing && !existing.checked_out_at) {
+    return { error: "You are already checked in. Please check out first." };
   }
+  // existing && existing.checked_out_at → handled below as a re-check-in
+  // (UPDATE the row instead of INSERT). Common when a kasir taps Check
+  // Out by mistake; they can recover by taking the Check In flow again.
 
   // Get profile for per-user working time settings + name (used in WA notify)
   const { data: profile } = await supabase
@@ -154,22 +154,44 @@ export async function checkIn(payload: CheckInPayload) {
     !profile.is_flexible_schedule &&
     isEarlyArrival(now, profile.work_start_time, timezone);
 
-  const { data, error } = await supabase
-    .from("attendance_logs")
-    .insert({
-      user_id: user.id,
-      date: today,
-      checked_in_at: now.toISOString(),
-      latitude: payload.latitude,
-      longitude: payload.longitude,
-      matched_location_id: decision.matchedLocationId,
-      selfie_path: payload.selfie_path,
-      is_early_arrival,
-      status,
-      late_minutes,
-    })
-    .select()
-    .single();
+  // Re-check-in path: existing row was already checked out today. Reset
+  // checkout + overtime fields so the new check-in is the canonical
+  // record for the day. Audit trail of the prior accidental check-out
+  // is intentionally lost — admin can edit if needed.
+  const reopen = existing?.checked_out_at != null;
+  const fields = {
+    user_id: user.id,
+    date: today,
+    checked_in_at: now.toISOString(),
+    checked_out_at: null,
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    checkout_latitude: null,
+    checkout_longitude: null,
+    checkout_outside_note: null,
+    matched_location_id: decision.matchedLocationId,
+    selfie_path: payload.selfie_path,
+    is_early_arrival,
+    is_overtime: false,
+    overtime_minutes: 0,
+    overtime_status: null,
+    late_checkout_reason: null,
+    status,
+    late_minutes,
+  };
+  const result = reopen
+    ? await supabase
+        .from("attendance_logs")
+        .update(fields)
+        .eq("id", existing!.id)
+        .select()
+        .single()
+    : await supabase
+        .from("attendance_logs")
+        .insert(fields)
+        .select()
+        .single();
+  const { data, error } = result;
 
   if (error) {
     if (error.code === "23505") {
@@ -443,7 +465,7 @@ export async function checkOut(payload?: CheckOutPayload) {
   if (!user) return { error: "Not authenticated" };
 
   const supabase = await createClient();
-  const today = getTodayDateString();
+  const today = jakartaDateString(new Date());
 
   const { data: existing } = await supabase
     .from("attendance_logs")
@@ -1039,7 +1061,7 @@ export async function getTodayAttendance() {
     .from("attendance_logs")
     .select("*")
     .eq("user_id", user.id)
-    .eq("date", getTodayDateString())
+    .eq("date", jakartaDateString(new Date()))
     .maybeSingle();
 
   return data;
