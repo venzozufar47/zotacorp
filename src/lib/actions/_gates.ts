@@ -72,3 +72,89 @@ export async function requireAdminOrPosAssignee(
   if (!assignment) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
 }
+
+/**
+ * Cake-feature access. Cake orders are NOT scoped to a rekening —
+ * they're tracked as a separate per-user assignment table
+ * (`cake_access_assignments`). Two scopes:
+ *   - 'orders'     → fill the input form, mark paid/refund.
+ *   - 'production' → read finalised slips, update production_status.
+ * A user can hold both rows; admins implicitly pass.
+ */
+export async function requireAdminOrCakeOrderAccess(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cake_access_assignments" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .eq("scope", "orders")
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+export async function requireAdminOrCakeProductionAccess(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cake_access_assignments" as never)
+    .select("user_id, scope")
+    .eq("user_id", user.id)
+    .in("scope", ["orders", "production"])
+    .limit(1)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/**
+ * Stricter gate for cake order WRITES: admin role does NOT pass.
+ * Per product decision, admin is view-only on cake orders and only
+ * manages employee assignments (`/admin/cake-orders/access`) and
+ * the dropdown master data (`/admin/cake-orders/options`). Order
+ * content edits, payments, status, archive — all employee-only.
+ */
+export async function requireCakeOrderAccess(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cake_access_assignments" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .eq("scope", "orders")
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/** Stricter production-status gate: admin does NOT pass. */
+export async function requireCakeProductionAccess(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cake_access_assignments" as never)
+    .select("user_id, scope")
+    .eq("user_id", user.id)
+    .in("scope", ["orders", "production"])
+    .limit(1)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}

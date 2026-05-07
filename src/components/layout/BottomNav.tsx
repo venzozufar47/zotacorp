@@ -2,16 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
 
 export function BottomNav({
   hasFinance = false,
+  hasCakeOrders = false,
+  hasCakeProduction = false,
   me = null,
 }: {
   hasFinance?: boolean;
+  hasCakeOrders?: boolean;
+  hasCakeProduction?: boolean;
   me?: MenuViewer | null;
 }) {
   const pathname = usePathname();
@@ -22,6 +26,19 @@ export function BottomNav({
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     { href: "/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
+    ...(hasCakeOrders
+      ? [{ href: "/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" }]
+      : []),
+    ...(hasCakeProduction
+      ? [
+          {
+            href: "/cake-production",
+            icon: Factory,
+            label: "Produksi",
+            color: "bg-tertiary",
+          },
+        ]
+      : []),
     ...(hasFinance
       ? [
           {

@@ -15,6 +15,8 @@ import {
   Search,
   ChevronUp,
   Radio,
+  Cake,
+  Factory,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -98,6 +100,12 @@ export function AdminSidebar({
       label: "Comms",
       items: [
         { href: "/admin/intercom", icon: Radio, label: "Intercom" },
+      ],
+    },
+    {
+      label: "Cake",
+      items: [
+        { href: "/admin/cake-orders", icon: Cake, label: "Pesanan Cake" },
       ],
     },
     {
