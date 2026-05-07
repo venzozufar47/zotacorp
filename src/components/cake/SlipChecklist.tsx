@@ -346,7 +346,7 @@ function ProductionCard({
           <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0">
             <span className="inline-flex items-center gap-1">
               <CalendarClock size={10} className="shrink-0" />
-              {format(new Date(snapshot.scheduledAt), "HH:mm", {
+              {format(new Date(snapshot.scheduledAt), "EEE, d MMM · HH:mm", {
                 locale: idLocale,
               })}
             </span>

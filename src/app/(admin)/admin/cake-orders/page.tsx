@@ -7,6 +7,7 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { listMyCakeOrders } from "@/lib/actions/cake-orders.actions";
 import { listCakeOptions } from "@/lib/actions/cake-options.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { RefreshButton } from "@/components/shared/RefreshButton";
 import { CakeOrdersBoard } from "@/components/cake/CakeOrdersBoard";
 
 /**
@@ -32,6 +33,7 @@ export default async function AdminCakeOrdersPage() {
         subtitle="Queue order custom cake yang masuk dari semua karyawan."
         action={
           <div className="flex flex-wrap gap-2">
+            <RefreshButton />
             <Link
               href="/admin/cake-orders/options"
               className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"

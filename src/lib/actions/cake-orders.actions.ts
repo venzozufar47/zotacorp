@@ -571,14 +571,25 @@ export async function setOrderProductionStatus(
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 
-  // Fire-and-forget — don't block the user's status-change response on
-  // the slip-close sweep. Best-effort by design; sweeper catches misses.
+  // Auto-advance the admin kanban to "Siap" when production finishes
+  // so admin doesn't need to flip it manually. Guarded with .in() on
+  // the pre-ready states so we don't claw a delivering/done/cancelled
+  // order back to ready.
   if (status === "done") {
+    await supabase
+      .from("cake_orders" as never)
+      .update({ status: "ready" } as never)
+      .eq("id", id)
+      .in("status", ["submitted", "in_progress"]);
+    // Fire-and-forget — don't block the user's status-change response
+    // on the slip-close sweep. Best-effort; sweeper catches misses.
     void maybeCloseSlipForOrder(id).catch(() => {});
   }
 
   revalidatePath("/cake-production");
   revalidatePath("/admin/cake-production");
+  revalidatePath("/cake-orders");
+  revalidatePath("/admin/cake-orders");
   return { ok: true };
 }
 
