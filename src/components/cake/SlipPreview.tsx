@@ -18,6 +18,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -494,6 +495,15 @@ function SlipOrderCard({
   onEdit,
   onSaved,
 }: SlipOrderCardProps) {
+  // Mirror CakeOrderDetail's lock: once production is done or admin
+  // already moved the card past the bake stage, the spec is frozen.
+  const lockedFromEdit =
+    order.production_status === "done" ||
+    order.status === "ready" ||
+    order.status === "delivering" ||
+    order.status === "done" ||
+    order.status === "cancelled";
+  const canEditCard = editable && !lockedFromEdit;
   return (
     <li
       className={`rounded-lg border ${
@@ -511,6 +521,15 @@ function SlipOrderCard({
           className="size-3.5 shrink-0"
           aria-label={included ? "Hapus dari slip" : "Tambah ke slip"}
         />
+        {lockedFromEdit && (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-full border border-foreground bg-pop-emerald/30 px-1.5 py-0.5 text-[9px] font-medium text-foreground shrink-0"
+            title="Sudah diproduksi — tidak bisa diedit"
+          >
+            <Lock size={9} strokeWidth={2.5} />
+            Sudah diproduksi
+          </span>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-1.5">
             <span className="font-semibold text-[13px] text-foreground truncate">
@@ -541,7 +560,7 @@ function SlipOrderCard({
             {labelFor("delivery", order.delivery_option_id)}
           </div>
         </div>
-        {editable && (
+        {canEditCard && (
           <button
             type="button"
             onClick={onEdit}
@@ -554,11 +573,12 @@ function SlipOrderCard({
         )}
       </div>
 
-      {editing && optionsByKind && (
+      {editing && canEditCard && optionsByKind && (
         <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2.5">
           <NewCakeOrderForm
             optionsByKind={optionsByKind}
             editing={order}
+            singleColumn
             onSuccess={onSaved}
             onCancel={onEdit}
           />

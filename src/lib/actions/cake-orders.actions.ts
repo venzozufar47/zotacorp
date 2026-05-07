@@ -414,6 +414,32 @@ export async function updateCakeOrderFull(
 
   const supabase = adminClient();
 
+  // Backstop the UI lock: refuse to update once the cake has been
+  // baked or admin has moved the order past the bake stage. Mirrors
+  // the lockedFromEdit check in CakeOrderDetail / SlipPreview.
+  const { data: existingRaw } = await supabase
+    .from("cake_orders" as never)
+    .select("status, production_status")
+    .eq("id", id)
+    .maybeSingle();
+  if (!existingRaw) return { ok: false, error: "Order tidak ditemukan" };
+  const existing = existingRaw as unknown as {
+    status: CakeOrder["status"];
+    production_status: CakeOrder["production_status"];
+  };
+  if (
+    existing.production_status === "done" ||
+    existing.status === "ready" ||
+    existing.status === "delivering" ||
+    existing.status === "done" ||
+    existing.status === "cancelled"
+  ) {
+    return {
+      ok: false,
+      error: "Order sudah diproduksi — form tidak bisa diubah lagi",
+    };
+  }
+
   const optionIds = [
     input.baseCakeOptionId,
     input.shapeOptionId,

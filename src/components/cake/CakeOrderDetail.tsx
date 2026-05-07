@@ -16,6 +16,7 @@ import {
   Plus,
   Trash2,
   Pencil,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -92,6 +93,20 @@ export function CakeOrderDetail({
     useState<CakePaymentKind | null>(null);
   const [editing, setEditing] = useState(false);
 
+  // Once production has finished baking the cake, freeze the spec.
+  // Editing the form post-bake is meaningless — the customer's order
+  // already exists physically. Same lock once admin's kanban has
+  // moved the card to siap/delivering/done/cancelled. The lock fires
+  // whether the user is admin or an orders-scope employee; the prop
+  // `canEdit` only governs whether they had access in the first place.
+  const lockedFromEdit =
+    order.production_status === "done" ||
+    order.status === "ready" ||
+    order.status === "delivering" ||
+    order.status === "done" ||
+    order.status === "cancelled";
+  const editable = canEdit && !lockedFromEdit;
+
   const labelFor = makeLabelFor(optionsByKind);
   const attByField = useMemo(() => {
     const m: Record<CakeAttachmentField, CakeOrderAttachment[]> = {
@@ -137,8 +152,12 @@ export function CakeOrderDetail({
 
   // Edit mode: swap the read-only body for the order form pre-filled
   // with current values. Save → close edit + refresh; Cancel → back
-  // to read-only.
-  if (editing) {
+  // to read-only. If the order has been locked while we were editing
+  // (e.g. production finished from another device), bounce out.
+  if (editing && !editable) {
+    setEditing(false);
+  }
+  if (editing && editable) {
     if (!optionsByKind) {
       return (
         <div className="py-12 text-center text-sm text-muted-foreground">
@@ -214,7 +233,7 @@ export function CakeOrderDetail({
             })}
           </p>
         </div>
-        {canEdit && (
+        {editable && (
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -224,6 +243,15 @@ export function CakeOrderDetail({
             <Pencil size={11} strokeWidth={2.5} />
             Edit
           </button>
+        )}
+        {lockedFromEdit && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border-2 border-foreground bg-pop-emerald/30 px-2 py-0.5 text-[11px] font-medium text-foreground shrink-0"
+            title="Order sudah diproduksi — form tidak bisa diubah lagi"
+          >
+            <Lock size={10} strokeWidth={2.5} />
+            Sudah diproduksi
+          </span>
         )}
         <PaymentStatusBadge order={order} />
       </div>
