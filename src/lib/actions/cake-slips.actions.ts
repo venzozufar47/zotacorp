@@ -10,23 +10,34 @@ import {
 } from "./_gates";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import {
+  jakartaDateMinusDays,
+  jakartaDateString,
+} from "@/lib/utils/jakarta";
+import {
+  buildSlipSnapshot,
+  diffSnapshots,
+} from "@/lib/cake-orders/slip-snapshot";
 import type {
+  CakeOptionsByKind,
   CakeOrder,
   CakeProductionSlip,
   CakeProductionSlipItem,
+  CakeSlipSnapshot,
+  CakeSlipSnapshotItem,
 } from "@/lib/cake-orders/types";
 
 /**
- * Production slip lifecycle:
- *   draft → verified → sent → received → closed
+ * Slip lifecycle (post-rework):
+ *   draft → sent ⇄ reopened → sent (re-verify) → received → closed
  *
- * `getOrCreateDraftSlip` is idempotent: opening tomorrow's slip a
- * second time returns the same row (and tops it up with newly-arrived
- * orders for that date that aren't already on the slip).
+ * 'verified' status is kept in the CHECK constraint for backwards
+ * compatibility but no new flow uses it — verify+send is now atomic.
  *
- * `sendSlip` flips the status so the production team's RLS policy
- * starts allowing reads. Closing happens automatically inside
- * `setOrderProductionStatus` once every item on the slip is `done`.
+ * Production team reads from `last_sent_snapshot` (frozen at each
+ * send) so admin's mid-day edits during a reopen window are
+ * invisible to them until the next send. `pending_diff` carries the
+ * change summary that drives the warning banner.
  */
 
 function adminClient() {
@@ -36,25 +47,50 @@ function adminClient() {
   );
 }
 
-export interface SlipBundle {
-  slip: CakeProductionSlip;
-  items: Array<{
-    item: CakeProductionSlipItem;
-    order: CakeOrder;
-  }>;
-  /** Orders for the same date that are NOT yet on the slip — admin
-   *  can tick them in from the slip preview. */
-  candidateOrders: CakeOrder[];
+// ---------- Date helpers ---------------------------------------------
+
+/** YYYY-MM-DD for tomorrow in Asia/Jakarta. The slip surface is locked
+ *  to this date — admin can never schedule a slip for a different day. */
+function tomorrowYmd(): string {
+  return jakartaDateMinusDays(jakartaDateString(new Date()), -1);
 }
 
-// ---------- Admin: build / verify / send ----------------------------
+/** Inclusive day range [start, end] as a list of YYYY-MM-DD. */
+function rangeDays(startYmd: string, endYmd: string): string[] {
+  const out: string[] = [];
+  let d = startYmd;
+  while (d <= endYmd) {
+    out.push(d);
+    d = jakartaDateMinusDays(d, -1);
+  }
+  return out;
+}
 
-export async function getOrCreateDraftSlip(
-  targetDate: string
-): Promise<ActionResult<SlipBundle>> {
+// ---------- Bundle returned to /cake-orders/slip ---------------------
+
+export interface TomorrowSlipBundle {
+  slip: CakeProductionSlip;
+  /** Tomorrow's date (D+1) — convenience for the page header. */
+  targetDate: string;
+  /** Items currently included in the slip with their live order. */
+  items: Array<{ item: CakeProductionSlipItem; order: CakeOrder }>;
+  /** Orders on D+2..D+5 grouped by date — admin can tick these in. */
+  optionalCandidates: Array<{ date: string; orders: CakeOrder[] }>;
+  /** Orders on D+6..D+30 grouped by date — read-only preview, hidden
+   *  by default in the UI. */
+  farFutureCandidates: Array<{ date: string; orders: CakeOrder[] }>;
+}
+
+// ---------- Admin: build / verify+send / reopen ----------------------
+
+export async function getOrCreateTomorrowSlip(): Promise<
+  ActionResult<TomorrowSlipBundle>
+> {
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+
+  const targetDate = tomorrowYmd();
 
   // Find or insert the slip row.
   let slip: CakeProductionSlip | null = null;
@@ -77,22 +113,45 @@ export async function getOrCreateDraftSlip(
       .select("*")
       .single();
     if (error || !data)
-      return {
-        ok: false,
-        error: error?.message ?? "Gagal membuat slip",
-      };
+      return { ok: false, error: error?.message ?? "Gagal membuat slip" };
     slip = data as unknown as CakeProductionSlip;
   }
 
-  // Day window + slip items are independent — fetch in parallel.
-  const dayStart = `${targetDate}T00:00:00.000+07:00`;
-  const dayEnd = `${targetDate}T23:59:59.999+07:00`;
-  const [{ data: ordersRaw }, { data: itemsRaw }] = await Promise.all([
+  // Optional pool: 4 days following tomorrow (D+2..D+5). Far-future:
+  // D+6..D+30 — generous read-only window for admin verification.
+  const optionalStart = jakartaDateMinusDays(targetDate, -1);
+  const optionalEnd = jakartaDateMinusDays(targetDate, -4);
+  const farStart = jakartaDateMinusDays(targetDate, -5);
+  const farEnd = jakartaDateMinusDays(targetDate, -29);
+
+  const dayStart = (ymd: string) => `${ymd}T00:00:00.000+07:00`;
+  const dayEnd = (ymd: string) => `${ymd}T23:59:59.999+07:00`;
+
+  const [
+    { data: tomorrowOrdersRaw },
+    { data: optionalOrdersRaw },
+    { data: farOrdersRaw },
+    { data: itemsRaw },
+  ] = await Promise.all([
     supabase
       .from("cake_orders" as never)
       .select("*")
-      .gte("scheduled_at", dayStart)
-      .lte("scheduled_at", dayEnd)
+      .gte("scheduled_at", dayStart(targetDate))
+      .lte("scheduled_at", dayEnd(targetDate))
+      .neq("status", "cancelled")
+      .order("scheduled_at", { ascending: true }),
+    supabase
+      .from("cake_orders" as never)
+      .select("*")
+      .gte("scheduled_at", dayStart(optionalStart))
+      .lte("scheduled_at", dayEnd(optionalEnd))
+      .neq("status", "cancelled")
+      .order("scheduled_at", { ascending: true }),
+    supabase
+      .from("cake_orders" as never)
+      .select("*")
+      .gte("scheduled_at", dayStart(farStart))
+      .lte("scheduled_at", dayEnd(farEnd))
       .neq("status", "cancelled")
       .order("scheduled_at", { ascending: true }),
     supabase
@@ -101,45 +160,98 @@ export async function getOrCreateDraftSlip(
       .eq("slip_id", slip.id)
       .order("sort_order", { ascending: true }),
   ]);
-  const allOrders = (ordersRaw ?? []) as unknown as CakeOrder[];
+
+  const tomorrowOrders = (tomorrowOrdersRaw ?? []) as unknown as CakeOrder[];
+  const optionalOrders = (optionalOrdersRaw ?? []) as unknown as CakeOrder[];
+  const farOrders = (farOrdersRaw ?? []) as unknown as CakeOrder[];
   const existingItems = (itemsRaw ?? []) as unknown as CakeProductionSlipItem[];
   const onSlipIds = new Set(existingItems.map((i) => i.cake_order_id));
 
-  // For draft slips, auto-include any orders not yet on the slip.
-  if (slip.status === "draft") {
-    const missing = allOrders.filter((o) => !onSlipIds.has(o.id));
+  // Auto-include tomorrow's orders on the slip whenever the slip is
+  // editable. Reopen treats the slip as editable too — newly-arrived
+  // tomorrow-orders should appear on the next re-send.
+  const editable = slip.status === "draft" || slip.status === "reopened";
+  if (editable) {
+    const missing = tomorrowOrders.filter((o) => !onSlipIds.has(o.id));
     if (missing.length > 0) {
       const baseSort = existingItems.length;
-      const rows = missing.map((o, i) => ({
+      const insertRows = missing.map((o, i) => ({
         slip_id: slip!.id,
         cake_order_id: o.id,
         sort_order: baseSort + i,
       }));
       await supabase
         .from("cake_production_slip_items" as never)
-        .insert(rows as never);
-      for (const o of missing) {
+        .insert(insertRows as never);
+      missing.forEach((o, i) => {
         existingItems.push({
-          slip_id: slip.id,
+          slip_id: slip!.id,
           cake_order_id: o.id,
-          sort_order: baseSort + missing.indexOf(o),
+          sort_order: baseSort + i,
           override_notes: null,
         });
         onSlipIds.add(o.id);
-      }
+      });
     }
   }
 
-  const orderById = new Map(allOrders.map((o) => [o.id, o]));
+  // Live order lookup must include any optional D+2..D+5 orders the
+  // admin already ticked into the slip on a previous visit. Merge
+  // all sources so the items map below resolves correctly.
+  const liveById = new Map<string, CakeOrder>();
+  for (const o of [...tomorrowOrders, ...optionalOrders, ...farOrders]) {
+    liveById.set(o.id, o);
+  }
+  // Some on-slip orders may live outside the windows we queried (rare
+  // — admin manually rescheduled an order out of D+1..D+5). Fetch any
+  // stragglers by id so the page can render them.
+  const missingFromLive = [...onSlipIds].filter((id) => !liveById.has(id));
+  if (missingFromLive.length > 0) {
+    const { data: extraRaw } = await supabase
+      .from("cake_orders" as never)
+      .select("*")
+      .in("id", missingFromLive);
+    for (const o of (extraRaw ?? []) as unknown as CakeOrder[]) {
+      liveById.set(o.id, o);
+    }
+  }
+
   const items = existingItems
     .map((item) => {
-      const order = orderById.get(item.cake_order_id);
+      const order = liveById.get(item.cake_order_id);
       return order ? { item, order } : null;
     })
     .filter((x): x is { item: CakeProductionSlipItem; order: CakeOrder } => !!x);
-  const candidateOrders = allOrders.filter((o) => !onSlipIds.has(o.id));
 
-  return { ok: true, data: { slip, items, candidateOrders } };
+  const groupByDate = (orders: CakeOrder[], dates: string[]) => {
+    const out: Array<{ date: string; orders: CakeOrder[] }> = [];
+    for (const date of dates) {
+      const matches = orders.filter(
+        (o) => jakartaDateString(new Date(o.scheduled_at)) === date
+      );
+      if (matches.length > 0) out.push({ date, orders: matches });
+    }
+    return out;
+  };
+  const optionalCandidates = groupByDate(
+    optionalOrders.filter((o) => !onSlipIds.has(o.id)),
+    rangeDays(optionalStart, optionalEnd)
+  );
+  const farFutureCandidates = groupByDate(
+    farOrders.filter((o) => !onSlipIds.has(o.id)),
+    rangeDays(farStart, farEnd)
+  );
+
+  return {
+    ok: true,
+    data: {
+      slip,
+      targetDate,
+      items,
+      optionalCandidates,
+      farFutureCandidates,
+    },
+  };
 }
 
 export async function setSlipItems(
@@ -157,11 +269,12 @@ export async function setSlipItems(
     .maybeSingle();
   const slip = slipRaw as unknown as { status: string } | null;
   if (!slip) return { ok: false, error: "Slip tidak ditemukan" };
-  if (slip.status !== "draft" && slip.status !== "verified")
-    return { ok: false, error: "Slip sudah dikirim — tidak bisa diubah" };
+  if (slip.status !== "draft" && slip.status !== "reopened")
+    return {
+      ok: false,
+      error: "Slip sudah dikirim — buka kembali dulu kalau mau diubah",
+    };
 
-  // Replace the inclusion set: delete rows not in the new list, insert
-  // those that are missing.
   const { data: currentRaw } = await supabase
     .from("cake_production_slip_items" as never)
     .select("cake_order_id")
@@ -193,7 +306,7 @@ export async function setSlipItems(
     );
   }
 
-  revalidatePath(`/admin/cake-production`);
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
 }
 
@@ -209,61 +322,123 @@ export async function setSlipNotes(
     .update({ notes: notes.trim() || null } as never)
     .eq("id", slipId);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(`/admin/cake-production`);
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
 }
 
-export async function verifySlip(slipId: string): Promise<ActionResult> {
+/**
+ * Combined verify + send. First send writes a fresh snapshot. Re-send
+ * computes a diff against the previous snapshot and stores it as a
+ * banner payload for the production team to acknowledge.
+ *
+ * Caller must currently be in `draft` (first send) or `reopened`
+ * (re-send) — `eq("status", ...)` guard prevents two admins from
+ * double-sending the same slip.
+ */
+export async function verifyAndSendSlip(
+  slipId: string
+): Promise<ActionResult<{ wasResend: boolean; hasDiff: boolean }>> {
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
-  // Race-safe: only succeeds if slip is still in draft.
-  const { data, error } = await supabase
+
+  const { data: slipRaw } = await supabase
     .from("cake_production_slips" as never)
-    .update({
-      status: "verified",
-      verified_by: gate.userId,
-      verified_at: new Date().toISOString(),
-    } as never)
+    .select("*")
     .eq("id", slipId)
-    .eq("status", "draft")
-    .select("id");
-  if (error) return { ok: false, error: error.message };
-  if (!data || (data as unknown as unknown[]).length === 0)
-    return { ok: false, error: "Slip sudah diverifikasi atau dikirim" };
-  revalidatePath(`/admin/cake-production`);
-  return { ok: true };
-}
+    .maybeSingle();
+  if (!slipRaw) return { ok: false, error: "Slip tidak ditemukan" };
+  const slip = slipRaw as unknown as CakeProductionSlip;
+  if (slip.status !== "draft" && slip.status !== "reopened")
+    return {
+      ok: false,
+      error: "Slip sudah dalam status terkirim — tidak perlu kirim lagi",
+    };
 
-export async function sendSlip(slipId: string): Promise<ActionResult> {
-  const gate = await requireCakeOrderAccess();
-  if (!gate.ok) return { ok: false, error: gate.error };
-  const supabase = adminClient();
-  const { data, error } = await supabase
+  // Build snapshot from current slip items + their live orders +
+  // option labels (resolved at send-time, frozen).
+  const { data: itemsRaw } = await supabase
+    .from("cake_production_slip_items" as never)
+    .select("*, cake_orders(*)")
+    .eq("slip_id", slipId)
+    .order("sort_order", { ascending: true });
+  type Joined = CakeProductionSlipItem & { cake_orders: CakeOrder };
+  const itemsWithOrder = ((itemsRaw ?? []) as unknown as Joined[]).map(
+    (r) => ({
+      cake_order_id: r.cake_order_id,
+      sort_order: r.sort_order,
+      order: r.cake_orders,
+    })
+  );
+
+  const { data: optsRaw } = await supabase
+    .from("cake_options" as never)
+    .select("*");
+  type OptRow = {
+    id: string;
+    kind: string;
+    label: string;
+    base_price_idr: number | null;
+    needs_address: boolean;
+    is_custom_freeform: boolean;
+    sort_order: number;
+    is_active: boolean;
+    created_at: string;
+  };
+  const optionsByKind: CakeOptionsByKind = {
+    base_cake: [],
+    shape: [],
+    filling: [],
+    delivery: [],
+    payment_method: [],
+  };
+  for (const o of (optsRaw ?? []) as unknown as OptRow[]) {
+    const k = o.kind as keyof CakeOptionsByKind;
+    if (optionsByKind[k]) {
+      optionsByKind[k].push({
+        ...o,
+        kind: k,
+      });
+    }
+  }
+
+  const newSnapshot = buildSlipSnapshot({
+    takenBy: gate.userId,
+    notes: slip.notes,
+    itemsWithOrder,
+    optionsByKind,
+  });
+
+  const isResend = slip.status === "reopened";
+  const previousSnapshot = (slip.last_sent_snapshot ??
+    null) as CakeSlipSnapshot | null;
+  const diff =
+    isResend && previousSnapshot
+      ? diffSnapshots(previousSnapshot, newSnapshot)
+      : null;
+
+  const { data: updated, error: updErr } = await supabase
     .from("cake_production_slips" as never)
     .update({
       status: "sent",
       sent_by: gate.userId,
       sent_at: new Date().toISOString(),
+      last_sent_snapshot: newSnapshot,
+      pending_diff: diff,
+      diff_acknowledged_at: null,
+      sent_count: (slip.sent_count ?? 0) + 1,
     } as never)
     .eq("id", slipId)
-    .eq("status", "verified")
+    .in("status", ["draft", "reopened"])
     .select("id");
-  if (error) return { ok: false, error: error.message };
-  if (!data || (data as unknown as unknown[]).length === 0)
-    return { ok: false, error: "Slip belum diverifikasi atau sudah dikirim" };
+  if (updErr) return { ok: false, error: updErr.message };
+  if (!updated || (updated as unknown as unknown[]).length === 0)
+    return { ok: false, error: "Gagal mengirim — slip mungkin sudah berubah" };
 
   // Auto-advance every "submitted" order on the slip to "in_progress".
-  // The kanban "Mulai dikerjakan" button is removed so this is the
-  // ONLY path from BARU → DIKERJAKAN. Orders already past 'submitted'
-  // (e.g. admin reopened, or rolled back) are left untouched.
-  const { data: itemRows } = await supabase
-    .from("cake_production_slip_items" as never)
-    .select("cake_order_id")
-    .eq("slip_id", slipId);
-  const ids = ((itemRows ?? []) as unknown as Array<{
-    cake_order_id: string;
-  }>).map((r) => r.cake_order_id);
+  // Same loop as before — works for first send AND re-sends (re-sends
+  // are typically a no-op since orders already advanced).
+  const ids = itemsWithOrder.map((r) => r.cake_order_id);
   if (ids.length > 0) {
     await supabase
       .from("cake_orders" as never)
@@ -272,9 +447,51 @@ export async function sendSlip(slipId: string): Promise<ActionResult> {
       .eq("status", "submitted");
   }
 
-  revalidatePath(`/admin/cake-production`);
-  revalidatePath(`/cake-production`);
-  revalidatePath(`/cake-orders`);
+  revalidatePath("/cake-orders/slip");
+  revalidatePath("/cake-production");
+  revalidatePath("/cake-orders");
+  return { ok: true, data: { wasResend: isResend, hasDiff: diff !== null } };
+}
+
+/**
+ * Pull a sent (or received/closed) slip back into "reopened" so admin
+ * can edit. Production team's view stays frozen on the previous
+ * snapshot until admin re-sends.
+ */
+export async function reopenSlip(slipId: string): Promise<ActionResult> {
+  const gate = await requireCakeOrderAccess();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { data, error } = await supabase
+    .from("cake_production_slips" as never)
+    .update({ status: "reopened" } as never)
+    .eq("id", slipId)
+    .in("status", ["sent", "received", "closed"])
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || (data as unknown as unknown[]).length === 0)
+    return { ok: false, error: "Slip tidak bisa dibuka kembali" };
+  revalidatePath("/cake-orders/slip");
+  revalidatePath("/cake-production");
+  return { ok: true };
+}
+
+/** Production team confirms they've seen the diff banner. */
+export async function acknowledgeSlipDiff(
+  slipId: string
+): Promise<ActionResult> {
+  const gate = await requireCakeProductionAccess();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { error } = await supabase
+    .from("cake_production_slips" as never)
+    .update({
+      pending_diff: null,
+      diff_acknowledged_at: new Date().toISOString(),
+    } as never)
+    .eq("id", slipId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/cake-production");
   return { ok: true };
 }
 
@@ -285,26 +502,33 @@ export async function listMySlips(): Promise<
 > {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
-  // The production lobby is for slips that have been SENT to the
-  // production team. Even if a user holds both `orders` and
-  // `production` scopes, they shouldn't see drafts/verified slips on
-  // this surface — those live under `/cake-orders/slip`.
+  // Production lobby shows slips that have been (re-)sent at least
+  // once. 'reopened' is included so a slip the production team
+  // already received doesn't disappear while admin is editing — they
+  // keep seeing the previous snapshot via last_sent_snapshot.
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("cake_production_slips" as never)
     .select("*")
-    .in("status", ["sent", "received", "closed"])
+    .in("status", ["sent", "received", "reopened", "closed"])
+    .not("last_sent_snapshot", "is", null)
     .order("target_date", { ascending: false });
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as CakeProductionSlip[] };
 }
 
-export async function getSlipForProduction(
-  slipId: string
-): Promise<
+/**
+ * Production-team detail view. Items come from `last_sent_snapshot`
+ * (frozen) joined with each order's live `production_status` so the
+ * checklist mutations still flow through.
+ */
+export async function getSlipForProduction(slipId: string): Promise<
   ActionResult<{
     slip: CakeProductionSlip;
-    items: Array<{ item: CakeProductionSlipItem; order: CakeOrder }>;
+    items: Array<{
+      snapshot: CakeSlipSnapshotItem;
+      productionStatus: CakeOrder["production_status"];
+    }>;
   }>
 > {
   const gate = await requireCakeProductionAccess();
@@ -319,7 +543,12 @@ export async function getSlipForProduction(
   if (!slipRaw) return { ok: false, error: "Slip tidak ditemukan" };
   const slip = slipRaw as unknown as CakeProductionSlip;
 
-  // Stamp received_at if this is the first production-team open.
+  if (!slip.last_sent_snapshot)
+    return { ok: false, error: "Slip belum pernah dikirim" };
+
+  // Stamp received_at on first open. Don't flip back when status is
+  // currently 'reopened' — we track 'received' specifically for the
+  // post-send window.
   if (slip.status === "sent") {
     await supabase
       .from("cake_production_slips" as never)
@@ -335,28 +564,36 @@ export async function getSlipForProduction(
     slip.received_at = new Date().toISOString();
   }
 
-  const { data: itemsRaw } = await supabase
-    .from("cake_production_slip_items" as never)
-    .select("*, cake_orders(*)")
-    .eq("slip_id", slipId)
-    .order("sort_order", { ascending: true });
+  const snap = slip.last_sent_snapshot;
+  const orderIds = snap.items.map((i) => i.orderId);
+  const liveStatusById = new Map<string, CakeOrder["production_status"]>();
+  if (orderIds.length > 0) {
+    const { data: liveRaw } = await supabase
+      .from("cake_orders" as never)
+      .select("id, production_status")
+      .in("id", orderIds);
+    type LiveRow = {
+      id: string;
+      production_status: CakeOrder["production_status"];
+    };
+    for (const r of (liveRaw ?? []) as unknown as LiveRow[]) {
+      liveStatusById.set(r.id, r.production_status);
+    }
+  }
 
-  type Joined = CakeProductionSlipItem & { cake_orders: CakeOrder };
-  const items = ((itemsRaw ?? []) as unknown as Joined[]).map((row) => ({
-    item: {
-      slip_id: row.slip_id,
-      cake_order_id: row.cake_order_id,
-      sort_order: row.sort_order,
-      override_notes: row.override_notes,
-    },
-    order: row.cake_orders,
-  }));
+  const items = snap.items
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((s) => ({
+      snapshot: s,
+      productionStatus: liveStatusById.get(s.orderId) ?? "pending",
+    }));
 
   return { ok: true, data: { slip, items } };
 }
 
 /**
- * Auto-close: if every order on the slip is production_status='done',
+ * Auto-close: if every order in the snapshot is production_status='done',
  * flip the slip to 'closed'. Called from setOrderProductionStatus
  * after each toggle. Idempotent.
  */
@@ -364,7 +601,6 @@ export async function maybeCloseSlipForOrder(
   orderId: string
 ): Promise<void> {
   const supabase = adminClient();
-  // Find slip(s) containing this order that aren't already closed.
   const { data: slipRowsRaw } = await supabase
     .from("cake_production_slip_items" as never)
     .select("slip_id, cake_production_slips!inner(id, status)")

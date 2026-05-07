@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { getSlipForProduction } from "@/lib/actions/cake-slips.actions";
-import { listCakeOptions } from "@/lib/actions/cake-options.actions";
 import { SlipChecklist } from "@/components/cake/SlipChecklist";
 
 export default async function ProductionSlipPage({
@@ -18,10 +17,7 @@ export default async function ProductionSlipPage({
   const access = await getMyCakeAccess();
   if (!access.hasProduction && !access.hasOrders) redirect("/dashboard");
 
-  const [slipRes, optionsRes] = await Promise.all([
-    getSlipForProduction(slipId),
-    listCakeOptions(),
-  ]);
+  const slipRes = await getSlipForProduction(slipId);
   if (!slipRes.ok) {
     return (
       <div className="max-w-md mx-auto py-12 text-center text-sm text-destructive">
@@ -33,7 +29,6 @@ export default async function ProductionSlipPage({
     <SlipChecklist
       slip={slipRes.data!.slip}
       items={slipRes.data!.items}
-      optionsByKind={optionsRes.ok ? optionsRes.data! : null}
     />
   );
 }

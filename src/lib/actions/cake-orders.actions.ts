@@ -267,7 +267,10 @@ export async function createCakeOrder(
 // ---------- Read ------------------------------------------------------
 
 export async function listMyCakeOrders(opts?: {
+  /** Include archived rows alongside live ones. */
   includeArchived?: boolean;
+  /** Return ONLY archived rows (used by the dedicated archive page). */
+  onlyArchived?: boolean;
 }): Promise<ActionResult<CakeOrder[]>> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
@@ -276,7 +279,9 @@ export async function listMyCakeOrders(opts?: {
     .from("cake_orders" as never)
     .select("*")
     .order("scheduled_at", { ascending: true });
-  if (!opts?.includeArchived) {
+  if (opts?.onlyArchived) {
+    query = query.not("archived_at", "is", null);
+  } else if (!opts?.includeArchived) {
     query = query.is("archived_at", null);
   }
   const { data, error } = await query;
@@ -299,6 +304,7 @@ export async function setCakeOrderArchived(
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/cake-orders");
+  revalidatePath("/cake-orders/archive");
   revalidatePath("/admin/cake-orders");
   return { ok: true };
 }

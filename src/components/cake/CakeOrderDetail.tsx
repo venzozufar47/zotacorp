@@ -49,6 +49,12 @@ interface Props {
   /** When provided, the back arrow becomes a close button (used by the
    *  kanban side panel; no `<Link>` so the lobby URL stays). */
   onClose?: () => void;
+  /** When provided, mutations inside the panel call this to ask the
+   *  loader to re-fetch order + payments. router.refresh() alone
+   *  re-renders the kanban server-tree but doesn't re-fire the
+   *  loader's client useEffect, so the side panel was showing stale
+   *  data after add/delete/refund. */
+  onMutated?: () => void;
 }
 
 /**
@@ -66,7 +72,15 @@ export function CakeOrderDetail({
   isAdminView,
   canEdit,
   onClose,
+  onMutated,
 }: Props) {
+  /** Wrapper called after any successful mutation. Re-fetches the
+   *  panel's local state (via onMutated) AND triggers a server-tree
+   *  refresh so the kanban card chip + counts stay in sync. */
+  const afterMutation = () => {
+    onMutated?.();
+    router.refresh();
+  };
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [addingPayment, setAddingPayment] = useState(false);
@@ -116,7 +130,7 @@ export function CakeOrderDetail({
         return;
       }
       toast.success("Order dibatalkan");
-      router.refresh();
+      afterMutation();
     });
 
   const backHref = isAdminView ? "/admin/cake-orders" : "/cake-orders";
@@ -153,7 +167,7 @@ export function CakeOrderDetail({
           singleColumn
           onSuccess={() => {
             setEditing(false);
-            router.refresh();
+            afterMutation();
           }}
           onCancel={() => setEditing(false)}
         />
@@ -334,6 +348,7 @@ export function CakeOrderDetail({
                     payment={p}
                     methodLabel={labelFor("payment_method", p.payment_option_id)}
                     canEdit={canEdit}
+                    onMutated={onMutated}
                   />
                 ))}
               </ul>
@@ -350,7 +365,7 @@ export function CakeOrderDetail({
                     onDone={() => {
                       setAddingPayment(false);
                       setAddingPaymentKind(null);
-                      router.refresh();
+                      afterMutation();
                     }}
                     onCancel={() => {
                       setAddingPayment(false);
@@ -492,10 +507,14 @@ function PaymentRow({
   payment,
   methodLabel,
   canEdit,
+  onMutated,
 }: {
   payment: CakeOrderPayment;
   methodLabel: string;
   canEdit: boolean;
+  /** Side panel passes its loader's refetch so the local state
+   *  re-syncs after a payment is deleted. */
+  onMutated?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -509,6 +528,7 @@ function PaymentRow({
         return;
       }
       toast.success("Pembayaran dihapus");
+      onMutated?.();
       router.refresh();
     });
   };

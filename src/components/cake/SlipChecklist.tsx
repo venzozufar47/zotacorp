@@ -14,93 +14,63 @@ import {
   Truck,
   Undo2,
   Image as ImageIcon,
+  AlertTriangle,
+  Plus,
+  Minus,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
-import { setOrderProductionStatus } from "@/lib/actions/cake-orders.actions";
-import { getCakeAttachmentSignedUrl } from "@/lib/actions/cake-orders.actions";
+import {
+  setOrderProductionStatus,
+  getCakeAttachmentSignedUrl,
+} from "@/lib/actions/cake-orders.actions";
+import { acknowledgeSlipDiff } from "@/lib/actions/cake-slips.actions";
 import { createClient } from "@/lib/supabase/client";
-import { makeLabelFor } from "@/lib/cake-orders/helpers";
 import { ImagePopup } from "./ImagePopup";
 import type {
   CakeOrder,
   CakeProductionSlip,
-  CakeProductionSlipItem,
   CakeProductionStatus,
-  CakeOptionsByKind,
+  CakeSlipDiff,
+  CakeSlipSnapshotItem,
 } from "@/lib/cake-orders/types";
+
+interface ProductionItem {
+  snapshot: CakeSlipSnapshotItem;
+  productionStatus: CakeProductionStatus;
+}
 
 interface Props {
   slip: CakeProductionSlip;
-  items: Array<{ item: CakeProductionSlipItem; order: CakeOrder }>;
-  optionsByKind: CakeOptionsByKind | null;
+  items: ProductionItem[];
 }
 
 /**
- * Production team's view of a slip. Each cake is a card with its full
- * spec (read-only — no pricing) and a status pill that cycles
- * pending → in_progress → done. Realtime: subscribes to cake_orders
- * row updates so multiple production members see status changes live.
+ * Production team's view of a slip. Items render from the frozen
+ * snapshot, NOT live cake_orders, so admin's mid-day edits are
+ * invisible until next send. Production_status is the only field
+ * mutated live and looked up at server-fetch time.
+ *
+ * `pending_diff` drives a big warning banner with field-level
+ * before/after; production team taps "Saya sudah lihat" to ack.
  */
-export function SlipChecklist({ slip, items, optionsByKind }: Props) {
+export function SlipChecklist({ slip, items }: Props) {
   const router = useRouter();
-  const [orderMap, setOrderMap] = useState(() => {
-    const m = new Map<string, CakeOrder>();
-    for (const { order } of items) m.set(order.id, order);
+
+  // Optimistic per-item production_status so toggles feel instant.
+  const [statusById, setStatusById] = useState(() => {
+    const m = new Map<string, CakeProductionStatus>();
+    for (const it of items) m.set(it.snapshot.orderId, it.productionStatus);
     return m;
   });
 
-  // Fetch all reference attachments for the slip in ONE call, then
-  // sign every URL in parallel — beats per-card N+1 (was: 10–20 cakes
-  // × 2 round-trips each).
-  const orderIds = items.map((i) => i.order.id);
-  const [imagesByOrder, setImagesByOrder] = useState<
-    Record<string, Array<{ id: string; url: string }>>
-  >({});
+  // Realtime: pick up updates other production members make on the
+  // same slip (e.g. team A clicks "Selesai" on cake X, team B sees
+  // green pill update without refresh).
   useEffect(() => {
+    const orderIds = items.map((i) => i.snapshot.orderId);
     if (orderIds.length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("cake_order_attachments" as never)
-        .select("id, cake_order_id, field, storage_path")
-        .in("cake_order_id", orderIds)
-        .neq("field", "payment_proof");
-      if (cancelled) return;
-      type Row = {
-        id: string;
-        cake_order_id: string;
-        storage_path: string;
-      };
-      const rows = (data ?? []) as unknown as Row[];
-      const signed = await Promise.all(
-        rows.map(async (r) => {
-          const sig = await getCakeAttachmentSignedUrl(r.id);
-          return sig.ok
-            ? { id: r.id, cake_order_id: r.cake_order_id, url: sig.data!.url }
-            : null;
-        })
-      );
-      if (cancelled) return;
-      const map: Record<string, Array<{ id: string; url: string }>> = {};
-      for (const s of signed) {
-        if (!s) continue;
-        (map[s.cake_order_id] ??= []).push({ id: s.id, url: s.url });
-      }
-      setImagesByOrder(map);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slip.id]);
-
-  // Realtime: any update on cake_orders that's in our slip → patch.
-  // Skip the setState when production_status hasn't changed to avoid
-  // re-rendering every card on unrelated column updates.
-  useEffect(() => {
     const supabase = createClient();
-    if (orderIds.length === 0) return;
     const channel = supabase
       .channel(`slip-${slip.id}-orders`)
       .on(
@@ -112,19 +82,11 @@ export function SlipChecklist({ slip, items, optionsByKind }: Props) {
           filter: `id=in.(${orderIds.join(",")})`,
         },
         (payload) => {
-          const updated = payload.new as unknown as CakeOrder;
-          setOrderMap((prev) => {
-            const existing = prev.get(updated.id);
-            if (
-              existing &&
-              existing.production_status === updated.production_status &&
-              existing.production_started_at === updated.production_started_at &&
-              existing.production_done_at === updated.production_done_at
-            ) {
-              return prev;
-            }
+          const row = payload.new as unknown as CakeOrder;
+          setStatusById((prev) => {
+            if (prev.get(row.id) === row.production_status) return prev;
             const next = new Map(prev);
-            next.set(updated.id, updated);
+            next.set(row.id, row.production_status);
             return next;
           });
         }
@@ -136,17 +98,14 @@ export function SlipChecklist({ slip, items, optionsByKind }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slip.id]);
 
-  const labelFor = makeLabelFor(optionsByKind);
-
   const total = items.length;
   const done = items.filter(
-    ({ order }) =>
-      (orderMap.get(order.id)?.production_status ?? order.production_status) ===
-      "done"
+    (it) =>
+      (statusById.get(it.snapshot.orderId) ?? it.productionStatus) === "done"
   ).length;
 
   return (
-    <div className="space-y-4 pb-12">
+    <div className="space-y-3 pb-12">
       <div className="flex items-center gap-2">
         <Link
           href="/cake-production"
@@ -170,6 +129,14 @@ export function SlipChecklist({ slip, items, optionsByKind }: Props) {
         </div>
       </div>
 
+      {slip.pending_diff && (
+        <DiffBanner
+          slipId={slip.id}
+          diff={slip.pending_diff}
+          onAcknowledged={() => router.refresh()}
+        />
+      )}
+
       {slip.notes && (
         <div className="rounded-2xl border-2 border-foreground bg-pop-pink/15 p-3 text-sm text-foreground whitespace-pre-wrap">
           {slip.notes}
@@ -182,43 +149,158 @@ export function SlipChecklist({ slip, items, optionsByKind }: Props) {
         </div>
       ) : (
         <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-          {items.map(({ item, order }) => {
-            const live = orderMap.get(order.id) ?? order;
-            return (
-              <ProductionCard
-                key={order.id}
-                order={live}
-                slipNotes={item.override_notes ?? null}
-                images={imagesByOrder[order.id] ?? []}
-                labelFor={labelFor}
-                onChange={() => router.refresh()}
-              />
-            );
-          })}
+          {items.map((it) => (
+            <ProductionCard
+              key={it.snapshot.orderId}
+              snapshot={it.snapshot}
+              productionStatus={
+                statusById.get(it.snapshot.orderId) ?? it.productionStatus
+              }
+              onChange={(next) => {
+                setStatusById((prev) => {
+                  const map = new Map(prev);
+                  map.set(it.snapshot.orderId, next);
+                  return map;
+                });
+                router.refresh();
+              }}
+            />
+          ))}
         </ul>
       )}
     </div>
   );
 }
 
-function ProductionCard({
-  order,
-  slipNotes,
-  images,
-  labelFor,
-  onChange,
+// ---------- Diff banner ----------------------------------------------
+
+function DiffBanner({
+  slipId,
+  diff,
+  onAcknowledged,
 }: {
-  order: CakeOrder;
-  slipNotes: string | null;
-  images: Array<{ id: string; url: string }>;
-  labelFor: (kind: keyof CakeOptionsByKind, id: string | null) => string;
-  onChange: () => void;
+  slipId: string;
+  diff: CakeSlipDiff;
+  onAcknowledged: () => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const onAck = () =>
+    startTransition(async () => {
+      const res = await acknowledgeSlipDiff(slipId);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      onAcknowledged();
+    });
+  const totalChanges =
+    diff.added.length + diff.removed.length + diff.modified.length;
+  return (
+    <div className="rounded-2xl border-2 border-foreground bg-pop-pink/30 p-3 sm:p-4 space-y-2">
+      <div className="flex items-start gap-2">
+        <AlertTriangle
+          size={20}
+          strokeWidth={2.5}
+          className="text-foreground shrink-0 mt-0.5"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-foreground">
+            Slip diperbarui admin · {totalChanges} perubahan
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            Versi sebelumnya berbeda dengan slip yang ada di sini sekarang.
+            Cek perubahan di bawah sebelum lanjut produksi.
+          </div>
+        </div>
+      </div>
 
+      <div className="space-y-2 text-xs">
+        {diff.added.length > 0 && (
+          <div>
+            <div className="font-semibold text-foreground flex items-center gap-1 mb-0.5">
+              <Plus size={12} strokeWidth={2.5} />
+              Ditambahkan ({diff.added.length})
+            </div>
+            <ul className="space-y-0.5 pl-4">
+              {diff.added.map((a) => (
+                <li key={a.orderId} className="text-foreground">
+                  • {a.customerName}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {diff.modified.length > 0 && (
+          <div>
+            <div className="font-semibold text-foreground flex items-center gap-1 mb-0.5">
+              <Pencil size={12} strokeWidth={2.5} />
+              Diubah ({diff.modified.length})
+            </div>
+            <ul className="space-y-1 pl-4">
+              {diff.modified.map((m) => (
+                <li key={m.orderId} className="text-foreground">
+                  • <span className="font-medium">{m.customerName}</span>
+                  <ul className="pl-3 mt-0.5 space-y-0">
+                    {m.fields.map((f, i) => (
+                      <li key={i} className="text-[11px] text-muted-foreground">
+                        {f.label}:{" "}
+                        <span className="line-through">{f.before ?? "—"}</span>{" "}
+                        →{" "}
+                        <span className="text-foreground font-medium">
+                          {f.after ?? "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {diff.removed.length > 0 && (
+          <div>
+            <div className="font-semibold text-foreground flex items-center gap-1 mb-0.5">
+              <Minus size={12} strokeWidth={2.5} />
+              Dihapus ({diff.removed.length})
+            </div>
+            <ul className="space-y-0.5 pl-4">
+              {diff.removed.map((r) => (
+                <li key={r.orderId} className="text-foreground">
+                  • {r.customerName}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onAck}
+        disabled={pending}
+        className="w-full rounded-xl bg-foreground text-background border-2 border-foreground px-3 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+      >
+        {pending ? "Menyimpan…" : "Saya sudah lihat"}
+      </button>
+    </div>
+  );
+}
+
+// ---------- Per-cake card --------------------------------------------
+
+function ProductionCard({
+  snapshot,
+  productionStatus,
+  onChange,
+}: {
+  snapshot: CakeSlipSnapshotItem;
+  productionStatus: CakeProductionStatus;
+  onChange: (next: CakeProductionStatus) => void;
+}) {
+  const [pending, startTransition] = useTransition();
   const setStatus = (next: CakeProductionStatus) => {
     startTransition(async () => {
-      const res = await setOrderProductionStatus(order.id, next);
+      const res = await setOrderProductionStatus(snapshot.orderId, next);
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -230,24 +312,11 @@ function ProductionCard({
         cancelled: "Dibatalkan",
       };
       toast.success(labels[next]);
-      onChange();
+      onChange(next);
     });
   };
 
-  const status = order.production_status;
-  const isDone = status === "done";
-
-  // Compact one-line meta: base · shape · filling · jam · delivery
-  const metaBits = [
-    `${labelFor("base_cake", order.base_cake_option_id)} · ${labelFor(
-      "shape",
-      order.shape_option_id
-    )}${order.shape_custom ? ` (${order.shape_custom})` : ""}${
-      order.filling_option_id
-        ? ` · ${labelFor("filling", order.filling_option_id)}`
-        : ""
-    }`,
-  ];
+  const isDone = productionStatus === "done";
 
   return (
     <li
@@ -259,72 +328,57 @@ function ProductionCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="font-semibold text-sm text-foreground truncate">
-              {order.customer_name}
+              {snapshot.customerName}
             </span>
-            <ProductionStatusPill status={status} />
+            <ProductionStatusPill status={productionStatus} />
           </div>
-          {order.customer_phone && (
+          {snapshot.customerPhone && (
             <div className="text-[10px] text-muted-foreground truncate">
-              📱 {order.customer_phone}
+              📱 {snapshot.customerPhone}
             </div>
           )}
           <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
-            <Cake
-              size={10}
-              className="inline-block mr-1 -translate-y-px"
-            />
-            {metaBits[0]}
+            <Cake size={10} className="inline-block mr-1 -translate-y-px" />
+            {snapshot.baseLabel} · {snapshot.shapeLabel}
+            {snapshot.shapeCustom ? ` (${snapshot.shapeCustom})` : ""}
+            {snapshot.fillingLabel ? ` · ${snapshot.fillingLabel}` : ""}
           </div>
           <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0">
             <span className="inline-flex items-center gap-1">
               <CalendarClock size={10} className="shrink-0" />
-              {format(new Date(order.scheduled_at), "HH:mm", {
+              {format(new Date(snapshot.scheduledAt), "HH:mm", {
                 locale: idLocale,
               })}
             </span>
             <span className="inline-flex items-center gap-1 truncate">
               <Truck size={10} className="shrink-0" />
-              {labelFor("delivery", order.delivery_option_id)}
+              {snapshot.deliveryLabel}
             </span>
           </div>
         </div>
       </div>
 
-      {(order.color_notes ||
-        order.texture_notes ||
-        order.decoration_notes ||
-        order.accessories_notes ||
-        order.greeting_card) && (
+      {(snapshot.colorNotes ||
+        snapshot.textureNotes ||
+        snapshot.decorationNotes ||
+        snapshot.accessoriesNotes ||
+        snapshot.greetingCard) && (
         <div className="text-[11px] text-foreground space-y-0">
-          {order.color_notes && (
-            <Detail label="Warna">{order.color_notes}</Detail>
-          )}
-          {order.texture_notes && (
-            <Detail label="Tekstur">{order.texture_notes}</Detail>
-          )}
-          {order.decoration_notes && (
-            <Detail label="Detail">{order.decoration_notes}</Detail>
-          )}
-          {order.accessories_notes && (
-            <Detail label="Acc.">{order.accessories_notes}</Detail>
-          )}
-          {order.greeting_card && (
-            <Detail label="Greeting Card">&ldquo;{order.greeting_card}&rdquo;</Detail>
+          {snapshot.colorNotes && <Detail label="Warna">{snapshot.colorNotes}</Detail>}
+          {snapshot.textureNotes && <Detail label="Tekstur">{snapshot.textureNotes}</Detail>}
+          {snapshot.decorationNotes && <Detail label="Detail">{snapshot.decorationNotes}</Detail>}
+          {snapshot.accessoriesNotes && <Detail label="Acc.">{snapshot.accessoriesNotes}</Detail>}
+          {snapshot.greetingCard && (
+            <Detail label="Greeting Card">&ldquo;{snapshot.greetingCard}&rdquo;</Detail>
           )}
         </div>
       )}
 
-      <SlipReferenceImages images={images} />
-
-      {slipNotes && (
-        <div className="rounded-md bg-tertiary/20 border border-foreground px-1.5 py-0.5 text-[10px] text-foreground">
-          <strong>Catatan:</strong> {slipNotes}
-        </div>
-      )}
+      <SlipReferenceImages orderId={snapshot.orderId} />
 
       <div className="mt-auto pt-1">
         <ProductionAction
-          status={status}
+          status={productionStatus}
           pending={pending}
           onAdvance={setStatus}
         />
@@ -377,12 +431,6 @@ function ProductionStatusPill({ status }: { status: CakeProductionStatus }) {
   );
 }
 
-/**
- * Single-button progression instead of a 3-state stepper. The current
- * status is communicated by the pill at the top of the card; the
- * action button shows ONLY the next legal step. Undo link covers the
- * "I clicked the wrong card" case.
- */
 function ProductionAction({
   status,
   pending,
@@ -451,12 +499,37 @@ function ProductionAction({
   return null;
 }
 
-function SlipReferenceImages({
-  images,
-}: {
-  images: Array<{ id: string; url: string }>;
-}) {
+// ---------- Reference photos (lazy-loaded per card) ------------------
+
+function SlipReferenceImages({ orderId }: { orderId: string }) {
+  const [images, setImages] = useState<Array<{ id: string; url: string }>>([]);
   const [openUrl, setOpenUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("cake_order_attachments" as never)
+        .select("id, storage_path")
+        .eq("cake_order_id", orderId)
+        .neq("field", "payment_proof");
+      type Row = { id: string; storage_path: string };
+      const rows = (data ?? []) as unknown as Row[];
+      const signed = await Promise.all(
+        rows.map(async (r) => {
+          const sig = await getCakeAttachmentSignedUrl(r.id);
+          return sig.ok ? { id: r.id, url: sig.data!.url } : null;
+        })
+      );
+      if (cancelled) return;
+      setImages(signed.filter((s): s is { id: string; url: string } => !!s));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
   if (images.length === 0) return null;
   return (
     <div className="space-y-1">

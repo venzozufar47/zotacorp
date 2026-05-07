@@ -161,6 +161,7 @@ export type CakeProductionSlipStatus =
   | "draft"
   | "verified"
   | "sent"
+  | "reopened"
   | "received"
   | "closed";
 
@@ -178,6 +179,59 @@ export interface CakeProductionSlip {
   received_by: string | null;
   received_at: string | null;
   closed_at: string | null;
+  /** Frozen view for the production team. Updated on every
+   *  successful (re-)verify+send. Production reads from here so
+   *  mid-day admin edits are invisible until next send. */
+  last_sent_snapshot: CakeSlipSnapshot | null;
+  /** Banner payload after a re-send. Cleared on acknowledge. */
+  pending_diff: CakeSlipDiff | null;
+  diff_acknowledged_at: string | null;
+  sent_count: number;
+}
+
+/** Per-item snapshot stored on each (re-)verify+send. Stores the
+ *  resolved labels (not option ids) so future edits to cake_options
+ *  don't retroactively mutate a sent slip's display. */
+export interface CakeSlipSnapshotItem {
+  orderId: string;
+  customerName: string;
+  customerPhone: string | null;
+  baseLabel: string;
+  shapeLabel: string;
+  shapeCustom: string | null;
+  fillingLabel: string | null;
+  colorNotes: string | null;
+  textureNotes: string | null;
+  decorationNotes: string | null;
+  accessoriesNotes: string | null;
+  greetingCard: string | null;
+  deliveryLabel: string;
+  deliveryAddress: string | null;
+  scheduledAt: string;
+  sortOrder: number;
+}
+
+export interface CakeSlipSnapshot {
+  takenAt: string;
+  takenBy: string;
+  notes: string | null;
+  items: CakeSlipSnapshotItem[];
+}
+
+/** Diff between a previous and a new snapshot — drives the banner. */
+export interface CakeSlipDiff {
+  computedAt: string;
+  added: Array<{ orderId: string; customerName: string }>;
+  removed: Array<{ orderId: string; customerName: string }>;
+  modified: Array<{
+    orderId: string;
+    customerName: string;
+    fields: Array<{
+      label: string;
+      before: string | null;
+      after: string | null;
+    }>;
+  }>;
 }
 
 export interface CakeProductionSlipItem {

@@ -21,6 +21,10 @@ const STATUS_MAP: Record<
     label: "Dikirim",
     cls: "bg-pop-emerald/20 text-foreground border-foreground",
   },
+  reopened: {
+    label: "Dibuka kembali",
+    cls: "bg-pop-pink/30 text-foreground border-foreground",
+  },
   received: {
     label: "Diterima",
     cls: "bg-card text-foreground border-foreground",

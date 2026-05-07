@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   getCakeOrder,
@@ -40,10 +40,15 @@ export function CakeOrderDetailLoader({
   const [payments, setPayments] = useState<CakeOrderPayment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Bump to force a re-fetch after a mutation inside the panel
+  // (router.refresh() rerenders the kanban server-tree but doesn't
+  // re-fire this client component's useEffect — so we pair it with
+  // an explicit local tick).
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (tick === 0) setLoading(true);
     setError(null);
     void (async () => {
       const [orderRes, paymentsRes] = await Promise.all([
@@ -64,7 +69,9 @@ export function CakeOrderDetailLoader({
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderId, tick]);
+
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
 
   if (loading) {
     return (
@@ -90,6 +97,7 @@ export function CakeOrderDetailLoader({
       isAdminView={isAdminView}
       canEdit={canEdit}
       onClose={onClose}
+      onMutated={refetch}
     />
   );
 }

@@ -12,15 +12,11 @@ import { NewOrderQuickButton } from "@/components/cake/NewOrderQuickButton";
 
 /**
  * Employee lobby for custom cake orders. Shows the staff member's
- * recent orders plus a "Pesanan baru" CTA. Gated to users with the
- * 'orders' scope (admin implicitly passes — we use access.hasOrders
- * here because role is checked separately by the action layer).
+ * recent orders plus a "Pesanan baru" CTA. The archive lives on its
+ * own page (`/cake-orders/archive`) so this view stays focused on
+ * live work.
  */
-export default async function CakeOrdersPage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ archived?: string }>;
-}) {
+export default async function CakeOrdersPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
@@ -32,10 +28,8 @@ export default async function CakeOrdersPage({
     redirect("/dashboard");
   }
 
-  const params = (await searchParams) ?? {};
-  const includeArchived = params.archived === "1";
   const [ordersRes, optionsRes] = await Promise.all([
-    listMyCakeOrders({ includeArchived }),
+    listMyCakeOrders(),
     listCakeOptions(),
   ]);
   const orders = ordersRes.ok ? ordersRes.data ?? [] : [];
@@ -74,29 +68,17 @@ export default async function CakeOrdersPage({
             <span className="sm:hidden">Slip</span>
           </Link>
           <Link
-            href={
-              includeArchived ? "/cake-orders" : "/cake-orders?archived=1"
-            }
-            className={`flex items-center gap-1.5 rounded-xl border-2 border-foreground px-3 py-2 text-sm font-medium hover:bg-muted ${
-              includeArchived ? "bg-foreground text-background" : "bg-card"
-            }`}
-            aria-pressed={includeArchived}
+            href="/cake-orders/archive"
+            className="flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
           >
             <Archive size={14} strokeWidth={2.5} />
-            <span className="hidden sm:inline">
-              {includeArchived ? "Sembunyikan arsip" : "Arsip"}
-            </span>
+            <span className="hidden sm:inline">Arsip</span>
           </Link>
           <NewOrderQuickButton optionsByKind={optionsByKind} />
         </div>
       </header>
 
-      <CakeOrdersBoard
-        orders={orders}
-        optionsByKind={optionsByKind}
-        showArchiveButton={!includeArchived}
-        showUnarchiveButton={includeArchived}
-      />
+      <CakeOrdersBoard orders={orders} optionsByKind={optionsByKind} />
     </div>
   );
 }
