@@ -523,7 +523,9 @@ function SlipOrderCard({
             )}
             <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums ml-auto">
               <CalendarClock size={10} className="inline-block mr-0.5 -translate-y-px" />
-              {format(new Date(order.scheduled_at), "HH:mm", { locale: idLocale })}
+              {format(new Date(order.scheduled_at), "EEE, d MMM · HH:mm", {
+                locale: idLocale,
+              })}
             </span>
           </div>
           <div className="text-[10px] text-muted-foreground truncate">

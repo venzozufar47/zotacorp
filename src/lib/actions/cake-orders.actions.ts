@@ -507,7 +507,26 @@ export async function updateCakeOrderFull(
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 
+  // Append any newly uploaded reference photos. The form only sends
+  // files added during this edit session — existing rows are left
+  // untouched so we never silently drop history.
+  if (input.attachments && input.attachments.length > 0) {
+    const rows = input.attachments.map((a) => ({
+      cake_order_id: id,
+      field: a.field,
+      storage_path: a.storagePath,
+      mime_type: a.mimeType ?? null,
+      size_bytes: a.sizeBytes ?? null,
+      uploaded_by: gate.userId,
+    }));
+    const { error: attErr } = await supabase
+      .from("cake_order_attachments" as never)
+      .insert(rows as never);
+    if (attErr) return { ok: false, error: attErr.message };
+  }
+
   revalidatePath("/cake-orders");
+  revalidatePath("/cake-orders/archive");
   revalidatePath("/admin/cake-orders");
   return { ok: true };
 }
