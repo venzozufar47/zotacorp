@@ -27,6 +27,7 @@ type PosProductRow = Pick<
   | "track_stock"
   | "stock_aggregate_variants"
   | "is_open_price"
+  | "notes"
 >;
 type PosProductVariantRow = Pick<
   Database["public"]["Tables"]["pos_product_variants"]["Row"],
@@ -66,6 +67,11 @@ export interface PosProduct {
    *  Tidak kompatibel dengan `variants` — open-price = produk single-SKU
    *  dengan harga dinamis. */
   isOpenPrice: boolean;
+  /** Catatan publik yang muncul di kartu produk POS — buat menandai
+   *  hal yang tidak masuk sistem stok (mis. "varian Latte habis hari
+   *  ini"). Null = tidak ada catatan. Empty string disimpan null oleh
+   *  action layer supaya UI tidak render strip kosong. */
+  notes: string | null;
   /** Kalau length > 0, UI POS wajib pilih varian sebelum +1 ke cart.
    *  Varian menggantikan `price` (harga base dipakai cuma kalau tak
    *  ada varian sama sekali). */
@@ -112,6 +118,7 @@ function mapPosProduct(
     trackStock: r.track_stock,
     stockAggregateVariants: r.stock_aggregate_variants,
     isOpenPrice: r.is_open_price,
+    notes: r.notes,
     variants,
   };
 }
@@ -165,7 +172,7 @@ export async function listActivePosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
     .order("sort_order", { ascending: true })
@@ -187,7 +194,7 @@ export async function listAllPosProducts(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pos_products")
-    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price")
+    .select("id, bank_account_id, name, price, active, sort_order, track_stock, stock_aggregate_variants, is_open_price, notes")
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("sort_order", { ascending: true })
@@ -244,6 +251,8 @@ export async function updatePosProduct(input: {
   active?: boolean;
   sortOrder?: number;
   isOpenPrice?: boolean;
+  /** `null` clear, `string` set, `undefined` skip. Whitespace-only → null. */
+  notes?: string | null;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -261,6 +270,7 @@ export async function updatePosProduct(input: {
   if (input.active !== undefined) patch.active = input.active;
   if (input.sortOrder !== undefined) patch.sort_order = input.sortOrder;
   if (input.isOpenPrice !== undefined) patch.is_open_price = input.isOpenPrice;
+  if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
   if (Object.keys(patch).length === 0) return { ok: true };
 
   const supabase = await createClient();
@@ -268,6 +278,43 @@ export async function updatePosProduct(input: {
     .from("pos_products")
     .update(patch)
     .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/pos", "layout");
+  return { ok: true };
+}
+
+/**
+ * Update catatan publik produk dari sisi kasir (`/pos`). Berbeda dengan
+ * `updatePosProduct` yang admin-only, action ini di-gate via POS assignee
+ * scope supaya kasir bisa quick-tag "varian X habis hari ini" tanpa harus
+ * minta admin. Hanya kolom `notes` yang bisa ditulis.
+ */
+export async function setPosProductNotes(input: {
+  productId: string;
+  notes: string | null;
+}): Promise<ActionResult> {
+  const adminDb = createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  // Lookup bank_account_id dulu supaya gate dapat scope spesifik —
+  // kasir cuma boleh edit notes produk di rekening yang ditugaskan
+  // ke mereka. Pakai service-role karena RLS UPDATE = is_admin only.
+  const { data: row, error: rowErr } = await adminDb
+    .from("pos_products")
+    .select("bank_account_id")
+    .eq("id", input.productId)
+    .maybeSingle();
+  if (rowErr) return { ok: false, error: rowErr.message };
+  if (!row) return { ok: false, error: "Produk tidak ditemukan" };
+  const gate = await requireAdminOrPosAssignee(row.bank_account_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const trimmed = input.notes?.trim() || null;
+  const { error } = await adminDb
+    .from("pos_products")
+    .update({ notes: trimmed })
+    .eq("id", input.productId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/pos", "layout");
   return { ok: true };

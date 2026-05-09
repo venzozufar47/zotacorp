@@ -6,6 +6,10 @@ import { TrendingUp, Trophy, Clock, Calendar } from "lucide-react";
 import { PosTopNav } from "./PosTopNav";
 import type { PosInsights } from "@/lib/actions/pos-insights.actions";
 import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
+import {
+  jakartaDateMinusDays,
+  jakartaDateString,
+} from "@/lib/utils/jakarta";
 
 interface Props {
   accountName: string;
@@ -20,17 +24,6 @@ const PERIOD_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 30, label: "30 hari" },
   { value: 90, label: "90 hari" },
 ];
-
-function isoDate(d: Date): string {
-  // Format Jakarta calendar date (server already runs in UTC,
-  // tapi untuk picker lokal cukup pakai komponen tahun-bulan-tanggal
-  // langsung dari Date object — Indonesia tidak punya DST jadi
-  // konversi sederhana sudah benar).
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function daysBetweenInclusive(from: string, to: string): number {
   const a = new Date(from + "T00:00:00Z").getTime();
@@ -97,14 +90,22 @@ export function PosInsightsClient({
   isAdmin,
 }: Props) {
   const router = useRouter();
-  const today = isoDate(new Date());
+  const today = jakartaDateString(new Date());
   const periodDays = daysBetweenInclusive(range.from, range.to);
-  /** Preset aktif kalau `to=today` dan periodDays match (7/30/90).
-   *  Kalau tidak, "custom" yang aktif. */
-  const activePreset =
-    range.to === today
-      ? PERIOD_OPTIONS.find((o) => o.value === periodDays)?.value ?? null
-      : null;
+  const yesterday = jakartaDateMinusDays(today, 1);
+  /** Active preset id — null = custom range. Single-day "today" /
+   *  "yesterday" detected dari `from === to`; preset N-hari detected
+   *  dari `to === today` + lebar window match. */
+  type ActivePreset = "today" | "yesterday" | 7 | 30 | 90 | null;
+  const activePreset: ActivePreset = (() => {
+    if (range.from === today && range.to === today) return "today";
+    if (range.from === yesterday && range.to === yesterday) return "yesterday";
+    if (range.to === today) {
+      const match = PERIOD_OPTIONS.find((o) => o.value === periodDays);
+      if (match) return match.value as 7 | 30 | 90;
+    }
+    return null;
+  })();
   const isCustom = activePreset == null;
 
   const [customOpen, setCustomOpen] = useState(false);
@@ -123,24 +124,51 @@ export function PosInsightsClient({
     router.push(`/pos/insights?from=${from}&to=${to}`);
   }
 
-  function applyShortcut(kind: "thisMonth" | "lastMonth" | "thisWeek" | "ytd") {
-    const now = new Date();
-    let from: string;
-    let to: string = isoDate(now);
-    if (kind === "thisMonth") {
-      from = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
-    } else if (kind === "lastMonth") {
-      from = isoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-      to = isoDate(new Date(now.getFullYear(), now.getMonth(), 0));
-    } else if (kind === "thisWeek") {
-      // Senin sebagai awal minggu (Indonesia).
-      const dow = now.getDay() === 0 ? 7 : now.getDay();
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (dow - 1));
-      from = isoDate(monday);
-    } else {
-      from = isoDate(new Date(now.getFullYear(), 0, 1));
-    }
+  type Shortcut =
+    | "today"
+    | "yesterday"
+    | "thisWeek"
+    | "thisMonth"
+    | "lastMonth"
+    | "ytd";
+
+  // All math anchored in Jakarta YMD strings — local-time arithmetic
+  // would shift "today/yesterday" by one day for users in 00:00-07:00
+  // WIB (when the server's UTC clock is still on yesterday's date).
+  const SHORTCUT_RANGES: Record<Shortcut, () => [string, string]> = {
+    today: () => [today, today],
+    yesterday: () => {
+      const y = jakartaDateMinusDays(today, 1);
+      return [y, y];
+    },
+    thisWeek: () => {
+      // Senin sebagai awal minggu (ISO).
+      const jsDow = new Date(today + "T00:00:00Z").getUTCDay();
+      const offset = (jsDow === 0 ? 7 : jsDow) - 1;
+      return [jakartaDateMinusDays(today, offset), today];
+    },
+    thisMonth: () => {
+      const [y, m] = today.split("-");
+      return [`${y}-${m}-01`, today];
+    },
+    lastMonth: () => {
+      const [yStr, mStr] = today.split("-");
+      const m = Number(mStr);
+      const y = Number(yStr);
+      const prevY = m === 1 ? y - 1 : y;
+      const prevM = m === 1 ? 12 : m - 1;
+      const lastDay = new Date(Date.UTC(prevY, prevM, 0)).getUTCDate();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return [
+        `${prevY}-${pad(prevM)}-01`,
+        `${prevY}-${pad(prevM)}-${pad(lastDay)}`,
+      ];
+    },
+    ytd: () => [`${today.slice(0, 4)}-01-01`, today],
+  };
+
+  function applyShortcut(kind: Shortcut) {
+    const [from, to] = SHORTCUT_RANGES[kind]();
     setCustomFrom(from);
     setCustomTo(to);
     applyCustom(from, to);
@@ -169,6 +197,30 @@ export function PosInsightsClient({
 
       <div className="space-y-1.5">
         <div className="flex flex-wrap gap-1.5 rounded-full border border-border bg-muted/40 p-1 w-fit">
+          <button
+            type="button"
+            onClick={() => applyShortcut("today")}
+            className={
+              "px-3 py-1 text-xs font-semibold rounded-full transition " +
+              (activePreset === "today"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground")
+            }
+          >
+            Hari ini
+          </button>
+          <button
+            type="button"
+            onClick={() => applyShortcut("yesterday")}
+            className={
+              "px-3 py-1 text-xs font-semibold rounded-full transition " +
+              (activePreset === "yesterday"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground")
+            }
+          >
+            Kemarin
+          </button>
           {PERIOD_OPTIONS.map((opt) => (
             <button
               key={opt.value}

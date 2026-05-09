@@ -7,11 +7,13 @@ import { Camera, Loader2, Minus, Plus, Settings, Sparkles, X } from "lucide-reac
 import { toast } from "sonner";
 import {
   createPosSale,
+  setPosProductNotes,
   type PaymentMethod,
   type PosProduct,
   type PosProductVariant,
   type PosSaleItemInput,
 } from "@/lib/actions/pos.actions";
+import { useRouter } from "next/navigation";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
@@ -83,6 +85,10 @@ export function POSClient({
   // kasir bayar tanpa konfirmasi nominal). Reset ke null tiap modal
   // dibuka/ditutup untuk hindari nilai stale lintas transaksi.
   const [cashReceived, setCashReceived] = useState<number | null>(null);
+  // Quick edit catatan publik produk (mis. "Latte habis hari ini").
+  // null = dialog tertutup; kalau ada productId → edit untuk produk itu.
+  const [notesEditFor, setNotesEditFor] = useState<string | null>(null);
+  const router = useRouter();
   const [customOpen, setCustomOpen] = useState(false);
   // productId yang sedang dibuka variant-pickernya; null = tertutup.
   const [variantPickerFor, setVariantPickerFor] = useState<string | null>(null);
@@ -508,6 +514,31 @@ export function POSClient({
                     Sisa {stockState.remaining}
                   </div>
                 )}
+                {p.notes ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNotesEditFor(p.id);
+                    }}
+                    className="mt-1 w-full text-left rounded-md border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-foreground line-clamp-2 hover:bg-warning/20"
+                    aria-label="Edit catatan"
+                  >
+                    📝 {p.notes}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNotesEditFor(p.id);
+                    }}
+                    className="mt-1 inline-flex items-center gap-0.5 rounded-md border border-dashed border-border bg-transparent px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                    aria-label="Tambah catatan"
+                  >
+                    <Plus size={9} strokeWidth={2.5} /> Catatan
+                  </button>
+                )}
                 {p.isOpenPrice && openPriceLineCount > 0 && (
                   <div className="mt-1 text-[10px] uppercase tracking-wider text-primary font-semibold">
                     {openPriceLineCount} line · {openPriceQty}× di cart
@@ -864,6 +895,21 @@ export function POSClient({
         );
       })()}
 
+      {notesEditFor && (() => {
+        const p = products.find((x) => x.id === notesEditFor);
+        if (!p) return null;
+        return (
+          <NotesEditDialog
+            product={p}
+            onClose={() => setNotesEditFor(null)}
+            onSaved={() => {
+              setNotesEditFor(null);
+              router.refresh();
+            }}
+          />
+        );
+      })()}
+
       {openPriceFor && (() => {
         const p = products.find((x) => x.id === openPriceFor.productId);
         if (!p) return null;
@@ -1177,6 +1223,125 @@ function VariantPickerDialog({
         >
           Selesai
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Quick-edit catatan publik produk dari kasir (`/pos`). Use case: tag
+ * "Latte habis" tanpa harus buka admin katalog. Action gated via
+ * `setPosProductNotes` (admin atau POS assignee untuk rekening produk
+ * tsb.). Hanya field `notes` yang mutable di sini.
+ */
+function NotesEditDialog({
+  product,
+  onClose,
+  onSaved,
+}: {
+  product: PosProduct;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [value, setValue] = useState(product.notes ?? "");
+  const [pending, startTransition] = useTransition();
+
+  function save() {
+    const next = value.trim();
+    const current = product.notes ?? "";
+    if (next === current) {
+      onSaved();
+      return;
+    }
+    startTransition(async () => {
+      const res = await setPosProductNotes({
+        productId: product.id,
+        notes: next.length > 0 ? next : null,
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal simpan catatan");
+        return;
+      }
+      toast.success(next ? "Catatan tersimpan" : "Catatan dihapus");
+      onSaved();
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={() => {
+        if (pending) return;
+        onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold text-foreground">{product.name}</h2>
+          <p className="text-xs text-muted-foreground">
+            Catatan untuk kasir & customer — terlihat di kartu produk.
+          </p>
+        </div>
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          autoFocus
+          maxLength={200}
+          rows={3}
+          placeholder="Mis. 'Varian Latte habis hari ini'"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-primary outline-none resize-none"
+        />
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            {value.length}/200
+          </span>
+          <div className="flex gap-2">
+            {product.notes && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setValue("");
+                  startTransition(async () => {
+                    const res = await setPosProductNotes({
+                      productId: product.id,
+                      notes: null,
+                    });
+                    if (!res.ok) {
+                      toast.error(res.error ?? "Gagal hapus catatan");
+                      return;
+                    }
+                    toast.success("Catatan dihapus");
+                    onSaved();
+                  });
+                }}
+                className="h-9 px-3 rounded-lg border border-border text-destructive text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              >
+                Hapus
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onClose}
+              className="h-9 px-3 rounded-lg border border-border text-foreground text-xs font-semibold hover:bg-muted disabled:opacity-50"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={save}
+              className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-60"
+            >
+              {pending && <Loader2 size={12} className="animate-spin" />}
+              Simpan
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

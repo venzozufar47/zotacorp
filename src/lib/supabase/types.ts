@@ -1367,6 +1367,7 @@ export type Database = {
           id: string
           is_open_price: boolean
           name: string
+          notes: string | null
           price: number
           sort_order: number
           stock_aggregate_variants: boolean
@@ -1380,6 +1381,7 @@ export type Database = {
           id?: string
           is_open_price?: boolean
           name: string
+          notes?: string | null
           price: number
           sort_order?: number
           stock_aggregate_variants?: boolean
@@ -1393,6 +1395,7 @@ export type Database = {
           id?: string
           is_open_price?: boolean
           name?: string
+          notes?: string | null
           price?: number
           sort_order?: number
           stock_aggregate_variants?: boolean

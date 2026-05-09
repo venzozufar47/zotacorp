@@ -62,6 +62,7 @@ export function ProductCatalogClient({
   // blur via updateField / updateVariantField.
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
+  const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
 
@@ -120,7 +121,9 @@ export function ProductCatalogClient({
 
   function updateField(
     id: string,
-    patch: Partial<Pick<PosProduct, "name" | "price" | "active" | "isOpenPrice">>
+    patch: Partial<
+      Pick<PosProduct, "name" | "price" | "active" | "isOpenPrice" | "notes">
+    >
   ) {
     const prev = products;
     setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -466,6 +469,34 @@ export function ProductCatalogClient({
                 >
                   <Trash2 size={14} />
                 </button>
+              </div>
+
+              <div className="px-3 pb-2 -mt-0.5">
+                <input
+                  type="text"
+                  value={notesDrafts[p.id] ?? p.notes ?? ""}
+                  placeholder="📝 Catatan untuk kasir (opsional) — mis. 'Latte habis hari ini'"
+                  onChange={(e) =>
+                    setNotesDrafts((d) => ({ ...d, [p.id]: e.target.value }))
+                  }
+                  onBlur={(e) => {
+                    const draft = e.target.value;
+                    setNotesDrafts((d) => {
+                      if (!(p.id in d)) return d;
+                      const next = { ...d };
+                      delete next[p.id];
+                      return next;
+                    });
+                    const normalized = draft.trim();
+                    const current = p.notes ?? "";
+                    if (normalized !== current) {
+                      updateField(p.id, {
+                        notes: normalized.length > 0 ? normalized : null,
+                      });
+                    }
+                  }}
+                  className="w-full h-8 px-2 rounded-lg border border-border bg-transparent text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-primary outline-none"
+                />
               </div>
 
               {isExpanded && (
