@@ -1,9 +1,8 @@
 "use client";
 
-import { PosNavLink } from "./PosNavLink";
+import { PosTopNav } from "./PosTopNav";
 import { useState, useTransition } from "react";
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   GripVertical,
@@ -287,15 +286,11 @@ export function ProductCatalogClient({
   );
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+    <>
+      <PosTopNav accountName={accountName} isAdmin active="produk" />
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
       <header className="flex items-center justify-between">
         <div>
-          <PosNavLink
-            href="/pos"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
-          >
-            <ArrowLeft size={12} /> Kembali ke POS
-          </PosNavLink>
           <h1 className="font-semibold text-foreground">Katalog Produk</h1>
           <p className="text-xs text-muted-foreground">{accountName}</p>
         </div>
@@ -530,7 +525,8 @@ export function ProductCatalogClient({
           </SortableContext>
         </DndContext>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

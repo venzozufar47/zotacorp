@@ -1,17 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, TrendingUp, Trophy, Clock, Calendar } from "lucide-react";
-import { PosNavLink } from "./PosNavLink";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { TrendingUp, Trophy, Clock, Calendar } from "lucide-react";
+import { PosTopNav } from "./PosTopNav";
 import type { PosInsights } from "@/lib/actions/pos-insights.actions";
 import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
 
 interface Props {
   accountName: string;
-  period: number;
+  range: { from: string; to: string };
   insights: PosInsights | null;
   error: string | null;
+  isAdmin: boolean;
 }
 
 const PERIOD_OPTIONS: Array<{ value: number; label: string }> = [
@@ -19,6 +20,23 @@ const PERIOD_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 30, label: "30 hari" },
   { value: 90, label: "90 hari" },
 ];
+
+function isoDate(d: Date): string {
+  // Format Jakarta calendar date (server already runs in UTC,
+  // tapi untuk picker lokal cukup pakai komponen tahun-bulan-tanggal
+  // langsung dari Date object — Indonesia tidak punya DST jadi
+  // konversi sederhana sudah benar).
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function daysBetweenInclusive(from: string, to: string): number {
+  const a = new Date(from + "T00:00:00Z").getTime();
+  const b = new Date(to + "T00:00:00Z").getTime();
+  return Math.round((b - a) / 86_400_000) + 1;
+}
 
 const DOW_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
@@ -73,28 +91,70 @@ function trimToOperatingHours<T extends { hour: number; txCount: number }>(
 
 export function PosInsightsClient({
   accountName,
-  period,
+  range,
   insights,
   error,
+  isAdmin,
 }: Props) {
   const router = useRouter();
-  const sp = useSearchParams();
+  const today = isoDate(new Date());
+  const periodDays = daysBetweenInclusive(range.from, range.to);
+  /** Preset aktif kalau `to=today` dan periodDays match (7/30/90).
+   *  Kalau tidak, "custom" yang aktif. */
+  const activePreset =
+    range.to === today
+      ? PERIOD_OPTIONS.find((o) => o.value === periodDays)?.value ?? null
+      : null;
+  const isCustom = activePreset == null;
 
-  function setPeriod(value: number) {
-    const params = new URLSearchParams(sp.toString());
-    params.set("period", String(value));
-    router.push(`/pos/insights?${params.toString()}`);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customFrom, setCustomFrom] = useState(range.from);
+  const [customTo, setCustomTo] = useState(range.to);
+
+  function applyPreset(value: number) {
+    setCustomOpen(false);
+    router.push(`/pos/insights?period=${value}`);
+  }
+
+  function applyCustom(from: string, to: string) {
+    if (!from || !to) return;
+    if (from > to) [from, to] = [to, from];
+    setCustomOpen(false);
+    router.push(`/pos/insights?from=${from}&to=${to}`);
+  }
+
+  function applyShortcut(kind: "thisMonth" | "lastMonth" | "thisWeek" | "ytd") {
+    const now = new Date();
+    let from: string;
+    let to: string = isoDate(now);
+    if (kind === "thisMonth") {
+      from = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    } else if (kind === "lastMonth") {
+      from = isoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+      to = isoDate(new Date(now.getFullYear(), now.getMonth(), 0));
+    } else if (kind === "thisWeek") {
+      // Senin sebagai awal minggu (Indonesia).
+      const dow = now.getDay() === 0 ? 7 : now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (dow - 1));
+      from = isoDate(monday);
+    } else {
+      from = isoDate(new Date(now.getFullYear(), 0, 1));
+    }
+    setCustomFrom(from);
+    setCustomTo(to);
+    applyCustom(from, to);
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-5 space-y-5">
+    <>
+      <PosTopNav
+        accountName={accountName}
+        isAdmin={isAdmin}
+        active="insights"
+      />
+      <div className="max-w-3xl mx-auto px-4 py-5 space-y-5">
       <header>
-        <PosNavLink
-          href="/pos"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
-        >
-          <ArrowLeft size={12} /> Kembali ke POS
-        </PosNavLink>
         <h1 className="font-semibold text-foreground">Insights Penjualan</h1>
         <p className="text-xs text-muted-foreground">
           {accountName}
@@ -107,22 +167,106 @@ export function PosInsightsClient({
         </p>
       </header>
 
-      <div className="flex gap-1.5 rounded-full border border-border bg-muted/40 p-1 w-fit">
-        {PERIOD_OPTIONS.map((opt) => (
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap gap-1.5 rounded-full border border-border bg-muted/40 p-1 w-fit">
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => applyPreset(opt.value)}
+              className={
+                "px-3 py-1 text-xs font-semibold rounded-full transition " +
+                (activePreset === opt.value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground")
+              }
+            >
+              {opt.label}
+            </button>
+          ))}
           <button
-            key={opt.value}
             type="button"
-            onClick={() => setPeriod(opt.value)}
+            onClick={() => setCustomOpen((v) => !v)}
+            aria-expanded={customOpen}
             className={
-              "px-3 py-1 text-xs font-semibold rounded-full transition " +
-              (opt.value === period
+              "px-3 py-1 text-xs font-semibold rounded-full transition inline-flex items-center gap-1 " +
+              (isCustom
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground")
             }
           >
-            {opt.label}
+            <Calendar size={11} />
+            {isCustom
+              ? `${formatDate(range.from)} – ${formatDate(range.to)}`
+              : "Custom"}
           </button>
-        ))}
+        </div>
+
+        {customOpen && (
+          <div className="rounded-2xl border border-border bg-card p-3 space-y-3 max-w-sm shadow-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Dari
+                <input
+                  type="date"
+                  value={customFrom}
+                  max={customTo || today}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Sampai
+                <input
+                  type="date"
+                  value={customTo}
+                  min={customFrom}
+                  max={today}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: "thisWeek" as const, label: "Minggu ini" },
+                { id: "thisMonth" as const, label: "Bulan ini" },
+                { id: "lastMonth" as const, label: "Bulan lalu" },
+                { id: "ytd" as const, label: "Tahun berjalan" },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => applyShortcut(s.id)}
+                  className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted active:scale-95 transition-transform"
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomFrom(range.from);
+                  setCustomTo(range.to);
+                  setCustomOpen(false);
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground px-2 py-1"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => applyCustom(customFrom, customTo)}
+                disabled={!customFrom || !customTo || customFrom > customTo}
+                className="rounded-lg bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+              >
+                Terapkan
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {error ? (
@@ -132,13 +276,15 @@ export function PosInsightsClient({
       ) : !insights || insights.summary.txCount === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            Belum ada penjualan di {period} hari terakhir.
+            Belum ada penjualan dari {formatDate(range.from)} sampai{" "}
+            {formatDate(range.to)}.
           </p>
         </div>
       ) : (
         <InsightsBody insights={insights} />
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

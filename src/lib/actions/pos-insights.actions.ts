@@ -2,11 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
-import {
-  jakartaDateMinusDays,
-  jakartaDateString,
-  jakartaHour,
-} from "@/lib/utils/jakarta";
+import { jakartaDateMinusDays, jakartaHour } from "@/lib/utils/jakarta";
 
 export interface PosInsightsSummary {
   /** Total revenue (rupiah) di periode, exclude voided. */
@@ -38,6 +34,7 @@ export interface PosTopVariant {
 }
 
 export interface PosInsights {
+  /** Lebar window (inklusif) dalam hari. Dipakai untuk array daily. */
   periodDays: number;
   /** Inklusif kedua sisi (YYYY-MM-DD WIB). */
   range: { from: string; to: string };
@@ -53,26 +50,54 @@ export interface PosInsights {
   dow: Array<{ dow: number; txCount: number; revenue: number }>;
 }
 
+/** Hard cap supaya admin tidak iseng minta range puluhan tahun. */
+const INSIGHTS_MAX_DAYS = 366;
+
+/**
+ * Hitung jumlah hari inklusif antara dua YYYY-MM-DD (WIB).
+ * Tidak peduli timezone server — input sudah diformat sebagai
+ * Jakarta calendar date.
+ */
+function daysBetween(fromDate: string, toDate: string): number {
+  const a = new Date(fromDate + "T00:00:00Z").getTime();
+  const b = new Date(toDate + "T00:00:00Z").getTime();
+  return Math.round((b - a) / 86_400_000) + 1;
+}
+
 /**
  * Tarik insights penjualan POS untuk satu rekening dalam window
- * `periodDays` hari kebelakang (Jakarta). Voided sales tidak ikut
- * revenue/qty — tapi voidedCount di-track terpisah supaya kasir/admin
- * sadar kalau banyak transaksi yang batal.
+ * `range = { from, to }` (Jakarta, inklusif kedua sisi). Voided
+ * sales tidak ikut revenue/qty — tapi voidedCount di-track terpisah
+ * supaya kasir/admin sadar kalau banyak transaksi yang batal.
  *
  * Semua agregasi dilakukan di JS — query Postgres cuma list raw row.
- * Volume per akun POS realistis (puluhan-ratusan tx/hari) sehingga 90
- * hari paling banyak ribuan row, masih nyaman di-handle in-memory.
+ * Volume per akun POS realistis (puluhan-ratusan tx/hari) sehingga
+ * 1 tahun paling banyak puluhan ribu row; masih nyaman in-memory.
  */
 export async function getPosInsights(
   bankAccountId: string,
-  periodDays: number = 30
+  range: { from: string; to: string }
 ): Promise<ActionResult<PosInsights>> {
   const gate = await requireAdminOrPosAssignee(bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
+  // Validasi range — caller server page sudah normalisasi dari
+  // `?from=…&to=…` atau preset `?period=…`, tapi backstop disini
+  // supaya parameter URL yang kacau tidak menjebol query.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(range.from) || !/^\d{4}-\d{2}-\d{2}$/.test(range.to)) {
+    return { ok: false, error: "Format tanggal tidak valid" };
+  }
+  if (range.from > range.to) {
+    return { ok: false, error: "Tanggal awal harus ≤ tanggal akhir" };
+  }
+  const periodDays = daysBetween(range.from, range.to);
+  if (periodDays > INSIGHTS_MAX_DAYS) {
+    return { ok: false, error: `Maksimal ${INSIGHTS_MAX_DAYS} hari` };
+  }
+
   const supabase = await createClient();
-  const today = jakartaDateString(new Date());
-  const fromDate = jakartaDateMinusDays(today, periodDays - 1);
+  const today = range.to;
+  const fromDate = range.from;
 
   // Sales di window — paginasi 1000-row PostgREST cap.
   type SaleRow = {

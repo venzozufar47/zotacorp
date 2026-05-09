@@ -1,9 +1,10 @@
 "use client";
 
 import { PosNavLink } from "./PosNavLink";
+import { PosTopNav } from "./PosTopNav";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import type { PosShiftSummary } from "@/lib/actions/pos.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatDateTime } from "@/lib/utils/date";
@@ -11,9 +12,10 @@ import { formatDateTime } from "@/lib/utils/date";
 interface Props {
   accountName: string;
   summary: PosShiftSummary;
+  isAdmin: boolean;
 }
 
-export default function PosShiftClient({ accountName, summary }: Props) {
+export default function PosShiftClient({ accountName, summary, isAdmin }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -36,14 +38,10 @@ export default function PosShiftClient({ accountName, summary }: Props) {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-5 space-y-4">
+    <>
+      <PosTopNav accountName={accountName} isAdmin={isAdmin} active="shift" />
+      <div className="max-w-md mx-auto px-4 py-5 space-y-4">
       <header>
-        <PosNavLink
-          href="/pos"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
-        >
-          <ArrowLeft size={12} /> Kembali ke POS
-        </PosNavLink>
         <h1 className="font-semibold text-foreground">Cek Saldo Shift</h1>
         <p className="text-xs text-muted-foreground">
           {accountName} · {formatDateTime(asOf)} WIB
@@ -111,7 +109,8 @@ export default function PosShiftClient({ accountName, summary }: Props) {
           Selesai shift? Input opname stok →
         </PosNavLink>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

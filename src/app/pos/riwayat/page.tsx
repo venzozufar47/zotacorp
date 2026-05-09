@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PosNavLink } from "@/components/pos/PosNavLink";
+import { PosTopNav } from "@/components/pos/PosTopNav";
 import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
 import { QRIS_RECEIPT_FROM_RIWAYAT } from "@/lib/pos/flags";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
   findPosAccountForCurrentUser,
   listPosSaleDates,
@@ -44,6 +45,9 @@ export default async function PosRiwayatPage({
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
+  const role = await getCurrentRole();
+  const isAdmin = role === "admin";
+
   const sp = await searchParams;
 
   // Daftar tanggal aktif (DESC) — dipakai untuk navigasi prev/next.
@@ -54,12 +58,21 @@ export default async function PosRiwayatPage({
 
   if (dates.length === 0) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
-        <Header accountName={account.accountName} />
-        <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
-          <p className="text-sm text-muted-foreground">Belum ada penjualan.</p>
+      <>
+        <PosTopNav
+          accountName={account.accountName}
+          isAdmin={isAdmin}
+          active="riwayat"
+        />
+        <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+          <Header accountName={account.accountName} />
+          <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              Belum ada penjualan.
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -98,7 +111,13 @@ export default async function PosRiwayatPage({
   );
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
+    <>
+      <PosTopNav
+        accountName={account.accountName}
+        isAdmin={isAdmin}
+        active="riwayat"
+      />
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <Header accountName={account.accountName} />
 
       <div className="rounded-2xl border-2 border-foreground bg-pop-emerald/15 p-3 flex items-center justify-between gap-2">
@@ -213,19 +232,14 @@ export default async function PosRiwayatPage({
       </div>
 
       {nav}
-    </div>
+      </div>
+    </>
   );
 }
 
 function Header({ accountName }: { accountName: string }) {
   return (
     <header>
-      <PosNavLink
-        href="/pos"
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
-      >
-        <ArrowLeft size={12} /> Kembali ke POS
-      </PosNavLink>
       <h1 className="font-semibold text-foreground">Riwayat Penjualan</h1>
       <p className="text-xs text-muted-foreground">{accountName}</p>
     </header>

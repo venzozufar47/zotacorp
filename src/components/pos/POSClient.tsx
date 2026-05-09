@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { PosNavLink } from "./PosNavLink";
-import { BarChart3, Boxes, Camera, History, Loader2, Minus, Plus, Settings, Sparkles, Wallet, X } from "lucide-react";
+import { PosTopNav } from "./PosTopNav";
+import { Camera, Loader2, Minus, Plus, Settings, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createPosSale,
@@ -21,6 +22,9 @@ interface Props {
   products: PosProduct[];
   /** Admin-only UI affordances (link ke /pos/produk, empty-state CTA). */
   isAdmin: boolean;
+  /** On-hand stok per SKU keyed by `cartKey(productId, variantId|null)`.
+   *  null = produk tidak tracked / stok belum di-fetch (bypass gating). */
+  stockByKey: Record<string, number> | null;
 }
 
 interface CustomLine {
@@ -59,7 +63,13 @@ function parseCartKey(key: string): { productId: string; variantId: string | nul
  * pilih varian sebelum masuk cart. Sticky bottom bar menampilkan total
  * + dua tombol pembayaran besar (Cash / QRIS).
  */
-export function POSClient({ bankAccountId, accountName, products, isAdmin }: Props) {
+export function POSClient({
+  bankAccountId,
+  accountName,
+  products,
+  isAdmin,
+  stockByKey,
+}: Props) {
   // Catalog cart: Record<cartKey, qty>.
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
@@ -68,6 +78,11 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   // QRIS wajib upload foto nota customer sebagai bukti — state-nya
   // di-reset setiap kali konfirmasi dibuka/ditutup.
   const [qrisReceipt, setQrisReceipt] = useState<File | null>(null);
+  // Cash payment: jumlah uang yang diterima kasir dari customer.
+  // null = belum diisi → tombol Bayar disabled (UX: jangan biarkan
+  // kasir bayar tanpa konfirmasi nominal). Reset ke null tiap modal
+  // dibuka/ditutup untuk hindari nilai stale lintas transaksi.
+  const [cashReceived, setCashReceived] = useState<number | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   // productId yang sedang dibuka variant-pickernya; null = tertutup.
   const [variantPickerFor, setVariantPickerFor] = useState<string | null>(null);
@@ -154,8 +169,47 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
     return m;
   }, [customItems]);
 
+  /**
+   * Resolve stok kapasitas untuk satu cart key, given a snapshot of
+   * cart state (untuk hindari race saat callback baca state lama).
+   * Mengembalikan `null` kalau produk tidak track stok / data belum
+   * tersedia (caller treat sebagai "tak terbatas").
+   *
+   * Aggregate-variant: stok disimpan di product-level. Cap untuk
+   * satu varian = onHand_produk - jumlah_kart_seluruh_varian +
+   * qty_varian_ini (supaya naik 1 item varian sendiri tetap valid
+   * selama total tidak lewat onHand produk).
+   */
+  function capacityFor(
+    key: string,
+    snapshot: Record<string, number>
+  ): number | null {
+    if (!stockByKey) return null;
+    const { productId, variantId } = parseCartKey(key);
+    const product = products.find((p) => p.id === productId);
+    if (!product || !product.trackStock || product.isOpenPrice) return null;
+    if (product.stockAggregateVariants && product.variants.length > 0) {
+      const onHand = stockByKey[cartKey(productId, null)] ?? 0;
+      let inCartOtherVariants = 0;
+      for (const v of product.variants) {
+        if (v.id === variantId) continue;
+        inCartOtherVariants += snapshot[cartKey(productId, v.id)] ?? 0;
+      }
+      return Math.max(0, onHand - inCartOtherVariants);
+    }
+    return stockByKey[key] ?? 0;
+  }
+
   function inc(key: string) {
-    setCart((c) => ({ ...c, [key]: (c[key] ?? 0) + 1 }));
+    setCart((c) => {
+      const cap = capacityFor(key, c);
+      const next = (c[key] ?? 0) + 1;
+      if (cap != null && next > cap) {
+        toast.error("Stok habis");
+        return c;
+      }
+      return { ...c, [key]: next };
+    });
   }
 
   function dec(key: string) {
@@ -168,7 +222,34 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
     });
   }
 
+  /** Cek apakah produk masih punya stok yang bisa dijual (bukan
+   *  spesifik varian — hanya gating untuk single-SKU dan untuk
+   *  membuka varian picker saja). Kembali `true` kalau tidak track
+   *  stok atau data tidak ada. */
+  function productHasAnyAvailable(p: PosProduct): boolean {
+    if (!stockByKey || !p.trackStock || p.isOpenPrice) return true;
+    if (p.variants.length === 0) {
+      const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
+      return onHand - (cart[cartKey(p.id)] ?? 0) > 0;
+    }
+    if (p.stockAggregateVariants) {
+      const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
+      let inCart = 0;
+      for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+      return onHand - inCart > 0;
+    }
+    // Per-variant stok: at least one variant has remaining capacity.
+    return p.variants.some((v) => {
+      const onHand = stockByKey[cartKey(p.id, v.id)] ?? 0;
+      return onHand - (cart[cartKey(p.id, v.id)] ?? 0) > 0;
+    });
+  }
+
   function handleProductTap(p: PosProduct) {
+    if (!productHasAnyAvailable(p)) {
+      toast.error("Stok habis");
+      return;
+    }
     if (p.isOpenPrice) {
       // Open-price + varian: pilih varian dulu, lalu input harga.
       // Kalau cuma 1 varian, skip picker langsung ke dialog harga.
@@ -307,6 +388,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
       resetCart();
       setConfirmMethod(null);
       setQrisReceipt(null);
+      setCashReceived(null);
     });
   }
 
@@ -315,9 +397,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   if (showEmptyState) {
     return (
       <div className="min-h-screen flex flex-col">
-        <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-4 py-3">
-          <h1 className="font-semibold text-foreground">{accountName} · POS</h1>
-        </header>
+        <PosTopNav accountName={accountName} isAdmin={isAdmin} active="pos" />
         <div className="flex-1 flex items-center justify-center p-6 text-center">
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
@@ -366,25 +446,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
 
   return (
     <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom))]">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            POS
-          </p>
-          <h1 className="font-semibold text-foreground text-sm truncate">{accountName}</h1>
-        </div>
-        <nav className="flex items-center gap-1 sm:gap-3 shrink-0">
-          {isAdmin && (
-            <HeaderNavLink href="/pos/produk" icon={<Settings size={16} />} label="Katalog" />
-          )}
-          <HeaderNavLink href="/pos/shift" icon={<Wallet size={16} />} label="Saldo" />
-          <HeaderNavLink href="/pos/stok" icon={<Boxes size={16} />} label="Stok" />
-          <HeaderNavLink href="/pos/riwayat" icon={<History size={16} />} label="Riwayat" />
-          {isAdmin && (
-            <HeaderNavLink href="/pos/insights" icon={<BarChart3 size={16} />} label="Insights" />
-          )}
-        </nav>
-      </header>
+      <PosTopNav accountName={accountName} isAdmin={isAdmin} active="pos" />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
         {products.map((p) => {
@@ -406,13 +468,27 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
           const singleKey =
             !hasVariants && !p.isOpenPrice ? cartKey(p.id) : null;
           const qtyOnSingleKey = singleKey ? cart[singleKey] ?? 0 : 0;
+          // Stok badge: hanya untuk produk track stok + non open-price.
+          // - "habis" => onHand - kart === 0 di seluruh varian (atau
+          //   single-SKU). Card greyed + disabled.
+          // - "low"   => 1..3 sisa, hanya hint warna.
+          const stockState = computeStockState(p, stockByKey, cart);
           return (
             <div key={p.id} className="relative">
+              {stockState.kind === "habis" && (
+                <span className="absolute top-1.5 right-1.5 z-10 inline-flex items-center rounded-full border border-foreground/40 bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Habis
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => handleProductTap(p)}
+                disabled={stockState.kind === "habis"}
+                aria-disabled={stockState.kind === "habis"}
                 className={`w-full min-h-[104px] sm:min-h-[120px] rounded-2xl border text-left p-2.5 sm:p-3 transition-colors active:bg-muted ${
-                  selected
+                  stockState.kind === "habis"
+                    ? "border-dashed border-border bg-muted/30 opacity-60 cursor-not-allowed grayscale-[20%]"
+                    : selected
                     ? "border-primary bg-primary/5"
                     : "border-border bg-card"
                 }`}
@@ -427,6 +503,11 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                       ? variantPriceLabel(p.variants)
                       : formatRp(p.price)}
                 </div>
+                {stockState.kind === "low" && (
+                  <div className="mt-0.5 text-[10px] font-semibold tabular-nums text-pop-pink">
+                    Sisa {stockState.remaining}
+                  </div>
+                )}
                 {p.isOpenPrice && openPriceLineCount > 0 && (
                   <div className="mt-1 text-[10px] uppercase tracking-wider text-primary font-semibold">
                     {openPriceLineCount} line · {openPriceQty}× di cart
@@ -605,6 +686,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
             if (pending) return;
             setConfirmMethod(null);
             setQrisReceipt(null);
+            setCashReceived(null);
           }}
         >
           <div
@@ -647,6 +729,13 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                 </span>
               </div>
             </div>
+            {confirmMethod === "cash" && (
+              <CashReceivedField
+                total={total}
+                value={cashReceived}
+                onChange={setCashReceived}
+              />
+            )}
             {QRIS_RECEIPT_AT_CHECKOUT && confirmMethod === "qris" && (
               <div className="mb-3">
                 <p className="text-xs font-medium text-foreground mb-1.5">
@@ -705,6 +794,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                 onClick={() => {
                   setConfirmMethod(null);
                   setQrisReceipt(null);
+                  setCashReceived(null);
                 }}
                 className="h-11 rounded-xl border border-border text-foreground font-semibold hover:bg-muted disabled:opacity-50"
               >
@@ -716,9 +806,19 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
                   pending ||
                   (QRIS_RECEIPT_AT_CHECKOUT &&
                     confirmMethod === "qris" &&
-                    !qrisReceipt)
+                    !qrisReceipt) ||
+                  (confirmMethod === "cash" &&
+                    (cashReceived == null || cashReceived < total))
                 }
-                onClick={() => submit(confirmMethod)}
+                onClick={() => {
+                  if (
+                    confirmMethod === "cash" &&
+                    (cashReceived == null || cashReceived < total)
+                  ) {
+                    return;
+                  }
+                  submit(confirmMethod);
+                }}
                 className={`h-11 rounded-xl font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-60 ${
                   confirmMethod === "cash" ? "bg-success" : "bg-primary"
                 }`}
@@ -742,6 +842,7 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
         <VariantPickerDialog
           product={pickerProduct}
           cart={cart}
+          stockByKey={stockByKey}
           onInc={(variantId) => inc(cartKey(pickerProduct.id, variantId))}
           onDec={(variantId) => dec(cartKey(pickerProduct.id, variantId))}
           onClose={() => setVariantPickerFor(null)}
@@ -784,6 +885,167 @@ export function POSClient({ bankAccountId, accountName, products, isAdmin }: Pro
   );
 }
 
+/**
+ * Cash payment helper field. Kasir input nominal yang diterima
+ * customer; live `kembalian = received - total` di bawah, plus chip
+ * denominasi yang membulatkan-naik ke kelipatan terdekat (sesuai cara
+ * kasir manusia: customer kasih 100rb → satu tap, bukan ketik 100000).
+ *
+ * Display-only — tidak di-persist ke `pos_sales`. Kalau di iterasi
+ * selanjutnya dibutuhkan untuk reconciliation, tinggal pipe `value`
+ * + `value - total` ke `createPosSale` sebagai field opsional.
+ */
+function CashReceivedField({
+  total,
+  value,
+  onChange,
+}: {
+  total: number;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const change = value == null ? null : value - total;
+  const denominations: Array<{ label: string; amount: number }> = [
+    { label: "+50rb", amount: 50_000 },
+    { label: "+100rb", amount: 100_000 },
+    { label: "+200rb", amount: 200_000 },
+  ];
+  const roundUpTo = (n: number, step: number) =>
+    Math.ceil(n / step) * step;
+
+  return (
+    <div className="mb-3 rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+      <label className="block">
+        <span className="text-xs font-medium text-foreground">
+          Uang diterima
+        </span>
+        <div className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+          <span className="text-sm font-semibold text-muted-foreground">
+            Rp
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={value == null ? "" : value.toLocaleString("id-ID")}
+            placeholder="0"
+            onChange={(e) => {
+              const digits = e.target.value.replace(/[^\d]/g, "");
+              if (digits === "") {
+                onChange(null);
+                return;
+              }
+              const n = parseInt(digits, 10);
+              onChange(Number.isFinite(n) ? n : null);
+            }}
+            className="flex-1 bg-transparent outline-none text-base font-semibold text-foreground tabular-nums"
+          />
+        </div>
+      </label>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(total)}
+          className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground hover:bg-muted active:scale-95 transition-transform"
+        >
+          Pas
+        </button>
+        {denominations.map((d) => (
+          <button
+            key={d.amount}
+            type="button"
+            onClick={() => onChange(roundUpTo(Math.max(value ?? total, total), d.amount))}
+            className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground hover:bg-muted active:scale-95 transition-transform"
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+      {value != null && (
+        <div className="flex items-center justify-between text-sm">
+          <span
+            className={
+              change != null && change < 0
+                ? "text-destructive font-semibold"
+                : "text-muted-foreground"
+            }
+          >
+            {change == null
+              ? "Kembalian"
+              : change < 0
+                ? "Kurang"
+                : change === 0
+                  ? "Uang pas"
+                  : "Kembalian"}
+          </span>
+          <span
+            className={
+              "tabular-nums font-bold " +
+              (change != null && change < 0
+                ? "text-destructive"
+                : change != null && change > 0
+                  ? "text-pop-emerald"
+                  : "text-muted-foreground")
+            }
+          >
+            {change == null
+              ? "Rp 0"
+              : change < 0
+                ? formatRp(-change)
+                : formatRp(change)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Hitung state stok untuk satu kartu produk. "habis" = kartu di-disable
+ * + greyed; "low" = sisa 1..3 → strip warning di card; "ok" / "untracked"
+ * = render normal.
+ *
+ * Aggregate-variant: produk simpan stok di product-level. Avail = onHand
+ *   produk - jumlah cart di seluruh varian.
+ * Per-variant: max avail di antara varian yang masih punya kapasitas.
+ *   Ini buat hint card-level — gating granular di varian picker.
+ */
+type StockState =
+  | { kind: "untracked" }
+  | { kind: "ok" }
+  | { kind: "low"; remaining: number }
+  | { kind: "habis" };
+
+function computeStockState(
+  p: PosProduct,
+  stockByKey: Record<string, number> | null,
+  cart: Record<string, number>
+): StockState {
+  if (!stockByKey || !p.trackStock || p.isOpenPrice) {
+    return { kind: "untracked" };
+  }
+  let remaining: number;
+  if (p.variants.length === 0) {
+    const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
+    remaining = onHand - (cart[cartKey(p.id)] ?? 0);
+  } else if (p.stockAggregateVariants) {
+    const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
+    let inCart = 0;
+    for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+    remaining = onHand - inCart;
+  } else {
+    remaining = p.variants.reduce((max, v) => {
+      const avail =
+        (stockByKey[cartKey(p.id, v.id)] ?? 0) -
+        (cart[cartKey(p.id, v.id)] ?? 0);
+      return Math.max(max, avail);
+    }, 0);
+  }
+  if (remaining <= 0) return { kind: "habis" };
+  if (remaining <= 3) return { kind: "low", remaining };
+  return { kind: "ok" };
+}
+
 /** "Rp 10.000" kalau semua varian sama harganya, "Rp 10.000 – Rp 15.000"
  *  untuk rentang. Array diasumsikan non-empty (hanya dipanggil bila ada
  *  varian). */
@@ -799,16 +1061,25 @@ function variantPriceLabel(variants: PosProductVariant[]): string {
 function VariantPickerDialog({
   product,
   cart,
+  stockByKey,
   onInc,
   onDec,
   onClose,
 }: {
   product: PosProduct;
   cart: Record<string, number>;
+  stockByKey: Record<string, number> | null;
   onInc: (variantId: string) => void;
   onDec: (variantId: string) => void;
   onClose: () => void;
 }) {
+  // Aggregate-variant: cap satu varian = onHand_produk - jumlah_cart
+  // varian lain. Dihitung per-render karena state cart bisa berubah
+  // saat user tap +.
+  const tracked = !!stockByKey && product.trackStock && !product.isOpenPrice;
+  const productOnHand = stockByKey
+    ? stockByKey[cartKey(product.id, null)] ?? 0
+    : 0;
   return (
     <div
       className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
@@ -827,21 +1098,49 @@ function VariantPickerDialog({
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
           {product.variants.map((v) => {
             const qty = cart[cartKey(product.id, v.id)] ?? 0;
+            // Resolve sisa stok khusus varian ini.
+            let remaining: number | null = null;
+            if (tracked) {
+              if (product.stockAggregateVariants) {
+                let inCartOther = 0;
+                for (const x of product.variants) {
+                  if (x.id === v.id) continue;
+                  inCartOther += cart[cartKey(product.id, x.id)] ?? 0;
+                }
+                remaining = Math.max(0, productOnHand - inCartOther - qty);
+              } else {
+                remaining =
+                  (stockByKey![cartKey(product.id, v.id)] ?? 0) - qty;
+              }
+            }
+            const habis = remaining != null && remaining <= 0;
             return (
               <div
                 key={v.id}
                 className={`rounded-xl border p-3 flex items-center gap-3 ${
-                  qty > 0
+                  habis
+                    ? "border-dashed border-border bg-muted/30 opacity-60"
+                    : qty > 0
                     ? "border-primary bg-primary/5"
                     : "border-border bg-card"
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground text-sm truncate">
+                  <p className="font-semibold text-foreground text-sm truncate flex items-center gap-1.5">
                     {v.name}
+                    {habis && (
+                      <span className="rounded-full border border-foreground/40 bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Habis
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground tabular-nums">
                     {formatRp(v.price)}
+                    {remaining != null && remaining > 0 && remaining <= 3 && (
+                      <span className="ml-2 text-pop-pink font-semibold">
+                        sisa {remaining}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
@@ -861,7 +1160,8 @@ function VariantPickerDialog({
                     type="button"
                     aria-label="Tambah"
                     onClick={() => onInc(v.id)}
-                    className="h-9 w-9 flex items-center justify-center rounded-r-full active:bg-primary/80"
+                    disabled={habis}
+                    className="h-9 w-9 flex items-center justify-center rounded-r-full active:bg-primary/80 disabled:opacity-40"
                   >
                     <Plus size={14} />
                   </button>
@@ -1166,22 +1466,3 @@ function OpenPriceVariantPicker({
   );
 }
 
-function HeaderNavLink({
-  href,
-  icon,
-  label,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <PosNavLink
-      href={href}
-      className="inline-flex items-center gap-1 h-9 px-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </PosNavLink>
-  );
-}

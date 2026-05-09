@@ -1,9 +1,9 @@
 "use client";
 
-import { PosNavLink } from "./PosNavLink";
+import { PosTopNav } from "./PosTopNav";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Boxes, Plus, RotateCcw, X } from "lucide-react";
+import { Boxes, Plus, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import type {
@@ -31,6 +31,7 @@ interface Props {
   products: PosProduct[];
   excluded: ExcludedStockProduct[];
   authorizers: PosAuthorizerInfo;
+  isAdmin: boolean;
 }
 
 const TABS: { id: Tab; label: string }[] = [
@@ -49,6 +50,7 @@ export function StockLandingClient({
   products,
   excluded,
   authorizers,
+  isAdmin,
 }: Props) {
   const [tab, setTab] = useState<Tab>("on-hand");
   const [dialog, setDialog] = useState<"production" | "withdrawal" | null>(null);
@@ -57,14 +59,10 @@ export function StockLandingClient({
   const penarikan = movements.filter((m) => m.type === "withdrawal");
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
+    <>
+      <PosTopNav accountName={accountName} isAdmin={isAdmin} active="stok" />
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <header>
-        <PosNavLink
-          href="/pos"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
-        >
-          <ArrowLeft size={12} /> Kembali ke POS
-        </PosNavLink>
         <h1 className="font-semibold text-foreground flex items-center gap-2">
           <Boxes size={16} /> Stok
         </h1>
@@ -123,7 +121,8 @@ export function StockLandingClient({
           onClose={() => setDialog(null)}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

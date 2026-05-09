@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
   findPosAccountForCurrentUser,
   getPosShiftSummary,
@@ -15,10 +15,17 @@ export default async function PosShiftPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const result = await getPosShiftSummary(account.id);
+  const [result, role] = await Promise.all([
+    getPosShiftSummary(account.id),
+    getCurrentRole(),
+  ]);
   if (!result.ok || !result.data) redirect("/");
 
   return (
-    <PosShiftClient accountName={account.accountName} summary={result.data} />
+    <PosShiftClient
+      accountName={account.accountName}
+      summary={result.data}
+      isAdmin={role === "admin"}
+    />
   );
 }

@@ -6,6 +6,7 @@ import {
   findPosAccountForCurrentUser,
   listActivePosProducts,
 } from "@/lib/actions/pos.actions";
+import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
 import { POSClient } from "@/components/pos/POSClient";
 
 /**
@@ -13,6 +14,11 @@ import { POSClient } from "@/components/pos/POSClient";
  * punya akses (admin lihat semua, assignee lihat miliknya). RLS pada
  * bank_accounts filter row yang visible, jadi `findPosAccountForCurrentUser`
  * aman dipakai baik untuk admin maupun assignee.
+ *
+ * Stok on-hand di-hydrate paralel dengan produk supaya grid bisa
+ * gating produk habis tanpa flash. Map keying mirror `cartKey`:
+ * single-SKU = `p:<productId>`; per-variant = `p:<id>|v:<variantId>`;
+ * aggregate-variant produk = `p:<id>` (variantId=null di server).
  */
 export default async function PosPage() {
   const user = await getCurrentUser();
@@ -21,10 +27,21 @@ export default async function PosPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const [products, role] = await Promise.all([
+  const [products, role, onHand] = await Promise.all([
     listActivePosProducts(account.id),
     getCurrentRole(),
+    listStockOnHand(account.id).catch(() => []),
   ]);
+
+  // Format key sama dengan helper `cartKey` di POSClient — duplikasi
+  // kecil supaya server-side tidak import komponen client.
+  const stockByKey: Record<string, number> = {};
+  for (const s of onHand) {
+    const key = s.variantId
+      ? `p:${s.productId}|v:${s.variantId}`
+      : `p:${s.productId}`;
+    stockByKey[key] = s.onHand;
+  }
 
   return (
     <POSClient
@@ -32,6 +49,7 @@ export default async function PosPage() {
       accountName={account.accountName}
       products={products}
       isAdmin={role === "admin"}
+      stockByKey={stockByKey}
     />
   );
 }

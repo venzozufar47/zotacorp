@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { findPosAccountForCurrentUser, listActivePosProducts } from "@/lib/actions/pos.actions";
 import {
   getPosAuthorizers,
@@ -19,7 +19,7 @@ export default async function PosStockPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const [onHand, movements, opnames, products, excluded, authorizers] =
+  const [onHand, movements, opnames, products, excluded, authorizers, role] =
     await Promise.all([
       listStockOnHand(account.id),
       listStockMovements(account.id, 100),
@@ -27,6 +27,7 @@ export default async function PosStockPage() {
       listActivePosProducts(account.id),
       listExcludedStockProducts(account.id),
       getPosAuthorizers(account.id),
+      getCurrentRole(),
     ]);
 
   // Dialog Produksi/Penarikan cuma butuh produk yang dihitung di stok,
@@ -48,6 +49,7 @@ export default async function PosStockPage() {
       products={movementProducts}
       excluded={excluded}
       authorizers={authorizers}
+      isAdmin={role === "admin"}
     />
   );
 }
