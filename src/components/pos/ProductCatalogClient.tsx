@@ -110,6 +110,7 @@ export function ProductCatalogClient({
           trackStock: true,
           stockAggregateVariants: false,
           isOpenPrice: false,
+          notes: null,
           variants: [],
         },
       ]);
