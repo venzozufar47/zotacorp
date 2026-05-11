@@ -69,8 +69,10 @@ export default async function CakeOrdersArchivePage() {
         <CakeOrdersBoard
           orders={orders}
           optionsByKind={optionsByKind}
+          canMove={false}
           showArchiveButton={false}
           showUnarchiveButton
+          flatLayout
         />
       )}
     </div>

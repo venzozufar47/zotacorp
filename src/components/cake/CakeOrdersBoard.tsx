@@ -39,6 +39,11 @@ interface Props {
   showUnarchiveButton?: boolean;
   /** When true, the detail loader uses the admin back-link copy. */
   isAdminView?: boolean;
+  /** Render a flat responsive grid of cards (no kanban columns,
+   *  no drag-and-drop, no cancelled section). Dipakai untuk halaman
+   *  Arsip dimana semua order sudah `done` — kanban 5 kolom hampir
+   *  semua kosong dan cuma menghabiskan space. */
+  flatLayout?: boolean;
 }
 
 interface Column {
@@ -104,6 +109,7 @@ export function CakeOrdersBoard({
   showArchiveButton = true,
   showUnarchiveButton = false,
   isAdminView = false,
+  flatLayout = false,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -193,6 +199,59 @@ export function CakeOrdersBoard({
   const gridCls = panelOpen
     ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3"
     : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3";
+
+  if (flatLayout) {
+    const flatGridCls = panelOpen
+      ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2"
+      : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2";
+    return (
+      <div className="flex gap-3">
+        <div className="flex-1 min-w-0 space-y-3">
+          <ul className={flatGridCls}>
+            {orders.map((o) => (
+              <Card
+                key={o.id}
+                order={o}
+                labelFor={labelFor}
+                canMove={false}
+                onToggleArchive={toggleArchive}
+                onSelect={setSelectedOrderId}
+                isActive={selectedOrderId === o.id}
+                showArchiveButton={showArchiveButton}
+                showUnarchiveButton={showUnarchiveButton}
+              />
+            ))}
+          </ul>
+        </div>
+        {selectedOrderId && (
+          <aside className="hidden md:block w-[440px] xl:w-[520px] shrink-0 sticky top-4 self-start max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border-2 border-foreground bg-card shadow-lg p-3">
+            <CakeOrderDetailLoader
+              orderId={selectedOrderId}
+              optionsByKind={optionsByKind}
+              isAdminView={isAdminView}
+              canEdit={false}
+              onClose={closePanel}
+            />
+          </aside>
+        )}
+        {selectedOrderId && (
+          <div
+            className="fixed inset-0 z-40 bg-background md:hidden overflow-y-auto p-3"
+            role="dialog"
+            aria-modal="true"
+          >
+            <CakeOrderDetailLoader
+              orderId={selectedOrderId}
+              optionsByKind={optionsByKind}
+              isAdminView={isAdminView}
+              canEdit={false}
+              onClose={closePanel}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-3">

@@ -296,6 +296,24 @@ export async function setCakeOrderArchived(
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+  // Mengarsipkan hanya valid kalau order sudah `done` — kalau belum,
+  // tolak supaya admin tidak menyembunyikan pekerjaan yang masih
+  // berjalan. Un-archive (kembalikan) tidak punya constraint ini.
+  if (archived) {
+    const { data: row } = await supabase
+      .from("cake_orders" as never)
+      .select("status")
+      .eq("id", id)
+      .maybeSingle();
+    const status = (row as unknown as { status?: string } | null)?.status;
+    if (!row) return { ok: false, error: "Order tidak ditemukan" };
+    if (status !== "done") {
+      return {
+        ok: false,
+        error: "Order hanya bisa diarsipkan setelah masuk kolom Selesai",
+      };
+    }
+  }
   const { error } = await supabase
     .from("cake_orders" as never)
     .update({
