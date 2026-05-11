@@ -351,9 +351,13 @@ export async function getMyStreak() {
     .eq("id", user.id)
     .single();
 
+  // bonus_day WAJIB ikut di-select — `computeStreak` mem-filter
+  // bonus_day=true sebelum walk. Tanpa kolom ini, semua row punya
+  // bonus_day=undefined (falsy), filter lolos, dan entry bonus
+  // langsung men-break streak (status "bonus" ≠ "on_time").
   const { data: logs } = await supabase
     .from("attendance_logs")
-    .select("date, status")
+    .select("date, status, bonus_day")
     .eq("user_id", user.id)
     .order("date", { ascending: false })
     .limit(120);
@@ -395,13 +399,16 @@ export async function getMyAttendanceDotGrid(days = 30): Promise<
 
   const { data: logs } = await supabase
     .from("attendance_logs")
-    .select("date, status")
+    .select("date, status, bonus_day")
     .eq("user_id", user.id)
     .gte("date", startStr)
     .lte("date", todayStr);
 
   const byDate = new Map<string, "on_time" | "late" | "absent">();
   for (const l of logs ?? []) {
+    // Bonus-day check-ins jangan dianggap "absent" — itu hari libur
+    // yang karyawan tetap datang. Skip dari grid (jadi null/gap).
+    if (l.bonus_day) continue;
     const s =
       l.status === "on_time"
         ? "on_time"
