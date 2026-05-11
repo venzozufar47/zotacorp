@@ -1,5 +1,6 @@
 "use client";
 
+import { PosNavLink } from "./PosNavLink";
 import { PosTopNav } from "./PosTopNav";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
