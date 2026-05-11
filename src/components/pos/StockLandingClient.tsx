@@ -19,8 +19,9 @@ import {
 } from "@/lib/actions/pos-stock.actions";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { StockMovementDialog } from "./StockMovementDialog";
+import { StockReadinessView } from "./StockReadinessView";
 
-type Tab = "on-hand" | "produksi" | "penarikan" | "opname";
+type Tab = "on-hand" | "produksi" | "penarikan" | "opname" | "pantauan";
 
 interface Props {
   bankAccountId: string;
@@ -39,6 +40,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "produksi", label: "Produksi" },
   { id: "penarikan", label: "Penarikan" },
   { id: "opname", label: "Opname" },
+  { id: "pantauan", label: "Pantauan" },
 ];
 
 export function StockLandingClient({
@@ -107,6 +109,10 @@ export function StockLandingClient({
       )}
 
       {tab === "opname" && <OpnamePanel rows={opnames} />}
+
+      {tab === "pantauan" && (
+        <StockReadinessView bankAccountId={bankAccountId} />
+      )}
 
       {dialog !== null && (
         <StockMovementDialog
