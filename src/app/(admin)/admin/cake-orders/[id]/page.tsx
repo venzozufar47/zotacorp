@@ -37,6 +37,7 @@ export default async function AdminCakeOrderDetailPage({
       order={orderRes.data!.order}
       attachments={orderRes.data!.attachments}
       payments={paymentsRes.ok ? paymentsRes.data ?? [] : []}
+      slipLock={orderRes.data!.slipLock}
       optionsByKind={optsRes.ok ? optsRes.data! : null}
       isAdminView={true}
       canEdit={false}
