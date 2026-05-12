@@ -810,15 +810,21 @@ export async function setOrderProductionStatus(
   };
   const current = r.production_status;
 
-  // Pilih gate sesuai forward-transition; revert lewat gate umum.
-  const isForward =
+  // Setiap transisi 1-langkah diikat ke role yang bertanggung-jawab:
+  // forward dilakukan oleh role X → revert juga oleh role X. Mencegah
+  // baker membatalkan pekerjaan decorator dan sebaliknya.
+  const requiredRole: "baker" | "decorator" | null =
     (current === "pending" && status === "in_progress") ||
-    (current === "in_progress" && status === "decorating") ||
-    (current === "decorating" && status === "done");
-  if (isForward) {
-    const role: "baker" | "decorator" =
-      current === "pending" ? "baker" : "decorator";
-    const gate = await requireCakeProductionRole(role);
+    (current === "in_progress" && status === "pending")
+      ? "baker"
+      : (current === "in_progress" && status === "decorating") ||
+          (current === "decorating" && status === "in_progress") ||
+          (current === "decorating" && status === "done") ||
+          (current === "done" && status === "decorating")
+        ? "decorator"
+        : null;
+  if (requiredRole) {
+    const gate = await requireCakeProductionRole(requiredRole);
     if (!gate.ok) return { ok: false, error: gate.error };
   } else {
     const gate = await requireCakeProductionAccess();

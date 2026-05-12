@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Haengbocake — Income Statement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg: #f5f0e6;
+    --ink: #0f2744;
+    --ink-2:#2a3e5c;
+    --muted:#6b7280;
+    --rev: #2f6fed;
+    --profit:#2aa463;
+    --exp: #c7342c;
+    --other:#d9a521;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Nunito',sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;height:100%}
+  .stage-wrap{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  .stage{
+    width:1600px; height:900px; background:var(--bg); position:relative;
+    transform-origin: center center;
+  }
+  h1{
+    position:absolute; top:24px; left:0; right:0;
+    text-align:center; margin:0;
+    font-size: 46px; font-weight: 800; letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .sub{
+    position:absolute; top:80px; left:0; right:0; text-align:center;
+    font-size: 13px; color: var(--muted); font-weight:700;
+    letter-spacing:.06em; text-transform:uppercase;
+  }
+  svg.sankey{ position:absolute; inset:0; width:100%; height:100%; }
+
+  .lbl{ font-family:'Nunito',sans-serif; line-height:1.15; }
+  .lbl .amt{ font-size:19px; font-weight:800; }
+  .lbl .nm { font-size:16px; font-weight:800; }
+  .lbl .yy { font-size:11px; font-weight:700; color:var(--muted); margin-top:1px; }
+  .lbl .ext{ font-size:10.5px; font-weight:600; color:var(--muted); margin-top:2px; line-height:1.3; }
+  .lbl.rev    .amt, .lbl.rev    .nm { color: var(--rev);    }
+  .lbl.profit .amt, .lbl.profit .nm { color: var(--profit); }
+  .lbl.exp    .amt, .lbl.exp    .nm { color: var(--exp);    }
+  .lbl.other  .amt, .lbl.other  .nm { color: var(--other);  }
+  .lbl.ink    .amt, .lbl.ink    .nm { color: var(--ink);    }
+
+  .lbl.sm .amt{ font-size:14px; }
+  .lbl.sm .nm { font-size:13px; }
+  .lbl.sm .ext{ font-size:10px; }
+
+  .footer{
+    position:absolute; bottom:10px; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 0 44px;
+    font-size:13px; color:var(--ink-2); font-weight:700;
+  }
+  .footer .mid{ color: var(--rev); }
+  .footer .brand{ display:flex; align-items:center; gap:10px; font-weight:800; color:var(--ink); }
+  .footer .brand .dot{
+    width:24px; height:24px; border-radius:999px; background:var(--ink);
+    display:inline-flex; align-items:center; justify-content:center; color:var(--bg); font-size:13px; font-weight:900;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage-wrap">
+  <div class="stage" id="stage">
+    <h1>Haengbocake FY25 Income Statement</h1>
+    <div class="sub">Illustrative figures · replace with live PnL output</div>
+    <svg class="sankey" id="sankey" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet"></svg>
+
+    <div class="footer">
+      <div>Source: cashflow_transactions</div>
+      <div class="mid">zotacorp.app / admin / finance / pnl</div>
+      <div class="brand"><span class="dot">H</span> HAENGBOCAKE · ZOTA CORP</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const fmt = (v) => v >= 1000 ? `Rp ${(v/1000).toFixed(1)}B` : `Rp ${Math.round(v)}M`;
+
+// Figures in IDR millions (illustrative)
+const REV_SOURCES = [
+  { id:'sales',    label:'Sales',         amt: 1800, sub:'Haengbo Cust + Non-Cust + Slice (normalized)', yy:'+18% Y/Y', cls:'rev' },
+  { id:'delivery', label:'Cake Delivery', amt:  110, sub:'Logistics billed to customer',                  yy:'+9% Y/Y',  cls:'rev' },
+  { id:'decor',    label:'Decor Class',   amt:   70, sub:'Workshop / class bookings',                     yy:'+22% Y/Y', cls:'rev' },
+  { id:'otherR',   label:'Other Revenue', amt:   20, sub:'Catch-all · Pusat detail',                       yy:'flat',     cls:'other' },
+];
+const REVENUE_TOTAL = 2000;
+const COGS         = 900;
+const GROSS_PROFIT = REVENUE_TOTAL - COGS; // 1100
+
+const OPEX_LEAVES = [
+  { id:'salary',  label:'Salaries & Wages',  amt:380, sub:'accrual-eligible' },
+  { id:'rent',    label:'Rent',              amt:120, sub:'accrual-eligible' },
+  { id:'ads',     label:'Advertising',       amt: 90, sub:'' },
+  { id:'utils',   label:'Utilities',         amt: 50, sub:'' },
+  { id:'ship',    label:'Shipping Cost',     amt: 40, sub:'' },
+  { id:'maint',   label:'Maintenance',       amt: 40, sub:'' },
+  { id:'asset',   label:'Asset Investment',  amt: 35, sub:'' },
+  { id:'refund',  label:'Sales Refund',      amt: 25, sub:'' },
+  { id:'supplies',label:'Office Supplies',   amt: 20, sub:'' },
+  { id:'bankAdm', label:'Bank Admin',        amt: 10, sub:'' },
+];
+const OPEX_TOTAL = OPEX_LEAVES.reduce((a,b)=>a+b.amt,0); // 810
+const OP_PROFIT  = GROSS_PROFIT - OPEX_TOTAL; // 290
+
+const NET_DIVIDEN = 180;
+const RETAINED    = OP_PROFIT - NET_DIVIDEN; // 110
+
+// ===== Layout =====
+const COL = { src: 220, rev: 540, gross: 830, op: 1090, leaf: 1400 };
+const CH_TOP = 170;
+const CH_BOT = 790;
+const CH_H   = CH_BOT - CH_TOP;
+const PX_PER_UNIT = CH_H / REVENUE_TOTAL;
+const BAR_W = 18;
+const GAP = 14;
+
+function node(id, x, y, amt, cls, extra={}){
+  return { id, x, y, h: Math.max(3, amt*PX_PER_UNIT), amt, cls, ...extra };
+}
+
+// Sources - small ones stack on top, Sales (the biggest) takes the remaining space below
+// so everything fits within CH_TOP..CH_BOT without clipping labels.
+const MIN_SRC = 46;
+const smallSources = REV_SOURCES.filter(s => s.id !== 'sales');
+const salesSource  = REV_SOURCES.find(s => s.id === 'sales');
+
+let sy = CH_TOP;
+const srcNodes = [];
+smallSources.forEach(s=>{
+  const realH = Math.max(3, s.amt*PX_PER_UNIT);
+  const slotH = Math.max(MIN_SRC, realH);
+  const yCenter = sy + slotH/2;
+  srcNodes.push(node(s.id, COL.src, yCenter - realH/2, s.amt, s.cls,
+    {label:s.label, sub:s.sub, yy:s.yy, labelY: yCenter}));
+  sy += slotH + GAP;
+});
+// Sales last
+{
+  const s = salesSource;
+  const realH = Math.max(3, s.amt*PX_PER_UNIT);
+  const yCenter = sy + realH/2;
+  srcNodes.push(node(s.id, COL.src, sy, s.amt, s.cls,
+    {label:s.label, sub:s.sub, yy:s.yy, labelY: yCenter}));
+}
+
+// Revenue (single bar)
+const revNode = node('revenue', COL.rev, CH_TOP, REVENUE_TOTAL, 'rev', {label:'Revenue', yy:'+16% Y/Y'});
+
+// Gross split at gross column: Gross profit (top, green) + COGS (bottom, red)
+const grossNode = node('gross', COL.gross, CH_TOP, GROSS_PROFIT, 'profit',
+  {label:'Gross profit', yy:`${Math.round(GROSS_PROFIT/REVENUE_TOTAL*100)}% margin`});
+const cogsNode  = node('cogs',  COL.gross, grossNode.y + grossNode.h + GAP*2, COGS, 'exp',
+  {label:'Cost of revenues', sub:'Ingredients · packaging · POS supplies'});
+
+// Op split at op column
+const opProfitNode = node('op',   COL.op, CH_TOP, OP_PROFIT, 'profit',
+  {label:'Operating profit', yy:`${Math.round(OP_PROFIT/REVENUE_TOTAL*100)}% margin`});
+const opexNode     = node('opex', COL.op, opProfitNode.y + opProfitNode.h + GAP*3, OPEX_TOTAL, 'exp',
+  {label:'Operating expenses'});
+
+// Right leaves: Net Dividen + Retained aligned with opProfitNode top
+let ly = opProfitNode.y;
+const netDivNode   = node('dividend', COL.leaf, ly, NET_DIVIDEN, 'profit',
+  {label:'Net Dividen', sub:'Owner payout (incl. Diambil mas Venzo)'});
+ly += netDivNode.h + GAP;
+const retainedNode = node('retained', COL.leaf, ly, RETAINED, 'ink',
+  {label:'Retained', sub:'Stays in the business'});
+
+// Opex leaves: space each leaf to at least MIN_LEAF so labels don't stack on top of each other.
+// Keep flow thickness correct by rendering the ribbon with the real height but centering it within a taller slot.
+const MIN_LEAF = 44;
+let ey = opexNode.y;
+const opexLeafNodes = OPEX_LEAVES.map(d=>{
+  const realH = Math.max(3, d.amt*PX_PER_UNIT);
+  const slotH = Math.max(MIN_LEAF, realH);
+  const yCenter = ey + slotH/2;
+  const n = node(d.id, COL.leaf, yCenter - realH/2, d.amt, 'exp', {label:d.label, sub:d.sub, labelY: yCenter});
+  ey += slotH + 4;
+  return n;
+});
+
+// Cost of revenues: no right-column leaf. The mid-column cogsNode itself is the destination.
+
+const allNodes = [
+  ...srcNodes, revNode, grossNode, cogsNode, opProfitNode, opexNode,
+  netDivNode, retainedNode, ...opexLeafNodes
+];
+const nodeById = Object.fromEntries(allNodes.map(n=>[n.id, n]));
+
+// Cursors
+const outC={}, inC={};
+allNodes.forEach(n=>{ outC[n.id]=n.y; inC[n.id]=n.y; });
+
+const flows = [];
+const flow=(f,t,a,c)=>flows.push({f,t,a,c});
+srcNodes.forEach(s=>flow(s.id,'revenue',s.amt,s.cls));flow('revenue','gross',GROSS_PROFIT,'profit');
+flow('revenue','cogs',COGS,'exp');
+flow('gross','op',OP_PROFIT,'profit');
+flow('gross','opex',OPEX_TOTAL,'exp');
+flow('op','dividend',NET_DIVIDEN,'profit');
+flow('op','retained',RETAINED,'ink');
+OPEX_LEAVES.forEach(d=>flow('opex',d.id,d.amt,'exp'));
+
+// ===== Render =====
+const svg = document.getElementById('sankey');
+const NS  = 'http://www.w3.org/2000/svg';
+const FILL = {
+  rev:    'rgba(47,111,237,0.55)',
+  profit: 'rgba(42,164,99,0.55)',
+  exp:    'rgba(199,52,44,0.50)',
+  other:  'rgba(217,165,33,0.65)',
+  ink:    'rgba(15,39,68,0.32)',
+};
+const BAR_COLOR = { rev:'#2f6fed', profit:'#2aa463', exp:'#c7342c', other:'#d9a521', ink:'#0f2744' };
+
+const gFlows = document.createElementNS(NS,'g'); svg.appendChild(gFlows);
+
+function ribbon(x1,y1a,y1b,x2,y2a,y2b,fill){
+  const cx=(x1+x2)/2;
+  const d=`M ${x1} ${y1a} C ${cx} ${y1a}, ${cx} ${y2a}, ${x2} ${y2a} L ${x2} ${y2b} C ${cx} ${y2b}, ${cx} ${y1b}, ${x1} ${y1b} Z`;
+  const p=document.createElementNS(NS,'path');
+  p.setAttribute('d',d); p.setAttribute('fill',fill);
+  gFlows.appendChild(p);
+}
+flows.forEach(f=>{
+  const a=nodeById[f.f], b=nodeById[f.t];
+  if(!a||!b) return;
+  const h=f.a*PX_PER_UNIT;
+  const y1a=outC[a.id], y1b=y1a+h, y2a=inC[b.id], y2b=y2a+h;
+  outC[a.id]=y1b; inC[b.id]=y2b;
+  ribbon(a.x+BAR_W, y1a, y1b, b.x, y2a, y2b, FILL[f.c]||FILL.ink);
+});
+
+// Bars on top
+const gBars=document.createElementNS(NS,'g'); svg.appendChild(gBars);
+function bar(n){
+  const r=document.createElementNS(NS,'rect');
+  r.setAttribute('x',n.x); r.setAttribute('y',n.y);
+  r.setAttribute('width',BAR_W); r.setAttribute('height',n.h);
+  r.setAttribute('fill', BAR_COLOR[n.cls]||'#0f2744');
+  gBars.appendChild(r);
+}
+allNodes.forEach(bar);
+
+// Labels
+function label(n, side, opts={}){
+  const W = opts.w || 200;
+  const fo = document.createElementNS(NS,'foreignObject');
+  let lx, ly, textAlign;
+  if (side==='left'){
+    lx = n.x - W - 12;
+    const centerY = (n.labelY !== undefined) ? n.labelY : (n.y + n.h/2);
+    ly = centerY - 32;
+    textAlign = 'right';
+  } else if (side==='right'){
+    lx = n.x + BAR_W + 12;
+    const centerY = (n.labelY !== undefined) ? n.labelY : (n.y + n.h/2);
+    ly = centerY - 20;
+    textAlign = 'left';
+  } else { // 'top'
+    lx = n.x + BAR_W/2 - W/2;
+    ly = n.y - (opts.topOffset || 64);
+    textAlign = 'center';
+  }
+  fo.setAttribute('x',lx); fo.setAttribute('y',ly);
+  fo.setAttribute('width',W); fo.setAttribute('height', opts.h || 90);
+  const div = document.createElement('div');
+  div.className = `lbl ${n.cls}${opts.sm?' sm':''}`;
+  div.style.textAlign = textAlign;
+  let html='';
+  if(n.label) html += `<div class="nm">${n.label}</div>`;
+  html += `<div class="amt">${fmt(n.amt)}</div>`;
+  if(n.yy)  html += `<div class="yy">${n.yy}</div>`;
+  if(n.sub) html += `<div class="ext">${n.sub}</div>`;
+  div.innerHTML = html;
+  fo.appendChild(div);
+  svg.appendChild(fo);
+}
+
+// Source labels (left)
+srcNodes.forEach(n => label(n, 'left', {w:210, h:80}));
+
+// Revenue, Gross profit, Operating profit: all in top gutter
+label(revNode,      'top', {topOffset:70, w:200});
+label(grossNode,    'top', {topOffset:70, w:200});
+label(opProfitNode, 'top', {topOffset:70, w:200});
+
+// Mid-column expense labels: place beside the bar to avoid top-gutter crowding
+function midLabel(n, opts={}){
+  const W = opts.w || 210;
+  const fo = document.createElementNS(NS,'foreignObject');
+  const lx = n.x - W - 12;
+  const ly = n.y + n.h/2 - 28;
+  fo.setAttribute('x',lx); fo.setAttribute('y',ly);
+  fo.setAttribute('width',W); fo.setAttribute('height',80);
+  const div = document.createElement('div');
+  div.className = `lbl ${n.cls}${opts.sm?' sm':''}`;
+  div.style.textAlign = 'right';
+  let html = '';
+  if(n.label) html += `<div class="nm">${n.label}</div>`;
+  html += `<div class="amt">${fmt(n.amt)}</div>`;
+  if(n.sub) html += `<div class="ext">${n.sub}</div>`;
+  div.innerHTML = html;
+  fo.appendChild(div);
+  svg.appendChild(fo);
+}
+midLabel(cogsNode, {w:210});
+// Opex label: place ABOVE bar (in top gutter region) to avoid ribbon overlap
+label(opexNode, 'top', {topOffset:38, w:170, sm:true});
+
+// Right leaves
+label(netDivNode,   'right', {w:220});
+label(retainedNode, 'right', {w:220});
+opexLeafNodes.forEach(n => label(n, 'right', {w:200, h:56, sm:true}));
+
+// Fit
+function fit(){
+  const stage = document.getElementById('stage');
+  const aw = Math.max(320, window.innerWidth  || 1600);
+  const ah = Math.max(240, window.innerHeight || 900);
+  const s = Math.max(0.1, Math.min(aw/1600, ah/900));
+  stage.style.transform = `scale(${s})`;
+}
+fit(); requestAnimationFrame(fit);
+window.addEventListener('resize', fit);
+window.addEventListener('load', fit);
+</script>
+</body>
+</html>

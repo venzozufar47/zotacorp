@@ -1,0 +1,1670 @@
+
+> zotacorp@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.17:3000
+- Environments: .env.local
+✓ Ready in 1270ms
+- Experiments (use with caution):
+  · optimizePackageImports
+  · serverActions
+
+ GET /cake-production 200 in 3.3s (next.js: 67ms, proxy.ts: 2.0s, application-code: 1242ms)
+ GET /cake-orders 200 in 4.7s (next.js: 322ms, proxy.ts: 1439ms, application-code: 2.9s)
+ GET /cake-orders/slip?date=2026-05-08 200 in 4.8s (next.js: 502ms, proxy.ts: 719ms, application-code: 3.6s)
+ POST /cake-orders/slip?date=2026-05-08 200 in 860ms (next.js: 8ms, proxy.ts: 165ms, application-code: 688ms)
+  └─ ƒ getCakeAttachmentSignedUrl("1adc59aa-edf6-4f5b-a036-077191061451") in 663ms src/lib/actions/cake-orders.actions.ts
+✓ Compiled in 1720ms
+ GET /cake-orders/slip?date=2026-05-08 200 in 1934ms (next.js: 511ms, proxy.ts: 1143ms, application-code: 280ms)
+ GET /cake-production 200 in 2.3s (next.js: 106ms, proxy.ts: 1144ms, application-code: 1007ms)
+ GET /cake-orders 200 in 2.3s (next.js: 261ms, proxy.ts: 1150ms, application-code: 886ms)
+ GET /cake-production 200 in 414ms (next.js: 27ms, proxy.ts: 258ms, application-code: 129ms)
+ GET /cake-production 200 in 437ms (next.js: 10ms, proxy.ts: 182ms, application-code: 244ms)
+ GET /cake-production 200 in 413ms (next.js: 109ms, proxy.ts: 217ms, application-code: 88ms)
+ GET /cake-orders 200 in 810ms (next.js: 71ms, proxy.ts: 544ms, application-code: 194ms)
+ GET /cake-orders 200 in 465ms (next.js: 6ms, proxy.ts: 362ms, application-code: 97ms)
+ GET /cake-orders 200 in 572ms (next.js: 7ms, proxy.ts: 335ms, application-code: 230ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 1712ms (next.js: 74ms, proxy.ts: 1467ms, application-code: 171ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 365ms (next.js: 7ms, proxy.ts: 190ms, application-code: 169ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 321ms (next.js: 6ms, proxy.ts: 169ms, application-code: 145ms)
+✓ Compiled in 535ms
+ GET /cake-orders/slip?date=2026-05-08 200 in 1269ms (next.js: 209ms, proxy.ts: 740ms, application-code: 321ms)
+ GET /cake-orders 200 in 1268ms (next.js: 109ms, proxy.ts: 734ms, application-code: 425ms)
+ GET /cake-production 200 in 1272ms (next.js: 68ms, proxy.ts: 1114ms, application-code: 89ms)
+ GET /cake-production 200 in 606ms (next.js: 121ms, proxy.ts: 233ms, application-code: 252ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 740ms (next.js: 86ms, proxy.ts: 363ms, application-code: 291ms)
+ GET /cake-orders 200 in 744ms (next.js: 11ms, proxy.ts: 363ms, application-code: 369ms)
+ GET /cake-production 200 in 513ms (next.js: 22ms, proxy.ts: 268ms, application-code: 223ms)
+ GET /cake-orders 200 in 543ms (next.js: 7ms, proxy.ts: 204ms, application-code: 332ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 542ms (next.js: 72ms, proxy.ts: 298ms, application-code: 172ms)
+✓ Compiled in 468ms
+ GET /cake-production 200 in 1287ms (next.js: 99ms, proxy.ts: 669ms, application-code: 519ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 1198ms (next.js: 288ms, proxy.ts: 579ms, application-code: 331ms)
+ GET /cake-orders 200 in 1302ms (next.js: 25ms, proxy.ts: 1162ms, application-code: 114ms)
+✓ Compiled in 321ms
+ GET /cake-production 200 in 2.4s (next.js: 443ms, proxy.ts: 1558ms, application-code: 427ms)
+ GET /cake-orders 200 in 2.4s (next.js: 130ms, proxy.ts: 1554ms, application-code: 752ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 2.4s (next.js: 355ms, proxy.ts: 1554ms, application-code: 530ms)
+✓ Compiled in 653ms
+ GET /cake-orders/slip?date=2026-05-08 200 in 1397ms (next.js: 314ms, proxy.ts: 691ms, application-code: 392ms)
+ GET /cake-orders 200 in 1411ms (next.js: 149ms, proxy.ts: 693ms, application-code: 569ms)
+ GET /cake-production 200 in 1416ms (next.js: 42ms, proxy.ts: 1240ms, application-code: 133ms)
+ GET /cake-orders 200 in 994ms (next.js: 7ms, proxy.ts: 215ms, application-code: 772ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 1007ms (next.js: 15ms, proxy.ts: 323ms, application-code: 669ms)
+ GET /cake-production 200 in 955ms (next.js: 25ms, proxy.ts: 394ms, application-code: 536ms)
+ GET /cake-orders 200 in 809ms (next.js: 117ms, proxy.ts: 238ms, application-code: 454ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 602ms (next.js: 10ms, proxy.ts: 262ms, application-code: 330ms)
+ GET /cake-production 200 in 467ms (next.js: 12ms, proxy.ts: 345ms, application-code: 111ms)
+✓ Compiled in 354ms
+ GET /cake-production 200 in 1484ms (next.js: 128ms, proxy.ts: 564ms, application-code: 792ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 1506ms (next.js: 32ms, proxy.ts: 873ms, application-code: 601ms)
+ GET /cake-orders 200 in 1521ms (next.js: 331ms, proxy.ts: 878ms, application-code: 311ms)
+ GET /cake-production 200 in 841ms (next.js: 38ms, proxy.ts: 480ms, application-code: 323ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 413ms (next.js: 11ms, proxy.ts: 186ms, application-code: 215ms)
+ GET /cake-production 200 in 672ms (next.js: 90ms, proxy.ts: 305ms, application-code: 276ms)
+ GET /cake-orders 200 in 829ms (next.js: 17ms, proxy.ts: 448ms, application-code: 364ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 462ms (next.js: 17ms, proxy.ts: 270ms, application-code: 176ms)
+ GET /cake-orders 200 in 353ms (next.js: 8ms, proxy.ts: 235ms, application-code: 110ms)
+ GET /cake-production 200 in 1666ms (next.js: 118ms, proxy.ts: 1032ms, application-code: 516ms)
+ GET /cake-orders 200 in 1677ms (next.js: 202ms, proxy.ts: 1024ms, application-code: 451ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 1676ms (next.js: 45ms, proxy.ts: 1419ms, application-code: 212ms)
+ GET /cake-production 200 in 915ms (next.js: 269ms, proxy.ts: 533ms, application-code: 113ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 930ms (next.js: 101ms, proxy.ts: 528ms, application-code: 300ms)
+ GET /cake-orders 200 in 1208ms (next.js: 19ms, proxy.ts: 1100ms, application-code: 90ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 1301ms (next.js: 170ms, proxy.ts: 742ms, application-code: 390ms)
+ GET /cake-orders 200 in 1321ms (next.js: 77ms, proxy.ts: 750ms, application-code: 494ms)
+ GET /cake-production 200 in 1326ms (next.js: 42ms, proxy.ts: 1073ms, application-code: 212ms)
+ GET /cake-production 200 in 1573ms (next.js: 121ms, proxy.ts: 948ms, application-code: 505ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 1576ms (next.js: 291ms, proxy.ts: 941ms, application-code: 344ms)
+ GET /cake-orders 200 in 1584ms (next.js: 238ms, proxy.ts: 945ms, application-code: 401ms)
+ GET /cake-orders 200 in 2.8s (next.js: 9ms, proxy.ts: 902ms, application-code: 1851ms)
+ GET /cake-orders/slip?date=2026-05-08 200 in 2.7s (next.js: 7ms, proxy.ts: 391ms, application-code: 2.3s)
+ GET /cake-orders 200 in 1112ms (next.js: 14ms, proxy.ts: 402ms, application-code: 696ms)
+ GET /cake-orders/slip 200 in 2.9s (next.js: 10ms, proxy.ts: 184ms, application-code: 2.8s)
+ POST /cake-orders/slip 200 in 1108ms (next.js: 8ms, proxy.ts: 272ms, application-code: 829ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 802ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip 200 in 899ms (next.js: 7ms, proxy.ts: 195ms, application-code: 696ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 681ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip 200 in 1306ms (next.js: 8ms, proxy.ts: 309ms, application-code: 989ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 977ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 999ms (next.js: 7ms, proxy.ts: 190ms, application-code: 802ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 779ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1449ms (next.js: 8ms, proxy.ts: 477ms, application-code: 964ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 950ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.2s (next.js: 7ms, proxy.ts: 265ms, application-code: 1955ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 1406ms (next.js: 63ms, proxy.ts: 460ms, application-code: 883ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 868ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1297ms (next.js: 50ms, proxy.ts: 327ms, application-code: 920ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 904ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 896ms (next.js: 7ms, proxy.ts: 194ms, application-code: 695ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 681ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1112ms (next.js: 8ms, proxy.ts: 179ms, application-code: 925ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 900ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 926ms (next.js: 7ms, proxy.ts: 185ms, application-code: 735ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 714ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 948ms (next.js: 16ms, proxy.ts: 184ms, application-code: 748ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 714ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 1938ms (next.js: 7ms, proxy.ts: 210ms, application-code: 1721ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 847ms (next.js: 6ms, proxy.ts: 211ms, application-code: 629ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 616ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1212ms (next.js: 20ms, proxy.ts: 206ms, application-code: 985ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 971ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 934ms (next.js: 7ms, proxy.ts: 275ms, application-code: 653ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 635ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 825ms (next.js: 7ms, proxy.ts: 179ms, application-code: 640ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 625ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 778ms (next.js: 9ms, proxy.ts: 207ms, application-code: 563ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 550ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 982ms (next.js: 18ms, proxy.ts: 225ms, application-code: 739ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 722ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1552ms (next.js: 8ms, proxy.ts: 152ms, application-code: 1392ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 1366ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1501ms (next.js: 8ms, proxy.ts: 280ms, application-code: 1213ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 1181ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 835ms (next.js: 6ms, proxy.ts: 148ms, application-code: 680ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 652ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1123ms (next.js: 34ms, proxy.ts: 192ms, application-code: 896ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 880ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1115ms (next.js: 17ms, proxy.ts: 174ms, application-code: 924ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 898ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1272ms (next.js: 8ms, proxy.ts: 237ms, application-code: 1028ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 1014ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 835ms (next.js: 21ms, proxy.ts: 194ms, application-code: 620ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 571ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 835ms (next.js: 10ms, proxy.ts: 190ms, application-code: 635ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 594ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 938ms (next.js: 14ms, proxy.ts: 248ms, application-code: 676ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 640ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 868ms (next.js: 36ms, proxy.ts: 229ms, application-code: 604ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 575ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 880ms (next.js: 22ms, proxy.ts: 225ms, application-code: 633ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 601ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 824ms (next.js: 7ms, proxy.ts: 153ms, application-code: 664ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 645ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 878ms (next.js: 31ms, proxy.ts: 216ms, application-code: 630ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 614ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 896ms (next.js: 19ms, proxy.ts: 225ms, application-code: 652ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 629ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 772ms (next.js: 6ms, proxy.ts: 196ms, application-code: 570ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 558ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 916ms (next.js: 31ms, proxy.ts: 168ms, application-code: 717ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 703ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1180ms (next.js: 17ms, proxy.ts: 163ms, application-code: 1000ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 974ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1041ms (next.js: 7ms, proxy.ts: 199ms, application-code: 835ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 793ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production 200 in 1517ms (next.js: 8ms, proxy.ts: 548ms, application-code: 961ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 997ms (next.js: 44ms, proxy.ts: 239ms, application-code: 713ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 699ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 836ms (next.js: 21ms, proxy.ts: 332ms, application-code: 483ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 472ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 885ms (next.js: 10ms, proxy.ts: 327ms, application-code: 549ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 533ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 830ms (next.js: 8ms, proxy.ts: 196ms, application-code: 626ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 609ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 986ms (next.js: 16ms, proxy.ts: 180ms, application-code: 789ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 765ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1013ms (next.js: 13ms, proxy.ts: 298ms, application-code: 703ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 679ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1156ms (next.js: 32ms, proxy.ts: 225ms, application-code: 899ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 881ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1259ms (next.js: 10ms, proxy.ts: 229ms, application-code: 1020ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 995ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1547ms (next.js: 19ms, proxy.ts: 230ms, application-code: 1298ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 1272ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1149ms (next.js: 25ms, proxy.ts: 354ms, application-code: 769ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 757ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1028ms (next.js: 18ms, proxy.ts: 206ms, application-code: 804ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 789ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1036ms (next.js: 8ms, proxy.ts: 202ms, application-code: 826ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 803ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1058ms (next.js: 24ms, proxy.ts: 255ms, application-code: 778ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 766ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1012ms (next.js: 10ms, proxy.ts: 266ms, application-code: 736ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 719ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1026ms (next.js: 24ms, proxy.ts: 275ms, application-code: 727ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 704ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 2.7s (next.js: 9ms, proxy.ts: 1372ms, application-code: 1319ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 1298ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 562ms (next.js: 6ms, proxy.ts: 229ms, application-code: 327ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 313ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1225ms (next.js: 6ms, proxy.ts: 159ms, application-code: 1060ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 1038ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 557ms (next.js: 6ms, proxy.ts: 223ms, application-code: 328ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 315ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 909ms (next.js: 6ms, proxy.ts: 194ms, application-code: 708ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 691ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 552ms (next.js: 6ms, proxy.ts: 318ms, application-code: 228ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 213ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1062ms (next.js: 6ms, proxy.ts: 152ms, application-code: 904ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 891ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 405ms (next.js: 6ms, proxy.ts: 237ms, application-code: 162ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 151ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 974ms (next.js: 8ms, proxy.ts: 226ms, application-code: 740ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 728ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 824ms (next.js: 7ms, proxy.ts: 228ms, application-code: 590ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 575ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 827ms (next.js: 7ms, proxy.ts: 160ms, application-code: 660ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 648ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 955ms (next.js: 6ms, proxy.ts: 295ms, application-code: 655ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 643ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 917ms (next.js: 7ms, proxy.ts: 155ms, application-code: 755ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 743ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1038ms (next.js: 8ms, proxy.ts: 158ms, application-code: 872ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 861ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 736ms (next.js: 7ms, proxy.ts: 160ms, application-code: 569ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 556ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 891ms (next.js: 7ms, proxy.ts: 178ms, application-code: 707ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 696ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1235ms (next.js: 7ms, proxy.ts: 402ms, application-code: 826ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 813ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 720ms (next.js: 6ms, proxy.ts: 171ms, application-code: 542ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 530ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 736ms (next.js: 6ms, proxy.ts: 234ms, application-code: 496ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 485ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 818ms (next.js: 6ms, proxy.ts: 155ms, application-code: 658ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 644ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 892ms (next.js: 7ms, proxy.ts: 232ms, application-code: 653ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 639ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 903ms (next.js: 6ms, proxy.ts: 150ms, application-code: 747ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 733ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 719ms (next.js: 7ms, proxy.ts: 220ms, application-code: 493ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 480ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 738ms (next.js: 7ms, proxy.ts: 178ms, application-code: 553ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 534ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 739ms (next.js: 6ms, proxy.ts: 159ms, application-code: 574ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 563ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 783ms (next.js: 6ms, proxy.ts: 174ms, application-code: 602ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 570ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 837ms (next.js: 6ms, proxy.ts: 186ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 630ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 986ms (next.js: 7ms, proxy.ts: 198ms, application-code: 781ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 769ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 648ms (next.js: 6ms, proxy.ts: 152ms, application-code: 491ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 479ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 720ms (next.js: 7ms, proxy.ts: 154ms, application-code: 559ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 545ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 892ms (next.js: 111ms, proxy.ts: 225ms, application-code: 556ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 541ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 754ms (next.js: 6ms, proxy.ts: 245ms, application-code: 503ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 493ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 783ms (next.js: 6ms, proxy.ts: 145ms, application-code: 631ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 617ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 932ms (next.js: 7ms, proxy.ts: 186ms, application-code: 739ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 726ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 900ms (next.js: 6ms, proxy.ts: 152ms, application-code: 742ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 731ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 804ms (next.js: 7ms, proxy.ts: 159ms, application-code: 638ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 624ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 817ms (next.js: 7ms, proxy.ts: 162ms, application-code: 648ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 636ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 909ms (next.js: 18ms, proxy.ts: 239ms, application-code: 652ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 636ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 898ms (next.js: 5ms, proxy.ts: 237ms, application-code: 655ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 645ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 820ms (next.js: 6ms, proxy.ts: 153ms, application-code: 662ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 649ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 797ms (next.js: 5ms, proxy.ts: 171ms, application-code: 620ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 610ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 816ms (next.js: 5ms, proxy.ts: 241ms, application-code: 570ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 558ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 985ms (next.js: 5ms, proxy.ts: 336ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 634ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 824ms (next.js: 17ms, proxy.ts: 181ms, application-code: 627ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 616ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 804ms (next.js: 6ms, proxy.ts: 216ms, application-code: 582ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 569ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1051ms (next.js: 6ms, proxy.ts: 173ms, application-code: 872ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 862ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 728ms (next.js: 6ms, proxy.ts: 186ms, application-code: 536ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 526ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 729ms (next.js: 7ms, proxy.ts: 230ms, application-code: 492ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 480ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 894ms (next.js: 8ms, proxy.ts: 232ms, application-code: 654ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 643ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 733ms (next.js: 7ms, proxy.ts: 169ms, application-code: 557ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 544ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 902ms (next.js: 7ms, proxy.ts: 229ms, application-code: 666ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 652ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 874ms (next.js: 7ms, proxy.ts: 212ms, application-code: 655ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 644ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 736ms (next.js: 6ms, proxy.ts: 158ms, application-code: 572ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 560ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 809ms (next.js: 9ms, proxy.ts: 151ms, application-code: 649ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 634ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 729ms (next.js: 8ms, proxy.ts: 157ms, application-code: 564ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 551ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 813ms (next.js: 6ms, proxy.ts: 155ms, application-code: 651ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 637ms src/lib/actions/cake-orders.actions.ts
+✓ Compiled in 336ms
+ GET /cake-orders/slip?date=2026-05-13 200 in 1413ms (next.js: 331ms, proxy.ts: 583ms, application-code: 499ms)
+ GET /cake-production 200 in 1429ms (next.js: 149ms, proxy.ts: 1160ms, application-code: 119ms)
+ GET /cake-orders 200 in 1427ms (next.js: 530ms, proxy.ts: 583ms, application-code: 314ms)
+ POST /cake-orders 200 in 1544ms (next.js: 257ms, proxy.ts: 345ms, application-code: 942ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 832ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 687ms (next.js: 7ms, proxy.ts: 302ms, application-code: 377ms)
+ GET /cake-production 200 in 495ms (next.js: 93ms, proxy.ts: 261ms, application-code: 140ms)
+ GET /cake-orders 200 in 687ms (next.js: 26ms, proxy.ts: 436ms, application-code: 224ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 709ms (next.js: 6ms, proxy.ts: 284ms, application-code: 418ms)
+ GET /cake-production 200 in 475ms (next.js: 77ms, proxy.ts: 235ms, application-code: 163ms)
+ GET /cake-orders 200 in 520ms (next.js: 24ms, proxy.ts: 276ms, application-code: 220ms)
+ POST /cake-orders 200 in 921ms (next.js: 11ms, proxy.ts: 293ms, application-code: 616ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 604ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 754ms (next.js: 8ms, proxy.ts: 166ms, application-code: 581ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 567ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 784ms (next.js: 5ms, proxy.ts: 199ms, application-code: 580ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 569ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1166ms (next.js: 6ms, proxy.ts: 208ms, application-code: 952ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 939ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 927ms (next.js: 6ms, proxy.ts: 180ms, application-code: 741ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 730ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 738ms (next.js: 5ms, proxy.ts: 179ms, application-code: 554ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 543ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 814ms (next.js: 6ms, proxy.ts: 157ms, application-code: 651ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 639ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 887ms (next.js: 7ms, proxy.ts: 184ms, application-code: 696ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 685ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 725ms (next.js: 8ms, proxy.ts: 152ms, application-code: 565ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 554ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 739ms (next.js: 6ms, proxy.ts: 184ms, application-code: 549ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 536ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 818ms (next.js: 8ms, proxy.ts: 224ms, application-code: 586ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 573ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 909ms (next.js: 7ms, proxy.ts: 145ms, application-code: 757ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 744ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 963ms (next.js: 7ms, proxy.ts: 224ms, application-code: 732ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 719ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 788ms (next.js: 7ms, proxy.ts: 150ms, application-code: 631ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 617ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 652ms (next.js: 7ms, proxy.ts: 151ms, application-code: 494ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 480ms src/lib/actions/cake-orders.actions.ts
+✓ Compiled in 387ms
+ GET /cake-orders/slip?date=2026-05-13 200 in 711ms (next.js: 28ms, proxy.ts: 473ms, application-code: 210ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 425ms (next.js: 6ms, proxy.ts: 247ms, application-code: 172ms)
+ GET /cake-production 200 in 1432ms (next.js: 35ms, proxy.ts: 1158ms, application-code: 239ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 363ms (next.js: 12ms, proxy.ts: 194ms, application-code: 156ms)
+ GET /cake-production 200 in 392ms (next.js: 6ms, proxy.ts: 301ms, application-code: 84ms)
+ POST /cake-orders 200 in 2.4s (next.js: 403ms, proxy.ts: 629ms, application-code: 1411ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 1366ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production 200 in 320ms (next.js: 22ms, proxy.ts: 169ms, application-code: 129ms)
+ POST /cake-orders 200 in 1236ms (next.js: 6ms, proxy.ts: 320ms, application-code: 909ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 896ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 925ms (next.js: 6ms, proxy.ts: 167ms, application-code: 753ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 740ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1112ms (next.js: 5ms, proxy.ts: 205ms, application-code: 901ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 890ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 815ms (next.js: 7ms, proxy.ts: 172ms, application-code: 636ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 623ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 808ms (next.js: 7ms, proxy.ts: 183ms, application-code: 618ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 604ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 843ms (next.js: 7ms, proxy.ts: 173ms, application-code: 662ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 649ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 904ms (next.js: 7ms, proxy.ts: 287ms, application-code: 610ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 597ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 860ms (next.js: 7ms, proxy.ts: 234ms, application-code: 620ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 605ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 891ms (next.js: 8ms, proxy.ts: 157ms, application-code: 726ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 713ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 984ms (next.js: 7ms, proxy.ts: 398ms, application-code: 580ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 564ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 718ms (next.js: 6ms, proxy.ts: 146ms, application-code: 566ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 554ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 817ms (next.js: 7ms, proxy.ts: 164ms, application-code: 646ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 634ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 814ms (next.js: 6ms, proxy.ts: 154ms, application-code: 654ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 641ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 914ms (next.js: 7ms, proxy.ts: 152ms, application-code: 756ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 741ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1202ms (next.js: 7ms, proxy.ts: 206ms, application-code: 989ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 976ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 308ms (next.js: 8ms, proxy.ts: 186ms, application-code: 114ms)
+ GET /cake-orders 200 in 276ms (next.js: 7ms, proxy.ts: 162ms, application-code: 107ms)
+ GET /cake-orders 200 in 266ms (next.js: 9ms, proxy.ts: 177ms, application-code: 81ms)
+✓ Compiled in 618ms
+ GET /cake-orders 200 in 1796ms (next.js: 265ms, proxy.ts: 876ms, application-code: 655ms)
+ GET /cake-production 200 in 1798ms (next.js: 59ms, proxy.ts: 1326ms, application-code: 414ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1814ms (next.js: 127ms, proxy.ts: 1329ms, application-code: 358ms)
+ GET /cake-orders 200 in 492ms (next.js: 23ms, proxy.ts: 342ms, application-code: 127ms)
+ GET /cake-production 200 in 621ms (next.js: 166ms, proxy.ts: 195ms, application-code: 259ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 629ms (next.js: 11ms, proxy.ts: 188ms, application-code: 430ms)
+ GET /cake-orders 200 in 484ms (next.js: 22ms, proxy.ts: 343ms, application-code: 119ms)
+ GET /cake-production 200 in 469ms (next.js: 6ms, proxy.ts: 218ms, application-code: 246ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 505ms (next.js: 15ms, proxy.ts: 336ms, application-code: 154ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.8s (next.js: 8ms, proxy.ts: 785ms, application-code: 2.0s)
+✓ Compiled in 764ms
+ GET /cake-orders 200 in 4.0s (next.js: 244ms, proxy.ts: 3.4s, application-code: 333ms)
+ GET /cake-production 200 in 4.8s (next.js: 32ms, proxy.ts: 4.1s, application-code: 724ms)
+ GET /cake-orders 200 in 1296ms (next.js: 29ms, proxy.ts: 450ms, application-code: 817ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 5.1s (next.js: 230ms, proxy.ts: 4.3s, application-code: 496ms)
+ GET /cake-production 200 in 868ms (next.js: 29ms, proxy.ts: 622ms, application-code: 217ms)
+ GET /cake-orders 200 in 770ms (next.js: 93ms, proxy.ts: 495ms, application-code: 182ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 459ms (next.js: 7ms, proxy.ts: 315ms, application-code: 136ms)
+ GET /cake-production 200 in 651ms (next.js: 7ms, proxy.ts: 381ms, application-code: 264ms)
+ GET /cake-orders 200 in 610ms (next.js: 69ms, proxy.ts: 321ms, application-code: 221ms)
+ GET /cake-orders 200 in 405ms (next.js: 8ms, proxy.ts: 257ms, application-code: 140ms)
+ GET /cake-orders 200 in 855ms (next.js: 156ms, proxy.ts: 178ms, application-code: 521ms)
+ GET /cake-orders 200 in 895ms (next.js: 12ms, proxy.ts: 206ms, application-code: 677ms)
+ GET /cake-orders 200 in 880ms (next.js: 111ms, proxy.ts: 191ms, application-code: 578ms)
+ GET /cake-orders 200 in 1519ms (next.js: 25ms, proxy.ts: 1160ms, application-code: 334ms)
+ GET /cake-orders 200 in 1531ms (next.js: 120ms, proxy.ts: 1163ms, application-code: 248ms)
+ GET /cake-orders 200 in 1512ms (next.js: 155ms, proxy.ts: 1138ms, application-code: 219ms)
+ GET /cake-orders 200 in 792ms (next.js: 234ms, proxy.ts: 249ms, application-code: 309ms)
+ GET /cake-orders 200 in 805ms (next.js: 21ms, proxy.ts: 250ms, application-code: 534ms)
+ GET /cake-orders 200 in 757ms (next.js: 98ms, proxy.ts: 203ms, application-code: 456ms)
+ GET /cake-orders 200 in 757ms (next.js: 267ms, proxy.ts: 202ms, application-code: 287ms)
+ GET /cake-orders 200 in 811ms (next.js: 61ms, proxy.ts: 249ms, application-code: 502ms)
+ GET /cake-orders 200 in 775ms (next.js: 14ms, proxy.ts: 635ms, application-code: 125ms)
+ GET /cake-production 200 in 466ms (next.js: 121ms, proxy.ts: 256ms, application-code: 89ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 479ms (next.js: 7ms, proxy.ts: 259ms, application-code: 213ms)
+ GET /cake-production 200 in 451ms (next.js: 60ms, proxy.ts: 313ms, application-code: 79ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 470ms (next.js: 6ms, proxy.ts: 202ms, application-code: 261ms)
+ GET /cake-production 200 in 425ms (next.js: 120ms, proxy.ts: 201ms, application-code: 103ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 518ms (next.js: 8ms, proxy.ts: 284ms, application-code: 226ms)
+ GET /cake-production 200 in 450ms (next.js: 126ms, proxy.ts: 225ms, application-code: 98ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 472ms (next.js: 9ms, proxy.ts: 237ms, application-code: 226ms)
+ GET /cake-production 200 in 309ms (next.js: 6ms, proxy.ts: 190ms, application-code: 113ms)
+ GET /cake-production 200 in 469ms (next.js: 9ms, proxy.ts: 252ms, application-code: 208ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 777ms (next.js: 72ms, proxy.ts: 552ms, application-code: 154ms)
+ GET /cake-production 200 in 408ms (next.js: 7ms, proxy.ts: 197ms, application-code: 204ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 406ms (next.js: 61ms, proxy.ts: 186ms, application-code: 160ms)
+ GET /cake-production 200 in 632ms (next.js: 8ms, proxy.ts: 352ms, application-code: 272ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 628ms (next.js: 74ms, proxy.ts: 339ms, application-code: 215ms)
+ GET /cake-production 200 in 486ms (next.js: 8ms, proxy.ts: 262ms, application-code: 216ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 441ms (next.js: 63ms, proxy.ts: 208ms, application-code: 170ms)
+ GET /cake-production 200 in 513ms (next.js: 119ms, proxy.ts: 289ms, application-code: 105ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 510ms (next.js: 8ms, proxy.ts: 275ms, application-code: 226ms)
+ GET /cake-production 200 in 464ms (next.js: 7ms, proxy.ts: 212ms, application-code: 245ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 486ms (next.js: 18ms, proxy.ts: 295ms, application-code: 173ms)
+ GET /cake-production 200 in 316ms (next.js: 7ms, proxy.ts: 230ms, application-code: 79ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 383ms (next.js: 7ms, proxy.ts: 226ms, application-code: 150ms)
+ GET /cake-production 200 in 342ms (next.js: 6ms, proxy.ts: 260ms, application-code: 75ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 338ms (next.js: 7ms, proxy.ts: 194ms, application-code: 136ms)
+ GET /cake-production 200 in 329ms (next.js: 6ms, proxy.ts: 255ms, application-code: 67ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 364ms (next.js: 8ms, proxy.ts: 159ms, application-code: 197ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 493ms (next.js: 7ms, proxy.ts: 354ms, application-code: 131ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 381ms (next.js: 6ms, proxy.ts: 216ms, application-code: 159ms)
+✓ Compiled in 238ms
+✓ Compiled in 425ms
+ GET /cake-production 200 in 1629ms (next.js: 41ms, proxy.ts: 839ms, application-code: 750ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1649ms (next.js: 273ms, proxy.ts: 1017ms, application-code: 359ms)
+ GET /cake-production 200 in 640ms (next.js: 16ms, proxy.ts: 510ms, application-code: 114ms)
+ GET /cake-production 200 in 345ms (next.js: 11ms, proxy.ts: 265ms, application-code: 69ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 443ms (next.js: 5ms, proxy.ts: 223ms, application-code: 216ms)
+ POST /cake-orders 200 in 4.1s (next.js: 254ms, proxy.ts: 1644ms, application-code: 2.2s)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 2162ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 611ms (next.js: 7ms, proxy.ts: 276ms, application-code: 328ms)
+ GET /cake-production 200 in 834ms (next.js: 29ms, proxy.ts: 631ms, application-code: 173ms)
+ GET /cake-production 200 in 853ms (next.js: 58ms, proxy.ts: 649ms, application-code: 145ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 495ms (next.js: 5ms, proxy.ts: 330ms, application-code: 160ms)
+ POST /cake-orders 200 in 606ms (next.js: 15ms, proxy.ts: 275ms, application-code: 315ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 292ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 353ms (next.js: 5ms, proxy.ts: 199ms, application-code: 148ms)
+ POST /cake-orders 200 in 1537ms (next.js: 8ms, proxy.ts: 380ms, application-code: 1149ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 1136ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 388ms (next.js: 7ms, proxy.ts: 172ms, application-code: 210ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 196ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1175ms (next.js: 6ms, proxy.ts: 234ms, application-code: 935ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 922ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 398ms (next.js: 6ms, proxy.ts: 206ms, application-code: 185ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 173ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1299ms (next.js: 6ms, proxy.ts: 190ms, application-code: 1104ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 1093ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 558ms (next.js: 8ms, proxy.ts: 307ms, application-code: 243ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 225ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 287ms (next.js: 9ms, proxy.ts: 172ms, application-code: 105ms)
+ GET /cake-orders 200 in 518ms (next.js: 10ms, proxy.ts: 388ms, application-code: 120ms)
+ GET /cake-orders 200 in 347ms (next.js: 8ms, proxy.ts: 204ms, application-code: 135ms)
+ POST /cake-orders 200 in 1368ms (next.js: 7ms, proxy.ts: 304ms, application-code: 1056ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 1037ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 495ms (next.js: 20ms, proxy.ts: 279ms, application-code: 197ms)
+ GET /cake-orders 200 in 331ms (next.js: 7ms, proxy.ts: 235ms, application-code: 88ms)
+ POST /cake-orders 200 in 890ms (next.js: 6ms, proxy.ts: 211ms, application-code: 674ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 664ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1027ms (next.js: 7ms, proxy.ts: 208ms, application-code: 812ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 799ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 887ms (next.js: 6ms, proxy.ts: 246ms, application-code: 635ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 620ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 900ms (next.js: 18ms, proxy.ts: 165ms, application-code: 717ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 696ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 801ms (next.js: 5ms, proxy.ts: 225ms, application-code: 571ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 561ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 752ms (next.js: 6ms, proxy.ts: 149ms, application-code: 598ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 579ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 981ms (next.js: 6ms, proxy.ts: 155ms, application-code: 820ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 809ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 925ms (next.js: 7ms, proxy.ts: 229ms, application-code: 689ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 676ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 822ms (next.js: 6ms, proxy.ts: 172ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 634ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 945ms (next.js: 7ms, proxy.ts: 305ms, application-code: 634ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 617ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 925ms (next.js: 8ms, proxy.ts: 172ms, application-code: 746ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 730ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 999ms (next.js: 6ms, proxy.ts: 222ms, application-code: 770ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 757ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1114ms (next.js: 7ms, proxy.ts: 214ms, application-code: 893ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 875ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 978ms (next.js: 7ms, proxy.ts: 230ms, application-code: 741ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 729ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1395ms (next.js: 5ms, proxy.ts: 316ms, application-code: 1074ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 1061ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 948ms (next.js: 7ms, proxy.ts: 295ms, application-code: 646ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 633ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 889ms (next.js: 10ms, proxy.ts: 234ms, application-code: 645ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 631ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1060ms (next.js: 8ms, proxy.ts: 233ms, application-code: 819ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 800ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 817ms (next.js: 7ms, proxy.ts: 228ms, application-code: 583ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 571ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 886ms (next.js: 7ms, proxy.ts: 223ms, application-code: 657ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 642ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 678ms (next.js: 7ms, proxy.ts: 161ms, application-code: 510ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 498ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1146ms (next.js: 9ms, proxy.ts: 202ms, application-code: 935ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 920ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 843ms (next.js: 7ms, proxy.ts: 214ms, application-code: 622ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 611ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 942ms (next.js: 7ms, proxy.ts: 316ms, application-code: 620ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 606ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 881ms (next.js: 8ms, proxy.ts: 191ms, application-code: 683ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 670ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 942ms (next.js: 8ms, proxy.ts: 291ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 628ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 972ms (next.js: 9ms, proxy.ts: 256ms, application-code: 708ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 695ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 753ms (next.js: 8ms, proxy.ts: 169ms, application-code: 576ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 561ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 746ms (next.js: 6ms, proxy.ts: 205ms, application-code: 535ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 518ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1014ms (next.js: 8ms, proxy.ts: 264ms, application-code: 743ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 729ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1102ms (next.js: 10ms, proxy.ts: 242ms, application-code: 850ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 835ms src/lib/actions/cake-orders.actions.ts
+✓ Compiled in 439ms
+ GET /cake-production 200 in 1444ms (next.js: 389ms, proxy.ts: 628ms, application-code: 427ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1447ms (next.js: 309ms, proxy.ts: 619ms, application-code: 519ms)
+ GET /cake-orders 200 in 1461ms (next.js: 204ms, proxy.ts: 628ms, application-code: 628ms)
+✓ Compiled in 300ms
+ GET /cake-production 200 in 1943ms (next.js: 400ms, proxy.ts: 1216ms, application-code: 327ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1949ms (next.js: 343ms, proxy.ts: 1211ms, application-code: 396ms)
+ GET /cake-orders 200 in 1953ms (next.js: 192ms, proxy.ts: 1210ms, application-code: 550ms)
+ GET /cake-production 200 in 596ms (next.js: 119ms, proxy.ts: 269ms, application-code: 207ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 609ms (next.js: 9ms, proxy.ts: 270ms, application-code: 329ms)
+ GET /cake-orders 200 in 640ms (next.js: 161ms, proxy.ts: 302ms, application-code: 177ms)
+ GET /cake-production 200 in 591ms (next.js: 8ms, proxy.ts: 280ms, application-code: 302ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 604ms (next.js: 37ms, proxy.ts: 284ms, application-code: 283ms)
+ GET /cake-orders 200 in 588ms (next.js: 190ms, proxy.ts: 266ms, application-code: 132ms)
+✓ Compiled in 385ms
+ GET /cake-production 200 in 1579ms (next.js: 198ms, proxy.ts: 1236ms, application-code: 146ms)
+ GET /cake-orders 200 in 1587ms (next.js: 196ms, proxy.ts: 872ms, application-code: 518ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1594ms (next.js: 36ms, proxy.ts: 1237ms, application-code: 322ms)
+ GET /cake-orders 200 in 553ms (next.js: 5ms, proxy.ts: 408ms, application-code: 140ms)
+ GET /cake-production 200 in 598ms (next.js: 120ms, proxy.ts: 351ms, application-code: 127ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 624ms (next.js: 6ms, proxy.ts: 366ms, application-code: 252ms)
+ GET /cake-production 200 in 442ms (next.js: 116ms, proxy.ts: 223ms, application-code: 103ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 464ms (next.js: 6ms, proxy.ts: 235ms, application-code: 222ms)
+ GET /cake-orders 200 in 1127ms (next.js: 6ms, proxy.ts: 1045ms, application-code: 76ms)
+✓ Compiled in 312ms
+ GET /cake-production 200 in 1453ms (next.js: 402ms, proxy.ts: 558ms, application-code: 493ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1466ms (next.js: 167ms, proxy.ts: 557ms, application-code: 743ms)
+ GET /cake-orders 200 in 1467ms (next.js: 717ms, proxy.ts: 562ms, application-code: 188ms)
+ GET /cake-production 200 in 704ms (next.js: 157ms, proxy.ts: 285ms, application-code: 262ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1177ms (next.js: 9ms, proxy.ts: 754ms, application-code: 415ms)
+ GET /cake-orders 200 in 683ms (next.js: 208ms, proxy.ts: 260ms, application-code: 215ms)
+ GET /cake-production 200 in 575ms (next.js: 9ms, proxy.ts: 235ms, application-code: 331ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 581ms (next.js: 67ms, proxy.ts: 238ms, application-code: 276ms)
+ GET /cake-orders 200 in 563ms (next.js: 109ms, proxy.ts: 219ms, application-code: 235ms)
+✓ Compiled in 382ms
+ GET /cake-orders/slip?date=2026-05-13 200 in 1485ms (next.js: 170ms, proxy.ts: 605ms, application-code: 710ms)
+ GET /cake-orders 200 in 1537ms (next.js: 414ms, proxy.ts: 609ms, application-code: 514ms)
+ GET /cake-production 200 in 1537ms (next.js: 58ms, proxy.ts: 1324ms, application-code: 155ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 717ms (next.js: 8ms, proxy.ts: 367ms, application-code: 342ms)
+ GET /cake-orders 200 in 724ms (next.js: 128ms, proxy.ts: 365ms, application-code: 231ms)
+ GET /cake-production 200 in 567ms (next.js: 31ms, proxy.ts: 439ms, application-code: 97ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 590ms (next.js: 7ms, proxy.ts: 263ms, application-code: 320ms)
+ GET /cake-orders 200 in 584ms (next.js: 127ms, proxy.ts: 252ms, application-code: 205ms)
+ GET /cake-production 200 in 482ms (next.js: 25ms, proxy.ts: 369ms, application-code: 89ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 526ms (next.js: 7ms, proxy.ts: 192ms, application-code: 328ms)
+ GET /cake-orders 200 in 524ms (next.js: 119ms, proxy.ts: 179ms, application-code: 226ms)
+ GET /cake-production 200 in 434ms (next.js: 24ms, proxy.ts: 311ms, application-code: 99ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 589ms (next.js: 6ms, proxy.ts: 212ms, application-code: 370ms)
+ GET /cake-orders 200 in 585ms (next.js: 130ms, proxy.ts: 198ms, application-code: 257ms)
+ GET /cake-production 200 in 492ms (next.js: 7ms, proxy.ts: 368ms, application-code: 117ms)
+ GET /cake-production 200 in 801ms (next.js: 208ms, proxy.ts: 415ms, application-code: 178ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 954ms (next.js: 9ms, proxy.ts: 555ms, application-code: 389ms)
+ GET /cake-orders 200 in 937ms (next.js: 46ms, proxy.ts: 538ms, application-code: 353ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 512ms (next.js: 5ms, proxy.ts: 197ms, application-code: 310ms)
+ GET /cake-production 200 in 494ms (next.js: 14ms, proxy.ts: 286ms, application-code: 194ms)
+ GET /cake-orders 200 in 522ms (next.js: 78ms, proxy.ts: 312ms, application-code: 132ms)
+ GET /cake-production 200 in 577ms (next.js: 154ms, proxy.ts: 237ms, application-code: 186ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 738ms (next.js: 10ms, proxy.ts: 393ms, application-code: 335ms)
+ GET /cake-orders 200 in 565ms (next.js: 121ms, proxy.ts: 221ms, application-code: 224ms)
+ GET /cake-production 200 in 595ms (next.js: 48ms, proxy.ts: 270ms, application-code: 277ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 627ms (next.js: 11ms, proxy.ts: 289ms, application-code: 327ms)
+ GET /cake-orders 200 in 627ms (next.js: 188ms, proxy.ts: 291ms, application-code: 149ms)
+ GET /cake-production 200 in 466ms (next.js: 5ms, proxy.ts: 204ms, application-code: 257ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 483ms (next.js: 63ms, proxy.ts: 266ms, application-code: 154ms)
+ GET /cake-orders 200 in 467ms (next.js: 9ms, proxy.ts: 247ms, application-code: 211ms)
+✓ Compiled in 235ms
+ GET /cake-production 200 in 2.0s (next.js: 161ms, proxy.ts: 1188ms, application-code: 683ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.0s (next.js: 567ms, proxy.ts: 1190ms, application-code: 287ms)
+ GET /cake-orders 200 in 2.0s (next.js: 637ms, proxy.ts: 1187ms, application-code: 219ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 3.0s (next.js: 449ms, proxy.ts: 1180ms, application-code: 1395ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 1362ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1879ms (next.js: 6ms, proxy.ts: 315ms, application-code: 1557ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 1547ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1298ms (next.js: 5ms, proxy.ts: 519ms, application-code: 774ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 764ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 997ms (next.js: 5ms, proxy.ts: 181ms, application-code: 810ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 795ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1266ms (next.js: 5ms, proxy.ts: 492ms, application-code: 769ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 758ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 893ms (next.js: 7ms, proxy.ts: 194ms, application-code: 692ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 679ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1064ms (next.js: 6ms, proxy.ts: 248ms, application-code: 810ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 796ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 885ms (next.js: 8ms, proxy.ts: 230ms, application-code: 648ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 634ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1075ms (next.js: 5ms, proxy.ts: 347ms, application-code: 722ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 709ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 945ms (next.js: 11ms, proxy.ts: 220ms, application-code: 713ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 698ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 871ms (next.js: 7ms, proxy.ts: 206ms, application-code: 657ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 641ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 778ms (next.js: 8ms, proxy.ts: 163ms, application-code: 607ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 593ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 756ms (next.js: 12ms, proxy.ts: 157ms, application-code: 586ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 573ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1037ms (next.js: 9ms, proxy.ts: 212ms, application-code: 816ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 799ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 802ms (next.js: 7ms, proxy.ts: 191ms, application-code: 604ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 589ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 814ms (next.js: 9ms, proxy.ts: 203ms, application-code: 602ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 585ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 899ms (next.js: 9ms, proxy.ts: 305ms, application-code: 585ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 571ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 771ms (next.js: 8ms, proxy.ts: 230ms, application-code: 533ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 516ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 692ms (next.js: 9ms, proxy.ts: 194ms, application-code: 489ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 477ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1299ms (next.js: 6ms, proxy.ts: 230ms, application-code: 1063ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 1051ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 823ms (next.js: 7ms, proxy.ts: 236ms, application-code: 580ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 568ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 969ms (next.js: 7ms, proxy.ts: 183ms, application-code: 780ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 767ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 998ms (next.js: 6ms, proxy.ts: 311ms, application-code: 681ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 668ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1031ms (next.js: 7ms, proxy.ts: 172ms, application-code: 852ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 839ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 839ms (next.js: 7ms, proxy.ts: 200ms, application-code: 632ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 618ms src/lib/actions/cake-orders.actions.ts
+✓ Compiled in 462ms
+ GET /cake-production 200 in 1874ms (next.js: 173ms, proxy.ts: 931ms, application-code: 770ms)
+ GET /cake-orders 200 in 1890ms (next.js: 361ms, proxy.ts: 939ms, application-code: 590ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1629ms (next.js: 604ms, proxy.ts: 675ms, application-code: 349ms)
+ GET /cake-production 200 in 907ms (next.js: 8ms, proxy.ts: 737ms, application-code: 162ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 705ms (next.js: 84ms, proxy.ts: 362ms, application-code: 259ms)
+ GET /cake-orders 200 in 718ms (next.js: 6ms, proxy.ts: 364ms, application-code: 348ms)
+ GET /cake-production 200 in 391ms (next.js: 16ms, proxy.ts: 277ms, application-code: 98ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 487ms (next.js: 65ms, proxy.ts: 171ms, application-code: 251ms)
+ GET /cake-orders 200 in 514ms (next.js: 8ms, proxy.ts: 188ms, application-code: 318ms)
+ GET /cake-production 200 in 403ms (next.js: 16ms, proxy.ts: 294ms, application-code: 93ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 410ms (next.js: 66ms, proxy.ts: 207ms, application-code: 137ms)
+ GET /cake-orders 200 in 440ms (next.js: 7ms, proxy.ts: 223ms, application-code: 210ms)
+✓ Compiled in 240ms
+ GET /cake-production 200 in 1584ms (next.js: 326ms, proxy.ts: 649ms, application-code: 609ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1596ms (next.js: 538ms, proxy.ts: 650ms, application-code: 408ms)
+ GET /cake-orders 200 in 1601ms (next.js: 163ms, proxy.ts: 651ms, application-code: 787ms)
+ GET /cake-orders 200 in 2.3s (next.js: 7ms, proxy.ts: 717ms, application-code: 1565ms)
+ POST /cake-orders 200 in 1162ms (next.js: 7ms, proxy.ts: 164ms, application-code: 990ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 970ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 556ms (next.js: 7ms, proxy.ts: 227ms, application-code: 322ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 310ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1165ms (next.js: 7ms, proxy.ts: 187ms, application-code: 970ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 956ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 378ms (next.js: 7ms, proxy.ts: 170ms, application-code: 202ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 185ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1138ms (next.js: 7ms, proxy.ts: 313ms, application-code: 818ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 805ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 383ms (next.js: 7ms, proxy.ts: 153ms, application-code: 223ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 209ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1309ms (next.js: 9ms, proxy.ts: 477ms, application-code: 823ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 809ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 563ms (next.js: 7ms, proxy.ts: 390ms, application-code: 166ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 150ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 895ms (next.js: 9ms, proxy.ts: 225ms, application-code: 662ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 641ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 994ms (next.js: 8ms, proxy.ts: 228ms, application-code: 758ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 746ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 890ms (next.js: 7ms, proxy.ts: 158ms, application-code: 725ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 713ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 820ms (next.js: 8ms, proxy.ts: 210ms, application-code: 602ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 588ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 875ms (next.js: 7ms, proxy.ts: 261ms, application-code: 607ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 595ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1047ms (next.js: 7ms, proxy.ts: 180ms, application-code: 860ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 848ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 893ms (next.js: 7ms, proxy.ts: 261ms, application-code: 624ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 612ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 980ms (next.js: 7ms, proxy.ts: 163ms, application-code: 810ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 798ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 736ms (next.js: 6ms, proxy.ts: 173ms, application-code: 557ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 544ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1063ms (next.js: 6ms, proxy.ts: 216ms, application-code: 840ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 829ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 886ms (next.js: 8ms, proxy.ts: 167ms, application-code: 710ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 696ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 747ms (next.js: 7ms, proxy.ts: 224ms, application-code: 516ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 502ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 810ms (next.js: 6ms, proxy.ts: 203ms, application-code: 601ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 566ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 865ms (next.js: 7ms, proxy.ts: 213ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 633ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 733ms (next.js: 7ms, proxy.ts: 175ms, application-code: 552ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 540ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 807ms (next.js: 7ms, proxy.ts: 237ms, application-code: 563ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 548ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 901ms (next.js: 7ms, proxy.ts: 317ms, application-code: 577ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 563ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 895ms (next.js: 6ms, proxy.ts: 223ms, application-code: 666ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 644ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 747ms (next.js: 7ms, proxy.ts: 220ms, application-code: 519ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 506ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 945ms (next.js: 7ms, proxy.ts: 285ms, application-code: 653ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 641ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 831ms (next.js: 6ms, proxy.ts: 170ms, application-code: 654ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 641ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 903ms (next.js: 8ms, proxy.ts: 160ms, application-code: 736ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 722ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1016ms (next.js: 8ms, proxy.ts: 341ms, application-code: 667ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 651ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 762ms (next.js: 8ms, proxy.ts: 204ms, application-code: 550ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 529ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 986ms (next.js: 7ms, proxy.ts: 218ms, application-code: 761ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 746ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 878ms (next.js: 6ms, proxy.ts: 287ms, application-code: 584ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 572ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 923ms (next.js: 6ms, proxy.ts: 315ms, application-code: 602ms)
+  └─ ƒ getCakeAttachmentSignedUrl("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 590ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 832ms (next.js: 6ms, proxy.ts: 183ms, application-code: 643ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 625ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 683ms (next.js: 6ms, proxy.ts: 188ms, application-code: 489ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 477ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 872ms (next.js: 6ms, proxy.ts: 281ms, application-code: 585ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 571ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 876ms (next.js: 6ms, proxy.ts: 160ms, application-code: 710ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 698ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 762ms (next.js: 9ms, proxy.ts: 167ms, application-code: 586ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 575ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 3.5s (next.js: 7ms, proxy.ts: 262ms, application-code: 3.2s)
+  └─ ƒ deleteCakeOrderAttachment("99a21f1d-3ada-43d5-906e-8221c2f85ddc") in 2015ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1143ms (next.js: 13ms, proxy.ts: 374ms, application-code: 757ms)
+ POST /cake-orders 200 in 1524ms (next.js: 28ms, proxy.ts: 606ms, application-code: 890ms)
+  └─ ƒ getCakeOrder("dc685b66-4081-47d2-b141-7118b67478b0") in 875ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 559ms (next.js: 7ms, proxy.ts: 191ms, application-code: 361ms)
+  └─ ƒ listCakeOrderPayments("dc685b66-4081-47d2-b141-7118b67478b0") in 344ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 3.8s (next.js: 9ms, proxy.ts: 1004ms, application-code: 2.8s)
+✓ Compiled in 364ms
+ GET /cake-production 200 in 2.6s (next.js: 602ms, proxy.ts: 1606ms, application-code: 396ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.6s (next.js: 504ms, proxy.ts: 1607ms, application-code: 507ms)
+ GET /cake-orders 200 in 2.6s (next.js: 190ms, proxy.ts: 1602ms, application-code: 823ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 4.6s (next.js: 8ms, proxy.ts: 396ms, application-code: 4.2s)
+  └─ ƒ verifyAndSendSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 2246ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.1s (next.js: 37ms, proxy.ts: 200ms, application-code: 1817ms)
+✓ Compiled in 742ms
+ GET /cake-production 200 in 2.7s (next.js: 243ms, proxy.ts: 1378ms, application-code: 1094ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.7s (next.js: 630ms, proxy.ts: 1384ms, application-code: 714ms)
+ GET /cake-orders 200 in 2.7s (next.js: 755ms, proxy.ts: 1384ms, application-code: 591ms)
+ GET /cake-production 200 in 903ms (next.js: 85ms, proxy.ts: 234ms, application-code: 584ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 905ms (next.js: 11ms, proxy.ts: 233ms, application-code: 662ms)
+ GET /cake-orders 200 in 905ms (next.js: 28ms, proxy.ts: 724ms, application-code: 153ms)
+ GET /cake-production 200 in 829ms (next.js: 181ms, proxy.ts: 336ms, application-code: 312ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 838ms (next.js: 9ms, proxy.ts: 338ms, application-code: 490ms)
+ GET /cake-orders 200 in 671ms (next.js: 16ms, proxy.ts: 485ms, application-code: 170ms)
+✓ Compiled in 364ms
+ GET /cake-production 200 in 1910ms (next.js: 247ms, proxy.ts: 840ms, application-code: 823ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1919ms (next.js: 653ms, proxy.ts: 845ms, application-code: 421ms)
+ GET /cake-orders 200 in 1921ms (next.js: 55ms, proxy.ts: 1685ms, application-code: 181ms)
+ GET /cake-production 200 in 399ms (next.js: 14ms, proxy.ts: 250ms, application-code: 134ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 859ms (next.js: 9ms, proxy.ts: 458ms, application-code: 392ms)
+ GET /cake-orders 200 in 714ms (next.js: 214ms, proxy.ts: 305ms, application-code: 195ms)
+ GET /cake-production 200 in 513ms (next.js: 25ms, proxy.ts: 406ms, application-code: 82ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 347ms (next.js: 7ms, proxy.ts: 192ms, application-code: 149ms)
+ GET /cake-orders 200 in 550ms (next.js: 6ms, proxy.ts: 447ms, application-code: 98ms)
+✓ Compiled in 631ms
+ GET /cake-production 200 in 2.1s (next.js: 211ms, proxy.ts: 1031ms, application-code: 842ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.1s (next.js: 800ms, proxy.ts: 1038ms, application-code: 261ms)
+ GET /cake-orders 200 in 2.1s (next.js: 321ms, proxy.ts: 1034ms, application-code: 744ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 3.6s (next.js: 6ms, proxy.ts: 655ms, application-code: 3.0s)
+  └─ ƒ reopenSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 1100ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 1954ms (next.js: 7ms, proxy.ts: 533ms, application-code: 1414ms)
+ GET /cake-orders 200 in 2.5s (next.js: 9ms, proxy.ts: 690ms, application-code: 1773ms)
+✓ Compiled in 368ms
+ GET /cake-orders 200 in 3.1s (next.js: 419ms, proxy.ts: 1219ms, application-code: 1474ms)
+ GET /cake-production 200 in 3.3s (next.js: 266ms, proxy.ts: 1219ms, application-code: 1806ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 3.3s (next.js: 787ms, proxy.ts: 1230ms, application-code: 1279ms)
+ GET /cake-orders/slip?date=2026-05-11 200 in 2.4s (next.js: 8ms, proxy.ts: 506ms, application-code: 1868ms)
+ GET /cake-orders/slip?date=2026-05-12 200 in 3.5s (next.js: 7ms, proxy.ts: 709ms, application-code: 2.8s)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1756ms (next.js: 9ms, proxy.ts: 468ms, application-code: 1279ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 1149ms (next.js: 7ms, proxy.ts: 163ms, application-code: 979ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 964ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 744ms (next.js: 7ms, proxy.ts: 160ms, application-code: 576ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 561ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 822ms (next.js: 7ms, proxy.ts: 233ms, application-code: 582ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 568ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 951ms (next.js: 6ms, proxy.ts: 325ms, application-code: 619ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 606ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 993ms (next.js: 7ms, proxy.ts: 317ms, application-code: 669ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 648ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 882ms (next.js: 14ms, proxy.ts: 215ms, application-code: 653ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 631ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 969ms (next.js: 9ms, proxy.ts: 311ms, application-code: 649ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 634ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1421ms (next.js: 7ms, proxy.ts: 212ms, application-code: 1201ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 1176ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-01 200 in 3.0s (next.js: 6ms, proxy.ts: 499ms, application-code: 2.5s)
+ GET /cake-orders/slip?date=2026-05-04 200 in 3.0s (next.js: 18ms, proxy.ts: 678ms, application-code: 2.3s)
+ POST /cake-orders/slip?date=2026-05-04 200 in 2.4s (next.js: 31ms, proxy.ts: 980ms, application-code: 1433ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 1420ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 3.2s (next.js: 32ms, proxy.ts: 1664ms, application-code: 1507ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 1480ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1770ms (next.js: 7ms, proxy.ts: 251ms, application-code: 1512ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 1493ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-04 200 in 1134ms (next.js: 8ms, proxy.ts: 171ms, application-code: 955ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 935ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 1232ms (next.js: 16ms, proxy.ts: 208ms, application-code: 1008ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 973ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-01 200 in 1765ms (next.js: 17ms, proxy.ts: 171ms, application-code: 1577ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 1300ms (next.js: 19ms, proxy.ts: 243ms, application-code: 1038ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 1004ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1129ms (next.js: 27ms, proxy.ts: 373ms, application-code: 729ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 717ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1170ms (next.js: 69ms, proxy.ts: 285ms, application-code: 816ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 796ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 861ms (next.js: 7ms, proxy.ts: 172ms, application-code: 682ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 659ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-01 200 in 1791ms (next.js: 61ms, proxy.ts: 359ms, application-code: 1371ms)
+ POST /cake-orders/slip?date=2026-05-01 200 in 1108ms (next.js: 37ms, proxy.ts: 220ms, application-code: 851ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 829ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1192ms (next.js: 25ms, proxy.ts: 217ms, application-code: 950ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 893ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 1461ms (next.js: 10ms, proxy.ts: 454ms, application-code: 998ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 918ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 868ms (next.js: 6ms, proxy.ts: 173ms, application-code: 689ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 669ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1039ms (next.js: 26ms, proxy.ts: 348ms, application-code: 665ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 645ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 957ms (next.js: 33ms, proxy.ts: 269ms, application-code: 655ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 637ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 873ms (next.js: 44ms, proxy.ts: 184ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 628ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1089ms (next.js: 56ms, proxy.ts: 208ms, application-code: 825ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 788ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1003ms (next.js: 9ms, proxy.ts: 257ms, application-code: 737ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 726ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 797ms (next.js: 19ms, proxy.ts: 167ms, application-code: 611ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 582ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 813ms (next.js: 33ms, proxy.ts: 175ms, application-code: 604ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 575ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 900ms (next.js: 49ms, proxy.ts: 179ms, application-code: 673ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 661ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 824ms (next.js: 6ms, proxy.ts: 178ms, application-code: 640ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 614ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 988ms (next.js: 7ms, proxy.ts: 300ms, application-code: 680ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 648ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 804ms (next.js: 19ms, proxy.ts: 163ms, application-code: 621ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 594ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 807ms (next.js: 10ms, proxy.ts: 154ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 613ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 882ms (next.js: 34ms, proxy.ts: 281ms, application-code: 567ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 550ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 843ms (next.js: 7ms, proxy.ts: 169ms, application-code: 667ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 647ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1108ms (next.js: 6ms, proxy.ts: 247ms, application-code: 855ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 837ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 1010ms (next.js: 13ms, proxy.ts: 176ms, application-code: 821ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 769ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 1021ms (next.js: 20ms, proxy.ts: 185ms, application-code: 816ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 759ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 984ms (next.js: 22ms, proxy.ts: 294ms, application-code: 668ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 656ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1019ms (next.js: 14ms, proxy.ts: 234ms, application-code: 771ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 726ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1100ms (next.js: 60ms, proxy.ts: 202ms, application-code: 838ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 825ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 911ms (next.js: 22ms, proxy.ts: 186ms, application-code: 703ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 681ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 923ms (next.js: 10ms, proxy.ts: 187ms, application-code: 726ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 703ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-14 200 in 1015ms (next.js: 53ms, proxy.ts: 312ms, application-code: 651ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 615ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-01 200 in 721ms (next.js: 27ms, proxy.ts: 171ms, application-code: 523ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 508ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 848ms (next.js: 32ms, proxy.ts: 233ms, application-code: 583ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 562ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1249ms (next.js: 55ms, proxy.ts: 560ms, application-code: 634ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 592ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-14 200 in 2.1s (next.js: 19ms, proxy.ts: 227ms, application-code: 1829ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 1108ms (next.js: 35ms, proxy.ts: 176ms, application-code: 897ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 885ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 818ms (next.js: 19ms, proxy.ts: 206ms, application-code: 593ms)
+  └─ ƒ getCakeAttachmentSignedUrl("5f9b2f20-c6f7-4660-939c-084a55a04506") in 580ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1206ms (next.js: 6ms, proxy.ts: 169ms, application-code: 1031ms)
+  └─ ƒ getCakeAttachmentSignedUrl("137b7980-f3ba-4cce-81bd-bdba5112b99d") in 1019ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 790ms (next.js: 7ms, proxy.ts: 254ms, application-code: 529ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7884efb5-4363-43a6-996e-d16a72bfdfef") in 513ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 899ms (next.js: 22ms, proxy.ts: 158ms, application-code: 719ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d5b8dc2b-a828-4a26-992d-0497e99d80a0") in 703ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 865ms (next.js: 9ms, proxy.ts: 206ms, application-code: 650ms)
+  └─ ƒ getCakeAttachmentSignedUrl("3fdc6fac-d64d-48e8-8dac-0b4e713670fb") in 638ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 724ms (next.js: 13ms, proxy.ts: 160ms, application-code: 551ms)
+  └─ ƒ getCakeAttachmentSignedUrl("39d70cf1-c65a-4fb9-9126-d10a1d615a74") in 540ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 729ms (next.js: 7ms, proxy.ts: 153ms, application-code: 569ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7613f645-6713-4c52-8c38-3aa73600f767") in 555ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 804ms (next.js: 11ms, proxy.ts: 225ms, application-code: 568ms)
+  └─ ƒ getCakeAttachmentSignedUrl("3c0a5004-b844-460d-b3ac-445b45ad1d7f") in 554ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 816ms (next.js: 7ms, proxy.ts: 156ms, application-code: 653ms)
+  └─ ƒ getCakeAttachmentSignedUrl("8561a716-af34-45ac-b7d7-8b48995be7da") in 635ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 739ms (next.js: 17ms, proxy.ts: 154ms, application-code: 569ms)
+  └─ ƒ getCakeAttachmentSignedUrl("9c9ea70d-e83d-4643-9651-7c9c27a85dc3") in 548ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 869ms (next.js: 7ms, proxy.ts: 224ms, application-code: 639ms)
+  └─ ƒ getCakeAttachmentSignedUrl("4643ca9c-e3c3-4931-a237-80ef5c21bc10") in 626ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 649ms (next.js: 6ms, proxy.ts: 152ms, application-code: 491ms)
+  └─ ƒ getCakeAttachmentSignedUrl("4ec70882-7c0e-49bd-948e-e1a6fd7a2315") in 474ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 673ms (next.js: 6ms, proxy.ts: 159ms, application-code: 508ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c58d0860-ffe6-4e6b-bd83-0cb339ab4b7a") in 497ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 831ms (next.js: 8ms, proxy.ts: 155ms, application-code: 667ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ba442c1a-3ab8-45de-b6dc-958b017d973b") in 656ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1115ms (next.js: 6ms, proxy.ts: 317ms, application-code: 791ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f75fd560-287f-4e22-b710-76d6aed90e09") in 774ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 953ms (next.js: 7ms, proxy.ts: 289ms, application-code: 657ms)
+  └─ ƒ getCakeAttachmentSignedUrl("58fe9722-17ae-44cd-ac30-d5ca3695a318") in 640ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 731ms (next.js: 11ms, proxy.ts: 167ms, application-code: 553ms)
+  └─ ƒ getCakeAttachmentSignedUrl("913dc5d4-8b95-42f6-898e-e5c1f1473c04") in 539ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 911ms (next.js: 9ms, proxy.ts: 228ms, application-code: 673ms)
+  └─ ƒ getCakeAttachmentSignedUrl("849f19a5-3994-4781-a22d-25c80278ea2f") in 655ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 804ms (next.js: 6ms, proxy.ts: 158ms, application-code: 639ms)
+  └─ ƒ getCakeAttachmentSignedUrl("e20afec9-459b-440a-96a8-9d833ffbc91a") in 628ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 713ms (next.js: 7ms, proxy.ts: 158ms, application-code: 548ms)
+  └─ ƒ getCakeAttachmentSignedUrl("5f9b2f20-c6f7-4660-939c-084a55a04506") in 534ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 905ms (next.js: 11ms, proxy.ts: 238ms, application-code: 656ms)
+  └─ ƒ getCakeAttachmentSignedUrl("137b7980-f3ba-4cce-81bd-bdba5112b99d") in 642ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 883ms (next.js: 8ms, proxy.ts: 160ms, application-code: 716ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7884efb5-4363-43a6-996e-d16a72bfdfef") in 701ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 717ms (next.js: 8ms, proxy.ts: 224ms, application-code: 484ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d5b8dc2b-a828-4a26-992d-0497e99d80a0") in 470ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 831ms (next.js: 16ms, proxy.ts: 162ms, application-code: 653ms)
+  └─ ƒ getCakeAttachmentSignedUrl("3fdc6fac-d64d-48e8-8dac-0b4e713670fb") in 624ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 920ms (next.js: 13ms, proxy.ts: 239ms, application-code: 668ms)
+  └─ ƒ getCakeAttachmentSignedUrl("39d70cf1-c65a-4fb9-9126-d10a1d615a74") in 649ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 885ms (next.js: 9ms, proxy.ts: 172ms, application-code: 704ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7613f645-6713-4c52-8c38-3aa73600f767") in 686ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 896ms (next.js: 7ms, proxy.ts: 175ms, application-code: 714ms)
+  └─ ƒ getCakeAttachmentSignedUrl("3c0a5004-b844-460d-b3ac-445b45ad1d7f") in 697ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 822ms (next.js: 7ms, proxy.ts: 208ms, application-code: 607ms)
+  └─ ƒ getCakeAttachmentSignedUrl("8561a716-af34-45ac-b7d7-8b48995be7da") in 593ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 737ms (next.js: 8ms, proxy.ts: 191ms, application-code: 537ms)
+  └─ ƒ getCakeAttachmentSignedUrl("9c9ea70d-e83d-4643-9651-7c9c27a85dc3") in 522ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 775ms (next.js: 10ms, proxy.ts: 196ms, application-code: 569ms)
+  └─ ƒ getCakeAttachmentSignedUrl("4643ca9c-e3c3-4931-a237-80ef5c21bc10") in 554ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 890ms (next.js: 6ms, proxy.ts: 215ms, application-code: 670ms)
+  └─ ƒ getCakeAttachmentSignedUrl("4ec70882-7c0e-49bd-948e-e1a6fd7a2315") in 655ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 905ms (next.js: 12ms, proxy.ts: 232ms, application-code: 661ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c58d0860-ffe6-4e6b-bd83-0cb339ab4b7a") in 638ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 900ms (next.js: 10ms, proxy.ts: 225ms, application-code: 666ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ba442c1a-3ab8-45de-b6dc-958b017d973b") in 644ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 822ms (next.js: 12ms, proxy.ts: 254ms, application-code: 556ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f75fd560-287f-4e22-b710-76d6aed90e09") in 544ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 884ms (next.js: 6ms, proxy.ts: 185ms, application-code: 693ms)
+  └─ ƒ getCakeAttachmentSignedUrl("58fe9722-17ae-44cd-ac30-d5ca3695a318") in 678ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 911ms (next.js: 11ms, proxy.ts: 301ms, application-code: 599ms)
+  └─ ƒ getCakeAttachmentSignedUrl("913dc5d4-8b95-42f6-898e-e5c1f1473c04") in 586ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 973ms (next.js: 6ms, proxy.ts: 184ms, application-code: 783ms)
+  └─ ƒ getCakeAttachmentSignedUrl("849f19a5-3994-4781-a22d-25c80278ea2f") in 770ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1097ms (next.js: 9ms, proxy.ts: 456ms, application-code: 632ms)
+  └─ ƒ getCakeAttachmentSignedUrl("e20afec9-459b-440a-96a8-9d833ffbc91a") in 617ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 679ms (next.js: 7ms, proxy.ts: 168ms, application-code: 504ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 491ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 729ms (next.js: 6ms, proxy.ts: 231ms, application-code: 492ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 479ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 960ms (next.js: 6ms, proxy.ts: 299ms, application-code: 655ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 644ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1063ms (next.js: 9ms, proxy.ts: 356ms, application-code: 698ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 682ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 646ms (next.js: 7ms, proxy.ts: 191ms, application-code: 447ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 432ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1053ms (next.js: 23ms, proxy.ts: 159ms, application-code: 870ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 852ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 896ms (next.js: 6ms, proxy.ts: 320ms, application-code: 570ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 559ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 815ms (next.js: 6ms, proxy.ts: 227ms, application-code: 582ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 572ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 808ms (next.js: 6ms, proxy.ts: 153ms, application-code: 649ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 637ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 935ms (next.js: 7ms, proxy.ts: 233ms, application-code: 695ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 679ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1158ms (next.js: 6ms, proxy.ts: 220ms, application-code: 932ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 919ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 3.4s (next.js: 10ms, proxy.ts: 1171ms, application-code: 2.2s)
+ POST /cake-orders/slip?date=2026-05-13 200 in 872ms (next.js: 12ms, proxy.ts: 426ms, application-code: 434ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 744ms (next.js: 6ms, proxy.ts: 146ms, application-code: 592ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 580ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 896ms (next.js: 8ms, proxy.ts: 400ms, application-code: 488ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 477ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 837ms (next.js: 6ms, proxy.ts: 224ms, application-code: 607ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 595ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 696ms (next.js: 7ms, proxy.ts: 194ms, application-code: 495ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 477ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 981ms (next.js: 7ms, proxy.ts: 220ms, application-code: 755ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 739ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 833ms (next.js: 8ms, proxy.ts: 301ms, application-code: 524ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 479ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 779ms (next.js: 7ms, proxy.ts: 193ms, application-code: 579ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 566ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1058ms (next.js: 6ms, proxy.ts: 178ms, application-code: 874ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 861ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 892ms (next.js: 7ms, proxy.ts: 154ms, application-code: 731ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 716ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1202ms (next.js: 7ms, proxy.ts: 450ms, application-code: 745ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 698ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 864ms (next.js: 7ms, proxy.ts: 168ms, application-code: 689ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 638ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.3s (next.js: 9ms, proxy.ts: 509ms, application-code: 1788ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 857ms (next.js: 6ms, proxy.ts: 210ms, application-code: 641ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 630ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1096ms (next.js: 18ms, proxy.ts: 466ms, application-code: 612ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 598ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 999ms (next.js: 25ms, proxy.ts: 228ms, application-code: 746ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 735ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 888ms (next.js: 7ms, proxy.ts: 207ms, application-code: 674ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 662ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 952ms (next.js: 11ms, proxy.ts: 161ms, application-code: 781ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 770ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1039ms (next.js: 6ms, proxy.ts: 293ms, application-code: 739ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 724ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 822ms (next.js: 22ms, proxy.ts: 231ms, application-code: 569ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 555ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 913ms (next.js: 9ms, proxy.ts: 213ms, application-code: 692ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 670ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 798ms (next.js: 6ms, proxy.ts: 164ms, application-code: 627ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 610ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 940ms (next.js: 13ms, proxy.ts: 204ms, application-code: 723ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 704ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 906ms (next.js: 6ms, proxy.ts: 171ms, application-code: 728ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 702ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 921ms (next.js: 6ms, proxy.ts: 239ms, application-code: 676ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 639ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1487ms (next.js: 6ms, proxy.ts: 215ms, application-code: 1266ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 1255ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 1850ms (next.js: 10ms, proxy.ts: 346ms, application-code: 1495ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 4.6s (next.js: 8ms, proxy.ts: 644ms, application-code: 4.0s)
+  └─ ƒ verifyAndSendSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 1775ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-production 200 in 1346ms (next.js: 7ms, proxy.ts: 261ms, application-code: 1079ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.3s (next.js: 1091ms, proxy.ts: 489ms, application-code: 1727ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 806ms (next.js: 29ms, proxy.ts: 225ms, application-code: 553ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 536ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 726ms (next.js: 12ms, proxy.ts: 159ms, application-code: 555ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 540ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 888ms (next.js: 25ms, proxy.ts: 227ms, application-code: 636ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 620ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1200ms (next.js: 35ms, proxy.ts: 166ms, application-code: 998ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 983ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 752ms (next.js: 25ms, proxy.ts: 159ms, application-code: 569ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 554ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1251ms (next.js: 23ms, proxy.ts: 234ms, application-code: 993ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 974ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 864ms (next.js: 24ms, proxy.ts: 211ms, application-code: 629ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 614ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 980ms (next.js: 23ms, proxy.ts: 313ms, application-code: 644ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 629ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1059ms (next.js: 28ms, proxy.ts: 323ms, application-code: 709ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 694ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 806ms (next.js: 22ms, proxy.ts: 183ms, application-code: 602ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 587ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1172ms (next.js: 28ms, proxy.ts: 237ms, application-code: 907ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 893ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 802ms (next.js: 22ms, proxy.ts: 159ms, application-code: 621ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 604ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 968ms (next.js: 25ms, proxy.ts: 326ms, application-code: 617ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 602ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 652ms (next.js: 20ms, proxy.ts: 150ms, application-code: 482ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 471ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 818ms (next.js: 19ms, proxy.ts: 225ms, application-code: 574ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 560ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 802ms (next.js: 21ms, proxy.ts: 307ms, application-code: 475ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 463ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 731ms (next.js: 9ms, proxy.ts: 166ms, application-code: 556ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 545ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 897ms (next.js: 24ms, proxy.ts: 169ms, application-code: 704ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 691ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 978ms (next.js: 24ms, proxy.ts: 316ms, application-code: 638ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 626ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 989ms (next.js: 22ms, proxy.ts: 175ms, application-code: 792ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 779ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 714ms (next.js: 24ms, proxy.ts: 215ms, application-code: 476ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 456ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 805ms (next.js: 11ms, proxy.ts: 226ms, application-code: 568ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 556ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 800ms (next.js: 25ms, proxy.ts: 159ms, application-code: 615ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 600ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 824ms (next.js: 24ms, proxy.ts: 172ms, application-code: 629ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 612ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 893ms (next.js: 26ms, proxy.ts: 236ms, application-code: 631ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 618ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 807ms (next.js: 18ms, proxy.ts: 161ms, application-code: 627ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 615ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1074ms (next.js: 45ms, proxy.ts: 240ms, application-code: 789ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 775ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 884ms (next.js: 24ms, proxy.ts: 154ms, application-code: 706ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 690ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1182ms (next.js: 25ms, proxy.ts: 320ms, application-code: 837ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 823ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 784ms (next.js: 18ms, proxy.ts: 191ms, application-code: 575ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 561ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 886ms (next.js: 22ms, proxy.ts: 240ms, application-code: 624ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 611ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 807ms (next.js: 24ms, proxy.ts: 165ms, application-code: 618ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 606ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 807ms (next.js: 19ms, proxy.ts: 153ms, application-code: 634ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 622ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 726ms (next.js: 20ms, proxy.ts: 229ms, application-code: 476ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 464ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 987ms (next.js: 21ms, proxy.ts: 236ms, application-code: 731ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 719ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 808ms (next.js: 23ms, proxy.ts: 222ms, application-code: 562ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 548ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1051ms (next.js: 23ms, proxy.ts: 391ms, application-code: 637ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 620ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 797ms (next.js: 23ms, proxy.ts: 219ms, application-code: 554ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 541ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 817ms (next.js: 22ms, proxy.ts: 239ms, application-code: 556ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 538ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 905ms (next.js: 19ms, proxy.ts: 233ms, application-code: 653ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 640ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 966ms (next.js: 23ms, proxy.ts: 219ms, application-code: 724ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 710ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 971ms (next.js: 29ms, proxy.ts: 242ms, application-code: 700ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 686ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 820ms (next.js: 24ms, proxy.ts: 236ms, application-code: 560ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 545ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1313ms (next.js: 25ms, proxy.ts: 530ms, application-code: 758ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 742ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 803ms (next.js: 24ms, proxy.ts: 224ms, application-code: 555ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 541ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 732ms (next.js: 19ms, proxy.ts: 230ms, application-code: 483ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 471ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 819ms (next.js: 19ms, proxy.ts: 229ms, application-code: 571ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 556ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 726ms (next.js: 20ms, proxy.ts: 154ms, application-code: 553ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 542ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 2.7s (next.js: 7ms, proxy.ts: 714ms, application-code: 1947ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1838ms (next.js: 24ms, proxy.ts: 306ms, application-code: 1507ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 4.3s (next.js: 29ms, proxy.ts: 511ms, application-code: 3.8s)
+  └─ ƒ setOrderProductionStatus("dc685b66-4081-47d2-b141-7118b67478b0", "in_progress") in 1733ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1364ms (next.js: 6ms, proxy.ts: 267ms, application-code: 1090ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.9s (next.js: 29ms, proxy.ts: 379ms, application-code: 3.5s)
+  └─ ƒ setOrderProductionStatus("487e7929-7d36-4bc7-9493-543ba3e31da9", "in_progress") in 1348ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.2s (next.js: 35ms, proxy.ts: 432ms, application-code: 2.8s)
+  └─ ƒ setOrderProductionStatus("dc685b66-4081-47d2-b141-7118b67478b0", "decorating") in 922ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.2s (next.js: 30ms, proxy.ts: 228ms, application-code: 1920ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.2s (next.js: 13ms, proxy.ts: 417ms, application-code: 1744ms)
+ GET /cake-orders 200 in 1882ms (next.js: 10ms, proxy.ts: 398ms, application-code: 1474ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.8s (next.js: 28ms, proxy.ts: 425ms, application-code: 3.4s)
+  └─ ƒ setOrderProductionStatus("dc685b66-4081-47d2-b141-7118b67478b0", "done") in 1547ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.2s (next.js: 48ms, proxy.ts: 422ms, application-code: 1745ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.8s (next.js: 32ms, proxy.ts: 355ms, application-code: 2.4s)
+  └─ ƒ setOrderProductionStatus("487e7929-7d36-4bc7-9493-543ba3e31da9", "decorating") in 856ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1538ms (next.js: 44ms, proxy.ts: 249ms, application-code: 1245ms)
+ GET /cake-orders 200 in 1815ms (next.js: 6ms, proxy.ts: 296ms, application-code: 1512ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 3.6s (next.js: 8ms, proxy.ts: 700ms, application-code: 2.9s)
+  └─ ƒ reopenSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 792ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.2s (next.js: 6ms, proxy.ts: 368ms, application-code: 1833ms)
+✓ Compiled in 360ms
+ GET /cake-orders 200 in 2.1s (next.js: 386ms, proxy.ts: 991ms, application-code: 743ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.1s (next.js: 53ms, proxy.ts: 1637ms, application-code: 446ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.1s (next.js: 254ms, proxy.ts: 1642ms, application-code: 247ms)
+ GET /cake-orders 200 in 519ms (next.js: 15ms, proxy.ts: 392ms, application-code: 111ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 703ms (next.js: 8ms, proxy.ts: 367ms, application-code: 327ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 550ms (next.js: 206ms, proxy.ts: 206ms, application-code: 138ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 5.5s (next.js: 7ms, proxy.ts: 985ms, application-code: 4.5s)
+  └─ ƒ verifyAndSendSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 2554ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.6s (next.js: 6ms, proxy.ts: 254ms, application-code: 2.3s)
+✓ Compiled in 652ms
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.5s (next.js: 248ms, proxy.ts: 1154ms, application-code: 1093ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.5s (next.js: 557ms, proxy.ts: 1652ms, application-code: 308ms)
+ GET /cake-orders 200 in 2.5s (next.js: 379ms, proxy.ts: 1656ms, application-code: 492ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 879ms (next.js: 152ms, proxy.ts: 526ms, application-code: 201ms)
+ GET /cake-orders 200 in 489ms (next.js: 12ms, proxy.ts: 388ms, application-code: 88ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 455ms (next.js: 15ms, proxy.ts: 354ms, application-code: 85ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 684ms (next.js: 7ms, proxy.ts: 298ms, application-code: 380ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 675ms (next.js: 119ms, proxy.ts: 276ms, application-code: 279ms)
+ GET /cake-orders 200 in 545ms (next.js: 6ms, proxy.ts: 432ms, application-code: 106ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 807ms (next.js: 8ms, proxy.ts: 679ms, application-code: 121ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1298ms (next.js: 9ms, proxy.ts: 859ms, application-code: 430ms)
+ GET /cake-orders 200 in 626ms (next.js: 48ms, proxy.ts: 178ms, application-code: 400ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1046ms (next.js: 287ms, proxy.ts: 595ms, application-code: 164ms)
+ GET /cake-orders 200 in 741ms (next.js: 10ms, proxy.ts: 367ms, application-code: 365ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 582ms (next.js: 273ms, proxy.ts: 197ms, application-code: 112ms)
+ GET /cake-orders 200 in 374ms (next.js: 5ms, proxy.ts: 270ms, application-code: 98ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 542ms (next.js: 21ms, proxy.ts: 423ms, application-code: 97ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 305ms (next.js: 8ms, proxy.ts: 213ms, application-code: 83ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.9s (next.js: 8ms, proxy.ts: 517ms, application-code: 2.4s)
+ POST /cake-orders/slip?date=2026-05-13 200 in 1077ms (next.js: 6ms, proxy.ts: 170ms, application-code: 901ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 887ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1136ms (next.js: 7ms, proxy.ts: 211ms, application-code: 918ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 900ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1206ms (next.js: 10ms, proxy.ts: 248ms, application-code: 948ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 932ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 900ms (next.js: 7ms, proxy.ts: 177ms, application-code: 717ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 700ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 883ms (next.js: 7ms, proxy.ts: 167ms, application-code: 710ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 696ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 835ms (next.js: 7ms, proxy.ts: 187ms, application-code: 641ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 630ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 952ms (next.js: 9ms, proxy.ts: 221ms, application-code: 722ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 709ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 843ms (next.js: 8ms, proxy.ts: 237ms, application-code: 598ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 585ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1539ms (next.js: 7ms, proxy.ts: 310ms, application-code: 1222ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 1205ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1119ms (next.js: 8ms, proxy.ts: 171ms, application-code: 941ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 928ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.8s (next.js: 26ms, proxy.ts: 606ms, application-code: 2.2s)
+ POST /cake-orders/slip?date=2026-05-13 200 in 1303ms (next.js: 7ms, proxy.ts: 255ms, application-code: 1041ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 959ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 850ms (next.js: 8ms, proxy.ts: 281ms, application-code: 561ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 546ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 958ms (next.js: 38ms, proxy.ts: 212ms, application-code: 708ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 691ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 826ms (next.js: 7ms, proxy.ts: 179ms, application-code: 640ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 628ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1008ms (next.js: 26ms, proxy.ts: 237ms, application-code: 745ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 726ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 966ms (next.js: 8ms, proxy.ts: 272ms, application-code: 686ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 675ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 891ms (next.js: 22ms, proxy.ts: 205ms, application-code: 664ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 651ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 800ms (next.js: 29ms, proxy.ts: 209ms, application-code: 562ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 549ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1458ms (next.js: 7ms, proxy.ts: 533ms, application-code: 918ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 909ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1056ms (next.js: 46ms, proxy.ts: 301ms, application-code: 709ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 689ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 930ms (next.js: 8ms, proxy.ts: 168ms, application-code: 754ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 731ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 895ms (next.js: 11ms, proxy.ts: 202ms, application-code: 682ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 666ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1054ms (next.js: 28ms, proxy.ts: 162ms, application-code: 864ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 848ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 988ms (next.js: 6ms, proxy.ts: 311ms, application-code: 671ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 647ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 973ms (next.js: 27ms, proxy.ts: 180ms, application-code: 766ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 753ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1101ms (next.js: 9ms, proxy.ts: 369ms, application-code: 723ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 708ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 987ms (next.js: 47ms, proxy.ts: 248ms, application-code: 692ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 665ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 1058ms (next.js: 10ms, proxy.ts: 236ms, application-code: 812ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 795ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1066ms (next.js: 45ms, proxy.ts: 235ms, application-code: 786ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 760ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 887ms (next.js: 12ms, proxy.ts: 228ms, application-code: 647ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 630ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 892ms (next.js: 47ms, proxy.ts: 225ms, application-code: 620ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 591ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 803ms (next.js: 6ms, proxy.ts: 172ms, application-code: 625ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 613ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 809ms (next.js: 21ms, proxy.ts: 186ms, application-code: 602ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 581ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 798ms (next.js: 19ms, proxy.ts: 183ms, application-code: 596ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 585ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 827ms (next.js: 6ms, proxy.ts: 166ms, application-code: 655ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 637ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 966ms (next.js: 6ms, proxy.ts: 216ms, application-code: 743ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 727ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 995ms (next.js: 35ms, proxy.ts: 236ms, application-code: 724ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 702ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 959ms (next.js: 48ms, proxy.ts: 307ms, application-code: 604ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 590ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1093ms (next.js: 106ms, proxy.ts: 237ms, application-code: 750ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 733ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 2.8s (next.js: 13ms, proxy.ts: 308ms, application-code: 2.4s)
+  └─ ƒ reopenSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 485ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.1s (next.js: 8ms, proxy.ts: 339ms, application-code: 1711ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1517ms (next.js: 31ms, proxy.ts: 269ms, application-code: 1217ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 1200ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1310ms (next.js: 24ms, proxy.ts: 311ms, application-code: 975ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 958ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 891ms (next.js: 24ms, proxy.ts: 192ms, application-code: 675ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 661ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1039ms (next.js: 23ms, proxy.ts: 233ms, application-code: 783ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 768ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1082ms (next.js: 23ms, proxy.ts: 168ms, application-code: 891ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 876ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 969ms (next.js: 24ms, proxy.ts: 159ms, application-code: 787ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 774ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 975ms (next.js: 23ms, proxy.ts: 164ms, application-code: 788ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 774ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 839ms (next.js: 24ms, proxy.ts: 317ms, application-code: 498ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 483ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 796ms (next.js: 10ms, proxy.ts: 162ms, application-code: 625ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 612ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders/slip?date=2026-05-13 200 in 5.4s (next.js: 9ms, proxy.ts: 883ms, application-code: 4.5s)
+  └─ ƒ updateCakeOrderFull("487e7929-7d36-4bc7-9493-543ba3e31da9", {"accessoriesNotes":"Lilin batang panjang","addOns":["[Object]"],"attachments":[],"...":"19 items not stringified"}) in 1958ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 3.7s (next.js: 6ms, proxy.ts: 554ms, application-code: 3.2s)
+ POST /cake-orders/slip?date=2026-05-13 200 in 5.5s (next.js: 30ms, proxy.ts: 735ms, application-code: 4.7s)
+  └─ ƒ verifyAndSendSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 2991ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.3s (next.js: 6ms, proxy.ts: 209ms, application-code: 2.1s)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.3s (next.js: 25ms, proxy.ts: 230ms, application-code: 2.1s)
+✓ Compiled in 718ms
+ GET /cake-orders/slip?date=2026-05-13 200 in 1508ms (next.js: 390ms, proxy.ts: 509ms, application-code: 609ms)
+ GET /cake-orders 200 in 1517ms (next.js: 220ms, proxy.ts: 1160ms, application-code: 136ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1558ms (next.js: 689ms, proxy.ts: 510ms, application-code: 359ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.2s (next.js: 13ms, proxy.ts: 1190ms, application-code: 972ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d3ddead7-f49b-4cf3-b9b9-0baded04c8d2") in 961ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1039ms (next.js: 20ms, proxy.ts: 210ms, application-code: 809ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2d6de29e-13f9-456b-af4e-fcb143915da4") in 796ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1207ms (next.js: 24ms, proxy.ts: 256ms, application-code: 927ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c08e1e4e-64c5-4cba-84e9-c3f91eb927a7") in 915ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1236ms (next.js: 23ms, proxy.ts: 279ms, application-code: 934ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2c1dd583-47e7-4f58-90da-ad2169dc28c7") in 918ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1276ms (next.js: 27ms, proxy.ts: 232ms, application-code: 1017ms)
+  └─ ƒ getCakeAttachmentSignedUrl("94725ca7-2c8d-41af-ad42-32a866d553ff") in 997ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1184ms (next.js: 25ms, proxy.ts: 215ms, application-code: 944ms)
+  └─ ƒ getCakeAttachmentSignedUrl("b1ce1148-cf2d-403f-a595-7363f76409a0") in 926ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 840ms (next.js: 22ms, proxy.ts: 232ms, application-code: 586ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d21d7635-a07a-4b6f-868d-effac1ab1912") in 565ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 937ms (next.js: 24ms, proxy.ts: 274ms, application-code: 639ms)
+  └─ ƒ getCakeAttachmentSignedUrl("15eaad8d-92df-48a2-8af4-70aefb84df24") in 627ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 805ms (next.js: 24ms, proxy.ts: 235ms, application-code: 546ms)
+  └─ ƒ getCakeAttachmentSignedUrl("70d783ba-0dc6-4811-868d-65b900eebd12") in 533ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 946ms (next.js: 19ms, proxy.ts: 235ms, application-code: 691ms)
+  └─ ƒ getCakeAttachmentSignedUrl("ae2acea7-23d4-480b-86de-187dd10ee9b5") in 680ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 905ms (next.js: 24ms, proxy.ts: 270ms, application-code: 611ms)
+  └─ ƒ getCakeAttachmentSignedUrl("dd5f1865-1931-48ed-a35f-75a1646030eb") in 594ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 928ms (next.js: 22ms, proxy.ts: 170ms, application-code: 735ms)
+  └─ ƒ getCakeAttachmentSignedUrl("cb9798bb-064c-40f0-be2e-3d53725c49f9") in 723ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 801ms (next.js: 21ms, proxy.ts: 151ms, application-code: 630ms)
+  └─ ƒ getCakeAttachmentSignedUrl("55e91ca4-0754-4af9-95ea-64c33ea4625f") in 618ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 910ms (next.js: 26ms, proxy.ts: 249ms, application-code: 634ms)
+  └─ ƒ getCakeAttachmentSignedUrl("28549eea-7231-450c-ac67-1d320cf5ed43") in 623ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1387ms (next.js: 20ms, proxy.ts: 222ms, application-code: 1145ms)
+  └─ ƒ getCakeAttachmentSignedUrl("c52b00fa-2464-40e3-abff-973d2e61aa85") in 1129ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 878ms (next.js: 24ms, proxy.ts: 249ms, application-code: 605ms)
+  └─ ƒ getCakeAttachmentSignedUrl("2260817d-bdb1-473d-94f7-be5283ac3ea3") in 591ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 976ms (next.js: 21ms, proxy.ts: 238ms, application-code: 718ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d8a0c2c1-4ee7-45af-89a1-61db6b73779c") in 699ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1060ms (next.js: 23ms, proxy.ts: 242ms, application-code: 795ms)
+  └─ ƒ getCakeAttachmentSignedUrl("586f4774-31b8-436d-afc7-387a31f0cc0e") in 783ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1397ms (next.js: 24ms, proxy.ts: 476ms, application-code: 897ms)
+  └─ ƒ getCakeAttachmentSignedUrl("a4dfe1f9-1556-4d1f-86eb-ec22482aabc7") in 881ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1222ms (next.js: 21ms, proxy.ts: 436ms, application-code: 764ms)
+  └─ ƒ getCakeAttachmentSignedUrl("258ccba6-420a-47e5-a1d8-6ffdf2c1f859") in 751ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1537ms (next.js: 24ms, proxy.ts: 399ms, application-code: 1113ms)
+  └─ ƒ getCakeAttachmentSignedUrl("10b82845-e06b-4c3f-a914-d56373aa08ac") in 1091ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 951ms (next.js: 26ms, proxy.ts: 318ms, application-code: 607ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7cb90d8b-7057-4157-8691-7ac6ef3ff465") in 593ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1259ms (next.js: 26ms, proxy.ts: 266ms, application-code: 967ms)
+  └─ ƒ getCakeAttachmentSignedUrl("bcf3585e-58b9-4c20-a509-0df597f0ba0a") in 952ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 982ms (next.js: 22ms, proxy.ts: 165ms, application-code: 796ms)
+  └─ ƒ getCakeAttachmentSignedUrl("f001a303-4c22-4a2f-9ed6-8dde3fd0155d") in 781ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.2s (next.js: 23ms, proxy.ts: 217ms, application-code: 1951ms)
+  └─ ƒ acknowledgeSlipDiff("04105b79-a5e4-4337-b3bb-08657d6b1962") in 599ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.2s (next.js: 43ms, proxy.ts: 454ms, application-code: 1746ms)
+✓ Compiled in 278ms
+ GET /cake-orders 200 in 793ms (next.js: 220ms, proxy.ts: 345ms, application-code: 228ms)
+ GET /cake-orders/slip?date=2026-05-13 200 in 1410ms (next.js: 253ms, proxy.ts: 939ms, application-code: 218ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1008ms (next.js: 65ms, proxy.ts: 821ms, application-code: 121ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 4.4s (next.js: 25ms, proxy.ts: 377ms, application-code: 4.0s)
+  └─ ƒ setOrderProductionStatus("487e7929-7d36-4bc7-9493-543ba3e31da9", "done") in 1947ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.9s (next.js: 48ms, proxy.ts: 818ms, application-code: 3.0s)
+  └─ ƒ setOrderProductionStatus("ecdc146c-026c-4ea3-9a60-d01af118dc4a", "in_progress") in 991ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.1s (next.js: 43ms, proxy.ts: 265ms, application-code: 1811ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.1s (next.js: 28ms, proxy.ts: 261ms, application-code: 2.8s)
+  └─ ƒ setOrderProductionStatus("beedb5ee-2427-4d35-ba0f-c90c4f1fdd3d", "in_progress") in 1098ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.3s (next.js: 97ms, proxy.ts: 377ms, application-code: 1778ms)
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.1s (next.js: 27ms, proxy.ts: 255ms, application-code: 1834ms)
+ GET /cake-orders 200 in 1307ms (next.js: 6ms, proxy.ts: 207ms, application-code: 1093ms)
+ POST /cake-orders 200 in 2.7s (next.js: 6ms, proxy.ts: 211ms, application-code: 2.5s)
+  └─ ƒ setCakeOrderStatus("dc685b66-4081-47d2-b141-7118b67478b0", "delivering") in 973ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.8s (next.js: 24ms, proxy.ts: 291ms, application-code: 2.5s)
+  └─ ƒ setOrderProductionStatus("beedb5ee-2427-4d35-ba0f-c90c4f1fdd3d", "decorating") in 805ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 1903ms (next.js: 27ms, proxy.ts: 308ms, application-code: 1569ms)
+ POST /cake-orders 200 in 2.6s (next.js: 9ms, proxy.ts: 661ms, application-code: 1927ms)
+  └─ ƒ setCakeOrderStatus("487e7929-7d36-4bc7-9493-543ba3e31da9", "done") in 881ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1644ms (next.js: 8ms, proxy.ts: 852ms, application-code: 784ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.2s (next.js: 32ms, proxy.ts: 164ms, application-code: 3.0s)
+  └─ ƒ setOrderProductionStatus("ecdc146c-026c-4ea3-9a60-d01af118dc4a", "decorating") in 1196ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.3s (next.js: 25ms, proxy.ts: 657ms, application-code: 1594ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 3.4s (next.js: 21ms, proxy.ts: 263ms, application-code: 3.2s)
+  └─ ƒ setOrderProductionStatus("ecdc146c-026c-4ea3-9a60-d01af118dc4a", "done") in 1223ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.2s (next.js: 23ms, proxy.ts: 380ms, application-code: 1838ms)
+ POST /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 4.1s (next.js: 21ms, proxy.ts: 226ms, application-code: 3.9s)
+  └─ ƒ setOrderProductionStatus("beedb5ee-2427-4d35-ba0f-c90c4f1fdd3d", "done") in 1546ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-production/04105b79-a5e4-4337-b3bb-08657d6b1962 200 in 2.8s (next.js: 38ms, proxy.ts: 390ms, application-code: 2.3s)
+ GET /cake-orders 200 in 2.1s (next.js: 6ms, proxy.ts: 307ms, application-code: 1788ms)
+ POST /cake-orders 200 in 2.7s (next.js: 10ms, proxy.ts: 469ms, application-code: 2.2s)
+  └─ ƒ setCakeOrderStatus("ecdc146c-026c-4ea3-9a60-d01af118dc4a", "delivering") in 714ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1901ms (next.js: 34ms, proxy.ts: 452ms, application-code: 1414ms)
+ POST /cake-orders/slip?date=2026-05-13 200 in 3.2s (next.js: 9ms, proxy.ts: 501ms, application-code: 2.7s)
+  └─ ƒ reopenSlip("04105b79-a5e4-4337-b3bb-08657d6b1962") in 661ms src/lib/actions/cake-slips.actions.ts
+ GET /cake-orders/slip?date=2026-05-13 200 in 2.1s (next.js: 16ms, proxy.ts: 448ms, application-code: 1679ms)
+ GET /cake-orders 200 in 1492ms (next.js: 7ms, proxy.ts: 583ms, application-code: 902ms)
+ POST /cake-orders 200 in 3.0s (next.js: 8ms, proxy.ts: 530ms, application-code: 2.5s)
+  └─ ƒ setCakeOrderStatus("beedb5ee-2427-4d35-ba0f-c90c4f1fdd3d", "delivering") in 642ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1769ms (next.js: 8ms, proxy.ts: 215ms, application-code: 1547ms)
+  └─ ƒ setCakeOrderStatus("dc685b66-4081-47d2-b141-7118b67478b0", "done") in 713ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1177ms (next.js: 7ms, proxy.ts: 224ms, application-code: 946ms)
+ POST /cake-orders 200 in 1565ms (next.js: 9ms, proxy.ts: 177ms, application-code: 1380ms)
+  └─ ƒ setCakeOrderStatus("ecdc146c-026c-4ea3-9a60-d01af118dc4a", "done") in 697ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 802ms (next.js: 8ms, proxy.ts: 168ms, application-code: 626ms)
+ GET /cake-orders 200 in 1080ms (next.js: 7ms, proxy.ts: 383ms, application-code: 690ms)
+ POST /cake-orders 200 in 2.2s (next.js: 7ms, proxy.ts: 307ms, application-code: 1905ms)
+  └─ ƒ setCakeOrderStatus("beedb5ee-2427-4d35-ba0f-c90c4f1fdd3d", "done") in 559ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 2.7s (next.js: 7ms, proxy.ts: 659ms, application-code: 2.1s)
+  └─ ƒ setCakeOrderArchived("487e7929-7d36-4bc7-9493-543ba3e31da9", true) in 964ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1329ms (next.js: 6ms, proxy.ts: 166ms, application-code: 1157ms)
+ POST /cake-orders 200 in 1640ms (next.js: 7ms, proxy.ts: 156ms, application-code: 1477ms)
+  └─ ƒ setCakeOrderArchived("dc685b66-4081-47d2-b141-7118b67478b0", true) in 827ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1016ms (next.js: 6ms, proxy.ts: 160ms, application-code: 850ms)
+ POST /cake-orders 200 in 1661ms (next.js: 7ms, proxy.ts: 297ms, application-code: 1357ms)
+  └─ ƒ setCakeOrderArchived("ecdc146c-026c-4ea3-9a60-d01af118dc4a", true) in 729ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1132ms (next.js: 6ms, proxy.ts: 205ms, application-code: 922ms)
+ POST /cake-orders 200 in 2.4s (next.js: 6ms, proxy.ts: 318ms, application-code: 2.1s)
+  └─ ƒ setCakeOrderArchived("beedb5ee-2427-4d35-ba0f-c90c4f1fdd3d", true) in 799ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1271ms (next.js: 6ms, proxy.ts: 184ms, application-code: 1080ms)
+✓ Compiled in 382ms
+ GET /cake-orders 200 in 1475ms (next.js: 331ms, proxy.ts: 905ms, application-code: 239ms)
+ GET /cake-orders 200 in 378ms (next.js: 8ms, proxy.ts: 245ms, application-code: 125ms)
+ GET /cake-orders 200 in 299ms (next.js: 7ms, proxy.ts: 198ms, application-code: 94ms)
+ GET /cake-orders 200 in 321ms (next.js: 6ms, proxy.ts: 241ms, application-code: 74ms)
+✓ Compiled in 423ms
+ GET /cake-orders 200 in 1160ms (next.js: 253ms, proxy.ts: 679ms, application-code: 228ms)
+ GET /cake-orders 200 in 553ms (next.js: 6ms, proxy.ts: 447ms, application-code: 100ms)
+ GET /cake-orders 200 in 438ms (next.js: 8ms, proxy.ts: 319ms, application-code: 111ms)
+ GET /cake-orders 200 in 326ms (next.js: 6ms, proxy.ts: 241ms, application-code: 78ms)
+✓ Compiled in 384ms
+ GET /cake-orders 200 in 1190ms (next.js: 303ms, proxy.ts: 697ms, application-code: 190ms)
+ GET /cake-orders 200 in 302ms (next.js: 5ms, proxy.ts: 194ms, application-code: 102ms)
+ GET /cake-orders 200 in 336ms (next.js: 6ms, proxy.ts: 206ms, application-code: 125ms)
+ GET /cake-orders 200 in 299ms (next.js: 6ms, proxy.ts: 217ms, application-code: 77ms)
+✓ Compiled in 393ms
+ GET /cake-orders 200 in 1652ms (next.js: 374ms, proxy.ts: 1000ms, application-code: 278ms)
+ GET /cake-orders 200 in 385ms (next.js: 6ms, proxy.ts: 265ms, application-code: 114ms)
+ GET /cake-orders 200 in 307ms (next.js: 6ms, proxy.ts: 187ms, application-code: 115ms)
+ GET /cake-orders 200 in 278ms (next.js: 5ms, proxy.ts: 190ms, application-code: 82ms)
+✓ Compiled in 342ms
+ GET /cake-orders 200 in 1497ms (next.js: 357ms, proxy.ts: 913ms, application-code: 226ms)
+ GET /cake-orders 200 in 941ms (next.js: 7ms, proxy.ts: 801ms, application-code: 133ms)
+ GET /cake-orders 200 in 297ms (next.js: 6ms, proxy.ts: 200ms, application-code: 91ms)
+ GET /cake-orders 200 in 275ms (next.js: 6ms, proxy.ts: 184ms, application-code: 85ms)
+✓ Compiled in 379ms
+ GET /cake-orders 200 in 1105ms (next.js: 271ms, proxy.ts: 669ms, application-code: 164ms)
+ GET /cake-orders 200 in 377ms (next.js: 6ms, proxy.ts: 267ms, application-code: 104ms)
+ GET /cake-orders 200 in 346ms (next.js: 6ms, proxy.ts: 245ms, application-code: 95ms)
+ GET /cake-orders 200 in 473ms (next.js: 6ms, proxy.ts: 324ms, application-code: 143ms)
+ GET /cake-orders 200 in 3.5s (next.js: 7ms, proxy.ts: 528ms, application-code: 2.9s)
+ POST /cake-orders 200 in 1278ms (next.js: 6ms, proxy.ts: 261ms, application-code: 1011ms)
+  └─ ƒ getCakeOrder("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 998ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 377ms (next.js: 13ms, proxy.ts: 186ms, application-code: 178ms)
+  └─ ƒ listCakeOrderPayments("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 166ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1104ms (next.js: 6ms, proxy.ts: 212ms, application-code: 885ms)
+  └─ ƒ getCakeOrder("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 869ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 656ms (next.js: 7ms, proxy.ts: 231ms, application-code: 417ms)
+  └─ ƒ listCakeOrderPayments("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 402ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1104ms (next.js: 7ms, proxy.ts: 204ms, application-code: 893ms)
+  └─ ƒ getCakeOrder("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 881ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 521ms (next.js: 6ms, proxy.ts: 282ms, application-code: 233ms)
+  └─ ƒ listCakeOrderPayments("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 212ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1466ms (next.js: 6ms, proxy.ts: 228ms, application-code: 1232ms)
+  └─ ƒ getCakeOrder("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 1207ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 584ms (next.js: 6ms, proxy.ts: 251ms, application-code: 327ms)
+  └─ ƒ listCakeOrderPayments("8d9375b0-f129-403a-bf8e-91a88fa4a5c8") in 315ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1301ms (next.js: 9ms, proxy.ts: 176ms, application-code: 1116ms)
+  └─ ƒ getCakeAttachmentSignedUrl("5f9b2f20-c6f7-4660-939c-084a55a04506") in 1104ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 983ms (next.js: 6ms, proxy.ts: 242ms, application-code: 734ms)
+  └─ ƒ getCakeAttachmentSignedUrl("137b7980-f3ba-4cce-81bd-bdba5112b99d") in 723ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 877ms (next.js: 6ms, proxy.ts: 174ms, application-code: 697ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7884efb5-4363-43a6-996e-d16a72bfdfef") in 686ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1221ms (next.js: 7ms, proxy.ts: 311ms, application-code: 902ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d5b8dc2b-a828-4a26-992d-0497e99d80a0") in 890ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 978ms (next.js: 9ms, proxy.ts: 236ms, application-code: 732ms)
+  └─ ƒ getCakeAttachmentSignedUrl("3fdc6fac-d64d-48e8-8dac-0b4e713670fb") in 719ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 990ms (next.js: 8ms, proxy.ts: 233ms, application-code: 749ms)
+  └─ ƒ getCakeAttachmentSignedUrl("39d70cf1-c65a-4fb9-9126-d10a1d615a74") in 732ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 988ms (next.js: 6ms, proxy.ts: 236ms, application-code: 746ms)
+  └─ ƒ getCakeAttachmentSignedUrl("5f9b2f20-c6f7-4660-939c-084a55a04506") in 734ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1203ms (next.js: 8ms, proxy.ts: 296ms, application-code: 900ms)
+  └─ ƒ getCakeAttachmentSignedUrl("137b7980-f3ba-4cce-81bd-bdba5112b99d") in 887ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 983ms (next.js: 7ms, proxy.ts: 208ms, application-code: 769ms)
+  └─ ƒ getCakeAttachmentSignedUrl("7884efb5-4363-43a6-996e-d16a72bfdfef") in 757ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1090ms (next.js: 8ms, proxy.ts: 263ms, application-code: 819ms)
+  └─ ƒ getCakeAttachmentSignedUrl("d5b8dc2b-a828-4a26-992d-0497e99d80a0") in 807ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 790ms (next.js: 7ms, proxy.ts: 174ms, application-code: 609ms)
+  └─ ƒ getCakeAttachmentSignedUrl("3fdc6fac-d64d-48e8-8dac-0b4e713670fb") in 597ms src/lib/actions/cake-orders.actions.ts
+ POST /cake-orders 200 in 1169ms (next.js: 6ms, proxy.ts: 290ms, application-code: 872ms)
+  └─ ƒ getCakeAttachmentSignedUrl("39d70cf1-c65a-4fb9-9126-d10a1d615a74") in 861ms src/lib/actions/cake-orders.actions.ts
+ GET /cake-orders 200 in 1402ms (next.js: 293ms, proxy.ts: 960ms, application-code: 149ms)
+ GET /cake-orders 200 in 1035ms (next.js: 238ms, proxy.ts: 611ms, application-code: 186ms)
+ GET /cake-orders 200 in 1223ms (next.js: 243ms, proxy.ts: 827ms, application-code: 153ms)
+✓ Compiled in 308ms
+ GET /cake-orders 200 in 1831ms (next.js: 321ms, proxy.ts: 1259ms, application-code: 252ms)
+ GET /cake-orders 200 in 786ms (next.js: 38ms, proxy.ts: 309ms, application-code: 439ms)
+ GET /cake-orders 200 in 296ms (next.js: 5ms, proxy.ts: 177ms, application-code: 114ms)
+ GET /cake-orders 200 in 264ms (next.js: 5ms, proxy.ts: 172ms, application-code: 87ms)
+✓ Compiled in 431ms
+ GET /cake-orders 200 in 1660ms (next.js: 313ms, proxy.ts: 1074ms, application-code: 273ms)
+ GET /cake-orders 200 in 844ms (next.js: 39ms, proxy.ts: 262ms, application-code: 543ms)
+ GET /cake-orders 200 in 341ms (next.js: 6ms, proxy.ts: 239ms, application-code: 96ms)
+ GET /cake-orders 200 in 309ms (next.js: 5ms, proxy.ts: 201ms, application-code: 103ms)
+ GET /cake-orders 200 in 286ms (next.js: 7ms, proxy.ts: 172ms, application-code: 107ms)
+ GET /cake-orders 200 in 385ms (next.js: 5ms, proxy.ts: 276ms, application-code: 105ms)
+ GET /cake-orders 200 in 289ms (next.js: 10ms, proxy.ts: 172ms, application-code: 108ms)
+ GET /cake-orders 200 in 354ms (next.js: 27ms, proxy.ts: 220ms, application-code: 107ms)
+ GET /cake-orders 200 in 289ms (next.js: 6ms, proxy.ts: 194ms, application-code: 89ms)
+ GET /cake-orders 200 in 516ms (next.js: 6ms, proxy.ts: 420ms, application-code: 91ms)
+✓ Compiled in 456ms
+ GET /cake-orders 200 in 1327ms (next.js: 268ms, proxy.ts: 885ms, application-code: 174ms)
+ GET /cake-orders 200 in 347ms (next.js: 5ms, proxy.ts: 219ms, application-code: 123ms)
+ GET /cake-orders 200 in 348ms (next.js: 6ms, proxy.ts: 211ms, application-code: 131ms)
+ GET /cake-orders 200 in 395ms (next.js: 5ms, proxy.ts: 302ms, application-code: 87ms)
+ GET /cake-orders 200 in 267ms (next.js: 6ms, proxy.ts: 160ms, application-code: 101ms)
+ GET /cake-orders 200 in 276ms (next.js: 7ms, proxy.ts: 179ms, application-code: 90ms)
+ GET /cake-orders 200 in 277ms (next.js: 6ms, proxy.ts: 154ms, application-code: 117ms)
+ GET /cake-orders 200 in 320ms (next.js: 5ms, proxy.ts: 214ms, application-code: 101ms)
+ GET /cake-orders 200 in 427ms (next.js: 8ms, proxy.ts: 323ms, application-code: 96ms)
+ GET /cake-orders 200 in 327ms (next.js: 6ms, proxy.ts: 209ms, application-code: 112ms)
+ GET /cake-orders 200 in 314ms (next.js: 7ms, proxy.ts: 207ms, application-code: 100ms)
+ GET /cake-orders 200 in 373ms (next.js: 7ms, proxy.ts: 230ms, application-code: 137ms)
+ GET /cake-orders 200 in 366ms (next.js: 6ms, proxy.ts: 205ms, application-code: 155ms)
+ GET /cake-orders 200 in 323ms (next.js: 6ms, proxy.ts: 194ms, application-code: 122ms)
+ GET /cake-orders 200 in 273ms (next.js: 5ms, proxy.ts: 165ms, application-code: 102ms)
+ GET /cake-orders 200 in 321ms (next.js: 6ms, proxy.ts: 226ms, application-code: 89ms)
+ GET /cake-orders 200 in 383ms (next.js: 5ms, proxy.ts: 294ms, application-code: 84ms)
+ GET /cake-orders 200 in 315ms (next.js: 8ms, proxy.ts: 195ms, application-code: 112ms)
+ GET /cake-orders 200 in 345ms (next.js: 5ms, proxy.ts: 247ms, application-code: 92ms)
+ GET /cake-orders 200 in 267ms (next.js: 5ms, proxy.ts: 171ms, application-code: 91ms)
+ GET /cake-orders 200 in 468ms (next.js: 6ms, proxy.ts: 333ms, application-code: 129ms)
+ GET /cake-orders 200 in 419ms (next.js: 8ms, proxy.ts: 294ms, application-code: 117ms)
+ GET /cake-orders 200 in 368ms (next.js: 10ms, proxy.ts: 215ms, application-code: 142ms)
+✓ Compiled in 414ms
+ GET /cake-orders 200 in 3.4s (next.js: 254ms, proxy.ts: 2.8s, application-code: 326ms)
+ GET /cake-orders 200 in 422ms (next.js: 6ms, proxy.ts: 332ms, application-code: 84ms)
+ GET /cake-orders 200 in 270ms (next.js: 5ms, proxy.ts: 181ms, application-code: 84ms)
+ GET /cake-orders 200 in 321ms (next.js: 6ms, proxy.ts: 222ms, application-code: 92ms)
+ GET /cake-orders 200 in 573ms (next.js: 6ms, proxy.ts: 413ms, application-code: 154ms)
+ GET /cake-orders 200 in 321ms (next.js: 6ms, proxy.ts: 211ms, application-code: 105ms)
+ GET /cake-orders 200 in 337ms (next.js: 5ms, proxy.ts: 234ms, application-code: 98ms)
+ GET /cake-orders 200 in 320ms (next.js: 6ms, proxy.ts: 217ms, application-code: 97ms)
+ GET /cake-orders 200 in 318ms (next.js: 7ms, proxy.ts: 187ms, application-code: 124ms)
+ GET /cake-orders 200 in 500ms (next.js: 11ms, proxy.ts: 394ms, application-code: 94ms)
+ GET /cake-orders 200 in 419ms (next.js: 7ms, proxy.ts: 310ms, application-code: 103ms)
+ GET /cake-orders 200 in 321ms (next.js: 6ms, proxy.ts: 219ms, application-code: 95ms)
+ GET /cake-orders 200 in 381ms (next.js: 7ms, proxy.ts: 271ms, application-code: 103ms)
+ GET /cake-orders 200 in 259ms (next.js: 6ms, proxy.ts: 165ms, application-code: 88ms)
+ GET /cake-orders 200 in 370ms (next.js: 8ms, proxy.ts: 237ms, application-code: 125ms)
+ GET /cake-orders 200 in 308ms (next.js: 6ms, proxy.ts: 198ms, application-code: 104ms)
+ GET /cake-orders 200 in 278ms (next.js: 6ms, proxy.ts: 173ms, application-code: 99ms)
+ GET /cake-orders 200 in 331ms (next.js: 7ms, proxy.ts: 241ms, application-code: 83ms)
+✓ Compiled in 468ms
+ GET /cake-orders 200 in 1375ms (next.js: 256ms, proxy.ts: 955ms, application-code: 163ms)
+ GET /cake-orders 200 in 298ms (next.js: 6ms, proxy.ts: 194ms, application-code: 97ms)
+ GET /cake-orders 200 in 312ms (next.js: 6ms, proxy.ts: 218ms, application-code: 88ms)
+ GET /cake-orders 200 in 390ms (next.js: 30ms, proxy.ts: 233ms, application-code: 127ms)
+ GET /cake-orders 200 in 685ms (next.js: 35ms, proxy.ts: 286ms, application-code: 364ms)
+ GET /cake-orders 200 in 303ms (next.js: 5ms, proxy.ts: 198ms, application-code: 100ms)
+ GET /cake-orders 200 in 271ms (next.js: 6ms, proxy.ts: 168ms, application-code: 97ms)
+ GET /cake-orders 200 in 487ms (next.js: 5ms, proxy.ts: 389ms, application-code: 94ms)
+ GET /cake-orders 200 in 288ms (next.js: 5ms, proxy.ts: 185ms, application-code: 98ms)
+ GET /cake-orders 200 in 427ms (next.js: 5ms, proxy.ts: 329ms, application-code: 93ms)
+ GET /cake-orders 200 in 351ms (next.js: 5ms, proxy.ts: 225ms, application-code: 122ms)
+ GET /cake-orders 200 in 343ms (next.js: 5ms, proxy.ts: 232ms, application-code: 106ms)
+ GET /cake-orders 200 in 324ms (next.js: 5ms, proxy.ts: 241ms, application-code: 78ms)
+ GET /cake-orders 200 in 341ms (next.js: 5ms, proxy.ts: 241ms, application-code: 95ms)
+ GET /cake-orders 200 in 332ms (next.js: 5ms, proxy.ts: 218ms, application-code: 108ms)
+ GET /cake-orders 200 in 523ms (next.js: 5ms, proxy.ts: 430ms, application-code: 88ms)
+ GET /cake-orders 200 in 358ms (next.js: 6ms, proxy.ts: 213ms, application-code: 139ms)
+ GET /cake-orders 200 in 354ms (next.js: 7ms, proxy.ts: 263ms, application-code: 84ms)
+✓ Compiled in 425ms
+ GET /cake-orders 200 in 3.4s (next.js: 287ms, proxy.ts: 2.8s, application-code: 350ms)
+ GET /cake-orders 200 in 457ms (next.js: 17ms, proxy.ts: 356ms, application-code: 84ms)
+ GET /cake-orders 200 in 366ms (next.js: 28ms, proxy.ts: 246ms, application-code: 93ms)
+ GET /cake-orders 200 in 443ms (next.js: 6ms, proxy.ts: 309ms, application-code: 128ms)
+ GET /cake-orders 200 in 287ms (next.js: 7ms, proxy.ts: 172ms, application-code: 108ms)
+ GET /cake-orders 200 in 292ms (next.js: 5ms, proxy.ts: 201ms, application-code: 86ms)
+ GET /cake-orders 200 in 297ms (next.js: 5ms, proxy.ts: 190ms, application-code: 102ms)
+ GET /cake-orders 200 in 407ms (next.js: 7ms, proxy.ts: 302ms, application-code: 98ms)
+ GET /cake-orders 200 in 355ms (next.js: 6ms, proxy.ts: 247ms, application-code: 102ms)
+ GET /cake-orders 200 in 402ms (next.js: 5ms, proxy.ts: 273ms, application-code: 124ms)
+ GET /cake-orders 200 in 310ms (next.js: 22ms, proxy.ts: 201ms, application-code: 87ms)
+ GET /cake-orders 200 in 306ms (next.js: 6ms, proxy.ts: 159ms, application-code: 140ms)
+ GET /cake-orders 200 in 317ms (next.js: 6ms, proxy.ts: 204ms, application-code: 107ms)
+ GET /cake-orders 200 in 391ms (next.js: 8ms, proxy.ts: 288ms, application-code: 96ms)
+ GET /cake-orders 200 in 271ms (next.js: 6ms, proxy.ts: 181ms, application-code: 84ms)
+ GET /cake-orders 200 in 314ms (next.js: 7ms, proxy.ts: 198ms, application-code: 108ms)
+ GET /cake-orders 200 in 306ms (next.js: 6ms, proxy.ts: 212ms, application-code: 89ms)
+ GET /cake-orders 200 in 276ms (next.js: 6ms, proxy.ts: 188ms, application-code: 82ms)
+✓ Compiled in 573ms
+ GET /cake-orders 200 in 3.5s (next.js: 237ms, proxy.ts: 3.0s, application-code: 282ms)
+ GET /cake-orders 200 in 460ms (next.js: 5ms, proxy.ts: 353ms, application-code: 102ms)
+ GET /cake-orders 200 in 545ms (next.js: 5ms, proxy.ts: 446ms, application-code: 94ms)
+ GET /cake-orders 200 in 451ms (next.js: 6ms, proxy.ts: 321ms, application-code: 124ms)
+ GET /cake-orders 200 in 413ms (next.js: 5ms, proxy.ts: 316ms, application-code: 92ms)
+ GET /cake-orders 200 in 353ms (next.js: 5ms, proxy.ts: 252ms, application-code: 95ms)
+ GET /cake-orders 200 in 280ms (next.js: 5ms, proxy.ts: 198ms, application-code: 78ms)
+ GET /cake-orders 200 in 292ms (next.js: 6ms, proxy.ts: 157ms, application-code: 129ms)
+ GET /cake-orders 200 in 313ms (next.js: 5ms, proxy.ts: 220ms, application-code: 88ms)
+ GET /cake-orders 200 in 350ms (next.js: 6ms, proxy.ts: 258ms, application-code: 86ms)
+ GET /cake-orders 200 in 325ms (next.js: 5ms, proxy.ts: 221ms, application-code: 99ms)
+ GET /cake-orders 200 in 405ms (next.js: 8ms, proxy.ts: 284ms, application-code: 112ms)
+ GET /cake-orders 200 in 309ms (next.js: 5ms, proxy.ts: 218ms, application-code: 86ms)
+ GET /cake-orders 200 in 284ms (next.js: 6ms, proxy.ts: 181ms, application-code: 98ms)
+ GET /cake-orders 200 in 371ms (next.js: 25ms, proxy.ts: 252ms, application-code: 94ms)
+ GET /cake-orders 200 in 294ms (next.js: 6ms, proxy.ts: 180ms, application-code: 109ms)
+ GET /cake-orders 200 in 465ms (next.js: 6ms, proxy.ts: 363ms, application-code: 96ms)
+ GET /cake-orders 200 in 449ms (next.js: 8ms, proxy.ts: 320ms, application-code: 121ms)
+✓ Compiled in 378ms
+ GET /cake-orders 200 in 3.1s (next.js: 226ms, proxy.ts: 2.5s, application-code: 425ms)
+ GET /cake-orders 200 in 814ms (next.js: 222ms, proxy.ts: 467ms, application-code: 126ms)
+ GET /cake-orders 200 in 361ms (next.js: 9ms, proxy.ts: 255ms, application-code: 98ms)
+ GET /cake-orders 200 in 333ms (next.js: 5ms, proxy.ts: 228ms, application-code: 99ms)
+ GET /cake-orders 200 in 333ms (next.js: 5ms, proxy.ts: 240ms, application-code: 88ms)
+ GET /cake-orders 200 in 274ms (next.js: 5ms, proxy.ts: 185ms, application-code: 84ms)
+ GET /cake-orders 200 in 276ms (next.js: 5ms, proxy.ts: 178ms, application-code: 92ms)
+ GET /cake-orders 200 in 429ms (next.js: 5ms, proxy.ts: 330ms, application-code: 94ms)
+ GET /cake-orders 200 in 359ms (next.js: 6ms, proxy.ts: 239ms, application-code: 113ms)
+ GET /cake-orders 200 in 288ms (next.js: 7ms, proxy.ts: 171ms, application-code: 110ms)
+ GET /cake-orders 200 in 412ms (next.js: 7ms, proxy.ts: 296ms, application-code: 109ms)
+ GET /cake-orders 200 in 534ms (next.js: 6ms, proxy.ts: 436ms, application-code: 92ms)
+ GET /cake-orders 200 in 290ms (next.js: 6ms, proxy.ts: 156ms, application-code: 128ms)
+ GET /cake-orders 200 in 306ms (next.js: 6ms, proxy.ts: 204ms, application-code: 96ms)
+ GET /cake-orders 200 in 354ms (next.js: 7ms, proxy.ts: 252ms, application-code: 95ms)
+ GET /cake-orders 200 in 350ms (next.js: 6ms, proxy.ts: 246ms, application-code: 99ms)
+ GET /cake-orders 200 in 324ms (next.js: 7ms, proxy.ts: 214ms, application-code: 103ms)
+ GET /cake-orders 200 in 379ms (next.js: 6ms, proxy.ts: 284ms, application-code: 89ms)
+ GET /cake-orders 200 in 918ms (next.js: 195ms, proxy.ts: 556ms, application-code: 167ms)
+✓ Compiled in 402ms
+ GET /cake-orders 200 in 1527ms (next.js: 266ms, proxy.ts: 1035ms, application-code: 225ms)
+ GET /cake-orders 200 in 301ms (next.js: 12ms, proxy.ts: 168ms, application-code: 121ms)
+ GET /cake-orders 200 in 384ms (next.js: 6ms, proxy.ts: 208ms, application-code: 170ms)
+ GET /cake-orders 200 in 345ms (next.js: 5ms, proxy.ts: 243ms, application-code: 98ms)
+ GET /cake-orders 200 in 263ms (next.js: 6ms, proxy.ts: 165ms, application-code: 92ms)
+ GET /cake-orders 200 in 336ms (next.js: 7ms, proxy.ts: 211ms, application-code: 117ms)
+ GET /cake-orders 200 in 287ms (next.js: 5ms, proxy.ts: 173ms, application-code: 109ms)
+ GET /cake-orders 200 in 425ms (next.js: 5ms, proxy.ts: 326ms, application-code: 95ms)
+ GET /cake-orders 200 in 405ms (next.js: 5ms, proxy.ts: 246ms, application-code: 153ms)
+ GET /cake-orders 200 in 756ms (next.js: 31ms, proxy.ts: 393ms, application-code: 332ms)
+ GET /cake-orders 200 in 318ms (next.js: 5ms, proxy.ts: 231ms, application-code: 82ms)
+ GET /cake-orders 200 in 247ms (next.js: 5ms, proxy.ts: 166ms, application-code: 76ms)
+ GET /cake-orders 200 in 322ms (next.js: 5ms, proxy.ts: 231ms, application-code: 86ms)
+ GET /cake-orders 200 in 361ms (next.js: 6ms, proxy.ts: 273ms, application-code: 82ms)
+ GET /cake-orders 200 in 1296ms (next.js: 217ms, proxy.ts: 911ms, application-code: 168ms)
+ GET /cake-orders 200 in 1304ms (next.js: 242ms, proxy.ts: 910ms, application-code: 152ms)
+ GET /cake-orders 200 in 1853ms (next.js: 249ms, proxy.ts: 1424ms, application-code: 180ms)
+ GET /cake-orders 200 in 1400ms (next.js: 233ms, proxy.ts: 996ms, application-code: 171ms)
+ GET /cake-orders 200 in 273ms (next.js: 5ms, proxy.ts: 190ms, application-code: 78ms)
+ GET /cake-orders 200 in 3.7s (next.js: 20ms, proxy.ts: 1780ms, application-code: 1863ms)
+✓ Compiled in 590ms

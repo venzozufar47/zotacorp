@@ -1,0 +1,81 @@
+ * Per-day transparency snapshot stored on payslips.breakdown_json. Captured at
+ * calculation time so finalized payslips remain immutable even if settings or
+ * raw attendance data change later.
+ */
+export type PayslipBreakdown = {
+  overtime_mode: "hourly_tiered" | "fixed_per_day";
+  late_penalty_mode: "per_minutes" | "per_day" | "none";
+  grace_period_min: number;
+  overtime_days: Array<{
+    date: string; // YYYY-MM-DD
+    minutes: number;
+    pay: number;
+  }>;
+  late_days: Array<{
+    date: string; // YYYY-MM-DD
+    raw_minutes: number;
+    after_grace_minutes: number;
+    penalty: number;
+    excused: boolean;
+  }>;
+  extra_work_days?: Array<{
+    date: string; // YYYY-MM-DD
+    kind: string;
+    pay: number;
+  }>;
+  extra_work_rate_idr?: number;
+};
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      bank_accounts: {
+        Row: {
+          id: string
+          business_unit: string
+          bank: string
+          account_number: string | null
+          account_name: string
+          is_active: boolean
+          created_by: string | null
+          pdf_password: string | null
+          source_url: string | null
+          source_sheet: string | null
+          default_branch: string | null
+          last_synced_at: string | null
+          custom_categories: unknown
+          pos_enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          business_unit: string
+          bank: string
+          account_number?: string | null
+          account_name: string
+          is_active?: boolean
+          created_by?: string | null
+          pdf_password?: string | null
+          source_url?: string | null
+          source_sheet?: string | null
+          default_branch?: string | null
+          last_synced_at?: string | null
+          custom_categories?: unknown
+          pos_enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          business_unit?: string
+          bank?: string
+          account_number?: string | null
+          account_name?: string
+          is_active?: boolean
+          created_by?: string | null

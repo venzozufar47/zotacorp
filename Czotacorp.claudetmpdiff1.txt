@@ -1,0 +1,1454 @@
+diff --git a/src/components/cake/CakeOrderDetail.tsx b/src/components/cake/CakeOrderDetail.tsx
+index 86df197..1aa3573 100644
+--- a/src/components/cake/CakeOrderDetail.tsx
++++ b/src/components/cake/CakeOrderDetail.tsx
+@@ -21,6 +21,7 @@ import {
+ import { toast } from "sonner";
+ import {
+   addCakeOrderPayment,
++  deleteCakeOrderAttachment,
+   deleteCakeOrderPayment,
+   getCakeAttachmentSignedUrl,
+   setCakeOrderStatus,
+@@ -44,6 +45,10 @@ interface Props {
+   order: CakeOrder;
+   attachments: CakeOrderAttachment[];
+   payments: CakeOrderPayment[];
++  /** Saat order ada di slip produksi yang sudah frozen, kanban tidak
++   *  boleh edit langsung. Admin wajib reopen slip dulu. Null = bebas
++   *  edit (atau order belum masuk slip apapun). */
++  slipLock: import("@/lib/actions/cake-orders.actions").CakeOrderSlipLock | null;
+   optionsByKind: CakeOptionsByKind | null;
+   isAdminView: boolean;
+   canEdit: boolean;
+@@ -69,6 +74,7 @@ export function CakeOrderDetail({
+   order,
+   attachments,
+   payments,
++  slipLock,
+   optionsByKind,
+   isAdminView,
+   canEdit,
+@@ -105,7 +111,11 @@ export function CakeOrderDetail({
+     order.status === "delivering" ||
+     order.status === "done" ||
+     order.status === "cancelled";
+-  const editable = canEdit && !lockedFromEdit;
++  // Slip lock: kalau order ada di slip frozen (verified/sent/received/
++  // closed), edit langsung tidak diperbolehkan supaya tim produksi
++  // dapat banner perubahan via reopen+resend.
++  const lockedBySlip = slipLock != null;
++  const editable = canEdit && !lockedFromEdit && !lockedBySlip;
+ 
+   const labelFor = makeLabelFor(optionsByKind);
+   const attByField = useMemo(() => {
+@@ -253,20 +263,55 @@ export function CakeOrderDetail({
+             Sudah diproduksi
+           </span>
+         )}
++        {lockedBySlip && !lockedFromEdit && (
++          <span
++            className="inline-flex items-center gap-1 rounded-full border-2 border-foreground bg-tertiary/40 px-2 py-0.5 text-[11px] font-medium text-foreground shrink-0"
++            title="Order ada di slip produksi yang sudah dikirim — buka kembali slip dulu untuk mengedit"
++          >
++            <Lock size={10} strokeWidth={2.5} />
++            Di slip produksi
++          </span>
++        )}
+         <PaymentStatusBadge order={order} />
+       </div>
+ 
++      {lockedBySlip && !lockedFromEdit && slipLock && (
++        <div className="rounded-xl border-2 border-foreground bg-tertiary/30 p-3 text-xs text-foreground space-y-1.5">
++          <p className="font-semibold">
++            Order ini sudah dikirim ke slip produksi.
++          </p>
++          <p className="text-foreground/80">
++            Untuk mengubah spek (warna, tulisan, diameter, dll.), buka
++            kembali slip dulu supaya tim produksi dapat banner
++            perubahan dan kartu mereka ter-update.
++          </p>
++          <Link
++            href={`/cake-orders/slip?date=${slipLock.targetDate}`}
++            className="inline-flex items-center gap-1.5 rounded-lg bg-foreground text-background px-3 py-1.5 text-xs font-semibold hover:opacity-90"
++          >
++            Buka slip produksi →
++          </Link>
++        </div>
++      )}
++
+       {/* CSS-multicolumn so sections fill both halves with no dead
+           space at the bottom of the shorter column. Each section
+           marks itself break-inside-avoid via the [&>section] selector
+           so the engine doesn't split a section across columns. */}
+-      <div className="md:columns-2 md:gap-3 [&>section]:mb-3 [&>section]:break-inside-avoid">
++      <div className="xl:columns-2 xl:gap-3 [&>section]:mb-3 [&>section]:break-inside-avoid">
+         <Section emoji={<Cake size={14} strokeWidth={2.5} />} label="Spesifikasi">
+           <Spec label="Base">{labelFor("base_cake", order.base_cake_option_id)}</Spec>
+           <Spec label="Bentuk">
+             {labelFor("shape", order.shape_option_id)}
+             {order.shape_custom ? ` — ${order.shape_custom}` : ""}
+           </Spec>
++          <Spec label="Diameter">
++            {order.dimension_cm != null ? (
++              <span className="tabular-nums">{order.dimension_cm} cm</span>
++            ) : (
++              <span className="text-muted-foreground italic">—</span>
++            )}
++          </Spec>
+           {order.filling_option_id && (
+             <Spec label="Filling">
+               {labelFor("filling", order.filling_option_id)}
+@@ -276,21 +321,29 @@ export function CakeOrderDetail({
+             label="Warna"
+             value={order.color_notes}
+             photos={attByField.color}
++            canDelete={editable}
++            onAfterDelete={afterMutation}
+           />
+           <SpecWithPhotos
+             label="Tekstur"
+             value={order.texture_notes}
+             photos={attByField.texture}
++            canDelete={editable}
++            onAfterDelete={afterMutation}
+           />
+           <SpecWithPhotos
+             label="Tulisan"
+             value={order.decoration_notes}
+             photos={attByField.decoration}
++            canDelete={editable}
++            onAfterDelete={afterMutation}
+           />
+           <SpecWithPhotos
+             label="Aksesoris"
+             value={order.accessories_notes}
+             photos={attByField.accessories}
++            canDelete={editable}
++            onAfterDelete={afterMutation}
+           />
+           {order.greeting_card && (
+             <Spec label="Greeting Card">&ldquo;{order.greeting_card}&rdquo;</Spec>
+@@ -857,7 +910,7 @@ function Spec({
+ }) {
+   const valueCls = tone === "danger" ? "text-destructive" : "text-foreground";
+   return (
+-    <div className="grid grid-cols-[80px_1fr] gap-2 items-baseline text-sm">
++    <div className="grid grid-cols-[72px_1fr] sm:grid-cols-[80px_1fr] gap-2 items-baseline text-sm">
+       <span className="text-xs text-muted-foreground">{label}</span>
+       <span className={`min-w-0 break-words ${valueCls}`}>{children}</span>
+     </div>
+@@ -868,24 +921,39 @@ function SpecWithPhotos({
+   label,
+   value,
+   photos,
++  canDelete,
++  onAfterDelete,
+ }: {
+   label: string;
+   value: string | null;
+   photos: CakeOrderAttachment[];
++  /** Saat true, popup foto dapat tombol Hapus. Server tetap gate
++   *  via requireCakeOrderAccess + slip-frozen check. */
++  canDelete?: boolean;
++  onAfterDelete?: () => void;
+ }) {
+   if (!value && photos.length === 0) return null;
+   return (
+-    <div className="grid grid-cols-[80px_1fr] gap-2 items-start text-sm">
++    <div className="grid grid-cols-[72px_1fr] sm:grid-cols-[80px_1fr] gap-2 items-start text-sm">
+       <span className="text-xs text-muted-foreground pt-0.5">{label}</span>
+-      <div className="min-w-0 flex flex-wrap items-center gap-1.5">
++      <div className="min-w-0 space-y-1.5">
+         {value && (
+-          <span className="text-foreground break-words flex-1 min-w-0">
++          <p className="text-foreground break-words leading-snug">
+             {value}
+-          </span>
++          </p>
++        )}
++        {photos.length > 0 && (
++          <div className="flex flex-wrap gap-1.5">
++            {photos.map((p) => (
++              <SignedThumb
++                key={p.id}
++                attachment={p}
++                canDelete={canDelete}
++                onAfterDelete={onAfterDelete}
++              />
++            ))}
++          </div>
+         )}
+-        {photos.map((p) => (
+-          <SignedThumb key={p.id} attachment={p} />
+-        ))}
+       </div>
+     </div>
+   );
+@@ -926,7 +994,15 @@ function PaymentStatusBadge({ order }: { order: CakeOrder }) {
+   );
+ }
+ 
+-function SignedThumb({ attachment }: { attachment: CakeOrderAttachment }) {
++function SignedThumb({
++  attachment,
++  canDelete,
++  onAfterDelete,
++}: {
++  attachment: CakeOrderAttachment;
++  canDelete?: boolean;
++  onAfterDelete?: () => void;
++}) {
+   const [url, setUrl] = useState<string | null>(null);
+   const [open, setOpen] = useState(false);
+   useEffect(() => {
+@@ -942,7 +1018,7 @@ function SignedThumb({ attachment }: { attachment: CakeOrderAttachment }) {
+ 
+   if (!url) {
+     return (
+-      <div className="size-12 rounded-lg border border-border bg-muted animate-pulse shrink-0" />
++      <div className="size-10 rounded-lg border border-border bg-muted animate-pulse shrink-0" />
+     );
+   }
+   return (
+@@ -950,13 +1026,27 @@ function SignedThumb({ attachment }: { attachment: CakeOrderAttachment }) {
+       <button
+         type="button"
+         onClick={() => setOpen(true)}
+-        className="block size-12 rounded-lg overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform shrink-0"
++        className="block size-10 rounded-lg overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform shrink-0"
+         aria-label="Lihat foto"
+       >
+         {/* eslint-disable-next-line @next/next/no-img-element */}
+         <img src={url} alt="" className="w-full h-full object-cover" />
+       </button>
+-      {open && <ImagePopup url={url} onClose={() => setOpen(false)} />}
++      {open && (
++        <ImagePopup
++          url={url}
++          onClose={() => setOpen(false)}
++          onDelete={
++            canDelete
++              ? async () => {
++                  const res = await deleteCakeOrderAttachment(attachment.id);
++                  if (res.ok) onAfterDelete?.();
++                  return res;
++                }
++              : undefined
++          }
++        />
++      )}
+     </>
+   );
+ }
+diff --git a/src/components/cake/SlipChecklist.tsx b/src/components/cake/SlipChecklist.tsx
+index b0da54a..44cd685 100644
+--- a/src/components/cake/SlipChecklist.tsx
++++ b/src/components/cake/SlipChecklist.tsx
+@@ -38,11 +38,17 @@ import type {
+ interface ProductionItem {
+   snapshot: CakeSlipSnapshotItem;
+   productionStatus: CakeProductionStatus;
++  /** Admin sudah pindahkan card past "siap" / arsipkan — production
++   *  team tidak boleh edit lagi. */
++  adminLocked: boolean;
+ }
+ 
+ interface Props {
+   slip: CakeProductionSlip;
+   items: ProductionItem[];
++  /** Sub-role caller (null = boleh kedua / scope orders). UI hide
++   *  tombol yang tidak match role. Server-side gate jadi backstop. */
++  myProductionRole: "baker" | "decorator" | null;
+ }
+ 
+ /**
+@@ -54,7 +60,7 @@ interface Props {
+  * `pending_diff` drives a big warning banner with field-level
+  * before/after; production team taps "Saya sudah lihat" to ack.
+  */
+-export function SlipChecklist({ slip, items }: Props) {
++export function SlipChecklist({ slip, items, myProductionRole }: Props) {
+   const router = useRouter();
+ 
+   // Optimistic per-item production_status so toggles feel instant.
+@@ -137,6 +143,12 @@ export function SlipChecklist({ slip, items }: Props) {
+         />
+       )}
+ 
++      {/* Rekap baking khusus baker — decorator (cake artist) fokus
++          ke per-customer card dengan detail filling/dekorasi. */}
++      {myProductionRole !== "decorator" && (
++        <BakingSummary items={items} diff={slip.pending_diff ?? null} />
++      )}
++
+       {slip.notes && (
+         <div className="rounded-2xl border-2 border-foreground bg-pop-pink/15 p-3 text-sm text-foreground whitespace-pre-wrap">
+           {slip.notes}
+@@ -156,6 +168,8 @@ export function SlipChecklist({ slip, items }: Props) {
+               productionStatus={
+                 statusById.get(it.snapshot.orderId) ?? it.productionStatus
+               }
++              myProductionRole={myProductionRole}
++              adminLocked={it.adminLocked}
+               onChange={(next) => {
+                 setStatusById((prev) => {
+                   const map = new Map(prev);
+@@ -291,10 +305,14 @@ function DiffBanner({
+ function ProductionCard({
+   snapshot,
+   productionStatus,
++  myProductionRole,
++  adminLocked,
+   onChange,
+ }: {
+   snapshot: CakeSlipSnapshotItem;
+   productionStatus: CakeProductionStatus;
++  myProductionRole: "baker" | "decorator" | null;
++  adminLocked: boolean;
+   onChange: (next: CakeProductionStatus) => void;
+ }) {
+   const [pending, startTransition] = useTransition();
+@@ -308,6 +326,7 @@ function ProductionCard({
+       const labels: Record<CakeProductionStatus, string> = {
+         pending: "Direset ke pending",
+         in_progress: "Mulai diproduksi",
++        decorating: "Mulai menghias",
+         done: "Selesai diproduksi",
+         cancelled: "Dibatalkan",
+       };
+@@ -341,6 +360,11 @@ function ProductionCard({
+             <Cake size={10} className="inline-block mr-1 -translate-y-px" />
+             {snapshot.baseLabel} · {snapshot.shapeLabel}
+             {snapshot.shapeCustom ? ` (${snapshot.shapeCustom})` : ""}
++            {snapshot.dimensionCm != null ? (
++              <span className="ml-1 rounded-full border border-foreground bg-card px-1 py-0 text-[10px] font-semibold tabular-nums text-foreground">
++                {snapshot.dimensionCm} cm
++              </span>
++            ) : null}
+             {snapshot.fillingLabel ? ` · ${snapshot.fillingLabel}` : ""}
+           </div>
+           <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0">
+@@ -380,6 +404,8 @@ function ProductionCard({
+         <ProductionAction
+           status={productionStatus}
+           pending={pending}
++          myProductionRole={myProductionRole}
++          adminLocked={adminLocked}
+           onAdvance={setStatus}
+         />
+       </div>
+@@ -412,6 +438,10 @@ function ProductionStatusPill({ status }: { status: CakeProductionStatus }) {
+       label: "Diproduksi",
+       cls: "bg-tertiary text-foreground border-foreground",
+     },
++    decorating: {
++      label: "Digambar",
++      cls: "bg-pop-pink text-foreground border-foreground",
++    },
+     done: {
+       label: "Selesai",
+       cls: "bg-pop-emerald text-foreground border-foreground",
+@@ -434,49 +464,115 @@ function ProductionStatusPill({ status }: { status: CakeProductionStatus }) {
+ function ProductionAction({
+   status,
+   pending,
++  myProductionRole,
++  adminLocked,
+   onAdvance,
+ }: {
+   status: CakeProductionStatus;
+   pending: boolean;
++  myProductionRole: "baker" | "decorator" | null;
++  adminLocked: boolean;
+   onAdvance: (next: CakeProductionStatus) => void;
+ }) {
++  // Admin lock: kalau admin sudah pindahkan card ke kanban
++  // pengiriman/selesai atau arsipkan, semua tombol di sisi produksi
++  // hilang — pekerjaan dianggap diserahkan.
++  if (adminLocked) {
++    return (
++      <p className="text-center text-[11px] italic text-muted-foreground">
++        Sudah ditangani admin
++      </p>
++    );
++  }
++  // Role gate untuk tombol "forward". Revert (Undo) longgar — role
++  // apapun boleh untuk koreksi cepat.
++  const canBake = myProductionRole === null || myProductionRole === "baker";
++  const canDecorate =
++    myProductionRole === null || myProductionRole === "decorator";
++
+   if (status === "pending") {
++    if (!canBake) {
++      return (
++        <p className="text-center text-[11px] italic text-muted-foreground">
++          Menunggu baker memulai produksi
++        </p>
++      );
++    }
+     return (
+       <button
+         type="button"
+         onClick={() => onAdvance("in_progress")}
+         disabled={pending}
+-        className="w-full flex items-center justify-center gap-1 rounded-lg bg-tertiary text-foreground border border-foreground px-2 py-1.5 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
++        className="w-full flex items-center justify-center gap-1 rounded-lg bg-tertiary text-foreground border border-foreground px-3 py-2 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+       >
+         Mulai produksi
+         <ChevronRight size={12} strokeWidth={2.5} />
+       </button>
+     );
+   }
++
+   if (status === "in_progress") {
+     return (
+       <div className="flex items-center gap-1.5">
++        {canDecorate ? (
++          <button
++            type="button"
++            onClick={() => onAdvance("decorating")}
++            disabled={pending}
++            className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-pop-pink text-foreground border border-foreground px-3 py-2 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
++          >
++            Mulai gambar
++            <ChevronRight size={12} strokeWidth={2.5} />
++          </button>
++        ) : (
++          <p className="flex-1 text-center text-[11px] italic text-muted-foreground">
++            Menunggu decorator menghias
++          </p>
++        )}
+         <button
+           type="button"
+-          onClick={() => onAdvance("done")}
++          onClick={() => onAdvance("pending")}
+           disabled={pending}
+-          className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-pop-emerald text-foreground border border-foreground px-2 py-1.5 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
++          className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
++          aria-label="Reset ke pending"
+         >
+-          <CheckCircle2 size={12} strokeWidth={2.5} />
+-          Tandai selesai
++          <Undo2 size={14} strokeWidth={2.5} />
+         </button>
++      </div>
++    );
++  }
++
++  if (status === "decorating") {
++    return (
++      <div className="flex items-center gap-1.5">
++        {canDecorate ? (
++          <button
++            type="button"
++            onClick={() => onAdvance("done")}
++            disabled={pending}
++            className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-pop-emerald text-foreground border border-foreground px-3 py-2 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
++          >
++            <CheckCircle2 size={12} strokeWidth={2.5} />
++            Tandai selesai
++          </button>
++        ) : (
++          <p className="flex-1 text-center text-[11px] italic text-muted-foreground">
++            Sedang dihias
++          </p>
++        )}
+         <button
+           type="button"
+-          onClick={() => onAdvance("pending")}
++          onClick={() => onAdvance("in_progress")}
+           disabled={pending}
+-          className="size-7 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
+-          aria-label="Reset ke pending"
++          className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
++          aria-label="Kembali ke produksi"
+         >
+-          <Undo2 size={11} strokeWidth={2.5} />
++          <Undo2 size={14} strokeWidth={2.5} />
+         </button>
+       </div>
+     );
+   }
++
+   if (status === "done") {
+     return (
+       <div className="flex items-center justify-between gap-2">
+@@ -486,7 +582,7 @@ function ProductionAction({
+         </span>
+         <button
+           type="button"
+-          onClick={() => onAdvance("in_progress")}
++          onClick={() => onAdvance("decorating")}
+           disabled={pending}
+           className="flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50"
+         >
+@@ -501,8 +597,23 @@ function ProductionAction({
+ 
+ // ---------- Reference photos (lazy-loaded per card) ------------------
+ 
++/**
++ * Foto referensi yang di-attach customer/admin per kategori. Dikelompok-
++ * kan supaya tim produksi jelas: foto ini untuk WARNA, ini untuk
++ * TULISAN/DEKORASI, dll. Tap thumbnail → ImagePopup zoomable.
++ */
++type RefField = "color" | "texture" | "decoration" | "accessories";
++const REF_FIELD_LABELS: Array<{ key: RefField; emoji: string; label: string }> = [
++  { key: "color", emoji: "🎨", label: "Warna" },
++  { key: "texture", emoji: "✨", label: "Tekstur" },
++  { key: "decoration", emoji: "✍️", label: "Tulisan / Dekorasi" },
++  { key: "accessories", emoji: "🎁", label: "Aksesoris" },
++];
++
+ function SlipReferenceImages({ orderId }: { orderId: string }) {
+-  const [images, setImages] = useState<Array<{ id: string; url: string }>>([]);
++  const [images, setImages] = useState<
++    Array<{ id: string; url: string; field: RefField }>
++  >([]);
+   const [openUrl, setOpenUrl] = useState<string | null>(null);
+ 
+   useEffect(() => {
+@@ -511,19 +622,29 @@ function SlipReferenceImages({ orderId }: { orderId: string }) {
+       const supabase = createClient();
+       const { data } = await supabase
+         .from("cake_order_attachments" as never)
+-        .select("id, storage_path")
++        .select("id, storage_path, field")
+         .eq("cake_order_id", orderId)
+         .neq("field", "payment_proof");
+-      type Row = { id: string; storage_path: string };
++      type Row = { id: string; storage_path: string; field: string };
+       const rows = (data ?? []) as unknown as Row[];
+       const signed = await Promise.all(
+         rows.map(async (r) => {
+           const sig = await getCakeAttachmentSignedUrl(r.id);
+-          return sig.ok ? { id: r.id, url: sig.data!.url } : null;
++          return sig.ok
++            ? {
++                id: r.id,
++                url: sig.data!.url,
++                field: r.field as RefField,
++              }
++            : null;
+         })
+       );
+       if (cancelled) return;
+-      setImages(signed.filter((s): s is { id: string; url: string } => !!s));
++      setImages(
++        signed.filter(
++          (s): s is { id: string; url: string; field: RefField } => !!s
++        )
++      );
+     })();
+     return () => {
+       cancelled = true;
+@@ -531,25 +652,46 @@ function SlipReferenceImages({ orderId }: { orderId: string }) {
+   }, [orderId]);
+ 
+   if (images.length === 0) return null;
++
+   return (
+-    <div className="space-y-1">
++    <div className="space-y-1.5">
+       <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+         <ImageIcon size={10} />
+-        Foto
++        Foto Referensi
+       </div>
+-      <div className="flex flex-wrap gap-1">
+-        {images.map((img) => (
+-          <button
+-            key={img.id}
+-            type="button"
+-            onClick={() => setOpenUrl(img.url)}
+-            className="block size-10 rounded-md overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform"
+-            aria-label="Lihat foto"
+-          >
+-            {/* eslint-disable-next-line @next/next/no-img-element */}
+-            <img src={img.url} alt="" className="w-full h-full object-cover" />
+-          </button>
+-        ))}
++      <div className="space-y-1">
++        {REF_FIELD_LABELS.map(({ key, emoji, label }) => {
++          const group = images.filter((im) => im.field === key);
++          if (group.length === 0) return null;
++          return (
++            <div
++              key={key}
++              className="flex items-start gap-1.5 rounded-md border border-border bg-muted/30 px-1.5 py-1"
++            >
++              <span className="text-[10px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap pt-1">
++                {emoji} {label}
++              </span>
++              <div className="flex flex-wrap gap-1 flex-1 min-w-0">
++                {group.map((img) => (
++                  <button
++                    key={img.id}
++                    type="button"
++                    onClick={() => setOpenUrl(img.url)}
++                    className="block size-10 rounded-md overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform"
++                    aria-label={`Lihat foto ${label}`}
++                  >
++                    {/* eslint-disable-next-line @next/next/no-img-element */}
++                    <img
++                      src={img.url}
++                      alt=""
++                      className="w-full h-full object-cover"
++                    />
++                  </button>
++                ))}
++              </div>
++            </div>
++          );
++        })}
+       </div>
+       {openUrl && (
+         <ImagePopup url={openUrl} onClose={() => setOpenUrl(null)} />
+@@ -557,3 +699,154 @@ function SlipReferenceImages({ orderId }: { orderId: string }) {
+     </div>
+   );
+ }
++
++// ---------- Baking summary (rekap baking) ----------------------------
++
++/**
++ * Rekap baking yang dilihat tim produksi sebelum eksekusi: agregasi
++ * jumlah cake per kombinasi base + bentuk (tanpa filling). Filling
++ * berurusan dengan customer per customer; baking dijalankan dalam
++ * batch berdasarkan base & shape saja.
++ *
++ * Kalau ada `pending_diff`, group yang ber-overlap dengan order
++ * added/modified-base/modified-shape mendapat badge "Berubah"
++ * supaya tim produksi tahu rekap ini sudah ter-update. Removed
++ * orders tidak terkait group spesifik (karena tidak ada lagi di
++ * snapshot), jadi cuma di-show sebagai notice section-level.
++ */
++function BakingSummary({
++  items,
++  diff,
++}: {
++  items: ProductionItem[];
++  diff: import("@/lib/cake-orders/types").CakeSlipDiff | null;
++}) {
++  interface BakingGroup {
++    key: string;
++    baseLabel: string;
++    shapeLabel: string;
++    shapeCustom: string | null;
++    dimensionCm: number | null;
++    qty: number;
++    orderIds: string[];
++  }
++
++  // Build set of orderIds yang punya perubahan baking-relevant
++  // (added atau modified base/shape).
++  const bakingChangedIds = new Set<string>();
++  if (diff) {
++    for (const a of diff.added) bakingChangedIds.add(a.orderId);
++    for (const m of diff.modified) {
++      const hasBakingField = m.fields.some(
++        (f) =>
++          f.label === "Base" ||
++          f.label === "Bentuk" ||
++          f.label === "Bentuk custom" ||
++          f.label === "Diameter"
++      );
++      if (hasBakingField) bakingChangedIds.add(m.orderId);
++    }
++  }
++  const removedCount = diff?.removed.length ?? 0;
++
++  // Group by base + shape + diameter (+ shapeCustom). Ukuran yang
++  // berbeda butuh loyang berbeda → baking batch terpisah.
++  const groups = new Map<string, BakingGroup>();
++  for (const it of items) {
++    const s = it.snapshot;
++    const dim = s.dimensionCm ?? null;
++    const key = `${s.baseLabel}|${s.shapeLabel}|${s.shapeCustom ?? ""}|${dim ?? "?"}`;
++    const g = groups.get(key) ?? {
++      key,
++      baseLabel: s.baseLabel,
++      shapeLabel: s.shapeLabel,
++      shapeCustom: s.shapeCustom,
++      dimensionCm: dim,
++      qty: 0,
++      orderIds: [],
++    };
++    g.qty += 1;
++    g.orderIds.push(s.orderId);
++    groups.set(key, g);
++  }
++
++  // Sort: ukuran terisi duluan (NULL ke bawah), lalu qty desc.
++  const sortedGroups = [...groups.values()].sort((a, b) => {
++    const aHas = a.dimensionCm != null ? 0 : 1;
++    const bHas = b.dimensionCm != null ? 0 : 1;
++    if (aHas !== bHas) return aHas - bHas;
++    return b.qty - a.qty;
++  });
++  if (sortedGroups.length === 0) return null;
++
++  const totalCakes = items.length;
++
++  return (
++    <div className="rounded-2xl border-2 border-foreground bg-card p-3 space-y-2">
++      <div className="flex items-baseline justify-between gap-2 flex-wrap">
++        <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
++          <span aria-hidden>🥖</span>
++          Rekap baking
++        </h2>
++        <span className="text-[11px] text-muted-foreground tabular-nums">
++          {totalCakes} cake · {sortedGroups.length} jenis baking
++        </span>
++      </div>
++      <p className="text-[11px] text-muted-foreground">
++        Group base + bentuk untuk dipanggang dalam satu batch. Filling
++        di-handle per customer di kartu bawah.
++      </p>
++      <ul className="space-y-1">
++        {sortedGroups.map((g) => {
++          const changed = g.orderIds.some((id) => bakingChangedIds.has(id));
++          return (
++            <li
++              key={g.key}
++              className={
++                "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 " +
++                (changed
++                  ? "border-pop-pink bg-pop-pink/15"
++                  : "border-border bg-muted/30")
++              }
++            >
++              <div className="min-w-0 flex-1">
++                <p className="text-sm font-semibold text-foreground truncate flex items-center gap-1.5">
++                  <span>
++                    {g.baseLabel} · {g.shapeLabel}
++                    {g.shapeCustom ? ` (${g.shapeCustom})` : ""}
++                  </span>
++                  {g.dimensionCm != null ? (
++                    <span className="rounded-full border border-foreground bg-card px-1.5 py-0 text-[10px] font-semibold tabular-nums shrink-0">
++                      {g.dimensionCm} cm
++                    </span>
++                  ) : (
++                    <span
++                      className="rounded-full border border-dashed border-foreground/40 bg-card px-1.5 py-0 text-[10px] font-medium text-muted-foreground shrink-0"
++                      title="Diameter tidak diisi"
++                    >
++                      ukuran ?
++                    </span>
++                  )}
++                </p>
++              </div>
++              {changed && (
++                <span className="rounded-full border border-foreground bg-pop-pink/30 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide shrink-0">
++                  Berubah
++                </span>
++              )}
++              <span className="text-base font-bold tabular-nums shrink-0">
++                {g.qty}×
++              </span>
++            </li>
++          );
++        })}
++      </ul>
++      {removedCount > 0 && (
++        <p className="rounded-lg border border-foreground bg-pop-pink/30 px-2 py-1 text-[11px] font-medium text-foreground">
++          ⚠️ {removedCount} cake dihapus dari slip ini — rekap sudah
++          dikurangi sesuai.
++        </p>
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/cake/SlipPreview.tsx b/src/components/cake/SlipPreview.tsx
+index 3e4e6f3..77d5271 100644
+--- a/src/components/cake/SlipPreview.tsx
++++ b/src/components/cake/SlipPreview.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+-import { useMemo, useState, useTransition } from "react";
++import { useEffect, useMemo, useState, useTransition } from "react";
++import { createPortal } from "react-dom";
+ import Link from "next/link";
+ import { useRouter } from "next/navigation";
+ import { format } from "date-fns";
+@@ -31,11 +32,23 @@ import {
+ import { makeLabelFor } from "@/lib/cake-orders/helpers";
+ import { SlipStatusBadge } from "@/components/cake/SlipStatusBadge";
+ import { NewCakeOrderForm } from "@/components/cake/NewCakeOrderForm";
+-import type { CakeOrder, CakeOptionsByKind } from "@/lib/cake-orders/types";
++import type {
++  CakeOrder,
++  CakeOrderAttachment,
++  CakeOptionsByKind,
++} from "@/lib/cake-orders/types";
++import {
++  deleteCakeOrderAttachment,
++  getCakeAttachmentSignedUrl,
++} from "@/lib/actions/cake-orders.actions";
++import { ImagePopup } from "@/components/cake/ImagePopup";
+ 
+ interface Props {
+   bundle: TomorrowSlipBundle;
+   optionsByKind: CakeOptionsByKind | null;
++  /** YYYY-MM-DD WIB. Untuk menentukan urgency banner + label
++   *  "hari ini / besok / kemarin / 3 hari lagi". */
++  todayYmd: string;
+ }
+ 
+ /**
+@@ -48,7 +61,7 @@ interface Props {
+  *   6. Reopen for further edits — production keeps reading the
+  *      previous snapshot until next send.
+  */
+-export function SlipPreview({ bundle, optionsByKind }: Props) {
++export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
+   const router = useRouter();
+   const [pending, startTransition] = useTransition();
+   const {
+@@ -64,8 +77,11 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+     () => new Set(items.map((i) => i.order.id))
+   );
+   const [editingId, setEditingId] = useState<string | null>(null);
++  // Kedua section opsional & far-future default tertutup — section
++  // "Otomatis (besok)" sudah cukup informasi utama, dropdown ini
++  // di-expand on-demand kalau admin perlu tinjau kandidat.
+   const [showFarFuture, setShowFarFuture] = useState(false);
+-  const [showOptional, setShowOptional] = useState(true);
++  const [showOptional, setShowOptional] = useState(false);
+ 
+   const labelFor = makeLabelFor(optionsByKind);
+   const isEditable = slip.status === "draft" || slip.status === "reopened";
+@@ -158,8 +174,69 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+       router.refresh();
+     });
+ 
++  // Selisih hari (negatif = lampau, 0 = hari ini, 1 = besok, dst).
++  // Pakai untuk banner urgency + label kontekstual.
++  const dayDiff = (() => {
++    const toMs = (ymd: string) =>
++      Date.UTC(
++        Number(ymd.slice(0, 4)),
++        Number(ymd.slice(5, 7)) - 1,
++        Number(ymd.slice(8, 10))
++      );
++    return Math.round((toMs(targetDate) - toMs(todayYmd)) / 86_400_000);
++  })();
++  const relativeLabel =
++    dayDiff === 0
++      ? "Hari ini"
++      : dayDiff === 1
++        ? "Besok"
++        : dayDiff === -1
++          ? "Kemarin"
++          : dayDiff < -1
++            ? `${Math.abs(dayDiff)} hari lalu`
++            : `${dayDiff} hari lagi`;
++  const banner: {
++    cls: string;
++    label: string;
++    sub: string;
++  } = (() => {
++    if (dayDiff < 0) {
++      return {
++        cls: "bg-destructive/15 border-destructive/40",
++        label: "Slip TANGGAL LAMPAU",
++        sub: "Hati-hati — slip ini untuk hari yang sudah lewat. Pastikan kamu sengaja membuka arsip.",
++      };
++    }
++    if (dayDiff === 0) {
++      return {
++        cls: "bg-pop-emerald/20 border-pop-emerald/60",
++        label: "Slip HARI INI",
++        sub: "Slip ini untuk hari ini. Verifikasi cepat — kue harus dipanggang sekarang.",
++      };
++    }
++    if (dayDiff === 1) {
++      return {
++        cls: "bg-tertiary/30 border-foreground",
++        label: "Slip BESOK",
++        sub: "Alur normal — siapkan untuk produksi besok pagi.",
++      };
++    }
++    return {
++      cls: "bg-warning/20 border-warning/50",
++      label: `Slip ${dayDiff} hari ke depan`,
++      sub: "Slip ini untuk hari setelah besok. Pastikan kamu tidak salah membuka slip yang seharusnya besok.",
++    };
++  })();
++  const targetDateInput = targetDate;
++
++  function gotoDate(ymd: string) {
++    const params = new URLSearchParams();
++    if (ymd) params.set("date", ymd);
++    router.push(`/cake-orders/slip${params.toString() ? `?${params}` : ""}`);
++  }
++
+   return (
+-    <div className="space-y-3 animate-fade-up pb-24">
++    <div className="space-y-3 animate-fade-up pb-36 sm:pb-24">
+       <div className="flex items-center gap-2">
+         <Link
+           href="/cake-orders"
+@@ -170,7 +247,7 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+         </Link>
+         <div className="min-w-0 flex-1">
+           <h1 className="text-base sm:text-lg font-semibold text-foreground leading-tight">
+-            Slip besok ·{" "}
++            Slip {relativeLabel.toLowerCase()} ·{" "}
+             {format(
+               new Date(`${targetDate}T00:00:00`),
+               "EEEE, d MMM yyyy",
+@@ -189,6 +266,85 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+         <SlipStatusBadge status={slip.status} />
+       </div>
+ 
++      {/* Banner urgency + date picker. Warna dirancang supaya admin
++          tidak bisa keliru: hijau = hari ini, kuning = jauh, merah =
++          lampau, default = besok (alur normal). Relative label BESAR
++          di kanan supaya admin langsung sadar slip ini untuk kapan. */}
++      <div
++        className={`rounded-2xl border-2 p-3 sm:p-4 space-y-3 ${banner.cls}`}
++        role="region"
++        aria-label="Pilih tanggal slip"
++      >
++        <div className="flex items-center justify-between gap-3 flex-wrap">
++          <div className="min-w-0 flex-1">
++            <p className="text-[10px] uppercase tracking-wider font-bold text-foreground">
++              {banner.label}
++            </p>
++            <p className="text-xs sm:text-sm text-foreground/80 leading-snug">
++              {banner.sub}
++            </p>
++          </div>
++          {/* HERO badge — relative label di-bold besar supaya jadi
++              fokus utama. Sebelumnya pill kecil mudah terlewat. */}
++          <div className="shrink-0 rounded-2xl border-2 border-foreground bg-card px-4 py-2 text-center shadow-[0_2px_0_0_var(--foreground)]">
++            <p className="text-[9px] uppercase tracking-[0.18em] font-semibold text-muted-foreground">
++              Untuk
++            </p>
++            <p className="text-lg sm:text-xl font-bold text-foreground leading-tight tabular-nums">
++              {relativeLabel}
++            </p>
++          </div>
++        </div>
++        <div className="flex flex-wrap items-center gap-1.5 pt-1">
++          <label className="text-[11px] font-medium text-foreground flex items-center gap-1.5">
++            Tanggal:
++            <input
++              type="date"
++              value={targetDateInput}
++              onChange={(e) => {
++                if (e.target.value) gotoDate(e.target.value);
++              }}
++              className="rounded-lg border border-foreground bg-card px-2 py-1 text-xs tabular-nums"
++            />
++          </label>
++          <button
++            type="button"
++            onClick={() => {
++              const tom = (() => {
++                const dt = new Date(todayYmd + "T00:00:00Z");
++                dt.setUTCDate(dt.getUTCDate() + 1);
++                return dt.toISOString().slice(0, 10);
++              })();
++              gotoDate(tom);
++            }}
++            className="rounded-full border border-foreground bg-card px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
++          >
++            Besok (default)
++          </button>
++          <button
++            type="button"
++            onClick={() => gotoDate(todayYmd)}
++            className="rounded-full border border-foreground bg-card px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
++          >
++            Hari ini
++          </button>
++          <button
++            type="button"
++            onClick={() => {
++              const y = (() => {
++                const dt = new Date(todayYmd + "T00:00:00Z");
++                dt.setUTCDate(dt.getUTCDate() - 1);
++                return dt.toISOString().slice(0, 10);
++              })();
++              gotoDate(y);
++            }}
++            className="rounded-full border border-foreground bg-card px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
++          >
++            Kemarin
++          </button>
++        </div>
++      </div>
++
+       {/* Slip note */}
+       <div className="rounded-xl border border-border bg-card p-2.5 flex items-start gap-2">
+         <StickyNote size={14} className="text-muted-foreground shrink-0 mt-1.5" />
+@@ -212,6 +368,60 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+         )}
+       </div>
+ 
++      {/* Banner BIG & LOUD untuk state read-only — slip sudah dikirim
++          ke produksi. Visual cue yang jelas: latar hijau emerald,
++          checkmark besar, judul tebal uppercase, plus "diagonal stripe"
++          overlay supaya admin langsung paham di first glance.
++          Sengaja besar — friction-free reopen lebih penting daripada
++          space-saving. */}
++      {!isEditable && (
++        <div
++          className="relative overflow-hidden rounded-2xl border-2 border-foreground bg-pop-emerald/30 p-4 sm:p-5 shadow-[0_2px_0_0_var(--foreground)]"
++          role="status"
++          aria-live="polite"
++        >
++          {/* Diagonal stripe overlay — subtle "approved/sent" pattern. */}
++          <div
++            aria-hidden
++            className="absolute inset-0 opacity-[0.08] pointer-events-none"
++            style={{
++              backgroundImage:
++                "repeating-linear-gradient(45deg, currentColor 0 8px, transparent 8px 22px)",
++            }}
++          />
++          <div className="relative flex items-start gap-3 sm:gap-4">
++            <div className="flex items-center justify-center size-12 sm:size-14 rounded-full bg-pop-emerald border-2 border-foreground shrink-0">
++              <CheckCircle2 size={28} strokeWidth={2.5} className="text-foreground" />
++            </div>
++            <div className="flex-1 min-w-0">
++              <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.15em] text-foreground/70">
++                Status slip
++              </p>
++              <h2 className="text-lg sm:text-xl font-bold text-foreground leading-tight mt-0.5">
++                ✓ Slip sudah dikirim ke produksi
++              </h2>
++              <p className="text-xs sm:text-sm text-foreground/80 mt-1 leading-snug">
++                Tim produksi sedang membaca daftar ini. Kalau ada
++                perubahan order, klik <strong>Buka kembali</strong>{" "}
++                supaya admin bisa edit dan tim produksi dapat banner
++                perbedaan.
++              </p>
++            </div>
++          </div>
++          <div className="relative mt-3 flex justify-end">
++            <button
++              type="button"
++              onClick={onReopen}
++              disabled={pending}
++              className="flex items-center gap-1.5 rounded-xl bg-card border-2 border-foreground px-4 py-2 text-sm font-semibold hover:bg-muted active:scale-95 transition-transform disabled:opacity-50 shrink-0"
++            >
++              <RotateCcw size={14} strokeWidth={2.5} />
++              Buka kembali untuk edit
++            </button>
++          </div>
++        </div>
++      )}
++
+       {/* AUTO section: tomorrow's orders */}
+       <Section
+         emoji="🍰"
+@@ -234,13 +444,14 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+             Belum ada order untuk besok.
+           </p>
+         ) : (
+-          <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
+-            {items.map(({ order }) => {
++          <ul className="grid grid-flow-row-dense grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
++            {items.map(({ order, attachments }) => {
+               const isEditingThis = editingId === order.id;
+               return (
+                 <SlipOrderCard
+                   key={order.id}
+                   order={order}
++                  attachments={attachments}
+                   included={includedIds.has(order.id)}
+                   editable={isEditable}
+                   editing={isEditingThis}
+@@ -280,7 +491,7 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+                       locale: idLocale,
+                     })}
+                   </div>
+-                  <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
++                  <ul className="grid grid-flow-row-dense grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
+                     {g.orders.map((order) => {
+                       const isEditingThis = editingId === order.id;
+                       return (
+@@ -343,7 +554,8 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+                       >
+                         <Cake size={10} className="inline-block mr-1 -translate-y-px" />
+                         {o.customer_name} · {labelFor("base_cake", o.base_cake_option_id)} ·{" "}
+-                        {labelFor("shape", o.shape_option_id)} ·{" "}
++                        {labelFor("shape", o.shape_option_id)}
++                        {o.dimension_cm != null ? ` ${o.dimension_cm}cm` : ""} ·{" "}
+                         {format(new Date(o.scheduled_at), "HH:mm")}
+                       </li>
+                     ))}
+@@ -377,49 +589,24 @@ export function SlipPreview({ bundle, optionsByKind }: Props) {
+         </div>
+       )}
+ 
+-      {/* Sticky footer: combined verify+send OR reopen */}
+-      <div
+-        className="fixed left-0 right-0 z-30 bg-card border-t-2 border-foreground px-3 py-2"
+-        style={{
+-          bottom: 0,
+-          paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
+-        }}
+-      >
+-        <div className="max-w-[1700px] mx-auto flex items-center gap-2">
+-          <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">
+-            {isEditable
+-              ? isResend
+-                ? "Review perubahan, lalu kirim ulang ke produksi."
+-                : "Review daftar, lalu kirim ke produksi."
+-              : "Slip sudah dikirim — buka kembali kalau ada perubahan."}
+-          </span>
+-          {isEditable ? (
+-            <button
+-              type="button"
+-              onClick={onVerifyAndSend}
+-              disabled={pending}
+-              className="flex items-center gap-1.5 rounded-xl bg-pop-emerald text-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+-            >
+-              {isResend ? (
+-                <Send size={14} strokeWidth={2.5} />
+-              ) : (
+-                <CheckCircle2 size={14} strokeWidth={2.5} />
+-              )}
+-              {isResend ? "Verifikasi & kirim ulang" : "Verifikasi & kirim ke produksi"}
+-            </button>
+-          ) : (
+-            <button
+-              type="button"
+-              onClick={onReopen}
+-              disabled={pending}
+-              className="flex items-center gap-1.5 rounded-xl bg-card border-2 border-foreground px-4 py-2 text-sm font-semibold hover:bg-muted active:scale-95 transition-transform disabled:opacity-50"
+-            >
+-              <RotateCcw size={14} strokeWidth={2.5} />
+-              Buka kembali
+-            </button>
+-          )}
+-        </div>
+-      </div>
++      {/* Sticky footer di-portal ke document.body supaya position:fixed
++          tidak terikat ancestor `.animate-fade-up`. Saat admin sedang
++          edit detail order customer (editingId set), footer Verifikasi
++          diganti dengan "Simpan perubahan" yang submit form inline —
++          supaya admin save dulu sebelum kembali ke verifikasi+kirim. */}
++      {isEditable && editingId != null && (
++        <SaveEditFooter
++          formId={`cake-edit-${editingId}`}
++          onCancel={() => setEditingId(null)}
++        />
++      )}
++      {isEditable && editingId == null && (
++        <VerifySendFooter
++          pending={pending}
++          isResend={isResend}
++          onVerifyAndSend={onVerifyAndSend}
++        />
++      )}
+     </div>
+   );
+ }
+@@ -472,6 +659,11 @@ function Section({
+ 
+ interface SlipOrderCardProps {
+   order: CakeOrder;
++  /** Reference photos (warna/tekstur/dekorasi/aksesoris).
++   *  Untuk kandidat opsional/far-future yang belum di-fetch
++   *  attachment-nya, pass `null` atau empty array — card tetap render
++   *  tanpa strip foto. */
++  attachments?: CakeOrderAttachment[] | null;
+   included: boolean;
+   editable: boolean;
+   editing: boolean;
+@@ -485,6 +677,7 @@ interface SlipOrderCardProps {
+ 
+ function SlipOrderCard({
+   order,
++  attachments,
+   included,
+   editable,
+   editing,
+@@ -504,13 +697,18 @@ function SlipOrderCard({
+     order.status === "done" ||
+     order.status === "cancelled";
+   const canEditCard = editable && !lockedFromEdit;
++  // Span full hanya kalau form edit benar-benar di-render. Tanpa
++  // ini, card editing yang locked tetap memakan row penuh tapi tidak
++  // expand isinya → admin lihat layout pecah (card lain pindah row
++  // dengan slot kosong).
++  const spanFullActive = spanFull && editing && canEditCard && !!optionsByKind;
+   return (
+     <li
+       className={`rounded-lg border ${
+         included
+           ? "border-foreground bg-card"
+           : "border-dashed border-border bg-muted/20 opacity-70"
+-      } p-2 transition-colors ${spanFull ? "md:col-span-2 xl:col-span-3" : ""}`}
++      } p-2 transition-colors ${spanFullActive ? "md:col-span-2 xl:col-span-3" : ""}`}
+     >
+       <div className="flex items-center gap-1.5">
+         <input
+@@ -552,6 +750,11 @@ function SlipOrderCard({
+             {labelFor("base_cake", order.base_cake_option_id)} ·{" "}
+             {labelFor("shape", order.shape_option_id)}
+             {order.shape_custom ? ` (${order.shape_custom})` : ""}
++            {order.dimension_cm != null ? (
++              <span className="ml-1 rounded-full border border-foreground bg-card px-1 py-0 text-[10px] font-semibold tabular-nums text-foreground align-middle">
++                {order.dimension_cm} cm
++              </span>
++            ) : null}
+             {order.filling_option_id
+               ? ` · ${labelFor("filling", order.filling_option_id)}`
+               : ""}
+@@ -573,6 +776,14 @@ function SlipOrderCard({
+         )}
+       </div>
+ 
++      {/* Strip foto referensi — visible in card AND di edit form. */}
++      {attachments && attachments.length > 0 && (
++        <SlipCardReferencePhotos
++          attachments={attachments}
++          canDelete={canEditCard}
++        />
++      )}
++
+       {editing && canEditCard && optionsByKind && (
+         <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2.5">
+           <NewCakeOrderForm
+@@ -581,9 +792,234 @@ function SlipOrderCard({
+             singleColumn
+             onSuccess={onSaved}
+             onCancel={onEdit}
++            formId={`cake-edit-${order.id}`}
++            hideInternalSave
+           />
+         </div>
+       )}
+     </li>
+   );
+ }
++
++/**
++ * Footer "Verifikasi & kirim" yang harus selalu sticky di viewport
++ * bottom. Di-portal ke document.body karena parent `.animate-fade-up`
++ * menerapkan CSS transform yang membuat fixed-children jadi relatif
++ * ke parent (browser spec containing-block rule).
++ */
++function VerifySendFooter({
++  pending,
++  isResend,
++  onVerifyAndSend,
++}: {
++  pending: boolean;
++  isResend: boolean;
++  onVerifyAndSend: () => void;
++}) {
++  const [mounted, setMounted] = useState(false);
++  useEffect(() => {
++    setMounted(true);
++  }, []);
++  if (!mounted) return null;
++  return createPortal(
++    <div
++      className="fixed inset-x-0 bottom-0 z-50 bg-card border-t-2 border-foreground px-3 py-2 shadow-[0_-6px_16px_rgba(0,0,0,0.06)]"
++      style={{
++        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
++      }}
++    >
++      <div className="max-w-[1700px] mx-auto flex items-center gap-2">
++        <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">
++          {isResend
++            ? "Review perubahan, lalu kirim ulang ke produksi."
++            : "Review daftar, lalu kirim ke produksi."}
++        </span>
++        <button
++          type="button"
++          onClick={onVerifyAndSend}
++          disabled={pending}
++          className="flex items-center gap-1.5 rounded-xl bg-pop-emerald text-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
++        >
++          {isResend ? (
++            <Send size={14} strokeWidth={2.5} />
++          ) : (
++            <CheckCircle2 size={14} strokeWidth={2.5} />
++          )}
++          {isResend ? "Verifikasi & kirim ulang" : "Verifikasi & kirim ke produksi"}
++        </button>
++      </div>
++    </div>,
++    document.body
++  );
++}
++
++/**
++ * Footer "Simpan perubahan" yang muncul saat admin sedang edit satu
++ * order customer di slip. Submit form inline via `form="…"` attribute
++ * — form-nya punya `id={formId}`. Setelah save sukses, parent SlipPreview
++ * close editing state → footer otomatis swap kembali ke "Verifikasi".
++ */
++function SaveEditFooter({
++  formId,
++  onCancel,
++}: {
++  formId: string;
++  onCancel: () => void;
++}) {
++  const [mounted, setMounted] = useState(false);
++  useEffect(() => {
++    setMounted(true);
++  }, []);
++  if (!mounted) return null;
++  return createPortal(
++    <div
++      className="fixed inset-x-0 bottom-0 z-50 bg-card border-t-2 border-foreground px-3 py-2 shadow-[0_-6px_16px_rgba(0,0,0,0.06)]"
++      style={{
++        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
++      }}
++    >
++      <div className="max-w-[1700px] mx-auto flex items-center gap-2">
++        <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">
++          ✏️ Sedang edit order — simpan dulu sebelum verifikasi & kirim ulang.
++        </span>
++        <button
++          type="button"
++          onClick={onCancel}
++          className="flex items-center gap-1 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-semibold hover:bg-muted shrink-0"
++        >
++          Batal
++        </button>
++        <button
++          type="submit"
++          form={formId}
++          className="flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform shrink-0"
++        >
++          💾 Simpan perubahan
++        </button>
++      </div>
++    </div>,
++    document.body
++  );
++}
++
++/**
++ * Foto referensi di slip card admin, dikelompokkan per kategori
++ * (Warna / Tekstur / Tulisan-Dekorasi / Aksesoris) supaya admin tahu
++ * peruntukan tiap foto. Mirror tampilan di production slip card.
++ * Tap thumb → ImagePopup zoomable.
++ */
++type SlipRefField = "color" | "texture" | "decoration" | "accessories";
++const SLIP_REF_LABELS: Array<{
++  key: SlipRefField;
++  emoji: string;
++  label: string;
++}> = [
++  { key: "color", emoji: "🎨", label: "Warna" },
++  { key: "texture", emoji: "✨", label: "Tekstur" },
++  { key: "decoration", emoji: "✍️", label: "Tulisan / Dekorasi" },
++  { key: "accessories", emoji: "🎁", label: "Aksesoris" },
++];
++
++function SlipCardReferencePhotos({
++  attachments,
++  canDelete,
++}: {
++  attachments: CakeOrderAttachment[];
++  /** Saat true, popup foto dapat tombol Hapus. Slip status sudah
++   *  draft/reopened (editable) → admin boleh hapus. Server tetap
++   *  re-check via slip-frozen gate. */
++  canDelete?: boolean;
++}) {
++  const router = useRouter();
++  const [openItem, setOpenItem] = useState<{
++    url: string;
++    attachmentId: string;
++  } | null>(null);
++  const filtered = attachments.filter((a) => a.field !== "payment_proof");
++  if (filtered.length === 0) return null;
++  return (
++    <div className="mt-1.5 space-y-1">
++      {SLIP_REF_LABELS.map(({ key, emoji, label }) => {
++        const group = filtered.filter((a) => a.field === key);
++        if (group.length === 0) return null;
++        return (
++          <div
++            key={key}
++            className="flex items-start gap-1.5 rounded-md border border-border bg-muted/30 px-1.5 py-1"
++          >
++            <span className="text-[10px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap pt-0.5">
++              {emoji} {label}
++            </span>
++            <div className="flex flex-wrap gap-1 flex-1 min-w-0">
++              {group.map((a) => (
++                <SlipThumb
++                  key={a.id}
++                  attachment={a}
++                  onOpen={(url) =>
++                    setOpenItem({ url, attachmentId: a.id })
++                  }
++                />
++              ))}
++            </div>
++          </div>
++        );
++      })}
++      {openItem && (
++        <ImagePopup
++          url={openItem.url}
++          onClose={() => setOpenItem(null)}
++          onDelete={
++            canDelete
++              ? async () => {
++                  const res = await deleteCakeOrderAttachment(
++                    openItem.attachmentId
++                  );
++                  if (res.ok) router.refresh();
++                  return res;
++                }
++              : undefined
++          }
++        />
++      )}
++    </div>
++  );
++}
++
++function SlipThumb({
++  attachment,
++  onOpen,
++}: {
++  attachment: CakeOrderAttachment;
++  onOpen: (url: string) => void;
++}) {
++  const [url, setUrl] = useState<string | null>(null);
++  useEffect(() => {
++    let cancelled = false;
++    void (async () => {
++      const res = await getCakeAttachmentSignedUrl(attachment.id);
++      if (!cancelled && res.ok) setUrl(res.data!.url);
++    })();
++    return () => {
++      cancelled = true;
++    };
++  }, [attachment.id]);
++  if (!url) {
++    return (
++      <span
++        className="inline-block size-8 rounded-md border border-border bg-muted animate-pulse"
++        aria-hidden
++      />
++    );
++  }
++  return (
++    <button
++      type="button"
++      onClick={() => onOpen(url)}
++      className="size-8 rounded-md overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95"
++      aria-label="Lihat foto referensi"
++    >
++      {/* eslint-disable-next-line @next/next/no-img-element */}
++      <img src={url} alt="" className="w-full h-full object-cover" />
++    </button>
++  );
++}

@@ -1,0 +1,75 @@
+found: 9
+[
+  {
+    "id": 152272979,
+    "target": "6285647017657",
+    "eventType": "birthday",
+    "status": "sent",
+    "msg": "🎂 Selamat ulang tahun, Arifin! Semoga tahun ini penuh hal baik. — Tim Zota",
+    "sentAt": "2026-04-18T13:23:23.999Z"
+  },
+  {
+    "id": 152298570,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "💌 Arifin, ada ucapan ulang tahun baru dari Boles!\n\nBuka Zota App buat balas ✨",
+    "sentAt": "2026-04-18T16:32:45.000Z"
+  },
+  {
+    "id": 152298896,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "?? Arifin, ada ucapan ulang tahun baru dari Venzo!\n\nBuka Zota App buat balas ?",
+    "sentAt": "2026-04-18T16:34:38.000Z"
+  },
+  {
+    "id": 152298897,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "?? Arifin, ada ucapan ulang tahun baru dari Zahra!\n\nBuka Zota App buat balas ?",
+    "sentAt": "2026-04-18T16:34:38.999Z"
+  },
+  {
+    "id": 152298898,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "?? Arifin, ada ucapan ulang tahun baru dari Yuan!\n\nBuka Zota App buat balas ?",
+    "sentAt": "2026-04-18T16:34:38.999Z"
+  },
+  {
+    "id": 152300916,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "💌 Arifin, ada ucapan ulang tahun baru dari Inggrita Putri Kusuma Wardani!\n\nBuka Zota App buat balas ✨",
+    "sentAt": "2026-04-18T16:52:01.000Z"
+  },
+  {
+    "id": 152307911,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "💌 Arifin, ada ucapan ulang tahun baru dari Vincentius Alvin Resandy!\n\nBuka Zota App buat balas ✨",
+    "sentAt": "2026-04-18T17:41:56.000Z"
+  },
+  {
+    "id": 152350595,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "💌 Arifin, ada ucapan ulang tahun baru dari Intan!\n\nBuka Zota App buat balas ✨",
+    "sentAt": "2026-04-18T19:00:49.000Z"
+  },
+  {
+    "id": 152374219,
+    "target": "6285647017657",
+    "eventType": "celebration_greeting_notification",
+    "status": "sent",
+    "msg": "💌 Arifin, ada ucapan ulang tahun baru dari Hasna!\n\nBuka Zota App buat balas ✨",
+    "sentAt": "2026-04-18T22:26:58.000Z"
+  }
+]

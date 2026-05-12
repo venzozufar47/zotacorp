@@ -484,8 +484,9 @@ function ProductionAction({
       </p>
     );
   }
-  // Role gate untuk tombol "forward". Revert (Undo) longgar — role
-  // apapun boleh untuk koreksi cepat.
+  // Role gate: hanya role yang melakukan forward yang boleh meng-undo
+  // langkahnya. Mencegah baker membatalkan pekerjaan decorator dan
+  // sebaliknya.
   const canBake = myProductionRole === null || myProductionRole === "baker";
   const canDecorate =
     myProductionRole === null || myProductionRole === "decorator";
@@ -529,15 +530,17 @@ function ProductionAction({
             Menunggu decorator menghias
           </p>
         )}
-        <button
-          type="button"
-          onClick={() => onAdvance("pending")}
-          disabled={pending}
-          className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
-          aria-label="Reset ke pending"
-        >
-          <Undo2 size={14} strokeWidth={2.5} />
-        </button>
+        {canBake ? (
+          <button
+            type="button"
+            onClick={() => onAdvance("pending")}
+            disabled={pending}
+            className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
+            aria-label="Reset ke pending"
+          >
+            <Undo2 size={14} strokeWidth={2.5} />
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -560,15 +563,17 @@ function ProductionAction({
             Sedang dihias
           </p>
         )}
-        <button
-          type="button"
-          onClick={() => onAdvance("in_progress")}
-          disabled={pending}
-          className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
-          aria-label="Kembali ke produksi"
-        >
-          <Undo2 size={14} strokeWidth={2.5} />
-        </button>
+        {canDecorate ? (
+          <button
+            type="button"
+            onClick={() => onAdvance("in_progress")}
+            disabled={pending}
+            className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
+            aria-label="Kembali ke produksi"
+          >
+            <Undo2 size={14} strokeWidth={2.5} />
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -580,15 +585,17 @@ function ProductionAction({
           <CheckCircle2 size={11} strokeWidth={2.5} />
           Sudah selesai
         </span>
-        <button
-          type="button"
-          onClick={() => onAdvance("decorating")}
-          disabled={pending}
-          className="flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50"
-        >
-          <Undo2 size={9} strokeWidth={2.5} />
-          Buka kembali
-        </button>
+        {canDecorate ? (
+          <button
+            type="button"
+            onClick={() => onAdvance("decorating")}
+            disabled={pending}
+            className="flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50"
+          >
+            <Undo2 size={9} strokeWidth={2.5} />
+            Buka kembali
+          </button>
+        ) : null}
       </div>
     );
   }
