@@ -41,6 +41,7 @@ import {
   deleteCakeOrderAttachment,
   getCakeAttachmentSignedUrl,
 } from "@/lib/actions/cake-orders.actions";
+import { jakartaDateMinusDays } from "@/lib/utils/jakarta";
 import { ImagePopup } from "@/components/cake/ImagePopup";
 
 interface Props {
@@ -174,59 +175,8 @@ export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
       router.refresh();
     });
 
-  // Selisih hari (negatif = lampau, 0 = hari ini, 1 = besok, dst).
-  // Pakai untuk banner urgency + label kontekstual.
-  const dayDiff = (() => {
-    const toMs = (ymd: string) =>
-      Date.UTC(
-        Number(ymd.slice(0, 4)),
-        Number(ymd.slice(5, 7)) - 1,
-        Number(ymd.slice(8, 10))
-      );
-    return Math.round((toMs(targetDate) - toMs(todayYmd)) / 86_400_000);
-  })();
-  const relativeLabel =
-    dayDiff === 0
-      ? "Hari ini"
-      : dayDiff === 1
-        ? "Besok"
-        : dayDiff === -1
-          ? "Kemarin"
-          : dayDiff < -1
-            ? `${Math.abs(dayDiff)} hari lalu`
-            : `${dayDiff} hari lagi`;
-  const banner: {
-    cls: string;
-    label: string;
-    sub: string;
-  } = (() => {
-    if (dayDiff < 0) {
-      return {
-        cls: "bg-destructive/15 border-destructive/40",
-        label: "Slip TANGGAL LAMPAU",
-        sub: "Hati-hati — slip ini untuk hari yang sudah lewat. Pastikan kamu sengaja membuka arsip.",
-      };
-    }
-    if (dayDiff === 0) {
-      return {
-        cls: "bg-pop-emerald/20 border-pop-emerald/60",
-        label: "Slip HARI INI",
-        sub: "Slip ini untuk hari ini. Verifikasi cepat — kue harus dipanggang sekarang.",
-      };
-    }
-    if (dayDiff === 1) {
-      return {
-        cls: "bg-tertiary/30 border-foreground",
-        label: "Slip BESOK",
-        sub: "Alur normal — siapkan untuk produksi besok pagi.",
-      };
-    }
-    return {
-      cls: "bg-warning/20 border-warning/50",
-      label: `Slip ${dayDiff} hari ke depan`,
-      sub: "Slip ini untuk hari setelah besok. Pastikan kamu tidak salah membuka slip yang seharusnya besok.",
-    };
-  })();
+  const dayDiff = ymdDaysBetween(todayYmd, targetDate);
+  const { relativeLabel, banner } = describeDayDiff(dayDiff);
   const targetDateInput = targetDate;
 
   function gotoDate(ymd: string) {
@@ -309,14 +259,7 @@ export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
           </label>
           <button
             type="button"
-            onClick={() => {
-              const tom = (() => {
-                const dt = new Date(todayYmd + "T00:00:00Z");
-                dt.setUTCDate(dt.getUTCDate() + 1);
-                return dt.toISOString().slice(0, 10);
-              })();
-              gotoDate(tom);
-            }}
+            onClick={() => gotoDate(jakartaDateMinusDays(todayYmd, -1))}
             className="rounded-full border border-foreground bg-card px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
           >
             Besok (default)
@@ -330,14 +273,7 @@ export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => {
-              const y = (() => {
-                const dt = new Date(todayYmd + "T00:00:00Z");
-                dt.setUTCDate(dt.getUTCDate() - 1);
-                return dt.toISOString().slice(0, 10);
-              })();
-              gotoDate(y);
-            }}
+            onClick={() => gotoDate(jakartaDateMinusDays(todayYmd, 1))}
             className="rounded-full border border-foreground bg-card px-2.5 py-1 text-[11px] font-semibold hover:bg-muted"
           >
             Kemarin
@@ -807,6 +743,42 @@ function SlipOrderCard({
  * menerapkan CSS transform yang membuat fixed-children jadi relatif
  * ke parent (browser spec containing-block rule).
  */
+/**
+ * Wrapper portal untuk sticky footer di SlipPreview. Sengaja di-portal
+ * ke document.body karena ancestor `.animate-fade-up` apply transform
+ * → containing block untuk `position: fixed` jadi ancestor itu (bukan
+ * viewport). Portal melepas footer dari containing-block trap.
+ */
+function StickyPortalFooter({
+  children,
+  message,
+}: {
+  children: React.ReactNode;
+  message: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return null;
+  return createPortal(
+    <div
+      className="fixed inset-x-0 bottom-0 z-50 bg-card border-t-2 border-foreground px-3 py-2 shadow-[0_-6px_16px_rgba(0,0,0,0.06)]"
+      style={{
+        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
+      }}
+    >
+      <div className="max-w-[1700px] mx-auto flex items-center gap-2">
+        <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">
+          {message}
+        </span>
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function VerifySendFooter({
   pending,
   isResend,
@@ -816,49 +788,31 @@ function VerifySendFooter({
   isResend: boolean;
   onVerifyAndSend: () => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  if (!mounted) return null;
-  return createPortal(
-    <div
-      className="fixed inset-x-0 bottom-0 z-50 bg-card border-t-2 border-foreground px-3 py-2 shadow-[0_-6px_16px_rgba(0,0,0,0.06)]"
-      style={{
-        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
-      }}
+  return (
+    <StickyPortalFooter
+      message={
+        isResend
+          ? "Review perubahan, lalu kirim ulang ke produksi."
+          : "Review daftar, lalu kirim ke produksi."
+      }
     >
-      <div className="max-w-[1700px] mx-auto flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">
-          {isResend
-            ? "Review perubahan, lalu kirim ulang ke produksi."
-            : "Review daftar, lalu kirim ke produksi."}
-        </span>
-        <button
-          type="button"
-          onClick={onVerifyAndSend}
-          disabled={pending}
-          className="flex items-center gap-1.5 rounded-xl bg-pop-emerald text-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
-        >
-          {isResend ? (
-            <Send size={14} strokeWidth={2.5} />
-          ) : (
-            <CheckCircle2 size={14} strokeWidth={2.5} />
-          )}
-          {isResend ? "Verifikasi & kirim ulang" : "Verifikasi & kirim ke produksi"}
-        </button>
-      </div>
-    </div>,
-    document.body
+      <button
+        type="button"
+        onClick={onVerifyAndSend}
+        disabled={pending}
+        className="flex items-center gap-1.5 rounded-xl bg-pop-emerald text-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+      >
+        {isResend ? (
+          <Send size={14} strokeWidth={2.5} />
+        ) : (
+          <CheckCircle2 size={14} strokeWidth={2.5} />
+        )}
+        {isResend ? "Verifikasi & kirim ulang" : "Verifikasi & kirim ke produksi"}
+      </button>
+    </StickyPortalFooter>
   );
 }
 
-/**
- * Footer "Simpan perubahan" yang muncul saat admin sedang edit satu
- * order customer di slip. Submit form inline via `form="…"` attribute
- * — form-nya punya `id={formId}`. Setelah save sukses, parent SlipPreview
- * close editing state → footer otomatis swap kembali ke "Verifikasi".
- */
 function SaveEditFooter({
   formId,
   onCancel,
@@ -866,39 +820,23 @@ function SaveEditFooter({
   formId: string;
   onCancel: () => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  if (!mounted) return null;
-  return createPortal(
-    <div
-      className="fixed inset-x-0 bottom-0 z-50 bg-card border-t-2 border-foreground px-3 py-2 shadow-[0_-6px_16px_rgba(0,0,0,0.06)]"
-      style={{
-        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
-      }}
-    >
-      <div className="max-w-[1700px] mx-auto flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">
-          ✏️ Sedang edit order — simpan dulu sebelum verifikasi & kirim ulang.
-        </span>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex items-center gap-1 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-semibold hover:bg-muted shrink-0"
-        >
-          Batal
-        </button>
-        <button
-          type="submit"
-          form={formId}
-          className="flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform shrink-0"
-        >
-          💾 Simpan perubahan
-        </button>
-      </div>
-    </div>,
-    document.body
+  return (
+    <StickyPortalFooter message="✏️ Sedang edit order — simpan dulu sebelum verifikasi & kirim ulang.">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="flex items-center gap-1 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-semibold hover:bg-muted shrink-0"
+      >
+        Batal
+      </button>
+      <button
+        type="submit"
+        form={formId}
+        className="flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform shrink-0"
+      >
+        💾 Simpan perubahan
+      </button>
+    </StickyPortalFooter>
   );
 }
 
@@ -1022,4 +960,68 @@ function SlipThumb({
       <img src={url} alt="" className="w-full h-full object-cover" />
     </button>
   );
+}
+
+/** Selisih hari (negatif = lampau, 0 = hari ini, 1 = besok) antara
+ *  dua YYYY-MM-DD WIB. Pakai UTC math supaya server timezone tidak
+ *  menggeser hasil. */
+function ymdDaysBetween(fromYmd: string, toYmd: string): number {
+  const toMs = (ymd: string) =>
+    Date.UTC(
+      Number(ymd.slice(0, 4)),
+      Number(ymd.slice(5, 7)) - 1,
+      Number(ymd.slice(8, 10))
+    );
+  return Math.round((toMs(toYmd) - toMs(fromYmd)) / 86_400_000);
+}
+
+interface BannerStyle {
+  cls: string;
+  label: string;
+  sub: string;
+}
+
+function describeDayDiff(dayDiff: number): {
+  relativeLabel: string;
+  banner: BannerStyle;
+} {
+  if (dayDiff < 0) {
+    return {
+      relativeLabel:
+        dayDiff === -1 ? "Kemarin" : `${Math.abs(dayDiff)} hari lalu`,
+      banner: {
+        cls: "bg-destructive/15 border-destructive/40",
+        label: "Slip TANGGAL LAMPAU",
+        sub: "Hati-hati — slip ini untuk hari yang sudah lewat. Pastikan kamu sengaja membuka arsip.",
+      },
+    };
+  }
+  if (dayDiff === 0) {
+    return {
+      relativeLabel: "Hari ini",
+      banner: {
+        cls: "bg-pop-emerald/20 border-pop-emerald/60",
+        label: "Slip HARI INI",
+        sub: "Slip ini untuk hari ini. Verifikasi cepat — kue harus dipanggang sekarang.",
+      },
+    };
+  }
+  if (dayDiff === 1) {
+    return {
+      relativeLabel: "Besok",
+      banner: {
+        cls: "bg-tertiary/30 border-foreground",
+        label: "Slip BESOK",
+        sub: "Alur normal — siapkan untuk produksi besok pagi.",
+      },
+    };
+  }
+  return {
+    relativeLabel: `${dayDiff} hari lagi`,
+    banner: {
+      cls: "bg-warning/20 border-warning/50",
+      label: `Slip ${dayDiff} hari ke depan`,
+      sub: "Slip ini untuk hari setelah besok. Pastikan kamu tidak salah membuka slip yang seharusnya besok.",
+    },
+  };
 }

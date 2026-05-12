@@ -20,3 +20,14 @@ export function makeLabelFor(opts: CakeOptionsByKind | null) {
 const SLIP_EDITABLE: CakeProductionSlipStatus[] = ["draft", "verified"];
 export const isSlipEditable = (s: CakeProductionSlipStatus) =>
   SLIP_EDITABLE.includes(s);
+
+/** Slip statuses where the snapshot is locked — production team is
+ *  reading the frozen view, admin wajib reopen dulu untuk edit. */
+const SLIP_FROZEN: CakeProductionSlipStatus[] = [
+  "verified",
+  "sent",
+  "received",
+  "closed",
+];
+export const isSlipFrozen = (s: CakeProductionSlipStatus | string) =>
+  SLIP_FROZEN.includes(s as CakeProductionSlipStatus);

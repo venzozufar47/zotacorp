@@ -590,15 +590,21 @@ export async function getSlipForProduction(slipId: string): Promise<
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
 
-  // Resolve sub-role caller. Caller dengan scope='orders' atau
-  // production_role=null dianggap "both" → null di response.
-  const { data: roleRows } = await supabase
-    .from("cake_access_assignments" as never)
-    .select("scope, production_role")
-    .eq("user_id", gate.userId)
-    .in("scope", ["orders", "production"]);
+  // Resolve role + slip paralel — keduanya hanya butuh userId / slipId.
+  const [roleRes, slipRes] = await Promise.all([
+    supabase
+      .from("cake_access_assignments" as never)
+      .select("scope, production_role")
+      .eq("user_id", gate.userId)
+      .in("scope", ["orders", "production"]),
+    supabase
+      .from("cake_production_slips" as never)
+      .select("*")
+      .eq("id", slipId)
+      .maybeSingle(),
+  ]);
   type RoleRow = { scope: string; production_role: string | null };
-  const rows = (roleRows ?? []) as unknown as RoleRow[];
+  const rows = (roleRes.data ?? []) as unknown as RoleRow[];
   let myProductionRole: "baker" | "decorator" | null = null;
   const hasOrders = rows.some((r) => r.scope === "orders");
   const prodRow = rows.find((r) => r.scope === "production");
@@ -608,11 +614,7 @@ export async function getSlipForProduction(slipId: string): Promise<
     myProductionRole = prodRow.production_role;
   }
 
-  const { data: slipRaw } = await supabase
-    .from("cake_production_slips" as never)
-    .select("*")
-    .eq("id", slipId)
-    .maybeSingle();
+  const slipRaw = slipRes.data;
   if (!slipRaw) return { ok: false, error: "Slip tidak ditemukan" };
   const slip = slipRaw as unknown as CakeProductionSlip;
 

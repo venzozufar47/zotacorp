@@ -22,6 +22,7 @@ import type {
   CakeProductionStatus,
   CreateCakeOrderInput,
 } from "@/lib/cake-orders/types";
+import { isSlipFrozen } from "@/lib/cake-orders/helpers";
 
 /**
  * Order CRUD. Order management only — no link to bank accounts /
@@ -29,6 +30,13 @@ import type {
  * record. The two paid/refund actions still exist so the timeline
  * (paid_at, refunded_at, attachments) gets recorded properly.
  */
+
+/** Normalise & clamp dimension input (1..199 cm). Null saat user
+ *  tidak mengisi field — DB CHECK matches range. */
+function clampDimensionCm(v: number | null | undefined): number | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  return Math.max(1, Math.min(199, Math.round(v)));
+}
 
 function adminClient() {
   return createServiceClient<Database>(
@@ -142,10 +150,7 @@ export async function createCakeOrder(
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
         : null,
-      dimension_cm:
-        input.dimensionCm != null && Number.isFinite(input.dimensionCm)
-          ? Math.max(1, Math.min(199, Math.round(input.dimensionCm)))
-          : null,
+      dimension_cm: clampDimensionCm(input.dimensionCm),
       filling_option_id: input.fillingOptionId ?? null,
       color_notes: input.colorNotes?.trim() || null,
       texture_notes: input.textureNotes?.trim() || null,
@@ -356,30 +361,31 @@ export async function getCakeOrder(
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
   const supabase = await createServerClient();
-  const { data: row, error } = await supabase
-    .from("cake_orders" as never)
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) return { ok: false, error: error.message };
-  if (!row) return { ok: false, error: "Order tidak ditemukan" };
-  const order = row as unknown as CakeOrder;
-
-  const { data: attRaw } = await supabase
-    .from("cake_order_attachments" as never)
-    .select("*")
-    .eq("cake_order_id", id);
-  const attachments = (attRaw ?? []) as unknown as CakeOrderAttachment[];
-
-  // Cari slip yang sudah "frozen" (snapshot dikirim ke produksi).
-  // Status `draft` & `reopened` = admin masih dalam window edit; lain
-  // dari itu admin wajib reopen dulu via /cake-orders/slip.
-  const { data: slipLinkRaw } = await supabase
-    .from("cake_production_slip_items" as never)
-    .select(
-      "slip_id, cake_production_slips!inner(id, status, target_date)"
-    )
-    .eq("cake_order_id", id);
+  // 3 query paralel — order, attachments, dan slip link semua hanya
+  // butuh `id`. Sebelumnya sekuensial = 3 RTT; sekarang ≈ 1 RTT.
+  const [orderRes, attRes, slipLinkRes] = await Promise.all([
+    supabase
+      .from("cake_orders" as never)
+      .select("*")
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("cake_order_attachments" as never)
+      .select("*")
+      .eq("cake_order_id", id),
+    supabase
+      .from("cake_production_slip_items" as never)
+      .select(
+        "slip_id, cake_production_slips!inner(id, status, target_date)"
+      )
+      .eq("cake_order_id", id),
+  ]);
+  if (orderRes.error) return { ok: false, error: orderRes.error.message };
+  if (!orderRes.data) return { ok: false, error: "Order tidak ditemukan" };
+  const order = orderRes.data as unknown as CakeOrder;
+  const attachments =
+    (attRes.data ?? []) as unknown as CakeOrderAttachment[];
+  const slipLinkRaw = slipLinkRes.data;
   type SlipLink = {
     cake_production_slips: {
       id: string;
@@ -388,15 +394,9 @@ export async function getCakeOrder(
     };
   };
   const links = (slipLinkRaw ?? []) as unknown as SlipLink[];
-  const FROZEN = new Set([
-    "verified",
-    "sent",
-    "received",
-    "closed",
-  ]);
   const blocking = links
     .map((l) => l.cake_production_slips)
-    .find((s) => FROZEN.has(s.status));
+    .find((s) => isSlipFrozen(s.status));
   const slipLock: CakeOrderSlipLock | null = blocking
     ? {
         slipId: blocking.id,
@@ -465,11 +465,7 @@ export async function deleteCakeOrderAttachment(
     .eq("cake_order_id", r.cake_order_id);
   type Link = { cake_production_slips: { status: string } };
   const links = (linkRaw ?? []) as unknown as Link[];
-  const frozen = links.find((l) =>
-    ["verified", "sent", "received", "closed"].includes(
-      l.cake_production_slips.status
-    )
-  );
+  const frozen = links.find((l) => isSlipFrozen(l.cake_production_slips.status));
   if (frozen) {
     return {
       ok: false,
@@ -590,11 +586,7 @@ export async function updateCakeOrderFull(
     .eq("cake_order_id", id);
   type SlipLink = { cake_production_slips: { status: string } };
   const links = (slipLinkRaw ?? []) as unknown as SlipLink[];
-  const frozen = links.find((l) =>
-    ["verified", "sent", "received", "closed"].includes(
-      l.cake_production_slips.status
-    )
-  );
+  const frozen = links.find((l) => isSlipFrozen(l.cake_production_slips.status));
   if (frozen) {
     return {
       ok: false,
@@ -673,10 +665,7 @@ export async function updateCakeOrderFull(
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
         : null,
-      dimension_cm:
-        input.dimensionCm != null && Number.isFinite(input.dimensionCm)
-          ? Math.max(1, Math.min(199, Math.round(input.dimensionCm)))
-          : null,
+      dimension_cm: clampDimensionCm(input.dimensionCm),
       filling_option_id: input.fillingOptionId ?? null,
       color_notes: input.colorNotes?.trim() || null,
       texture_notes: input.textureNotes?.trim() || null,
