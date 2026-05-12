@@ -10,6 +10,7 @@ import {
   revokeCakeAccess,
   type CakeAccessRow,
   type CakeAccessScope,
+  type CakeProductionRole,
 } from "@/lib/actions/cake-access.actions";
 import { resolveAvatarSrc } from "@/lib/avatar";
 
@@ -52,9 +53,13 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
     return out;
   }, [initialAssignments]);
 
-  const onAssign = (userId: string, scope: CakeAccessScope) => {
+  const onAssign = (
+    userId: string,
+    scope: CakeAccessScope,
+    productionRole: CakeProductionRole = null
+  ) => {
     startTransition(async () => {
-      const res = await assignCakeAccess(userId, scope);
+      const res = await assignCakeAccess(userId, scope, productionRole);
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -114,8 +119,11 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
                     className="size-7 rounded-full border border-foreground bg-card shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate">
+                    <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
                       {a.full_name ?? a.email ?? "—"}
+                      {scope === "production" && (
+                        <RoleBadge role={a.production_role} />
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground truncate">
                       {a.email ?? ""}
@@ -139,7 +147,7 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
             scope={scope}
             employees={employees}
             existingUserIds={new Set(grouped[scope].map((a) => a.user_id))}
-            onAssign={(userId) => onAssign(userId, scope)}
+            onAssign={(userId, role) => onAssign(userId, scope, role)}
             disabled={pending}
           />
         </section>
@@ -158,18 +166,19 @@ function AssignDropdown({
   scope: CakeAccessScope;
   employees: Employee[];
   existingUserIds: Set<string>;
-  onAssign: (userId: string) => void;
+  onAssign: (userId: string, role: CakeProductionRole) => void;
   disabled: boolean;
 }) {
   const [pickedId, setPickedId] = useState("");
+  const [role, setRole] = useState<CakeProductionRole>(null);
   const candidates = employees.filter((e) => !existingUserIds.has(e.id));
 
   return (
-    <div className="flex gap-2 pt-1">
+    <div className="flex flex-wrap gap-2 pt-1">
       <select
         value={pickedId}
         onChange={(e) => setPickedId(e.target.value)}
-        className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+        className="flex-1 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm"
       >
         <option value="">-- pilih karyawan --</option>
         {candidates.map((e) => (
@@ -178,12 +187,31 @@ function AssignDropdown({
           </option>
         ))}
       </select>
+      {scope === "production" && (
+        <select
+          value={role ?? "both"}
+          onChange={(e) =>
+            setRole(
+              e.target.value === "both"
+                ? null
+                : (e.target.value as "baker" | "decorator")
+            )
+          }
+          className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          aria-label="Pilih sub-role produksi"
+        >
+          <option value="both">Baker + Decorator</option>
+          <option value="baker">Baker (Mulai produksi)</option>
+          <option value="decorator">Decorator (Mulai gambar + Tandai selesai)</option>
+        </select>
+      )}
       <button
         type="button"
         onClick={() => {
           if (!pickedId) return;
-          onAssign(pickedId);
+          onAssign(pickedId, scope === "production" ? role : null);
           setPickedId("");
+          setRole(null);
         }}
         disabled={!pickedId || disabled}
         className="flex items-center gap-1 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-3 py-2 text-sm font-medium disabled:opacity-50"
@@ -192,5 +220,27 @@ function AssignDropdown({
         Tambahkan ke {scope === "orders" ? "input order" : "produksi"}
       </button>
     </div>
+  );
+}
+
+function RoleBadge({ role }: { role: CakeProductionRole }) {
+  if (role === "baker") {
+    return (
+      <span className="inline-block rounded-full border border-foreground bg-tertiary/30 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide">
+        Baker
+      </span>
+    );
+  }
+  if (role === "decorator") {
+    return (
+      <span className="inline-block rounded-full border border-foreground bg-pop-pink/30 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide">
+        Decorator
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+      Both
+    </span>
   );
 }

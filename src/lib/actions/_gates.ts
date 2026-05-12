@@ -158,3 +158,46 @@ export async function requireCakeProductionAccess(): Promise<
   if (!data) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
 }
+
+/**
+ * Sub-gate for production sub-roles. Bagian produksi punya dua sub-role
+ * (baker, decorator). User dengan `production_role=null` (legacy) atau
+ * scope `'orders'` lolos sebagai both. Admin Zota app TIDAK lolos —
+ * konsisten dengan parent gate.
+ *
+ * Aturan transition tahap produksi:
+ *  - pending → in_progress   : "baker" yang panggang dasar kue
+ *  - in_progress → decorating: "decorator" yang menghias / gambar
+ *  - decorating → done       : "decorator" yang menyelesaikan
+ */
+export async function requireCakeProductionRole(
+  role: "baker" | "decorator"
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cake_access_assignments" as never)
+    .select("scope, production_role")
+    .eq("user_id", user.id)
+    .in("scope", ["orders", "production"]);
+  type Row = { scope: string; production_role: string | null };
+  const rows = (data ?? []) as unknown as Row[];
+  if (rows.length === 0) return { ok: false, error: "Forbidden" };
+  const allowed = rows.some(
+    (r) =>
+      r.scope === "orders" ||
+      r.production_role == null ||
+      r.production_role === role
+  );
+  if (!allowed) {
+    return {
+      ok: false,
+      error:
+        role === "baker"
+          ? "Hanya role baker yang boleh memulai produksi"
+          : "Hanya role decorator yang boleh menghias / menyelesaikan",
+    };
+  }
+  return { ok: true, userId: user.id };
+}

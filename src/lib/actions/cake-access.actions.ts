@@ -14,6 +14,8 @@ import { getMyCakeAccess as getMyCakeAccessCached } from "@/lib/cake-orders/acce
  */
 
 export type CakeAccessScope = "orders" | "production";
+/** Sub-role di scope production. Null = boleh kedua (back-compat). */
+export type CakeProductionRole = "baker" | "decorator" | null;
 
 function adminClient() {
   return createServiceClient<Database>(
@@ -25,6 +27,7 @@ function adminClient() {
 export interface CakeAccessRow {
   user_id: string;
   scope: CakeAccessScope;
+  production_role: CakeProductionRole;
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
@@ -58,12 +61,13 @@ export async function listCakeAccessAssignments(): Promise<
   const { data, error } = await supabase
     .from("cake_access_assignments" as never)
     .select(
-      "user_id, scope, profiles!cake_access_assignments_user_id_fkey(full_name, email, avatar_url, avatar_seed)"
+      "user_id, scope, production_role, profiles!cake_access_assignments_user_id_fkey(full_name, email, avatar_url, avatar_seed)"
     );
   if (error) return { ok: false, error: error.message };
   type Row = {
     user_id: string;
     scope: CakeAccessScope;
+    production_role: CakeProductionRole;
     profiles: {
       full_name: string | null;
       email: string | null;
@@ -77,6 +81,7 @@ export async function listCakeAccessAssignments(): Promise<
     data: rows.map((r) => ({
       user_id: r.user_id,
       scope: r.scope,
+      production_role: r.production_role,
       full_name: r.profiles.full_name,
       email: r.profiles.email,
       avatar_url: r.profiles.avatar_url,
@@ -87,17 +92,22 @@ export async function listCakeAccessAssignments(): Promise<
 
 export async function assignCakeAccess(
   userId: string,
-  scope: CakeAccessScope
+  scope: CakeAccessScope,
+  productionRole: CakeProductionRole = null
 ): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+  // production_role hanya valid kalau scope='production'. Untuk scope
+  // 'orders' tetap null supaya DB check constraint tidak menolak.
+  const role = scope === "production" ? productionRole : null;
   const { error } = await supabase
     .from("cake_access_assignments" as never)
     .upsert(
       {
         user_id: userId,
         scope,
+        production_role: role,
         assigned_by: gate.userId,
       } as never,
       { onConflict: "user_id,scope" }

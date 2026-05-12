@@ -38,11 +38,17 @@ import type {
 interface ProductionItem {
   snapshot: CakeSlipSnapshotItem;
   productionStatus: CakeProductionStatus;
+  /** Admin sudah pindahkan card past "siap" / arsipkan — production
+   *  team tidak boleh edit lagi. */
+  adminLocked: boolean;
 }
 
 interface Props {
   slip: CakeProductionSlip;
   items: ProductionItem[];
+  /** Sub-role caller (null = boleh kedua / scope orders). UI hide
+   *  tombol yang tidak match role. Server-side gate jadi backstop. */
+  myProductionRole: "baker" | "decorator" | null;
 }
 
 /**
@@ -54,7 +60,7 @@ interface Props {
  * `pending_diff` drives a big warning banner with field-level
  * before/after; production team taps "Saya sudah lihat" to ack.
  */
-export function SlipChecklist({ slip, items }: Props) {
+export function SlipChecklist({ slip, items, myProductionRole }: Props) {
   const router = useRouter();
 
   // Optimistic per-item production_status so toggles feel instant.
@@ -137,6 +143,12 @@ export function SlipChecklist({ slip, items }: Props) {
         />
       )}
 
+      {/* Rekap baking khusus baker — decorator (cake artist) fokus
+          ke per-customer card dengan detail filling/dekorasi. */}
+      {myProductionRole !== "decorator" && (
+        <BakingSummary items={items} diff={slip.pending_diff ?? null} />
+      )}
+
       {slip.notes && (
         <div className="rounded-2xl border-2 border-foreground bg-pop-pink/15 p-3 text-sm text-foreground whitespace-pre-wrap">
           {slip.notes}
@@ -156,6 +168,8 @@ export function SlipChecklist({ slip, items }: Props) {
               productionStatus={
                 statusById.get(it.snapshot.orderId) ?? it.productionStatus
               }
+              myProductionRole={myProductionRole}
+              adminLocked={it.adminLocked}
               onChange={(next) => {
                 setStatusById((prev) => {
                   const map = new Map(prev);
@@ -291,10 +305,14 @@ function DiffBanner({
 function ProductionCard({
   snapshot,
   productionStatus,
+  myProductionRole,
+  adminLocked,
   onChange,
 }: {
   snapshot: CakeSlipSnapshotItem;
   productionStatus: CakeProductionStatus;
+  myProductionRole: "baker" | "decorator" | null;
+  adminLocked: boolean;
   onChange: (next: CakeProductionStatus) => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -308,6 +326,7 @@ function ProductionCard({
       const labels: Record<CakeProductionStatus, string> = {
         pending: "Direset ke pending",
         in_progress: "Mulai diproduksi",
+        decorating: "Mulai menghias",
         done: "Selesai diproduksi",
         cancelled: "Dibatalkan",
       };
@@ -341,6 +360,11 @@ function ProductionCard({
             <Cake size={10} className="inline-block mr-1 -translate-y-px" />
             {snapshot.baseLabel} · {snapshot.shapeLabel}
             {snapshot.shapeCustom ? ` (${snapshot.shapeCustom})` : ""}
+            {snapshot.dimensionCm != null ? (
+              <span className="ml-1 rounded-full border border-foreground bg-card px-1 py-0 text-[10px] font-semibold tabular-nums text-foreground">
+                {snapshot.dimensionCm} cm
+              </span>
+            ) : null}
             {snapshot.fillingLabel ? ` · ${snapshot.fillingLabel}` : ""}
           </div>
           <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0">
@@ -380,6 +404,8 @@ function ProductionCard({
         <ProductionAction
           status={productionStatus}
           pending={pending}
+          myProductionRole={myProductionRole}
+          adminLocked={adminLocked}
           onAdvance={setStatus}
         />
       </div>
@@ -412,6 +438,10 @@ function ProductionStatusPill({ status }: { status: CakeProductionStatus }) {
       label: "Diproduksi",
       cls: "bg-tertiary text-foreground border-foreground",
     },
+    decorating: {
+      label: "Digambar",
+      cls: "bg-pop-pink text-foreground border-foreground",
+    },
     done: {
       label: "Selesai",
       cls: "bg-pop-emerald text-foreground border-foreground",
@@ -434,49 +464,115 @@ function ProductionStatusPill({ status }: { status: CakeProductionStatus }) {
 function ProductionAction({
   status,
   pending,
+  myProductionRole,
+  adminLocked,
   onAdvance,
 }: {
   status: CakeProductionStatus;
   pending: boolean;
+  myProductionRole: "baker" | "decorator" | null;
+  adminLocked: boolean;
   onAdvance: (next: CakeProductionStatus) => void;
 }) {
+  // Admin lock: kalau admin sudah pindahkan card ke kanban
+  // pengiriman/selesai atau arsipkan, semua tombol di sisi produksi
+  // hilang — pekerjaan dianggap diserahkan.
+  if (adminLocked) {
+    return (
+      <p className="text-center text-[11px] italic text-muted-foreground">
+        Sudah ditangani admin
+      </p>
+    );
+  }
+  // Role gate untuk tombol "forward". Revert (Undo) longgar — role
+  // apapun boleh untuk koreksi cepat.
+  const canBake = myProductionRole === null || myProductionRole === "baker";
+  const canDecorate =
+    myProductionRole === null || myProductionRole === "decorator";
+
   if (status === "pending") {
+    if (!canBake) {
+      return (
+        <p className="text-center text-[11px] italic text-muted-foreground">
+          Menunggu baker memulai produksi
+        </p>
+      );
+    }
     return (
       <button
         type="button"
         onClick={() => onAdvance("in_progress")}
         disabled={pending}
-        className="w-full flex items-center justify-center gap-1 rounded-lg bg-tertiary text-foreground border border-foreground px-2 py-1.5 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-1 rounded-lg bg-tertiary text-foreground border border-foreground px-3 py-2 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
       >
         Mulai produksi
         <ChevronRight size={12} strokeWidth={2.5} />
       </button>
     );
   }
+
   if (status === "in_progress") {
     return (
       <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => onAdvance("done")}
-          disabled={pending}
-          className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-pop-emerald text-foreground border border-foreground px-2 py-1.5 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
-        >
-          <CheckCircle2 size={12} strokeWidth={2.5} />
-          Tandai selesai
-        </button>
+        {canDecorate ? (
+          <button
+            type="button"
+            onClick={() => onAdvance("decorating")}
+            disabled={pending}
+            className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-pop-pink text-foreground border border-foreground px-3 py-2 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+          >
+            Mulai gambar
+            <ChevronRight size={12} strokeWidth={2.5} />
+          </button>
+        ) : (
+          <p className="flex-1 text-center text-[11px] italic text-muted-foreground">
+            Menunggu decorator menghias
+          </p>
+        )}
         <button
           type="button"
           onClick={() => onAdvance("pending")}
           disabled={pending}
-          className="size-7 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
+          className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
           aria-label="Reset ke pending"
         >
-          <Undo2 size={11} strokeWidth={2.5} />
+          <Undo2 size={14} strokeWidth={2.5} />
         </button>
       </div>
     );
   }
+
+  if (status === "decorating") {
+    return (
+      <div className="flex items-center gap-1.5">
+        {canDecorate ? (
+          <button
+            type="button"
+            onClick={() => onAdvance("done")}
+            disabled={pending}
+            className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-pop-emerald text-foreground border border-foreground px-3 py-2 text-xs font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+          >
+            <CheckCircle2 size={12} strokeWidth={2.5} />
+            Tandai selesai
+          </button>
+        ) : (
+          <p className="flex-1 text-center text-[11px] italic text-muted-foreground">
+            Sedang dihias
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => onAdvance("in_progress")}
+          disabled={pending}
+          className="size-9 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50 shrink-0"
+          aria-label="Kembali ke produksi"
+        >
+          <Undo2 size={14} strokeWidth={2.5} />
+        </button>
+      </div>
+    );
+  }
+
   if (status === "done") {
     return (
       <div className="flex items-center justify-between gap-2">
@@ -486,7 +582,7 @@ function ProductionAction({
         </span>
         <button
           type="button"
-          onClick={() => onAdvance("in_progress")}
+          onClick={() => onAdvance("decorating")}
           disabled={pending}
           className="flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-50"
         >
@@ -501,8 +597,23 @@ function ProductionAction({
 
 // ---------- Reference photos (lazy-loaded per card) ------------------
 
+/**
+ * Foto referensi yang di-attach customer/admin per kategori. Dikelompok-
+ * kan supaya tim produksi jelas: foto ini untuk WARNA, ini untuk
+ * TULISAN/DEKORASI, dll. Tap thumbnail → ImagePopup zoomable.
+ */
+type RefField = "color" | "texture" | "decoration" | "accessories";
+const REF_FIELD_LABELS: Array<{ key: RefField; emoji: string; label: string }> = [
+  { key: "color", emoji: "🎨", label: "Warna" },
+  { key: "texture", emoji: "✨", label: "Tekstur" },
+  { key: "decoration", emoji: "✍️", label: "Tulisan / Dekorasi" },
+  { key: "accessories", emoji: "🎁", label: "Aksesoris" },
+];
+
 function SlipReferenceImages({ orderId }: { orderId: string }) {
-  const [images, setImages] = useState<Array<{ id: string; url: string }>>([]);
+  const [images, setImages] = useState<
+    Array<{ id: string; url: string; field: RefField }>
+  >([]);
   const [openUrl, setOpenUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -511,19 +622,29 @@ function SlipReferenceImages({ orderId }: { orderId: string }) {
       const supabase = createClient();
       const { data } = await supabase
         .from("cake_order_attachments" as never)
-        .select("id, storage_path")
+        .select("id, storage_path, field")
         .eq("cake_order_id", orderId)
         .neq("field", "payment_proof");
-      type Row = { id: string; storage_path: string };
+      type Row = { id: string; storage_path: string; field: string };
       const rows = (data ?? []) as unknown as Row[];
       const signed = await Promise.all(
         rows.map(async (r) => {
           const sig = await getCakeAttachmentSignedUrl(r.id);
-          return sig.ok ? { id: r.id, url: sig.data!.url } : null;
+          return sig.ok
+            ? {
+                id: r.id,
+                url: sig.data!.url,
+                field: r.field as RefField,
+              }
+            : null;
         })
       );
       if (cancelled) return;
-      setImages(signed.filter((s): s is { id: string; url: string } => !!s));
+      setImages(
+        signed.filter(
+          (s): s is { id: string; url: string; field: RefField } => !!s
+        )
+      );
     })();
     return () => {
       cancelled = true;
@@ -531,28 +652,200 @@ function SlipReferenceImages({ orderId }: { orderId: string }) {
   }, [orderId]);
 
   if (images.length === 0) return null;
+
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
         <ImageIcon size={10} />
-        Foto
+        Foto Referensi
       </div>
-      <div className="flex flex-wrap gap-1">
-        {images.map((img) => (
-          <button
-            key={img.id}
-            type="button"
-            onClick={() => setOpenUrl(img.url)}
-            className="block size-10 rounded-md overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform"
-            aria-label="Lihat foto"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.url} alt="" className="w-full h-full object-cover" />
-          </button>
-        ))}
+      <div className="space-y-1">
+        {REF_FIELD_LABELS.map(({ key, emoji, label }) => {
+          const group = images.filter((im) => im.field === key);
+          if (group.length === 0) return null;
+          return (
+            <div
+              key={key}
+              className="flex items-start gap-1.5 rounded-md border border-border bg-muted/30 px-1.5 py-1"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap pt-1">
+                {emoji} {label}
+              </span>
+              <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+                {group.map((img) => (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => setOpenUrl(img.url)}
+                    className="block size-10 rounded-md overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform"
+                    aria-label={`Lihat foto ${label}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
       {openUrl && (
         <ImagePopup url={openUrl} onClose={() => setOpenUrl(null)} />
+      )}
+    </div>
+  );
+}
+
+// ---------- Baking summary (rekap baking) ----------------------------
+
+/**
+ * Rekap baking yang dilihat tim produksi sebelum eksekusi: agregasi
+ * jumlah cake per kombinasi base + bentuk (tanpa filling). Filling
+ * berurusan dengan customer per customer; baking dijalankan dalam
+ * batch berdasarkan base & shape saja.
+ *
+ * Kalau ada `pending_diff`, group yang ber-overlap dengan order
+ * added/modified-base/modified-shape mendapat badge "Berubah"
+ * supaya tim produksi tahu rekap ini sudah ter-update. Removed
+ * orders tidak terkait group spesifik (karena tidak ada lagi di
+ * snapshot), jadi cuma di-show sebagai notice section-level.
+ */
+function BakingSummary({
+  items,
+  diff,
+}: {
+  items: ProductionItem[];
+  diff: import("@/lib/cake-orders/types").CakeSlipDiff | null;
+}) {
+  interface BakingGroup {
+    key: string;
+    baseLabel: string;
+    shapeLabel: string;
+    shapeCustom: string | null;
+    dimensionCm: number | null;
+    qty: number;
+    orderIds: string[];
+  }
+
+  // Build set of orderIds yang punya perubahan baking-relevant
+  // (added atau modified base/shape).
+  const bakingChangedIds = new Set<string>();
+  if (diff) {
+    for (const a of diff.added) bakingChangedIds.add(a.orderId);
+    for (const m of diff.modified) {
+      const hasBakingField = m.fields.some(
+        (f) =>
+          f.label === "Base" ||
+          f.label === "Bentuk" ||
+          f.label === "Bentuk custom" ||
+          f.label === "Diameter"
+      );
+      if (hasBakingField) bakingChangedIds.add(m.orderId);
+    }
+  }
+  const removedCount = diff?.removed.length ?? 0;
+
+  // Group by base + shape + diameter (+ shapeCustom). Ukuran yang
+  // berbeda butuh loyang berbeda → baking batch terpisah.
+  const groups = new Map<string, BakingGroup>();
+  for (const it of items) {
+    const s = it.snapshot;
+    const dim = s.dimensionCm ?? null;
+    const key = `${s.baseLabel}|${s.shapeLabel}|${s.shapeCustom ?? ""}|${dim ?? "?"}`;
+    const g = groups.get(key) ?? {
+      key,
+      baseLabel: s.baseLabel,
+      shapeLabel: s.shapeLabel,
+      shapeCustom: s.shapeCustom,
+      dimensionCm: dim,
+      qty: 0,
+      orderIds: [],
+    };
+    g.qty += 1;
+    g.orderIds.push(s.orderId);
+    groups.set(key, g);
+  }
+
+  // Sort: ukuran terisi duluan (NULL ke bawah), lalu qty desc.
+  const sortedGroups = [...groups.values()].sort((a, b) => {
+    const aHas = a.dimensionCm != null ? 0 : 1;
+    const bHas = b.dimensionCm != null ? 0 : 1;
+    if (aHas !== bHas) return aHas - bHas;
+    return b.qty - a.qty;
+  });
+  if (sortedGroups.length === 0) return null;
+
+  const totalCakes = items.length;
+
+  return (
+    <div className="rounded-2xl border-2 border-foreground bg-card p-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+          <span aria-hidden>🥖</span>
+          Rekap baking
+        </h2>
+        <span className="text-[11px] text-muted-foreground tabular-nums">
+          {totalCakes} cake · {sortedGroups.length} jenis baking
+        </span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Group base + bentuk untuk dipanggang dalam satu batch. Filling
+        di-handle per customer di kartu bawah.
+      </p>
+      <ul className="space-y-1">
+        {sortedGroups.map((g) => {
+          const changed = g.orderIds.some((id) => bakingChangedIds.has(id));
+          return (
+            <li
+              key={g.key}
+              className={
+                "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 " +
+                (changed
+                  ? "border-pop-pink bg-pop-pink/15"
+                  : "border-border bg-muted/30")
+              }
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground truncate flex items-center gap-1.5">
+                  <span>
+                    {g.baseLabel} · {g.shapeLabel}
+                    {g.shapeCustom ? ` (${g.shapeCustom})` : ""}
+                  </span>
+                  {g.dimensionCm != null ? (
+                    <span className="rounded-full border border-foreground bg-card px-1.5 py-0 text-[10px] font-semibold tabular-nums shrink-0">
+                      {g.dimensionCm} cm
+                    </span>
+                  ) : (
+                    <span
+                      className="rounded-full border border-dashed border-foreground/40 bg-card px-1.5 py-0 text-[10px] font-medium text-muted-foreground shrink-0"
+                      title="Diameter tidak diisi"
+                    >
+                      ukuran ?
+                    </span>
+                  )}
+                </p>
+              </div>
+              {changed && (
+                <span className="rounded-full border border-foreground bg-pop-pink/30 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide shrink-0">
+                  Berubah
+                </span>
+              )}
+              <span className="text-base font-bold tabular-nums shrink-0">
+                {g.qty}×
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {removedCount > 0 && (
+        <p className="rounded-lg border border-foreground bg-pop-pink/30 px-2 py-1 text-[11px] font-medium text-foreground">
+          ⚠️ {removedCount} cake dihapus dari slip ini — rekap sudah
+          dikurangi sesuai.
+        </p>
       )}
     </div>
   );

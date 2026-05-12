@@ -21,6 +21,7 @@ import {
 import type {
   CakeOptionsByKind,
   CakeOrder,
+  CakeOrderAttachment,
   CakeProductionSlip,
   CakeProductionSlipItem,
   CakeSlipSnapshot,
@@ -72,8 +73,14 @@ export interface TomorrowSlipBundle {
   slip: CakeProductionSlip;
   /** Tomorrow's date (D+1) — convenience for the page header. */
   targetDate: string;
-  /** Items currently included in the slip with their live order. */
-  items: Array<{ item: CakeProductionSlipItem; order: CakeOrder }>;
+  /** Items currently included in the slip with their live order +
+   *  reference photos (warna/tekstur/dekorasi/aksesoris). Bukti
+   *  pembayaran di-exclude. */
+  items: Array<{
+    item: CakeProductionSlipItem;
+    order: CakeOrder;
+    attachments: CakeOrderAttachment[];
+  }>;
   /** Orders on D+2..D+5 grouped by date — admin can tick these in. */
   optionalCandidates: Array<{ date: string; orders: CakeOrder[] }>;
   /** Orders on D+6..D+30 grouped by date — read-only preview, hidden
@@ -83,14 +90,25 @@ export interface TomorrowSlipBundle {
 
 // ---------- Admin: build / verify+send / reopen ----------------------
 
-export async function getOrCreateTomorrowSlip(): Promise<
-  ActionResult<TomorrowSlipBundle>
-> {
+/**
+ * Slip surface untuk satu tanggal target. Default = besok. Admin
+ * boleh pilih tanggal lain (mis. ngintip slip H-1 yang sudah dikirim
+ * untuk koreksi, atau prepare H+2 lebih awal); page-level UI me-render
+ * banner warna agar tidak keliru.
+ */
+export async function getOrCreateTomorrowSlip(
+  targetDateArg?: string
+): Promise<ActionResult<TomorrowSlipBundle>> {
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
 
-  const targetDate = tomorrowYmd();
+  // Validate caller-supplied date supaya bukan ISO acak. Fallback ke
+  // besok kalau kosong / format invalid.
+  const targetDate =
+    typeof targetDateArg === "string" && /^\d{4}-\d{2}-\d{2}$/.test(targetDateArg)
+      ? targetDateArg
+      : tomorrowYmd();
 
   // Find or insert the slip row.
   let slip: CakeProductionSlip | null = null;
@@ -216,12 +234,34 @@ export async function getOrCreateTomorrowSlip(): Promise<
     }
   }
 
-  const items = existingItems
+  const baseItems = existingItems
     .map((item) => {
       const order = liveById.get(item.cake_order_id);
       return order ? { item, order } : null;
     })
     .filter((x): x is { item: CakeProductionSlipItem; order: CakeOrder } => !!x);
+
+  // Fetch reference photos untuk semua order yang ada di slip,
+  // dalam satu query. Skipped attachments dengan field=payment_proof
+  // — itu bukan foto referensi rancangan cake.
+  const orderIdsForAttachments = baseItems.map((x) => x.order.id);
+  const attachmentsByOrderId = new Map<string, CakeOrderAttachment[]>();
+  if (orderIdsForAttachments.length > 0) {
+    const { data: attRaw } = await supabase
+      .from("cake_order_attachments" as never)
+      .select("*")
+      .in("cake_order_id", orderIdsForAttachments)
+      .neq("field", "payment_proof");
+    for (const a of (attRaw ?? []) as unknown as CakeOrderAttachment[]) {
+      const arr = attachmentsByOrderId.get(a.cake_order_id) ?? [];
+      arr.push(a);
+      attachmentsByOrderId.set(a.cake_order_id, arr);
+    }
+  }
+  const items = baseItems.map((x) => ({
+    ...x,
+    attachments: attachmentsByOrderId.get(x.order.id) ?? [],
+  }));
 
   const groupByDate = (orders: CakeOrder[], dates: string[]) => {
     const out: Array<{ date: string; orders: CakeOrder[] }> = [];
@@ -447,9 +487,12 @@ export async function verifyAndSendSlip(
       .eq("status", "submitted");
   }
 
+  // Setelah send, side panel kanban harus reflect slipLock baru —
+  // tombol Edit jadi hilang, banner "Buka slip produksi" muncul.
   revalidatePath("/cake-orders/slip");
   revalidatePath("/cake-production");
   revalidatePath("/cake-orders");
+  revalidatePath("/admin/cake-orders");
   return { ok: true, data: { wasResend: isResend, hasDiff: diff !== null } };
 }
 
@@ -471,8 +514,13 @@ export async function reopenSlip(slipId: string): Promise<ActionResult> {
   if (error) return { ok: false, error: error.message };
   if (!data || (data as unknown as unknown[]).length === 0)
     return { ok: false, error: "Slip tidak bisa dibuka kembali" };
+  // Slip masuk reopened → side panel kanban yang sebelumnya lock
+  // (`slipLock`) jadi unlock kembali. Revalidate kanban juga supaya
+  // banner "Order ini sudah dikirim ke slip produksi" hilang.
   revalidatePath("/cake-orders/slip");
   revalidatePath("/cake-production");
+  revalidatePath("/cake-orders");
+  revalidatePath("/admin/cake-orders");
   return { ok: true };
 }
 
@@ -528,12 +576,37 @@ export async function getSlipForProduction(slipId: string): Promise<
     items: Array<{
       snapshot: CakeSlipSnapshotItem;
       productionStatus: CakeOrder["production_status"];
+      /** True kalau admin sudah pindahkan card past "siap"
+       *  (delivering/done/cancelled) atau arsipkan — production team
+       *  tidak boleh ubah / buka kembali status lagi. */
+      adminLocked: boolean;
     }>;
+    /** Sub-role caller saat ini: "baker" / "decorator" / null (both).
+     *  Dipakai UI untuk menentukan tombol mana yang muncul per kartu. */
+    myProductionRole: "baker" | "decorator" | null;
   }>
 > {
   const gate = await requireCakeProductionAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+
+  // Resolve sub-role caller. Caller dengan scope='orders' atau
+  // production_role=null dianggap "both" → null di response.
+  const { data: roleRows } = await supabase
+    .from("cake_access_assignments" as never)
+    .select("scope, production_role")
+    .eq("user_id", gate.userId)
+    .in("scope", ["orders", "production"]);
+  type RoleRow = { scope: string; production_role: string | null };
+  const rows = (roleRows ?? []) as unknown as RoleRow[];
+  let myProductionRole: "baker" | "decorator" | null = null;
+  const hasOrders = rows.some((r) => r.scope === "orders");
+  const prodRow = rows.find((r) => r.scope === "production");
+  if (hasOrders || !prodRow || prodRow.production_role == null) {
+    myProductionRole = null;
+  } else if (prodRow.production_role === "baker" || prodRow.production_role === "decorator") {
+    myProductionRole = prodRow.production_role;
+  }
 
   const { data: slipRaw } = await supabase
     .from("cake_production_slips" as never)
@@ -566,30 +639,50 @@ export async function getSlipForProduction(slipId: string): Promise<
 
   const snap = slip.last_sent_snapshot;
   const orderIds = snap.items.map((i) => i.orderId);
-  const liveStatusById = new Map<string, CakeOrder["production_status"]>();
+  const liveById = new Map<
+    string,
+    {
+      productionStatus: CakeOrder["production_status"];
+      adminLocked: boolean;
+    }
+  >();
   if (orderIds.length > 0) {
     const { data: liveRaw } = await supabase
       .from("cake_orders" as never)
-      .select("id, production_status")
+      .select("id, production_status, status, archived_at")
       .in("id", orderIds);
     type LiveRow = {
       id: string;
       production_status: CakeOrder["production_status"];
+      status: CakeOrder["status"];
+      archived_at: string | null;
     };
     for (const r of (liveRaw ?? []) as unknown as LiveRow[]) {
-      liveStatusById.set(r.id, r.production_status);
+      const locked =
+        r.archived_at != null ||
+        r.status === "delivering" ||
+        r.status === "done" ||
+        r.status === "cancelled";
+      liveById.set(r.id, {
+        productionStatus: r.production_status,
+        adminLocked: locked,
+      });
     }
   }
 
   const items = snap.items
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((s) => ({
-      snapshot: s,
-      productionStatus: liveStatusById.get(s.orderId) ?? "pending",
-    }));
+    .map((s) => {
+      const live = liveById.get(s.orderId);
+      return {
+        snapshot: s,
+        productionStatus: live?.productionStatus ?? "pending",
+        adminLocked: live?.adminLocked ?? false,
+      };
+    });
 
-  return { ok: true, data: { slip, items } };
+  return { ok: true, data: { slip, items, myProductionRole } };
 }
 
 /**

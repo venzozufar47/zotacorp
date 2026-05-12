@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import {
   getCakeOrder,
   listCakeOrderPayments,
+  type CakeOrderSlipLock,
 } from "@/lib/actions/cake-orders.actions";
 import { CakeOrderDetail } from "./CakeOrderDetail";
 import type {
@@ -38,6 +39,7 @@ export function CakeOrderDetailLoader({
   const [order, setOrder] = useState<CakeOrder | null>(null);
   const [attachments, setAttachments] = useState<CakeOrderAttachment[]>([]);
   const [payments, setPayments] = useState<CakeOrderPayment[]>([]);
+  const [slipLock, setSlipLock] = useState<CakeOrderSlipLock | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // Bump to force a re-fetch after a mutation inside the panel
@@ -63,6 +65,7 @@ export function CakeOrderDetailLoader({
       }
       setOrder(orderRes.data!.order);
       setAttachments(orderRes.data!.attachments);
+      setSlipLock(orderRes.data!.slipLock);
       setPayments(paymentsRes.ok ? paymentsRes.data ?? [] : []);
       setLoading(false);
     })();
@@ -93,6 +96,7 @@ export function CakeOrderDetailLoader({
       order={order}
       attachments={attachments}
       payments={payments}
+      slipLock={slipLock}
       optionsByKind={optionsByKind}
       isAdminView={isAdminView}
       canEdit={canEdit}

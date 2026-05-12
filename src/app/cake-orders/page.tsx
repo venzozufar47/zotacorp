@@ -9,6 +9,7 @@ import { listMyCakeOrders } from "@/lib/actions/cake-orders.actions";
 import { listCakeOptions } from "@/lib/actions/cake-options.actions";
 import { CakeOrdersBoard } from "@/components/cake/CakeOrdersBoard";
 import { NewOrderQuickButton } from "@/components/cake/NewOrderQuickButton";
+import { RefreshButton } from "@/components/shared/RefreshButton";
 
 /**
  * Employee lobby for custom cake orders. Shows the staff member's
@@ -59,6 +60,7 @@ export default async function CakeOrdersPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <RefreshButton />
           <Link
             href="/cake-orders/slip"
             className="flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
@@ -78,7 +80,11 @@ export default async function CakeOrdersPage() {
         </div>
       </header>
 
-      <CakeOrdersBoard orders={orders} optionsByKind={optionsByKind} />
+      <CakeOrdersBoard
+        orders={orders}
+        optionsByKind={optionsByKind}
+        enableSearch
+      />
     </div>
   );
 }

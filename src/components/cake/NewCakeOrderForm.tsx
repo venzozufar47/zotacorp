@@ -53,10 +53,18 @@ interface Props {
    *  side-panel quick-add (panel is already narrow on desktop and the
    *  2-col form would still trigger via viewport-based media queries). */
   singleColumn?: boolean;
+  /** ID untuk `<form>` element supaya tombol submit eksternal bisa
+   *  `<button form="…">`. Dipakai di slip preview saat sticky footer
+   *  page-level diganti dengan "Simpan" yang men-trigger form ini. */
+  formId?: string;
+  /** Sembunyikan tombol Save internal — saat caller pakai `formId`
+   *  untuk submit dari sticky footer eksternal. Tombol Cancel tetap
+   *  ditampilkan (kalau ada `onCancel`) sebagai aksi sekunder. */
+  hideInternalSave?: boolean;
 }
 
 const CAKE_INPUT =
-  "mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
+  "mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 sm:py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 interface UploadedFile {
   field: CakeAttachmentField;
@@ -82,6 +90,8 @@ export function NewCakeOrderForm({
   onSuccess,
   onCancel,
   singleColumn,
+  formId,
+  hideInternalSave,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -105,6 +115,9 @@ export function NewCakeOrderForm({
     editing?.shape_option_id ?? ""
   );
   const [shapeCustom, setShapeCustom] = useState(editing?.shape_custom ?? "");
+  const [dimensionCm, setDimensionCm] = useState(
+    editing?.dimension_cm != null ? String(editing.dimension_cm) : ""
+  );
   const [fillingOptionId, setFillingOptionId] = useState(
     editing?.filling_option_id ?? ""
   );
@@ -167,6 +180,7 @@ export function NewCakeOrderForm({
     setBaseCakeOptionId("");
     setShapeOptionId("");
     setShapeCustom("");
+    setDimensionCm("");
     setFillingOptionId("");
     setColorNotes("");
     setTextureNotes("");
@@ -279,6 +293,10 @@ export function NewCakeOrderForm({
         baseCakeOptionId,
         shapeOptionId,
         shapeCustom: shapeOpt?.is_custom_freeform ? shapeCustom : null,
+        dimensionCm: (() => {
+          const v = Number(dimensionCm);
+          return dimensionCm.trim() === "" || !Number.isFinite(v) ? null : v;
+        })(),
         fillingOptionId: fillingOptionId || null,
         colorNotes: colorNotes || null,
         textureNotes: textureNotes || null,
@@ -352,6 +370,7 @@ export function NewCakeOrderForm({
 
   return (
     <form
+      id={formId}
       onSubmit={onSubmit}
       className={singleColumn ? "" : "pb-32 sm:pb-24"}
     >
@@ -485,6 +504,23 @@ export function NewCakeOrderForm({
                 />
               </FieldInline>
             )}
+            <FieldInline label="📏 Diameter">
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={199}
+                  value={dimensionCm}
+                  onChange={(e) =>
+                    setDimensionCm(e.target.value.replace(/[^\d]/g, ""))
+                  }
+                  placeholder="16"
+                  className={`${CAKE_INPUT} w-20 tabular-nums`}
+                />
+                <span className="text-xs text-muted-foreground">cm</span>
+              </div>
+            </FieldInline>
           </Section>
 
           <Section emoji="🎨" label="Tampilan">
@@ -655,6 +691,7 @@ export function NewCakeOrderForm({
         total={total}
         pending={pending}
         inline={singleColumn}
+        hideSave={hideInternalSave}
       />
     </form>
   );
@@ -1066,6 +1103,7 @@ function SummaryBar({
   total,
   pending,
   inline,
+  hideSave,
 }: {
   basePrice: number;
   addOns: number;
@@ -1076,6 +1114,9 @@ function SummaryBar({
   /** True = in-flow sticky-bottom inside a panel; false (default) =
    *  fixed to viewport (standalone /cake-orders/new page). */
   inline?: boolean;
+  /** Sembunyikan tombol Save — caller pakai sticky footer eksternal
+   *  (mis. slip preview) yang submit form via `form="…"` attribute. */
+  hideSave?: boolean;
 }) {
   const cls = inline
     ? "mt-3 -mx-3 px-3 py-2 sticky bottom-0 bg-card border-t-2 border-foreground z-10"
@@ -1115,14 +1156,16 @@ function SummaryBar({
             </span>
           </span>
         </div>
-        <button
-          type="submit"
-          disabled={pending}
-          className="flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-4 py-2 text-sm font-medium hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50 shrink-0"
-        >
-          <Save size={14} strokeWidth={2.5} />
-          {pending ? "Menyimpan…" : "Simpan"}
-        </button>
+        {!hideSave && (
+          <button
+            type="submit"
+            disabled={pending}
+            className="flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-4 py-2 text-sm font-medium hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50 shrink-0"
+          >
+            <Save size={14} strokeWidth={2.5} />
+            {pending ? "Menyimpan…" : "Simpan"}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import {
   addCakeOrderPayment,
+  deleteCakeOrderAttachment,
   deleteCakeOrderPayment,
   getCakeAttachmentSignedUrl,
   setCakeOrderStatus,
@@ -44,6 +45,10 @@ interface Props {
   order: CakeOrder;
   attachments: CakeOrderAttachment[];
   payments: CakeOrderPayment[];
+  /** Saat order ada di slip produksi yang sudah frozen, kanban tidak
+   *  boleh edit langsung. Admin wajib reopen slip dulu. Null = bebas
+   *  edit (atau order belum masuk slip apapun). */
+  slipLock: import("@/lib/actions/cake-orders.actions").CakeOrderSlipLock | null;
   optionsByKind: CakeOptionsByKind | null;
   isAdminView: boolean;
   canEdit: boolean;
@@ -69,6 +74,7 @@ export function CakeOrderDetail({
   order,
   attachments,
   payments,
+  slipLock,
   optionsByKind,
   isAdminView,
   canEdit,
@@ -105,7 +111,11 @@ export function CakeOrderDetail({
     order.status === "delivering" ||
     order.status === "done" ||
     order.status === "cancelled";
-  const editable = canEdit && !lockedFromEdit;
+  // Slip lock: kalau order ada di slip frozen (verified/sent/received/
+  // closed), edit langsung tidak diperbolehkan supaya tim produksi
+  // dapat banner perubahan via reopen+resend.
+  const lockedBySlip = slipLock != null;
+  const editable = canEdit && !lockedFromEdit && !lockedBySlip;
 
   const labelFor = makeLabelFor(optionsByKind);
   const attByField = useMemo(() => {
@@ -253,19 +263,54 @@ export function CakeOrderDetail({
             Sudah diproduksi
           </span>
         )}
+        {lockedBySlip && !lockedFromEdit && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border-2 border-foreground bg-tertiary/40 px-2 py-0.5 text-[11px] font-medium text-foreground shrink-0"
+            title="Order ada di slip produksi yang sudah dikirim — buka kembali slip dulu untuk mengedit"
+          >
+            <Lock size={10} strokeWidth={2.5} />
+            Di slip produksi
+          </span>
+        )}
         <PaymentStatusBadge order={order} />
       </div>
+
+      {lockedBySlip && !lockedFromEdit && slipLock && (
+        <div className="rounded-xl border-2 border-foreground bg-tertiary/30 p-3 text-xs text-foreground space-y-1.5">
+          <p className="font-semibold">
+            Order ini sudah dikirim ke slip produksi.
+          </p>
+          <p className="text-foreground/80">
+            Untuk mengubah spek (warna, tulisan, diameter, dll.), buka
+            kembali slip dulu supaya tim produksi dapat banner
+            perubahan dan kartu mereka ter-update.
+          </p>
+          <Link
+            href={`/cake-orders/slip?date=${slipLock.targetDate}`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-foreground text-background px-3 py-1.5 text-xs font-semibold hover:opacity-90"
+          >
+            Buka slip produksi →
+          </Link>
+        </div>
+      )}
 
       {/* CSS-multicolumn so sections fill both halves with no dead
           space at the bottom of the shorter column. Each section
           marks itself break-inside-avoid via the [&>section] selector
           so the engine doesn't split a section across columns. */}
-      <div className="md:columns-2 md:gap-3 [&>section]:mb-3 [&>section]:break-inside-avoid">
+      <div className="xl:columns-2 xl:gap-3 [&>section]:mb-3 [&>section]:break-inside-avoid">
         <Section emoji={<Cake size={14} strokeWidth={2.5} />} label="Spesifikasi">
           <Spec label="Base">{labelFor("base_cake", order.base_cake_option_id)}</Spec>
           <Spec label="Bentuk">
             {labelFor("shape", order.shape_option_id)}
             {order.shape_custom ? ` — ${order.shape_custom}` : ""}
+          </Spec>
+          <Spec label="Diameter">
+            {order.dimension_cm != null ? (
+              <span className="tabular-nums">{order.dimension_cm} cm</span>
+            ) : (
+              <span className="text-muted-foreground italic">—</span>
+            )}
           </Spec>
           {order.filling_option_id && (
             <Spec label="Filling">
@@ -276,21 +321,29 @@ export function CakeOrderDetail({
             label="Warna"
             value={order.color_notes}
             photos={attByField.color}
+            canDelete={editable}
+            onAfterDelete={afterMutation}
           />
           <SpecWithPhotos
             label="Tekstur"
             value={order.texture_notes}
             photos={attByField.texture}
+            canDelete={editable}
+            onAfterDelete={afterMutation}
           />
           <SpecWithPhotos
             label="Tulisan"
             value={order.decoration_notes}
             photos={attByField.decoration}
+            canDelete={editable}
+            onAfterDelete={afterMutation}
           />
           <SpecWithPhotos
             label="Aksesoris"
             value={order.accessories_notes}
             photos={attByField.accessories}
+            canDelete={editable}
+            onAfterDelete={afterMutation}
           />
           {order.greeting_card && (
             <Spec label="Greeting Card">&ldquo;{order.greeting_card}&rdquo;</Spec>
@@ -857,7 +910,7 @@ function Spec({
 }) {
   const valueCls = tone === "danger" ? "text-destructive" : "text-foreground";
   return (
-    <div className="grid grid-cols-[80px_1fr] gap-2 items-baseline text-sm">
+    <div className="grid grid-cols-[72px_1fr] sm:grid-cols-[80px_1fr] gap-2 items-baseline text-sm">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className={`min-w-0 break-words ${valueCls}`}>{children}</span>
     </div>
@@ -868,24 +921,39 @@ function SpecWithPhotos({
   label,
   value,
   photos,
+  canDelete,
+  onAfterDelete,
 }: {
   label: string;
   value: string | null;
   photos: CakeOrderAttachment[];
+  /** Saat true, popup foto dapat tombol Hapus. Server tetap gate
+   *  via requireCakeOrderAccess + slip-frozen check. */
+  canDelete?: boolean;
+  onAfterDelete?: () => void;
 }) {
   if (!value && photos.length === 0) return null;
   return (
-    <div className="grid grid-cols-[80px_1fr] gap-2 items-start text-sm">
+    <div className="grid grid-cols-[72px_1fr] sm:grid-cols-[80px_1fr] gap-2 items-start text-sm">
       <span className="text-xs text-muted-foreground pt-0.5">{label}</span>
-      <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+      <div className="min-w-0 space-y-1.5">
         {value && (
-          <span className="text-foreground break-words flex-1 min-w-0">
+          <p className="text-foreground break-words leading-snug">
             {value}
-          </span>
+          </p>
         )}
-        {photos.map((p) => (
-          <SignedThumb key={p.id} attachment={p} />
-        ))}
+        {photos.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {photos.map((p) => (
+              <SignedThumb
+                key={p.id}
+                attachment={p}
+                canDelete={canDelete}
+                onAfterDelete={onAfterDelete}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -926,7 +994,15 @@ function PaymentStatusBadge({ order }: { order: CakeOrder }) {
   );
 }
 
-function SignedThumb({ attachment }: { attachment: CakeOrderAttachment }) {
+function SignedThumb({
+  attachment,
+  canDelete,
+  onAfterDelete,
+}: {
+  attachment: CakeOrderAttachment;
+  canDelete?: boolean;
+  onAfterDelete?: () => void;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -942,7 +1018,7 @@ function SignedThumb({ attachment }: { attachment: CakeOrderAttachment }) {
 
   if (!url) {
     return (
-      <div className="size-12 rounded-lg border border-border bg-muted animate-pulse shrink-0" />
+      <div className="size-10 rounded-lg border border-border bg-muted animate-pulse shrink-0" />
     );
   }
   return (
@@ -950,13 +1026,27 @@ function SignedThumb({ attachment }: { attachment: CakeOrderAttachment }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="block size-12 rounded-lg overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform shrink-0"
+        className="block size-10 rounded-lg overflow-hidden border border-foreground bg-muted hover:opacity-90 active:scale-95 transition-transform shrink-0"
         aria-label="Lihat foto"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt="" className="w-full h-full object-cover" />
       </button>
-      {open && <ImagePopup url={url} onClose={() => setOpen(false)} />}
+      {open && (
+        <ImagePopup
+          url={url}
+          onClose={() => setOpen(false)}
+          onDelete={
+            canDelete
+              ? async () => {
+                  const res = await deleteCakeOrderAttachment(attachment.id);
+                  if (res.ok) onAfterDelete?.();
+                  return res;
+                }
+              : undefined
+          }
+        />
+      )}
     </>
   );
 }

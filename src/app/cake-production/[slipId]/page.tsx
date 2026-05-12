@@ -29,6 +29,7 @@ export default async function ProductionSlipPage({
     <SlipChecklist
       slip={slipRes.data!.slip}
       items={slipRes.data!.items}
+      myProductionRole={slipRes.data!.myProductionRole}
     />
   );
 }

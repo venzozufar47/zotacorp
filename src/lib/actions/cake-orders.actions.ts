@@ -6,6 +6,7 @@ import type { Database } from "@/lib/supabase/types";
 import {
   requireCakeOrderAccess,
   requireCakeProductionAccess,
+  requireCakeProductionRole,
   type ActionResult,
 } from "./_gates";
 import { maybeCloseSlipForOrder } from "./cake-slips.actions";
@@ -141,6 +142,10 @@ export async function createCakeOrder(
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
         : null,
+      dimension_cm:
+        input.dimensionCm != null && Number.isFinite(input.dimensionCm)
+          ? Math.max(1, Math.min(199, Math.round(input.dimensionCm)))
+          : null,
       filling_option_id: input.fillingOptionId ?? null,
       color_notes: input.colorNotes?.trim() || null,
       texture_notes: input.textureNotes?.trim() || null,
@@ -261,6 +266,7 @@ export async function createCakeOrder(
 
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return { ok: true, data: { orderId } };
 }
 
@@ -324,13 +330,28 @@ export async function setCakeOrderArchived(
   revalidatePath("/cake-orders");
   revalidatePath("/cake-orders/archive");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
+}
+
+/** Slip yang men-"kunci" cake_orders dari edit langsung. Saat slip
+ *  sudah verified/sent/received/closed, snapshot di tim produksi
+ *  fixed — admin wajib reopen slip dulu sebelum mengubah specs supaya
+ *  bagian produksi tahu ada perubahan dan card mereka ter-update. */
+export interface CakeOrderSlipLock {
+  slipId: string;
+  slipStatus: string;
+  targetDate: string;
 }
 
 export async function getCakeOrder(
   id: string
 ): Promise<
-  ActionResult<{ order: CakeOrder; attachments: CakeOrderAttachment[] }>
+  ActionResult<{
+    order: CakeOrder;
+    attachments: CakeOrderAttachment[];
+    slipLock: CakeOrderSlipLock | null;
+  }>
 > {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
@@ -349,7 +370,42 @@ export async function getCakeOrder(
     .select("*")
     .eq("cake_order_id", id);
   const attachments = (attRaw ?? []) as unknown as CakeOrderAttachment[];
-  return { ok: true, data: { order, attachments } };
+
+  // Cari slip yang sudah "frozen" (snapshot dikirim ke produksi).
+  // Status `draft` & `reopened` = admin masih dalam window edit; lain
+  // dari itu admin wajib reopen dulu via /cake-orders/slip.
+  const { data: slipLinkRaw } = await supabase
+    .from("cake_production_slip_items" as never)
+    .select(
+      "slip_id, cake_production_slips!inner(id, status, target_date)"
+    )
+    .eq("cake_order_id", id);
+  type SlipLink = {
+    cake_production_slips: {
+      id: string;
+      status: string;
+      target_date: string;
+    };
+  };
+  const links = (slipLinkRaw ?? []) as unknown as SlipLink[];
+  const FROZEN = new Set([
+    "verified",
+    "sent",
+    "received",
+    "closed",
+  ]);
+  const blocking = links
+    .map((l) => l.cake_production_slips)
+    .find((s) => FROZEN.has(s.status));
+  const slipLock: CakeOrderSlipLock | null = blocking
+    ? {
+        slipId: blocking.id,
+        slipStatus: blocking.status,
+        targetDate: blocking.target_date,
+      }
+    : null;
+
+  return { ok: true, data: { order, attachments, slipLock } };
 }
 
 /** 1-hour signed URL for a single attachment. */
@@ -374,6 +430,70 @@ export async function getCakeAttachmentSignedUrl(
   if (signErr || !signed)
     return { ok: false, error: signErr?.message ?? "Gagal sign URL" };
   return { ok: true, data: { url: signed.signedUrl } };
+}
+
+/**
+ * Hapus foto referensi cake order. Gate: butuh orders-scope access
+ * (kasir/admin); bagian produksi TIDAK boleh menghapus supaya tidak
+ * accidental wipe selama proses baking. Storage file + row table
+ * dihapus berbarengan; kalau salah satu gagal, sisanya tetap di-clean
+ * supaya tidak ada orphan.
+ */
+export async function deleteCakeOrderAttachment(
+  attachmentId: string
+): Promise<ActionResult> {
+  const gate = await requireCakeOrderAccess();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { data: row } = await supabase
+    .from("cake_order_attachments" as never)
+    .select("storage_path, cake_order_id, field")
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "Foto tidak ditemukan" };
+  const r = row as unknown as {
+    storage_path: string;
+    cake_order_id: string;
+    field: string;
+  };
+  // Production team menggambar berdasarkan foto referensi — kalau
+  // order sudah masuk slip yang sudah dikirim (frozen), admin wajib
+  // reopen slip dulu supaya perubahan ter-track sebagai diff.
+  const { data: linkRaw } = await supabase
+    .from("cake_production_slip_items" as never)
+    .select("cake_production_slips!inner(status)")
+    .eq("cake_order_id", r.cake_order_id);
+  type Link = { cake_production_slips: { status: string } };
+  const links = (linkRaw ?? []) as unknown as Link[];
+  const frozen = links.find((l) =>
+    ["verified", "sent", "received", "closed"].includes(
+      l.cake_production_slips.status
+    )
+  );
+  if (frozen) {
+    return {
+      ok: false,
+      error:
+        "Order sudah dikirim ke slip produksi. Buka kembali slip dulu sebelum hapus foto.",
+    };
+  }
+
+  // Hapus storage file first; row second. Kalau storage gagal, tetap
+  // hapus row supaya UI tidak menunjuk file orphan.
+  await supabase.storage
+    .from("cake-order-attachments")
+    .remove([r.storage_path]);
+  const { error } = await supabase
+    .from("cake_order_attachments" as never)
+    .delete()
+    .eq("id", attachmentId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/cake-orders");
+  revalidatePath("/cake-orders/archive");
+  revalidatePath("/cake-orders/slip");
+  revalidatePath("/admin/cake-orders");
+  return { ok: true };
 }
 
 // ---------- Edit ------------------------------------------------------
@@ -413,6 +533,7 @@ export async function updateCakeOrder(
   if (error) return { ok: false, error: error.message };
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
 }
 
@@ -455,6 +576,30 @@ export async function updateCakeOrderFull(
     return {
       ok: false,
       error: "Order sudah diproduksi — form tidak bisa diubah lagi",
+    };
+  }
+
+  // Lock kedua: kalau order ada di slip produksi yang sudah frozen
+  // (verified/sent/received/closed), edit langsung lewat kanban
+  // tidak boleh — admin wajib buka kembali slip dulu supaya bagian
+  // produksi dapat banner diff dan card mereka ter-update.
+  // Status slip `draft` & `reopened` lolos (window edit aktif).
+  const { data: slipLinkRaw } = await supabase
+    .from("cake_production_slip_items" as never)
+    .select("cake_production_slips!inner(status)")
+    .eq("cake_order_id", id);
+  type SlipLink = { cake_production_slips: { status: string } };
+  const links = (slipLinkRaw ?? []) as unknown as SlipLink[];
+  const frozen = links.find((l) =>
+    ["verified", "sent", "received", "closed"].includes(
+      l.cake_production_slips.status
+    )
+  );
+  if (frozen) {
+    return {
+      ok: false,
+      error:
+        "Order sudah dikirim ke slip produksi. Buka kembali slip dulu (/cake-orders/slip) supaya tim produksi tahu ada perubahan.",
     };
   }
 
@@ -528,6 +673,10 @@ export async function updateCakeOrderFull(
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
         : null,
+      dimension_cm:
+        input.dimensionCm != null && Number.isFinite(input.dimensionCm)
+          ? Math.max(1, Math.min(199, Math.round(input.dimensionCm)))
+          : null,
       filling_option_id: input.fillingOptionId ?? null,
       color_notes: input.colorNotes?.trim() || null,
       texture_notes: input.textureNotes?.trim() || null,
@@ -572,6 +721,7 @@ export async function updateCakeOrderFull(
   revalidatePath("/cake-orders");
   revalidatePath("/cake-orders/archive");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
 }
 
@@ -588,6 +738,47 @@ export async function setCakeOrderStatus(
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+  // Kolom "Baru" & "Dikerjakan" auto-only — admin / orders staff tidak
+  // boleh memindah card ke sana manual.
+  //  - submitted: hanya entry-point order baru via form input.
+  //  - in_progress: dipicu otomatis oleh `verifyAndSendSlip` saat slip
+  //    produksi dikirim.
+  //  - ready: dipicu otomatis oleh `setOrderProductionStatus` saat
+  //    bagian produksi menyelesaikan dekorasi.
+  if (
+    status === "submitted" ||
+    status === "in_progress" ||
+    status === "ready"
+  ) {
+    const { data: row } = await supabase
+      .from("cake_orders" as never)
+      .select("status")
+      .eq("id", id)
+      .maybeSingle();
+    const current = (row as unknown as { status?: string } | null)?.status;
+    if (!current) return { ok: false, error: "Order tidak ditemukan" };
+    if (status === "submitted" && current !== "submitted") {
+      return {
+        ok: false,
+        error: "Card tidak bisa dipindah ke kolom Baru",
+      };
+    }
+    if (status === "in_progress" && current !== "in_progress") {
+      return {
+        ok: false,
+        error: "Status Dikerjakan hanya bisa diubah lewat kirim slip produksi",
+      };
+    }
+    if (status === "ready" && current === "in_progress") {
+      return {
+        ok: false,
+        error: "Status Siap hanya bisa diubah oleh bagian produksi",
+      };
+    }
+    // Selain itu (mis. revert dari delivering/done → ready), lolos
+    // — drag-back dari kolom yang lebih maju dianggap koreksi
+    // operasional yang sah.
+  }
   const { error } = await supabase
     .from("cake_orders" as never)
     .update({ status } as never)
@@ -595,21 +786,80 @@ export async function setCakeOrderStatus(
   if (error) return { ok: false, error: error.message };
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
 }
 
-/** Production team writes only this column. */
+/**
+ * Production-team writes per-order production_status. Tahap produksi
+ * sekarang 3-tier dengan sub-role:
+ *
+ *   pending  → in_progress (Mulai produksi)   = role "baker"
+ *   in_progress → decorating (Mulai gambar)   = role "decorator"
+ *   decorating → done (Tandai selesai)        = role "decorator"
+ *
+ * Revert (Buka kembali / Undo) longgar — sub-role apapun boleh untuk
+ * koreksi cepat selama caller punya production access.
+ */
 export async function setOrderProductionStatus(
   id: string,
   status: CakeProductionStatus
 ): Promise<ActionResult> {
-  const gate = await requireCakeProductionAccess();
-  if (!gate.ok) return { ok: false, error: gate.error };
-  const supabase = adminClient();
+  // Cari current state dulu supaya gate role sesuai transisi spesifik
+  // dan supaya kita bisa cek lock dari sisi admin.
+  const adminDb = adminClient();
+  const { data: row } = await adminDb
+    .from("cake_orders" as never)
+    .select("production_status, status, archived_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "Order tidak ditemukan" };
+  const r = row as unknown as {
+    production_status: CakeProductionStatus;
+    status: string;
+    archived_at: string | null;
+  };
+  const current = r.production_status;
+
+  // Pilih gate sesuai forward-transition; revert lewat gate umum.
+  const isForward =
+    (current === "pending" && status === "in_progress") ||
+    (current === "in_progress" && status === "decorating") ||
+    (current === "decorating" && status === "done");
+  if (isForward) {
+    const role: "baker" | "decorator" =
+      current === "pending" ? "baker" : "decorator";
+    const gate = await requireCakeProductionRole(role);
+    if (!gate.ok) return { ok: false, error: gate.error };
+  } else {
+    const gate = await requireCakeProductionAccess();
+    if (!gate.ok) return { ok: false, error: gate.error };
+  }
+
+  // Lock: kalau admin sudah pindahkan card past "ready" (delivering/
+  // done/cancelled) atau order sudah diarsipkan, bagian produksi
+  // TIDAK boleh ubah production_status lagi — pekerjaan dianggap
+  // selesai dan diserahkan ke alur pengiriman.
+  const adminLocked =
+    r.archived_at != null ||
+    r.status === "delivering" ||
+    r.status === "done" ||
+    r.status === "cancelled";
+  if (adminLocked) {
+    return {
+      ok: false,
+      error:
+        "Order sudah dipindahkan oleh admin — tidak bisa diubah dari sisi produksi",
+    };
+  }
+
   const patch: Record<string, string | null> = { production_status: status };
-  if (status === "in_progress") patch.production_started_at = new Date().toISOString();
+  if (status === "in_progress")
+    patch.production_started_at = new Date().toISOString();
+  if (status === "decorating")
+    patch.decorating_started_at = new Date().toISOString();
   if (status === "done") patch.production_done_at = new Date().toISOString();
-  const { error } = await supabase
+  const { error } = await adminDb
     .from("cake_orders" as never)
     .update(patch as never)
     .eq("id", id);
@@ -620,20 +870,33 @@ export async function setOrderProductionStatus(
   // the pre-ready states so we don't claw a delivering/done/cancelled
   // order back to ready.
   if (status === "done") {
-    await supabase
+    await adminDb
       .from("cake_orders" as never)
       .update({ status: "ready" } as never)
       .eq("id", id)
       .in("status", ["submitted", "in_progress"]);
-    // Fire-and-forget — don't block the user's status-change response
-    // on the slip-close sweep. Best-effort; sweeper catches misses.
     void maybeCloseSlipForOrder(id).catch(() => {});
+  }
+
+  // Revert dari done: kalau cake_orders.status saat ini "ready" (di-set
+  // otomatis oleh auto-advance di atas), kembalikan ke "in_progress"
+  // supaya card pindah balik ke kanban "Dikerjakan". Status lain
+  // (submitted/delivering/dst) sudah di-handle oleh adminLocked di
+  // atas — kalau lolos sampai sini, status pasti `ready` atau lebih
+  // belakang yang sudah block.
+  if (current === "done" && status !== "done") {
+    await adminDb
+      .from("cake_orders" as never)
+      .update({ status: "in_progress" } as never)
+      .eq("id", id)
+      .eq("status", "ready");
   }
 
   revalidatePath("/cake-production");
   revalidatePath("/admin/cake-production");
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
 }
 
@@ -779,6 +1042,7 @@ export async function addCakeOrderPayment(
 
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return {
     ok: true,
     data: { paymentId: (payRow as unknown as { id: string }).id },
@@ -799,6 +1063,7 @@ export async function deleteCakeOrderPayment(
   if (error) return { ok: false, error: error.message };
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
   return { ok: true };
 }
 

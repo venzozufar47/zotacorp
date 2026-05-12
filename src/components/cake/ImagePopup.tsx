@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ExternalLink, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { ExternalLink, Loader2, Minus, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 
 interface Props {
   url: string;
   alt?: string;
   onClose: () => void;
+  /** Saat diisi, popup menampilkan tombol hapus foto. Callback wajib
+   *  return Promise<{ok: boolean; error?: string}> — popup show
+   *  loading state + close kalau sukses. */
+  onDelete?: () => Promise<{ ok: boolean; error?: string }>;
 }
 
 const MIN_ZOOM = 0.25;
@@ -25,9 +29,25 @@ const MAX_ZOOM = 6;
  * - Double-click resets to fit.
  * - Escape and clicks on the dimmed backdrop close the popup.
  */
-export function ImagePopup({ url, alt, onClose }: Props) {
+export function ImagePopup({ url, alt, onClose, onDelete }: Props) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [deletePending, startDeleteTransition] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function handleDelete() {
+    if (!onDelete) return;
+    if (!confirm("Hapus foto referensi ini? Tidak bisa dibatalkan.")) return;
+    startDeleteTransition(async () => {
+      setDeleteError(null);
+      const res = await onDelete();
+      if (!res.ok) {
+        setDeleteError(res.error ?? "Gagal hapus foto");
+        return;
+      }
+      onClose();
+    });
+  }
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -177,6 +197,24 @@ export function ImagePopup({ url, alt, onClose }: Props) {
               <ExternalLink size={11} strokeWidth={2.5} />
               <span className="hidden sm:inline">Buka di tab baru</span>
             </a>
+            {onDelete && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deletePending}
+                className="flex items-center gap-1 rounded-lg border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/20 disabled:opacity-50"
+                aria-label="Hapus foto"
+              >
+                {deletePending ? (
+                  <Loader2 size={11} className="animate-spin" />
+                ) : (
+                  <Trash2 size={11} strokeWidth={2.5} />
+                )}
+                <span className="hidden sm:inline">
+                  {deletePending ? "Menghapus…" : "Hapus"}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -187,6 +225,11 @@ export function ImagePopup({ url, alt, onClose }: Props) {
             </button>
           </div>
         </div>
+        {deleteError && (
+          <div className="px-3 py-1.5 text-[11px] text-destructive bg-destructive/10 border-b border-destructive/30">
+            {deleteError}
+          </div>
+        )}
         <div
           className="flex-1 overflow-hidden bg-muted/30 flex items-center justify-center p-2 touch-none select-none"
           onWheel={onWheel}

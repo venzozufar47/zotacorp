@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format, isToday, isTomorrow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
@@ -11,6 +11,8 @@ import {
   ChevronRight,
   Archive,
   ArchiveRestore,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -19,6 +21,7 @@ import {
 } from "@/lib/actions/cake-orders.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 import { makeLabelFor } from "@/lib/cake-orders/helpers";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import { CakeOrderDetailLoader } from "./CakeOrderDetailLoader";
 import type {
   CakeOrder,
@@ -44,6 +47,10 @@ interface Props {
    *  Arsip dimana semua order sudah `done` — kanban 5 kolom hampir
    *  semua kosong dan cuma menghabiskan space. */
   flatLayout?: boolean;
+  /** Tampilkan input search di atas board. Mem-filter berdasarkan
+   *  customer name/phone + text fields (greeting card, color/shape/
+   *  decoration/accessories notes). Case-insensitive. */
+  enableSearch?: boolean;
 }
 
 interface Column {
@@ -76,17 +83,18 @@ const COLUMNS: Column[] = [
  *  current state has no quick action. Pickup orders skip the
  *  'delivering' state; delivery orders go through it.
  *
- *  NOTE: `submitted → in_progress` is INTENTIONALLY null here — that
- *  transition only happens automatically when admin sends the
- *  production slip (`sendSlip`). Kanban cards in "Baru" wait until
- *  the slip is verified + sent before moving to "Dikerjakan".
+ *  Transitions yang INTENTIONALLY null:
+ *  - `submitted → in_progress`: hanya dipicu otomatis saat admin
+ *    `sendSlip` (slip produksi terkirim ke bagian produksi).
+ *  - `in_progress → ready`: hanya dipicu otomatis saat bagian
+ *    produksi men-set `production_status='done'`. Admin/orders staff
+ *    TIDAK boleh menandai siap manual karena itu menyembunyikan apakah
+ *    kue benar-benar sudah selesai dipanggang.
  */
 function nextAction(
   order: CakeOrder,
   isPickup: boolean
 ): { label: string; target: CakeOrderStatus } | null {
-  if (order.status === "in_progress")
-    return { label: "Tandai siap", target: "ready" };
   if (order.status === "ready") {
     if (isPickup) return { label: "Sudah diambil", target: "done" };
     return { label: "Kirim sekarang", target: "delivering" };
@@ -110,6 +118,7 @@ export function CakeOrdersBoard({
   showUnarchiveButton = false,
   isAdminView = false,
   flatLayout = false,
+  enableSearch = false,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -118,8 +127,50 @@ export function CakeOrdersBoard({
   const [dragOverStatus, setDragOverStatus] =
     useState<CakeOrderStatus | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const labelFor = makeLabelFor(optionsByKind);
+
+  // Search: jangan filter (sembunyikan) card lain — admin sering perlu
+  // konteks kanban tetap utuh. Sebagai gantinya hitung set id yang
+  // match supaya UI bisa highlight + scroll ke match pertama.
+  const matchedIds = useMemo(() => {
+    if (!enableSearch) return null;
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length === 0) return null;
+    const set = new Set<string>();
+    for (const o of orders) {
+      const hay = [
+        o.customer_name,
+        o.customer_phone,
+        o.greeting_card,
+        o.shape_custom,
+        o.color_notes,
+        o.texture_notes,
+        o.decoration_notes,
+        o.accessories_notes,
+        o.delivery_address,
+      ]
+        .filter((v): v is string => typeof v === "string" && v.length > 0)
+        .join(" ")
+        .toLowerCase();
+      if (hay.includes(q)) set.add(o.id);
+    }
+    return set;
+  }, [orders, searchQuery, enableSearch]);
+  const matchCount = matchedIds?.size ?? 0;
+
+  // Scroll ke match pertama saat query berubah. Pakai data-attribute
+  // pada Card supaya selector aman terhadap tree-shake nama class.
+  useEffect(() => {
+    if (!matchedIds || matchedIds.size === 0) return;
+    const firstId = orders.find((o) => matchedIds.has(o.id))?.id;
+    if (!firstId) return;
+    const el = document.querySelector<HTMLElement>(
+      `[data-cake-order-id="${firstId}"]`
+    );
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [matchedIds, orders]);
 
   const grouped = useMemo(() => {
     const map = new Map<CakeOrderStatus, CakeOrder[]>();
@@ -149,6 +200,28 @@ export function CakeOrdersBoard({
   const moveTo = (orderId: string, target: CakeOrderStatus) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order || order.status === target) return;
+    // Kolom "Baru" & "Dikerjakan" sepenuhnya auto-only — admin tidak
+    // boleh drag card ke sana (atau ke arah sebaliknya). Reverting
+    // hanya bisa dari "Siap"/"Pengiriman" mundur ke "Selesai" atau
+    // alur normal lewat tombol next-action.
+    if (target === "submitted" || target === "in_progress") {
+      toast.error(
+        target === "submitted"
+          ? "Card tidak bisa dipindah ke kolom Baru — itu khusus pesanan masuk"
+          : "Card pindah ke Dikerjakan otomatis lewat kirim slip produksi"
+      );
+      return;
+    }
+    // Dua transition auto-only — preempt di client supaya kasir/admin
+    // dapat toast jelas, bukan generic server error setelah round-trip.
+    if (order.status === "submitted" && target === "in_progress") {
+      toast.error("Pindahkan ke Dikerjakan otomatis lewat kirim slip produksi");
+      return;
+    }
+    if (order.status === "in_progress" && target === "ready") {
+      toast.error("Hanya bagian produksi yang bisa menandai pesanan Siap");
+      return;
+    }
     startTransition(async () => {
       const res = await setCakeOrderStatus(orderId, target);
       if (!res.ok) {
@@ -207,6 +280,14 @@ export function CakeOrdersBoard({
     return (
       <div className="flex gap-3">
         <div className="flex-1 min-w-0 space-y-3">
+          {enableSearch && (
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              matchCount={matchCount}
+              totalCount={orders.length}
+            />
+          )}
           <ul className={flatGridCls}>
             {orders.map((o) => (
               <Card
@@ -217,6 +298,8 @@ export function CakeOrdersBoard({
                 onToggleArchive={toggleArchive}
                 onSelect={setSelectedOrderId}
                 isActive={selectedOrderId === o.id}
+                isMatch={matchedIds?.has(o.id) ?? false}
+                hasSearch={matchedIds != null}
                 showArchiveButton={showArchiveButton}
                 showUnarchiveButton={showUnarchiveButton}
               />
@@ -256,15 +339,28 @@ export function CakeOrdersBoard({
   return (
     <div className="flex gap-3">
       <div className="flex-1 min-w-0 space-y-3">
+        {enableSearch && (
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            matchCount={matchCount}
+            totalCount={orders.length}
+          />
+        )}
+        <UrgencyLegend />
         <div className={gridCls}>
           {COLUMNS.map((col) => {
           const list = grouped.get(col.status) ?? [];
           const isOver = dragOverStatus === col.status;
+          // Auto-only columns — drag-and-drop ke sini di-block penuh.
+          const isAutoOnly =
+            col.status === "submitted" || col.status === "in_progress";
           return (
             <div
               key={col.status}
               onDragOver={(e) => {
                 if (!canMove || !draggingId) return;
+                if (isAutoOnly) return; // jangan signal droppable
                 e.preventDefault();
                 setDragOverStatus(col.status);
               }}
@@ -309,9 +405,15 @@ export function CakeOrdersBoard({
                       onToggleArchive={toggleArchive}
                       onSelect={setSelectedOrderId}
                       isActive={selectedOrderId === o.id}
+                      isMatch={matchedIds?.has(o.id) ?? false}
+                      hasSearch={matchedIds != null}
                       showArchiveButton={showArchiveButton}
                       showUnarchiveButton={showUnarchiveButton}
-                      draggable={canMove}
+                      draggable={
+                        canMove &&
+                        o.status !== "submitted" &&
+                        o.status !== "in_progress"
+                      }
                       onDragStart={() => setDraggingId(o.id)}
                       onDragEnd={() => {
                         setDraggingId(null);
@@ -353,7 +455,13 @@ export function CakeOrdersBoard({
                       canMove={canMove}
                       onMoveTo={moveTo}
                       onSelect={setSelectedOrderId}
-                      draggable={canMove}
+                      isMatch={matchedIds?.has(o.id) ?? false}
+                      hasSearch={matchedIds != null}
+                      draggable={
+                        canMove &&
+                        o.status !== "submitted" &&
+                        o.status !== "in_progress"
+                      }
                       onDragStart={() => setDraggingId(o.id)}
                       onDragEnd={() => setDraggingId(null)}
                     />
@@ -409,6 +517,8 @@ function Card({
   onToggleArchive,
   onSelect,
   isActive,
+  isMatch,
+  hasSearch,
   showArchiveButton,
   showUnarchiveButton,
   dimmed,
@@ -423,6 +533,10 @@ function Card({
   onToggleArchive?: (orderId: string, archive: boolean) => void;
   onSelect?: (orderId: string) => void;
   isActive?: boolean;
+  /** True kalau card ini cocok dengan query search (jika ada). */
+  isMatch?: boolean;
+  /** True kalau ada query search aktif (untuk dim non-match). */
+  hasSearch?: boolean;
   showArchiveButton?: boolean;
   showUnarchiveButton?: boolean;
   dimmed?: boolean;
@@ -441,11 +555,71 @@ function Card({
   const isPickup = deliveryLabel.toLowerCase().includes("pickup");
   const next = nextAction(order, isPickup);
 
+  // Urgency color berdasarkan selisih hari (Jakarta) antara
+  // scheduled_at dan hari ini:
+  //   <0  (sudah lewat)         → merah  (kelewat dikerjakan)
+  //   0–1 (hari ini / besok)    → hijau  (prioritas tinggi)
+  //   2–5 (minggu ini)          → kuning (perhatian)
+  //   >5                        → default card
+  // `subText` ikut shift saat ada tint: muted-foreground (abu-abu)
+  // kontrasnya buruk di atas pink/emerald/warning — pakai foreground
+  // dengan opacity supaya tetap readable.
+  const urgency = (() => {
+    const today = jakartaDateString(new Date());
+    const sched = jakartaDateString(dt);
+    const todayMs = Date.UTC(
+      Number(today.slice(0, 4)),
+      Number(today.slice(5, 7)) - 1,
+      Number(today.slice(8, 10))
+    );
+    const schedMs = Date.UTC(
+      Number(sched.slice(0, 4)),
+      Number(sched.slice(5, 7)) - 1,
+      Number(sched.slice(8, 10))
+    );
+    const diff = Math.round((schedMs - todayMs) / 86_400_000);
+    if (diff < 0)
+      return {
+        bg: "bg-destructive/25",
+        sub: "text-foreground/75",
+        chipRing: "ring-1 ring-foreground/20",
+      };
+    if (diff <= 1)
+      return {
+        bg: "bg-pop-emerald/30",
+        sub: "text-foreground/75",
+        chipRing: "ring-1 ring-foreground/20",
+      };
+    if (diff <= 5)
+      return {
+        // Warning token (#FBBF24 amber default) butuh opacity penuh
+        // supaya kuning jelas terpisah dari card default — opacity
+        // parsial bleed jadi cream pucat.
+        bg: "bg-warning",
+        sub: "text-foreground/85",
+        chipRing: "ring-1 ring-foreground/20",
+      };
+    return {
+      bg: "bg-card",
+      sub: "text-muted-foreground",
+      chipRing: "",
+    };
+  })();
+
+  // Search highlight: card yang match dapat ring tebal kuning + glow,
+  // non-match di-redam (opacity & saturate) supaya match menonjol tapi
+  // konteks kanban masih terlihat.
+  const matchHighlight = isMatch
+    ? "ring-4 ring-warning ring-offset-1 ring-offset-background"
+    : "";
+  const nonMatchDim =
+    hasSearch && !isMatch ? "opacity-40 saturate-50" : "";
   return (
     <li
+      data-cake-order-id={order.id}
       className={`rounded-xl border-2 ${
         isActive ? "border-primary ring-2 ring-primary/30" : "border-foreground"
-      } bg-card p-2.5 hover:bg-muted/30 transition-colors space-y-1.5 ${
+      } ${urgency.bg} ${matchHighlight} ${nonMatchDim} p-2.5 hover:brightness-95 transition-[filter,background-color,opacity] space-y-1.5 ${
         dimmed ? "opacity-60" : ""
       } ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
       draggable={draggable}
@@ -463,7 +637,7 @@ function Card({
               {order.customer_name}
             </div>
             {order.customer_phone && (
-              <div className="text-[10px] text-muted-foreground truncate">
+              <div className={`text-[10px] truncate ${urgency.sub}`}>
                 📱 {order.customer_phone}
               </div>
             )}
@@ -473,19 +647,24 @@ function Card({
           </span>
         </div>
 
-        <div className="text-[11px] text-muted-foreground truncate">
+        <div className={`text-[11px] truncate ${urgency.sub}`}>
           {labelFor("base_cake", order.base_cake_option_id)}
           {" · "}
           {labelFor("shape", order.shape_option_id)}
           {order.shape_custom ? ` (${order.shape_custom})` : ""}
+          {order.dimension_cm != null ? (
+            <span className="ml-1 inline-block rounded-full border border-foreground bg-card px-1 py-0 text-[10px] font-semibold tabular-nums text-foreground align-middle">
+              {order.dimension_cm} cm
+            </span>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <span className={`inline-flex items-center gap-1 ${urgency.sub}`}>
             <CalendarClock size={10} className="shrink-0" />
             {dateLabel}
           </span>
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <span className={`inline-flex items-center gap-1 ${urgency.sub}`}>
             <Truck size={10} className="shrink-0" />
             {deliveryLabel}
           </span>
@@ -610,6 +789,10 @@ function ProductionChip({
       label: "Diproduksi",
       cls: "bg-tertiary/40 text-foreground border-foreground",
     },
+    decorating: {
+      label: "Digambar",
+      cls: "bg-pop-pink/30 text-foreground border-foreground",
+    },
     done: {
       label: "Prod. selesai",
       cls: "bg-pop-emerald/30 text-foreground border-foreground",
@@ -626,5 +809,86 @@ function ProductionChip({
     >
       {m.label}
     </span>
+  );
+}
+
+/**
+ * Mini legend untuk urgency color di card kanban. Selalu visible
+ * supaya admin tidak perlu menebak arti warna. Kompak: 4 chip
+ * berwarna + label di satu baris (wrap di mobile).
+ */
+function UrgencyLegend() {
+  // Swatch size kecil (3×3) jadi tint /30 hampir tak terlihat —
+  // pakai opacity penuh + thin border foreground supaya semua warna
+  // (terutama warning kuning yang light) jelas.
+  const items: Array<{ bg: string; label: string }> = [
+    { bg: "bg-destructive", label: "Lewat" },
+    { bg: "bg-pop-emerald", label: "Hari ini / besok" },
+    { bg: "bg-warning", label: "2–5 hari lagi" },
+    { bg: "bg-card", label: ">5 hari" },
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+      <span className="font-semibold uppercase tracking-wider">Warna kartu:</span>
+      {items.map((it) => (
+        <span key={it.label} className="inline-flex items-center gap-1">
+          <span
+            className={`inline-block size-3 rounded border border-foreground ${it.bg}`}
+            aria-hidden
+          />
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SearchBar({
+  value,
+  onChange,
+  matchCount,
+  totalCount,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  matchCount: number;
+  totalCount: number;
+}) {
+  const filtering = value.trim().length > 0;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative flex-1 min-w-0">
+        <Search
+          size={14}
+          strokeWidth={2.5}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+        />
+        <input
+          type="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Cari nama, HP, kartu ucapan…"
+          className="w-full h-10 sm:h-9 pl-9 pr-14 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-foreground outline-none"
+          aria-label="Cari pesanan"
+        />
+        {/* Counter ditempel ke dalam input area di kanan (sebelum X)
+            supaya tidak mendorong input shrink di mobile sempit. */}
+        {filtering && (
+          <span className="absolute right-9 top-1/2 -translate-y-1/2 text-[10px] tabular-nums text-muted-foreground shrink-0 pointer-events-none">
+            {matchCount}/{totalCount}
+          </span>
+        )}
+        {filtering && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Bersihkan pencarian"
+          >
+            <X size={12} strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

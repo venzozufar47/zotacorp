@@ -88,6 +88,7 @@ export interface AddCakePaymentInput {
 export type CakeProductionStatus =
   | "pending"
   | "in_progress"
+  | "decorating"
   | "done"
   | "cancelled";
 
@@ -108,6 +109,10 @@ export interface CakeOrder {
   base_price_idr: number;
   shape_option_id: string;
   shape_custom: string | null;
+  /** Diameter / sisi terpanjang kue dalam cm. Null = belum diisi
+   *  admin. Dipakai untuk rekap baking — kue dengan ukuran sama
+   *  + base + shape sama dianggap satu batch. */
+  dimension_cm: number | null;
   filling_option_id: string | null;
 
   color_notes: string | null;
@@ -147,6 +152,7 @@ export interface CakeOrder {
 
   production_status: CakeProductionStatus;
   production_started_at: string | null;
+  decorating_started_at: string | null;
   production_done_at: string | null;
 
   status: CakeOrderStatus;
@@ -199,6 +205,8 @@ export interface CakeSlipSnapshotItem {
   baseLabel: string;
   shapeLabel: string;
   shapeCustom: string | null;
+  /** Diameter dalam cm. Null = tidak dispesifikasi. */
+  dimensionCm: number | null;
   fillingLabel: string | null;
   colorNotes: string | null;
   textureNotes: string | null;
@@ -248,6 +256,8 @@ export interface CreateCakeOrderInput {
   baseCakeOptionId: string;
   shapeOptionId: string;
   shapeCustom?: string | null;
+  /** Diameter / ukuran sisi terpanjang kue (cm). Optional. */
+  dimensionCm?: number | null;
   fillingOptionId?: string | null;
 
   colorNotes?: string | null;
