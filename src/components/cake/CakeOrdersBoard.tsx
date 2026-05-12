@@ -212,12 +212,8 @@ export function CakeOrdersBoard({
       );
       return;
     }
-    // Dua transition auto-only — preempt di client supaya kasir/admin
-    // dapat toast jelas, bukan generic server error setelah round-trip.
-    if (order.status === "submitted" && target === "in_progress") {
-      toast.error("Pindahkan ke Dikerjakan otomatis lewat kirim slip produksi");
-      return;
-    }
+    // `in_progress → ready` adalah auto-advance dari sisi produksi
+    // (production_status='done'); admin tidak boleh menggesernya manual.
     if (order.status === "in_progress" && target === "ready") {
       toast.error("Hanya bagian produksi yang bisa menandai pesanan Siap");
       return;
