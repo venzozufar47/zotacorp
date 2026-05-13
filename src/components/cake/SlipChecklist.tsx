@@ -425,7 +425,7 @@ function Detail({
   return (
     <div className="grid grid-cols-[60px_1fr] gap-1 text-[11px] leading-tight">
       <span className="text-muted-foreground font-medium">{label}</span>
-      <span className="break-words">{children}</span>
+      <span className="break-words whitespace-pre-line">{children}</span>
     </div>
   );
 }

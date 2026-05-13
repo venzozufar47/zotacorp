@@ -39,6 +39,60 @@ export const HAENGBOCAKE_DEBIT_CATEGORIES = [
 export const HAENGBOCAKE_BRANCHES = ["Pusat", "Semarang", "Pare"] as const;
 
 /**
+ * Yeobo Space — workspace business unit dengan 3 cabang fisik
+ * (Tlogosari/Tembalang/Jebres) + "All" untuk transaksi level-perusahaan
+ * yang dibagi rata ke tiga cabang. Daftar kategori meng-cermin
+ * Haengbocake dengan tambahan: "Revenue" (label income khas Yeobo
+ * yang lebih luas dari sekadar "Sales") dan dua kategori cash-flow
+ * non-operasional khusus utang pemilik.
+ */
+export const YEOBO_SPACE_CREDIT_CATEGORIES = [
+  "Revenue",
+  "Other Revenue",
+  "Investment",
+  "Owner's Debt",
+  "Wealth Transfer",
+] as const;
+
+export const YEOBO_SPACE_DEBIT_CATEGORIES = [
+  "Cost of Goods Sold",
+  "Office Supplies",
+  "Shipping Cost",
+  "Advertising",
+  "Bank Administration",
+  "Utilities",
+  "Maintenance",
+  "Asset Investment",
+  "Subscription",
+  "Salaries & Wages",
+  "Rent",
+  "Sales Refund",
+  "Dividend",
+  "Owner's Debt Repayment",
+  "Wealth Transfer",
+] as const;
+
+export const YEOBO_SPACE_BRANCHES = [
+  "All",
+  "Tlogosari",
+  "Tembalang",
+  "Jebres",
+] as const;
+
+/**
+ * Cash flows non-operasional Yeobo Space — capital movement, bukan
+ * revenue/expense operasional. Dipakai PnL aggregator untuk excluding
+ * dari operating profit yang sama seperti Haengbocake.
+ */
+export const YEOBO_SPACE_NON_OPERATING_CATEGORIES = [
+  "Wealth Transfer",
+  "Investment",
+  "Dividend",
+  "Owner's Debt",
+  "Owner's Debt Repayment",
+] as const;
+
+/**
  * Flat category list for cash rekening under Haengbocake.
  * Cash flow at register-level doesn't follow accounting-style
  * credit/debit split — the same label (e.g. "Pinjaman") applies
@@ -92,6 +146,7 @@ export const HAENGBOCAKE_NON_OPERATING_CATEGORIES = [
 
 export function getNonOperatingCategories(bu: string): readonly string[] {
   if (bu === "Haengbocake") return HAENGBOCAKE_NON_OPERATING_CATEGORIES;
+  if (bu === "Yeobo Space") return YEOBO_SPACE_NON_OPERATING_CATEGORIES;
   return [];
 }
 
@@ -177,6 +232,11 @@ const BU_CATEGORY_PRESETS: Record<string, CategoryPresets> = {
     credit: HAENGBOCAKE_CREDIT_CATEGORIES,
     debit: HAENGBOCAKE_DEBIT_CATEGORIES,
     branches: HAENGBOCAKE_BRANCHES,
+  },
+  "Yeobo Space": {
+    credit: YEOBO_SPACE_CREDIT_CATEGORIES,
+    debit: YEOBO_SPACE_DEBIT_CATEGORIES,
+    branches: YEOBO_SPACE_BRANCHES,
   },
 };
 

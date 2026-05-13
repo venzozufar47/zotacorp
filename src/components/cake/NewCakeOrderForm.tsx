@@ -880,11 +880,20 @@ function PhotoNoteField({
   return (
     <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
       <FieldInline label={label}>
-        <input
-          type="text"
+        <textarea
           value={notes}
           onChange={(e) => onNotes(e.target.value)}
-          className={CAKE_INPUT}
+          rows={1}
+          // Auto-grow saat user mengetik baris baru. minHeight ikut
+          // tinggi 1 baris CAKE_INPUT — kalau kosong terlihat sama
+          // dengan field input lain.
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+          }}
+          className={`${CAKE_INPUT} resize-none overflow-hidden whitespace-pre-wrap`}
+          placeholder="Tekan Enter untuk baris baru…"
         />
       </FieldInline>
       <div className="pt-[18px]">

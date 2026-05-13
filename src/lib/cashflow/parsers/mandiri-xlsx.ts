@@ -171,13 +171,19 @@ export async function parseMandiriXlsxStatement(
 /**
  * Break a multi-line Mandiri keterangan into our four fields.
  *
- * Heuristic (based on sample formats):
- *   1 line:  transactionDetails = line, others empty
- *   2 lines: transactionDetails = line 1, sourceDestination = line 2
- *   3 lines: line 1 = details, lines 2+3 = counterparty
- *   4+ lines: line 1 = details, middle lines = counterparty,
- *             last line = notes IF it looks like free-text (no long
- *             numeric tokens — account numbers tend to fail that).
+ * Heuristik:
+ *   1 line:  transactionDetails = line, lain kosong.
+ *   2 lines: transactionDetails = line 1, sourceDestination = line 2.
+ *   3+ lines: line 1 = details; line terakhir di-cek apakah
+ *     "looks like notes" — bebas dari ID numerik panjang (≥ 6 digit
+ *     berturut-turut). Account number / reference biasanya gagal cek
+ *     ini, jadi tetap ikut sourceDestination.
+ *
+ * Catatan: sebelumnya threshold-nya `rest.length >= 3` (butuh ≥ 4
+ * baris keterangan), tapi Mandiri sering nge-pack nama + nomor rekening
+ * di satu baris sehingga free-text notes muncul di baris ke-3 dari
+ * keterangan 3-baris. Lower threshold ke 2 biar kasus 3-baris juga
+ * terdeteksi.
  */
 function splitKeterangan(raw: string): {
   transactionDetails: string | undefined;
@@ -204,16 +210,13 @@ function splitKeterangan(raw: string): {
     };
   }
   const [details, ...rest] = lines;
-  if (rest.length >= 3) {
+  if (rest.length >= 2) {
     const last = rest[rest.length - 1];
-    // "No long numeric id" heuristic — typical account/reference IDs
-    // are ≥6 digits of unbroken numbers. Free-text notes rarely hit
-    // that pattern.
-    const looksLikeNotes = last.length > 0 && !/\b\d{6,}\b/.test(last);
+    const looksLikeNotes = last.length > 0 && !/\d{6,}/.test(last);
     if (looksLikeNotes) {
       return {
         transactionDetails: details,
-        sourceDestination: rest.slice(0, -1).join(" "),
+        sourceDestination: stripAccountNumber(rest.slice(0, -1).join(" ")),
         notes: last,
         description,
       };
@@ -221,10 +224,26 @@ function splitKeterangan(raw: string): {
   }
   return {
     transactionDetails: details,
-    sourceDestination: rest.join(" "),
+    sourceDestination: stripAccountNumber(rest.join(" ")),
     notes: undefined,
     description,
   };
+}
+
+/**
+ * Buang token nomor rekening dari source_destination — angka ≥ 6 digit
+ * yang berdiri sendiri (tidak menempel pada kata) di-strip. Nama bank
+ * + nama pemilik tetap. Contoh:
+ *   "FLIPTECH LENTERA INS 1570006217393" → "FLIPTECH LENTERA INS"
+ *   "DANA001031280474060"                → "DANA001031280474060"  (menempel, tidak di-strip)
+ */
+function stripAccountNumber(s: string): string | undefined {
+  if (!s) return undefined;
+  const cleaned = s
+    .replace(/\s+\d{6,}\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || undefined;
 }
 
 function asAmount(cell: Cell): number {

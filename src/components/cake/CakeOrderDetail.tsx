@@ -30,6 +30,7 @@ import { formatIDR } from "@/lib/cashflow/format";
 import { makeLabelFor } from "@/lib/cake-orders/helpers";
 import { ImagePopup } from "./ImagePopup";
 import { ImageDropField } from "./ImageDropField";
+import { NotesText } from "./NotesText";
 import { NewCakeOrderForm } from "./NewCakeOrderForm";
 import type {
   CakeAttachmentField,
@@ -946,11 +947,7 @@ function SpecWithPhotos({
     <div className="grid grid-cols-[72px_1fr] sm:grid-cols-[80px_1fr] gap-2 items-start text-sm">
       <span className="text-xs text-muted-foreground pt-0.5">{label}</span>
       <div className="min-w-0 space-y-1.5">
-        {value && (
-          <p className="text-foreground break-words leading-snug">
-            {value}
-          </p>
-        )}
+        {value && <NotesText value={value} />}
         {photos.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {photos.map((p) => (

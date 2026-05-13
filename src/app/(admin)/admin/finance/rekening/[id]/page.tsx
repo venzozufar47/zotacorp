@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/cashflow.actions";
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
+import { BranchBreakdownPanel } from "@/components/admin/finance/BranchBreakdownPanel";
 import { getCategoryPresets, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { formatIDR } from "@/lib/cashflow/format";
 import { verifyBalance } from "@/lib/cashflow/parsers/shared";
@@ -296,6 +297,21 @@ export default async function RekeningDetailPage({
             debit: t.debit,
             credit: t.credit,
             category: t.category,
+          }))}
+          businessUnit={account.business_unit}
+        />
+      )}
+
+      {/* Per-cabang panel — hanya dirender untuk BU dengan auto-split
+          semantik (saat ini Yeobo Space). Transaksi cabang="All"
+          dibagi rata ke cabang-cabang fisik sebelum agregasi. */}
+      {isAdmin && (
+        <BranchBreakdownPanel
+          transactions={txList.map((t) => ({
+            date: t.date,
+            debit: t.debit,
+            credit: t.credit,
+            branch: t.branch,
           }))}
           businessUnit={account.business_unit}
         />
