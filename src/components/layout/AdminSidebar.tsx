@@ -17,6 +17,7 @@ import {
   Radio,
   Cake,
   Factory,
+  Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -110,7 +111,10 @@ export function AdminSidebar({
     },
     {
       label: "System",
-      items: [{ href: "/admin/settings", icon: Settings, label: t.nav.settings }],
+      items: [
+        { href: "/admin/settings", icon: Settings, label: t.nav.settings },
+        { href: "/admin/backups", icon: Database, label: "Backups" },
+      ],
     },
   ];
 
