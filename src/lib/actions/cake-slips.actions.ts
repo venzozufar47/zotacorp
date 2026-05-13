@@ -9,6 +9,7 @@ import {
   type ActionResult,
 } from "./_gates";
 import { getCurrentUser } from "@/lib/supabase/cached";
+import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   jakartaDateMinusDays,
@@ -19,6 +20,7 @@ import {
   diffSnapshots,
 } from "@/lib/cake-orders/slip-snapshot";
 import type {
+  CakeBranch,
   CakeOptionsByKind,
   CakeOrder,
   CakeOrderAttachment,
@@ -27,6 +29,7 @@ import type {
   CakeSlipSnapshot,
   CakeSlipSnapshotItem,
 } from "@/lib/cake-orders/types";
+import { parseCakeBranch } from "@/lib/cake-orders/types";
 
 /**
  * Slip lifecycle (post-rework):
@@ -98,7 +101,7 @@ export interface TomorrowSlipBundle {
  */
 export async function getOrCreateTomorrowSlip(
   targetDateArg?: string,
-  branchArg?: "pare" | "semarang"
+  branchArg?: CakeBranch
 ): Promise<ActionResult<TomorrowSlipBundle>> {
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -110,8 +113,7 @@ export async function getOrCreateTomorrowSlip(
     typeof targetDateArg === "string" && /^\d{4}-\d{2}-\d{2}$/.test(targetDateArg)
       ? targetDateArg
       : tomorrowYmd();
-  const branch: "pare" | "semarang" =
-    branchArg === "semarang" ? "semarang" : "pare";
+  const branch = parseCakeBranch(branchArg);
 
   // Find or insert the slip row untuk (date, branch).
   let slip: CakeProductionSlip | null = null;
@@ -556,39 +558,28 @@ export async function acknowledgeSlipDiff(
 export async function listMySlips(): Promise<
   ActionResult<CakeProductionSlip[]>
 > {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Not signed in" };
+  const access = await getMyCakeAccess();
+  if (!access.hasOrders && !access.hasProduction) {
+    return { ok: false, error: "Not signed in" };
+  }
   // Production lobby shows slips that have been (re-)sent at least
-  // once. 'reopened' is included so a slip the production team
-  // already received doesn't disappear while admin is editing — they
-  // keep seeing the previous snapshot via last_sent_snapshot.
+  // once. 'reopened' included supaya slip yang sedang admin edit
+  // tetap muncul — production keep seeing the previous snapshot via
+  // last_sent_snapshot.
   //
   // Filter by branch: tim produksi cuma lihat slip cabangnya. User
   // dengan scope 'orders' (admin-equivalent) lihat semua.
   const supabase = await createServerClient();
-  const { data: accessRows } = await supabase
-    .from("cake_access_assignments" as never)
-    .select("scope, branch")
-    .eq("user_id", user.id);
-  const access = (accessRows ?? []) as unknown as Array<{
-    scope: string;
-    branch: "pare" | "semarang" | null;
-  }>;
-  const hasOrdersScope = access.some((r) => r.scope === "orders");
-  const myBranches = access
-    .filter((r) => r.scope === "production" && r.branch)
-    .map((r) => r.branch as "pare" | "semarang");
-
   let q = supabase
     .from("cake_production_slips" as never)
     .select("*")
     .in("status", ["sent", "received", "reopened", "closed"])
     .not("last_sent_snapshot", "is", null);
-  if (!hasOrdersScope) {
-    if (myBranches.length === 0) {
+  if (!access.hasOrders) {
+    if (access.productionBranches.length === 0) {
       return { ok: true, data: [] };
     }
-    q = q.in("branch", myBranches);
+    q = q.in("branch", access.productionBranches);
   }
   const { data, error } = await q.order("target_date", { ascending: false });
   if (error) return { ok: false, error: error.message };

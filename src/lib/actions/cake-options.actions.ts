@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { requireAdmin, type ActionResult } from "./_gates";
-import type {
-  CakeBaseDiameterPrice,
-  CakeDiameterOption,
-  CakeOption,
-  CakeOptionKind,
-  CakeOptionsByKind,
+import {
+  branchPriceCol,
+  type CakeBaseDiameterPrice,
+  type CakeBranch,
+  type CakeDiameterOption,
+  type CakeOption,
+  type CakeOptionKind,
+  type CakeOptionsByKind,
 } from "@/lib/cake-orders/types";
 
 /**
@@ -289,79 +291,21 @@ export async function listCakeBasePrices(): Promise<
 }
 
 /**
- * Upsert satu sel matriks (kolom yang sesuai branch). Kalau setelah
- * update kedua kolom (Pare + Semarang) jadi null, row dihapus supaya
- * matriks tetap rapi.
- */
-export async function setCakeBasePrice(input: {
-  base_option_id: string;
-  diameter_id: string;
-  branch: "pare" | "semarang";
-  price_idr: number | null;
-}): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
-  const supabase = adminClient();
-  const col = input.branch === "pare" ? "price_pare_idr" : "price_semarang_idr";
-  const otherCol =
-    input.branch === "pare" ? "price_semarang_idr" : "price_pare_idr";
-  const next =
-    input.price_idr == null ? null : Math.max(0, Math.round(input.price_idr));
-
-  // Cek sel existing untuk memutuskan upsert / update / delete.
-  const { data: existing } = await supabase
-    .from("cake_base_diameter_prices" as never)
-    .select("*")
-    .eq("base_option_id", input.base_option_id)
-    .eq("diameter_id", input.diameter_id)
-    .maybeSingle();
-  const existingRow = existing as
-    | (CakeBaseDiameterPrice & Record<string, unknown>)
-    | null;
-  const otherVal = (existingRow?.[otherCol] as number | null) ?? null;
-
-  if (next == null && otherVal == null) {
-    // Kedua kolom null → hapus row biar tidak nyampah.
-    const { error } = await supabase
-      .from("cake_base_diameter_prices" as never)
-      .delete()
-      .eq("base_option_id", input.base_option_id)
-      .eq("diameter_id", input.diameter_id);
-    if (error) return { ok: false, error: error.message };
-  } else {
-    const { error } = await supabase
-      .from("cake_base_diameter_prices" as never)
-      .upsert(
-        {
-          base_option_id: input.base_option_id,
-          diameter_id: input.diameter_id,
-          [col]: next,
-          [otherCol]: otherVal,
-          updated_at: new Date().toISOString(),
-        } as never,
-        { onConflict: "base_option_id,diameter_id" }
-      );
-    if (error) return { ok: false, error: error.message };
-  }
-  revalidatePath("/admin/cake-orders/options");
-  revalidatePath("/cake-orders");
-  return { ok: true };
-}
-
-/**
  * Bulk-upsert sel matriks dalam satu round-trip. Tiap entry hanya
  * meng-update salah satu kolom (Pare ATAU Semarang); kolom lain
  * preserved dari row existing. Row dihapus kalau setelah update
  * kedua kolom null. Cocok untuk tombol "Simpan" terpusat di UI
  * matriks supaya admin tidak perlu menunggu round-trip per sel.
  */
+export interface CakeBasePriceChange {
+  base_option_id: string;
+  diameter_id: string;
+  branch: CakeBranch;
+  price_idr: number | null;
+}
+
 export async function setCakeBasePricesBulk(
-  changes: Array<{
-    base_option_id: string;
-    diameter_id: string;
-    branch: "pare" | "semarang";
-    price_idr: number | null;
-  }>
+  changes: CakeBasePriceChange[]
 ): Promise<ActionResult<{ updated: number }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -408,7 +352,7 @@ export async function setCakeBasePricesBulk(
       c.price_idr == null ? null : Math.max(0, Math.round(c.price_idr));
     merged.set(k, {
       ...cur,
-      [c.branch === "pare" ? "price_pare_idr" : "price_semarang_idr"]: next,
+      [branchPriceCol(c.branch)]: next,
     });
   }
 

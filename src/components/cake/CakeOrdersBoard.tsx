@@ -23,6 +23,7 @@ import { formatIDR } from "@/lib/cashflow/format";
 import { makeLabelFor } from "@/lib/cake-orders/helpers";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { CakeOrderDetailLoader } from "./CakeOrderDetailLoader";
+import { BranchBadge } from "./BranchBadge";
 import type {
   CakeBaseDiameterPrice,
   CakeDiameterOption,
@@ -151,6 +152,18 @@ export function CakeOrdersBoard({
     [orders, branchFilter]
   );
 
+  // Counts untuk pill filter — satu reduce supaya tidak 2× filter
+  // per render saat board ramai card.
+  const branchCounts = useMemo(() => {
+    let pare = 0;
+    let semarang = 0;
+    for (const o of orders) {
+      if (o.branch === "pare") pare++;
+      else if (o.branch === "semarang") semarang++;
+    }
+    return { all: orders.length, pare, semarang };
+  }, [orders]);
+
   const labelFor = makeLabelFor(optionsByKind);
 
   // Search: jangan filter (sembunyikan) card lain — admin sering perlu
@@ -215,7 +228,7 @@ export function CakeOrdersBoard({
       );
     }
     return map;
-  }, [orders]);
+  }, [visibleOrders]);
 
   const cancelled = grouped.get("cancelled") ?? [];
 
@@ -309,11 +322,7 @@ export function CakeOrdersBoard({
           <BranchFilterPills
             value={branchFilter}
             onChange={setBranchFilter}
-            counts={{
-              all: orders.length,
-              pare: orders.filter((o) => o.branch === "pare").length,
-              semarang: orders.filter((o) => o.branch === "semarang").length,
-            }}
+            counts={branchCounts}
           />
           <ul className={flatGridCls}>
             {visibleOrders.map((o) => (
@@ -381,11 +390,7 @@ export function CakeOrdersBoard({
         <BranchFilterPills
           value={branchFilter}
           onChange={setBranchFilter}
-          counts={{
-            all: orders.length,
-            pare: orders.filter((o) => o.branch === "pare").length,
-            semarang: orders.filter((o) => o.branch === "semarang").length,
-          }}
+          counts={branchCounts}
         />
         <UrgencyLegend />
         <div className={gridCls}>
@@ -678,16 +683,7 @@ function Card({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span
-                className={`inline-block rounded-full border border-foreground px-1.5 py-0 text-[9px] font-semibold leading-tight ${
-                  order.branch === "pare"
-                    ? "bg-pop-emerald/30"
-                    : "bg-pop-pink/30"
-                }`}
-                title={`Cabang ${order.branch}`}
-              >
-                {order.branch === "pare" ? "Pare" : "Sem"}
-              </span>
+              <BranchBadge branch={order.branch} short />
               <div className="font-semibold text-sm text-foreground truncate">
                 {order.customer_name}
               </div>

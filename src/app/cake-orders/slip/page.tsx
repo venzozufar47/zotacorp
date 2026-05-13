@@ -10,6 +10,7 @@ import {
   listCakeBasePrices,
 } from "@/lib/actions/cake-options.actions";
 import { SlipPreview } from "@/components/cake/SlipPreview";
+import { parseCakeBranch } from "@/lib/cake-orders/types";
 import {
   jakartaDateMinusDays,
   jakartaDateString,
@@ -38,8 +39,7 @@ export default async function EmployeeSlipPage({
   const defaultDate = jakartaDateMinusDays(today, -1);
   const requestedDate =
     sp.date && ISO_DATE.test(sp.date) ? sp.date : defaultDate;
-  const branch: "pare" | "semarang" =
-    sp.branch === "semarang" ? "semarang" : "pare";
+  const branch = parseCakeBranch(sp.branch);
 
   const [bundleRes, optsRes, diaRes, priceRes] = await Promise.all([
     getOrCreateTomorrowSlip(requestedDate, branch),

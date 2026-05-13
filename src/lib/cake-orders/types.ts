@@ -353,6 +353,27 @@ export const CAKE_BRANCH_LABELS: Record<CakeBranch, string> = {
   semarang: "Semarang",
 };
 
+/** Tailwind bg utility per branch — dipakai oleh badge / pill / toggle
+ *  supaya warna konsisten di seluruh UI. */
+export const CAKE_BRANCH_BG: Record<CakeBranch, string> = {
+  pare: "bg-pop-emerald/30",
+  semarang: "bg-pop-pink/30",
+};
+
+/** Coerce nilai dari user-input / URL search params jadi CakeBranch
+ *  yang valid. Default 'pare' supaya aplikasi (Haengbocake Pare)
+ *  tetap dapat slip kerja meski admin memasukkan param sembarangan. */
+export function parseCakeBranch(v: unknown): CakeBranch {
+  return v === "semarang" ? "semarang" : "pare";
+}
+
+/** Nama kolom harga di `cake_base_diameter_prices` per branch. */
+export function branchPriceCol(
+  b: CakeBranch
+): "price_pare_idr" | "price_semarang_idr" {
+  return b === "pare" ? "price_pare_idr" : "price_semarang_idr";
+}
+
 /** One cell in the (base × diameter) price matrix. Setiap sel
  *  menyimpan dua harga (Pare + Semarang); null = belum diset
  *  untuk cabang tersebut. */

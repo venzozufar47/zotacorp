@@ -15,6 +15,7 @@
  * saat resolusi harga baru.
  */
 
+import { branchPriceCol } from "./types";
 import type {
   CakeBaseDiameterPrice,
   CakeBranch,
@@ -55,7 +56,7 @@ export function resolveBasePrice({
       const cell = prices.find(
         (p) => p.base_option_id === baseOption.id && p.diameter_id === dia.id
       );
-      const col = branch === "pare" ? cell?.price_pare_idr : cell?.price_semarang_idr;
+      const col = cell?.[branchPriceCol(branch)];
       if (col != null) return { price: Math.max(0, col), source: "matrix" };
     }
   }

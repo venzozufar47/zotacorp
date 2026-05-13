@@ -9,6 +9,7 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { listMySlips } from "@/lib/actions/cake-slips.actions";
 import { SlipStatusBadge } from "@/components/cake/SlipStatusBadge";
+import { BranchBadge } from "@/components/cake/BranchBadge";
 import type { CakeProductionSlipStatus } from "@/lib/cake-orders/types";
 
 /**
@@ -73,15 +74,7 @@ export default async function CakeProductionPage() {
                       "EEEE, d MMM yyyy",
                       { locale: idLocale }
                     )}
-                    <span
-                      className={`inline-block rounded-full border border-foreground px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide ${
-                        s.branch === "pare"
-                          ? "bg-pop-emerald/40"
-                          : "bg-pop-pink/40"
-                      }`}
-                    >
-                      {s.branch === "pare" ? "Pare" : "Semarang"}
-                    </span>
+                    <BranchBadge branch={s.branch} size="sm" />
                   </div>
                   <div className="mt-0.5">
                     <SlipStatusBadge

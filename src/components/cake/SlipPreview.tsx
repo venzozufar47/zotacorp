@@ -34,6 +34,7 @@ import { SlipStatusBadge } from "@/components/cake/SlipStatusBadge";
 import { NewCakeOrderForm } from "@/components/cake/NewCakeOrderForm";
 import type {
   CakeBaseDiameterPrice,
+  CakeBranch,
   CakeDiameterOption,
   CakeOrder,
   CakeOrderAttachment,
@@ -55,7 +56,7 @@ interface Props {
    *  "hari ini / besok / kemarin / 3 hari lagi". */
   todayYmd: string;
   /** Cabang aktif yang slip-nya sedang dipreview. */
-  branch: "pare" | "semarang";
+  branch: CakeBranch;
 }
 
 /**
@@ -192,7 +193,7 @@ export function SlipPreview({
   const { relativeLabel, banner } = describeDayDiff(dayDiff);
   const targetDateInput = targetDate;
 
-  function gotoSlip(ymd: string, b: "pare" | "semarang") {
+  function gotoSlip(ymd: string, b: CakeBranch) {
     const params = new URLSearchParams();
     if (ymd) params.set("date", ymd);
     params.set("branch", b);
@@ -201,7 +202,7 @@ export function SlipPreview({
   function gotoDate(ymd: string) {
     gotoSlip(ymd, branch);
   }
-  function gotoBranch(b: "pare" | "semarang") {
+  function gotoBranch(b: CakeBranch) {
     gotoSlip(targetDate, b);
   }
 

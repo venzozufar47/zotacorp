@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BranchBadge } from "./BranchBadge";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import {
@@ -128,15 +129,7 @@ export function SlipChecklist({ slip, items, myProductionRole }: Props) {
               "EEEE, d MMM yyyy",
               { locale: idLocale }
             )}
-            <span
-              className={`inline-block rounded-full border-2 border-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                slip.branch === "pare"
-                  ? "bg-pop-emerald/40"
-                  : "bg-pop-pink/40"
-              }`}
-            >
-              Cabang {slip.branch === "pare" ? "Pare" : "Semarang"}
-            </span>
+            <BranchBadge branch={slip.branch} size="sm" prefix />
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {done} dari {total} cake selesai

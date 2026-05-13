@@ -18,6 +18,7 @@ import {
   CAKE_BRANCH_LABELS,
   type CakeBranch,
 } from "@/lib/cake-orders/types";
+import { BranchBadge } from "@/components/cake/BranchBadge";
 
 interface Employee {
   id: string;
@@ -127,9 +128,9 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5 flex-wrap">
                       {a.full_name ?? a.email ?? "—"}
-                      {scope === "production" && (
+                      {scope === "production" && a.branch && (
                         <>
-                          <BranchBadge branch={a.branch} />
+                          <BranchBadge branch={a.branch} size="sm" />
                           <RoleBadge role={a.production_role} />
                         </>
                       )}
@@ -252,21 +253,6 @@ function AssignDropdown({
         Tambahkan
       </button>
     </div>
-  );
-}
-
-function BranchBadge({ branch }: { branch: CakeBranch | null }) {
-  if (!branch) return null;
-  const cls =
-    branch === "pare"
-      ? "bg-pop-emerald/30"
-      : "bg-pop-pink/30";
-  return (
-    <span
-      className={`inline-block rounded-full border border-foreground ${cls} px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide`}
-    >
-      {CAKE_BRANCH_LABELS[branch]}
-    </span>
   );
 }
 

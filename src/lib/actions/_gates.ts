@@ -2,6 +2,10 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
+import {
+  CAKE_BRANCH_LABELS,
+  type CakeBranch,
+} from "@/lib/cake-orders/types";
 
 /**
  * Shared server-action result shape + auth gates. Extracted so multiple
@@ -172,7 +176,7 @@ export async function requireCakeProductionAccess(): Promise<
  */
 export async function requireCakeProductionRole(
   role: "baker" | "decorator",
-  branch: "pare" | "semarang"
+  branch: CakeBranch
 ): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
@@ -200,7 +204,7 @@ export async function requireCakeProductionRole(
   if (!allowed) {
     return {
       ok: false,
-      error: `Hanya ${role} cabang ${branch} yang boleh aksi ini`,
+      error: `Hanya ${role} cabang ${CAKE_BRANCH_LABELS[branch]} yang boleh aksi ini`,
     };
   }
   return { ok: true, userId: user.id };

@@ -24,9 +24,10 @@ import type {
 } from "@/lib/cake-orders/types";
 import { isSlipFrozen } from "@/lib/cake-orders/helpers";
 import { resolveBasePrice } from "@/lib/cake-orders/pricing";
-import type {
-  CakeBaseDiameterPrice,
-  CakeDiameterOption,
+import {
+  parseCakeBranch,
+  type CakeBaseDiameterPrice,
+  type CakeDiameterOption,
 } from "@/lib/cake-orders/types";
 
 /**
@@ -147,10 +148,7 @@ export async function createCakeOrder(
     return { ok: false, error: "Alamat kirim wajib diisi" };
 
   const dimensionCm = clampDimensionCm(input.dimensionCm);
-  const branch =
-    input.branch === "pare" || input.branch === "semarang"
-      ? input.branch
-      : "pare";
+  const branch = parseCakeBranch(input.branch);
   const { diameters, prices } = await loadPriceMatrix(supabase);
   const basePrice = resolveBasePrice({
     baseOption: baseOpt,
@@ -679,10 +677,7 @@ export async function updateCakeOrderFull(
     return { ok: false, error: "Alamat kirim wajib diisi" };
 
   const dimensionCm = clampDimensionCm(input.dimensionCm);
-  const branch =
-    input.branch === "pare" || input.branch === "semarang"
-      ? input.branch
-      : "pare";
+  const branch = parseCakeBranch(input.branch);
   const { diameters, prices } = await loadPriceMatrix(supabase);
   const basePrice = resolveBasePrice({
     baseOption: baseOpt,

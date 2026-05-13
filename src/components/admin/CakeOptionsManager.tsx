@@ -12,6 +12,7 @@ import {
   updateCakeDiameter,
   deleteCakeDiameter,
   setCakeBasePricesBulk,
+  type CakeBasePriceChange,
   type CakeOptionInput,
   type CakeDiameterInput,
 } from "@/lib/actions/cake-options.actions";
@@ -581,27 +582,27 @@ function PriceMatrix({
 
   const dirtyCount = dirty.size;
 
-  const onSaveAll = () => {
-    if (dirtyCount === 0) return;
-    const changes: Array<{
-      base_option_id: string;
-      diameter_id: string;
-      branch: CakeBranch;
-      price_idr: number | null;
-    }> = [];
+  const dirtyToChanges = (): CakeBasePriceChange[] => {
+    const out: CakeBasePriceChange[] = [];
     for (const [k, v] of dirty) {
       const [baseId, diaId, branch] = k.split(":") as [
         string,
         string,
         CakeBranch,
       ];
-      changes.push({
+      out.push({
         base_option_id: baseId,
         diameter_id: diaId,
         branch,
         price_idr: v,
       });
     }
+    return out;
+  };
+
+  const onSaveAll = () => {
+    if (dirtyCount === 0) return;
+    const changes = dirtyToChanges();
     startSave(async () => {
       const res = await setCakeBasePricesBulk(changes);
       if (!res.ok) {
@@ -624,26 +625,7 @@ function PriceMatrix({
   const withDirtyFlushed = (after: () => Promise<void>) => {
     startSave(async () => {
       if (dirtyCount > 0) {
-        const changes: Array<{
-          base_option_id: string;
-          diameter_id: string;
-          branch: CakeBranch;
-          price_idr: number | null;
-        }> = [];
-        for (const [k, v] of dirty) {
-          const [baseId, diaId, branch] = k.split(":") as [
-            string,
-            string,
-            CakeBranch,
-          ];
-          changes.push({
-            base_option_id: baseId,
-            diameter_id: diaId,
-            branch,
-            price_idr: v,
-          });
-        }
-        const res = await setCakeBasePricesBulk(changes);
+        const res = await setCakeBasePricesBulk(dirtyToChanges());
         if (!res.ok) {
           toast.error(`Gagal menyimpan perubahan: ${res.error}`);
           return;
