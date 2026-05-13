@@ -6,7 +6,11 @@ import {
   getCakeOrder,
   listCakeOrderPayments,
 } from "@/lib/actions/cake-orders.actions";
-import { listCakeOptions } from "@/lib/actions/cake-options.actions";
+import {
+  listCakeOptions,
+  listCakeDiameterOptions,
+  listCakeBasePrices,
+} from "@/lib/actions/cake-options.actions";
 import { CakeOrderDetail } from "@/components/cake/CakeOrderDetail";
 
 export default async function AdminCakeOrderDetailPage({
@@ -20,10 +24,12 @@ export default async function AdminCakeOrderDetailPage({
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [orderRes, optsRes, paymentsRes] = await Promise.all([
+  const [orderRes, optsRes, paymentsRes, diaRes, priceRes] = await Promise.all([
     getCakeOrder(id),
     listCakeOptions(),
     listCakeOrderPayments(id),
+    listCakeDiameterOptions({ activeOnly: true }),
+    listCakeBasePrices(),
   ]);
   if (!orderRes.ok) {
     return (
@@ -39,6 +45,8 @@ export default async function AdminCakeOrderDetailPage({
       payments={paymentsRes.ok ? paymentsRes.data ?? [] : []}
       slipLock={orderRes.data!.slipLock}
       optionsByKind={optsRes.ok ? optsRes.data! : null}
+      diameters={diaRes.ok ? diaRes.data ?? [] : []}
+      prices={priceRes.ok ? priceRes.data ?? [] : []}
       isAdminView={true}
       canEdit={false}
     />

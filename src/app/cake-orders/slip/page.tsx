@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { getOrCreateTomorrowSlip } from "@/lib/actions/cake-slips.actions";
-import { listCakeOptions } from "@/lib/actions/cake-options.actions";
+import {
+  listCakeOptions,
+  listCakeDiameterOptions,
+  listCakeBasePrices,
+} from "@/lib/actions/cake-options.actions";
 import { SlipPreview } from "@/components/cake/SlipPreview";
 import {
   jakartaDateMinusDays,
@@ -22,7 +26,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 export default async function EmployeeSlipPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; branch?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -34,10 +38,14 @@ export default async function EmployeeSlipPage({
   const defaultDate = jakartaDateMinusDays(today, -1);
   const requestedDate =
     sp.date && ISO_DATE.test(sp.date) ? sp.date : defaultDate;
+  const branch: "pare" | "semarang" =
+    sp.branch === "semarang" ? "semarang" : "pare";
 
-  const [bundleRes, optsRes] = await Promise.all([
-    getOrCreateTomorrowSlip(requestedDate),
+  const [bundleRes, optsRes, diaRes, priceRes] = await Promise.all([
+    getOrCreateTomorrowSlip(requestedDate, branch),
     listCakeOptions(),
+    listCakeDiameterOptions({ activeOnly: true }),
+    listCakeBasePrices(),
   ]);
   if (!bundleRes.ok) {
     return (
@@ -50,7 +58,10 @@ export default async function EmployeeSlipPage({
     <SlipPreview
       bundle={bundleRes.data!}
       optionsByKind={optsRes.ok ? optsRes.data! : null}
+      diameters={diaRes.ok ? diaRes.data ?? [] : []}
+      prices={priceRes.ok ? priceRes.data ?? [] : []}
       todayYmd={today}
+      branch={branch}
     />
   );
 }

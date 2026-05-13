@@ -105,6 +105,10 @@ export interface CakeOrder {
   customer_name: string;
   customer_phone: string | null;
 
+  /** Cabang tempat order dibuat. Menentukan kolom harga di
+   *  matriks (Pare vs Semarang). */
+  branch: CakeBranch;
+
   base_cake_option_id: string;
   base_price_idr: number;
   shape_option_id: string;
@@ -174,6 +178,7 @@ export type CakeProductionSlipStatus =
 export interface CakeProductionSlip {
   id: string;
   target_date: string; // YYYY-MM-DD
+  branch: CakeBranch;
   status: CakeProductionSlipStatus;
   notes: string | null;
   prepared_by: string | null;
@@ -200,6 +205,7 @@ export interface CakeProductionSlip {
  *  don't retroactively mutate a sent slip's display. */
 export interface CakeSlipSnapshotItem {
   orderId: string;
+  branch: CakeBranch;
   customerName: string;
   customerPhone: string | null;
   baseLabel: string;
@@ -253,11 +259,20 @@ export interface CakeProductionSlipItem {
 export interface CreateCakeOrderInput {
   customerName: string;
   customerPhone?: string | null;
+  /** Cabang tempat order dibuat. Wajib — menentukan harga di matriks. */
+  branch: CakeBranch;
   baseCakeOptionId: string;
   shapeOptionId: string;
   shapeCustom?: string | null;
   /** Diameter / ukuran sisi terpanjang kue (cm). Optional. */
   dimensionCm?: number | null;
+  /**
+   * Harga base override yang admin isi manual di form. Dipakai kalau
+   * kombinasi (base, diameter) tidak ada di `cake_base_diameter_prices`
+   * matrix. Server selalu prioritaskan matrix dulu; override hanya
+   * dipakai sebagai fallback.
+   */
+  basePriceOverrideIdr?: number | null;
   fillingOptionId?: string | null;
 
   colorNotes?: string | null;
@@ -316,3 +331,35 @@ export interface CreateCakeOrderInput {
 
 /** Lookup helper: options grouped by kind, only active rows. */
 export type CakeOptionsByKind = Record<CakeOptionKind, CakeOption[]>;
+
+/** Diameter preset (global list, shared across all base cakes). */
+export interface CakeDiameterOption {
+  id: string;
+  diameter_cm: number;
+  label: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+/** Branch cabang. Saat ini hanya Pare & Semarang — harga base
+ *  cake dibedakan per branch. */
+export type CakeBranch = "pare" | "semarang";
+
+export const CAKE_BRANCHES: CakeBranch[] = ["pare", "semarang"];
+
+export const CAKE_BRANCH_LABELS: Record<CakeBranch, string> = {
+  pare: "Pare",
+  semarang: "Semarang",
+};
+
+/** One cell in the (base × diameter) price matrix. Setiap sel
+ *  menyimpan dua harga (Pare + Semarang); null = belum diset
+ *  untuk cabang tersebut. */
+export interface CakeBaseDiameterPrice {
+  base_option_id: string;
+  diameter_id: string;
+  price_pare_idr: number | null;
+  price_semarang_idr: number | null;
+  updated_at: string;
+}

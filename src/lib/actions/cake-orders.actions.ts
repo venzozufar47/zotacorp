@@ -23,6 +23,11 @@ import type {
   CreateCakeOrderInput,
 } from "@/lib/cake-orders/types";
 import { isSlipFrozen } from "@/lib/cake-orders/helpers";
+import { resolveBasePrice } from "@/lib/cake-orders/pricing";
+import type {
+  CakeBaseDiameterPrice,
+  CakeDiameterOption,
+} from "@/lib/cake-orders/types";
 
 /**
  * Order CRUD. Order management only — no link to bank accounts /
@@ -36,6 +41,29 @@ import { isSlipFrozen } from "@/lib/cake-orders/helpers";
 function clampDimensionCm(v: number | null | undefined): number | null {
   if (v == null || !Number.isFinite(v)) return null;
   return Math.max(1, Math.min(199, Math.round(v)));
+}
+
+/**
+ * Load diameter + price-matrix rows once. Dipakai oleh create/update
+ * untuk meresolusi harga base server-side (tidak percaya client).
+ */
+async function loadPriceMatrix(
+  supabase: ReturnType<typeof adminClient>
+): Promise<{
+  diameters: CakeDiameterOption[];
+  prices: CakeBaseDiameterPrice[];
+}> {
+  const [diaRes, priceRes] = await Promise.all([
+    supabase
+      .from("cake_diameter_options" as never)
+      .select("id, diameter_cm")
+      .eq("is_active", true),
+    supabase.from("cake_base_diameter_prices" as never).select("*"),
+  ]);
+  return {
+    diameters: (diaRes.data ?? []) as unknown as CakeDiameterOption[],
+    prices: (priceRes.data ?? []) as unknown as CakeBaseDiameterPrice[],
+  };
 }
 
 function adminClient() {
@@ -118,7 +146,20 @@ export async function createCakeOrder(
   if (deliveryOpt.needs_address && !input.deliveryAddress?.trim())
     return { ok: false, error: "Alamat kirim wajib diisi" };
 
-  const basePrice = baseOpt.base_price_idr ?? 0;
+  const dimensionCm = clampDimensionCm(input.dimensionCm);
+  const branch =
+    input.branch === "pare" || input.branch === "semarang"
+      ? input.branch
+      : "pare";
+  const { diameters, prices } = await loadPriceMatrix(supabase);
+  const basePrice = resolveBasePrice({
+    baseOption: baseOpt,
+    branch,
+    dimensionCm,
+    diameters,
+    prices,
+    override: input.basePriceOverrideIdr ?? null,
+  }).price;
   // Trim, drop empty rows, sum prices server-side. Breakdown stored
   // as-is for transparency; total snapshot kept on add_ons_idr so
   // legacy queries don't need to parse JSON.
@@ -144,6 +185,7 @@ export async function createCakeOrder(
     .insert({
       customer_name: input.customerName.trim(),
       customer_phone: input.customerPhone?.trim() || null,
+      branch,
       base_cake_option_id: baseOpt.id,
       base_price_idr: basePrice,
       shape_option_id: shapeOpt.id,
@@ -636,7 +678,20 @@ export async function updateCakeOrderFull(
   if (deliveryOpt.needs_address && !input.deliveryAddress?.trim())
     return { ok: false, error: "Alamat kirim wajib diisi" };
 
-  const basePrice = baseOpt.base_price_idr ?? 0;
+  const dimensionCm = clampDimensionCm(input.dimensionCm);
+  const branch =
+    input.branch === "pare" || input.branch === "semarang"
+      ? input.branch
+      : "pare";
+  const { diameters, prices } = await loadPriceMatrix(supabase);
+  const basePrice = resolveBasePrice({
+    baseOption: baseOpt,
+    branch,
+    dimensionCm,
+    diameters,
+    prices,
+    override: input.basePriceOverrideIdr ?? null,
+  }).price;
   const addOnsBreakdown: CakeAddOnLine[] = (input.addOns ?? [])
     .map((a) => ({
       label: a.label.trim(),
@@ -659,6 +714,7 @@ export async function updateCakeOrderFull(
     .update({
       customer_name: input.customerName.trim(),
       customer_phone: input.customerPhone?.trim() || null,
+      branch,
       base_cake_option_id: baseOpt.id,
       base_price_idr: basePrice,
       shape_option_id: shapeOpt.id,
@@ -799,7 +855,7 @@ export async function setOrderProductionStatus(
   const adminDb = adminClient();
   const { data: row } = await adminDb
     .from("cake_orders" as never)
-    .select("production_status, status, archived_at")
+    .select("production_status, status, archived_at, branch")
     .eq("id", id)
     .maybeSingle();
   if (!row) return { ok: false, error: "Order tidak ditemukan" };
@@ -807,12 +863,12 @@ export async function setOrderProductionStatus(
     production_status: CakeProductionStatus;
     status: string;
     archived_at: string | null;
+    branch: "pare" | "semarang";
   };
   const current = r.production_status;
 
-  // Setiap transisi 1-langkah diikat ke role yang bertanggung-jawab:
-  // forward dilakukan oleh role X → revert juga oleh role X. Mencegah
-  // baker membatalkan pekerjaan decorator dan sebaliknya.
+  // Setiap transisi 1-langkah diikat ke role + cabang. Tim produksi
+  // hanya boleh aksi order di cabang mereka.
   const requiredRole: "baker" | "decorator" | null =
     (current === "pending" && status === "in_progress") ||
     (current === "in_progress" && status === "pending")
@@ -824,7 +880,7 @@ export async function setOrderProductionStatus(
         ? "decorator"
         : null;
   if (requiredRole) {
-    const gate = await requireCakeProductionRole(requiredRole);
+    const gate = await requireCakeProductionRole(requiredRole, r.branch);
     if (!gate.ok) return { ok: false, error: gate.error };
   } else {
     const gate = await requireCakeProductionAccess();

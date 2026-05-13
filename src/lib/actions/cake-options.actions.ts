@@ -5,6 +5,8 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { requireAdmin, type ActionResult } from "./_gates";
 import type {
+  CakeBaseDiameterPrice,
+  CakeDiameterOption,
   CakeOption,
   CakeOptionKind,
   CakeOptionsByKind,
@@ -176,4 +178,269 @@ export async function deleteCakeOption(id: string): Promise<ActionResult> {
   revalidatePath("/admin/cake-orders/options");
   revalidatePath("/cake-orders");
   return { ok: true };
+}
+
+// ---------- Diameter presets + price matrix --------------------------
+
+/**
+ * Diameter presets — global list shared across all base cakes. Order
+ * form pakai dropdown ini (bukan freeform). Inactive disembunyikan dari
+ * form tapi tetap tampil di admin manager.
+ */
+export async function listCakeDiameterOptions(opts?: {
+  activeOnly?: boolean;
+}): Promise<ActionResult<CakeDiameterOption[]>> {
+  const supabase = adminClient();
+  let q = supabase
+    .from("cake_diameter_options" as never)
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("diameter_cm", { ascending: true });
+  if (opts?.activeOnly) q = q.eq("is_active", true);
+  const { data, error } = await q;
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as CakeDiameterOption[] };
+}
+
+export interface CakeDiameterInput {
+  diameter_cm: number;
+  label: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export async function createCakeDiameter(
+  input: CakeDiameterInput
+): Promise<ActionResult<{ id: string }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const cm = Math.round(input.diameter_cm);
+  if (!Number.isFinite(cm) || cm < 1 || cm > 199)
+    return { ok: false, error: "Diameter 1–199 cm" };
+  const supabase = adminClient();
+  const { data, error } = await supabase
+    .from("cake_diameter_options" as never)
+    .insert({
+      diameter_cm: cm,
+      label: input.label?.trim() || null,
+      sort_order: input.sort_order,
+      is_active: input.is_active,
+    } as never)
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/cake-orders/options");
+  revalidatePath("/cake-orders");
+  return { ok: true, data: data as unknown as { id: string } };
+}
+
+export async function updateCakeDiameter(
+  id: string,
+  input: CakeDiameterInput
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const cm = Math.round(input.diameter_cm);
+  if (!Number.isFinite(cm) || cm < 1 || cm > 199)
+    return { ok: false, error: "Diameter 1–199 cm" };
+  const supabase = adminClient();
+  const { error } = await supabase
+    .from("cake_diameter_options" as never)
+    .update({
+      diameter_cm: cm,
+      label: input.label?.trim() || null,
+      sort_order: input.sort_order,
+      is_active: input.is_active,
+    } as never)
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/cake-orders/options");
+  revalidatePath("/cake-orders");
+  return { ok: true };
+}
+
+export async function deleteCakeDiameter(id: string): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  // Cascade FK akan hapus baris matrix yang merujuk. Karena diameter di
+  // order disnapshot sebagai integer di kolom dimension_cm (bukan FK),
+  // order lama tidak terdampak.
+  const { error } = await supabase
+    .from("cake_diameter_options" as never)
+    .delete()
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/cake-orders/options");
+  revalidatePath("/cake-orders");
+  return { ok: true };
+}
+
+/** Semua sel matrix — admin manager butuh untuk render grid. */
+export async function listCakeBasePrices(): Promise<
+  ActionResult<CakeBaseDiameterPrice[]>
+> {
+  const supabase = adminClient();
+  const { data, error } = await supabase
+    .from("cake_base_diameter_prices" as never)
+    .select("*");
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as CakeBaseDiameterPrice[] };
+}
+
+/**
+ * Upsert satu sel matriks (kolom yang sesuai branch). Kalau setelah
+ * update kedua kolom (Pare + Semarang) jadi null, row dihapus supaya
+ * matriks tetap rapi.
+ */
+export async function setCakeBasePrice(input: {
+  base_option_id: string;
+  diameter_id: string;
+  branch: "pare" | "semarang";
+  price_idr: number | null;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const col = input.branch === "pare" ? "price_pare_idr" : "price_semarang_idr";
+  const otherCol =
+    input.branch === "pare" ? "price_semarang_idr" : "price_pare_idr";
+  const next =
+    input.price_idr == null ? null : Math.max(0, Math.round(input.price_idr));
+
+  // Cek sel existing untuk memutuskan upsert / update / delete.
+  const { data: existing } = await supabase
+    .from("cake_base_diameter_prices" as never)
+    .select("*")
+    .eq("base_option_id", input.base_option_id)
+    .eq("diameter_id", input.diameter_id)
+    .maybeSingle();
+  const existingRow = existing as
+    | (CakeBaseDiameterPrice & Record<string, unknown>)
+    | null;
+  const otherVal = (existingRow?.[otherCol] as number | null) ?? null;
+
+  if (next == null && otherVal == null) {
+    // Kedua kolom null → hapus row biar tidak nyampah.
+    const { error } = await supabase
+      .from("cake_base_diameter_prices" as never)
+      .delete()
+      .eq("base_option_id", input.base_option_id)
+      .eq("diameter_id", input.diameter_id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("cake_base_diameter_prices" as never)
+      .upsert(
+        {
+          base_option_id: input.base_option_id,
+          diameter_id: input.diameter_id,
+          [col]: next,
+          [otherCol]: otherVal,
+          updated_at: new Date().toISOString(),
+        } as never,
+        { onConflict: "base_option_id,diameter_id" }
+      );
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/admin/cake-orders/options");
+  revalidatePath("/cake-orders");
+  return { ok: true };
+}
+
+/**
+ * Bulk-upsert sel matriks dalam satu round-trip. Tiap entry hanya
+ * meng-update salah satu kolom (Pare ATAU Semarang); kolom lain
+ * preserved dari row existing. Row dihapus kalau setelah update
+ * kedua kolom null. Cocok untuk tombol "Simpan" terpusat di UI
+ * matriks supaya admin tidak perlu menunggu round-trip per sel.
+ */
+export async function setCakeBasePricesBulk(
+  changes: Array<{
+    base_option_id: string;
+    diameter_id: string;
+    branch: "pare" | "semarang";
+    price_idr: number | null;
+  }>
+): Promise<ActionResult<{ updated: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (changes.length === 0) return { ok: true, data: { updated: 0 } };
+  const supabase = adminClient();
+
+  const keys = Array.from(
+    new Set(changes.map((c) => `${c.base_option_id}|${c.diameter_id}`))
+  );
+  const pairs = keys.map((k) => k.split("|") as [string, string]);
+  const baseIds = Array.from(new Set(pairs.map(([b]) => b)));
+  const diaIds = Array.from(new Set(pairs.map(([, d]) => d)));
+  const { data: existingRows } = await supabase
+    .from("cake_base_diameter_prices" as never)
+    .select("*")
+    .in("base_option_id", baseIds)
+    .in("diameter_id", diaIds);
+  const existing = new Map<string, CakeBaseDiameterPrice>();
+  for (const r of (existingRows ?? []) as unknown as CakeBaseDiameterPrice[]) {
+    existing.set(`${r.base_option_id}|${r.diameter_id}`, r);
+  }
+
+  // Gabungkan perubahan per (base,diameter) — admin bisa edit Pare +
+  // Semarang sekaligus, kita merge jadi satu upsert.
+  const merged = new Map<
+    string,
+    {
+      base_option_id: string;
+      diameter_id: string;
+      price_pare_idr: number | null;
+      price_semarang_idr: number | null;
+    }
+  >();
+  for (const c of changes) {
+    const k = `${c.base_option_id}|${c.diameter_id}`;
+    const existingRow = existing.get(k);
+    const cur = merged.get(k) ?? {
+      base_option_id: c.base_option_id,
+      diameter_id: c.diameter_id,
+      price_pare_idr: existingRow?.price_pare_idr ?? null,
+      price_semarang_idr: existingRow?.price_semarang_idr ?? null,
+    };
+    const next =
+      c.price_idr == null ? null : Math.max(0, Math.round(c.price_idr));
+    merged.set(k, {
+      ...cur,
+      [c.branch === "pare" ? "price_pare_idr" : "price_semarang_idr"]: next,
+    });
+  }
+
+  const now = new Date().toISOString();
+  const toUpsert: Record<string, unknown>[] = [];
+  const toDelete: Array<[string, string]> = [];
+  for (const m of merged.values()) {
+    if (m.price_pare_idr == null && m.price_semarang_idr == null) {
+      toDelete.push([m.base_option_id, m.diameter_id]);
+    } else {
+      toUpsert.push({ ...m, updated_at: now });
+    }
+  }
+
+  if (toUpsert.length > 0) {
+    const { error } = await supabase
+      .from("cake_base_diameter_prices" as never)
+      .upsert(toUpsert as never, {
+        onConflict: "base_option_id,diameter_id",
+      });
+    if (error) return { ok: false, error: error.message };
+  }
+  for (const [b, d] of toDelete) {
+    const { error } = await supabase
+      .from("cake_base_diameter_prices" as never)
+      .delete()
+      .eq("base_option_id", b)
+      .eq("diameter_id", d);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/admin/cake-orders/options");
+  revalidatePath("/cake-orders");
+  return { ok: true, data: { updated: merged.size } };
 }

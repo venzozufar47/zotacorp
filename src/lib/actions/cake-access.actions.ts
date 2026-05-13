@@ -5,12 +5,17 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { getMyCakeAccess as getMyCakeAccessCached } from "@/lib/cake-orders/access";
+import type { CakeBranch } from "@/lib/cake-orders/types";
 
 /**
  * Admin assigns / unassigns cake-feature scopes to specific users.
  * Two scopes:
- *   - 'orders'     → /cake-orders (input form, paid/refund)
- *   - 'production' → /cake-production (read sent slips, mark status)
+ *   - 'orders'     → /cake-orders (input form, paid/refund). Branch-
+ *      agnostic — orders staff lihat semua cabang.
+ *   - 'production' → /cake-production. Branch-spesifik: tim hanya
+ *      lihat slip + order untuk cabang yang ditugaskan ke mereka.
+ *      Satu user boleh punya banyak baris assignment, mis.
+ *      (baker, pare) + (baker, semarang).
  */
 
 export type CakeAccessScope = "orders" | "production";
@@ -25,9 +30,11 @@ function adminClient() {
 }
 
 export interface CakeAccessRow {
+  id: string;
   user_id: string;
   scope: CakeAccessScope;
   production_role: CakeProductionRole;
+  branch: CakeBranch | null;
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
@@ -43,6 +50,7 @@ export interface CakeAccessRow {
 export async function getMyCakeAccess(): Promise<{
   hasOrders: boolean;
   hasProduction: boolean;
+  productionBranches: CakeBranch[];
 }> {
   return getMyCakeAccessCached();
 }
@@ -54,20 +62,18 @@ export async function listCakeAccessAssignments(): Promise<
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
-  // PostgREST can't auto-pick the right join because cake_access_assignments
-  // has two FKs to profiles (user_id + assigned_by). Name the constraint
-  // explicitly so the embed resolves to the assignee, not the admin who
-  // assigned them.
   const { data, error } = await supabase
     .from("cake_access_assignments" as never)
     .select(
-      "user_id, scope, production_role, profiles!cake_access_assignments_user_id_fkey(full_name, email, avatar_url, avatar_seed)"
+      "id, user_id, scope, production_role, branch, profiles!cake_access_assignments_user_id_fkey(full_name, email, avatar_url, avatar_seed)"
     );
   if (error) return { ok: false, error: error.message };
   type Row = {
+    id: string;
     user_id: string;
     scope: CakeAccessScope;
     production_role: CakeProductionRole;
+    branch: CakeBranch | null;
     profiles: {
       full_name: string | null;
       email: string | null;
@@ -79,9 +85,11 @@ export async function listCakeAccessAssignments(): Promise<
   return {
     ok: true,
     data: rows.map((r) => ({
+      id: r.id,
       user_id: r.user_id,
       scope: r.scope,
       production_role: r.production_role,
+      branch: r.branch,
       full_name: r.profiles.full_name,
       email: r.profiles.email,
       avatar_url: r.profiles.avatar_url,
@@ -90,36 +98,61 @@ export async function listCakeAccessAssignments(): Promise<
   };
 }
 
+export interface AssignCakeAccessInput {
+  userId: string;
+  scope: CakeAccessScope;
+  productionRole?: CakeProductionRole;
+  branch?: CakeBranch | null;
+}
+
 export async function assignCakeAccess(
-  userId: string,
-  scope: CakeAccessScope,
-  productionRole: CakeProductionRole = null
+  input: AssignCakeAccessInput
 ): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
+  // Branch wajib untuk scope='production'; null untuk 'orders' (akses
+  // semua cabang).
+  const branch = input.scope === "production" ? input.branch ?? null : null;
+  if (input.scope === "production" && !branch) {
+    return {
+      ok: false,
+      error: "Penugasan produksi wajib pilih cabang (Pare / Semarang)",
+    };
+  }
+  const role =
+    input.scope === "production" ? input.productionRole ?? null : null;
+
   const supabase = adminClient();
-  // production_role hanya valid kalau scope='production'. Untuk scope
-  // 'orders' tetap null supaya DB check constraint tidak menolak.
-  const role = scope === "production" ? productionRole : null;
+  // Cek duplikat manual karena unique index pakai coalesce expression
+  // (PostgREST tidak bisa `onConflict` ke expression unique).
+  let q = supabase
+    .from("cake_access_assignments" as never)
+    .select("id")
+    .eq("user_id", input.userId)
+    .eq("scope", input.scope);
+  q = role === null ? q.is("production_role", null) : q.eq("production_role", role);
+  q = branch === null ? q.is("branch", null) : q.eq("branch", branch);
+  const { data: existing } = await q.maybeSingle();
+  if (existing) {
+    return { ok: true }; // sudah ada, idempotent
+  }
+
   const { error } = await supabase
     .from("cake_access_assignments" as never)
-    .upsert(
-      {
-        user_id: userId,
-        scope,
-        production_role: role,
-        assigned_by: gate.userId,
-      } as never,
-      { onConflict: "user_id,scope" }
-    );
+    .insert({
+      user_id: input.userId,
+      scope: input.scope,
+      production_role: role,
+      branch,
+      assigned_by: gate.userId,
+    } as never);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/cake-orders/access");
   return { ok: true };
 }
 
-export async function revokeCakeAccess(
-  userId: string,
-  scope: CakeAccessScope
+export async function revokeCakeAccessById(
+  assignmentId: string
 ): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -127,8 +160,7 @@ export async function revokeCakeAccess(
   const { error } = await supabase
     .from("cake_access_assignments" as never)
     .delete()
-    .eq("user_id", userId)
-    .eq("scope", scope);
+    .eq("id", assignmentId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/cake-orders/access");
   return { ok: true };

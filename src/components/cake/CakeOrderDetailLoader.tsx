@@ -9,6 +9,8 @@ import {
 } from "@/lib/actions/cake-orders.actions";
 import { CakeOrderDetail } from "./CakeOrderDetail";
 import type {
+  CakeBaseDiameterPrice,
+  CakeDiameterOption,
   CakeOptionsByKind,
   CakeOrder,
   CakeOrderAttachment,
@@ -18,6 +20,8 @@ import type {
 interface Props {
   orderId: string;
   optionsByKind: CakeOptionsByKind | null;
+  diameters?: CakeDiameterOption[];
+  prices?: CakeBaseDiameterPrice[];
   isAdminView: boolean;
   canEdit: boolean;
   onClose: () => void;
@@ -32,6 +36,8 @@ interface Props {
 export function CakeOrderDetailLoader({
   orderId,
   optionsByKind,
+  diameters = [],
+  prices = [],
   isAdminView,
   canEdit,
   onClose,
@@ -98,6 +104,8 @@ export function CakeOrderDetailLoader({
       payments={payments}
       slipLock={slipLock}
       optionsByKind={optionsByKind}
+      diameters={diameters}
+      prices={prices}
       isAdminView={isAdminView}
       canEdit={canEdit}
       onClose={onClose}

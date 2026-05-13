@@ -6,7 +6,11 @@ import { Cake, ArrowLeft, Archive, FileText } from "lucide-react";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { listMyCakeOrders } from "@/lib/actions/cake-orders.actions";
-import { listCakeOptions } from "@/lib/actions/cake-options.actions";
+import {
+  listCakeOptions,
+  listCakeDiameterOptions,
+  listCakeBasePrices,
+} from "@/lib/actions/cake-options.actions";
 import { CakeOrdersBoard } from "@/components/cake/CakeOrdersBoard";
 import { NewOrderQuickButton } from "@/components/cake/NewOrderQuickButton";
 import { RefreshButton } from "@/components/shared/RefreshButton";
@@ -29,12 +33,16 @@ export default async function CakeOrdersPage() {
     redirect("/dashboard");
   }
 
-  const [ordersRes, optionsRes] = await Promise.all([
+  const [ordersRes, optionsRes, diaRes, priceRes] = await Promise.all([
     listMyCakeOrders(),
     listCakeOptions(),
+    listCakeDiameterOptions({ activeOnly: true }),
+    listCakeBasePrices(),
   ]);
   const orders = ordersRes.ok ? ordersRes.data ?? [] : [];
   const optionsByKind = optionsRes.ok && optionsRes.data ? optionsRes.data : null;
+  const diameters = diaRes.ok ? diaRes.data ?? [] : [];
+  const prices = priceRes.ok ? priceRes.data ?? [] : [];
 
   return (
     <div className="space-y-3">
@@ -76,13 +84,19 @@ export default async function CakeOrdersPage() {
             <Archive size={14} strokeWidth={2.5} />
             <span className="hidden sm:inline">Arsip</span>
           </Link>
-          <NewOrderQuickButton optionsByKind={optionsByKind} />
+          <NewOrderQuickButton
+            optionsByKind={optionsByKind}
+            diameters={diameters}
+            prices={prices}
+          />
         </div>
       </header>
 
       <CakeOrdersBoard
         orders={orders}
         optionsByKind={optionsByKind}
+        diameters={diameters}
+        prices={prices}
         enableSearch
       />
     </div>

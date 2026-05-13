@@ -29,6 +29,7 @@ export function buildSlipSnapshot(opts: {
     const o = row.order;
     return {
       orderId: o.id,
+      branch: o.branch,
       customerName: o.customer_name,
       customerPhone: o.customer_phone,
       baseLabel: labelOf("base_cake", o.base_cake_option_id) ?? "—",

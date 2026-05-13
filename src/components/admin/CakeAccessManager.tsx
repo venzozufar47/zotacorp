@@ -7,12 +7,17 @@ import Image from "next/image";
 import { toast } from "sonner";
 import {
   assignCakeAccess,
-  revokeCakeAccess,
+  revokeCakeAccessById,
   type CakeAccessRow,
   type CakeAccessScope,
   type CakeProductionRole,
 } from "@/lib/actions/cake-access.actions";
 import { resolveAvatarSrc } from "@/lib/avatar";
+import {
+  CAKE_BRANCHES,
+  CAKE_BRANCH_LABELS,
+  type CakeBranch,
+} from "@/lib/cake-orders/types";
 
 interface Employee {
   id: string;
@@ -31,12 +36,12 @@ const SCOPES: Array<{ scope: CakeAccessScope; label: string; desc: string }> = [
   {
     scope: "orders",
     label: "Input order",
-    desc: "Mengisi form custom cake (/cake-orders), tandai paid & refund",
+    desc: "Mengisi form custom cake (/cake-orders), tandai paid & refund. Akses semua cabang.",
   },
   {
     scope: "production",
     label: "Produksi",
-    desc: "Menerima slip produksi (/cake-production), tandai status produksi",
+    desc: "Menerima slip produksi (/cake-production), tandai status. Spesifik per cabang + role.",
   },
 ];
 
@@ -53,13 +58,14 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
     return out;
   }, [initialAssignments]);
 
-  const onAssign = (
-    userId: string,
-    scope: CakeAccessScope,
-    productionRole: CakeProductionRole = null
-  ) => {
+  const onAssign = (input: {
+    userId: string;
+    scope: CakeAccessScope;
+    productionRole?: CakeProductionRole;
+    branch?: CakeBranch | null;
+  }) => {
     startTransition(async () => {
-      const res = await assignCakeAccess(userId, scope, productionRole);
+      const res = await assignCakeAccess(input);
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -69,10 +75,10 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
     });
   };
 
-  const onRevoke = (userId: string, scope: CakeAccessScope) => {
+  const onRevoke = (assignmentId: string) => {
     if (!confirm("Cabut akses ini?")) return;
     startTransition(async () => {
-      const res = await revokeCakeAccess(userId, scope);
+      const res = await revokeCakeAccessById(assignmentId);
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -102,7 +108,7 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
             ) : (
               grouped[scope].map((a) => (
                 <li
-                  key={`${a.user_id}-${a.scope}`}
+                  key={a.id}
                   className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2"
                 >
                   <Image
@@ -119,10 +125,13 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
                     className="size-7 rounded-full border border-foreground bg-card shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
+                    <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5 flex-wrap">
                       {a.full_name ?? a.email ?? "—"}
                       {scope === "production" && (
-                        <RoleBadge role={a.production_role} />
+                        <>
+                          <BranchBadge branch={a.branch} />
+                          <RoleBadge role={a.production_role} />
+                        </>
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground truncate">
@@ -131,7 +140,7 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => onRevoke(a.user_id, scope)}
+                    onClick={() => onRevoke(a.id)}
                     disabled={pending}
                     className="flex items-center gap-1 rounded-lg border-2 border-foreground bg-destructive text-destructive-foreground px-2.5 py-1 text-xs font-medium disabled:opacity-50"
                   >
@@ -146,8 +155,7 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
           <AssignDropdown
             scope={scope}
             employees={employees}
-            existingUserIds={new Set(grouped[scope].map((a) => a.user_id))}
-            onAssign={(userId, role) => onAssign(userId, scope, role)}
+            onAssign={onAssign}
             disabled={pending}
           />
         </section>
@@ -159,19 +167,22 @@ export function CakeAccessManager({ initialAssignments, employees }: Props) {
 function AssignDropdown({
   scope,
   employees,
-  existingUserIds,
   onAssign,
   disabled,
 }: {
   scope: CakeAccessScope;
   employees: Employee[];
-  existingUserIds: Set<string>;
-  onAssign: (userId: string, role: CakeProductionRole) => void;
+  onAssign: (input: {
+    userId: string;
+    scope: CakeAccessScope;
+    productionRole?: CakeProductionRole;
+    branch?: CakeBranch | null;
+  }) => void;
   disabled: boolean;
 }) {
   const [pickedId, setPickedId] = useState("");
   const [role, setRole] = useState<CakeProductionRole>(null);
-  const candidates = employees.filter((e) => !existingUserIds.has(e.id));
+  const [branch, setBranch] = useState<CakeBranch>("pare");
 
   return (
     <div className="flex flex-wrap gap-2 pt-1">
@@ -181,35 +192,56 @@ function AssignDropdown({
         className="flex-1 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm"
       >
         <option value="">-- pilih karyawan --</option>
-        {candidates.map((e) => (
+        {employees.map((e) => (
           <option key={e.id} value={e.id}>
             {e.full_name ?? e.email ?? e.id}
           </option>
         ))}
       </select>
       {scope === "production" && (
-        <select
-          value={role ?? "both"}
-          onChange={(e) =>
-            setRole(
-              e.target.value === "both"
-                ? null
-                : (e.target.value as "baker" | "decorator")
-            )
-          }
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
-          aria-label="Pilih sub-role produksi"
-        >
-          <option value="both">Baker + Decorator</option>
-          <option value="baker">Baker (Mulai produksi)</option>
-          <option value="decorator">Decorator (Mulai gambar + Tandai selesai)</option>
-        </select>
+        <>
+          <select
+            value={branch}
+            onChange={(e) => setBranch(e.target.value as CakeBranch)}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            aria-label="Cabang"
+          >
+            {CAKE_BRANCHES.map((b) => (
+              <option key={b} value={b}>
+                Cabang {CAKE_BRANCH_LABELS[b]}
+              </option>
+            ))}
+          </select>
+          <select
+            value={role ?? "both"}
+            onChange={(e) =>
+              setRole(
+                e.target.value === "both"
+                  ? null
+                  : (e.target.value as "baker" | "decorator")
+              )
+            }
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            aria-label="Pilih sub-role produksi"
+          >
+            <option value="both">Baker + Decorator</option>
+            <option value="baker">Baker (Mulai produksi)</option>
+            <option value="decorator">
+              Decorator (Mulai gambar + Tandai selesai)
+            </option>
+          </select>
+        </>
       )}
       <button
         type="button"
         onClick={() => {
           if (!pickedId) return;
-          onAssign(pickedId, scope === "production" ? role : null);
+          onAssign({
+            userId: pickedId,
+            scope,
+            productionRole: scope === "production" ? role : null,
+            branch: scope === "production" ? branch : null,
+          });
           setPickedId("");
           setRole(null);
         }}
@@ -217,9 +249,24 @@ function AssignDropdown({
         className="flex items-center gap-1 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-3 py-2 text-sm font-medium disabled:opacity-50"
       >
         <Plus size={14} strokeWidth={2.5} />
-        Tambahkan ke {scope === "orders" ? "input order" : "produksi"}
+        Tambahkan
       </button>
     </div>
+  );
+}
+
+function BranchBadge({ branch }: { branch: CakeBranch | null }) {
+  if (!branch) return null;
+  const cls =
+    branch === "pare"
+      ? "bg-pop-emerald/30"
+      : "bg-pop-pink/30";
+  return (
+    <span
+      className={`inline-block rounded-full border border-foreground ${cls} px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide`}
+    >
+      {CAKE_BRANCH_LABELS[branch]}
+    </span>
   );
 }
 
@@ -233,7 +280,7 @@ function RoleBadge({ role }: { role: CakeProductionRole }) {
   }
   if (role === "decorator") {
     return (
-      <span className="inline-block rounded-full border border-foreground bg-pop-pink/30 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide">
+      <span className="inline-block rounded-full border border-foreground bg-amber-300/40 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide">
         Decorator
       </span>
     );

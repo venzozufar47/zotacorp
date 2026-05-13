@@ -171,32 +171,36 @@ export async function requireCakeProductionAccess(): Promise<
  *  - decorating → done       : "decorator" yang menyelesaikan
  */
 export async function requireCakeProductionRole(
-  role: "baker" | "decorator"
+  role: "baker" | "decorator",
+  branch: "pare" | "semarang"
 ): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
   const supabase = await createClient();
   const { data } = await supabase
     .from("cake_access_assignments" as never)
-    .select("scope, production_role")
+    .select("scope, production_role, branch")
     .eq("user_id", user.id)
     .in("scope", ["orders", "production"]);
-  type Row = { scope: string; production_role: string | null };
+  type Row = {
+    scope: string;
+    production_role: string | null;
+    branch: string | null;
+  };
   const rows = (data ?? []) as unknown as Row[];
   if (rows.length === 0) return { ok: false, error: "Forbidden" };
-  const allowed = rows.some(
-    (r) =>
-      r.scope === "orders" ||
-      r.production_role == null ||
-      r.production_role === role
-  );
+  // orders scope = lihat semua cabang, semua role.
+  // production scope = harus match (role atau null) DAN (branch).
+  const allowed = rows.some((r) => {
+    if (r.scope === "orders") return true;
+    const roleOk = r.production_role == null || r.production_role === role;
+    const branchOk = r.branch === branch;
+    return roleOk && branchOk;
+  });
   if (!allowed) {
     return {
       ok: false,
-      error:
-        role === "baker"
-          ? "Hanya role baker yang boleh memulai produksi"
-          : "Hanya role decorator yang boleh menghias / menyelesaikan",
+      error: `Hanya ${role} cabang ${branch} yang boleh aksi ini`,
     };
   }
   return { ok: true, userId: user.id };

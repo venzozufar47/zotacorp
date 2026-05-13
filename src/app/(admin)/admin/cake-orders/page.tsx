@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { Settings, UsersRound, Cake } from "lucide-react";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { listMyCakeOrders } from "@/lib/actions/cake-orders.actions";
-import { listCakeOptions } from "@/lib/actions/cake-options.actions";
+import {
+  listCakeOptions,
+  listCakeDiameterOptions,
+  listCakeBasePrices,
+} from "@/lib/actions/cake-options.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RefreshButton } from "@/components/shared/RefreshButton";
 import { CakeOrdersBoard } from "@/components/cake/CakeOrdersBoard";
@@ -21,9 +25,11 @@ export default async function AdminCakeOrdersPage() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [ordersRes, optsRes] = await Promise.all([
+  const [ordersRes, optsRes, diaRes, priceRes] = await Promise.all([
     listMyCakeOrders(),
     listCakeOptions(),
+    listCakeDiameterOptions({ activeOnly: true }),
+    listCakeBasePrices(),
   ]);
 
   return (
@@ -58,6 +64,8 @@ export default async function AdminCakeOrdersPage() {
       <CakeOrdersBoard
         orders={ordersRes.ok ? ordersRes.data ?? [] : []}
         optionsByKind={optsRes.ok ? optsRes.data ?? null : null}
+        diameters={diaRes.ok ? diaRes.data ?? [] : []}
+        prices={priceRes.ok ? priceRes.data ?? [] : []}
         canMove={false}
         showArchiveButton={false}
         isAdminView={true}

@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, ExternalLink, X } from "lucide-react";
 import { NewCakeOrderForm } from "./NewCakeOrderForm";
-import type { CakeOptionsByKind } from "@/lib/cake-orders/types";
+import type {
+  CakeBaseDiameterPrice,
+  CakeDiameterOption,
+  CakeOptionsByKind,
+} from "@/lib/cake-orders/types";
 
 /**
  * Header trigger that opens the new-order form in a right-side panel
@@ -18,8 +22,12 @@ import type { CakeOptionsByKind } from "@/lib/cake-orders/types";
  */
 export function NewOrderQuickButton({
   optionsByKind,
+  diameters = [],
+  prices = [],
 }: {
   optionsByKind: CakeOptionsByKind | null;
+  diameters?: CakeDiameterOption[];
+  prices?: CakeBaseDiameterPrice[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -41,6 +49,8 @@ export function NewOrderQuickButton({
       {open && (
         <Panel
           optionsByKind={optionsByKind}
+          diameters={diameters}
+          prices={prices}
           onClose={close}
           onSuccess={() => {
             // Stay on the kanban — refresh so the new card appears in
@@ -57,10 +67,14 @@ export function NewOrderQuickButton({
 
 function Panel({
   optionsByKind,
+  diameters,
+  prices,
   onClose,
   onSuccess,
 }: {
   optionsByKind: CakeOptionsByKind | null;
+  diameters: CakeDiameterOption[];
+  prices: CakeBaseDiameterPrice[];
   onClose: () => void;
   onSuccess: (orderId: string) => void;
 }) {
@@ -96,6 +110,8 @@ function Panel({
       {optionsByKind ? (
         <NewCakeOrderForm
           optionsByKind={optionsByKind}
+          diameters={diameters}
+          prices={prices}
           singleColumn
           onSuccess={onSuccess}
           onCancel={onClose}

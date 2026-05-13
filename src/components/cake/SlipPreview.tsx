@@ -33,6 +33,8 @@ import { makeLabelFor } from "@/lib/cake-orders/helpers";
 import { SlipStatusBadge } from "@/components/cake/SlipStatusBadge";
 import { NewCakeOrderForm } from "@/components/cake/NewCakeOrderForm";
 import type {
+  CakeBaseDiameterPrice,
+  CakeDiameterOption,
   CakeOrder,
   CakeOrderAttachment,
   CakeOptionsByKind,
@@ -47,9 +49,13 @@ import { ImagePopup } from "@/components/cake/ImagePopup";
 interface Props {
   bundle: TomorrowSlipBundle;
   optionsByKind: CakeOptionsByKind | null;
+  diameters?: CakeDiameterOption[];
+  prices?: CakeBaseDiameterPrice[];
   /** YYYY-MM-DD WIB. Untuk menentukan urgency banner + label
    *  "hari ini / besok / kemarin / 3 hari lagi". */
   todayYmd: string;
+  /** Cabang aktif yang slip-nya sedang dipreview. */
+  branch: "pare" | "semarang";
 }
 
 /**
@@ -62,7 +68,14 @@ interface Props {
  *   6. Reopen for further edits — production keeps reading the
  *      previous snapshot until next send.
  */
-export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
+export function SlipPreview({
+  bundle,
+  optionsByKind,
+  diameters = [],
+  prices = [],
+  todayYmd,
+  branch,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const {
@@ -179,10 +192,17 @@ export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
   const { relativeLabel, banner } = describeDayDiff(dayDiff);
   const targetDateInput = targetDate;
 
-  function gotoDate(ymd: string) {
+  function gotoSlip(ymd: string, b: "pare" | "semarang") {
     const params = new URLSearchParams();
     if (ymd) params.set("date", ymd);
-    router.push(`/cake-orders/slip${params.toString() ? `?${params}` : ""}`);
+    params.set("branch", b);
+    router.push(`/cake-orders/slip?${params}`);
+  }
+  function gotoDate(ymd: string) {
+    gotoSlip(ymd, branch);
+  }
+  function gotoBranch(b: "pare" | "semarang") {
+    gotoSlip(targetDate, b);
   }
 
   return (
@@ -246,6 +266,31 @@ export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[11px] font-medium text-foreground flex items-center gap-1">
+            Cabang:
+            <button
+              type="button"
+              onClick={() => gotoBranch("pare")}
+              className={`rounded-full border-2 px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                branch === "pare"
+                  ? "border-foreground bg-pop-emerald/40 text-foreground"
+                  : "border-border bg-card text-muted-foreground hover:border-foreground"
+              }`}
+            >
+              Pare
+            </button>
+            <button
+              type="button"
+              onClick={() => gotoBranch("semarang")}
+              className={`rounded-full border-2 px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                branch === "semarang"
+                  ? "border-foreground bg-pop-pink/40 text-foreground"
+                  : "border-border bg-card text-muted-foreground hover:border-foreground"
+              }`}
+            >
+              Semarang
+            </button>
+          </span>
           <label className="text-[11px] font-medium text-foreground flex items-center gap-1.5">
             Tanggal:
             <input
@@ -393,6 +438,8 @@ export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
                   editing={isEditingThis}
                   spanFull={isEditingThis}
                   optionsByKind={optionsByKind}
+                  diameters={diameters}
+                  prices={prices}
                   labelFor={labelFor}
                   onToggle={(on) => toggleIncluded(order.id, on)}
                   onEdit={() =>
@@ -439,6 +486,8 @@ export function SlipPreview({ bundle, optionsByKind, todayYmd }: Props) {
                           editing={isEditingThis}
                           spanFull={isEditingThis}
                           optionsByKind={optionsByKind}
+                          diameters={diameters}
+                          prices={prices}
                           labelFor={labelFor}
                           onToggle={(on) => toggleIncluded(order.id, on)}
                           onEdit={() =>
@@ -605,6 +654,8 @@ interface SlipOrderCardProps {
   editing: boolean;
   spanFull?: boolean;
   optionsByKind: CakeOptionsByKind | null;
+  diameters: CakeDiameterOption[];
+  prices: CakeBaseDiameterPrice[];
   labelFor: (kind: keyof CakeOptionsByKind, id: string | null) => string;
   onToggle: (on: boolean) => void;
   onEdit: () => void;
@@ -619,6 +670,8 @@ function SlipOrderCard({
   editing,
   spanFull,
   optionsByKind,
+  diameters,
+  prices,
   labelFor,
   onToggle,
   onEdit,
@@ -724,6 +777,8 @@ function SlipOrderCard({
         <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2.5">
           <NewCakeOrderForm
             optionsByKind={optionsByKind}
+            diameters={diameters}
+            prices={prices}
             editing={order}
             singleColumn
             onSuccess={onSaved}

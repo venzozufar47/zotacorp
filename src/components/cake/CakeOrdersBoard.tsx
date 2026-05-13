@@ -24,6 +24,8 @@ import { makeLabelFor } from "@/lib/cake-orders/helpers";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { CakeOrderDetailLoader } from "./CakeOrderDetailLoader";
 import type {
+  CakeBaseDiameterPrice,
+  CakeDiameterOption,
   CakeOrder,
   CakeOptionsByKind,
   CakeOrderStatus,
@@ -32,6 +34,9 @@ import type {
 interface Props {
   orders: CakeOrder[];
   optionsByKind: CakeOptionsByKind | null;
+  /** Preset diameter + matriks harga, di-pass ke editor inline. */
+  diameters?: CakeDiameterOption[];
+  prices?: CakeBaseDiameterPrice[];
   /** When true, dragging cards across columns triggers a status update.
    *  Defaults true; pass false for read-only views. */
   canMove?: boolean;
@@ -113,6 +118,8 @@ function nextAction(
 export function CakeOrdersBoard({
   orders,
   optionsByKind,
+  diameters = [],
+  prices = [],
   canMove = true,
   showArchiveButton = true,
   showUnarchiveButton = false,
@@ -128,6 +135,21 @@ export function CakeOrdersBoard({
     useState<CakeOrderStatus | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  /** Filter cabang admin: 'all' (default) menampilkan kedua cabang;
+   *  'pare' / 'semarang' menyaring. */
+  const [branchFilter, setBranchFilter] = useState<
+    "all" | "pare" | "semarang"
+  >("all");
+
+  // Apply branch filter SEBELUM grouping/search supaya counts + match
+  // hanya mencakup orders yang relevan dengan filter aktif.
+  const visibleOrders = useMemo(
+    () =>
+      branchFilter === "all"
+        ? orders
+        : orders.filter((o) => o.branch === branchFilter),
+    [orders, branchFilter]
+  );
 
   const labelFor = makeLabelFor(optionsByKind);
 
@@ -139,7 +161,7 @@ export function CakeOrdersBoard({
     const q = searchQuery.trim().toLowerCase();
     if (q.length === 0) return null;
     const set = new Set<string>();
-    for (const o of orders) {
+    for (const o of visibleOrders) {
       const hay = [
         o.customer_name,
         o.customer_phone,
@@ -157,26 +179,26 @@ export function CakeOrdersBoard({
       if (hay.includes(q)) set.add(o.id);
     }
     return set;
-  }, [orders, searchQuery, enableSearch]);
+  }, [visibleOrders, searchQuery, enableSearch]);
   const matchCount = matchedIds?.size ?? 0;
 
   // Scroll ke match pertama saat query berubah. Pakai data-attribute
   // pada Card supaya selector aman terhadap tree-shake nama class.
   useEffect(() => {
     if (!matchedIds || matchedIds.size === 0) return;
-    const firstId = orders.find((o) => matchedIds.has(o.id))?.id;
+    const firstId = visibleOrders.find((o) => matchedIds.has(o.id))?.id;
     if (!firstId) return;
     const el = document.querySelector<HTMLElement>(
       `[data-cake-order-id="${firstId}"]`
     );
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [matchedIds, orders]);
+  }, [matchedIds, visibleOrders]);
 
   const grouped = useMemo(() => {
     const map = new Map<CakeOrderStatus, CakeOrder[]>();
     for (const c of COLUMNS) map.set(c.status, []);
     map.set("cancelled", []);
-    for (const o of orders) {
+    for (const o of visibleOrders) {
       const list = map.get(o.status) ?? [];
       list.push(o);
       map.set(o.status, list);
@@ -281,11 +303,20 @@ export function CakeOrdersBoard({
               value={searchQuery}
               onChange={setSearchQuery}
               matchCount={matchCount}
-              totalCount={orders.length}
+              totalCount={visibleOrders.length}
             />
           )}
+          <BranchFilterPills
+            value={branchFilter}
+            onChange={setBranchFilter}
+            counts={{
+              all: orders.length,
+              pare: orders.filter((o) => o.branch === "pare").length,
+              semarang: orders.filter((o) => o.branch === "semarang").length,
+            }}
+          />
           <ul className={flatGridCls}>
-            {orders.map((o) => (
+            {visibleOrders.map((o) => (
               <Card
                 key={o.id}
                 order={o}
@@ -307,6 +338,8 @@ export function CakeOrdersBoard({
             <CakeOrderDetailLoader
               orderId={selectedOrderId}
               optionsByKind={optionsByKind}
+              diameters={diameters}
+              prices={prices}
               isAdminView={isAdminView}
               canEdit={false}
               onClose={closePanel}
@@ -322,6 +355,8 @@ export function CakeOrdersBoard({
             <CakeOrderDetailLoader
               orderId={selectedOrderId}
               optionsByKind={optionsByKind}
+              diameters={diameters}
+              prices={prices}
               isAdminView={isAdminView}
               canEdit={false}
               onClose={closePanel}
@@ -340,9 +375,18 @@ export function CakeOrdersBoard({
             value={searchQuery}
             onChange={setSearchQuery}
             matchCount={matchCount}
-            totalCount={orders.length}
+            totalCount={visibleOrders.length}
           />
         )}
+        <BranchFilterPills
+          value={branchFilter}
+          onChange={setBranchFilter}
+          counts={{
+            all: orders.length,
+            pare: orders.filter((o) => o.branch === "pare").length,
+            semarang: orders.filter((o) => o.branch === "semarang").length,
+          }}
+        />
         <UrgencyLegend />
         <div className={gridCls}>
           {COLUMNS.map((col) => {
@@ -476,6 +520,8 @@ export function CakeOrdersBoard({
           <CakeOrderDetailLoader
             orderId={selectedOrderId}
             optionsByKind={optionsByKind}
+            diameters={diameters}
+            prices={prices}
             isAdminView={isAdminView}
             canEdit={canMove}
             onClose={closePanel}
@@ -492,6 +538,8 @@ export function CakeOrdersBoard({
           <CakeOrderDetailLoader
             orderId={selectedOrderId}
             optionsByKind={optionsByKind}
+            diameters={diameters}
+            prices={prices}
             isAdminView={isAdminView}
             canEdit={canMove}
             onClose={closePanel}
@@ -629,8 +677,20 @@ function Card({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-sm text-foreground truncate">
-              {order.customer_name}
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`inline-block rounded-full border border-foreground px-1.5 py-0 text-[9px] font-semibold leading-tight ${
+                  order.branch === "pare"
+                    ? "bg-pop-emerald/30"
+                    : "bg-pop-pink/30"
+                }`}
+                title={`Cabang ${order.branch}`}
+              >
+                {order.branch === "pare" ? "Pare" : "Sem"}
+              </span>
+              <div className="font-semibold text-sm text-foreground truncate">
+                {order.customer_name}
+              </div>
             </div>
             {order.customer_phone && (
               <div className={`text-[10px] truncate ${urgency.sub}`}>
@@ -885,6 +945,55 @@ function SearchBar({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Toggle pill row for filtering kanban by branch. */
+function BranchFilterPills({
+  value,
+  onChange,
+  counts,
+}: {
+  value: "all" | "pare" | "semarang";
+  onChange: (v: "all" | "pare" | "semarang") => void;
+  counts: { all: number; pare: number; semarang: number };
+}) {
+  const opts: Array<{
+    id: "all" | "pare" | "semarang";
+    label: string;
+    activeCls: string;
+  }> = [
+    { id: "all", label: "Semua", activeCls: "bg-foreground text-background" },
+    {
+      id: "pare",
+      label: "Pare",
+      activeCls: "bg-pop-emerald/40 text-foreground border-foreground",
+    },
+    {
+      id: "semarang",
+      label: "Semarang",
+      activeCls: "bg-pop-pink/40 text-foreground border-foreground",
+    },
+  ];
+  return (
+    <div className="flex items-center gap-1.5 text-[11px]">
+      <span className="text-muted-foreground font-medium">Cabang:</span>
+      {opts.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          className={`rounded-full border-2 px-2.5 py-0.5 font-semibold transition-colors ${
+            value === o.id
+              ? o.activeCls
+              : "border-border bg-card text-muted-foreground hover:border-foreground"
+          }`}
+        >
+          {o.label}
+          <span className="ml-1 tabular-nums opacity-70">{counts[o.id]}</span>
+        </button>
+      ))}
     </div>
   );
 }

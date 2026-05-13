@@ -121,13 +121,22 @@ export function SlipChecklist({ slip, items, myProductionRole }: Props) {
           <ArrowLeft size={18} strokeWidth={2.5} />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg sm:text-xl font-semibold text-foreground leading-tight">
+          <h1 className="text-lg sm:text-xl font-semibold text-foreground leading-tight flex items-center gap-2 flex-wrap">
             Slip{" "}
             {format(
               new Date(`${slip.target_date}T00:00:00`),
               "EEEE, d MMM yyyy",
               { locale: idLocale }
             )}
+            <span
+              className={`inline-block rounded-full border-2 border-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                slip.branch === "pare"
+                  ? "bg-pop-emerald/40"
+                  : "bg-pop-pink/40"
+              }`}
+            >
+              Cabang {slip.branch === "pare" ? "Pare" : "Semarang"}
+            </span>
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {done} dari {total} cake selesai

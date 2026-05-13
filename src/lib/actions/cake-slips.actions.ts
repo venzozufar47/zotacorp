@@ -97,7 +97,8 @@ export interface TomorrowSlipBundle {
  * banner warna agar tidak keliru.
  */
 export async function getOrCreateTomorrowSlip(
-  targetDateArg?: string
+  targetDateArg?: string,
+  branchArg?: "pare" | "semarang"
 ): Promise<ActionResult<TomorrowSlipBundle>> {
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -109,14 +110,17 @@ export async function getOrCreateTomorrowSlip(
     typeof targetDateArg === "string" && /^\d{4}-\d{2}-\d{2}$/.test(targetDateArg)
       ? targetDateArg
       : tomorrowYmd();
+  const branch: "pare" | "semarang" =
+    branchArg === "semarang" ? "semarang" : "pare";
 
-  // Find or insert the slip row.
+  // Find or insert the slip row untuk (date, branch).
   let slip: CakeProductionSlip | null = null;
   {
     const { data } = await supabase
       .from("cake_production_slips" as never)
       .select("*")
       .eq("target_date", targetDate)
+      .eq("branch", branch)
       .maybeSingle();
     slip = (data as unknown as CakeProductionSlip) ?? null;
   }
@@ -125,6 +129,7 @@ export async function getOrCreateTomorrowSlip(
       .from("cake_production_slips" as never)
       .insert({
         target_date: targetDate,
+        branch,
         status: "draft",
         prepared_by: gate.userId,
       } as never)
@@ -154,6 +159,7 @@ export async function getOrCreateTomorrowSlip(
     supabase
       .from("cake_orders" as never)
       .select("*")
+      .eq("branch", branch)
       .gte("scheduled_at", dayStart(targetDate))
       .lte("scheduled_at", dayEnd(targetDate))
       .neq("status", "cancelled")
@@ -161,6 +167,7 @@ export async function getOrCreateTomorrowSlip(
     supabase
       .from("cake_orders" as never)
       .select("*")
+      .eq("branch", branch)
       .gte("scheduled_at", dayStart(optionalStart))
       .lte("scheduled_at", dayEnd(optionalEnd))
       .neq("status", "cancelled")
@@ -168,6 +175,7 @@ export async function getOrCreateTomorrowSlip(
     supabase
       .from("cake_orders" as never)
       .select("*")
+      .eq("branch", branch)
       .gte("scheduled_at", dayStart(farStart))
       .lte("scheduled_at", dayEnd(farEnd))
       .neq("status", "cancelled")
@@ -554,13 +562,35 @@ export async function listMySlips(): Promise<
   // once. 'reopened' is included so a slip the production team
   // already received doesn't disappear while admin is editing — they
   // keep seeing the previous snapshot via last_sent_snapshot.
+  //
+  // Filter by branch: tim produksi cuma lihat slip cabangnya. User
+  // dengan scope 'orders' (admin-equivalent) lihat semua.
   const supabase = await createServerClient();
-  const { data, error } = await supabase
+  const { data: accessRows } = await supabase
+    .from("cake_access_assignments" as never)
+    .select("scope, branch")
+    .eq("user_id", user.id);
+  const access = (accessRows ?? []) as unknown as Array<{
+    scope: string;
+    branch: "pare" | "semarang" | null;
+  }>;
+  const hasOrdersScope = access.some((r) => r.scope === "orders");
+  const myBranches = access
+    .filter((r) => r.scope === "production" && r.branch)
+    .map((r) => r.branch as "pare" | "semarang");
+
+  let q = supabase
     .from("cake_production_slips" as never)
     .select("*")
     .in("status", ["sent", "received", "reopened", "closed"])
-    .not("last_sent_snapshot", "is", null)
-    .order("target_date", { ascending: false });
+    .not("last_sent_snapshot", "is", null);
+  if (!hasOrdersScope) {
+    if (myBranches.length === 0) {
+      return { ok: true, data: [] };
+    }
+    q = q.in("branch", myBranches);
+  }
+  const { data, error } = await q.order("target_date", { ascending: false });
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as CakeProductionSlip[] };
 }
@@ -594,7 +624,7 @@ export async function getSlipForProduction(slipId: string): Promise<
   const [roleRes, slipRes] = await Promise.all([
     supabase
       .from("cake_access_assignments" as never)
-      .select("scope, production_role")
+      .select("scope, production_role, branch")
       .eq("user_id", gate.userId)
       .in("scope", ["orders", "production"]),
     supabase
@@ -603,20 +633,45 @@ export async function getSlipForProduction(slipId: string): Promise<
       .eq("id", slipId)
       .maybeSingle(),
   ]);
-  type RoleRow = { scope: string; production_role: string | null };
+  type RoleRow = {
+    scope: string;
+    production_role: string | null;
+    branch: "pare" | "semarang" | null;
+  };
   const rows = (roleRes.data ?? []) as unknown as RoleRow[];
-  let myProductionRole: "baker" | "decorator" | null = null;
   const hasOrders = rows.some((r) => r.scope === "orders");
-  const prodRow = rows.find((r) => r.scope === "production");
-  if (hasOrders || !prodRow || prodRow.production_role == null) {
-    myProductionRole = null;
-  } else if (prodRow.production_role === "baker" || prodRow.production_role === "decorator") {
-    myProductionRole = prodRow.production_role;
-  }
 
   const slipRaw = slipRes.data;
   if (!slipRaw) return { ok: false, error: "Slip tidak ditemukan" };
   const slip = slipRaw as unknown as CakeProductionSlip;
+
+  // Branch gate: scope 'production' user hanya boleh buka slip cabang
+  // yang ditugaskan ke mereka. scope 'orders' = admin-equivalent, lolos.
+  if (!hasOrders) {
+    const prodForBranch = rows.find(
+      (r) => r.scope === "production" && r.branch === slip.branch
+    );
+    if (!prodForBranch) {
+      return {
+        ok: false,
+        error: `Slip ini untuk cabang ${slip.branch}. Anda tidak terdaftar di cabang tersebut.`,
+      };
+    }
+  }
+
+  // Resolve sub-role saat ini, scoped ke branch slip ini.
+  let myProductionRole: "baker" | "decorator" | null = null;
+  const prodRow = rows.find(
+    (r) => r.scope === "production" && r.branch === slip.branch
+  );
+  if (hasOrders || !prodRow || prodRow.production_role == null) {
+    myProductionRole = null;
+  } else if (
+    prodRow.production_role === "baker" ||
+    prodRow.production_role === "decorator"
+  ) {
+    myProductionRole = prodRow.production_role;
+  }
 
   if (!slip.last_sent_snapshot)
     return { ok: false, error: "Slip belum pernah dikirim" };

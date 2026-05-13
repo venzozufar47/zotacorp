@@ -33,6 +33,8 @@ import { ImageDropField } from "./ImageDropField";
 import { NewCakeOrderForm } from "./NewCakeOrderForm";
 import type {
   CakeAttachmentField,
+  CakeBaseDiameterPrice,
+  CakeDiameterOption,
   CakeOptionsByKind,
   CakeOrder,
   CakeOrderAttachment,
@@ -50,6 +52,9 @@ interface Props {
    *  edit (atau order belum masuk slip apapun). */
   slipLock: import("@/lib/actions/cake-orders.actions").CakeOrderSlipLock | null;
   optionsByKind: CakeOptionsByKind | null;
+  /** Preset diameter + matriks harga untuk form edit inline. */
+  diameters?: CakeDiameterOption[];
+  prices?: CakeBaseDiameterPrice[];
   isAdminView: boolean;
   canEdit: boolean;
   /** When provided, the back arrow becomes a close button (used by the
@@ -76,6 +81,8 @@ export function CakeOrderDetail({
   payments,
   slipLock,
   optionsByKind,
+  diameters = [],
+  prices = [],
   isAdminView,
   canEdit,
   onClose,
@@ -192,6 +199,8 @@ export function CakeOrderDetail({
         </div>
         <NewCakeOrderForm
           optionsByKind={optionsByKind}
+          diameters={diameters}
+          prices={prices}
           editing={order}
           singleColumn
           onSuccess={() => {

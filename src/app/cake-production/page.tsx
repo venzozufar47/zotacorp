@@ -67,12 +67,21 @@ export default async function CakeProductionPage() {
                   })}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-foreground">
+                  <div className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
                     {format(
                       new Date(`${s.target_date}T00:00:00`),
                       "EEEE, d MMM yyyy",
                       { locale: idLocale }
                     )}
+                    <span
+                      className={`inline-block rounded-full border border-foreground px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide ${
+                        s.branch === "pare"
+                          ? "bg-pop-emerald/40"
+                          : "bg-pop-pink/40"
+                      }`}
+                    >
+                      {s.branch === "pare" ? "Pare" : "Semarang"}
+                    </span>
                   </div>
                   <div className="mt-0.5">
                     <SlipStatusBadge

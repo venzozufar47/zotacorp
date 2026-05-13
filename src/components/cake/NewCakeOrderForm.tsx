@@ -14,11 +14,19 @@ import { ImageDropField } from "./ImageDropField";
 import type {
   CakeAddOnLine,
   CakeAttachmentField,
+  CakeBaseDiameterPrice,
+  CakeBranch,
+  CakeDiameterOption,
   CakeDiscountKind,
   CakeOption,
   CakeOptionsByKind,
   CakeOrder,
 } from "@/lib/cake-orders/types";
+import {
+  CAKE_BRANCH_LABELS,
+  CAKE_BRANCHES,
+} from "@/lib/cake-orders/types";
+import { resolveBasePrice } from "@/lib/cake-orders/pricing";
 
 interface InitialPayment {
   kind: "dp" | "pelunasan";
@@ -38,6 +46,11 @@ interface InitialPayment {
 
 interface Props {
   optionsByKind: CakeOptionsByKind;
+  /** Preset diameter global. Form pakai dropdown ini (bukan freeform). */
+  diameters?: CakeDiameterOption[];
+  /** Matriks harga (base × diameter). Optional — kalau kosong, form
+   *  fallback ke input manual harga + base_price_idr lama. */
+  prices?: CakeBaseDiameterPrice[];
   /** When provided, the form switches to edit mode and pre-fills with
    *  the order. New uploads still upload to Storage and append to the
    *  order's existing attachment list. */
@@ -86,6 +99,8 @@ interface UploadedFile {
  */
 export function NewCakeOrderForm({
   optionsByKind,
+  diameters = [],
+  prices = [],
   editing,
   onSuccess,
   onCancel,
@@ -108,6 +123,7 @@ export function NewCakeOrderForm({
   const [customerPhone, setCustomerPhone] = useState(
     editing?.customer_phone ?? ""
   );
+  const [branch, setBranch] = useState<CakeBranch>(editing?.branch ?? "pare");
   const [baseCakeOptionId, setBaseCakeOptionId] = useState(
     editing?.base_cake_option_id ?? ""
   );
@@ -117,6 +133,12 @@ export function NewCakeOrderForm({
   const [shapeCustom, setShapeCustom] = useState(editing?.shape_custom ?? "");
   const [dimensionCm, setDimensionCm] = useState(
     editing?.dimension_cm != null ? String(editing.dimension_cm) : ""
+  );
+  /** Harga base override yang admin isi manual. Default seed dari
+   *  order yang sedang di-edit kalau ada (snapshot lama), supaya
+   *  edit-mode tidak kehilangan harga. */
+  const [basePriceOverride, setBasePriceOverride] = useState(
+    editing?.base_price_idr != null ? String(editing.base_price_idr) : ""
   );
   const [fillingOptionId, setFillingOptionId] = useState(
     editing?.filling_option_id ?? ""
@@ -222,7 +244,27 @@ export function NewCakeOrderForm({
   );
 
   // ---------- Live pricing ----------
-  const basePrice = baseOpt?.base_price_idr ?? 0;
+  // Resolve dari matriks dulu (base × diameter); fallback ke override
+  // manual; terakhir ke `base_price_idr` lama. Source dipakai UI untuk
+  // menunjukkan apakah field harga manual aktif/locked.
+  const dimensionCmNum = (() => {
+    const v = Number(dimensionCm);
+    return dimensionCm.trim() === "" || !Number.isFinite(v) ? null : v;
+  })();
+  const overrideNum = (() => {
+    const v = parseInt(basePriceOverride, 10);
+    return Number.isFinite(v) ? v : null;
+  })();
+  const resolved = resolveBasePrice({
+    baseOption: baseOpt ?? null,
+    branch,
+    dimensionCm: dimensionCmNum,
+    diameters,
+    prices,
+    override: overrideNum,
+  });
+  const basePrice = resolved.price;
+  const priceFromMatrix = resolved.source === "matrix";
   const addOnsTotal = addOns.reduce(
     (s, a) => s + Math.max(0, Math.round(a.price_idr || 0)),
     0
@@ -290,13 +332,12 @@ export function NewCakeOrderForm({
       const payload = {
         customerName,
         customerPhone: customerPhone || null,
+        branch,
         baseCakeOptionId,
         shapeOptionId,
         shapeCustom: shapeOpt?.is_custom_freeform ? shapeCustom : null,
-        dimensionCm: (() => {
-          const v = Number(dimensionCm);
-          return dimensionCm.trim() === "" || !Number.isFinite(v) ? null : v;
-        })(),
+        dimensionCm: dimensionCmNum,
+        basePriceOverrideIdr: priceFromMatrix ? null : overrideNum,
         fillingOptionId: fillingOptionId || null,
         colorNotes: colorNotes || null,
         textureNotes: textureNotes || null,
@@ -427,6 +468,26 @@ export function NewCakeOrderForm({
                 />
               </FieldInline>
             </Row>
+            <FieldInline label="🏪 Cabang" required>
+              <div className="flex gap-1.5">
+                {CAKE_BRANCHES.map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setBranch(b)}
+                    className={`flex-1 rounded-lg border-2 px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      branch === b
+                        ? b === "pare"
+                          ? "border-foreground bg-pop-emerald/30 text-foreground"
+                          : "border-foreground bg-pop-pink/30 text-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-foreground"
+                    }`}
+                  >
+                    {CAKE_BRANCH_LABELS[b]}
+                  </button>
+                ))}
+              </div>
+            </FieldInline>
           </Section>
 
           <Section
@@ -505,21 +566,63 @@ export function NewCakeOrderForm({
               </FieldInline>
             )}
             <FieldInline label="📏 Diameter">
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={199}
+              {diameters.length > 0 ? (
+                <select
                   value={dimensionCm}
-                  onChange={(e) =>
-                    setDimensionCm(e.target.value.replace(/[^\d]/g, ""))
-                  }
-                  placeholder="16"
-                  className={`${CAKE_INPUT} w-20 tabular-nums`}
-                />
-                <span className="text-xs text-muted-foreground">cm</span>
-              </div>
+                  onChange={(e) => setDimensionCm(e.target.value)}
+                  className={`${CAKE_INPUT} tabular-nums`}
+                >
+                  <option value="">— pilih diameter —</option>
+                  {diameters.map((d) => (
+                    <option key={d.id} value={String(d.diameter_cm)}>
+                      {d.label ?? `${d.diameter_cm} cm`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={199}
+                    value={dimensionCm}
+                    onChange={(e) =>
+                      setDimensionCm(e.target.value.replace(/[^\d]/g, ""))
+                    }
+                    placeholder="16"
+                    className={`${CAKE_INPUT} w-20 tabular-nums`}
+                  />
+                  <span className="text-xs text-muted-foreground">cm</span>
+                </div>
+              )}
+            </FieldInline>
+            <FieldInline label="💰 Harga base">
+              {priceFromMatrix ? (
+                <div className="text-sm font-semibold tabular-nums text-foreground">
+                  Rp {formatIDR(basePrice)}
+                  <span className="ml-2 text-[10px] font-normal text-muted-foreground">
+                    · dari matriks
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Rp</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={basePriceOverride}
+                    onChange={(e) =>
+                      setBasePriceOverride(e.target.value.replace(/[^\d]/g, ""))
+                    }
+                    placeholder="isi manual"
+                    className={`${CAKE_INPUT} w-32 tabular-nums`}
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    · kombinasi belum di matriks
+                  </span>
+                </div>
+              )}
             </FieldInline>
           </Section>
 
