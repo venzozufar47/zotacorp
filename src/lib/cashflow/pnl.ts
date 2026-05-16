@@ -43,11 +43,29 @@ export interface BranchCategoryBreakdown {
   debit: number;
   kind: PnLCategoryClass;
   /**
+   * Pecahan kontribusi per asal. Tiga sumber:
+   *  - `direct*`  — transaksi yang langsung ditandai cabang ini.
+   *  - `posQris*` — auto-deducted dari Pusat: total QRIS POS yang
+   *    masuk di kasir Pare bulan ini (Pare-only; POS belum ada di
+   *    Semarang per saat ini).
+   *  - `pusat*`   — porsi dari Pusat yang dialokasikan admin secara
+   *    manual via Pusat allocator (sisa setelah auto-deduct POS QRIS).
+   *
+   * Invariant: `directCredit + posQrisCredit + pusatCredit === credit`
+   * (idem `debit`).
+   */
+  directCredit: number;
+  directDebit: number;
+  posQrisCredit: number;
+  posQrisDebit: number;
+  pusatCredit: number;
+  pusatDebit: number;
+  /**
    * Per-transaction breakdown for admin drill-down. Covers transaksi
    * yang tagged langsung ke branch. Pusat-allocated portions yang
    * di-split ke branch TIDAK muncul di sini (mereka agregat per
    * kategori, bukan tx individual) — agregat tersebut tetap tercermin
-   * di `credit`/`debit`.
+   * di `credit`/`debit` dan `pusatCredit`/`pusatDebit`.
    */
   details?: CategoryTxDetail[];
 }
@@ -83,12 +101,27 @@ export interface PusatBreakdownRow {
   category: string;
   side: PnLSide;
   pusatTotal: number;
+  /**
+   * Auto-deduction sebelum admin alokasi. Khusus Sales credit di Pare:
+   * POS QRIS Pare otomatis dipotong dari raw Pusat Sales karena POS
+   * sudah tahu eksakta amount-nya per cabang. Field ini menyimpan
+   * jumlah yang dipotong supaya UI bisa tampilkan transparansi.
+   * Kategori lain = 0.
+   */
+  autoDeductPare: number;
+  autoDeductSemarang: number;
+  /**
+   * Jumlah yang admin perlu alokasikan = `pusatTotal − autoDeductPare
+   * − autoDeductSemarang`. UI allocator pakai ini, bukan `pusatTotal`,
+   * supaya admin tidak double-count POS QRIS yang sudah diatribusi.
+   */
+  netForAllocation: number;
   semarangAlloc: number;
   pareAlloc: number;
   balanced: boolean;
   /** No allocation row yet in DB. */
   unallocated: boolean;
-  /** Has a row but sum ≠ pusatTotal. */
+  /** Has a row but sum ≠ netForAllocation. */
   unbalanced: boolean;
   /**
    * Admin menge-lock row ini setelah nilainya final. Input di editor
@@ -425,27 +458,56 @@ export async function fetchPnL(
   const months: PnLMonth[] = rangeMonths.map(({ year, month }) => {
     const monthKey = ym(year, month);
 
-    // Start empty branch buckets.
-    const branchAgg: Record<
-      "Semarang" | "Pare",
-      Map<string, { credit: number; debit: number }>
-    > = {
-      Semarang: new Map(),
-      Pare: new Map(),
+    // Start empty branch buckets. `branchAgg` adalah TOTAL gabungan
+    // dari semua sumber; tiga bag turunan melacak asal pemisahnya:
+    //  - `branchDirectAgg`  → transaksi yang tagged langsung ke cabang.
+    //  - `branchPosQrisAgg` → POS QRIS Pare yang otomatis dipotong
+    //    dari Pusat (cuma berlaku Pare, kategori Sales).
+    //  - `branchPusatAgg`   → sisa Pusat yang admin alokasikan manual.
+    type BranchBag = Map<string, { credit: number; debit: number }>;
+    const newBag = (): BranchBag => new Map();
+    const branchAgg: Record<"Semarang" | "Pare", BranchBag> = {
+      Semarang: newBag(),
+      Pare: newBag(),
     };
-    const addToBranch = (
-      branch: "Semarang" | "Pare",
+    const branchDirectAgg: Record<"Semarang" | "Pare", BranchBag> = {
+      Semarang: newBag(),
+      Pare: newBag(),
+    };
+    const branchPusatAgg: Record<"Semarang" | "Pare", BranchBag> = {
+      Semarang: newBag(),
+      Pare: newBag(),
+    };
+    const branchPosQrisAgg: Record<"Semarang" | "Pare", BranchBag> = {
+      Semarang: newBag(),
+      Pare: newBag(),
+    };
+    const accumulate = (
+      bag: BranchBag,
       category: string,
       credit: number,
       debit: number
     ) => {
-      const existing = branchAgg[branch].get(category) ?? {
-        credit: 0,
-        debit: 0,
-      };
+      const existing = bag.get(category) ?? { credit: 0, debit: 0 };
       existing.credit += credit;
       existing.debit += debit;
-      branchAgg[branch].set(category, existing);
+      bag.set(category, existing);
+    };
+    const addToBranch = (
+      branch: "Semarang" | "Pare",
+      source: "direct" | "pusat" | "posQris",
+      category: string,
+      credit: number,
+      debit: number
+    ) => {
+      accumulate(branchAgg[branch], category, credit, debit);
+      const sourceBag =
+        source === "direct"
+          ? branchDirectAgg
+          : source === "posQris"
+            ? branchPosQrisAgg
+            : branchPusatAgg;
+      accumulate(sourceBag[branch], category, credit, debit);
     };
 
     const bucket = byMonth.get(monthKey) ?? new Map<string, number>();
@@ -458,14 +520,23 @@ export async function fetchPnL(
         PnLSide,
       ];
       if (branch !== "Semarang" && branch !== "Pare") continue;
-      if (side === "credit") addToBranch(branch, category, amount, 0);
-      else addToBranch(branch, category, 0, amount);
+      if (side === "credit") addToBranch(branch, "direct", category, amount, 0);
+      else addToBranch(branch, "direct", category, 0, amount);
     }
 
     // 2. Pusat buckets: merge with allocation. Balanced allocations
     //    contribute to the branch totals; unbalanced/unallocated are
     //    skipped here and flagged in `pusatBreakdown`.
+    //
+    // Special handling Sales credit: total POS QRIS Pare bulan ini
+    // (sudah dihitung di `qrisParePerMonth`) otomatis dipotong dari
+    // raw Pusat total, dan langsung diatribusi ke Pare via sumber
+    // "posQris". Admin tinggal alokasi sisa-nya (yang biasanya custom
+    // cake online — campuran Bank Jago + non-POS QRIS).
     const pusatBreakdown: PusatBreakdownRow[] = [];
+    const posQrisPareThisMonth = Math.round(
+      qrisParePerMonth.get(monthKey) ?? 0
+    );
     for (const [k, amount] of bucket) {
       const [branch, category, side] = k.split("|") as [
         BranchName,
@@ -476,23 +547,34 @@ export async function fetchPnL(
       const allocKey = `${monthKey}|${side}|${category}`;
       const alloc = allocMap.get(allocKey);
       const pusatTotal = Math.round(amount);
+      // Auto-deduct hanya Sales credit di Pare (POS belum ada Semarang).
+      const isSalesCredit = category === "Sales" && side === "credit";
+      const autoDeductPare = isSalesCredit
+        ? Math.min(posQrisPareThisMonth, pusatTotal)
+        : 0;
+      const autoDeductSemarang = 0;
+      const netForAllocation = pusatTotal - autoDeductPare - autoDeductSemarang;
       const semarangAlloc = alloc ? Math.round(alloc.semarang) : 0;
       const pareAlloc = alloc ? Math.round(alloc.pare) : 0;
       const sum = semarangAlloc + pareAlloc;
       const unallocated = !alloc;
-      const balanced = !unallocated && Math.abs(sum - pusatTotal) <= 1;
+      // Balanced terhadap `netForAllocation`, bukan raw pusatTotal,
+      // supaya admin tidak harus menyerap jumlah POS QRIS yang sudah
+      // otomatis di-attribute.
+      const balanced =
+        !unallocated && Math.abs(sum - netForAllocation) <= 1;
       const unbalanced = !unallocated && !balanced;
 
-      // Auto-unlock guard: if the row was locked at a snapshot Pusat
-      // total that no longer matches (admin re-categorized / edited /
-      // deleted underlying transactions), flip locked → false so the
-      // editor un-greys the inputs and admin can re-split. Schedule
-      // the DB write for after the report is built.
+      // Auto-unlock guard: if the row was locked at a snapshot net
+      // total (post auto-deduct) yang sudah drift, flip locked → false
+      // supaya admin re-allocate. Pakai netForAllocation supaya
+      // perubahan POS QRIS yang tidak mengubah angka custom-cake bersih
+      // tidak men-trigger unlock palsu.
       let effectiveLocked = Boolean(alloc?.locked);
       if (
         alloc?.locked &&
         alloc.lockedPusatTotal != null &&
-        alloc.lockedPusatTotal !== pusatTotal
+        alloc.lockedPusatTotal !== netForAllocation
       ) {
         effectiveLocked = false;
         const drift = pendingAutoUnlocks.get(allocKey);
@@ -516,6 +598,9 @@ export async function fetchPnL(
         category,
         side,
         pusatTotal,
+        autoDeductPare,
+        autoDeductSemarang,
+        netForAllocation,
         semarangAlloc,
         pareAlloc,
         balanced,
@@ -525,13 +610,19 @@ export async function fetchPnL(
         details,
       });
 
+      // Auto-deducted portion (POS QRIS) langsung dorong ke Pare tanpa
+      // menunggu admin alokasi.
+      if (autoDeductPare > 0) {
+        addToBranch("Pare", "posQris", category, autoDeductPare, 0);
+      }
+
       if (balanced) {
         if (side === "credit") {
-          addToBranch("Semarang", category, semarangAlloc, 0);
-          addToBranch("Pare", category, pareAlloc, 0);
+          addToBranch("Semarang", "pusat", category, semarangAlloc, 0);
+          addToBranch("Pare", "pusat", category, pareAlloc, 0);
         } else {
-          addToBranch("Semarang", category, 0, semarangAlloc);
-          addToBranch("Pare", category, 0, pareAlloc);
+          addToBranch("Semarang", "pusat", category, 0, semarangAlloc);
+          addToBranch("Pare", "pusat", category, 0, pareAlloc);
         }
       }
     }
@@ -554,6 +645,22 @@ export async function fetchPnL(
       let opExp = 0;
       let nopRev = 0;
       let nopExp = 0;
+      const directBag = branchDirectAgg[branchName];
+      const pusatBag = branchPusatAgg[branchName];
+      const posQrisBag = branchPosQrisAgg[branchName];
+      const sourceSplit = (category: string) => {
+        const d = directBag.get(category) ?? { credit: 0, debit: 0 };
+        const p = pusatBag.get(category) ?? { credit: 0, debit: 0 };
+        const q = posQrisBag.get(category) ?? { credit: 0, debit: 0 };
+        return {
+          directCredit: Math.round(d.credit),
+          directDebit: Math.round(d.debit),
+          posQrisCredit: Math.round(q.credit),
+          posQrisDebit: Math.round(q.debit),
+          pusatCredit: Math.round(p.credit),
+          pusatDebit: Math.round(p.debit),
+        };
+      };
       for (const [category, totals] of bag) {
         const isNonOp = nonOpSet.has(category);
         const bdk = `${monthKey}|${branchName}|${category}`;
@@ -561,6 +668,7 @@ export async function fetchPnL(
           .get(bdk)
           ?.slice()
           .sort((a, b) => a.date.localeCompare(b.date));
+        const split = sourceSplit(category);
 
         if (isNonOp) {
           // Non-op tetap split asal (Wealth Transfer dst. punya arah
@@ -570,6 +678,7 @@ export async function fetchPnL(
             credit: Math.round(totals.credit),
             debit: Math.round(totals.debit),
             kind: "nonop",
+            ...split,
             details,
           });
           nopRev += totals.credit;
@@ -594,6 +703,7 @@ export async function fetchPnL(
             credit: 0,
             debit: Math.round(netDebit),
             kind: "operating",
+            ...split,
             details,
           });
           opExp += netDebit;
@@ -604,6 +714,7 @@ export async function fetchPnL(
             credit: Math.round(netCredit),
             debit: 0,
             kind: "operating",
+            ...split,
             details,
           });
           opRev += netCredit;
@@ -615,6 +726,7 @@ export async function fetchPnL(
             credit: Math.round(totals.credit),
             debit: Math.round(totals.debit),
             kind: "operating",
+            ...split,
             details,
           });
           opRev += totals.credit;
@@ -653,6 +765,15 @@ export async function fetchPnL(
         credit: Math.round(totals.credit),
         debit: Math.round(totals.debit),
         kind: "nonop",
+        // Company-level Investment/Dividend tidak punya konsep
+        // "Pusat-allocated" / "POS QRIS" — semua dianggap direct
+        // level-perusahaan.
+        directCredit: Math.round(totals.credit),
+        directDebit: Math.round(totals.debit),
+        posQrisCredit: 0,
+        posQrisDebit: 0,
+        pusatCredit: 0,
+        pusatDebit: 0,
         details,
       });
       companyDebit += totals.debit;

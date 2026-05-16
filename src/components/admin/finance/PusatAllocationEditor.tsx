@@ -201,9 +201,11 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
       side: row.side,
       category: row.category,
       locked: nextLocked,
-      // Snapshot the Pusat total at lock time so fetchPnL can auto-
-      // unlock when transactions later shift the cumulative value.
-      pusatTotal: nextLocked ? row.pusatTotal : undefined,
+      // Snapshot `netForAllocation` (post auto-deduct) supaya admin
+      // tidak unlock palsu kalau yang berubah cuma POS QRIS — net yang
+      // dialokasi masih sama. fetchPnL auto-unlock kalau angka net
+      // drift dari snapshot.
+      pusatTotal: nextLocked ? row.netForAllocation : undefined,
     });
     if (!res.ok) {
       setRows((prev) =>
@@ -335,8 +337,8 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
           <thead className="bg-muted/60 text-muted-foreground uppercase tracking-wider">
             <tr>
               <th className="text-left font-semibold px-3 py-2 w-28">Bulan</th>
-              <th className="text-right font-semibold px-3 py-2 w-36">
-                Total Pusat
+              <th className="text-right font-semibold px-3 py-2 w-36" title="Total Pusat raw dikurangi auto-deduction (POS QRIS). Inilah jumlah yang admin perlu split ke cabang.">
+                Untuk dialokasikan
               </th>
               <th className="text-right font-semibold px-3 py-2 w-36">
                 Semarang
@@ -389,8 +391,8 @@ function buildRows(report: PnLReport): EditableAlloc[] {
         month: m.month,
         semarangDraft: semNominal,
         pareDraft: pareNominal,
-        semPctDraft: p.unallocated ? "" : pctOf(p.semarangAlloc, p.pusatTotal),
-        parePctDraft: p.unallocated ? "" : pctOf(p.pareAlloc, p.pusatTotal),
+        semPctDraft: p.unallocated ? "" : pctOf(p.semarangAlloc, p.netForAllocation),
+        parePctDraft: p.unallocated ? "" : pctOf(p.pareAlloc, p.netForAllocation),
         mode: pctKeys.has(key) ? "pct" : "rp",
         status: "idle",
         qrisOperasionalPare: m.qrisOperasionalPare,
@@ -477,7 +479,7 @@ function CategoryGroup({
 }) {
   void groupKey;
   const first = rows[0];
-  const aggregate = rows.reduce((s, r) => s + r.pusatTotal, 0);
+  const aggregate = rows.reduce((s, r) => s + r.netForAllocation, 0);
   const lockedCount = rows.filter((r) => r.locked).length;
   const unallocatedCount = rows.filter((r) => r.unallocated).length;
   // Expansion state keyed by row. Details collapsed by default to
@@ -533,7 +535,7 @@ function CategoryGroup({
             </span>
             <strong className="text-foreground text-sm">{first.category}</strong>
             <span className="text-[11px] text-muted-foreground">
-              · {rows.length} bulan · Total Pusat{" "}
+              · {rows.length} bulan · Untuk dialokasikan{" "}
               <span className="font-mono tabular-nums">
                 {aggregate.toLocaleString("id-ID")}
               </span>
@@ -578,7 +580,7 @@ function CategoryGroup({
       {collapsed ? null : rows.map((r) => {
         const key = toKey(r);
         const sumDraft = (Number(r.semarangDraft) || 0) + (Number(r.pareDraft) || 0);
-        const diff = Math.round(sumDraft - r.pusatTotal);
+        const diff = Math.round(sumDraft - r.netForAllocation);
         const balancedLive = Math.abs(diff) <= 1;
         const isPct = r.mode === "pct";
         const toggleMode = () => {
@@ -595,8 +597,8 @@ function CategoryGroup({
           const pare = Number(r.pareDraft) || 0;
           onChange(key, {
             mode: nextMode,
-            semPctDraft: pctOf(sem, r.pusatTotal),
-            parePctDraft: pctOf(pare, r.pusatTotal),
+            semPctDraft: pctOf(sem, r.netForAllocation),
+            parePctDraft: pctOf(pare, r.netForAllocation),
           });
         };
         const handleSemChange = (raw: string) => {
@@ -609,11 +611,11 @@ function CategoryGroup({
               patch.parePctDraft = "";
             } else {
               const pct = Number(raw) || 0;
-              const sem = Math.max(0, Math.round((pct / 100) * r.pusatTotal));
-              const pare = Math.max(0, r.pusatTotal - sem);
+              const sem = Math.max(0, Math.round((pct / 100) * r.netForAllocation));
+              const pare = Math.max(0, r.netForAllocation - sem);
               patch.semarangDraft = String(sem);
               patch.pareDraft = String(pare);
-              patch.parePctDraft = pctOf(pare, r.pusatTotal);
+              patch.parePctDraft = pctOf(pare, r.netForAllocation);
             }
           } else {
             patch.semarangDraft = raw;
@@ -621,7 +623,7 @@ function CategoryGroup({
               patch.pareDraft = "";
             } else {
               const sem = Number(raw) || 0;
-              const pare = Math.max(0, Math.round(r.pusatTotal - sem));
+              const pare = Math.max(0, Math.round(r.netForAllocation - sem));
               patch.pareDraft = String(pare);
             }
           }
@@ -637,11 +639,11 @@ function CategoryGroup({
               patch.semPctDraft = "";
             } else {
               const pct = Number(raw) || 0;
-              const pare = Math.max(0, Math.round((pct / 100) * r.pusatTotal));
-              const sem = Math.max(0, r.pusatTotal - pare);
+              const pare = Math.max(0, Math.round((pct / 100) * r.netForAllocation));
+              const sem = Math.max(0, r.netForAllocation - pare);
               patch.semarangDraft = String(sem);
               patch.pareDraft = String(pare);
-              patch.semPctDraft = pctOf(sem, r.pusatTotal);
+              patch.semPctDraft = pctOf(sem, r.netForAllocation);
             }
           } else {
             patch.pareDraft = raw;
@@ -649,7 +651,7 @@ function CategoryGroup({
               patch.semarangDraft = "";
             } else {
               const pare = Number(raw) || 0;
-              const sem = Math.max(0, Math.round(r.pusatTotal - pare));
+              const sem = Math.max(0, Math.round(r.netForAllocation - pare));
               patch.semarangDraft = String(sem);
             }
           }
@@ -700,30 +702,28 @@ function CategoryGroup({
                   {MONTH_NAMES[r.month - 1]} {r.year}
                 </span>
               )}
-              {r.category === "Sales" && r.side === "credit" ? (
+              {r.category === "Sales" && r.side === "credit" && r.autoDeductPare > 0 ? (
                 <span
-                  className={
-                    "inline-flex items-center gap-1 rounded-sm px-1 py-0.5 mt-0.5 text-[9px] font-mono tabular-nums border " +
-                    (r.qrisOperasionalPare > 0
-                      ? "border-primary/30 bg-primary/10 text-primary"
-                      : "border-border bg-muted/40 text-muted-foreground")
-                  }
-                  title="Total QRIS masuk di kasir Pare bulan ini — minimum alokasi Sales yang jelas milik Pare."
+                  className="inline-flex items-center gap-1 rounded-sm px-1 py-0.5 mt-0.5 text-[9px] font-mono tabular-nums border border-pop-emerald/60 bg-pop-emerald/10 text-foreground"
+                  title="POS QRIS Pare sudah otomatis dipotong dari total Pusat — angka di kolom 'Untuk dialokasikan' di sebelah kanan sudah bersih (custom cake online saja)."
                 >
                   <span className="uppercase tracking-wider font-semibold">
-                    QRIS Pare
+                    − POS QRIS Pare
                   </span>
                   <span>
-                    {r.qrisOperasionalPare > 0
-                      ? `Rp ${r.qrisOperasionalPare.toLocaleString("id-ID")}`
-                      : "belum ada data"}
+                    Rp {r.autoDeductPare.toLocaleString("id-ID")}
                   </span>
                 </span>
               ) : null}
               </div>
             </td>
             <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-              {r.pusatTotal.toLocaleString("id-ID")}
+              <div>{r.netForAllocation.toLocaleString("id-ID")}</div>
+              {r.autoDeductPare > 0 || r.autoDeductSemarang > 0 ? (
+                <div className="text-[9px] text-muted-foreground/70 leading-tight pt-0.5">
+                  dari raw Rp {r.pusatTotal.toLocaleString("id-ID")}
+                </div>
+              ) : null}
             </td>
             <td className="px-3 py-2">
               <AllocInput
@@ -735,7 +735,7 @@ function CategoryGroup({
                 hint={
                   isPct
                     ? (Number(r.semarangDraft) || 0).toLocaleString("id-ID")
-                    : `${pctOf(Number(r.semarangDraft) || 0, r.pusatTotal) || "0"}%`
+                    : `${pctOf(Number(r.semarangDraft) || 0, r.netForAllocation) || "0"}%`
                 }
               />
             </td>
@@ -749,7 +749,7 @@ function CategoryGroup({
                 hint={
                   isPct
                     ? (Number(r.pareDraft) || 0).toLocaleString("id-ID")
-                    : `${pctOf(Number(r.pareDraft) || 0, r.pusatTotal) || "0"}%`
+                    : `${pctOf(Number(r.pareDraft) || 0, r.netForAllocation) || "0"}%`
                 }
               />
             </td>

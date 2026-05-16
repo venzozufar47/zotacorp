@@ -380,6 +380,16 @@ function CategoryList({
     category: string;
     credit: number;
     debit: number;
+    /** Porsi yang datang dari transaksi yang langsung tagged ke cabang
+     *  ini. Sum direct + posQris + pusat == total credit/debit. */
+    directCredit?: number;
+    directDebit?: number;
+    /** Auto-deducted dari Pusat — POS QRIS Pare. */
+    posQrisCredit?: number;
+    posQrisDebit?: number;
+    /** Porsi yang datang dari alokasi Pusat. */
+    pusatCredit?: number;
+    pusatDebit?: number;
     details?: Array<{ date: string; description: string; amount: number }>;
   }>;
   unit: DisplayUnit;
@@ -403,18 +413,29 @@ function CategoryList({
       <tbody>
         {rows.map((r) => {
           const hasDetails = (r.details?.length ?? 0) > 0;
+          const pusatCredit = r.pusatCredit ?? 0;
+          const pusatDebit = r.pusatDebit ?? 0;
+          const posQrisCredit = r.posQrisCredit ?? 0;
+          const posQrisDebit = r.posQrisDebit ?? 0;
+          const directCredit = r.directCredit ?? r.credit;
+          const directDebit = r.directDebit ?? r.debit;
+          const hasPusatSplit = pusatCredit > 0 || pusatDebit > 0;
+          const hasPosQrisSplit = posQrisCredit > 0 || posQrisDebit > 0;
+          const hasNonDirectSplit = hasPusatSplit || hasPosQrisSplit;
+          const hasDirectAmount = directCredit > 0 || directDebit > 0;
+          const expandable = hasDetails || hasNonDirectSplit;
           const isOpen = expanded.has(r.category);
           return (
             <Fragment key={r.category}>
               <tr
                 className={
                   "border-t border-border/30 " +
-                  (hasDetails ? "cursor-pointer hover:bg-accent/10" : "")
+                  (expandable ? "cursor-pointer hover:bg-accent/10" : "")
                 }
-                onClick={hasDetails ? () => toggle(r.category) : undefined}
+                onClick={expandable ? () => toggle(r.category) : undefined}
               >
                 <td className="py-1 pr-2 text-foreground truncate">
-                  {hasDetails ? (
+                  {expandable ? (
                     <span className="inline-flex items-center gap-1 max-w-full">
                       {isOpen ? (
                         <ChevronDown size={10} className="text-muted-foreground shrink-0" />
@@ -422,9 +443,27 @@ function CategoryList({
                         <ChevronRight size={10} className="text-muted-foreground shrink-0" />
                       )}
                       <span className="truncate">{r.category}</span>
-                      <span className="text-[9px] text-muted-foreground shrink-0">
-                        ({r.details!.length})
-                      </span>
+                      {hasDetails && (
+                        <span className="text-[9px] text-muted-foreground shrink-0">
+                          ({r.details!.length})
+                        </span>
+                      )}
+                      {hasPosQrisSplit && (
+                        <span
+                          className="text-[9px] font-medium text-foreground bg-pop-emerald/30 border border-foreground rounded-full px-1.5 py-px shrink-0"
+                          title={`Auto-deducted POS QRIS Pare: +${formatIDR(posQrisCredit, unit)}`}
+                        >
+                          + POS QRIS
+                        </span>
+                      )}
+                      {hasPusatSplit && (
+                        <span
+                          className="text-[9px] font-medium text-muted-foreground bg-muted/60 rounded-full px-1.5 py-px shrink-0"
+                          title={`Termasuk alokasi dari Pusat: +${formatIDR(pusatCredit, unit)} / −${formatIDR(pusatDebit, unit)}`}
+                        >
+                          + Pusat
+                        </span>
+                      )}
                     </span>
                   ) : (
                     r.category
@@ -437,10 +476,43 @@ function CategoryList({
                   {r.debit > 0 ? `−${formatIDR(r.debit, unit)}` : ""}
                 </td>
               </tr>
-              {hasDetails && isOpen ? (
+              {expandable && isOpen ? (
                 <tr className="bg-background/60">
-                  <td colSpan={3} className="px-2 py-1">
+                  <td colSpan={3} className="px-2 py-1 space-y-1.5">
+                    {hasNonDirectSplit && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[10px]">
+                        <SourceRow
+                          label="Langsung dari cabang"
+                          credit={directCredit}
+                          debit={directDebit}
+                          unit={unit}
+                          highlight={hasDirectAmount}
+                        />
+                        <SourceRow
+                          label="POS QRIS (auto)"
+                          credit={posQrisCredit}
+                          debit={posQrisDebit}
+                          unit={unit}
+                          highlight={hasPosQrisSplit}
+                          tone="posQris"
+                        />
+                        <SourceRow
+                          label="Dari alokasi Pusat"
+                          credit={pusatCredit}
+                          debit={pusatDebit}
+                          unit={unit}
+                          highlight={hasPusatSplit}
+                          tone="pusat"
+                        />
+                      </div>
+                    )}
+                    {hasDetails && (
                     <ul className="space-y-0.5 text-[10px]">
+                      {hasNonDirectSplit && (
+                        <li className="text-[9px] uppercase tracking-wide text-muted-foreground/80 pt-1 pb-0.5">
+                          Transaksi langsung ({r.details!.length})
+                        </li>
+                      )}
                       {r.details!.map((d, i) => (
                         <li
                           key={`${d.date}-${i}`}
@@ -470,6 +542,7 @@ function CategoryList({
                         </li>
                       ))}
                     </ul>
+                    )}
                   </td>
                 </tr>
               ) : null}
@@ -478,6 +551,61 @@ function CategoryList({
         })}
       </tbody>
     </table>
+  );
+}
+
+/** Baris kecil yang menampilkan kontribusi satu sumber (Langsung /
+ *  Pusat) dengan +/- jelas. Dipakai di expand-section kategori. */
+function SourceRow({
+  label,
+  credit,
+  debit,
+  unit,
+  highlight,
+  tone,
+}: {
+  label: string;
+  credit: number;
+  debit: number;
+  unit: DisplayUnit;
+  highlight: boolean;
+  /** Visual tint untuk membedakan asal kontribusi. */
+  tone?: "direct" | "posQris" | "pusat";
+}) {
+  const empty = credit === 0 && debit === 0;
+  const toneCls =
+    !highlight
+      ? "border-border/40 bg-background/40"
+      : tone === "pusat"
+        ? "border-accent/40 bg-accent/5"
+        : tone === "posQris"
+          ? "border-foreground/60 bg-pop-emerald/10"
+          : "border-border bg-card";
+  return (
+    <div
+      className={
+        "rounded border px-2 py-1 flex items-center justify-between gap-2 " +
+        toneCls
+      }
+    >
+      <span
+        className={
+          "font-medium " +
+          (empty ? "text-muted-foreground/60" : "text-foreground/80")
+        }
+      >
+        {label}
+      </span>
+      <span className="font-mono tabular-nums flex items-baseline gap-2">
+        {credit > 0 && (
+          <span className="text-success">+{formatIDR(credit, unit)}</span>
+        )}
+        {debit > 0 && (
+          <span className="text-destructive">−{formatIDR(debit, unit)}</span>
+        )}
+        {empty && <span className="text-muted-foreground/50">—</span>}
+      </span>
+    </div>
   );
 }
 
