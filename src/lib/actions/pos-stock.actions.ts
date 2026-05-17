@@ -1493,8 +1493,11 @@ export async function getStockTimeline(
       if (!c.isFuture && c.qty > maxQty) maxQty = c.qty;
     }
 
+    // Sertakan bucket dengan event meskipun qty akhirnya 0 — momen
+    // stock tepat habis perlu kelihatan supaya UI bisa render arrow
+    // "−N" di jam tsb.
     const emitted: StockTimelineCell[] = cellsAll
-      .filter((c) => !c.isFuture && c.qty > 0)
+      .filter((c) => !c.isFuture && (c.qty > 0 || c.events > 0))
       .map((c) => ({
         date: c.date,
         hour: c.hour,
