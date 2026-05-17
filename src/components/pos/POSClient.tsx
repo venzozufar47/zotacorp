@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { PosNavLink } from "./PosNavLink";
 import { PosTopNav } from "./PosTopNav";
-import { Camera, Loader2, Minus, Palette, Plus, Settings, Sparkles, X } from "lucide-react";
-import "./workstation.css";
+import { Camera, Loader2, Minus, Plus, Settings, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createPosSale,
@@ -105,27 +104,6 @@ export function POSClient({
     null
   );
   const [pending, startTransition] = useTransition();
-
-  // Concept-b "tweaks": palette tint + grid density. Persisted per-device
-  // di localStorage agar kasir tidak perlu set ulang tiap shift. Default:
-  // palette violet (default token) + density cozy.
-  type Palette = "default" | "pink" | "yellow";
-  type Density = "cozy" | "dense";
-  const [palette, setPalette] = useState<Palette>("default");
-  const [density, setDensity] = useState<Density>("cozy");
-  const [tweaksOpen, setTweaksOpen] = useState(false);
-  useEffect(() => {
-    const p = localStorage.getItem("pos-palette") as Palette | null;
-    const d = localStorage.getItem("pos-density") as Density | null;
-    if (p === "default" || p === "pink" || p === "yellow") setPalette(p);
-    if (d === "cozy" || d === "dense") setDensity(d);
-  }, []);
-  useEffect(() => {
-    localStorage.setItem("pos-palette", palette);
-  }, [palette]);
-  useEffect(() => {
-    localStorage.setItem("pos-density", density);
-  }, [density]);
 
   // Lookup cartKey → { name, price } untuk total/rendering O(cart entries).
   const lineByKey = useMemo(() => {
@@ -473,15 +451,10 @@ export function POSClient({
       : null;
 
   return (
-    <div
-      data-pos-shell
-      data-pos-palette={palette}
-      data-pos-density={density}
-      className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom))]"
-    >
+    <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom))]">
       <PosTopNav accountName={accountName} isAdmin={isAdmin} active="pos" />
 
-      <div className="pos-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
         {products.map((p) => {
           const hasVariants = p.variants.length > 0;
           const totalQtyOnThisProduct = qtyByProductId.get(p.id) ?? 0;
@@ -513,37 +486,21 @@ export function POSClient({
                   Habis
                 </span>
               )}
-              <div
-                role="button"
-                tabIndex={stockState.kind === "habis" ? -1 : 0}
+              <button
+                type="button"
+                onClick={() => handleProductTap(p)}
+                disabled={stockState.kind === "habis"}
                 aria-disabled={stockState.kind === "habis"}
-                onClick={() => {
-                  if (stockState.kind === "habis") return;
-                  handleProductTap(p);
-                }}
-                onKeyDown={(e) => {
-                  if (stockState.kind === "habis") return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleProductTap(p);
-                  }
-                }}
-                className={`pos-product-card relative w-full min-h-[104px] sm:min-h-[120px] rounded-2xl border text-left p-2.5 sm:p-3 transition-colors active:bg-muted ${
+                className={`w-full min-h-[104px] sm:min-h-[120px] rounded-2xl border text-left p-2.5 sm:p-3 transition-colors active:bg-muted ${
                   stockState.kind === "habis"
                     ? "border-dashed border-border bg-muted/30 opacity-60 cursor-not-allowed grayscale-[20%]"
                     : selected
-                      ? "border-primary bg-primary/5 cursor-pointer"
-                      : "border-border bg-card cursor-pointer"
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-card"
                 }`}
               >
                 <div className="font-semibold text-foreground text-sm sm:text-base leading-tight pr-8">
                   {p.name}
-                  <ProductStockSuffix
-                    product={p}
-                    stockByKey={stockByKey}
-                    cart={cart}
-                    stockState={stockState}
-                  />
                 </div>
                 <div className="mt-1 text-xs sm:text-sm text-muted-foreground">
                   {p.isOpenPrice
@@ -552,12 +509,11 @@ export function POSClient({
                       ? variantPriceLabel(p.variants)
                       : formatRp(p.price)}
                 </div>
-                <VariantStockChips
-                  product={p}
-                  stockByKey={stockByKey}
-                  cart={cart}
-                  stockState={stockState}
-                />
+                {stockState.kind === "low" && (
+                  <div className="mt-0.5 text-[10px] font-semibold tabular-nums text-pop-pink">
+                    Sisa {stockState.remaining}
+                  </div>
+                )}
                 {p.notes ? (
                   <button
                     type="button"
@@ -615,36 +571,36 @@ export function POSClient({
                     )}
                   </>
                 )}
-                {showInlinePill && singleKey && (
-                  <div className="absolute bottom-2 right-2 flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
-                    <button
-                      type="button"
-                      aria-label="Kurangi"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        dec(singleKey);
-                      }}
-                      className="h-8 w-8 flex items-center justify-center rounded-l-full active:bg-primary/80"
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <span className="min-w-[24px] text-center text-sm font-bold tabular-nums px-1">
-                      {qtyOnSingleKey}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Tambah"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        inc(singleKey);
-                      }}
-                      className="h-8 w-8 flex items-center justify-center rounded-r-full active:bg-primary/80"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
+              </button>
+              {showInlinePill && singleKey && (
+                <div className="absolute bottom-2 right-2 flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
+                  <button
+                    type="button"
+                    aria-label="Kurangi"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      dec(singleKey);
+                    }}
+                    className="h-8 w-8 flex items-center justify-center rounded-l-full active:bg-primary/80"
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span className="min-w-[24px] text-center text-sm font-bold tabular-nums px-1">
+                    {qtyOnSingleKey}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Tambah"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      inc(singleKey);
+                    }}
+                    className="h-8 w-8 flex items-center justify-center rounded-r-full active:bg-primary/80"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -971,134 +927,7 @@ export function POSClient({
           />
         );
       })()}
-
-      <TweaksPanel
-        open={tweaksOpen}
-        onOpenChange={setTweaksOpen}
-        palette={palette}
-        onPaletteChange={setPalette}
-        density={density}
-        onDensityChange={setDensity}
-      />
     </div>
-  );
-}
-
-/**
- * Floating tweaks panel — palette switcher (Violet / Soft Pink / Soft
- * Yellow) + density toggle (Cozy / Dense). Persisted via localStorage
- * di parent. Diambil dari design concept-b zota-pos.
- */
-function TweaksPanel({
-  open,
-  onOpenChange,
-  palette,
-  onPaletteChange,
-  density,
-  onDensityChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  palette: "default" | "pink" | "yellow";
-  onPaletteChange: (p: "default" | "pink" | "yellow") => void;
-  density: "cozy" | "dense";
-  onDensityChange: (d: "cozy" | "dense") => void;
-}) {
-  const palettes: { id: "default" | "pink" | "yellow"; label: string; swatch: string }[] = [
-    { id: "default", label: "Violet", swatch: "#8B5CF6" },
-    { id: "pink", label: "Soft Pink", swatch: "#E879A8" },
-    { id: "yellow", label: "Soft Yellow", swatch: "#D4A017" },
-  ];
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => onOpenChange(!open)}
-        aria-label="Tweaks"
-        className="fixed bottom-24 right-4 z-40 size-11 rounded-full bg-card border-2 border-foreground shadow-[4px_4px_0_0_var(--foreground)] inline-flex items-center justify-center text-foreground hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_var(--foreground)] transition-transform"
-      >
-        <Palette size={18} />
-      </button>
-      {open && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black/20"
-            onClick={() => onOpenChange(false)}
-          />
-          <div
-            role="dialog"
-            aria-label="POS tweaks"
-            className="fixed bottom-40 right-4 z-50 w-72 rounded-2xl bg-card border-2 border-foreground p-4 shadow-[6px_6px_0_0_var(--foreground)] space-y-4"
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm text-foreground">Tweaks</h3>
-              <button
-                type="button"
-                onClick={() => onOpenChange(false)}
-                className="size-7 inline-flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground"
-                aria-label="Close"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                Palette
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {palettes.map((p) => {
-                  const active = p.id === palette;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => onPaletteChange(p.id)}
-                      className={`flex flex-col items-center gap-1 rounded-xl border-2 py-2 px-1 text-[11px] transition-all ${
-                        active
-                          ? "border-foreground bg-accent font-semibold"
-                          : "border-border hover:border-foreground"
-                      }`}
-                    >
-                      <span
-                        className="size-6 rounded-full border-2 border-foreground"
-                        style={{ background: p.swatch }}
-                      />
-                      <span className="text-foreground">{p.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                Density
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {(["cozy", "dense"] as const).map((d) => {
-                  const active = d === density;
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => onDensityChange(d)}
-                      className={`rounded-xl border-2 py-2 text-xs capitalize transition-all ${
-                        active
-                          ? "border-foreground bg-accent font-semibold text-foreground"
-                          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {d}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </>
   );
 }
 
@@ -1232,97 +1061,6 @@ type StockState =
   | { kind: "ok" }
   | { kind: "low"; remaining: number }
   | { kind: "habis" };
-
-/**
- * Suffix "(N)" inline di samping nama produk yang nampilkan sisa stok.
- * Hanya muncul untuk produk track_stock (bukan open-price). Untuk
- * non-aggregate variants, suffix produk-level di-skip — masing-masing
- * varian punya angkanya sendiri di chip varian.
- */
-function ProductStockSuffix({
-  product,
-  stockByKey,
-  cart,
-  stockState,
-}: {
-  product: PosProduct;
-  stockByKey: Record<string, number> | null;
-  cart: Record<string, number>;
-  stockState: StockState;
-}) {
-  if (stockState.kind === "untracked") return null;
-  const hasVariants = product.variants.length > 0;
-  const aggregate = product.stockAggregateVariants;
-  // Non-aggregate variants: per-varian punya angka sendiri, suffix
-  // produk-level redundant.
-  if (hasVariants && !aggregate) return null;
-
-  let remaining: number;
-  if (stockState.kind === "low") {
-    remaining = stockState.remaining;
-  } else if (stockState.kind === "habis") {
-    remaining = 0;
-  } else if (!stockByKey) {
-    return null;
-  } else if (!hasVariants) {
-    remaining =
-      (stockByKey[cartKey(product.id, null)] ?? 0) -
-      (cart[cartKey(product.id)] ?? 0);
-  } else {
-    let inCart = 0;
-    for (const v of product.variants)
-      inCart += cart[cartKey(product.id, v.id)] ?? 0;
-    remaining = (stockByKey[cartKey(product.id, null)] ?? 0) - inCart;
-  }
-  remaining = Math.max(0, remaining);
-  const tone =
-    remaining === 0 ? "text-muted-foreground/60" : "text-muted-foreground";
-  return (
-    <span className={"ml-1 font-semibold tabular-nums " + tone}>
-      ({remaining})
-    </span>
-  );
-}
-
-/**
- * Daftar chip varian dengan sisa stok inline. Format "Varian (N)" —
- * skip kalau produk single-SKU atau aggregate variant (suffix di nama
- * produk sudah cukup) atau untracked.
- */
-function VariantStockChips({
-  product,
-  stockByKey,
-  cart,
-  stockState,
-}: {
-  product: PosProduct;
-  stockByKey: Record<string, number> | null;
-  cart: Record<string, number>;
-  stockState: StockState;
-}) {
-  if (stockState.kind === "untracked") return null;
-  if (product.variants.length === 0) return null;
-  if (product.stockAggregateVariants) return null;
-  if (!stockByKey) return null;
-  return (
-    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs tabular-nums">
-      {product.variants.map((v) => {
-        const onHand = stockByKey[cartKey(product.id, v.id)] ?? 0;
-        const inCart = cart[cartKey(product.id, v.id)] ?? 0;
-        const left = onHand - inCart;
-        const tone =
-          left <= 0
-            ? "text-muted-foreground/60 line-through"
-            : "text-foreground/80";
-        return (
-          <span key={v.id} className={tone}>
-            {v.name} <span className="font-semibold">({Math.max(0, left)})</span>
-          </span>
-        );
-      })}
-    </div>
-  );
-}
 
 function computeStockState(
   p: PosProduct,
