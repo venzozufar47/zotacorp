@@ -861,6 +861,17 @@ export function POSClient({
               >
                 <div className="font-semibold text-foreground text-sm sm:text-base leading-tight pr-8">
                   {p.name}
+                  {/* Sisa stok produk ditampilkan inline di samping
+                      nama, mis. "BCB (12)" — kasir tidak perlu buka
+                      /pos/stok untuk cek kapasitas. */}
+                  {(() => {
+                    const r = productRemainingStock(p, stockByKey, cart);
+                    return r != null ? (
+                      <span className="ml-1 font-normal text-muted-foreground tabular-nums">
+                        ({r})
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
                 <div className="mt-1 text-xs sm:text-sm text-muted-foreground">
                   {p.isOpenPrice
@@ -1269,6 +1280,38 @@ function computeStockState(
  * tidak tracked / open-price — caller skip render badge "(N)". Logic
  * mirror VariantPickerDialog supaya angka di card + picker konsisten.
  */
+/**
+ * Sisa stok produk (setelah cart) — agregat dari semua varian kalau
+ * stok dilacak per-variant. Return null kalau produk tidak tracked /
+ * open-price → caller skip render "(N)".
+ */
+function productRemainingStock(
+  p: PosProduct,
+  stockByKey: Record<string, number> | null,
+  cart: Record<string, number>
+): number | null {
+  if (!stockByKey || !p.trackStock || p.isOpenPrice) return null;
+  if (p.variants.length === 0) {
+    const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
+    const inCart = cart[cartKey(p.id)] ?? 0;
+    return Math.max(0, onHand - inCart);
+  }
+  if (p.stockAggregateVariants) {
+    const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
+    let inCart = 0;
+    for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+    return Math.max(0, onHand - inCart);
+  }
+  // Per-variant tracking → sum semua varian.
+  let total = 0;
+  for (const v of p.variants) {
+    const onHand = stockByKey[cartKey(p.id, v.id)] ?? 0;
+    const inCart = cart[cartKey(p.id, v.id)] ?? 0;
+    total += Math.max(0, onHand - inCart);
+  }
+  return total;
+}
+
 function variantRemainingStock(
   p: PosProduct,
   variantId: string,
