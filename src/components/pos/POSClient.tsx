@@ -907,15 +907,26 @@ export function POSClient({
                           .map((v) => ({
                             v,
                             qty: cart[cartKey(p.id, v.id)] ?? 0,
+                            remaining: variantRemainingStock(
+                              p,
+                              v.id,
+                              stockByKey,
+                              cart
+                            ),
                           }))
                           .filter((x) => x.qty > 0)
-                          .map(({ v, qty }) => (
+                          .map(({ v, qty, remaining }) => (
                             <li
                               key={v.id}
                               className="text-xs text-primary tabular-nums"
                             >
                               <span className="font-semibold">{qty}×</span>{" "}
                               {v.name}
+                              {remaining != null && (
+                                <span className="ml-1 text-muted-foreground font-normal">
+                                  ({remaining})
+                                </span>
+                              )}
                             </li>
                           ))}
                       </ul>
@@ -1244,6 +1255,29 @@ function computeStockState(
   return { kind: "ok" };
 }
 
+/**
+ * Sisa stok (setelah cart) untuk satu varian. Return null kalau produk
+ * tidak tracked / open-price — caller skip render badge "(N)". Logic
+ * mirror VariantPickerDialog supaya angka di card + picker konsisten.
+ */
+function variantRemainingStock(
+  p: PosProduct,
+  variantId: string,
+  stockByKey: Record<string, number> | null,
+  cart: Record<string, number>
+): number | null {
+  if (!stockByKey || !p.trackStock || p.isOpenPrice) return null;
+  if (p.stockAggregateVariants) {
+    const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
+    let inCart = 0;
+    for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+    return Math.max(0, onHand - inCart);
+  }
+  const onHand = stockByKey[cartKey(p.id, variantId)] ?? 0;
+  const inCart = cart[cartKey(p.id, variantId)] ?? 0;
+  return Math.max(0, onHand - inCart);
+}
+
 /** "Rp 10.000" kalau semua varian sama harganya, "Rp 10.000 – Rp 15.000"
  *  untuk rentang. Array diasumsikan non-empty (hanya dipanggil bila ada
  *  varian). */
@@ -1325,7 +1359,16 @@ function VariantPickerDialog({
               >
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-foreground text-sm truncate flex items-center gap-1.5">
-                    {v.name}
+                    <span className="truncate">
+                      {v.name}
+                      {/* "(N)" — sisa stok varian setelah cart, agar
+                          kasir tahu kapasitas tanpa buka /pos/stok. */}
+                      {remaining != null && (
+                        <span className="ml-1 font-normal text-muted-foreground tabular-nums">
+                          ({remaining})
+                        </span>
+                      )}
+                    </span>
                     {habis && (
                       <span className="rounded-full border border-foreground/40 bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Habis
@@ -1334,11 +1377,6 @@ function VariantPickerDialog({
                   </p>
                   <p className="text-xs text-muted-foreground tabular-nums">
                     {formatRp(v.price)}
-                    {remaining != null && remaining > 0 && remaining <= 3 && (
-                      <span className="ml-2 text-pop-pink font-semibold">
-                        sisa {remaining}
-                      </span>
-                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
