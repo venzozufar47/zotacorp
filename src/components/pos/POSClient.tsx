@@ -824,17 +824,30 @@ export function POSClient({
                   Habis
                 </span>
               )}
-              <button
-                type="button"
-                onClick={() => handleProductTap(p)}
-                disabled={stockState.kind === "habis"}
+              {/* role=button + onKeyDown — bukan <button> — supaya
+                  inner Catatan/+/− buttons valid (HTML melarang
+                  nested <button>). */}
+              <div
+                role="button"
+                tabIndex={stockState.kind === "habis" ? -1 : 0}
                 aria-disabled={stockState.kind === "habis"}
+                onClick={() => {
+                  if (stockState.kind === "habis") return;
+                  handleProductTap(p);
+                }}
+                onKeyDown={(e) => {
+                  if (stockState.kind === "habis") return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleProductTap(p);
+                  }
+                }}
                 className={`w-full min-h-[104px] sm:min-h-[120px] rounded-2xl border text-left p-2.5 sm:p-3 transition-colors active:bg-muted ${
                   stockState.kind === "habis"
                     ? "border-dashed border-border bg-muted/30 opacity-60 cursor-not-allowed grayscale-[20%]"
                     : selected
-                    ? "border-primary bg-primary/5"
-                    : "border-border bg-card"
+                    ? "border-primary bg-primary/5 cursor-pointer"
+                    : "border-border bg-card cursor-pointer"
                 }`}
               >
                 <div className="font-semibold text-foreground text-sm sm:text-base leading-tight pr-8">
@@ -909,7 +922,7 @@ export function POSClient({
                     )}
                   </>
                 )}
-              </button>
+              </div>
               {showInlinePill && singleKey && (
                 <div className="absolute bottom-2 right-2 flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
                   <button
