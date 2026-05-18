@@ -116,43 +116,63 @@ export default async function PosRiwayatPage({
       isAdmin={isAdmin}
       active="riwayat"
       title="Riwayat Penjualan"
+      subtitle="catatan transaksi per hari"
       showShiftPill={false}
     >
-      <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
+      <div className="max-w-5xl mx-auto px-3 sm:px-5 py-5 space-y-3.5">
 
-      <div className="rounded-2xl border-2 border-foreground bg-pop-emerald/15 p-3 flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      {/* KPI grid — mirror concept-b: total hari + transaksi + avg basket. */}
+      <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-3">
+        <div className="rounded-2xl border-2 border-success bg-success/10 p-4 shadow-[3px_3px_0_0_var(--foreground)]">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
             {formatDateLong(requestedDate)}
           </p>
-          <p className="font-bold text-lg text-foreground tabular-nums">
+          <p className="mt-1.5 text-2xl sm:text-3xl font-bold tabular-nums text-foreground">
             {formatRp(dayTotal)}
           </p>
-        </div>
-        <div className="text-right text-xs text-muted-foreground tabular-nums">
-          <p>
-            <strong className="text-foreground">{activeCount}</strong>{" "}
-            transaksi
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Total penjualan hari ini
           </p>
-          {voidedCount > 0 && (
-            <p className="text-destructive/80">+{voidedCount} dibatalkan</p>
-          )}
+        </div>
+        <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)]">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
+            Transaksi
+          </p>
+          <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
+            {activeCount}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {voidedCount > 0 ? `${voidedCount} dibatalkan` : "Tidak ada void"}
+          </p>
+        </div>
+        <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)]">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
+            Avg per tx
+          </p>
+          <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
+            {activeCount > 0
+              ? formatRp(Math.round(dayTotal / activeCount))
+              : "—"}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            basket size
+          </p>
         </div>
       </div>
 
       {nav}
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {sales.map((s) => (
           <details
             key={s.id}
-            className={`rounded-xl border bg-card ${
+            className={`rounded-2xl border-2 bg-card shadow-[2px_2px_0_0_var(--foreground)] ${
               s.voidedAt
-                ? "border-destructive/30 bg-destructive/5"
-                : "border-border"
+                ? "border-destructive/40 bg-destructive/5"
+                : "border-foreground"
             }`}
           >
-            <summary className="cursor-pointer list-none p-3 flex items-center justify-between gap-3">
+            <summary className="cursor-pointer list-none p-3.5 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span

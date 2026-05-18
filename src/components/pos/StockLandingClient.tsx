@@ -61,6 +61,14 @@ export function StockLandingClient({
   const produksi = movements.filter((m) => m.type === "production");
   const penarikan = movements.filter((m) => m.type === "withdrawal");
 
+  // KPI counters dari snapshot on-hand. Untuk produk dengan varian +
+  // !stock_aggregate_variants kita gabung di level varian. Lainnya di
+  // level produk. "habis" = onHand <= 0, "low" = 1..3.
+  const habisCount = onHand.filter((r) => r.onHand <= 0).length;
+  const lowCount = onHand.filter((r) => r.onHand > 0 && r.onHand <= 3).length;
+  const healthyCount = onHand.length - habisCount - lowCount;
+  const latestOpname = opnames[0] ?? null;
+
   return (
     <PosShell
       outletName={accountName}
@@ -69,18 +77,46 @@ export function StockLandingClient({
       title="Stok"
       subtitle="kelola on-hand, produksi, penarikan & opname"
     >
-      <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
+      <div className="max-w-5xl mx-auto px-3 sm:px-5 py-5 space-y-3.5">
 
-      <div className="flex gap-1 rounded-xl bg-muted p-1">
+      {/* KPI grid — concept-b style: tracked + low + habis + opname terakhir */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          tone="neutral"
+          label="SKU dilacak"
+          value={String(onHand.length)}
+          meta={`${healthyCount} stok aman`}
+        />
+        <KpiCard
+          tone={lowCount > 0 ? "warning" : "neutral"}
+          label="Stok rendah"
+          value={String(lowCount)}
+          meta="≤ 3 sisa"
+        />
+        <KpiCard
+          tone={habisCount > 0 ? "destructive" : "neutral"}
+          label="Stok habis"
+          value={String(habisCount)}
+          meta="perlu produksi"
+        />
+        <KpiCard
+          tone="neutral"
+          label="Opname terakhir"
+          value={latestOpname ? latestOpname.opnameDate.slice(5) : "—"}
+          meta={latestOpname ? `${latestOpname.itemCount} SKU` : "Belum ada"}
+        />
+      </div>
+
+      <div className="flex gap-1 rounded-2xl border-2 border-foreground bg-card p-1 shadow-[2px_2px_0_0_var(--foreground)]">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition ${
+            className={`flex-1 rounded-xl px-2 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
               tab === t.id
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             {t.label}
@@ -134,6 +170,44 @@ export function StockLandingClient({
 
 function skuLabel(productName: string, variantName: string | null) {
   return variantName ? `${productName} · ${variantName}` : productName;
+}
+
+/**
+ * KPI card untuk halaman Stok — concept-b style: chunky 2px border,
+ * 3px hard-shadow, tone color via border + soft bg.
+ */
+function KpiCard({
+  tone,
+  label,
+  value,
+  meta,
+}: {
+  tone: "neutral" | "warning" | "destructive";
+  label: string;
+  value: string;
+  meta: string;
+}) {
+  const toneClass =
+    tone === "warning"
+      ? "border-warning bg-warning/10"
+      : tone === "destructive"
+        ? "border-destructive bg-destructive/10"
+        : "border-foreground bg-card";
+  return (
+    <div
+      className={`rounded-2xl border-2 p-3 sm:p-4 shadow-[3px_3px_0_0_var(--foreground)] ${toneClass}`}
+    >
+      <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
+        {label}
+      </p>
+      <p className="mt-1.5 text-xl sm:text-2xl font-bold tabular-nums text-foreground">
+        {value}
+      </p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground truncate">
+        {meta}
+      </p>
+    </div>
+  );
 }
 
 function OnHandPanel({
