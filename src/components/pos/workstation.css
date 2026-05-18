@@ -1,0 +1,37 @@
+/* ─── POS Workstation pink palette ───────────────────────────
+ * Concept-b Soft Pink palette — diterapkan via `data-pos-shell
+ * data-pos-palette="pink"` di root shell POS. Override token Tailwind
+ * theme supaya semua elemen yang sudah pakai `bg-primary` / `bg-accent`
+ * / `text-primary` di dalam shell ikut ter-tint tanpa perlu nulis ulang
+ * komponennya.
+ *
+ * Scope: hanya di POS. Halaman lain (dashboard, finance, dst.) tetap
+ * pakai theme global (Oceanic/Playful).
+ *
+ * Token source: design package zota-pos `:root[data-palette="pink"]`.
+ * ───────────────────────────────────────────────────────────── */
+
+[data-pos-shell][data-pos-palette="pink"] {
+  /* Brand */
+  --primary: #E879A8;
+  --primary-light: #F8B5CB;
+  --primary-dark: #BE3D7B;
+  --primary-foreground: #ffffff;
+
+  /* Accent / tint */
+  --accent: #FFE9F3;
+  --accent-foreground: #BE3D7B;
+  --ring: #E879A8;
+
+  /* Page background — pinkish cream */
+  --background: #FFF8FB;
+
+  /* Pop colors — design pastel set untuk badge/highlight */
+  --pop-pink: #F472B6;
+  --pop-amber: #FAD0B2;
+  --pop-emerald: #A8D8B9;
+
+  /* Success tetap hijau (cash button), tapi pastel-kan supaya
+     selaras dengan palette. */
+  --success: #6BBF8A;
+}

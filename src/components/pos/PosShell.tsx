@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
 import type { PosNavSection } from "./PosTopNav";
+import "./workstation.css";
 
 interface RailItem {
   href: string;
@@ -75,7 +76,11 @@ export function PosShell({
 }) {
   const visible = RAIL.filter((it) => !it.adminOnly || isAdmin);
   return (
-    <div className="min-h-screen flex flex-col md:grid md:h-screen md:grid-cols-[64px_minmax(0,1fr)] md:grid-rows-[56px_minmax(0,1fr)] bg-background">
+    <div
+      data-pos-shell
+      data-pos-palette="pink"
+      className="min-h-screen flex flex-col md:grid md:h-screen md:grid-cols-[64px_minmax(0,1fr)] md:grid-rows-[56px_minmax(0,1fr)] bg-background"
+    >
       {/* Top bar */}
       <header className="md:col-span-2 h-14 border-b border-border bg-card flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 z-20">
         <div className="size-9 rounded-xl bg-primary text-primary-foreground inline-flex items-center justify-center font-bold text-base shrink-0">
