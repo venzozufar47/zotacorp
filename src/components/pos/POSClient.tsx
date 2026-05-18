@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { PosNavLink } from "./PosNavLink";
-import { PosTopNav } from "./PosTopNav";
+import { PosShell } from "./PosShell";
 import {
   BarChart3,
   Boxes,
@@ -431,8 +431,12 @@ export function POSClient({
 
   if (showEmptyState) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <PosTopNav accountName={accountName} isAdmin={isAdmin} active="pos" />
+      <PosShell
+        outletName={accountName}
+        isAdmin={isAdmin}
+        active="pos"
+        title="POS"
+      >
         <div className="flex-1 flex items-center justify-center p-6 text-center">
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
@@ -470,7 +474,7 @@ export function POSClient({
             onAdd={addCustom}
           />
         )}
-      </div>
+      </PosShell>
     );
   }
 

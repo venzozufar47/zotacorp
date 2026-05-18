@@ -1,6 +1,6 @@
 "use client";
 
-import { PosTopNav } from "./PosTopNav";
+import { PosShell } from "./PosShell";
 import { useState, useTransition } from "react";
 import {
   ChevronDown,
@@ -41,7 +41,6 @@ import {
   type PosProductVariant,
 } from "@/lib/actions/pos.actions";
 import { setProductStockAggregateVariants } from "@/lib/actions/pos-stock.actions";
-import { formatRp } from "@/lib/cashflow/format";
 
 interface Props {
   bankAccountId: string;
@@ -290,18 +289,20 @@ export function ProductCatalogClient({
   );
 
   return (
-    <>
-      <PosTopNav accountName={accountName} isAdmin active="produk" />
-      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="font-semibold text-foreground">Katalog Produk</h1>
-          <p className="text-xs text-muted-foreground">{accountName}</p>
-        </div>
-        {pending && (
+    <PosShell
+      outletName={accountName}
+      isAdmin
+      active="produk"
+      title="Katalog Produk"
+      subtitle="kelola produk + harga + varian"
+      showShiftPill={false}
+      actions={
+        pending ? (
           <Loader2 size={16} className="animate-spin text-muted-foreground" />
-        )}
-      </header>
+        ) : null
+      }
+    >
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
 
       {/* Form tambah produk */}
       <div className="rounded-2xl border border-border bg-card p-3 space-y-2">
@@ -558,7 +559,7 @@ export function ProductCatalogClient({
         </DndContext>
       </div>
       </div>
-    </>
+    </PosShell>
   );
 }
 

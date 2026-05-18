@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PosNavLink } from "@/components/pos/PosNavLink";
-import { PosTopNav } from "@/components/pos/PosTopNav";
+import { PosShell } from "@/components/pos/PosShell";
 import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
 import { QRIS_RECEIPT_FROM_RIWAYAT } from "@/lib/pos/flags";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
@@ -58,21 +58,21 @@ export default async function PosRiwayatPage({
 
   if (dates.length === 0) {
     return (
-      <>
-        <PosTopNav
-          accountName={account.accountName}
-          isAdmin={isAdmin}
-          active="riwayat"
-        />
+      <PosShell
+        outletName={account.accountName}
+        isAdmin={isAdmin}
+        active="riwayat"
+        title="Riwayat Penjualan"
+        showShiftPill={false}
+      >
         <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
-          <Header accountName={account.accountName} />
           <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
             <p className="text-sm text-muted-foreground">
               Belum ada penjualan.
             </p>
           </div>
         </div>
-      </>
+      </PosShell>
     );
   }
 
@@ -111,14 +111,14 @@ export default async function PosRiwayatPage({
   );
 
   return (
-    <>
-      <PosTopNav
-        accountName={account.accountName}
-        isAdmin={isAdmin}
-        active="riwayat"
-      />
+    <PosShell
+      outletName={account.accountName}
+      isAdmin={isAdmin}
+      active="riwayat"
+      title="Riwayat Penjualan"
+      showShiftPill={false}
+    >
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
-      <Header accountName={account.accountName} />
 
       <div className="rounded-2xl border-2 border-foreground bg-pop-emerald/15 p-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
@@ -233,16 +233,7 @@ export default async function PosRiwayatPage({
 
       {nav}
       </div>
-    </>
-  );
-}
-
-function Header({ accountName }: { accountName: string }) {
-  return (
-    <header>
-      <h1 className="font-semibold text-foreground">Riwayat Penjualan</h1>
-      <p className="text-xs text-muted-foreground">{accountName}</p>
-    </header>
+    </PosShell>
   );
 }
 

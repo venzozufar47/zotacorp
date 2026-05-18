@@ -1,7 +1,7 @@
 "use client";
 
 import { PosNavLink } from "./PosNavLink";
-import { PosTopNav } from "./PosTopNav";
+import { PosShell } from "./PosShell";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { RefreshCw } from "lucide-react";
@@ -38,15 +38,14 @@ export default function PosShiftClient({ accountName, summary, isAdmin }: Props)
   };
 
   return (
-    <>
-      <PosTopNav accountName={accountName} isAdmin={isAdmin} active="shift" />
+    <PosShell
+      outletName={accountName}
+      isAdmin={isAdmin}
+      active="shift"
+      title="Cek Saldo Shift"
+      subtitle={`${formatDateTime(asOf)} WIB`}
+    >
       <div className="max-w-md mx-auto px-4 py-5 space-y-4">
-      <header>
-        <h1 className="font-semibold text-foreground">Cek Saldo Shift</h1>
-        <p className="text-xs text-muted-foreground">
-          {accountName} · {formatDateTime(asOf)} WIB
-        </p>
-      </header>
 
       {openingTill === null ? (
         <div className="rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-foreground">
@@ -110,7 +109,7 @@ export default function PosShiftClient({ accountName, summary, isAdmin }: Props)
         </PosNavLink>
       </div>
       </div>
-    </>
+    </PosShell>
   );
 }
 

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TrendingUp, Trophy, Clock, Calendar } from "lucide-react";
-import { PosTopNav } from "./PosTopNav";
+import { PosShell } from "./PosShell";
 import type { PosInsights } from "@/lib/actions/pos-insights.actions";
 import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
 import {
@@ -175,25 +175,19 @@ export function PosInsightsClient({
   }
 
   return (
-    <>
-      <PosTopNav
-        accountName={accountName}
-        isAdmin={isAdmin}
-        active="insights"
-      />
+    <PosShell
+      outletName={accountName}
+      isAdmin={isAdmin}
+      active="insights"
+      title="Insights Penjualan"
+      subtitle={
+        insights
+          ? `${formatDate(insights.range.from)} – ${formatDate(insights.range.to)}`
+          : undefined
+      }
+      showShiftPill={false}
+    >
       <div className="max-w-3xl mx-auto px-4 py-5 space-y-5">
-      <header>
-        <h1 className="font-semibold text-foreground">Insights Penjualan</h1>
-        <p className="text-xs text-muted-foreground">
-          {accountName}
-          {insights && (
-            <>
-              {" · "}
-              {formatDate(insights.range.from)} – {formatDate(insights.range.to)}
-            </>
-          )}
-        </p>
-      </header>
 
       <div className="space-y-1.5">
         <div className="flex flex-wrap gap-1.5 rounded-full border border-border bg-muted/40 p-1 w-fit">
@@ -336,7 +330,7 @@ export function PosInsightsClient({
         <InsightsBody insights={insights} />
       )}
       </div>
-    </>
+    </PosShell>
   );
 }
 

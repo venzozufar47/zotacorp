@@ -1,10 +1,10 @@
 "use client";
 
 import { PosNavLink } from "./PosNavLink";
-import { PosTopNav } from "./PosTopNav";
+import { PosShell } from "./PosShell";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Boxes, Plus, RotateCcw, X } from "lucide-react";
+import { Plus, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import type {
@@ -62,15 +62,14 @@ export function StockLandingClient({
   const penarikan = movements.filter((m) => m.type === "withdrawal");
 
   return (
-    <>
-      <PosTopNav accountName={accountName} isAdmin={isAdmin} active="stok" />
+    <PosShell
+      outletName={accountName}
+      isAdmin={isAdmin}
+      active="stok"
+      title="Stok"
+      subtitle="kelola on-hand, produksi, penarikan & opname"
+    >
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
-      <header>
-        <h1 className="font-semibold text-foreground flex items-center gap-2">
-          <Boxes size={16} /> Stok
-        </h1>
-        <p className="text-xs text-muted-foreground">{accountName}</p>
-      </header>
 
       <div className="flex gap-1 rounded-xl bg-muted p-1">
         {TABS.map((t) => (
@@ -129,7 +128,7 @@ export function StockLandingClient({
         />
       )}
       </div>
-    </>
+    </PosShell>
   );
 }
 
