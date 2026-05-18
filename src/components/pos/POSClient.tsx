@@ -3,7 +3,22 @@
 import { useMemo, useState, useTransition } from "react";
 import { PosNavLink } from "./PosNavLink";
 import { PosTopNav } from "./PosTopNav";
-import { Camera, Loader2, Minus, Plus, Settings, Sparkles, X } from "lucide-react";
+import {
+  BarChart3,
+  Boxes,
+  Camera,
+  History,
+  Home,
+  Loader2,
+  Minus,
+  Plus,
+  Search,
+  Settings,
+  ShoppingCart,
+  Sparkles,
+  Wallet,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   createPosSale,
@@ -75,8 +90,6 @@ export function POSClient({
   // Catalog cart: Record<cartKey, qty>.
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
-  const [confirmMethod, setConfirmMethod] =
-    useState<PaymentMethod | null>(null);
   // QRIS wajib upload foto nota customer sebagai bukti — state-nya
   // di-reset setiap kali konfirmasi dibuka/ditutup.
   const [qrisReceipt, setQrisReceipt] = useState<File | null>(null);
@@ -104,6 +117,13 @@ export function POSClient({
     null
   );
   const [pending, startTransition] = useTransition();
+
+  // Concept-b additions: search filter + mobile cart drawer toggle.
+  // payMode menggantikan confirmMethod — pembayaran kini inline di
+  // panel cart (cash field / QRIS upload live di footer), bukan modal.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [cartOpen, setCartOpen] = useState(false);
+  const [payMode, setPayMode] = useState<PaymentMethod>("cash");
 
   // Lookup cartKey → { name, price } untuk total/rendering O(cart entries).
   const lineByKey = useMemo(() => {
@@ -162,6 +182,15 @@ export function POSClient({
     }
     return { total, itemCount, cartLines, qtyByProductId };
   }, [cart, customItems, lineByKey]);
+
+  // Concept-b: filter produk by case-insensitive substring of nama
+  // (sederhana, sesuai design — chips kategori belum ada karena model
+  //  produk belum punya field kategori).
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, searchQuery]);
 
   const openPriceByProductId = useMemo(() => {
     const m = new Map<string, { qty: number; lines: number }>();
@@ -383,8 +412,8 @@ export function POSClient({
           // customer sudah bayar.
           toast.error(`Tersimpan tapi foto gagal upload: ${att.error}`);
           resetCart();
-          setConfirmMethod(null);
           setQrisReceipt(null);
+          setCartOpen(false);
           return;
         }
       }
@@ -392,9 +421,9 @@ export function POSClient({
         `Tersimpan: ${formatRp(res.data?.total ?? 0)} — ${method === "cash" ? "Cash" : "QRIS"}`
       );
       resetCart();
-      setConfirmMethod(null);
       setQrisReceipt(null);
       setCashReceived(null);
+      setCartOpen(false);
     });
   }
 
@@ -450,12 +479,321 @@ export function POSClient({
       ? products.find((p) => p.id === variantPickerFor) ?? null
       : null;
 
-  return (
-    <div className="min-h-screen pb-[calc(8rem+env(safe-area-inset-bottom))]">
-      <PosTopNav accountName={accountName} isAdmin={isAdmin} active="pos" />
+  // Nav items dipakai dua kali: di rail desktop + bottom-nav mobile.
+  // Itemnya mirror PosTopNav supaya kasir tidak nyangkut transisi UI.
+  const railItems: Array<{
+    href: string;
+    label: string;
+    icon: typeof Home;
+    active?: boolean;
+    adminOnly?: boolean;
+  }> = [
+    { href: "/pos", label: "POS", icon: Home, active: true },
+    { href: "/pos/produk", label: "Katalog", icon: Settings, adminOnly: true },
+    { href: "/pos/shift", label: "Saldo", icon: Wallet },
+    { href: "/pos/stok", label: "Stok", icon: Boxes },
+    { href: "/pos/riwayat", label: "Riwayat", icon: History },
+    { href: "/pos/insights", label: "Insights", icon: BarChart3, adminOnly: true },
+  ];
+  const visibleRailItems = railItems.filter((it) => !it.adminOnly || isAdmin);
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
-        {products.map((p) => {
+  // Inline payment validation. Tombol Bayar disabled kalau:
+  //  - cart kosong / sedang submit
+  //  - mode cash tapi uang diterima < total
+  //  - mode QRIS dengan flag receipt aktif tapi belum upload foto
+  const payDisabled =
+    itemCount === 0 ||
+    pending ||
+    (payMode === "cash" && (cashReceived == null || cashReceived < total)) ||
+    (QRIS_RECEIPT_AT_CHECKOUT && payMode === "qris" && !qrisReceipt);
+
+  const cartPanel = (
+    <div className="flex flex-col h-full bg-card min-h-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Cart
+          </p>
+          <p className="text-sm font-bold text-foreground">
+            {itemCount} item
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {itemCount > 0 && (
+            <button
+              type="button"
+              onClick={resetCart}
+              className="text-xs text-muted-foreground hover:text-destructive inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted"
+            >
+              <X size={12} /> Kosongkan
+            </button>
+          )}
+          {/* Close only relevant on mobile sheet */}
+          <button
+            type="button"
+            onClick={() => setCartOpen(false)}
+            className="md:hidden size-8 inline-flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground"
+            aria-label="Tutup cart"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-0">
+        {cartLines.length === 0 ? (
+          <div className="h-full min-h-[120px] flex flex-col items-center justify-center text-center gap-2 text-muted-foreground">
+            <ShoppingCart size={28} className="opacity-40" />
+            <p className="text-xs">
+              Cart masih kosong. Tap produk untuk mulai.
+            </p>
+          </div>
+        ) : (
+          cartLines.map((line) => {
+            // Catalog line punya entry di lineByKey — pakai key untuk
+            // inc/dec via cart record. Custom line keys-nya `c:<localId>`
+            // — render dengan handler customItems.
+            const isCustom = line.key.startsWith("c:");
+            const customId = isCustom ? line.key.slice(2) : null;
+            return (
+              <div
+                key={line.key}
+                className="rounded-xl border border-border bg-background/40 px-3 py-2 flex items-center gap-2"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {line.name}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground tabular-nums">
+                    {formatRp(line.subtotal / line.qty)} × {line.qty}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Kurangi"
+                  onClick={() =>
+                    customId
+                      ? updateCustomQty(customId, -1)
+                      : dec(line.key)
+                  }
+                  className="size-7 rounded-full border border-border text-foreground inline-flex items-center justify-center hover:bg-muted"
+                >
+                  <Minus size={12} />
+                </button>
+                <span className="w-5 text-center text-sm font-semibold tabular-nums">
+                  {line.qty}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Tambah"
+                  onClick={() =>
+                    customId
+                      ? updateCustomQty(customId, 1)
+                      : inc(line.key)
+                  }
+                  className="size-7 rounded-full border border-border text-foreground inline-flex items-center justify-center hover:bg-muted"
+                >
+                  <Plus size={12} />
+                </button>
+                {isCustom && customId && (
+                  <button
+                    type="button"
+                    aria-label="Hapus"
+                    onClick={() => removeCustom(customId)}
+                    className="size-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center justify-center"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="border-t border-border bg-card px-4 py-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+            Total
+          </span>
+          <span className="text-lg font-bold text-foreground tabular-nums">
+            {formatRp(total)}
+          </span>
+        </div>
+
+        {/* Pay mode picker */}
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
+          {(["cash", "qris"] as const).map((m) => {
+            const active = payMode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPayMode(m)}
+                className={`h-9 rounded-lg text-sm font-semibold transition-colors ${
+                  active
+                    ? m === "cash"
+                      ? "bg-success text-white shadow-sm"
+                      : "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {m === "cash" ? "Cash" : "QRIS"}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Inline payment surface — replaces the old confirm modal. */}
+        {payMode === "cash" && (
+          <CashReceivedField
+            total={total}
+            value={cashReceived}
+            onChange={setCashReceived}
+          />
+        )}
+        {payMode === "qris" && QRIS_RECEIPT_AT_CHECKOUT && (
+          <div>
+            <p className="text-xs font-medium text-foreground mb-1.5">
+              Foto nota QRIS dari customer{" "}
+              <span className="text-destructive">*</span>
+            </p>
+            <label
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition ${
+                qrisReceipt
+                  ? "border-success/50 bg-success/10"
+                  : "border-dashed border-border bg-muted/30 hover:bg-muted"
+              } ${pending ? "opacity-50 pointer-events-none" : ""}`}
+            >
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f && f.size > 5 * 1024 * 1024) {
+                    toast.error("Foto maksimal 5MB");
+                    e.target.value = "";
+                    return;
+                  }
+                  setQrisReceipt(f);
+                }}
+              />
+              <Camera size={16} className="text-foreground shrink-0" />
+              <span className="text-sm text-foreground truncate flex-1">
+                {qrisReceipt ? qrisReceipt.name : "Ambil foto / pilih gambar"}
+              </span>
+              {qrisReceipt && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setQrisReceipt(null);
+                  }}
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                  aria-label="Hapus foto"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </label>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Wajib sebagai bukti audit.
+            </p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={payDisabled}
+          onClick={() => submit(payMode)}
+          className={`w-full h-12 rounded-xl font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
+            payMode === "cash" ? "bg-success" : "bg-primary"
+          }`}
+        >
+          {pending && <Loader2 size={14} className="animate-spin" />}
+          Bayar {formatRp(total)}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen flex flex-col md:grid md:h-screen md:grid-cols-[64px_minmax(0,1fr)_360px] md:grid-rows-[56px_minmax(0,1fr)] bg-background">
+      {/* ── Top bar ───────────────────────────────────────── */}
+      <header className="md:col-span-3 h-14 border-b border-border bg-card flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 z-20">
+        <div className="size-9 rounded-xl bg-primary text-primary-foreground inline-flex items-center justify-center font-bold text-base shrink-0">
+          Z
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold leading-none">
+            POS
+          </p>
+          <p className="font-semibold text-foreground text-sm leading-tight truncate">
+            {accountName}
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/15 text-success border border-success/30 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
+          <span className="size-1.5 rounded-full bg-success animate-pulse" />
+          Shift aktif
+        </span>
+        <button
+          type="button"
+          onClick={() => setCartOpen(true)}
+          className="md:hidden relative size-9 rounded-full border border-border bg-card text-foreground inline-flex items-center justify-center shrink-0"
+          aria-label="Buka cart"
+        >
+          <ShoppingCart size={16} />
+          {itemCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold inline-flex items-center justify-center border-2 border-card">
+              {itemCount}
+            </span>
+          )}
+        </button>
+      </header>
+
+      {/* ── Left rail (desktop) ───────────────────────────── */}
+      <aside className="hidden md:flex flex-col items-stretch gap-1 border-r border-border bg-card py-3 px-2 overflow-y-auto">
+        {visibleRailItems.map((it) => {
+          const Icon = it.icon;
+          return (
+            <PosNavLink
+              key={it.href}
+              href={it.href}
+              className={`flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                it.active
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+              aria-current={it.active ? "page" : undefined}
+            >
+              <Icon size={18} />
+              {it.label}
+            </PosNavLink>
+          );
+        })}
+      </aside>
+
+      {/* ── Main area: search + product grid ──────────────── */}
+      <main className="min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur p-3 border-b border-border">
+          <div className="relative">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+            />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari produk…"
+              className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3">
+          {filteredProducts.map((p) => {
           const hasVariants = p.variants.length > 0;
           const totalQtyOnThisProduct = qtyByProductId.get(p.id) ?? 0;
           // Open-price lines hidup di customItems (bukan cart) —
@@ -615,252 +953,53 @@ export function POSClient({
             nama + harga manual
           </span>
         </button>
-      </div>
+        </div>
 
-      {customItems.length > 0 && (
-        <div className="px-3 pb-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
-            Item custom & harga custom
-          </p>
-          {customItems.map((c) => (
-            <div
-              key={c.localId}
-              className="rounded-xl border border-border bg-card p-3 flex items-center gap-2"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-foreground text-sm truncate">
-                  {c.name}
-                  {c.productId && (
-                    <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-                      open price
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {formatRp(c.price)} × {c.qty} = {formatRp(c.price * c.qty)}
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="Kurangi"
-                onClick={() => updateCustomQty(c.localId, -1)}
-                className="h-8 w-8 rounded-full border border-border text-foreground flex items-center justify-center hover:bg-muted"
-              >
-                <Minus size={14} />
-              </button>
-              <span className="w-5 text-center text-sm font-semibold tabular-nums">
-                {c.qty}
-              </span>
-              <button
-                type="button"
-                aria-label="Tambah"
-                onClick={() => updateCustomQty(c.localId, 1)}
-                className="h-8 w-8 rounded-full border border-border text-foreground flex items-center justify-center hover:bg-muted"
-              >
-                <Plus size={14} />
-              </button>
-              <button
-                type="button"
-                aria-label="Hapus"
-                onClick={() => removeCustom(c.localId)}
-                className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
+        {filteredProducts.length === 0 && (
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            Tidak ada produk yang cocok dengan &ldquo;{searchQuery}&rdquo;.
+          </div>
+        )}
+      </main>
+
+      {/* ── Cart panel: persistent on desktop ───────────── */}
+      <aside className="hidden md:flex md:flex-col border-l border-border min-h-0">
+        {cartPanel}
+      </aside>
+
+      {/* ── Cart sheet: mobile only, full-screen drawer ─── */}
+      {cartOpen && (
+        <div className="md:hidden fixed inset-0 z-40 flex flex-col bg-background">
+          {cartPanel}
         </div>
       )}
 
-      <div className="fixed bottom-0 inset-x-0 z-20 border-t border-border bg-background/95 backdrop-blur px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Total ({itemCount} item)
-            </p>
-            <p className="font-bold text-lg text-foreground">{formatRp(total)}</p>
-          </div>
-          {itemCount > 0 && (
-            <button
-              type="button"
-              onClick={resetCart}
-              className="text-xs text-muted-foreground hover:text-destructive inline-flex items-center gap-1"
-            >
-              <X size={14} /> Kosongkan
-            </button>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled={itemCount === 0 || pending}
-            onClick={() => setConfirmMethod("cash")}
-            className="h-12 rounded-xl bg-success text-white font-semibold disabled:opacity-40 disabled:pointer-events-none active:brightness-95"
-          >
-            Cash
-          </button>
-          <button
-            type="button"
-            disabled={itemCount === 0 || pending}
-            onClick={() => setConfirmMethod("qris")}
-            className="h-12 rounded-xl bg-primary text-primary-foreground font-semibold disabled:opacity-40 disabled:pointer-events-none active:brightness-95"
-          >
-            QRIS
-          </button>
-        </div>
-      </div>
-
-      {confirmMethod && (
-        <div
-          className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-          onClick={() => {
-            if (pending) return;
-            setConfirmMethod(null);
-            setQrisReceipt(null);
-            setCashReceived(null);
-          }}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="font-semibold text-foreground mb-1">
-              Konfirmasi pembayaran
-            </h2>
-            <p className="text-sm text-muted-foreground mb-3">
-              {confirmMethod === "cash" ? "Cash" : "QRIS"} · {itemCount} item
-            </p>
-            <div className="rounded-xl bg-muted/40 border border-border p-3 mb-4 max-h-60 overflow-y-auto">
-              <ul className="space-y-1.5 text-sm">
-                {cartLines.map((line) => (
-                  <li
-                    key={line.key}
-                    className="flex items-center justify-between gap-3"
-                  >
-                    <span className="text-foreground">
-                      {line.qty}× {line.name}
-                      {line.custom && (
-                        <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                          custom
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {formatRp(line.subtotal)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">
-                  Total
-                </span>
-                <span className="font-bold text-foreground tabular-nums">
-                  {formatRp(total)}
-                </span>
-              </div>
-            </div>
-            {confirmMethod === "cash" && (
-              <CashReceivedField
-                total={total}
-                value={cashReceived}
-                onChange={setCashReceived}
-              />
-            )}
-            {QRIS_RECEIPT_AT_CHECKOUT && confirmMethod === "qris" && (
-              <div className="mb-3">
-                <p className="text-xs font-medium text-foreground mb-1.5">
-                  Foto nota QRIS dari customer{" "}
-                  <span className="text-destructive">*</span>
-                </p>
-                <label
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition ${
-                    qrisReceipt
-                      ? "border-success/50 bg-success/10"
-                      : "border-dashed border-border bg-muted/30 hover:bg-muted"
-                  } ${pending ? "opacity-50 pointer-events-none" : ""}`}
-                >
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] ?? null;
-                      if (f && f.size > 5 * 1024 * 1024) {
-                        toast.error("Foto maksimal 5MB");
-                        e.target.value = "";
-                        return;
-                      }
-                      setQrisReceipt(f);
-                    }}
-                  />
-                  <Camera size={16} className="text-foreground shrink-0" />
-                  <span className="text-sm text-foreground truncate flex-1">
-                    {qrisReceipt ? qrisReceipt.name : "Ambil foto / pilih gambar"}
-                  </span>
-                  {qrisReceipt && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setQrisReceipt(null);
-                      }}
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      aria-label="Hapus foto"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </label>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Wajib sebagai bukti audit — foto bisa di-review admin di
-                  rekap finance.
-                </p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => {
-                  setConfirmMethod(null);
-                  setQrisReceipt(null);
-                  setCashReceived(null);
-                }}
-                className="h-11 rounded-xl border border-border text-foreground font-semibold hover:bg-muted disabled:opacity-50"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={
-                  pending ||
-                  (QRIS_RECEIPT_AT_CHECKOUT &&
-                    confirmMethod === "qris" &&
-                    !qrisReceipt) ||
-                  (confirmMethod === "cash" &&
-                    (cashReceived == null || cashReceived < total))
-                }
-                onClick={() => {
-                  if (
-                    confirmMethod === "cash" &&
-                    (cashReceived == null || cashReceived < total)
-                  ) {
-                    return;
-                  }
-                  submit(confirmMethod);
-                }}
-                className={`h-11 rounded-xl font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-60 ${
-                  confirmMethod === "cash" ? "bg-success" : "bg-primary"
+      {/* ── Mobile bottom nav (sub-pages POS) ────────────── */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-card"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
+        <div className="flex items-stretch">
+          {visibleRailItems.map((it) => {
+            const Icon = it.icon;
+            return (
+              <PosNavLink
+                key={it.href}
+                href={it.href}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                  it.active
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
+                aria-current={it.active ? "page" : undefined}
               >
-                {pending && <Loader2 size={14} className="animate-spin" />}
-                Bayar {formatRp(total)}
-              </button>
-            </div>
-          </div>
+                <Icon size={18} />
+                {it.label}
+              </PosNavLink>
+            );
+          })}
         </div>
-      )}
+      </nav>
 
       {customOpen && (
         <CustomItemDialog
