@@ -9,6 +9,7 @@ import {
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { getTodayAttendance, getMyStreak } from "@/lib/actions/attendance.actions";
+import { getFloorToday } from "@/lib/actions/admin-home.actions";
 import { listExtraWorkKindsForUser } from "@/lib/actions/extra-work-kinds.actions";
 import {
   getCelebrationsFeed,
@@ -19,6 +20,7 @@ import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
 import { DashboardHero } from "@/components/dashboard/DashboardHero";
+import { FloorTodayCard } from "@/components/dashboard/FloorTodayCard";
 import { SelfCelebrationHero } from "@/components/dashboard/SelfCelebrationHero";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { format } from "date-fns";
@@ -83,6 +85,7 @@ export default async function DashboardPage() {
     otReqRes,
     extraWorkRes,
     celebrationsFeed,
+    floorToday,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -102,6 +105,7 @@ export default async function DashboardPage() {
       .eq("date", todayDate)
       .order("created_at", { ascending: false }),
     getCelebrationsFeed(),
+    getFloorToday(),
   ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -199,6 +203,8 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      <FloorTodayCard people={floorToday} />
     </div>
   );
 }

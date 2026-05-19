@@ -1,7 +1,11 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentRole, getCachedAttendanceSettings } from "@/lib/supabase/cached";
+import {
+  getCurrentRole,
+  getCurrentUser,
+  getCachedAttendanceSettings,
+} from "@/lib/supabase/cached";
 import { zonedDateString } from "@/lib/utils/celebrations";
 
 /**
@@ -127,6 +131,61 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     asOfIso: now.toISOString(),
     todayIso,
   };
+}
+
+/**
+ * Floor snapshot untuk karyawan biasa — daftar siapa yang sudah
+ * check-in hari ini (yang masih on-duty + yang sudah check-out).
+ *
+ * Sama shape dengan `clockedInNow` di `getAdminHomeToday`, tapi
+ * tanpa gating role admin. Setiap karyawan yang sign-in boleh lihat
+ * floor roster supaya tahu siapa yang sedang hadir di kantor.
+ *
+ * Mengembalikan daftar kosong untuk request anonim — guard di server
+ * action, bukan di RLS, karena query menggunakan SSR Supabase client
+ * yang tetap ter-scope ke user yang sign-in.
+ */
+export async function getFloorToday(): Promise<ClockedInEmployee[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const supabase = await createClient();
+  const settings = await getCachedAttendanceSettings();
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const todayIso = zonedDateString(new Date(), tz);
+
+  const { data } = await supabase
+    .from("attendance_logs")
+    .select(
+      "user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed)"
+    )
+    .eq("date", todayIso);
+  const logs = (data ?? []) as Array<{
+    user_id: string;
+    status: string;
+    checked_in_at: string;
+    checked_out_at: string | null;
+    profiles: {
+      full_name: string | null;
+      avatar_url: string | null;
+      avatar_seed: string | null;
+    };
+  }>;
+
+  return logs
+    .map((l) => ({
+      userId: l.user_id,
+      fullName: l.profiles.full_name ?? "(tanpa nama)",
+      avatarUrl: l.profiles.avatar_url,
+      avatarSeed: l.profiles.avatar_seed,
+      status: l.status,
+      checkedInAt: l.checked_in_at,
+      checkedOut: !!l.checked_out_at,
+    }))
+    .sort((a, b) => {
+      if (a.checkedOut !== b.checkedOut) return a.checkedOut ? 1 : -1;
+      return a.checkedInAt.localeCompare(b.checkedInAt);
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────
