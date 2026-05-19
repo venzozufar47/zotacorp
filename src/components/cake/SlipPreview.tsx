@@ -88,9 +88,23 @@ export function SlipPreview({
   } = bundle;
 
   const [notes, setNotes] = useState(slip.notes ?? "");
-  const [includedIds, setIncludedIds] = useState<Set<string>>(
-    () => new Set(items.map((i) => i.order.id))
+  // Track ID yang DIKECUALIKAN secara eksplisit oleh admin (untick),
+  // bukan yang termasuk. Daftar `included` di-derive dari prop `items`
+  // minus excluded. Pola ini mencegah state lokal bocor antar slip
+  // (root cause: pare orders dikirim ke semarang slip) dan memastikan
+  // order yang BARU muncul (customer baru bikin order tomorrow setelah
+  // admin buka halaman) otomatis ter-include — tidak akan hilang
+  // setiap kali admin save/send.
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(
+    () => new Set()
   );
+  const includedIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const i of items) {
+      if (!excludedIds.has(i.order.id)) s.add(i.order.id);
+    }
+    return s;
+  }, [items, excludedIds]);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Kedua section opsional & far-future default tertutup — section
   // "Otomatis (besok)" sudah cukup informasi utama, dropdown ini
@@ -115,10 +129,10 @@ export function SlipPreview({
     items.some((i) => !includedIds.has(i.order.id));
 
   const toggleIncluded = (orderId: string, on: boolean) => {
-    setIncludedIds((prev) => {
+    setExcludedIds((prev) => {
       const next = new Set(prev);
-      if (on) next.add(orderId);
-      else next.delete(orderId);
+      if (on) next.delete(orderId);
+      else next.add(orderId);
       return next;
     });
   };

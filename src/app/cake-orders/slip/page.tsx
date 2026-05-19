@@ -54,8 +54,14 @@ export default async function EmployeeSlipPage({
       </div>
     );
   }
+  // Key ke slip.id agar SlipPreview *remount* setiap kali admin pindah
+  // cabang (pare ↔ semarang) atau tanggal. Tanpa key React me-reuse
+  // instance, jadi `includedIds`/`notes` useState yang ter-init dari
+  // bundle SEBELUMNYA bocor ke slip baru — root cause kasus "order
+  // pare ikut terkirim saat admin lanjut buat slip semarang".
   return (
     <SlipPreview
+      key={bundleRes.data!.slip.id}
       bundle={bundleRes.data!}
       optionsByKind={optsRes.ok ? optsRes.data! : null}
       diameters={diaRes.ok ? diaRes.data ?? [] : []}

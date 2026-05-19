@@ -314,16 +314,36 @@ export async function setSlipItems(
 
   const { data: slipRaw } = await supabase
     .from("cake_production_slips" as never)
-    .select("status")
+    .select("status, branch")
     .eq("id", slipId)
     .maybeSingle();
-  const slip = slipRaw as unknown as { status: string } | null;
+  const slip = slipRaw as unknown as { status: string; branch: CakeBranch } | null;
   if (!slip) return { ok: false, error: "Slip tidak ditemukan" };
   if (slip.status !== "draft" && slip.status !== "reopened")
     return {
       ok: false,
       error: "Slip sudah dikirim — buka kembali dulu kalau mau diubah",
     };
+
+  // Branch safety net — slip Pare hanya boleh berisi order Pare,
+  // demikian sebaliknya. Mencegah klien stale men-cross-pollinate
+  // slip cabang lain (lihat bug branch-state-leak di SlipPreview).
+  if (orderIds.length > 0) {
+    const { data: branchCheckRaw } = await supabase
+      .from("cake_orders" as never)
+      .select("id, branch")
+      .in("id", orderIds);
+    type BranchRow = { id: string; branch: CakeBranch };
+    const mismatched = (
+      (branchCheckRaw ?? []) as unknown as BranchRow[]
+    ).filter((r) => r.branch !== slip.branch);
+    if (mismatched.length > 0) {
+      return {
+        ok: false,
+        error: `Tidak bisa menambahkan order cabang ${mismatched[0].branch} ke slip ${slip.branch}`,
+      };
+    }
+  }
 
   const { data: currentRaw } = await supabase
     .from("cake_production_slip_items" as never)
