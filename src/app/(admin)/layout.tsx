@@ -60,7 +60,10 @@ export default async function AdminLayout({
             6xl cap, while still keeping line lengths readable on ultra-
             wide displays. `min-w-0` on <main> above lets this grow past
             its flex sibling's intrinsic width. */}
-        <div className="flex-1 max-w-[1700px] w-full mx-auto px-4 pt-16 pb-6 md:px-6 md:pt-6">
+        {/* pb-24 di mobile = space untuk bottom-nav admin yang fixed
+            (h-14 + safe-area). md:pt-6 + md:pb-6 reset karena di
+            desktop pakai sidebar, bukan bottom-nav. */}
+        <div className="flex-1 max-w-[1700px] w-full mx-auto px-4 pt-16 pb-24 md:px-6 md:pt-6 md:pb-6">
           {children}
         </div>
       </main>
