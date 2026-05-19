@@ -1,12 +1,21 @@
 "use server";
 
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/types";
 import {
   getCurrentRole,
   getCurrentUser,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { zonedDateString } from "@/lib/utils/celebrations";
+
+function adminClient() {
+  return createServiceClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 /**
  * Live snapshot for the admin Home dashboard. All numbers are scoped
@@ -141,15 +150,18 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
  * tanpa gating role admin. Setiap karyawan yang sign-in boleh lihat
  * floor roster supaya tahu siapa yang sedang hadir di kantor.
  *
- * Mengembalikan daftar kosong untuk request anonim — guard di server
- * action, bukan di RLS, karena query menggunakan SSR Supabase client
- * yang tetap ter-scope ke user yang sign-in.
+ * Pakai service-role client agar bisa baca attendance_logs +
+ * profiles seluruh karyawan (RLS default: user hanya lihat log
+ * sendiri, profiles only-own). Guard akses tetap di server action
+ * (signed-in check), dan kolom yang dikembalikan ke client dibatasi
+ * ke field aman: full_name, avatar_url, avatar_seed, status,
+ * checkedInAt, checkedOut — tidak ada PII sensitif.
  */
 export async function getFloorToday(): Promise<ClockedInEmployee[]> {
   const user = await getCurrentUser();
   if (!user) return [];
 
-  const supabase = await createClient();
+  const supabase = adminClient();
   const settings = await getCachedAttendanceSettings();
   const tz = settings?.timezone ?? "Asia/Jakarta";
   const todayIso = zonedDateString(new Date(), tz);
