@@ -213,47 +213,67 @@ export function AdminHomePage({
                   : `${onDutyCount} on duty · ${today.clockedInNow.length} signed in today`
               }
             />
-            <div className="px-5 pb-5 flex flex-wrap gap-2">
+            <div className="px-5 pb-5">
               {today.clockedInNow.length === 0 ? (
                 <span className="text-[12.5px] text-muted-foreground">
                   No one clocked in yet.
                 </span>
               ) : (
-                today.clockedInNow.map((p) => (
-                  <button
-                    key={p.userId}
-                    type="button"
-                    onClick={() =>
-                      setDrawer({
-                        userId: p.userId,
-                        fullName: p.fullName,
-                        avatarUrl: p.avatarUrl,
-                        avatarSeed: p.avatarSeed,
-                        caption: p.checkedOut
-                          ? `Off duty · ${p.status}`
-                          : `Clocked in · ${p.status}`,
-                      })
-                    }
-                    className={cn(
-                      "inline-flex items-center gap-2 pl-1 pr-3 h-8 rounded-full border border-border/60 transition text-[12px]",
-                      p.checkedOut
-                        ? "bg-muted/30 hover:bg-muted/60 text-muted-foreground opacity-60"
-                        : "bg-muted/50 hover:bg-muted text-foreground"
-                    )}
-                    title={p.checkedOut ? "Already checked out" : "On duty"}
-                  >
-                    <EmployeeAvatar
-                      size="sm"
-                      full_name={p.fullName}
-                      avatar_url={p.avatarUrl}
-                      avatar_seed={p.avatarSeed}
-                      className={p.checkedOut ? "grayscale" : undefined}
-                    />
-                    <span className="truncate max-w-[120px]">
-                      {firstName(p.fullName)}
-                    </span>
-                  </button>
-                ))
+                <div className="space-y-3">
+                  {groupByBusinessUnit(today.clockedInNow).map(
+                    ({ unit, members }) => (
+                      <div key={unit}>
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold mb-1.5">
+                          {unit}{" "}
+                          <span className="text-muted-foreground/60 tabular-nums">
+                            · {members.length}
+                          </span>
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {members.map((p) => (
+                            <button
+                              key={p.userId}
+                              type="button"
+                              onClick={() =>
+                                setDrawer({
+                                  userId: p.userId,
+                                  fullName: p.fullName,
+                                  avatarUrl: p.avatarUrl,
+                                  avatarSeed: p.avatarSeed,
+                                  caption: p.checkedOut
+                                    ? `Off duty · ${p.status}`
+                                    : `Clocked in · ${p.status}`,
+                                })
+                              }
+                              className={cn(
+                                "inline-flex items-center gap-2 pl-1 pr-3 h-8 rounded-full border border-border/60 transition text-[12px]",
+                                p.checkedOut
+                                  ? "bg-muted/30 hover:bg-muted/60 text-muted-foreground opacity-60"
+                                  : "bg-muted/50 hover:bg-muted text-foreground"
+                              )}
+                              title={
+                                p.checkedOut
+                                  ? "Already checked out"
+                                  : "On duty"
+                              }
+                            >
+                              <EmployeeAvatar
+                                size="sm"
+                                full_name={p.fullName}
+                                avatar_url={p.avatarUrl}
+                                avatar_seed={p.avatarSeed}
+                                className={p.checkedOut ? "grayscale" : undefined}
+                              />
+                              <span className="truncate max-w-[120px]">
+                                {firstName(p.fullName)}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
               )}
             </div>
           </Card>
@@ -609,6 +629,32 @@ function agoLabel(iso: string) {
 
 function firstName(full: string) {
   return full.split(/\s+/)[0] ?? full;
+}
+
+/**
+ * Group floor roster ke business_unit. Karyawan tanpa unit kerja
+ * masuk "Lainnya" (selalu di akhir). Urutan: jumlah anggota
+ * terbanyak → tersedikit.
+ */
+function groupByBusinessUnit<
+  P extends { businessUnit: string | null }
+>(people: P[]): Array<{ unit: string; members: P[] }> {
+  const map = new Map<string, P[]>();
+  for (const p of people) {
+    const key = p.businessUnit?.trim() || "Lainnya";
+    const arr = map.get(key) ?? [];
+    arr.push(p);
+    map.set(key, arr);
+  }
+  return Array.from(map.entries())
+    .map(([unit, members]) => ({ unit, members }))
+    .sort((a, b) => {
+      if (a.unit === "Lainnya") return 1;
+      if (b.unit === "Lainnya") return -1;
+      if (a.members.length !== b.members.length)
+        return b.members.length - a.members.length;
+      return a.unit.localeCompare(b.unit);
+    });
 }
 
 function labelCelebrant(c: Celebrant) {

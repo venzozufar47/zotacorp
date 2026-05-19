@@ -39,6 +39,9 @@ export interface ClockedInEmployee {
   fullName: string;
   avatarUrl: string | null;
   avatarSeed: string | null;
+  /** Unit kerja (Haengbocake Pare, Yeobo, dll). Null kalau profile
+   *  belum di-set unit kerjanya — di-fallback ke "Lainnya" oleh UI. */
+  businessUnit: string | null;
   status: string;
   checkedInAt: string;
   /** True once the employee has clocked out for the day (drives "off duty" styling on the Floor card). */
@@ -72,7 +75,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     supabase
       .from("attendance_logs")
       .select(
-        "id, user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed)"
+        "id, user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit)"
       )
       .eq("date", todayIso),
     supabase
@@ -93,6 +96,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       full_name: string | null;
       avatar_url: string | null;
       avatar_seed: string | null;
+      business_unit: string | null;
     };
   }>;
 
@@ -105,6 +109,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       fullName: l.profiles.full_name ?? "(tanpa nama)",
       avatarUrl: l.profiles.avatar_url,
       avatarSeed: l.profiles.avatar_seed,
+      businessUnit: l.profiles.business_unit,
       status: l.status,
       checkedInAt: l.checked_in_at,
       checkedOut: !!l.checked_out_at,
@@ -169,7 +174,7 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
   const { data } = await supabase
     .from("attendance_logs")
     .select(
-      "user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed)"
+      "user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit)"
     )
     .eq("date", todayIso);
   const logs = (data ?? []) as Array<{
@@ -181,6 +186,7 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
       full_name: string | null;
       avatar_url: string | null;
       avatar_seed: string | null;
+      business_unit: string | null;
     };
   }>;
 
@@ -190,6 +196,7 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
       fullName: l.profiles.full_name ?? "(tanpa nama)",
       avatarUrl: l.profiles.avatar_url,
       avatarSeed: l.profiles.avatar_seed,
+      businessUnit: l.profiles.business_unit,
       status: l.status,
       checkedInAt: l.checked_in_at,
       checkedOut: !!l.checked_out_at,
