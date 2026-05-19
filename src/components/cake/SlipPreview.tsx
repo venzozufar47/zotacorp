@@ -30,6 +30,7 @@ import {
   type TomorrowSlipBundle,
 } from "@/lib/actions/cake-slips.actions";
 import { makeLabelFor } from "@/lib/cake-orders/helpers";
+import { BranchBadge } from "@/components/cake/BranchBadge";
 import { SlipStatusBadge } from "@/components/cake/SlipStatusBadge";
 import { NewCakeOrderForm } from "@/components/cake/NewCakeOrderForm";
 import type {
@@ -737,6 +738,11 @@ function SlipOrderCard({
             <span className="font-semibold text-[13px] text-foreground truncate">
               {order.customer_name}
             </span>
+            {/* Cabang explicit di tiap kartu — admin double-check
+                bahwa order ini benar berada di cabang slip yang
+                sedang dibuat. Mencegah pengiriman silang antar
+                cabang (lihat fix branch-state-leak di SlipPreview). */}
+            <BranchBadge branch={order.branch} size="xs" />
             {order.customer_phone && (
               <span className="text-[10px] text-muted-foreground shrink-0">
                 📱 {order.customer_phone}
