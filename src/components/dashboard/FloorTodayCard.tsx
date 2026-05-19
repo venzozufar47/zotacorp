@@ -24,7 +24,7 @@ export function FloorTodayCard({
       className="animate-fade-up animate-fade-up-delay-2"
     >
       <div className="flex items-center justify-between px-1 mb-2.5">
-        <span className="eyebrow text-muted-foreground">Floor hari ini</span>
+        <span className="eyebrow text-muted-foreground">Masuk hari ini</span>
         <span
           aria-hidden
           className="h-px flex-1 ml-3 bg-gradient-to-r from-border to-transparent"
