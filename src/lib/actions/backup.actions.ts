@@ -15,6 +15,7 @@ import {
 } from "@/lib/backups/categories";
 import { dumpCategory } from "@/lib/backups/dump";
 import { restoreCategory, type RestoreMode } from "@/lib/backups/restore";
+import { zonedDateString } from "@/lib/utils/celebrations";
 
 const BUCKET = "database-backups";
 
@@ -436,18 +437,40 @@ export async function dueForCron(): Promise<{
   } | null;
   if (!settings) return { due: false, reason: "settings missing" };
   if (!settings.enabled) return { due: false, reason: "disabled" };
+
+  // Hanya backup-run hasil CRON yang menggating cron berikutnya.
+  // Manual backup tidak men-reset jam (user request: "tetap dibackup
+  // terlepas saya sudah backup manual atau belum").
   const { data: last } = await supabase
     .from("backup_runs" as never)
-    .select("created_at, status")
+    .select("created_at, status, trigger")
     .eq("status", "success")
+    .eq("trigger", "cron")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   const lastRow = last as unknown as { created_at: string } | null;
-  if (!lastRow) return { due: true, reason: "no prior success" };
+  if (!lastRow) return { due: true, reason: "no prior cron success" };
+
+  const tz = "Asia/Jakarta";
+  if (settings.cadence === "daily") {
+    // Kalender-day check di WIB. Cron fires 00:00 WIB tiap hari —
+    // due kalau belum ada cron success untuk tanggal hari ini.
+    // Memakai elapsed-hours saja akan drift: kalau cron sebelumnya
+    // memakan 1 menit, esok jam yang sama elapsed jadi 23:59h, < 24h,
+    // dan dianggap "belum due" → satu hari hilang.
+    const today = zonedDateString(new Date(), tz);
+    const lastDate = zonedDateString(new Date(lastRow.created_at), tz);
+    if (lastDate !== today)
+      return { due: true, reason: `last cron ${lastDate}, today ${today}` };
+    return { due: false, reason: `already ran today (${today})` };
+  }
+
+  // Cadence longer-than-daily: pakai elapsed dengan toleransi 1 jam
+  // supaya drift kecil tidak men-skip satu siklus.
   const elapsedHours =
     (Date.now() - new Date(lastRow.created_at).getTime()) / (1000 * 60 * 60);
-  const minHours = cadenceHours(settings.cadence);
+  const minHours = cadenceHours(settings.cadence) - 1;
   if (elapsedHours >= minHours)
     return { due: true, reason: `${elapsedHours.toFixed(1)}h elapsed` };
   return {
