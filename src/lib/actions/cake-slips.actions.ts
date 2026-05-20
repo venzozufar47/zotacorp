@@ -211,12 +211,38 @@ export async function getOrCreateTomorrowSlip(
   const existingItems = (itemsRaw ?? []) as unknown as CakeProductionSlipItem[];
   const onSlipIds = new Set(existingItems.map((i) => i.cake_order_id));
 
+  // Cross-slip dedup: ID order yang sudah ada di slip LAIN (selain
+  // slip ini). Auto-include + kandidat opsional/far-future tidak
+  // boleh menyarankan order yang sudah dikerjakan / diverifikasi di
+  // slip hari lain. Mirror logic dengan validasi setSlipItems.
+  const candidateIds = [
+    ...tomorrowOrders.map((o) => o.id),
+    ...optionalOrders.map((o) => o.id),
+    ...farOrders.map((o) => o.id),
+  ];
+  const onOtherSlipIds = new Set<string>();
+  if (candidateIds.length > 0) {
+    const { data: otherSlipRaw } = await supabase
+      .from("cake_production_slip_items" as never)
+      .select("cake_order_id, slip_id")
+      .in("cake_order_id", candidateIds)
+      .neq("slip_id", slip.id);
+    for (const r of (otherSlipRaw ?? []) as unknown as Array<{
+      cake_order_id: string;
+    }>) {
+      onOtherSlipIds.add(r.cake_order_id);
+    }
+  }
+
   // Auto-include tomorrow's orders on the slip whenever the slip is
   // editable. Reopen treats the slip as editable too — newly-arrived
   // tomorrow-orders should appear on the next re-send.
+  // Skip order yang sudah ada di slip lain (cross-slip dedup).
   const editable = slip.status === "draft" || slip.status === "reopened";
   if (editable) {
-    const missing = tomorrowOrders.filter((o) => !onSlipIds.has(o.id));
+    const missing = tomorrowOrders.filter(
+      (o) => !onSlipIds.has(o.id) && !onOtherSlipIds.has(o.id)
+    );
     if (missing.length > 0) {
       const baseSort = existingItems.length;
       const insertRows = missing.map((o, i) => ({
@@ -300,11 +326,15 @@ export async function getOrCreateTomorrowSlip(
     return out;
   };
   const optionalCandidates = groupByDate(
-    optionalOrders.filter((o) => !onSlipIds.has(o.id)),
+    optionalOrders.filter(
+      (o) => !onSlipIds.has(o.id) && !onOtherSlipIds.has(o.id)
+    ),
     rangeDays(optionalStart, optionalEnd)
   );
   const farFutureCandidates = groupByDate(
-    farOrders.filter((o) => !onSlipIds.has(o.id)),
+    farOrders.filter(
+      (o) => !onSlipIds.has(o.id) && !onOtherSlipIds.has(o.id)
+    ),
     rangeDays(farStart, farEnd)
   );
 
@@ -374,6 +404,58 @@ export async function setSlipItems(
 
   const toDelete = [...current].filter((id) => !desired.has(id));
   const toInsert = [...desired].filter((id) => !current.has(id));
+
+  // Cross-slip dedup guard: order tidak boleh ada di dua slip
+  // sekaligus, supaya tim produksi tidak re-bake. Untuk setiap
+  // ID yang baru mau di-insert ke slip ini, cek apakah sudah
+  // ada di slip lain (mana pun statusnya). Kalau ada, tolak
+  // dengan pesan jelas — admin harus narik dulu dari slip
+  // tujuan lainnya.
+  if (toInsert.length > 0) {
+    const { data: conflictRaw } = await supabase
+      .from("cake_production_slip_items" as never)
+      .select(
+        "cake_order_id, slip_id, cake_production_slips!inner(target_date, status, branch)"
+      )
+      .in("cake_order_id", toInsert)
+      .neq("slip_id", slipId);
+    type ConflictRow = {
+      cake_order_id: string;
+      slip_id: string;
+      cake_production_slips: {
+        target_date: string;
+        status: string;
+        branch: CakeBranch;
+      };
+    };
+    const conflicts = (conflictRaw ?? []) as unknown as ConflictRow[];
+    if (conflicts.length > 0) {
+      // Ambil nama customer biar pesan jelas, supaya admin tahu
+      // order mana yang konflik tanpa harus tebak dari ID.
+      const conflictOrderIds = conflicts.map((c) => c.cake_order_id);
+      const { data: namesRaw } = await supabase
+        .from("cake_orders" as never)
+        .select("id, customer_name")
+        .in("id", conflictOrderIds);
+      const nameById = new Map<string, string>();
+      for (const n of (namesRaw ?? []) as unknown as Array<{
+        id: string;
+        customer_name: string;
+      }>) {
+        nameById.set(n.id, n.customer_name);
+      }
+      const desc = conflicts
+        .map((c) => {
+          const name = nameById.get(c.cake_order_id) ?? c.cake_order_id;
+          return `"${name}" sudah di slip ${c.cake_production_slips.target_date} (${c.cake_production_slips.status})`;
+        })
+        .join("; ");
+      return {
+        ok: false,
+        error: `Order tidak bisa di-include — sudah ada di slip lain. Tarik dulu dari slip tersebut: ${desc}.`,
+      };
+    }
+  }
 
   if (toDelete.length > 0) {
     await supabase

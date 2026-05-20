@@ -36,7 +36,7 @@ import type {
   CakeSlipSnapshotItem,
 } from "@/lib/cake-orders/types";
 
-interface ProductionItem {
+export interface ProductionItem {
   snapshot: CakeSlipSnapshotItem;
   productionStatus: CakeProductionStatus;
   /** Admin sudah pindahkan card past "siap" / arsipkan — production
