@@ -12,7 +12,7 @@ const BU_VISUAL: Record<
   Haengbocake: {
     icon: Cake,
     tagline:
-      "Cake premium handmade — produksi dua cabang (Pare & Semarang), distribusi nasional.",
+      "Cake premium handmade — produksi dua cabang (Pare & Semarang).",
   },
   "Yeobo Space": {
     icon: Building2,
