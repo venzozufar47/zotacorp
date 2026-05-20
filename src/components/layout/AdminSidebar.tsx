@@ -18,6 +18,7 @@ import {
   Cake,
   Factory,
   Database,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -107,6 +108,12 @@ export function AdminSidebar({
       label: "Cake",
       items: [
         { href: "/admin/cake-orders", icon: Cake, label: "Pesanan Cake" },
+      ],
+    },
+    {
+      label: "Stakeholders",
+      items: [
+        { href: "/admin/investors", icon: TrendingUp, label: "Investor" },
       ],
     },
     {

@@ -100,6 +100,15 @@ export function LoginForm() {
             {tl.registerCta}
           </Link>
         </p>
+        <p className="text-center text-[11px] text-muted-foreground mt-1">
+          Investor?{" "}
+          <Link
+            href="/register-investor"
+            className="underline underline-offset-2"
+          >
+            Daftar via investor portal
+          </Link>
+        </p>
       </CardContent>
     </Card>
   );

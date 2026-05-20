@@ -11,6 +11,7 @@ import {
   Radio,
   Receipt,
   Settings,
+  TrendingUp,
   Users,
   Wallet,
 } from "lucide-react";
@@ -49,6 +50,7 @@ export function AdminMobileNav({
     { href: "/admin/celebrations", icon: PartyPopper, label: "Celebrations", color: "bg-pop-pink" },
     { href: "/admin/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
     { href: "/admin/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" },
+    { href: "/admin/investors", icon: TrendingUp, label: "Investor", color: "bg-quaternary" },
     { href: "/admin/settings", icon: Settings, label: t.nav.settings, color: "bg-card" },
   ];
 

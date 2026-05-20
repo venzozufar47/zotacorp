@@ -41,11 +41,15 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   return data as Profile | null;
 });
 
-export const getCurrentRole = cache(async (): Promise<"admin" | "employee" | null> => {
-  const profile = await getCurrentProfile();
-  if (!profile) return null;
-  return profile.role === "admin" ? "admin" : "employee";
-});
+export const getCurrentRole = cache(
+  async (): Promise<"admin" | "employee" | "investor" | null> => {
+    const profile = await getCurrentProfile();
+    if (!profile) return null;
+    if (profile.role === "admin") return "admin";
+    if (profile.role === "investor") return "investor";
+    return "employee";
+  }
+);
 
 export const getCachedAttendanceSettings = cache(
   async (): Promise<AttendanceSettings | null> => {

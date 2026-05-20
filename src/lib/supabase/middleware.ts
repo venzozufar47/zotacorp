@@ -35,7 +35,7 @@ export async function updateSession(request: NextRequest) {
   // `/` is the new auth landing (login form when anon, role redirect
   // when authed — see app/(auth)/page.tsx). `/login` stays as a 308
   // alias so external bookmarks survive.
-  const publicRoutes = ["/", "/login", "/register"];
+  const publicRoutes = ["/", "/login", "/register", "/register-investor"];
   const isPublic =
     pathname === "/" ||
     publicRoutes.some((r) => r !== "/" && pathname.startsWith(r));
@@ -55,9 +55,10 @@ export async function updateSession(request: NextRequest) {
       (r) => pathname === r || pathname.startsWith(r + "/")
     );
     const onAdminRoute = pathname.startsWith("/admin");
+    const onInvestorRoute = pathname.startsWith("/investor");
 
     // Only query profile when we actually need a role-based decision
-    if (isPublic || onAdminRoute || onEmployeeRoute) {
+    if (isPublic || onAdminRoute || onEmployeeRoute || onInvestorRoute) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -65,10 +66,29 @@ export async function updateSession(request: NextRequest) {
         .single();
 
       const isAdmin = profile?.role === "admin";
-      const home = isAdmin ? "/admin" : "/dashboard";
+      const isInvestor = profile?.role === "investor";
+      const home = isAdmin
+        ? "/admin"
+        : isInvestor
+          ? "/investor"
+          : "/dashboard";
 
       // Logged-in user on public page → send to their home
       if (isPublic) {
+        const url = request.nextUrl.clone();
+        url.pathname = home;
+        return NextResponse.redirect(url);
+      }
+
+      // Investor hanya boleh akses /investor/*. Selain itu redirect.
+      if (isInvestor && !onInvestorRoute) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/investor";
+        return NextResponse.redirect(url);
+      }
+
+      // Non-investor mencoba akses /investor/* → redirect ke home.
+      if (onInvestorRoute && !isInvestor) {
         const url = request.nextUrl.clone();
         url.pathname = home;
         return NextResponse.redirect(url);
@@ -85,7 +105,7 @@ export async function updateSession(request: NextRequest) {
           pathname.startsWith("/admin/finance/rekening/");
         if (!isFinanceAssigneePath) {
           const url = request.nextUrl.clone();
-          url.pathname = "/dashboard";
+          url.pathname = home;
           return NextResponse.redirect(url);
         }
       }
