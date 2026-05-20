@@ -246,6 +246,24 @@ export default async function PosRiwayatPage({
                   </span>
                 </li>
               ))}
+              {s.discountAmount > 0 && s.grossTotal != null && (
+                <li className="mt-1 pt-2 border-t border-dashed border-border space-y-0.5 text-xs">
+                  <div className="flex items-center justify-between gap-3 text-muted-foreground tabular-nums">
+                    <span>Subtotal</span>
+                    <span>{formatRp(s.grossTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-success tabular-nums">
+                    <span>Diskon</span>
+                    <span>−{formatRp(s.discountAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 pt-1 border-t border-border tabular-nums">
+                    <span className="font-semibold text-foreground">Total</span>
+                    <span className="font-semibold text-foreground">
+                      {formatRp(s.total)}
+                    </span>
+                  </div>
+                </li>
+              )}
             </ul>
           </details>
         ))}

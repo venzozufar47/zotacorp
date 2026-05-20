@@ -12,6 +12,8 @@ import {
 } from "./_gates";
 import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
+import { getActiveDiscount } from "./pos-discount.actions";
+import { applyDiscount } from "@/lib/pos/discount";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -83,7 +85,14 @@ export interface PosSaleSummary {
   saleDate: string;
   saleTime: string;
   paymentMethod: PaymentMethod;
+  /** Harga akhir setelah diskon + rounding — sama dengan
+   *  cashflow_transactions.credit untuk sale ini. */
   total: number;
+  /** Subtotal items sebelum diskon. Null kalau sale tidak kena
+   *  campaign apa pun (legacy / cabang non-diskon). */
+  grossTotal: number | null;
+  /** Selisih grossTotal − total (≥ 0). 0 kalau no campaign. */
+  discountAmount: number;
   /** Non-null kalau cashflow_transactions yang terkait sudah dihapus
    *  dari ledger utama. DB trigger `cashflow_tx_void_pos_sale` yang
    *  set — bukan action POS. Row pos_sales + items tetap disimpan
@@ -703,6 +712,7 @@ export async function createPosSale(input: {
     };
   });
   if (total <= 0) return { ok: false, error: "Total harus > 0" };
+  const grossTotal = total;
 
   // 3. Ambil default_branch rekening (untuk tag branch di cashflow tx).
   const { data: account, error: accErr } = await supabase
@@ -717,6 +727,22 @@ export async function createPosSale(input: {
   const now = new Date();
   const saleDate = jakartaDateString(now);
   const hhmm = jakartaHHMM(now);
+
+  // 4b. Resolve diskon yang berlaku untuk rekening + tanggal sale.
+  //     Kalau ada, hitung final post-diskon — `total` di-overwrite ke
+  //     final supaya semua downstream (pos_sales.total, cashflow.credit,
+  //     description) konsisten.
+  const campaign = await getActiveDiscount(input.bankAccountId, saleDate);
+  let discountAmount = 0;
+  if (campaign) {
+    const r = applyDiscount(grossTotal, {
+      percentOff: campaign.percentOff,
+      roundingUnit: campaign.roundingUnit,
+      roundingMode: campaign.roundingMode,
+    });
+    total = r.finalTotal;
+    discountAmount = r.discountAmount;
+  }
   // period_year/period_month mengikuti zona Jakarta juga.
   const [periodYearStr, periodMonthStr] = saleDate.split("-");
   const periodYear = Number(periodYearStr);
@@ -733,8 +759,11 @@ export async function createPosSale(input: {
       sale_date: saleDate,
       payment_method: input.paymentMethod,
       total,
+      gross_total: grossTotal,
+      discount_amount: discountAmount,
+      discount_campaign_id: campaign?.id ?? null,
       created_by: gate.userId,
-    })
+    } as never)
     .select("id")
     .single();
   if (saleErr || !sale)
@@ -813,7 +842,10 @@ export async function createPosSale(input: {
       return `${it.qty}x ${name}`;
     })
     .join(", ");
-  const description = `POS ${methodLabel}: ${itemsLabel}`;
+  const discountTag = campaign && discountAmount > 0
+    ? ` (diskon ${Math.round(campaign.percentOff)}% −Rp ${discountAmount.toLocaleString("id-ID")})`
+    : "";
+  const description = `POS ${methodLabel}${discountTag}: ${itemsLabel}`;
 
   // 10. Insert cashflow_transactions (credit).
   const { data: tx, error: txErr } = await supabase
@@ -939,6 +971,8 @@ export async function listRecentPosSales(
     sale_time: string | null;
     payment_method: string;
     total: number;
+    gross_total: number | null;
+    discount_amount: number | null;
     voided_at: string | null;
     cashflow_transaction_id: string | null;
   };
@@ -950,14 +984,14 @@ export async function listRecentPosSales(
       const { data, error } = await supabase
         .from("pos_sales")
         .select(
-          "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
+          "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id"
         )
         .eq("bank_account_id", bankAccountId)
         .eq("sale_date", saleDate)
         .order("sale_time", { ascending: false })
         .range(from, from + PAGE - 1);
       if (error) return [];
-      const batch = (data ?? []) as SaleRow[];
+      const batch = (data ?? []) as unknown as SaleRow[];
       sales.push(...batch);
       if (batch.length < PAGE) break;
       from += PAGE;
@@ -969,14 +1003,14 @@ export async function listRecentPosSales(
       const { data, error } = await supabase
         .from("pos_sales")
         .select(
-          "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
+          "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id"
         )
         .eq("bank_account_id", bankAccountId)
         .order("sale_date", { ascending: false })
         .order("sale_time", { ascending: false })
         .range(from, from + PAGE - 1);
       if (error) return [];
-      const batch = (data ?? []) as SaleRow[];
+      const batch = (data ?? []) as unknown as SaleRow[];
       sales.push(...batch);
       if (batch.length < PAGE) break;
       from += PAGE;
@@ -985,14 +1019,14 @@ export async function listRecentPosSales(
     const { data, error } = await supabase
       .from("pos_sales")
       .select(
-        "id, sale_date, sale_time, payment_method, total, voided_at, cashflow_transaction_id"
+        "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id"
       )
       .eq("bank_account_id", bankAccountId)
       .order("sale_date", { ascending: false })
       .order("sale_time", { ascending: false })
       .range(offset, offset + limit - 1);
     if (error) return [];
-    sales = (data ?? []) as SaleRow[];
+    sales = (data ?? []) as unknown as SaleRow[];
   }
   if (sales.length === 0) return [];
 
@@ -1108,6 +1142,8 @@ export async function listRecentPosSales(
     saleTime: s.sale_time ?? "",
     paymentMethod: s.payment_method as PaymentMethod,
     total: Number(s.total),
+    grossTotal: s.gross_total != null ? Number(s.gross_total) : null,
+    discountAmount: s.discount_amount != null ? Number(s.discount_amount) : 0,
     voidedAt: s.voided_at,
     // Untuk QRIS selalu return boolean (true/false) supaya badge muncul
     // di UI — termasuk sale lama yang mungkin tidak punya

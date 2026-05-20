@@ -31,8 +31,18 @@ import {
 } from "@/lib/actions/pos.actions";
 import { useRouter } from "next/navigation";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
+import { activateTodayDiscountPreset } from "@/lib/actions/pos-discount.actions";
 import { formatRp } from "@/lib/cashflow/format";
+import { applyDiscount, type RoundingMode } from "@/lib/pos/discount";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
+
+interface ActiveDiscountProp {
+  id: string;
+  percentOff: number;
+  roundingUnit: number;
+  roundingMode: RoundingMode;
+  note: string | null;
+}
 
 interface Props {
   bankAccountId: string;
@@ -43,6 +53,9 @@ interface Props {
   /** On-hand stok per SKU keyed by `cartKey(productId, variantId|null)`.
    *  null = produk tidak tracked / stok belum di-fetch (bypass gating). */
   stockByKey: Record<string, number> | null;
+  /** Campaign diskon yang berlaku untuk rekening + hari ini (null = none).
+   *  Server-resolved supaya UI tinggal render. */
+  activeDiscount?: ActiveDiscountProp | null;
 }
 
 interface CustomLine {
@@ -87,6 +100,7 @@ export function POSClient({
   products,
   isAdmin,
   stockByKey,
+  activeDiscount = null,
 }: Props) {
   // Catalog cart: Record<cartKey, qty>.
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -503,13 +517,23 @@ export function POSClient({
   const visibleRailItems = railItems.filter((it) => !it.adminOnly || isAdmin);
 
   // Inline payment validation. Tombol Bayar disabled kalau:
+  // Diskon hari ini (kalau ada) — math di-share dengan server via
+  // applyDiscount supaya angka di cart selalu == angka tersimpan.
+  // grossTotal = subtotal items, finalTotal = setelah diskon + rounding.
+  const grossTotal = total;
+  const discountResult = activeDiscount
+    ? applyDiscount(grossTotal, activeDiscount)
+    : { finalTotal: grossTotal, discountAmount: 0 };
+  const finalTotal = discountResult.finalTotal;
+  const discountAmount = discountResult.discountAmount;
+
   //  - cart kosong / sedang submit
-  //  - mode cash tapi uang diterima < total
+  //  - mode cash tapi uang diterima < finalTotal
   //  - mode QRIS dengan flag receipt aktif tapi belum upload foto
   const payDisabled =
     itemCount === 0 ||
     pending ||
-    (payMode === "cash" && (cashReceived == null || cashReceived < total)) ||
+    (payMode === "cash" && (cashReceived == null || cashReceived < finalTotal)) ||
     (QRIS_RECEIPT_AT_CHECKOUT && payMode === "qris" && !qrisReceipt);
 
   const cartPanel = (
@@ -617,14 +641,40 @@ export function POSClient({
       </div>
 
       <div className="border-t border-border bg-card px-4 py-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-            Total
-          </span>
-          <span className="text-lg font-bold text-foreground tabular-nums">
-            {formatRp(total)}
-          </span>
-        </div>
+        {activeDiscount && discountAmount > 0 ? (
+          <div className="space-y-1 text-sm tabular-nums">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Subtotal</span>
+              <span>{formatRp(grossTotal)}</span>
+            </div>
+            <div className="flex items-center justify-between text-success">
+              <span>
+                Diskon {Math.round(activeDiscount.percentOff)}%
+                <span className="ml-1 text-[11px] opacity-70">
+                  (bulat ke Rp {activeDiscount.roundingUnit.toLocaleString("id-ID")} ke bawah)
+                </span>
+              </span>
+              <span>−{formatRp(discountAmount)}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-border">
+              <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                Total bayar
+              </span>
+              <span className="text-lg font-bold text-foreground">
+                {formatRp(finalTotal)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              Total
+            </span>
+            <span className="text-lg font-bold text-foreground tabular-nums">
+              {formatRp(finalTotal)}
+            </span>
+          </div>
+        )}
 
         {/* Pay mode picker */}
         <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
@@ -652,7 +702,7 @@ export function POSClient({
         {/* Inline payment surface — replaces the old confirm modal. */}
         {payMode === "cash" && (
           <CashReceivedField
-            total={total}
+            total={finalTotal}
             value={cashReceived}
             onChange={setCashReceived}
           />
@@ -717,7 +767,7 @@ export function POSClient({
           }`}
         >
           {pending && <Loader2 size={14} className="animate-spin" />}
-          Bayar {formatRp(total)}
+          Bayar {formatRp(finalTotal)}
         </button>
       </div>
     </div>
@@ -785,6 +835,11 @@ export function POSClient({
 
       {/* ── Main area: search + product grid ──────────────── */}
       <main className="min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+        <DiscountBanner
+          activeDiscount={activeDiscount}
+          isAdmin={isAdmin}
+          bankAccountId={bankAccountId}
+        />
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur p-3 border-b border-border">
           <div className="relative">
             <Search
@@ -1124,6 +1179,80 @@ export function POSClient({
  * selanjutnya dibutuhkan untuk reconciliation, tinggal pipe `value`
  * + `value - total` ke `createPosSale` sebagai field opsional.
  */
+/**
+ * Banner thin di atas grid produk. Kalau ada campaign aktif untuk
+ * hari ini → notice hijau. Kalau tidak ada dan caller admin →
+ * tombol untuk aktivasi preset 10%/floor/Rp 1.000 yang juga
+ * meng-update transaksi yang sudah masuk hari ini.
+ */
+function DiscountBanner({
+  activeDiscount,
+  isAdmin,
+  bankAccountId,
+}: {
+  activeDiscount: ActiveDiscountProp | null;
+  isAdmin: boolean;
+  bankAccountId: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  if (activeDiscount) {
+    return (
+      <div className="px-3 pt-3">
+        <div className="rounded-xl border-2 border-success/40 bg-success/10 px-3 py-2 text-xs text-foreground flex items-center gap-2">
+          <Sparkles size={14} className="text-success shrink-0" />
+          <span>
+            <strong className="font-semibold">
+              Diskon {Math.round(activeDiscount.percentOff)}% aktif
+            </strong>{" "}
+            — pembulatan ke bawah Rp{" "}
+            {activeDiscount.roundingUnit.toLocaleString("id-ID")}
+            {activeDiscount.note ? ` · ${activeDiscount.note}` : ""}
+          </span>
+        </div>
+      </div>
+    );
+  }
+  if (!isAdmin) return null;
+  return (
+    <div className="px-3 pt-3">
+      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-foreground flex items-center justify-between gap-2">
+        <span className="text-muted-foreground">
+          Belum ada diskon aktif hari ini.
+        </span>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              const res = await activateTodayDiscountPreset(bankAccountId);
+              if (!res.ok) {
+                toast.error(res.error);
+                return;
+              }
+              const n = res.data?.retroUpdatedCount ?? 0;
+              toast.success(
+                res.data?.created
+                  ? `Diskon 10% aktif${n > 0 ? ` · ${n} transaksi hari ini dijadikan diskon` : ""}`
+                  : "Diskon hari ini sudah aktif"
+              );
+              router.refresh();
+            })
+          }
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-2.5 h-7 text-[11px] font-semibold disabled:opacity-50"
+        >
+          {pending ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Sparkles size={12} />
+          )}
+          Aktifkan 10% hari ini
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CashReceivedField({
   total,
   value,

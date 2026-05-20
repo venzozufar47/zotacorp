@@ -7,6 +7,7 @@ import {
   listActivePosProducts,
 } from "@/lib/actions/pos.actions";
 import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
+import { getActiveDiscount } from "@/lib/actions/pos-discount.actions";
 import { POSClient } from "@/components/pos/POSClient";
 
 /**
@@ -27,10 +28,11 @@ export default async function PosPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const [products, role, onHand] = await Promise.all([
+  const [products, role, onHand, activeDiscount] = await Promise.all([
     listActivePosProducts(account.id),
     getCurrentRole(),
     listStockOnHand(account.id).catch(() => []),
+    getActiveDiscount(account.id),
   ]);
 
   // Format key sama dengan helper `cartKey` di POSClient — duplikasi
@@ -50,6 +52,17 @@ export default async function PosPage() {
       products={products}
       isAdmin={role === "admin"}
       stockByKey={stockByKey}
+      activeDiscount={
+        activeDiscount
+          ? {
+              id: activeDiscount.id,
+              percentOff: activeDiscount.percentOff,
+              roundingUnit: activeDiscount.roundingUnit,
+              roundingMode: activeDiscount.roundingMode,
+              note: activeDiscount.note,
+            }
+          : null
+      }
     />
   );
 }
