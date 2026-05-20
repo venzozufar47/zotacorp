@@ -112,7 +112,7 @@ export default async function InvestorHomePage() {
               return (
                 <Link
                   key={bu}
-                  href={`/investor/finance/${encodeURIComponent(bu)}`}
+                  href={`/investor/finance?bu=${encodeURIComponent(bu)}`}
                   className="group rounded-2xl border border-border bg-card p-5 hover:border-primary/40 transition-colors flex items-start gap-4"
                 >
                   <span className="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary shrink-0">

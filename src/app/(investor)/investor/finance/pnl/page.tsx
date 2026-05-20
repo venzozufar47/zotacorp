@@ -1,13 +1,16 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentRole } from "@/lib/supabase/cached";
 import { getMyInvestorAccess } from "@/lib/investor/access";
-import { fetchInvestorPnLSummary } from "@/lib/investor/pnl";
-import { InvestorPnLView } from "@/components/investor/InvestorPnLView";
+import { fetchPnL } from "@/lib/cashflow/pnl";
+import { getNonOperatingCategories } from "@/lib/cashflow/categories";
+import { InvestorPnLClient } from "@/components/investor/InvestorPnLClient";
 
 interface SearchParams {
+  bu?: string;
   from?: string;
   to?: string;
 }
@@ -22,29 +25,21 @@ function parseYM(s: string | undefined): { year: number; month: number } | null 
   return { year, month };
 }
 
-/**
- * PnL view untuk investor — read-only, scoped ke satu BU yang sudah
- * di-assign. Investor yang akses BU lain langsung redirect ke landing.
- */
-export default async function InvestorFinanceDetailPage({
-  params,
+export default async function InvestorPnLPage({
   searchParams,
 }: {
-  params: Promise<{ businessUnit: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  const role = await getCurrentRole();
-  if (role !== "investor") redirect("/");
+  const { businessUnits } = await getMyInvestorAccess();
+  if (businessUnits.length === 0) redirect("/investor");
 
-  const { businessUnit: raw } = await params;
-  const businessUnit = decodeURIComponent(raw);
-
-  const access = await getMyInvestorAccess();
-  if (!access.businessUnits.includes(businessUnit)) {
+  const sp = await searchParams;
+  const businessUnit =
+    sp.bu && businessUnits.includes(sp.bu) ? sp.bu : businessUnits[0];
+  if (sp.bu && !businessUnits.includes(sp.bu)) {
     redirect("/investor/finance");
   }
 
-  const sp = await searchParams;
   const supabase = await createClient();
   const now = new Date();
   const defaultTo = { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -79,16 +74,35 @@ export default async function InvestorFinanceDetailPage({
   const from = parseYM(sp.from) ?? defaultFrom;
   const to = parseYM(sp.to) ?? defaultTo;
 
-  const report = await fetchInvestorPnLSummary(
-    supabase,
-    businessUnit,
-    from,
-    to
-  );
+  const report = await fetchPnL(supabase, businessUnit, from, to);
+  const nonOp = getNonOperatingCategories(businessUnit);
 
   return (
-    <div className="animate-fade-up">
-      <InvestorPnLView businessUnit={businessUnit} report={report} />
+    <div className="space-y-5 animate-fade-up">
+      <Link
+        href={`/investor/finance?bu=${encodeURIComponent(businessUnit)}`}
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft size={14} />
+        Kembali ke daftar rekening
+      </Link>
+      <header>
+        <p className="eyebrow text-muted-foreground">Profit &amp; Loss</p>
+        <h1 className="mt-1 text-xl sm:text-2xl font-semibold text-foreground">
+          {businessUnit}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Cashflow Sankey, tren bulanan, dan rincian per kategori &amp;
+          per cabang. Mode baca.
+        </p>
+      </header>
+      <InvestorPnLClient
+        businessUnit={businessUnit}
+        from={from}
+        to={to}
+        report={report}
+        nonOperatingCategories={[...nonOp]}
+      />
     </div>
   );
 }
