@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { getMyInvestorAccess } from "@/lib/investor/access";
-import { fetchPnL } from "@/lib/cashflow/pnl";
+import { fetchInvestorPnLSummary } from "@/lib/investor/pnl";
 import { InvestorPnLView } from "@/components/investor/InvestorPnLView";
 
 interface SearchParams {
@@ -79,7 +79,12 @@ export default async function InvestorFinanceDetailPage({
   const from = parseYM(sp.from) ?? defaultFrom;
   const to = parseYM(sp.to) ?? defaultTo;
 
-  const report = await fetchPnL(supabase, businessUnit, from, to);
+  const report = await fetchInvestorPnLSummary(
+    supabase,
+    businessUnit,
+    from,
+    to
+  );
 
   return (
     <div className="animate-fade-up">

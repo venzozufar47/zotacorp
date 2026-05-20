@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import type { PnLReport } from "@/lib/cashflow/pnl";
+import type { InvestorPnLSummary } from "@/lib/investor/pnl";
 import { formatRp } from "@/lib/cashflow/format";
 
 function labelYM(year: number, month: number): string {
@@ -30,15 +30,17 @@ function ymStr(x: { year: number; month: number }): string {
 }
 
 /**
- * Read-only PnL view untuk investor. Tampilkan ringkasan per cabang
- * + total bulanan tanpa allocation editor / admin tools.
+ * PnL view investor — BU-level aggregate (tanpa branch split), supaya
+ * angka tidak nol gara-gara admin belum melakukan Pusat allocations.
+ * Investor lihat pendapatan, beban, laba operasional, dan Net Dividen
+ * apa adanya dari ledger.
  */
 export function InvestorPnLView({
   businessUnit,
   report,
 }: {
   businessUnit: string;
-  report: PnLReport;
+  report: InvestorPnLSummary;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -54,17 +56,14 @@ export function InvestorPnLView({
     );
   };
 
-  // Aggregate totals across the whole range — quick top-line stats.
   const totals = useMemo(() => {
     let revenue = 0;
     let expense = 0;
     let netDividen = 0;
     for (const m of report.months) {
-      for (const b of ["Semarang", "Pare"] as const) {
-        revenue += m.byBranch[b].operatingRevenue;
-        expense += m.byBranch[b].operatingExpense;
-      }
-      netDividen += m.companyNetDividen;
+      revenue += m.operatingRevenue;
+      expense += m.operatingExpense;
+      netDividen += m.netDividen;
     }
     return { revenue, expense, profit: revenue - expense, netDividen };
   }, [report]);
@@ -85,12 +84,11 @@ export function InvestorPnLView({
           {businessUnit}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ringkasan kinerja operasional per cabang, sumber: rekening
-          finance Zota Corp. Mode baca.
+          Ringkasan operasional unit bisnis berdasarkan ledger keuangan
+          terkini. Mode baca.
         </p>
       </header>
 
-      {/* Period picker */}
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs">
           <span className="block text-muted-foreground mb-1">Dari</span>
@@ -119,7 +117,6 @@ export function InvestorPnLView({
         </button>
       </div>
 
-      {/* Top-line aggregate stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <Kpi
           label="Pendapatan operasional"
@@ -143,11 +140,10 @@ export function InvestorPnLView({
         />
       </div>
 
-      {/* Monthly table */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold text-foreground">
-            Per bulan · per cabang
+            Ringkasan bulanan
           </h2>
         </div>
         <div className="overflow-x-auto">
@@ -155,7 +151,6 @@ export function InvestorPnLView({
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
                 <th className="px-4 py-2 font-semibold">Bulan</th>
-                <th className="px-4 py-2 font-semibold">Cabang</th>
                 <th className="px-4 py-2 font-semibold text-right tabular-nums">
                   Pendapatan
                 </th>
@@ -165,50 +160,50 @@ export function InvestorPnLView({
                 <th className="px-4 py-2 font-semibold text-right tabular-nums">
                   Laba operasional
                 </th>
+                <th className="px-4 py-2 font-semibold text-right tabular-nums">
+                  Net dividen
+                </th>
               </tr>
             </thead>
             <tbody>
               {report.months.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td
+                    colSpan={5}
+                    className="px-4 py-8 text-center text-muted-foreground"
+                  >
                     Belum ada data dalam rentang ini.
                   </td>
                 </tr>
               )}
-              {report.months.map((m) => {
-                const rows = (["Semarang", "Pare"] as const).map((branch) => {
-                  const b = m.byBranch[branch];
-                  return { branch, ...b };
-                });
-                return rows.map((r, idx) => (
-                  <tr
-                    key={`${m.year}-${m.month}-${r.branch}`}
-                    className="border-t border-border/60"
+              {report.months.map((m) => (
+                <tr
+                  key={`${m.year}-${m.month}`}
+                  className="border-t border-border/60"
+                >
+                  <td className="px-4 py-2 font-medium text-foreground">
+                    {labelYM(m.year, m.month)}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">
+                    {formatRp(m.operatingRevenue)}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    −{formatRp(m.operatingExpense)}
+                  </td>
+                  <td
+                    className={`px-4 py-2 text-right tabular-nums font-semibold ${
+                      m.operatingProfit >= 0
+                        ? "text-success"
+                        : "text-destructive"
+                    }`}
                   >
-                    <td className="px-4 py-2 font-medium text-foreground">
-                      {idx === 0 ? labelYM(m.year, m.month) : ""}
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {r.branch}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {formatRp(r.operatingRevenue)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      −{formatRp(r.operatingExpense)}
-                    </td>
-                    <td
-                      className={`px-4 py-2 text-right tabular-nums font-semibold ${
-                        r.operatingProfit >= 0
-                          ? "text-success"
-                          : "text-destructive"
-                      }`}
-                    >
-                      {formatRp(r.operatingProfit)}
-                    </td>
-                  </tr>
-                ));
-              })}
+                    {formatRp(m.operatingProfit)}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    {m.netDividen === 0 ? "—" : formatRp(m.netDividen)}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
