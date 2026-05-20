@@ -183,7 +183,11 @@ function AssignDropdown({
 }) {
   const [pickedId, setPickedId] = useState("");
   const [role, setRole] = useState<CakeProductionRole>(null);
-  const [branch, setBranch] = useState<CakeBranch>("pare");
+  // `"both"` = assign ke kedua cabang sekaligus. Saat tombol di-tap,
+  // handler memanggil onAssign dua kali (pare + semarang). Server
+  // action assignCakeAccess sudah idempotent — kalau sebelumnya
+  // sudah ada salah satu row, call kedua aman.
+  const [branch, setBranch] = useState<CakeBranch | "both">("pare");
 
   return (
     <div className="flex flex-wrap gap-2 pt-1">
@@ -203,7 +207,9 @@ function AssignDropdown({
         <>
           <select
             value={branch}
-            onChange={(e) => setBranch(e.target.value as CakeBranch)}
+            onChange={(e) =>
+              setBranch(e.target.value as CakeBranch | "both")
+            }
             className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
             aria-label="Cabang"
           >
@@ -212,6 +218,7 @@ function AssignDropdown({
                 Cabang {CAKE_BRANCH_LABELS[b]}
               </option>
             ))}
+            <option value="both">Pare + Semarang</option>
           </select>
           <select
             value={role ?? "both"}
@@ -237,12 +244,26 @@ function AssignDropdown({
         type="button"
         onClick={() => {
           if (!pickedId) return;
-          onAssign({
-            userId: pickedId,
-            scope,
-            productionRole: scope === "production" ? role : null,
-            branch: scope === "production" ? branch : null,
-          });
+          if (scope === "production" && branch === "both") {
+            // Multi-branch: assign ke pare + semarang sekaligus.
+            // assignCakeAccess sudah idempotent jadi double-tap aman.
+            for (const b of CAKE_BRANCHES) {
+              onAssign({
+                userId: pickedId,
+                scope,
+                productionRole: role,
+                branch: b,
+              });
+            }
+          } else {
+            onAssign({
+              userId: pickedId,
+              scope,
+              productionRole: scope === "production" ? role : null,
+              branch:
+                scope === "production" ? (branch as CakeBranch) : null,
+            });
+          }
           setPickedId("");
           setRole(null);
         }}
