@@ -483,6 +483,28 @@ export function SlipPreview({
         >
           {showOptional && (
             <div className="space-y-2">
+              {/* Saat slip terkunci (sent/received/closed), checkbox
+                  di kartu opsional secara otomatis disabled via prop
+                  `editable`. Hint inline ini supaya admin tahu kenapa
+                  tidak responsif dan langsung bisa Reopen dari sini —
+                  tidak perlu scroll ke atas. */}
+              {!isEditable && (
+                <div className="rounded-xl border-2 border-dashed border-pop-pink/50 bg-pop-pink/10 px-3 py-2 text-xs text-foreground flex items-center justify-between gap-2 flex-wrap">
+                  <span>
+                    Slip sudah dikirim — buka kembali dulu untuk
+                    menambah order opsional ke slip.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onReopen}
+                    disabled={pending}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-card border-2 border-foreground px-2.5 py-1 text-[11px] font-semibold hover:bg-muted disabled:opacity-50 shrink-0"
+                  >
+                    <RotateCcw size={11} strokeWidth={2.5} />
+                    Buka kembali
+                  </button>
+                </div>
+              )}
               {optionalCandidates.map((g) => (
                 <div key={g.date} className="space-y-1">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
