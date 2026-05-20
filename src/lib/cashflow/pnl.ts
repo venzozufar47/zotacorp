@@ -565,17 +565,20 @@ export async function fetchPnL(
         !unallocated && Math.abs(sum - netForAllocation) <= 1;
       const unbalanced = !unallocated && !balanced;
 
-      // Auto-unlock guard: if the row was locked at a snapshot net
-      // total (post auto-deduct) yang sudah drift, flip locked → false
-      // supaya admin re-allocate. Pakai netForAllocation supaya
-      // perubahan POS QRIS yang tidak mengubah angka custom-cake bersih
-      // tidak men-trigger unlock palsu.
+      // Auto-unlock guard. Dua kondisi:
+      //  1. Net Pusat drift sejak lock (POS QRIS / Pusat tx berubah)
+      //     → invariant lock tidak relevan lagi.
+      //  2. Row locked tapi sekarang unbalanced (sum semarang+pare ≠
+      //     netForAllocation). Bisa terjadi kalau data Pusat berubah
+      //     tanpa update lockedPusatTotal, atau legacy lock dari
+      //     pre-snapshot era. Locked HARUS imply balanced.
       let effectiveLocked = Boolean(alloc?.locked);
-      if (
+      const driftedSnapshot =
         alloc?.locked &&
         alloc.lockedPusatTotal != null &&
-        alloc.lockedPusatTotal !== netForAllocation
-      ) {
+        alloc.lockedPusatTotal !== netForAllocation;
+      const lockedButStale = alloc?.locked && unbalanced;
+      if (alloc?.locked && (driftedSnapshot || lockedButStale)) {
         effectiveLocked = false;
         const drift = pendingAutoUnlocks.get(allocKey);
         if (!drift) {

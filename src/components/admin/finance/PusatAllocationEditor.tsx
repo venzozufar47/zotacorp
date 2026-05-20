@@ -540,15 +540,36 @@ function CategoryGroup({
                 {aggregate.toLocaleString("id-ID")}
               </span>
             </span>
-            {lockedCount > 0 && (
-              <span
-                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
-                title={`${lockedCount} bulan di-lock`}
-              >
-                <Lock size={10} />
-                {lockedCount}/{rows.length}
-              </span>
-            )}
+            {(() => {
+              // Visual cue scanning cepat:
+              //  - Full (X/X) → hijau, semua bulan ter-lock final.
+              //  - Partial (1..X-1 / X) → amber, masih ada bulan
+              //    belum di-lock.
+              //  - None (0/X) → muted lock kosong (jarang ditampilkan;
+              //    skip render kalau benar-benar 0 supaya tidak noisy).
+              if (lockedCount === 0) return null;
+              const fullyLocked = lockedCount === rows.length;
+              const cls = fullyLocked
+                ? "bg-success/15 text-success border border-success/30"
+                : "bg-warning/15 text-warning border border-warning/30";
+              const label = fullyLocked ? "Final" : "Sebagian";
+              return (
+                <span
+                  className={
+                    "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider " +
+                    cls
+                  }
+                  title={
+                    fullyLocked
+                      ? `Semua ${rows.length} bulan sudah dikunci (final).`
+                      : `${lockedCount} dari ${rows.length} bulan dikunci. ${rows.length - lockedCount} bulan masih bisa diubah.`
+                  }
+                >
+                  <Lock size={10} />
+                  {label} {lockedCount}/{rows.length}
+                </span>
+              );
+            })()}
             {unallocatedCount > 0 && (
               <span
                 className="inline-flex items-center gap-1 rounded bg-warning/15 text-warning px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
