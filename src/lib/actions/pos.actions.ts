@@ -951,6 +951,9 @@ export async function listPosSaleDates(
  * `[offset, offset+limit)`. Limit=null tetap supported untuk export
  * full history (insights, dll).
  */
+const POS_SALE_LIST_COLUMNS =
+  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id" as const;
+
 export async function listRecentPosSales(
   bankAccountId: string,
   limit: number | null = 50,
@@ -984,7 +987,7 @@ export async function listRecentPosSales(
       const { data, error } = await supabase
         .from("pos_sales")
         .select(
-          "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id"
+          POS_SALE_LIST_COLUMNS
         )
         .eq("bank_account_id", bankAccountId)
         .eq("sale_date", saleDate)
@@ -1003,7 +1006,7 @@ export async function listRecentPosSales(
       const { data, error } = await supabase
         .from("pos_sales")
         .select(
-          "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id"
+          POS_SALE_LIST_COLUMNS
         )
         .eq("bank_account_id", bankAccountId)
         .order("sale_date", { ascending: false })
@@ -1019,7 +1022,7 @@ export async function listRecentPosSales(
     const { data, error } = await supabase
       .from("pos_sales")
       .select(
-        "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id"
+        POS_SALE_LIST_COLUMNS
       )
       .eq("bank_account_id", bankAccountId)
       .order("sale_date", { ascending: false })

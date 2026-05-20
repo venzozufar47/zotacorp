@@ -33,16 +33,14 @@ export default async function CakeProductionPage({
   const sp = await searchParams;
   const selectedSlipId = sp.slip ?? null;
 
-  const slipsRes = await listMySlips();
+  // Paralel: listMySlips + detail independen.
+  const [slipsRes, detailRes] = await Promise.all([
+    listMySlips(),
+    selectedSlipId
+      ? getSlipForProduction(selectedSlipId)
+      : Promise.resolve(null),
+  ]);
   const slips = slipsRes.ok ? slipsRes.data ?? [] : [];
-
-  // Detail di-fetch server-side biar render konsisten dengan
-  // direct-link `/cake-production/[slipId]`. Salah ID → null
-  // (panel kanan render placeholder).
-  let detailRes: Awaited<ReturnType<typeof getSlipForProduction>> | null = null;
-  if (selectedSlipId) {
-    detailRes = await getSlipForProduction(selectedSlipId);
-  }
 
   return (
     <ProductionLobby

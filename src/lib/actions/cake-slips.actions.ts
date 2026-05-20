@@ -24,12 +24,27 @@ import type {
   CakeOptionsByKind,
   CakeOrder,
   CakeOrderAttachment,
+  CakeOrderStatus,
+  CakeProductionStatus,
   CakeProductionSlip,
   CakeProductionSlipItem,
   CakeSlipSnapshot,
   CakeSlipSnapshotItem,
 } from "@/lib/cake-orders/types";
 import { parseCakeBranch } from "@/lib/cake-orders/types";
+
+// Status yang dianggap "selesai produksi" — order ini tidak boleh
+// auto-include / muncul sebagai kandidat di slip baru.
+const COMPLETED_ORDER_STATUSES: readonly CakeOrderStatus[] = [
+  "cancelled",
+  "ready",
+  "delivering",
+  "done",
+] as const;
+const COMPLETED_PRODUCTION_STATUSES_LIST: readonly CakeProductionStatus[] = [
+  "done",
+  "cancelled",
+] as const;
 
 /**
  * Slip lifecycle (post-rework):
@@ -152,18 +167,12 @@ export async function getOrCreateTomorrowSlip(
   const dayStart = (ymd: string) => `${ymd}T00:00:00.000+07:00`;
   const dayEnd = (ymd: string) => `${ymd}T23:59:59.999+07:00`;
 
-  // Filter order yang sudah selesai (atau lewat tahap produksi) supaya
-  // tidak ditarik lagi ke slip baru. Skenario: admin tick optional D+3
-  // ke slip hari ini, tim selesai bake-nya → status order pindah ke
-  // "ready"/"delivering"/"done" atau production_status="done". Dua
-  // hari berikutnya, ketika tanggal slip kebetulan = scheduled_at
-  // order tsb, jangan auto-include / muncul sebagai kandidat lagi.
-  //
-  // PostgREST: filter via `not("col", "in", "(a,b,c)")`. Hanya order
-  // yang masih `submitted` / `in_progress` yang ditampilkan untuk
-  // di-included ke slip baru.
-  const COMPLETED_STATUSES = "(cancelled,ready,delivering,done)";
-  const COMPLETED_PRODUCTION_STATUSES = "(done,cancelled)";
+  // Skip order yang sudah lewat tahap produksi (selesai di slip
+  // sebelumnya) supaya tidak auto-include lagi di slip baru.
+  // PostgREST: `not("col", "in", "(a,b,c)")` literal — bangun
+  // dari typed array supaya TS catch kalau status ditambah.
+  const COMPLETED_STATUSES = `(${COMPLETED_ORDER_STATUSES.join(",")})`;
+  const COMPLETED_PRODUCTION_STATUSES = `(${COMPLETED_PRODUCTION_STATUSES_LIST.join(",")})`;
 
   const [
     { data: tomorrowOrdersRaw },
@@ -412,10 +421,12 @@ export async function setSlipItems(
   // dengan pesan jelas — admin harus narik dulu dari slip
   // tujuan lainnya.
   if (toInsert.length > 0) {
+    // Join customer_name di query yang sama supaya rejection path
+    // hanya satu round-trip.
     const { data: conflictRaw } = await supabase
       .from("cake_production_slip_items" as never)
       .select(
-        "cake_order_id, slip_id, cake_production_slips!inner(target_date, status, branch)"
+        "cake_order_id, slip_id, cake_production_slips!inner(target_date, status, branch), cake_orders!inner(customer_name)"
       )
       .in("cake_order_id", toInsert)
       .neq("slip_id", slipId);
@@ -427,28 +438,15 @@ export async function setSlipItems(
         status: string;
         branch: CakeBranch;
       };
+      cake_orders: { customer_name: string };
     };
     const conflicts = (conflictRaw ?? []) as unknown as ConflictRow[];
     if (conflicts.length > 0) {
-      // Ambil nama customer biar pesan jelas, supaya admin tahu
-      // order mana yang konflik tanpa harus tebak dari ID.
-      const conflictOrderIds = conflicts.map((c) => c.cake_order_id);
-      const { data: namesRaw } = await supabase
-        .from("cake_orders" as never)
-        .select("id, customer_name")
-        .in("id", conflictOrderIds);
-      const nameById = new Map<string, string>();
-      for (const n of (namesRaw ?? []) as unknown as Array<{
-        id: string;
-        customer_name: string;
-      }>) {
-        nameById.set(n.id, n.customer_name);
-      }
       const desc = conflicts
-        .map((c) => {
-          const name = nameById.get(c.cake_order_id) ?? c.cake_order_id;
-          return `"${name}" sudah di slip ${c.cake_production_slips.target_date} (${c.cake_production_slips.status})`;
-        })
+        .map(
+          (c) =>
+            `"${c.cake_orders.customer_name}" sudah di slip ${c.cake_production_slips.target_date} (${c.cake_production_slips.status})`
+        )
         .join("; ");
       return {
         ok: false,

@@ -442,6 +442,18 @@ export function POSClient({
     });
   }
 
+  // Diskon hari ini — math di-share dengan server via applyDiscount,
+  // jadi angka di cart selalu == angka tersimpan di pos_sales.total.
+  // Dihitung sebelum early-return supaya rules-of-hooks tidak komplain.
+  const { finalTotal, discountAmount } = useMemo(
+    () =>
+      activeDiscount
+        ? applyDiscount(total, activeDiscount)
+        : { finalTotal: total, discountAmount: 0 },
+    [total, activeDiscount]
+  );
+  const grossTotal = total;
+
   const showEmptyState = products.length === 0 && customItems.length === 0;
 
   if (showEmptyState) {
@@ -516,20 +528,10 @@ export function POSClient({
   ];
   const visibleRailItems = railItems.filter((it) => !it.adminOnly || isAdmin);
 
-  // Inline payment validation. Tombol Bayar disabled kalau:
-  // Diskon hari ini (kalau ada) — math di-share dengan server via
-  // applyDiscount supaya angka di cart selalu == angka tersimpan.
-  // grossTotal = subtotal items, finalTotal = setelah diskon + rounding.
-  const grossTotal = total;
-  const discountResult = activeDiscount
-    ? applyDiscount(grossTotal, activeDiscount)
-    : { finalTotal: grossTotal, discountAmount: 0 };
-  const finalTotal = discountResult.finalTotal;
-  const discountAmount = discountResult.discountAmount;
-
+  // Tombol Bayar disabled saat:
   //  - cart kosong / sedang submit
-  //  - mode cash tapi uang diterima < finalTotal
-  //  - mode QRIS dengan flag receipt aktif tapi belum upload foto
+  //  - cash tapi uang diterima < finalTotal
+  //  - QRIS + flag receipt aktif tapi belum upload foto
   const payDisabled =
     itemCount === 0 ||
     pending ||
@@ -641,40 +643,39 @@ export function POSClient({
       </div>
 
       <div className="border-t border-border bg-card px-4 py-3 space-y-3">
-        {activeDiscount && discountAmount > 0 ? (
-          <div className="space-y-1 text-sm tabular-nums">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Subtotal</span>
-              <span>{formatRp(grossTotal)}</span>
-            </div>
-            <div className="flex items-center justify-between text-success">
-              <span>
-                Diskon {Math.round(activeDiscount.percentOff)}%
-                <span className="ml-1 text-[11px] opacity-70">
-                  (bulat ke Rp {activeDiscount.roundingUnit.toLocaleString("id-ID")} ke bawah)
+        <div className="space-y-1 tabular-nums">
+          {activeDiscount && discountAmount > 0 && (
+            <>
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Subtotal</span>
+                <span>{formatRp(grossTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-success">
+                <span>
+                  Diskon {Math.round(activeDiscount.percentOff)}%
+                  <span className="ml-1 text-[11px] opacity-70">
+                    (bulat ke {formatRp(activeDiscount.roundingUnit)} ke bawah)
+                  </span>
                 </span>
-              </span>
-              <span>−{formatRp(discountAmount)}</span>
-            </div>
-            <div className="flex items-center justify-between pt-1 border-t border-border">
-              <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                Total bayar
-              </span>
-              <span className="text-lg font-bold text-foreground">
-                {formatRp(finalTotal)}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between">
+                <span>−{formatRp(discountAmount)}</span>
+              </div>
+            </>
+          )}
+          <div
+            className={`flex items-center justify-between ${
+              activeDiscount && discountAmount > 0
+                ? "pt-1 border-t border-border"
+                : ""
+            }`}
+          >
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-              Total
+              {activeDiscount && discountAmount > 0 ? "Total bayar" : "Total"}
             </span>
-            <span className="text-lg font-bold text-foreground tabular-nums">
+            <span className="text-lg font-bold text-foreground">
               {formatRp(finalTotal)}
             </span>
           </div>
-        )}
+        </div>
 
         {/* Pay mode picker */}
         <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
@@ -1170,16 +1171,6 @@ export function POSClient({
 }
 
 /**
- * Cash payment helper field. Kasir input nominal yang diterima
- * customer; live `kembalian = received - total` di bawah, plus chip
- * denominasi yang membulatkan-naik ke kelipatan terdekat (sesuai cara
- * kasir manusia: customer kasih 100rb → satu tap, bukan ketik 100000).
- *
- * Display-only — tidak di-persist ke `pos_sales`. Kalau di iterasi
- * selanjutnya dibutuhkan untuk reconciliation, tinggal pipe `value`
- * + `value - total` ke `createPosSale` sebagai field opsional.
- */
-/**
  * Banner thin di atas grid produk. Kalau ada campaign aktif untuk
  * hari ini → notice hijau. Kalau tidak ada dan caller admin →
  * tombol untuk aktivasi preset 10%/floor/Rp 1.000 yang juga
@@ -1253,6 +1244,16 @@ function DiscountBanner({
   );
 }
 
+/**
+ * Cash payment helper field. Kasir input nominal yang diterima
+ * customer; live `kembalian = received - total` di bawah, plus chip
+ * denominasi yang membulatkan-naik ke kelipatan terdekat (sesuai cara
+ * kasir manusia: customer kasih 100rb → satu tap, bukan ketik 100000).
+ *
+ * Display-only — tidak di-persist ke `pos_sales`. Kalau di iterasi
+ * selanjutnya dibutuhkan untuk reconciliation, tinggal pipe `value`
+ * + `value - total` ke `createPosSale` sebagai field opsional.
+ */
 function CashReceivedField({
   total,
   value,

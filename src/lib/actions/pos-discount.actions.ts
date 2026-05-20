@@ -228,54 +228,60 @@ export async function applyDiscountRetro(
     );
   }
 
-  let updated = 0;
-  for (const s of sales) {
-    const gross = grossBySale.get(s.id) ?? Number(s.total); // fallback ke total tersimpan
-    const { finalTotal, discountAmount } = applyDiscount(gross, camp);
-    if (discountAmount === 0) {
-      // Sale di bawah unit pembulatan → stamp campaign_id saja (sebagai
-      // bukti bahwa sale ini sudah diperiksa), total tidak berubah.
-      await supabase
+  // Batch-fetch description cashflow_transactions sekali — sebelumnya
+  // per-sale `SELECT … WHERE id = ?` jadi N round-trip ekstra.
+  const txIds = sales
+    .map((s) => s.cashflow_transaction_id)
+    .filter((id): id is string => !!id);
+  const descByTxId = new Map<string, string>();
+  if (txIds.length > 0) {
+    const { data: txRaw } = await supabase
+      .from("cashflow_transactions")
+      .select("id, description")
+      .in("id", txIds);
+    for (const t of (txRaw ?? []) as unknown as Array<{
+      id: string;
+      description: string | null;
+    }>) {
+      descByTxId.set(t.id, t.description ?? "");
+    }
+  }
+  const suffix = ` (diskon retro ${Math.round(campaign.percentOff)}%)`;
+
+  // Per-sale writes harus tetap row-by-row karena tiap row punya
+  // total/description berbeda — tapi keduanya independen, Promise.all
+  // memparalelkan supaya latency O(1) instead of O(N).
+  const results = await Promise.all(
+    sales.map(async (s) => {
+      const gross = grossBySale.get(s.id) ?? Number(s.total);
+      const { finalTotal, discountAmount } = applyDiscount(gross, camp);
+      // Sale < unit pembulatan tetap di-stamp campaign_id (bukti
+      // sudah diperiksa) — total tidak berubah, discount_amount tetap 0.
+      const { error: upErr } = await supabase
         .from("pos_sales")
         .update({
+          total: finalTotal,
           gross_total: gross,
+          discount_amount: discountAmount,
           discount_campaign_id: campaign.id,
         } as never)
         .eq("id", s.id);
-      updated += 1;
-      continue;
-    }
-    const { error: upErr } = await supabase
-      .from("pos_sales")
-      .update({
-        total: finalTotal,
-        gross_total: gross,
-        discount_amount: discountAmount,
-        discount_campaign_id: campaign.id,
-      } as never)
-      .eq("id", s.id);
-    if (upErr) continue;
-    // Update terhubung ke cashflow_transactions
-    if (s.cashflow_transaction_id) {
-      // Ambil description lama, suffix " (diskon retro N%)".
-      const { data: txRaw } = await supabase
-        .from("cashflow_transactions")
-        .select("description")
-        .eq("id", s.cashflow_transaction_id)
-        .maybeSingle();
-      const oldDesc = (txRaw as { description: string } | null)?.description ?? "";
-      const suffix = ` (diskon retro ${Math.round(campaign.percentOff)}%)`;
-      const newDesc = oldDesc.includes(suffix) ? oldDesc : oldDesc + suffix;
-      await supabase
-        .from("cashflow_transactions")
-        .update({
-          credit: finalTotal,
-          description: newDesc,
-        })
-        .eq("id", s.cashflow_transaction_id);
-    }
-    updated += 1;
-  }
+      if (upErr) return false;
+      if (discountAmount > 0 && s.cashflow_transaction_id) {
+        const oldDesc = descByTxId.get(s.cashflow_transaction_id) ?? "";
+        const newDesc = oldDesc.includes(suffix) ? oldDesc : oldDesc + suffix;
+        await supabase
+          .from("cashflow_transactions")
+          .update({
+            credit: finalTotal,
+            description: newDesc,
+          })
+          .eq("id", s.cashflow_transaction_id);
+      }
+      return true;
+    })
+  );
+  const updated = results.filter(Boolean).length;
 
   revalidatePath("/pos", "layout");
   revalidatePath("/pos/riwayat", "layout");
