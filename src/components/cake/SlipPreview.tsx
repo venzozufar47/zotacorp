@@ -89,23 +89,34 @@ export function SlipPreview({
   } = bundle;
 
   const [notes, setNotes] = useState(slip.notes ?? "");
-  // Track ID yang DIKECUALIKAN secara eksplisit oleh admin (untick),
-  // bukan yang termasuk. Daftar `included` di-derive dari prop `items`
-  // minus excluded. Pola ini mencegah state lokal bocor antar slip
-  // (root cause: pare orders dikirim ke semarang slip) dan memastikan
-  // order yang BARU muncul (customer baru bikin order tomorrow setelah
-  // admin buka halaman) otomatis ter-include — tidak akan hilang
-  // setiap kali admin save/send.
+  // Dua track terpisah:
+  //  - `excludedIds`: ID yang admin untick (order yang sudah di slip
+  //    tapi mau dikeluarkan). Default kosong; refresh server tidak
+  //    me-reset karena order masih ada di slip_items sampai save.
+  //  - `addedIds`: ID yang admin tick dari kandidat opsional (D+2..D+5)
+  //    atau dari pool lain — order yang BELUM ada di slip tapi mau
+  //    ditambahkan. Kalau cuma derive dari prop `items` (slip-currently
+  //    items), tick di optional candidate tidak punya tempat untuk
+  //    diingat → kelihatan tidak responsif. Lihat regression "tidak
+  //    bisa di-checklist meski sudah Reopen".
+  //
+  // `includedIds` = (items dari prop − excluded) ∪ (added − excluded).
+  // Order BARU yang muncul di prop (customer baru bikin order) tetap
+  // ter-include secara default, sesuai fix branch-state-leak.
   const [excludedIds, setExcludedIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [addedIds, setAddedIds] = useState<Set<string>>(() => new Set());
   const includedIds = useMemo(() => {
     const s = new Set<string>();
     for (const i of items) {
       if (!excludedIds.has(i.order.id)) s.add(i.order.id);
     }
+    for (const id of addedIds) {
+      if (!excludedIds.has(id)) s.add(id);
+    }
     return s;
-  }, [items, excludedIds]);
+  }, [items, excludedIds, addedIds]);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Kedua section opsional & far-future default tertutup — section
   // "Otomatis (besok)" sudah cukup informasi utama, dropdown ini
@@ -130,12 +141,37 @@ export function SlipPreview({
     items.some((i) => !includedIds.has(i.order.id));
 
   const toggleIncluded = (orderId: string, on: boolean) => {
-    setExcludedIds((prev) => {
-      const next = new Set(prev);
-      if (on) next.delete(orderId);
-      else next.add(orderId);
-      return next;
-    });
+    if (on) {
+      // Tambah: hapus dari excluded (kalau ada) + tambah ke added
+      // (kalau order belum di slip prop). Dua write supaya keduanya
+      // kasus (un-untick order yang sudah di slip vs add order
+      // opsional baru) tertangani.
+      setExcludedIds((prev) => {
+        if (!prev.has(orderId)) return prev;
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+      setAddedIds((prev) => {
+        if (prev.has(orderId)) return prev;
+        const next = new Set(prev);
+        next.add(orderId);
+        return next;
+      });
+    } else {
+      setAddedIds((prev) => {
+        if (!prev.has(orderId)) return prev;
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+      setExcludedIds((prev) => {
+        if (prev.has(orderId)) return prev;
+        const next = new Set(prev);
+        next.add(orderId);
+        return next;
+      });
+    }
   };
 
   const saveItems = () =>
