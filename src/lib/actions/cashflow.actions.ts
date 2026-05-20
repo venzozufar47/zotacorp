@@ -1279,13 +1279,74 @@ export async function savePusatAllocation(input: {
     return s + (typeof v === "number" ? v : Number(v) || 0);
   }, 0);
   const roundedPusat = Math.round(pusatTotal);
+
+  // Auto-deduct mirror fetchPnL: untuk Haengbocake Sales credit,
+  // POS QRIS Pare dari Cash Pare ledger otomatis ter-atribusi ke
+  // Pare (lewat source "posQris"). Net yang admin perlu alokasi =
+  // pusatTotal − POS QRIS Pare di bulan tsb. Validator harus pakai
+  // angka yang SAMA dengan editor UI, kalau tidak admin yang sudah
+  // input total sesuai net editor akan ditolak.
+  let qrisParePareThisMonth = 0;
+  if (
+    input.businessUnit === "Haengbocake" &&
+    input.side === "credit" &&
+    input.category === "Sales"
+  ) {
+    const periodStart = `${input.periodYear}-${String(input.periodMonth).padStart(2, "0")}-01`;
+    const nextY = input.periodMonth === 12 ? input.periodYear + 1 : input.periodYear;
+    const nextM = input.periodMonth === 12 ? 1 : input.periodMonth + 1;
+    const periodEnd = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+    const { data: qrisRows } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "credit, transaction_date, effective_period_year, effective_period_month, cashflow_statements!inner(bank_accounts!inner(business_unit, account_name))"
+      )
+      .eq("cashflow_statements.bank_accounts.business_unit", "Haengbocake")
+      .eq("cashflow_statements.bank_accounts.account_name", "Cash Haengbocake Pare")
+      .eq("category", "QRIS (non-operasional)")
+      .gte("transaction_date", periodStart)
+      .lt("transaction_date", periodEnd);
+    type QRow = {
+      credit: number | string | null;
+      transaction_date: string;
+      effective_period_year: number | null;
+      effective_period_month: number | null;
+    };
+    for (const r of (qrisRows ?? []) as unknown as QRow[]) {
+      // Hormati effective_period_year/month override sama persis
+      // dengan fetchPnL — kalau set, override date-based bucket.
+      let y: number;
+      let m: number;
+      if (
+        r.effective_period_year != null &&
+        r.effective_period_month != null
+      ) {
+        y = r.effective_period_year;
+        m = r.effective_period_month;
+      } else {
+        const [yy, mm] = r.transaction_date.split("-");
+        y = Number(yy);
+        m = Number(mm);
+      }
+      if (y !== input.periodYear || m !== input.periodMonth) continue;
+      qrisParePareThisMonth += Number(r.credit ?? 0);
+    }
+  }
+  const autoDeductPare = Math.min(
+    Math.round(qrisParePareThisMonth),
+    roundedPusat
+  );
+  const netForAllocation = roundedPusat - autoDeductPare;
   const sum = Math.round(input.semarangAmount + input.pareAmount);
-  if (Math.abs(sum - roundedPusat) > 1) {
+  if (Math.abs(sum - netForAllocation) > 1) {
+    const diff = Math.abs(sum - netForAllocation);
+    const note =
+      autoDeductPare > 0
+        ? ` (raw Pusat Rp ${roundedPusat.toLocaleString("id-ID")} − auto-deduct POS QRIS Pare Rp ${autoDeductPare.toLocaleString("id-ID")})`
+        : "";
     return {
       ok: false,
-      error: `Semarang + Pare (${sum.toLocaleString("id-ID")}) tidak sama dengan total Pusat (${roundedPusat.toLocaleString(
-        "id-ID"
-      )}). Selisih Rp ${Math.abs(sum - roundedPusat).toLocaleString("id-ID")}.`,
+      error: `Semarang + Pare (${sum.toLocaleString("id-ID")}) tidak sama dengan net Pusat (${netForAllocation.toLocaleString("id-ID")})${note}. Selisih Rp ${diff.toLocaleString("id-ID")}.`,
     };
   }
 
