@@ -152,6 +152,19 @@ export async function getOrCreateTomorrowSlip(
   const dayStart = (ymd: string) => `${ymd}T00:00:00.000+07:00`;
   const dayEnd = (ymd: string) => `${ymd}T23:59:59.999+07:00`;
 
+  // Filter order yang sudah selesai (atau lewat tahap produksi) supaya
+  // tidak ditarik lagi ke slip baru. Skenario: admin tick optional D+3
+  // ke slip hari ini, tim selesai bake-nya → status order pindah ke
+  // "ready"/"delivering"/"done" atau production_status="done". Dua
+  // hari berikutnya, ketika tanggal slip kebetulan = scheduled_at
+  // order tsb, jangan auto-include / muncul sebagai kandidat lagi.
+  //
+  // PostgREST: filter via `not("col", "in", "(a,b,c)")`. Hanya order
+  // yang masih `submitted` / `in_progress` yang ditampilkan untuk
+  // di-included ke slip baru.
+  const COMPLETED_STATUSES = "(cancelled,ready,delivering,done)";
+  const COMPLETED_PRODUCTION_STATUSES = "(done,cancelled)";
+
   const [
     { data: tomorrowOrdersRaw },
     { data: optionalOrdersRaw },
@@ -164,7 +177,8 @@ export async function getOrCreateTomorrowSlip(
       .eq("branch", branch)
       .gte("scheduled_at", dayStart(targetDate))
       .lte("scheduled_at", dayEnd(targetDate))
-      .neq("status", "cancelled")
+      .not("status", "in", COMPLETED_STATUSES)
+      .not("production_status", "in", COMPLETED_PRODUCTION_STATUSES)
       .order("scheduled_at", { ascending: true }),
     supabase
       .from("cake_orders" as never)
@@ -172,7 +186,8 @@ export async function getOrCreateTomorrowSlip(
       .eq("branch", branch)
       .gte("scheduled_at", dayStart(optionalStart))
       .lte("scheduled_at", dayEnd(optionalEnd))
-      .neq("status", "cancelled")
+      .not("status", "in", COMPLETED_STATUSES)
+      .not("production_status", "in", COMPLETED_PRODUCTION_STATUSES)
       .order("scheduled_at", { ascending: true }),
     supabase
       .from("cake_orders" as never)
@@ -180,7 +195,8 @@ export async function getOrCreateTomorrowSlip(
       .eq("branch", branch)
       .gte("scheduled_at", dayStart(farStart))
       .lte("scheduled_at", dayEnd(farEnd))
-      .neq("status", "cancelled")
+      .not("status", "in", COMPLETED_STATUSES)
+      .not("production_status", "in", COMPLETED_PRODUCTION_STATUSES)
       .order("scheduled_at", { ascending: true }),
     supabase
       .from("cake_production_slip_items" as never)
