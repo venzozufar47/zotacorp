@@ -158,9 +158,9 @@ export default async function InvestorHomePage() {
                 Misi
               </p>
               <p className="mt-1 leading-relaxed">
-                Menciptakan unit-unit usaha lokal yang memberi nilai
-                nyata kepada komunitas — dari cake hand-made sampai
-                ruang belajar produktif.
+                Membangun dan mengembangkan unit-unit usaha yang
+                memberikan nilai kebaikan kepada komunitas,
+                masyarakat, karyawan, dan pemegang saham.
               </p>
             </div>
             <div>
