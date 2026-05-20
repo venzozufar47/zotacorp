@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   Lock,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -394,8 +395,9 @@ export function SlipPreview({
             type="button"
             onClick={saveNotes}
             disabled={pending}
-            className="shrink-0 rounded-md bg-foreground text-background px-2 py-1 text-[11px] font-medium disabled:opacity-50"
+            className="shrink-0 inline-flex items-center gap-1 rounded-md bg-foreground text-background px-2 py-1 text-[11px] font-medium disabled:opacity-50"
           >
+            {pending && <Loader2 size={11} className="animate-spin" />}
             Simpan
           </button>
         )}
@@ -448,7 +450,11 @@ export function SlipPreview({
               disabled={pending}
               className="flex items-center gap-1.5 rounded-xl bg-card border-2 border-foreground px-4 py-2 text-sm font-semibold hover:bg-muted active:scale-95 transition-transform disabled:opacity-50 shrink-0"
             >
-              <RotateCcw size={14} strokeWidth={2.5} />
+              {pending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RotateCcw size={14} strokeWidth={2.5} />
+              )}
               Buka kembali untuk edit
             </button>
           </div>
@@ -465,8 +471,9 @@ export function SlipPreview({
               type="button"
               onClick={saveItems}
               disabled={pending}
-              className="rounded-md bg-primary text-primary-foreground border border-foreground px-2.5 py-1 text-[11px] font-medium disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground border border-foreground px-2.5 py-1 text-[11px] font-medium disabled:opacity-50"
             >
+              {pending && <Loader2 size={11} className="animate-spin" />}
               Simpan daftar
             </button>
           ) : null
@@ -536,7 +543,11 @@ export function SlipPreview({
                     disabled={pending}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-card border-2 border-foreground px-2.5 py-1 text-[11px] font-semibold hover:bg-muted disabled:opacity-50 shrink-0"
                   >
-                    <RotateCcw size={11} strokeWidth={2.5} />
+                    {pending ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <RotateCcw size={11} strokeWidth={2.5} />
+                    )}
                     Buka kembali
                   </button>
                 </div>
@@ -936,7 +947,9 @@ function VerifySendFooter({
         disabled={pending}
         className="flex items-center gap-1.5 rounded-xl bg-pop-emerald text-foreground border-2 border-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
       >
-        {isResend ? (
+        {pending ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : isResend ? (
           <Send size={14} strokeWidth={2.5} />
         ) : (
           <CheckCircle2 size={14} strokeWidth={2.5} />
