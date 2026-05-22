@@ -86,7 +86,10 @@ export function HeroContract({
                 ? " (kontrak permanen)"
                 : ` dari ${contract.durasiBulan}`}
               . Bagi hasil disetor ke{" "}
-              {contract.payoutRekeningLabel ?? "rekening terdaftar"}.
+              {contract.payoutBankName && contract.payoutRekeningNumber
+                ? `${contract.payoutBankName} ${contract.payoutRekeningNumber}`
+                : contract.payoutRekeningLabel ?? "rekening terdaftar"}
+              .
             </p>
           </div>
           <div className="text-right shrink-0">

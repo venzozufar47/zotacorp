@@ -114,7 +114,11 @@ export function InvestorContractsManager({
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
                     <div>{c.contractRef ?? "—"}</div>
-                    <div>{c.payoutRekeningLabel ?? "—"}</div>
+                    <div>
+                      {c.payoutBankName || c.payoutRekeningNumber
+                        ? `${c.payoutBankName ?? "—"} • ${c.payoutRekeningNumber ?? "—"}`
+                        : c.payoutRekeningLabel ?? "—"}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button
@@ -183,7 +187,10 @@ function ContractForm({
   const [bepTarget, setBepTarget] = useState(
     String(contract?.bepTargetIdr ?? "")
   );
-  const [rek, setRek] = useState(contract?.payoutRekeningLabel ?? "");
+  const [bankName, setBankName] = useState(contract?.payoutBankName ?? "");
+  const [rekNumber, setRekNumber] = useState(
+    contract?.payoutRekeningNumber ?? ""
+  );
   const [ref, setRef] = useState(contract?.contractRef ?? "");
   const [pending, startTransition] = useTransition();
 
@@ -198,7 +205,12 @@ function ContractForm({
         durasiBulan: isPermanent ? null : Number(durasiBulan),
         startDate,
         bepTargetIdr: Number(bepTarget),
-        payoutRekeningLabel: rek || null,
+        payoutBankName: bankName.trim() || null,
+        payoutRekeningNumber: rekNumber.trim() || null,
+        payoutRekeningLabel:
+          bankName.trim() && rekNumber.trim()
+            ? `${bankName.trim()} • ${rekNumber.trim()}`
+            : null,
         contractRef: ref || null,
       });
       if (!res.ok) {
@@ -332,13 +344,23 @@ function ContractForm({
               className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
             />
           </label>
-          <label className="text-xs col-span-2">
-            <span className="text-muted-foreground">Rekening payout</span>
+          <label className="text-xs">
+            <span className="text-muted-foreground">Nama bank</span>
             <input
-              value={rek}
-              onChange={(e) => setRek(e.target.value)}
-              placeholder="BCA •••• 8842"
+              value={bankName}
+              onChange={(e) => setBankName(e.target.value)}
+              placeholder="BCA"
               className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="text-muted-foreground">Nomor rekening</span>
+            <input
+              value={rekNumber}
+              onChange={(e) => setRekNumber(e.target.value)}
+              placeholder="1234567890"
+              inputMode="numeric"
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm font-mono tabular-nums"
             />
           </label>
           <label className="text-xs col-span-2">

@@ -140,6 +140,8 @@ export interface InvestorContract {
   startDate: string;
   bepTargetIdr: number;
   payoutRekeningLabel: string | null;
+  payoutBankName: string | null;
+  payoutRekeningNumber: string | null;
   contractRef: string | null;
   notes: string | null;
   createdAt: string;
@@ -155,6 +157,8 @@ interface ContractRow {
   start_date: string;
   bep_target_idr: number | string;
   payout_rekening_label: string | null;
+  payout_bank_name: string | null;
+  payout_rekening_number: string | null;
   contract_ref: string | null;
   notes: string | null;
   created_at: string;
@@ -171,6 +175,8 @@ function mapContract(r: ContractRow): InvestorContract {
     startDate: r.start_date,
     bepTargetIdr: Number(r.bep_target_idr),
     payoutRekeningLabel: r.payout_rekening_label,
+    payoutBankName: r.payout_bank_name,
+    payoutRekeningNumber: r.payout_rekening_number,
     contractRef: r.contract_ref,
     notes: r.notes,
     createdAt: r.created_at,
@@ -221,6 +227,8 @@ export async function upsertInvestorContract(input: {
   startDate: string;
   bepTargetIdr: number;
   payoutRekeningLabel?: string | null;
+  payoutBankName?: string | null;
+  payoutRekeningNumber?: string | null;
   contractRef?: string | null;
   notes?: string | null;
 }): Promise<ActionResult<InvestorContract>> {
@@ -240,6 +248,8 @@ export async function upsertInvestorContract(input: {
     start_date: input.startDate,
     bep_target_idr: input.bepTargetIdr,
     payout_rekening_label: input.payoutRekeningLabel ?? null,
+    payout_bank_name: input.payoutBankName ?? null,
+    payout_rekening_number: input.payoutRekeningNumber ?? null,
     contract_ref: input.contractRef ?? null,
     notes: input.notes ?? null,
     created_by: gate.userId,
