@@ -78,7 +78,7 @@ export function FinanceView({
   activeAccId,
   statements,
   activeStmtId,
-  bundle,
+  bundleSlot,
 }: {
   businessUnits: string[];
   activeBu: string;
@@ -86,7 +86,10 @@ export function FinanceView({
   activeAccId: string | null;
   statements: StatementListItem[];
   activeStmtId: string | null;
-  bundle: StmtBundleProp | null;
+  /** Statement detail panel — rendered by server component lalu
+   *  di-Suspense-kan. Boleh ReactNode supaya streaming bekerja
+   *  (sidebar+kartu tampil dulu, detail streaming menyusul). */
+  bundleSlot: React.ReactNode;
 }) {
   const router = useProgressRouter();
   const sp = useSearchParams();
@@ -331,13 +334,9 @@ export function FinanceView({
             </ul>
           </aside>
 
-          {/* Detail */}
-          {bundle ? (
-            <StatementDetail
-              acc={activeAcc}
-              bundle={bundle}
-            />
-          ) : (
+          {/* Detail — di-render dari server component lewat Suspense
+              slot supaya shell tidak ikut blocking saat fetch detail. */}
+          {bundleSlot ?? (
             <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
               Pilih rekening koran di sebelah kiri untuk melihat detail
               transaksi.
@@ -349,7 +348,7 @@ export function FinanceView({
   );
 }
 
-function StatementDetail({
+export function BundleDetail({
   acc,
   bundle,
 }: {

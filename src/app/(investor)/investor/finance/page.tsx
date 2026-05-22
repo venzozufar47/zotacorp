@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Lock } from "lucide-react";
 import { getMyInvestorAccess } from "@/lib/investor/access";
@@ -7,16 +8,16 @@ import {
   listBankAccounts,
   listStatements,
 } from "@/lib/actions/cashflow.actions";
-import { getStatementSummaryForInvestor } from "@/lib/actions/investor-finance.actions";
-import { createClient } from "@/lib/supabase/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import {
+  getStatementSummaryForInvestor,
+  getLatestClosingBalances,
+  getTxCountsForStatements,
+} from "@/lib/actions/investor-finance.actions";
 import type { BankCode } from "@/lib/cashflow/types";
-import type { ChronoRow } from "@/lib/cashflow/chronological";
-import { computeLatestBalance } from "@/lib/cashflow/balance";
-import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   FinanceView,
+  BundleDetail,
   type AccountSummaryProp,
   type StatementListItem,
   type StmtBundleProp,
@@ -26,44 +27,6 @@ interface SearchParams {
   bu?: string;
   acc?: string;
   stmt?: string;
-}
-
-async function computeAccountBalance(
-  supabase: SupabaseClient<Database>,
-  bankAccountId: string,
-  bank: string
-): Promise<number> {
-  const { data: stmts } = await supabase
-    .from("cashflow_statements")
-    .select("id")
-    .eq("bank_account_id", bankAccountId);
-  const stmtIds = (stmts ?? []).map((s) => s.id);
-  if (stmtIds.length === 0) return 0;
-  const rows: ChronoRow[] = [];
-  const PAGE = 1000;
-  for (let offset = 0; ; offset += PAGE) {
-    const { data } = await supabase
-      .from("cashflow_transactions")
-      .select(
-        "transaction_date, transaction_time, debit, credit, running_balance, category"
-      )
-      .in("statement_id", stmtIds)
-      .range(offset, offset + PAGE - 1);
-    if (!data || data.length === 0) break;
-    for (const t of data) {
-      if (bank === "cash" && t.category === POS_QRIS_CATEGORY) continue;
-      rows.push({
-        date: t.transaction_date,
-        time: t.transaction_time,
-        debit: Number(t.debit),
-        credit: Number(t.credit),
-        runningBalance:
-          t.running_balance !== null ? Number(t.running_balance) : null,
-      });
-    }
-    if (data.length < PAGE) break;
-  }
-  return computeLatestBalance(rows);
 }
 
 export default async function InvestorFinancePage({
@@ -94,75 +57,50 @@ export default async function InvestorFinancePage({
     redirect("/investor/finance");
   }
 
-  const supabase = await createClient();
+  // Shell data — semua query ringan (4 RT). Detail panel streaming.
   const { data: accountsRaw } = await listBankAccounts(activeBu);
   const accountsActive = (accountsRaw ?? []).filter((a) => a.is_active);
+  const accIds = accountsActive.map((a) => a.id);
 
-  // Saldo paralel per account.
-  const accounts: AccountSummaryProp[] = await Promise.all(
-    accountsActive.map(async (acc) => ({
-      id: acc.id,
-      bank: acc.bank as BankCode,
-      accountName: acc.account_name,
-      accountNumber: acc.account_number,
-      balance: await computeAccountBalance(supabase, acc.id, acc.bank),
-    }))
-  );
+  const balances = await getLatestClosingBalances(accIds);
+  const accounts: AccountSummaryProp[] = accountsActive.map((acc) => ({
+    id: acc.id,
+    bank: acc.bank as BankCode,
+    accountName: acc.account_name,
+    accountNumber: acc.account_number,
+    balance: balances[acc.id] ?? 0,
+  }));
 
-  // Active account (default = first valid one).
   const activeAccId =
     accounts.find((a) => a.id === sp.acc)?.id ?? accounts[0]?.id ?? null;
+  const activeAcc = accounts.find((a) => a.id === activeAccId) ?? null;
 
-  // Statement list + tx counts.
   let statementsForView: StatementListItem[] = [];
   let activeStmtId: string | null = null;
-  let bundle: StmtBundleProp | null = null;
 
   if (activeAccId) {
     const { data: stmtsRaw } = await listStatements(activeAccId);
     const stmts = (stmtsRaw ?? []).slice(0, 24);
-    const counts = await Promise.all(
-      stmts.map(async (s) => {
-        const { count } = await supabase
-          .from("cashflow_transactions")
-          .select("id", { count: "exact", head: true })
-          .eq("statement_id", s.id);
-        return count ?? 0;
-      })
-    );
-    statementsForView = stmts.map((s, i) => ({
+    const txCounts = await getTxCountsForStatements(stmts.map((s) => s.id));
+    statementsForView = stmts.map((s) => ({
       id: s.id,
       periodYear: s.period_year,
       periodMonth: s.period_month,
       status: s.status as "draft" | "confirmed",
-      txCount: counts[i] ?? 0,
+      txCount: txCounts[s.id] ?? 0,
     }));
-
     activeStmtId =
       statementsForView.find((s) => s.id === sp.stmt)?.id ??
       statementsForView[0]?.id ??
       null;
-
-    if (activeStmtId) {
-      const res = await getStatementSummaryForInvestor(activeStmtId);
-      if (res.ok && res.data) {
-        bundle = {
-          statement: {
-            id: res.data.statement.id,
-            periodYear: res.data.statement.periodYear,
-            periodMonth: res.data.statement.periodMonth,
-            openingBalance: res.data.statement.openingBalance,
-            closingBalance: res.data.statement.closingBalance,
-            status: res.data.statement.status,
-            pdfPath: res.data.statement.pdfPath,
-          },
-          uploader: res.data.uploader,
-          summary: res.data.summary,
-          transactions: res.data.transactions,
-        };
-      }
-    }
   }
+
+  const detailSlot =
+    activeStmtId && activeAcc ? (
+      <Suspense key={activeStmtId} fallback={<StatementDetailSkeleton />}>
+        <StatementDetailLoader statementId={activeStmtId} acc={activeAcc} />
+      </Suspense>
+    ) : null;
 
   return (
     <FinanceView
@@ -172,7 +110,57 @@ export default async function InvestorFinancePage({
       activeAccId={activeAccId}
       statements={statementsForView}
       activeStmtId={activeStmtId}
-      bundle={bundle}
+      bundleSlot={detailSlot}
     />
+  );
+}
+
+async function StatementDetailLoader({
+  statementId,
+  acc,
+}: {
+  statementId: string;
+  acc: AccountSummaryProp;
+}) {
+  const res = await getStatementSummaryForInvestor(statementId);
+  if (!res.ok || !res.data) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+        Gagal memuat detail rekening koran.
+      </div>
+    );
+  }
+  const bundle: StmtBundleProp = {
+    statement: res.data.statement,
+    uploader: res.data.uploader,
+    summary: res.data.summary,
+    transactions: res.data.transactions,
+  };
+  return <BundleDetail acc={acc} bundle={bundle} />;
+}
+
+function StatementDetailSkeleton() {
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="px-6 pt-5 pb-4 border-b border-border space-y-3">
+        <Skeleton className="h-3 w-44" />
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-3 w-64" />
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Skeleton className="h-16 rounded-xl" />
+          <Skeleton className="h-16 rounded-xl" />
+          <Skeleton className="h-16 rounded-xl" />
+          <Skeleton className="h-16 rounded-xl" />
+        </div>
+      </div>
+      <div className="px-6 py-3 border-b border-border">
+        <Skeleton className="h-9 w-full" />
+      </div>
+      <div className="px-6 py-3 space-y-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="h-7 w-full" />
+        ))}
+      </div>
+    </div>
   );
 }

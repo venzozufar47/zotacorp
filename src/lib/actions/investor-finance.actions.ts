@@ -4,6 +4,65 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import type { ActionResult } from "./_gates";
 
+/**
+ * Batch fetch saldo terakhir per akun via `closing_balance` statement
+ * paling baru. Single round-trip untuk N akun — gantiin per-akun
+ * paginated tx fetch yang lambat. Statement order via composite key
+ * (year DESC, month DESC) di Postgres.
+ *
+ * Akun tanpa statement → tidak ada entry; caller fallback ke 0 atau
+ * `computeLatestBalance` heavy-method.
+ */
+export async function getLatestClosingBalances(
+  accIds: string[]
+): Promise<Record<string, number>> {
+  if (accIds.length === 0) return {};
+  const user = await getCurrentUser();
+  if (!user) return {};
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cashflow_statements")
+    .select("bank_account_id, closing_balance, period_year, period_month")
+    .in("bank_account_id", accIds)
+    .order("period_year", { ascending: false })
+    .order("period_month", { ascending: false });
+  const out: Record<string, number> = {};
+  for (const row of data ?? []) {
+    // First row per acc wins karena sudah sorted DESC.
+    if (out[row.bank_account_id] === undefined) {
+      out[row.bank_account_id] = Number(row.closing_balance) || 0;
+    }
+  }
+  return out;
+}
+
+/**
+ * Batch count transaksi per statement via single grouped query (1 RT)
+ * — gantiin N parallel HEAD count queries.
+ *
+ * Trade-off: query mengirim 1 row per tx (cuma kolom statement_id),
+ * count di JS. Cheap selama total <100k row. Pasang safety range.
+ */
+export async function getTxCountsForStatements(
+  stmtIds: string[]
+): Promise<Record<string, number>> {
+  if (stmtIds.length === 0) return {};
+  const user = await getCurrentUser();
+  if (!user) return {};
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cashflow_transactions")
+    .select("statement_id")
+    .in("statement_id", stmtIds)
+    .range(0, 99_999);
+  const out: Record<string, number> = {};
+  for (const id of stmtIds) out[id] = 0;
+  for (const row of data ?? []) {
+    out[row.statement_id] = (out[row.statement_id] ?? 0) + 1;
+  }
+  return out;
+}
+
 export interface InvestorTxRow {
   id: string;
   date: string;
