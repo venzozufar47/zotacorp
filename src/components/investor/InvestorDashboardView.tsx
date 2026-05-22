@@ -153,6 +153,19 @@ export function InvestorDashboardView({
       )}
 
       <div className={navPending ? "is-pending space-y-6" : "space-y-6"}>
+      {data.pusatUnbalancedCount > 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
+          <span className="text-amber-700 mt-0.5">⚠</span>
+          <span>
+            <strong>{data.pusatUnbalancedCount}</strong> transaksi Pusat
+            belum di-allocate oleh admin di periode ini — angka net
+            profit yang Anda lihat <strong>belum komplit</strong>{" "}
+            (bucket Pusat yang belum dibagi excluded dari operasional
+            cabang). Hubungi admin untuk allocate.
+          </span>
+        </div>
+      )}
+
       <HeroContract
         investorName={investorName}
         contract={data.contract}
@@ -319,8 +332,28 @@ export function InvestorDashboardView({
         />
       </section>
 
-      {/* Cashback */}
-      <PayoutsTable payouts={data.payouts} totalCashback={data.totalCashback} />
+      {/* Cashback + Net Dividen owner-level untuk konteks */}
+      <section className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+        <PayoutsTable
+          payouts={data.payouts}
+          totalCashback={data.totalCashback}
+        />
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-muted-foreground">
+            Net Dividen owner
+          </p>
+          <h3 className="mt-1 text-base font-semibold text-foreground">
+            {formatRp(data.totalNetDividen)}
+          </h3>
+          <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+            Aliran modal{" "}
+            <strong>{data.totalNetDividen >= 0 ? "ke" : "dari"}</strong>{" "}
+            owner di {agg.n} bulan terpilih (kategori Investment +
+            Dividend). Bukan bagi hasil Anda — angka ini sebagai konteks
+            apakah owner sedang menarik atau menyetor modal.
+          </p>
+        </div>
+      </section>
 
       {/* Quick link ke detail finance */}
       <section className="rounded-2xl border border-border bg-card p-5 flex items-center justify-between flex-wrap gap-3">

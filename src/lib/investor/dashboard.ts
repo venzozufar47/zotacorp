@@ -27,6 +27,10 @@ export interface InvestorMonthlyRow {
   utilizationPct: number | null;
   ordersCount: number | null;
   uniqueCustomers: number | null;
+  /** Owner-level net dividend untuk bulan ini (cross-cabang,
+   *  Investment + Dividend categories). Bukan bagi hasil investor —
+   *  ini aliran modal owner ke / dari perusahaan. */
+  netDividen: number;
 }
 
 export interface InvestorDashboardData {
@@ -35,6 +39,12 @@ export interface InvestorDashboardData {
   metrics: BuMonthlyMetric[];
   payouts: InvestorPayout[];
   totalCashback: number;
+  /** Sum companyNetDividen di semua bulan periode — gambaran owner
+   *  draws bersih sepanjang periode. */
+  totalNetDividen: number;
+  /** Total transaksi Pusat yang belum balanced oleh admin di periode
+   *  ini. > 0 → angka PnL belum komplit (ada bucket excluded). */
+  pusatUnbalancedCount: number;
   bepProgress: { current: number; target: number; pct: number };
   contractProgress: {
     runMonths: number;
@@ -106,6 +116,7 @@ export async function fetchInvestorDashboardData(input: {
     const grossProfit = revenue - cogs;
     const operatingProfit = grossProfit - opex;
     const netProfit = operatingProfit;
+    const netDividen = m.companyNetDividen;
     return {
       year: m.year,
       month: m.month,
@@ -118,8 +129,15 @@ export async function fetchInvestorDashboardData(input: {
       utilizationPct: null,
       ordersCount: null,
       uniqueCustomers: null,
+      netDividen,
     };
   });
+
+  const totalNetDividen = rows.reduce((s, r) => s + r.netDividen, 0);
+  const pusatUnbalancedCount = report.months.reduce(
+    (s, m) => s + m.unbalancedCount + m.unallocatedCount,
+    0
+  );
 
   // Operational metrics — overlay ke rows.
   const metrics = await getBuMetrics({
@@ -195,6 +213,8 @@ export async function fetchInvestorDashboardData(input: {
     metrics,
     payouts,
     totalCashback,
+    totalNetDividen,
+    pusatUnbalancedCount,
     bepProgress,
     contractProgress,
   };
