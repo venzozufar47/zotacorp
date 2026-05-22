@@ -38,9 +38,10 @@ export interface InvestorDashboardData {
   bepProgress: { current: number; target: number; pct: number };
   contractProgress: {
     runMonths: number;
-    totalMonths: number;
+    totalMonths: number | null;
     pct: number;
-    remainMonths: number;
+    remainMonths: number | null;
+    permanent: boolean;
   };
 }
 
@@ -150,26 +151,40 @@ export async function fetchInvestorDashboardData(input: {
     pct: bepTarget > 0 ? Math.min(100, (bepCurrent / bepTarget) * 100) : 0,
   };
 
-  let contractProgress = {
+  let contractProgress: InvestorDashboardData["contractProgress"] = {
     runMonths: 0,
     totalMonths: 0,
     pct: 0,
     remainMonths: 0,
+    permanent: false,
   };
   if (contract) {
     const start = new Date(contract.startDate);
     const now = new Date();
-    const monthsRun =
+    const monthsRun = Math.max(
+      0,
       (now.getFullYear() - start.getFullYear()) * 12 +
-      (now.getMonth() - start.getMonth());
+        (now.getMonth() - start.getMonth())
+    );
     const total = contract.durasiBulan;
-    const run = Math.max(0, Math.min(total, monthsRun));
-    contractProgress = {
-      runMonths: run,
-      totalMonths: total,
-      pct: total > 0 ? (run / total) * 100 : 0,
-      remainMonths: total - run,
-    };
+    if (total === null) {
+      contractProgress = {
+        runMonths: monthsRun,
+        totalMonths: null,
+        pct: 0,
+        remainMonths: null,
+        permanent: true,
+      };
+    } else {
+      const run = Math.min(total, monthsRun);
+      contractProgress = {
+        runMonths: run,
+        totalMonths: total,
+        pct: total > 0 ? (run / total) * 100 : 0,
+        remainMonths: total - run,
+        permanent: false,
+      };
+    }
   }
 
   return {

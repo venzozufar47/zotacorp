@@ -33,9 +33,10 @@ export function HeroContract({
   contract: InvestorContract;
   contractProgress: {
     runMonths: number;
-    totalMonths: number;
+    totalMonths: number | null;
     pct: number;
-    remainMonths: number;
+    remainMonths: number | null;
+    permanent: boolean;
   };
   bepProgress: { current: number; target: number; pct: number };
 }) {
@@ -80,8 +81,11 @@ export function HeroContract({
             <p className="mt-3 text-sm sm:text-[14.5px] leading-relaxed max-w-md opacity-90">
               Kontrak Anda di{" "}
               <span className="font-semibold">{contract.businessUnit}</span>{" "}
-              sedang berjalan bulan ke-{contractProgress.runMonths} dari{" "}
-              {contract.durasiBulan}. Bagi hasil disetor ke{" "}
+              sedang berjalan bulan ke-{contractProgress.runMonths}
+              {contractProgress.permanent
+                ? " (kontrak permanen)"
+                : ` dari ${contract.durasiBulan}`}
+              . Bagi hasil disetor ke{" "}
               {contract.payoutRekeningLabel ?? "rekening terdaftar"}.
             </p>
           </div>
@@ -129,10 +133,14 @@ export function HeroContract({
           />
           <HeroKpi
             label="Durasi kontrak"
-            value={`${contract.durasiBulan}`}
-            unit="bulan"
-            sub={`Sisa ${contractProgress.remainMonths} bulan`}
-            progress={contractProgress.pct}
+            value={contractProgress.permanent ? "∞" : `${contract.durasiBulan}`}
+            unit={contractProgress.permanent ? "permanen" : "bulan"}
+            sub={
+              contractProgress.permanent
+                ? `Sudah berjalan ${contractProgress.runMonths} bulan`
+                : `Sisa ${contractProgress.remainMonths} bulan`
+            }
+            progress={contractProgress.permanent ? undefined : contractProgress.pct}
             progressColor="rgba(255,255,255,0.5)"
           />
           <HeroKpi

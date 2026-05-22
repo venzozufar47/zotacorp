@@ -106,7 +106,7 @@ export function InvestorContractsManager({
                     {c.bagiHasilPct}%
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {c.durasiBulan} bln
+                    {c.durasiBulan === null ? "Permanen" : `${c.durasiBulan} bln`}
                   </td>
                   <td className="px-3 py-2">{c.startDate}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
@@ -173,6 +173,9 @@ function ContractForm({
   const [bagiHasilPct, setBagiHasilPct] = useState(
     String(contract?.bagiHasilPct ?? "25")
   );
+  const [isPermanent, setIsPermanent] = useState(
+    contract ? contract.durasiBulan === null : false
+  );
   const [durasiBulan, setDurasiBulan] = useState(
     String(contract?.durasiBulan ?? "36")
   );
@@ -192,7 +195,7 @@ function ContractForm({
         businessUnit,
         totalInvestIdr: Number(totalInvest),
         bagiHasilPct: Number(bagiHasilPct),
-        durasiBulan: Number(durasiBulan),
+        durasiBulan: isPermanent ? null : Number(durasiBulan),
         startDate,
         bepTargetIdr: Number(bepTarget),
         payoutRekeningLabel: rek || null,
@@ -299,12 +302,25 @@ function ContractForm({
             />
           </label>
           <label className="text-xs">
-            <span className="text-muted-foreground">Durasi (bulan)</span>
+            <span className="text-muted-foreground flex items-center justify-between gap-2">
+              <span>Durasi (bulan)</span>
+              <span className="inline-flex items-center gap-1 normal-case">
+                <input
+                  type="checkbox"
+                  checked={isPermanent}
+                  onChange={(e) => setIsPermanent(e.target.checked)}
+                  className="size-3 accent-primary"
+                />
+                <span className="text-[10.5px]">Permanen</span>
+              </span>
+            </span>
             <input
               type="number"
-              value={durasiBulan}
+              value={isPermanent ? "" : durasiBulan}
               onChange={(e) => setDurasiBulan(e.target.value)}
-              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
+              disabled={isPermanent}
+              placeholder={isPermanent ? "∞ tak hingga" : ""}
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </label>
           <label className="text-xs">

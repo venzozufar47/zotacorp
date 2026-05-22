@@ -136,7 +136,7 @@ export interface InvestorContract {
   businessUnit: string;
   totalInvestIdr: number;
   bagiHasilPct: number;
-  durasiBulan: number;
+  durasiBulan: number | null;
   startDate: string;
   bepTargetIdr: number;
   payoutRekeningLabel: string | null;
@@ -151,7 +151,7 @@ interface ContractRow {
   business_unit: string;
   total_invest_idr: number | string;
   bagi_hasil_pct: number | string;
-  durasi_bulan: number;
+  durasi_bulan: number | null;
   start_date: string;
   bep_target_idr: number | string;
   payout_rekening_label: string | null;
@@ -217,7 +217,7 @@ export async function upsertInvestorContract(input: {
   businessUnit: string;
   totalInvestIdr: number;
   bagiHasilPct: number;
-  durasiBulan: number;
+  durasiBulan: number | null;
   startDate: string;
   bepTargetIdr: number;
   payoutRekeningLabel?: string | null;
