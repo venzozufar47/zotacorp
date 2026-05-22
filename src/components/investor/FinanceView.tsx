@@ -428,28 +428,11 @@ export function BundleDetail({
             : n + 1;
         }, 0);
 
-  // Cash account tidak punya opening/closing balance konsep statement
-  // (tidak ada PDF rekening koran). Derive:
-  //   saldo awal  = anchor runningBalance pre-tx dari tx pertama
-  //                  (kalau ada) — pre-tx = rb - credit + debit.
-  //   saldo akhir = anchor runningBalance tx terakhir (kalau ada),
-  //                  else: saldo awal + Σkredit − Σdebit (formula
-  //                  cumulative — lebih reliable daripada fallback 0).
-  const isCash = acc.bank === "cash";
-  const txAsc = bundle.transactions; // already chronological asc from server
-  const firstTx = txAsc[0];
-  const lastTx = txAsc[txAsc.length - 1];
-  const displayOpening =
-    isCash && firstTx?.runningBalance != null
-      ? firstTx.runningBalance - firstTx.credit + firstTx.debit
-      : bundle.statement.openingBalance;
-  const displayClosing = isCash
-    ? lastTx?.runningBalance != null
-      ? lastTx.runningBalance
-      : displayOpening +
-        bundle.summary.totalCredit -
-        bundle.summary.totalDebit
-    : bundle.statement.closingBalance;
+  // Cash opening/closing sudah di-derive server-side dari net tx
+  // sebelum periode statement (action: getStatementSummaryForInvestor)
+  // — investor cuma render apa adanya, tidak ada logic khusus client.
+  const displayOpening = bundle.statement.openingBalance;
+  const displayClosing = bundle.statement.closingBalance;
 
   const uploaderAt = bundle.uploader.at
     ? new Date(bundle.uploader.at).toLocaleDateString("id-ID", {

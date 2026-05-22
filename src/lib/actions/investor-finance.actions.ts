@@ -173,12 +173,15 @@ export async function getStatementSummaryForInvestor(
   const { data: stmt, error: stmtErr } = await supabase
     .from("cashflow_statements")
     .select(
-      "id, period_year, period_month, opening_balance, closing_balance, status, pdf_path, created_at, confirmed_at, created_by, confirmed_by"
+      "id, bank_account_id, period_year, period_month, opening_balance, closing_balance, status, pdf_path, created_at, confirmed_at, created_by, confirmed_by, bank_accounts(bank)"
     )
     .eq("id", statementId)
     .maybeSingle();
   if (stmtErr) return { ok: false, error: stmtErr.message };
   if (!stmt) return { ok: false, error: "Statement tidak ditemukan" };
+  const bankRel = (stmt as { bank_accounts: { bank: string } | null })
+    .bank_accounts;
+  const bank = bankRel?.bank ?? "other";
 
   // Fetch uploader name (prefer confirmed_by, fallback created_by) + all
   // transactions in parallel. RLS scopes both.
@@ -229,8 +232,57 @@ export async function getStatementSummaryForInvestor(
     if (rows.length < PAGE) break;
   }
 
-  const totalDebit = txAll.reduce((s, r) => s + r.debit, 0);
-  const totalCredit = txAll.reduce((s, r) => s + r.credit, 0);
+  // Total kredit/debit di statement ini. Untuk cash, exclude QRIS
+  // (kategori 'QRIS (non-operasional)') karena saldo kas fisik tidak
+  // ikut tx digital QRIS.
+  const txForSum =
+    bank === "cash"
+      ? txAll.filter((t) => t.category !== POS_QRIS_CATEGORY)
+      : txAll;
+  const totalDebit = txForSum.reduce((s, r) => s + r.debit, 0);
+  const totalCredit = txForSum.reduce((s, r) => s + r.credit, 0);
+
+  // Cash account: closing_balance + opening_balance dari DB selalu 0
+  // (tidak ada flow upload-verify PDF yang nge-set). Derive sendiri:
+  //   opening = net (credit-debit) seluruh cash tx di acc yang
+  //             transaction_date < awal periode statement.
+  //   closing = opening + Σkredit − Σdebit dalam statement ini.
+  let openingBalance = Number(stmt.opening_balance);
+  let closingBalance = Number(stmt.closing_balance);
+  if (bank === "cash") {
+    // Saldo awal cash = computeLatestBalance(all cash tx before period
+    // start), pakai anchor running_balance konsisten dengan picker
+    // card dan admin landing page. Sebelumnya pakai net pure → bisa
+    // double-count pre-anchor tx → angka tidak match dengan kartu.
+    const periodStart = `${stmt.period_year}-${String(stmt.period_month).padStart(2, "0")}-01`;
+    const priorRowsAll: ChronoRow[] = [];
+    const PAGE_PRIOR = 1000;
+    for (let offset = 0; ; offset += PAGE_PRIOR) {
+      const { data: priorRows } = await supabase
+        .from("cashflow_transactions")
+        .select(
+          "transaction_date, transaction_time, debit, credit, running_balance, category, cashflow_statements!inner(bank_account_id)"
+        )
+        .eq("cashflow_statements.bank_account_id", stmt.bank_account_id)
+        .lt("transaction_date", periodStart)
+        .range(offset, offset + PAGE_PRIOR - 1);
+      if (!priorRows || priorRows.length === 0) break;
+      for (const r of priorRows) {
+        if (r.category === POS_QRIS_CATEGORY) continue;
+        priorRowsAll.push({
+          date: r.transaction_date,
+          time: r.transaction_time,
+          debit: Number(r.debit),
+          credit: Number(r.credit),
+          runningBalance:
+            r.running_balance !== null ? Number(r.running_balance) : null,
+        });
+      }
+      if (priorRows.length < PAGE_PRIOR) break;
+    }
+    openingBalance = computeLatestBalance(priorRowsAll);
+    closingBalance = openingBalance + totalCredit - totalDebit;
+  }
 
   return {
     ok: true,
@@ -239,8 +291,8 @@ export async function getStatementSummaryForInvestor(
         id: stmt.id,
         periodYear: stmt.period_year,
         periodMonth: stmt.period_month,
-        openingBalance: Number(stmt.opening_balance),
-        closingBalance: Number(stmt.closing_balance),
+        openingBalance,
+        closingBalance,
         status: stmt.status as "draft" | "confirmed",
         pdfPath: stmt.pdf_path,
         createdAt: stmt.created_at,
