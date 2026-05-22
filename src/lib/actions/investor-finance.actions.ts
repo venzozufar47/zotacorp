@@ -50,15 +50,23 @@ export async function getTxCountsForStatements(
   const user = await getCurrentUser();
   if (!user) return {};
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("cashflow_transactions")
-    .select("statement_id")
-    .in("statement_id", stmtIds)
-    .range(0, 99_999);
   const out: Record<string, number> = {};
   for (const id of stmtIds) out[id] = 0;
-  for (const row of data ?? []) {
-    out[row.statement_id] = (out[row.statement_id] ?? 0) + 1;
+  // Paginate — PostgREST default max-rows bisa cap di 1000 walaupun
+  // .range() request lebih besar. Loop sampai page kosong supaya
+  // count akurat untuk akun dengan banyak transaksi.
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cashflow_transactions")
+      .select("statement_id")
+      .in("statement_id", stmtIds)
+      .range(offset, offset + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const row of data) {
+      out[row.statement_id] = (out[row.statement_id] ?? 0) + 1;
+    }
+    if (data.length < PAGE) break;
   }
   return out;
 }

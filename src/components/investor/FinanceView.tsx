@@ -404,6 +404,19 @@ export function BundleDetail({
   }
 
   const periodLabel = `${MONTH_NAMES_ID[bundle.statement.periodMonth - 1]} ${bundle.statement.periodYear}`;
+
+  // Integrity check: jumlah tx yang tanggal-nya di luar periode
+  // statement. Kalau ada → label statement vs data tidak sinkron
+  // (admin upload salah set period). Surface ke user supaya tidak
+  // bingung lihat angka yang aneh.
+  const outOfPeriodCount = bundle.transactions.reduce((n, t) => {
+    const [y, m] = t.date.split("-");
+    return Number(y) === bundle.statement.periodYear &&
+      Number(m) === bundle.statement.periodMonth
+      ? n
+      : n + 1;
+  }, 0);
+
   const uploaderAt = bundle.uploader.at
     ? new Date(bundle.uploader.at).toLocaleDateString("id-ID", {
         day: "numeric",
@@ -454,6 +467,19 @@ export function BundleDetail({
             Unduh PDF
           </button>
         </div>
+
+        {outOfPeriodCount > 0 && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-900">
+            <span className="text-amber-700 mt-0.5">⚠</span>
+            <span>
+              <strong>{outOfPeriodCount}</strong> dari{" "}
+              {bundle.transactions.length} transaksi punya tanggal di
+              luar periode <strong>{periodLabel}</strong>. Mungkin
+              statement ini di-label salah saat upload — minta admin
+              re-upload atau ubah period_year/period_month.
+            </span>
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <SumStat
