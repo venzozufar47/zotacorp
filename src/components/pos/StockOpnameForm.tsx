@@ -92,21 +92,52 @@ export function StockOpnameForm({
     };
   });
 
-  function submitWithPin(pin: string | undefined) {
+  // Discrepancy modal state — muncul kalau opname mendeteksi selisih
+  // (shortfall = bayar selisih, surplus = paksa hitung ulang). PIN
+  // sudah lulus saat modal muncul, jadi follow-up call (Bayar
+  // selisih) tidak butuh PIN lagi.
+  const [discrepancy, setDiscrepancy] = useState<
+    | { kind: "shortfall"; shortfallValue: number }
+    | { kind: "surplus" }
+    | null
+  >(null);
+  const [resolvedPin, setResolvedPin] = useState<string | undefined>(undefined);
+
+  function submitWithPin(
+    pin: string | undefined,
+    opts?: { allowDiscrepancy?: boolean; payShortfallCash?: boolean }
+  ) {
     startTransition(async () => {
       const res = await createStockOpname({
         bankAccountId,
         notes: notes.trim() || undefined,
         items,
         pin,
+        allowDiscrepancy: opts?.allowDiscrepancy,
+        payShortfallCash: opts?.payShortfallCash,
       });
       if (!res.ok) {
         if (pin !== undefined) setPinError(res.error);
         else toast.error(res.error);
         return;
       }
+      // Discrepancy detected → blok submit, render modal.
+      if (res.data?.discrepancy) {
+        setResolvedPin(pin);
+        setPinOpen(false);
+        if (res.data.discrepancy.kind === "shortfall") {
+          setDiscrepancy({
+            kind: "shortfall",
+            shortfallValue: res.data.discrepancy.shortfallValue,
+          });
+        } else {
+          setDiscrepancy({ kind: "surplus" });
+        }
+        return;
+      }
       toast.success("Opname tersimpan");
       setPinOpen(false);
+      setDiscrepancy(null);
       router.push(`/pos/stok/opname/${res.data!.opnameId}`);
     });
   }
@@ -293,6 +324,106 @@ export function StockOpnameForm({
           }
         }}
       />
+
+      {/* Discrepancy modal — muncul kalau opname mendeteksi selisih.
+          Shortfall (kurang stok) → opsi Bayar selisih / Hitung ulang.
+          Surplus (kelebihan stok) → cuma Hitung ulang. */}
+      {discrepancy && (
+        <OpnameDiscrepancyDialog
+          discrepancy={discrepancy}
+          pending={pending}
+          onPayShortfall={() => {
+            if (discrepancy.kind !== "shortfall") return;
+            submitWithPin(resolvedPin, {
+              allowDiscrepancy: true,
+              payShortfallCash: true,
+            });
+          }}
+          onRecount={() => {
+            setDiscrepancy(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Modal konfirmasi selisih opname. Sengaja tidak menampilkan
+ * expected_count atau per-SKU diff — hanya total Rp shortfall —
+ * supaya blind-count invariant tetap utuh.
+ */
+function OpnameDiscrepancyDialog({
+  discrepancy,
+  pending,
+  onPayShortfall,
+  onRecount,
+}: {
+  discrepancy:
+    | { kind: "shortfall"; shortfallValue: number }
+    | { kind: "surplus" };
+  pending: boolean;
+  onPayShortfall: () => void;
+  onRecount: () => void;
+}) {
+  const isShortfall = discrepancy.kind === "shortfall";
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={() => !pending && onRecount()}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-card border-2 border-foreground shadow-[4px_4px_0_0_var(--foreground)] p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-destructive font-semibold">
+            Ada selisih stok
+          </p>
+          <h2 className="mt-1 text-lg font-bold text-foreground">
+            {isShortfall
+              ? "Stok fisik kurang dari seharusnya"
+              : "Stok fisik lebih dari seharusnya"}
+          </h2>
+          {isShortfall && (
+            <p className="mt-2 text-sm text-foreground">
+              Total nilai selisih:{" "}
+              <strong className="tabular-nums">
+                Rp {discrepancy.shortfallValue.toLocaleString("id-ID")}
+              </strong>
+            </p>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+            {isShortfall
+              ? "Pilih: (1) bayar selisih agar opname tetap tersimpan dan saldo kas bertambah sesuai uang yang disetor, atau (2) hitung ulang stok fisik untuk verifikasi."
+              : "Kemungkinan ada produksi/penerimaan stok yang belum tercatat. Sistem tidak mengizinkan auto-commit selisih surplus — mohon hitung ulang dan/atau cek log produksi."}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {isShortfall && (
+            <button
+              type="button"
+              onClick={onPayShortfall}
+              disabled={pending}
+              className="w-full h-11 rounded-xl bg-success text-white font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {pending && (
+                <span className="size-4 border-2 border-white border-r-transparent rounded-full animate-spin" />
+              )}
+              Bayar selisih
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onRecount}
+            disabled={pending}
+            className="w-full h-11 rounded-xl border-2 border-foreground bg-card text-foreground font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            Hitung ulang
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

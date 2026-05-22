@@ -177,16 +177,38 @@ export default async function PosRiwayatPage({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
                     className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                      s.paymentMethod === "cash"
-                        ? "bg-success/15 text-success"
-                        : "bg-primary/15 text-primary"
+                      s.paymentStatus === "pending"
+                        ? "bg-pop-amber/30 text-foreground"
+                        : s.paymentMethod === "cash"
+                          ? "bg-success/15 text-success"
+                          : s.paymentMethod === "qris"
+                            ? "bg-primary/15 text-primary"
+                            : "bg-pop-emerald/20 text-foreground"
                     }`}
                   >
-                    {s.paymentMethod === "cash" ? "Cash" : "QRIS"}
+                    {s.paymentStatus === "pending"
+                      ? "Pesanan"
+                      : s.paymentMethod === "cash"
+                        ? "Cash"
+                        : s.paymentMethod === "qris"
+                          ? "QRIS"
+                          : "via Admin"}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {formatTime(s.saleTime)}
                   </span>
+                  {s.customerName && (
+                    <span className="text-xs font-medium text-foreground">
+                      · {s.customerName}
+                    </span>
+                  )}
+                  {s.fulfillmentType && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted/60 border border-border uppercase tracking-wider">
+                      {s.fulfillmentType === "dine_in"
+                        ? "🍽️ Dine"
+                        : "🥡 TA"}
+                    </span>
+                  )}
                   {s.voidedAt && (
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive uppercase tracking-wider">
                       Dibatalkan

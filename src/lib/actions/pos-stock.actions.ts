@@ -621,6 +621,16 @@ export async function deleteStockMovement(input: {
   return { ok: true, data: { id: input.movementId } };
 }
 
+export type OpnameDiscrepancyKind = "shortfall" | "surplus";
+
+export interface OpnameDiscrepancyResult {
+  kind: OpnameDiscrepancyKind;
+  /** Total nilai Rp shortfall (untuk kind="shortfall"). Surplus
+   *  return 0 — kami tidak reveal nominal supaya tidak silently
+   *  menutupi error produksi yang belum tercatat. */
+  shortfallValue: number;
+}
+
 export async function createStockOpname(input: {
   bankAccountId: string;
   notes?: string;
@@ -631,7 +641,21 @@ export async function createStockOpname(input: {
   }>;
   /** Authorizer's PIN. Required when rekening has `opname_authorizer_id` set. */
   pin?: string;
-}): Promise<ActionResult<{ opnameId: string }>> {
+  /** Set true setelah admin/kasir konfirmasi modal discrepancy.
+   *  Tanpa flag ini, opname dengan selisih akan ditolak supaya
+   *  kasir tidak sembarangan commit selisih. */
+  allowDiscrepancy?: boolean;
+  /** Set true bersama allowDiscrepancy untuk shortfall — insert
+   *  cashflow_transactions di rekening Cash sale (credit =
+   *  shortfallValue, category Penyesuaian) sebagai pembayaran
+   *  selisih oleh kasir. */
+  payShortfallCash?: boolean;
+}): Promise<
+  ActionResult<{
+    opnameId?: string;
+    discrepancy?: OpnameDiscrepancyResult;
+  }>
+> {
   const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
   if (input.items.length === 0)
@@ -707,6 +731,41 @@ export async function createStockOpname(input: {
     aggregateProductIds
   );
 
+  // Hitung selisih per SKU. Surplus = phisik > expected (mungkin
+  // produksi belum tercatat). Shortfall = fisik < expected (loss /
+  // ada hilang). Modal client menampilkan ringkasan minimal.
+  let shortfallValue = 0;
+  let hasSurplus = false;
+  for (let i = 0; i < input.items.length; i++) {
+    const it = input.items[i];
+    const sku = skus[i];
+    const exp = expected.get(skuKey(it.productId, it.variantId ?? null)) ?? 0;
+    const diff = it.physicalCount - exp;
+    if (diff < 0) shortfallValue += -diff * sku.unitPrice;
+    else if (diff > 0) hasSurplus = true;
+  }
+
+  // Surplus jangan tutupi error produksi — paksa kasir hitung ulang
+  // tanpa opsi bayar. Tidak reveal nilai supaya admin tidak bisa
+  // back-compute expected count.
+  if (hasSurplus && !input.allowDiscrepancy) {
+    // ok:true + discrepancy supaya klien bisa render modal khusus;
+    // bukan error karena ini gate-konfirmasi, bukan kegagalan.
+    return {
+      ok: true,
+      data: { discrepancy: { kind: "surplus", shortfallValue: 0 } },
+    };
+  }
+
+  // Shortfall → blok submit kecuali user explicit konfirmasi via
+  // modal "Bayar selisih" / "Hitung ulang".
+  if (shortfallValue > 0 && !input.allowDiscrepancy) {
+    return {
+      ok: true,
+      data: { discrepancy: { kind: "shortfall", shortfallValue } },
+    };
+  }
+
   // Insert header.
   const { data: header, error: headErr } = await supabase
     .from("pos_stock_opnames")
@@ -744,7 +803,77 @@ export async function createStockOpname(input: {
     return { ok: false, error: itemErr.message };
   }
 
+  // Bayar selisih cash: insert cashflow_transactions credit di
+  // rekening sale (yang biasanya rekening cash POS) supaya saldo
+  // kas fisik bertambah sesuai uang yang kasir setor. Category
+  // "Penyesuaian" — standar untuk koreksi cash drawer.
+  if (input.payShortfallCash && shortfallValue > 0) {
+    const opnameDate = jakartaDateString(now);
+    const opnameTime = jakartaHHMM(now);
+    const [yStr, mStr] = opnameDate.split("-");
+    const periodYear = Number(yStr);
+    const periodMonth = Number(mStr);
+
+    const { data: account } = await supabase
+      .from("bank_accounts")
+      .select("default_branch")
+      .eq("id", input.bankAccountId)
+      .single();
+
+    const { data: existingStmt } = await supabase
+      .from("cashflow_statements")
+      .select("id")
+      .eq("bank_account_id", input.bankAccountId)
+      .eq("period_year", periodYear)
+      .eq("period_month", periodMonth)
+      .maybeSingle();
+    let statementId: string;
+    if (existingStmt) {
+      statementId = existingStmt.id;
+    } else {
+      const { data: newStmt } = await supabase
+        .from("cashflow_statements")
+        .insert({
+          bank_account_id: input.bankAccountId,
+          period_month: periodMonth,
+          period_year: periodYear,
+          opening_balance: 0,
+          closing_balance: 0,
+          status: "draft",
+          created_by: gate.userId,
+        })
+        .select("id")
+        .single();
+      statementId = newStmt?.id ?? "";
+    }
+
+    if (statementId) {
+      const { data: maxRow } = await supabase
+        .from("cashflow_transactions")
+        .select("sort_order")
+        .eq("statement_id", statementId)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextSortOrder = (maxRow?.sort_order ?? -1) + 1;
+
+      await supabase.from("cashflow_transactions").insert({
+        statement_id: statementId,
+        transaction_date: opnameDate,
+        transaction_time: opnameTime,
+        description: `POS Opname Selisih: bayar selisih Rp ${shortfallValue.toLocaleString("id-ID")}`,
+        debit: 0,
+        credit: shortfallValue,
+        running_balance: null,
+        category: "Penyesuaian",
+        branch: account?.default_branch ?? "Pare",
+        sort_order: nextSortOrder,
+      });
+    }
+  }
+
   revalidatePath("/pos", "layout");
+  revalidatePath("/admin/finance", "layout");
   return { ok: true, data: { opnameId: header.id } };
 }
 

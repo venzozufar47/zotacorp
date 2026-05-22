@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Settings,
+  ShoppingBasket,
   ShoppingCart,
   Sparkles,
   Wallet,
@@ -138,7 +139,20 @@ export function POSClient({
   // panel cart (cash field / QRIS upload live di footer), bukan modal.
   const [searchQuery, setSearchQuery] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
-  const [payMode, setPayMode] = useState<PaymentMethod>("cash");
+  const [payMode, setPayMode] = useState<PaymentMethod | "pending">("cash");
+  // Nama pemesan + mode fulfillment — wajib untuk SETIAP transaksi.
+  // customer_name juga sebagai konfirmasi anti-kepencet sebelum
+  // commit (kasir mengetik nama → memastikan tidak salah submit).
+  const [customerName, setCustomerName] = useState("");
+  const [fulfillmentType, setFulfillmentType] = useState<
+    "dine_in" | "take_away"
+  >("dine_in");
+  // Per-item override: key = cartKey ("p:<id>" / "p:<id>|v:<vid>").
+  // Hanya entries yang BEDA dari fulfillmentType yang disimpan;
+  // server akan resolve sisanya ke transaction-level.
+  const [itemFulfillmentOverrides, setItemFulfillmentOverrides] = useState<
+    Record<string, "dine_in" | "take_away">
+  >({});
 
   // Lookup cartKey → { name, price } untuk total/rendering O(cart entries).
   const lineByKey = useMemo(() => {
@@ -379,7 +393,7 @@ export function POSClient({
     setCustomItems([]);
   }
 
-  function submit(method: PaymentMethod) {
+  function submit(method: PaymentMethod | "pending") {
     const catalogItems: PosSaleItemInput[] = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
       .map(([key, qty]) => {
@@ -402,6 +416,10 @@ export function POSClient({
       ),
     ];
     if (items.length === 0) return;
+    if (!customerName.trim()) {
+      toast.error("Atas nama pemesan wajib diisi");
+      return;
+    }
     if (QRIS_RECEIPT_AT_CHECKOUT && method === "qris" && !qrisReceipt) {
       toast.error("QRIS wajib foto nota customer");
       return;
@@ -411,6 +429,9 @@ export function POSClient({
         bankAccountId,
         paymentMethod: method,
         items,
+        customerName: customerName.trim(),
+        fulfillmentType,
+        itemFulfillmentOverrides,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyimpan penjualan");
@@ -432,10 +453,21 @@ export function POSClient({
           return;
         }
       }
+      const methodLabel =
+        method === "pending"
+          ? "Pesanan"
+          : method === "cash"
+            ? "Cash"
+            : "QRIS";
       toast.success(
-        `Tersimpan: ${formatRp(res.data?.total ?? 0)} — ${method === "cash" ? "Cash" : "QRIS"}`
+        method === "pending"
+          ? `Pesanan ${customerName.trim()} dibuat — ${formatRp(res.data?.total ?? 0)}`
+          : `Tersimpan: ${formatRp(res.data?.total ?? 0)} — ${methodLabel}`
       );
       resetCart();
+      setCustomerName("");
+      setFulfillmentType("dine_in");
+      setItemFulfillmentOverrides({});
       setQrisReceipt(null);
       setCashReceived(null);
       setCartOpen(false);
@@ -523,6 +555,7 @@ export function POSClient({
     { href: "/pos/produk", label: "Katalog", icon: Settings, adminOnly: true },
     { href: "/pos/shift", label: "Saldo", icon: Wallet },
     { href: "/pos/stok", label: "Stok", icon: Boxes },
+    { href: "/pos/pesanan", label: "Pesanan", icon: ShoppingBasket },
     { href: "/pos/riwayat", label: "Riwayat", icon: History },
     { href: "/pos/insights", label: "Insights", icon: BarChart3, adminOnly: true },
   ];
@@ -535,6 +568,7 @@ export function POSClient({
   const payDisabled =
     itemCount === 0 ||
     pending ||
+    !customerName.trim() ||
     (payMode === "cash" && (cashReceived == null || cashReceived < finalTotal)) ||
     (QRIS_RECEIPT_AT_CHECKOUT && payMode === "qris" && !qrisReceipt);
 
@@ -586,6 +620,30 @@ export function POSClient({
             // — render dengan handler customItems.
             const isCustom = line.key.startsWith("c:");
             const customId = isCustom ? line.key.slice(2) : null;
+            // Per-item dine/TA override — hanya untuk catalog item
+            // (custom item localId tidak stabil cross-render).
+            const itemMode: "dine_in" | "take_away" =
+              !isCustom && itemFulfillmentOverrides[line.key]
+                ? itemFulfillmentOverrides[line.key]
+                : fulfillmentType;
+            const itemModeOverridden =
+              !isCustom &&
+              itemFulfillmentOverrides[line.key] !== undefined &&
+              itemFulfillmentOverrides[line.key] !== fulfillmentType;
+            const toggleItemMode = () => {
+              if (isCustom) return;
+              setItemFulfillmentOverrides((prev) => {
+                const next = { ...prev };
+                const newMode: "dine_in" | "take_away" =
+                  itemMode === "dine_in" ? "take_away" : "dine_in";
+                if (newMode === fulfillmentType) {
+                  delete next[line.key];
+                } else {
+                  next[line.key] = newMode;
+                }
+                return next;
+              });
+            };
             return (
               <div
                 key={line.key}
@@ -599,6 +657,24 @@ export function POSClient({
                     {formatRp(line.subtotal / line.qty)} × {line.qty}
                   </p>
                 </div>
+                {!isCustom && (
+                  <button
+                    type="button"
+                    onClick={toggleItemMode}
+                    className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                      itemModeOverridden
+                        ? "border-pop-amber bg-pop-amber/20 text-foreground"
+                        : "border-border bg-card text-muted-foreground hover:text-foreground"
+                    }`}
+                    title={
+                      itemModeOverridden
+                        ? "Override per-item — tap untuk reset ke mode transaksi"
+                        : "Mode transaksi — tap untuk override"
+                    }
+                  >
+                    {itemMode === "dine_in" ? "🍽️" : "🥡"}
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-label="Kurangi"
@@ -677,9 +753,49 @@ export function POSClient({
           </div>
         </div>
 
-        {/* Pay mode picker */}
-        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
-          {(["cash", "qris"] as const).map((m) => {
+        {/* Atas nama pemesan — wajib + auto-focus saat cart >= 1. */}
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+            Atas nama <span className="text-destructive">*</span>
+          </label>
+          <input
+            type="text"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="Nama pemesan…"
+            className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+
+        {/* Fulfillment picker — dine-in / take-away per transaksi. */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+            Mode
+          </p>
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
+            {(["dine_in", "take_away"] as const).map((m) => {
+              const active = fulfillmentType === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setFulfillmentType(m)}
+                  className={`h-9 rounded-lg text-sm font-semibold transition-colors ${
+                    active
+                      ? "bg-foreground text-background shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {m === "dine_in" ? "🍽️ Dine-in" : "🥡 Take-away"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Pay mode picker — 3 kolom: Cash / QRIS / Pesanan. */}
+        <div className="grid grid-cols-3 gap-2 p-1 rounded-xl bg-muted/40 border border-border">
+          {(["cash", "qris", "pending"] as const).map((m) => {
             const active = payMode === m;
             return (
               <button
@@ -690,11 +806,13 @@ export function POSClient({
                   active
                     ? m === "cash"
                       ? "bg-success text-white shadow-sm"
-                      : "bg-primary text-primary-foreground shadow-sm"
+                      : m === "qris"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-pop-amber text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {m === "cash" ? "Cash" : "QRIS"}
+                {m === "cash" ? "Cash" : m === "qris" ? "QRIS" : "Pesanan"}
               </button>
             );
           })}
@@ -763,12 +881,18 @@ export function POSClient({
           type="button"
           disabled={payDisabled}
           onClick={() => submit(payMode)}
-          className={`w-full h-12 rounded-xl font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
-            payMode === "cash" ? "bg-success" : "bg-primary"
+          className={`w-full h-12 rounded-xl font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
+            payMode === "cash"
+              ? "bg-success text-white"
+              : payMode === "qris"
+                ? "bg-primary text-primary-foreground"
+                : "bg-pop-amber text-foreground"
           }`}
         >
           {pending && <Loader2 size={14} className="animate-spin" />}
-          Bayar {formatRp(finalTotal)}
+          {payMode === "pending"
+            ? `Buat pesanan ${formatRp(finalTotal)}`
+            : `Bayar ${formatRp(finalTotal)}`}
         </button>
       </div>
     </div>

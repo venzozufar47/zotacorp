@@ -4,6 +4,7 @@ import {
   History,
   Home,
   Settings,
+  ShoppingBasket,
   Wallet,
 } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
@@ -29,6 +30,12 @@ const RAIL: RailItem[] = [
   },
   { href: "/pos/shift", label: "Saldo", icon: Wallet, section: "shift" },
   { href: "/pos/stok", label: "Stok", icon: Boxes, section: "stok" },
+  {
+    href: "/pos/pesanan",
+    label: "Pesanan",
+    icon: ShoppingBasket,
+    section: "pesanan",
+  },
   { href: "/pos/riwayat", label: "Riwayat", icon: History, section: "riwayat" },
   {
     href: "/pos/insights",

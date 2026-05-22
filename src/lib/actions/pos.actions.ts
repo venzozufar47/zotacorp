@@ -37,6 +37,11 @@ type PosProductVariantRow = Pick<
 >;
 
 export type PaymentMethod = "cash" | "qris";
+/** Cara menyelesaikan pesanan. "admin" = sudah dibayar via WhatsApp
+ *  ke admin (tidak ada cashflow event di POS). */
+export type SettleVia = "cash" | "qris" | "admin";
+/** Mode fulfillment per transaksi atau per item. */
+export type FulfillmentType = "dine_in" | "take_away";
 
 // Hard cap on product lists — keeps the POS grid responsive and
 // guards against accidental runaway catalogs.
@@ -84,7 +89,13 @@ export interface PosSaleSummary {
   id: string;
   saleDate: string;
   saleTime: string;
-  paymentMethod: PaymentMethod;
+  /** Bisa cash/qris (paid) atau "pending" (pesanan belum settle)
+   *  atau "admin" (di-settle admin lewat WA). */
+  paymentMethod: "cash" | "qris" | "pending" | "admin";
+  customerName: string | null;
+  fulfillmentType: FulfillmentType | null;
+  paymentStatus: "paid" | "pending";
+  settledVia: SettleVia | null;
   /** Harga akhir setelah diskon + rounding — sama dengan
    *  cashflow_transactions.credit untuk sale ini. */
   total: number;
@@ -561,12 +572,36 @@ function isCatalogItem(it: PosSaleItemInput): it is CatalogItemInput {
 
 export async function createPosSale(input: {
   bankAccountId: string;
-  paymentMethod: PaymentMethod;
+  /** "cash" / "qris" = paid langsung. "pending" = pesanan (stok
+   *  dikurangkan tapi tidak ada cashflow event sampai settle). */
+  paymentMethod: PaymentMethod | "pending";
   items: PosSaleItemInput[];
+  /** Nama pemesan — wajib untuk semua sale (juga sebagai
+   *  konfirmasi anti-kepencet sebelum commit). */
+  customerName: string;
+  /** Mode fulfillment per transaksi. Default dipakai untuk item
+   *  yang tidak override-nya tidak di-set. */
+  fulfillmentType: FulfillmentType;
+  /** Opsional: per-item override fulfillment. Key = cartKey
+   *  client-side ("p:<productId>" atau "p:<id>|v:<variantId>" untuk
+   *  catalog, "c:<localId>" untuk custom). Value yang sama dengan
+   *  transaction-level boleh di-omit. */
+  itemFulfillmentOverrides?: Record<string, FulfillmentType>;
 }): Promise<ActionResult<{ saleId: string; total: number }>> {
   if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
-  if (input.paymentMethod !== "cash" && input.paymentMethod !== "qris")
+  if (
+    input.paymentMethod !== "cash" &&
+    input.paymentMethod !== "qris" &&
+    input.paymentMethod !== "pending"
+  )
     return { ok: false, error: "Payment method tidak valid" };
+  if (!input.customerName?.trim())
+    return { ok: false, error: "Nama pemesan wajib diisi" };
+  if (
+    input.fulfillmentType !== "dine_in" &&
+    input.fulfillmentType !== "take_away"
+  )
+    return { ok: false, error: "Mode fulfillment tidak valid" };
   if (!Array.isArray(input.items) || input.items.length === 0)
     return { ok: false, error: "Keranjang kosong" };
   for (const it of input.items) {
@@ -751,6 +786,13 @@ export async function createPosSale(input: {
   // 5. Insert pos_sales dulu (cashflow_transaction_id null sementara).
   //    Urutan ini menghindari row cashflow_transactions yatim kalau
   //    penulisan items/sale gagal di tengah jalan.
+  //
+  //    Untuk paymentMethod='pending' (pesanan), tidak ada cashflow
+  //    event sampai admin/kasir settle pesanan tsb. Sale tetap
+  //    di-insert dengan payment_status='pending' + pending_at=now
+  //    supaya stok tetap berkurang (item rows aggregate).
+  const isPesanan = input.paymentMethod === "pending";
+  const nowIso = now.toISOString();
   const { data: sale, error: saleErr } = await supabase
     .from("pos_sales")
     .insert({
@@ -763,6 +805,13 @@ export async function createPosSale(input: {
       discount_amount: discountAmount,
       discount_campaign_id: campaign?.id ?? null,
       created_by: gate.userId,
+      customer_name: input.customerName.trim(),
+      fulfillment_type: input.fulfillmentType,
+      payment_status: isPesanan ? "pending" : "paid",
+      pending_at: isPesanan ? nowIso : null,
+      settled_at: isPesanan ? null : nowIso,
+      settled_via: isPesanan ? null : input.paymentMethod,
+      settled_by: isPesanan ? null : gate.userId,
     } as never)
     .select("id")
     .single();
@@ -770,21 +819,54 @@ export async function createPosSale(input: {
     return { ok: false, error: saleErr?.message ?? "Gagal menyimpan sale" };
 
   // 6. Insert pos_sale_items (snapshot).
+  //    Per-item fulfillment override: kalau key cart match di
+  //    `itemFulfillmentOverrides` DAN beda dengan transaction-level
+  //    `fulfillmentType`, simpan override-nya. Selain itu null —
+  //    UI render fallback ke transaction-level.
+  const overrides = input.itemFulfillmentOverrides ?? {};
+  // Rebuild per-row cartKey mengikuti pola di POSClient
+  // (catalog: "p:<id>" atau "p:<id>|v:<variantId>"; custom item
+  // tidak punya key stabil di server karena localId hanya hidup di
+  // client — kasir yang override custom item harus konsisten via
+  // index pemetaan, tapi untuk MVP custom items tidak men-support
+  // per-item override → di-skip).
   const { error: itemsErr } = await supabase.from("pos_sale_items").insert(
-    itemsResolved.map((it) => ({
-      sale_id: sale.id,
-      product_id: it.productId,
-      product_name: it.productName,
-      variant_id: it.variantId,
-      variant_name: it.variantName,
-      unit_price: it.unitPrice,
-      qty: it.qty,
-      subtotal: it.subtotal,
-    }))
+    itemsResolved.map((it) => {
+      let cartKey: string | null = null;
+      if (it.productId) {
+        cartKey = it.variantId
+          ? `p:${it.productId}|v:${it.variantId}`
+          : `p:${it.productId}`;
+      }
+      const overrideValue = cartKey ? overrides[cartKey] : undefined;
+      const fulfillment =
+        overrideValue && overrideValue !== input.fulfillmentType
+          ? overrideValue
+          : null;
+      return {
+        sale_id: sale.id,
+        product_id: it.productId,
+        product_name: it.productName,
+        variant_id: it.variantId,
+        variant_name: it.variantName,
+        unit_price: it.unitPrice,
+        qty: it.qty,
+        subtotal: it.subtotal,
+        fulfillment_type: fulfillment,
+      };
+    }) as never
   );
   if (itemsErr) {
     await supabase.from("pos_sales").delete().eq("id", sale.id);
     return { ok: false, error: itemsErr.message };
+  }
+
+  // Untuk pesanan, lewati cashflow insert. Sale baru di-link ke
+  // cashflow_transactions saat settle (via settlePesanan).
+  if (isPesanan) {
+    revalidatePath("/pos", "layout");
+    revalidatePath("/pos/pesanan", "layout");
+    return { ok: true, data: { saleId: sale.id, total } };
   }
 
   // 7. Find-or-create monthly statement.
@@ -831,7 +913,7 @@ export async function createPosSale(input: {
     .maybeSingle();
   const nextSortOrder = (maxRow?.sort_order ?? -1) + 1;
 
-  // 9. Bangun description "POS Cash: 2x Cake A, 1x Custom Item (custom)".
+  // 9. Bangun description "POS Cash [Nama]: 2x Cake A, 1x Custom Item (custom)".
   const methodLabel = input.paymentMethod === "cash" ? "Cash" : "QRIS";
   const itemsLabel = itemsResolved
     .map((it) => {
@@ -845,7 +927,10 @@ export async function createPosSale(input: {
   const discountTag = campaign && discountAmount > 0
     ? ` (diskon ${Math.round(campaign.percentOff)}% −Rp ${discountAmount.toLocaleString("id-ID")})`
     : "";
-  const description = `POS ${methodLabel}${discountTag}: ${itemsLabel}`;
+  const customerTag = input.customerName.trim()
+    ? ` [${input.customerName.trim()}]`
+    : "";
+  const description = `POS ${methodLabel}${customerTag}${discountTag}: ${itemsLabel}`;
 
   // 10. Insert cashflow_transactions (credit).
   const { data: tx, error: txErr } = await supabase
@@ -859,7 +944,9 @@ export async function createPosSale(input: {
       credit: total,
       running_balance: null,
       category:
-        input.paymentMethod === "cash" ? POS_CASH_CATEGORY : POS_QRIS_CATEGORY,
+        input.paymentMethod === "qris"
+          ? POS_QRIS_CATEGORY
+          : POS_CASH_CATEGORY,
       branch: account.default_branch ?? "Pare",
       sort_order: nextSortOrder,
     })
@@ -952,7 +1039,7 @@ export async function listPosSaleDates(
  * full history (insights, dll).
  */
 const POS_SALE_LIST_COLUMNS =
-  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id" as const;
+  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via" as const;
 
 export async function listRecentPosSales(
   bankAccountId: string,
@@ -978,6 +1065,10 @@ export async function listRecentPosSales(
     discount_amount: number | null;
     voided_at: string | null;
     cashflow_transaction_id: string | null;
+    customer_name: string | null;
+    fulfillment_type: FulfillmentType | null;
+    payment_status: "paid" | "pending";
+    settled_via: SettleVia | null;
   };
   let sales: SaleRow[] = [];
   if (saleDate) {
@@ -1143,7 +1234,11 @@ export async function listRecentPosSales(
     id: s.id,
     saleDate: s.sale_date,
     saleTime: s.sale_time ?? "",
-    paymentMethod: s.payment_method as PaymentMethod,
+    paymentMethod: s.payment_method as PosSaleSummary["paymentMethod"],
+    customerName: s.customer_name,
+    fulfillmentType: s.fulfillment_type,
+    paymentStatus: s.payment_status,
+    settledVia: s.settled_via,
     total: Number(s.total),
     grossTotal: s.gross_total != null ? Number(s.gross_total) : null,
     discountAmount: s.discount_amount != null ? Number(s.discount_amount) : 0,
