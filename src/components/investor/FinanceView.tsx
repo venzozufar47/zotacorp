@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { formatRp, formatIDR } from "@/lib/cashflow/format";
 import { BANK_LABELS, BANK_COLORS } from "@/lib/cashflow/bank-display";
+import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
+import { BranchBreakdownPanel } from "@/components/admin/finance/BranchBreakdownPanel";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { InvestorTxRow } from "@/lib/actions/investor-finance.actions";
 import { getStatementPdfUrlForInvestor } from "@/lib/actions/investor-finance.actions";
@@ -338,6 +340,14 @@ export function FinanceView({
                 );
               })}
             </ul>
+            <div className="border-t border-border px-4 py-3">
+              <Link
+                href={`/investor/finance/rekening/${activeAcc.id}?bu=${encodeURIComponent(activeBu)}`}
+                className="press-feedback inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+              >
+                Lihat ledger lifetime + breakdown →
+              </Link>
+            </div>
           </aside>
 
           {/* Detail — di-render dari server component lewat Suspense
@@ -357,9 +367,11 @@ export function FinanceView({
 export function BundleDetail({
   acc,
   bundle,
+  businessUnit,
 }: {
   acc: AccountSummaryProp;
   bundle: StmtBundleProp;
+  businessUnit: string;
 }) {
   const [q, setQ] = useState("");
   const [flow, setFlow] = useState<"all" | "credit" | "debit">("all");
@@ -434,6 +446,15 @@ export function BundleDetail({
   const displayOpening = bundle.statement.openingBalance;
   const displayClosing = bundle.statement.closingBalance;
 
+  // Saldo invariant: opening + Σkredit − Σdebit harus = closing.
+  // Selisih > 1 rupiah → ada drift (tx hilang / closing salah set).
+  // Cash skip — opening/closing sudah di-derive dari formula yang
+  // sama jadi tidak akan ada drift by definition.
+  const expectedClosing =
+    displayOpening + bundle.summary.totalCredit - bundle.summary.totalDebit;
+  const saldoDrift =
+    acc.bank === "cash" ? 0 : Math.round(expectedClosing - displayClosing);
+
   const uploaderAt = bundle.uploader.at
     ? new Date(bundle.uploader.at).toLocaleDateString("id-ID", {
         day: "numeric",
@@ -494,6 +515,20 @@ export function BundleDetail({
               luar periode <strong>{periodLabel}</strong>. Mungkin
               statement ini di-label salah saat upload — minta admin
               re-upload atau ubah period_year/period_month.
+            </span>
+          </div>
+        )}
+
+        {Math.abs(saldoDrift) > 1 && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11.5px] text-rose-900">
+            <span className="text-rose-700 mt-0.5">⚠</span>
+            <span>
+              Saldo statement tidak balance — invariant{" "}
+              <code className="font-mono">opening + Σkredit − Σdebit</code>{" "}
+              menghasilkan {formatRp(expectedClosing)} tapi saldo akhir
+              tercatat {formatRp(displayClosing)} (selisih{" "}
+              <strong>{formatRp(saldoDrift)}</strong>). Mungkin ada tx
+              belum di-record atau closing balance salah set.
             </span>
           </div>
         )}
@@ -677,6 +712,40 @@ export function BundleDetail({
           </tbody>
         </table>
       </div>
+
+      {/* Breakdown panels — reuse komponen yang sama dengan admin
+          rekening detail. Tampilkan kategori (selalu) dan cabang
+          (skip untuk cash, sama dengan lifetime ledger). */}
+      {bundle.transactions.length > 0 && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-5 border-t border-border bg-muted/20">
+          <CategoryBreakdownPanel
+            transactions={bundle.transactions.map((t) => ({
+              id: t.id,
+              date: t.date,
+              time: t.time,
+              debit: t.debit,
+              credit: t.credit,
+              category: t.category,
+              branch: t.branch,
+            }))}
+            businessUnit={businessUnit}
+          />
+          {acc.bank !== "cash" && (
+            <BranchBreakdownPanel
+              transactions={bundle.transactions.map((t) => ({
+                id: t.id,
+                date: t.date,
+                time: t.time,
+                debit: t.debit,
+                credit: t.credit,
+                category: t.category,
+                branch: t.branch,
+              }))}
+              businessUnit={businessUnit}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

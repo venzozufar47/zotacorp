@@ -98,12 +98,14 @@ export async function fetchInvestorDashboardData(input: {
       }
     }
     // Opex = total operating expense − COGS (since COGS sudah
-    // termasuk di operatingExpense)
+    // termasuk di operatingExpense). Pajak final UMKM 0,5% omzet
+    // sudah ke-record oleh admin di kategori "Pajak" yang masuk
+    // operatingExpense — jadi netProfit = operatingProfit (jangan
+    // dipotong lagi 0.5% — itu double-count).
     const opex = Math.max(0, opExpense - cogs);
     const grossProfit = revenue - cogs;
     const operatingProfit = grossProfit - opex;
-    const tax = Math.max(0, operatingProfit * 0.005); // UMKM 0,5% omzet (estimasi)
-    const netProfit = operatingProfit - tax;
+    const netProfit = operatingProfit;
     return {
       year: m.year,
       month: m.month,

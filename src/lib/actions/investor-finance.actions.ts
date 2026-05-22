@@ -8,35 +8,49 @@ import type { ChronoRow } from "@/lib/cashflow/chronological";
 import type { ActionResult } from "./_gates";
 
 /**
- * Batch fetch saldo terakhir per akun via `closing_balance` statement
- * paling baru. Single round-trip untuk N akun — gantiin per-akun
- * paginated tx fetch yang lambat. Statement order via composite key
- * (year DESC, month DESC) di Postgres.
+ * Saldo terakhir per akun bank (non-cash) — pakai metode SAMA dengan
+ * admin landing (`computeLatestBalance` anchor + cumulative). Sebelum-
+ * nya pakai shortcut `closing_balance` latest statement — bisa drift
+ * kalau admin edit statement tanpa update closing field. Sekarang
+ * derive dari raw tx supaya konsisten 100% dengan admin.
  *
- * Akun tanpa statement → tidak ada entry; caller fallback ke 0 atau
- * `computeLatestBalance` heavy-method.
+ * Per akun: 1+ paginated query tx. Bisa dilakukan parallel via
+ * Promise.all di caller.
  */
-export async function getLatestClosingBalances(
-  accIds: string[]
-): Promise<Record<string, number>> {
-  if (accIds.length === 0) return {};
+export async function getBankAccountBalance(accId: string): Promise<number> {
   const user = await getCurrentUser();
-  if (!user) return {};
+  if (!user) return 0;
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data: stmts } = await supabase
     .from("cashflow_statements")
-    .select("bank_account_id, closing_balance, period_year, period_month")
-    .in("bank_account_id", accIds)
-    .order("period_year", { ascending: false })
-    .order("period_month", { ascending: false });
-  const out: Record<string, number> = {};
-  for (const row of data ?? []) {
-    // First row per acc wins karena sudah sorted DESC.
-    if (out[row.bank_account_id] === undefined) {
-      out[row.bank_account_id] = Number(row.closing_balance) || 0;
+    .select("id")
+    .eq("bank_account_id", accId);
+  const stmtIds = (stmts ?? []).map((s) => s.id);
+  if (stmtIds.length === 0) return 0;
+  const rows: ChronoRow[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "transaction_date, transaction_time, debit, credit, running_balance"
+      )
+      .in("statement_id", stmtIds)
+      .range(offset, offset + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const t of data) {
+      rows.push({
+        date: t.transaction_date,
+        time: t.transaction_time,
+        debit: Number(t.debit),
+        credit: Number(t.credit),
+        runningBalance:
+          t.running_balance !== null ? Number(t.running_balance) : null,
+      });
     }
+    if (data.length < PAGE) break;
   }
-  return out;
+  return computeLatestBalance(rows);
 }
 
 /**

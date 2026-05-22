@@ -10,7 +10,7 @@ import {
 } from "@/lib/actions/cashflow.actions";
 import {
   getStatementSummaryForInvestor,
-  getLatestClosingBalances,
+  getBankAccountBalance,
   getTxCountsForStatements,
   getCashAccountBalance,
 } from "@/lib/actions/investor-finance.actions";
@@ -62,32 +62,28 @@ export default async function InvestorFinancePage({
   const { data: accountsRaw } = await listBankAccounts(activeBu);
   const accountsActive = (accountsRaw ?? []).filter((a) => a.is_active);
 
-  // Saldo: bank account via closing_balance grouped query (cepat),
-  // cash via net-sum tx (cash tidak punya closing_balance valid).
-  const nonCashIds = accountsActive
-    .filter((a) => a.bank !== "cash")
-    .map((a) => a.id);
-  const cashIds = accountsActive
-    .filter((a) => a.bank === "cash")
-    .map((a) => a.id);
-  const [balances, cashBalanceEntries] = await Promise.all([
-    getLatestClosingBalances(nonCashIds),
-    Promise.all(
-      cashIds.map(async (id) => [id, await getCashAccountBalance(id)] as const)
-    ),
-  ]);
-  const cashBalances: Record<string, number> = Object.fromEntries(
-    cashBalanceEntries
+  // Saldo: pakai metode SAMA dengan admin landing (computeLatestBalance
+  // dengan anchor running_balance) untuk semua akun — bank + cash.
+  // Cash filter exclude POS_QRIS di getCashAccountBalance. Bank
+  // pakai getBankAccountBalance (full ledger). Parallel per acc.
+  const balanceEntries = await Promise.all(
+    accountsActive.map(
+      async (acc) =>
+        [
+          acc.id,
+          acc.bank === "cash"
+            ? await getCashAccountBalance(acc.id)
+            : await getBankAccountBalance(acc.id),
+        ] as const
+    )
   );
+  const balances: Record<string, number> = Object.fromEntries(balanceEntries);
   const accounts: AccountSummaryProp[] = accountsActive.map((acc) => ({
     id: acc.id,
     bank: acc.bank as BankCode,
     accountName: acc.account_name,
     accountNumber: acc.account_number,
-    balance:
-      acc.bank === "cash"
-        ? cashBalances[acc.id] ?? 0
-        : balances[acc.id] ?? 0,
+    balance: balances[acc.id] ?? 0,
   }));
 
   const activeAccId =
@@ -117,7 +113,11 @@ export default async function InvestorFinancePage({
   const detailSlot =
     activeStmtId && activeAcc ? (
       <Suspense key={activeStmtId} fallback={<StatementDetailSkeleton />}>
-        <StatementDetailLoader statementId={activeStmtId} acc={activeAcc} />
+        <StatementDetailLoader
+          statementId={activeStmtId}
+          acc={activeAcc}
+          businessUnit={activeBu}
+        />
       </Suspense>
     ) : null;
 
@@ -137,9 +137,11 @@ export default async function InvestorFinancePage({
 async function StatementDetailLoader({
   statementId,
   acc,
+  businessUnit,
 }: {
   statementId: string;
   acc: AccountSummaryProp;
+  businessUnit: string;
 }) {
   const res = await getStatementSummaryForInvestor(statementId);
   if (!res.ok || !res.data) {
@@ -155,7 +157,9 @@ async function StatementDetailLoader({
     summary: res.data.summary,
     transactions: res.data.transactions,
   };
-  return <BundleDetail acc={acc} bundle={bundle} />;
+  return (
+    <BundleDetail acc={acc} bundle={bundle} businessUnit={businessUnit} />
+  );
 }
 
 function StatementDetailSkeleton() {
