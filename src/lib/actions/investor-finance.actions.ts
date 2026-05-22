@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
+import { computeLatestBalance } from "@/lib/cashflow/balance";
+import type { ChronoRow } from "@/lib/cashflow/chronological";
 import type { ActionResult } from "./_gates";
 
 /**
@@ -38,11 +40,11 @@ export async function getLatestClosingBalances(
 }
 
 /**
- * Saldo cash account — tidak bisa pakai `closing_balance` statement
- * karena cash tidak punya flow upload-verify PDF (closing_balance
- * tetap 0). Derive lewat net sum (credit − debit) seluruh tx, exclude
- * POS_QRIS_CATEGORY (saldo kas fisik tidak boleh ikut tx digital).
- * Paginate untuk akun dengan banyak tx.
+ * Saldo cash account — `closing_balance` statement selalu 0 (cash
+ * tidak punya flow upload-verify PDF). Match logic landing page admin
+ * + rekening detail lama: `computeLatestBalance` dengan anchor
+ * `running_balance` (kalau ada) + filter tx kategori POS_QRIS_CATEGORY
+ * (saldo kas fisik tidak ikut tx QRIS digital).
  */
 export async function getCashAccountBalance(
   accId: string
@@ -56,22 +58,31 @@ export async function getCashAccountBalance(
     .eq("bank_account_id", accId);
   const stmtIds = (stmts ?? []).map((s) => s.id);
   if (stmtIds.length === 0) return 0;
-  let net = 0;
+  const rows: ChronoRow[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from("cashflow_transactions")
-      .select("debit, credit, category")
+      .select(
+        "transaction_date, transaction_time, debit, credit, running_balance, category"
+      )
       .in("statement_id", stmtIds)
       .range(offset, offset + PAGE - 1);
     if (error || !data || data.length === 0) break;
     for (const t of data) {
       if (t.category === POS_QRIS_CATEGORY) continue;
-      net += Number(t.credit) - Number(t.debit);
+      rows.push({
+        date: t.transaction_date,
+        time: t.transaction_time,
+        debit: Number(t.debit),
+        credit: Number(t.credit),
+        runningBalance:
+          t.running_balance !== null ? Number(t.running_balance) : null,
+      });
     }
     if (data.length < PAGE) break;
   }
-  return net;
+  return computeLatestBalance(rows);
 }
 
 /**
