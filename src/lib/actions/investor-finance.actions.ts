@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/cached";
+import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import type { ActionResult } from "./_gates";
 
 /**
@@ -34,6 +35,43 @@ export async function getLatestClosingBalances(
     }
   }
   return out;
+}
+
+/**
+ * Saldo cash account — tidak bisa pakai `closing_balance` statement
+ * karena cash tidak punya flow upload-verify PDF (closing_balance
+ * tetap 0). Derive lewat net sum (credit − debit) seluruh tx, exclude
+ * POS_QRIS_CATEGORY (saldo kas fisik tidak boleh ikut tx digital).
+ * Paginate untuk akun dengan banyak tx.
+ */
+export async function getCashAccountBalance(
+  accId: string
+): Promise<number> {
+  const user = await getCurrentUser();
+  if (!user) return 0;
+  const supabase = await createClient();
+  const { data: stmts } = await supabase
+    .from("cashflow_statements")
+    .select("id")
+    .eq("bank_account_id", accId);
+  const stmtIds = (stmts ?? []).map((s) => s.id);
+  if (stmtIds.length === 0) return 0;
+  let net = 0;
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cashflow_transactions")
+      .select("debit, credit, category")
+      .in("statement_id", stmtIds)
+      .range(offset, offset + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const t of data) {
+      if (t.category === POS_QRIS_CATEGORY) continue;
+      net += Number(t.credit) - Number(t.debit);
+    }
+    if (data.length < PAGE) break;
+  }
+  return net;
 }
 
 /**

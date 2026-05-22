@@ -12,6 +12,7 @@ import {
   getStatementSummaryForInvestor,
   getLatestClosingBalances,
   getTxCountsForStatements,
+  getCashAccountBalance,
 } from "@/lib/actions/investor-finance.actions";
 import type { BankCode } from "@/lib/cashflow/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,15 +61,33 @@ export default async function InvestorFinancePage({
   // Shell data — semua query ringan (4 RT). Detail panel streaming.
   const { data: accountsRaw } = await listBankAccounts(activeBu);
   const accountsActive = (accountsRaw ?? []).filter((a) => a.is_active);
-  const accIds = accountsActive.map((a) => a.id);
 
-  const balances = await getLatestClosingBalances(accIds);
+  // Saldo: bank account via closing_balance grouped query (cepat),
+  // cash via net-sum tx (cash tidak punya closing_balance valid).
+  const nonCashIds = accountsActive
+    .filter((a) => a.bank !== "cash")
+    .map((a) => a.id);
+  const cashIds = accountsActive
+    .filter((a) => a.bank === "cash")
+    .map((a) => a.id);
+  const [balances, cashBalanceEntries] = await Promise.all([
+    getLatestClosingBalances(nonCashIds),
+    Promise.all(
+      cashIds.map(async (id) => [id, await getCashAccountBalance(id)] as const)
+    ),
+  ]);
+  const cashBalances: Record<string, number> = Object.fromEntries(
+    cashBalanceEntries
+  );
   const accounts: AccountSummaryProp[] = accountsActive.map((acc) => ({
     id: acc.id,
     bank: acc.bank as BankCode,
     accountName: acc.account_name,
     accountNumber: acc.account_number,
-    balance: balances[acc.id] ?? 0,
+    balance:
+      acc.bank === "cash"
+        ? cashBalances[acc.id] ?? 0
+        : balances[acc.id] ?? 0,
   }));
 
   const activeAccId =
