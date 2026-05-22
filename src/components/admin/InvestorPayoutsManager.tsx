@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Edit2, Loader2, Plus, Trash2 } from "lucide-react";
@@ -253,7 +254,13 @@ function PayoutForm({
     });
   }
 
-  return (
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
+  const modal = (
     <div
       className="fixed inset-0 z-50 bg-foreground/40 flex items-center justify-center p-4"
       onClick={onClose}
@@ -350,4 +357,7 @@ function PayoutForm({
       </div>
     </div>
   );
+
+  if (!mounted) return null;
+  return createPortal(modal, document.body);
 }
