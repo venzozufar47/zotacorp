@@ -76,31 +76,18 @@ export async function getBuMetrics(input: {
     byKey.set(`${r.period_year}-${r.period_month}`, r);
   }
 
-  // 2. POS-derived per bulan — query pos_sales filtered by BU
-  //    (via join bank_accounts). One pass agregat per bulan.
-  const { data: posRaw } = await supabase
-    .from("pos_sales")
-    .select(
-      "id, sale_date, customer_name, cashflow_statements(bank_accounts(business_unit))" as never
-    )
-    .gte("sale_date", startIso)
-    .lt("sale_date", endIso)
-    .is("voided_at", null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  type PosRow = {
-    id: string;
-    sale_date: string;
-    customer_name: string | null;
-    cashflow_statements: { bank_accounts: { business_unit: string } } | null;
-  };
-  // The above join may not work because pos_sales has bank_account_id directly.
-  // Simpler: join via bank_account_id.
+  // 2. POS-derived per bulan — pos_sales punya FK langsung ke
+  //    bank_accounts, jadi filter via bank_account_id. Override
+  //    PostgREST default LIMIT 1000 dengan .range() — periode bisa
+  //    18 bulan dan POS bisa puluhan ribu transaksi (kalau di-cap,
+  //    angka order keliatan "stuck" di 1000).
   const { data: posAlt } = await supabase
     .from("pos_sales")
     .select("id, sale_date, customer_name, bank_account_id")
     .gte("sale_date", startIso)
     .lt("sale_date", endIso)
-    .is("voided_at", null);
+    .is("voided_at", null)
+    .range(0, 199_999);
   const { data: accRaw } = await supabase
     .from("bank_accounts")
     .select("id, business_unit")
@@ -126,9 +113,6 @@ export async function getBuMetrics(input: {
       customerSetByMonth.set(k, set);
     }
   }
-  // Avoid unused warning for the speculative join attempt above.
-  void posRaw;
-
   // 3. Build full timeline
   const out: BuMonthlyMetric[] = [];
   let y = input.from.year;
