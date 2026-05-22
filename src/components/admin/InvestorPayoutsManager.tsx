@@ -1,0 +1,353 @@
+"use client";
+
+import { useMemo, useState, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Edit2, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  upsertPayout,
+  deletePayout,
+  listPayoutsForContract,
+  type InvestorPayout,
+} from "@/lib/actions/investor-payouts.actions";
+import type { InvestorContract } from "@/lib/actions/investor.actions";
+import { formatRp } from "@/lib/cashflow/format";
+
+interface Investor {
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+}
+
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "Mei",
+  "Jun",
+  "Jul",
+  "Agu",
+  "Sep",
+  "Okt",
+  "Nov",
+  "Des",
+];
+
+export function InvestorPayoutsManager({
+  contracts,
+  investors,
+}: {
+  contracts: InvestorContract[];
+  investors: Investor[];
+}) {
+  const [selectedContract, setSelectedContract] = useState(
+    contracts[0]?.id ?? ""
+  );
+  const [payouts, setPayouts] = useState<InvestorPayout[]>([]);
+  const [editing, setEditing] = useState<InvestorPayout | "new" | null>(null);
+  const router = useRouter();
+
+  const contract = useMemo(
+    () => contracts.find((c) => c.id === selectedContract),
+    [contracts, selectedContract]
+  );
+  const investorName = useMemo(() => {
+    if (!contract) return "";
+    const i = investors.find((x) => x.userId === contract.userId);
+    return i?.fullName ?? i?.email ?? contract.userId.slice(0, 8);
+  }, [contract, investors]);
+
+  useEffect(() => {
+    if (!selectedContract) return;
+    listPayoutsForContract(selectedContract).then(setPayouts);
+  }, [selectedContract]);
+
+  if (contracts.length === 0) {
+    return (
+      <div className="rounded-2xl border-2 border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
+        Buat kontrak dulu di tab &ldquo;Kontrak&rdquo; sebelum bisa input payouts.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <label className="text-xs flex items-center gap-2">
+          <span className="text-muted-foreground">Kontrak:</span>
+          <select
+            value={selectedContract}
+            onChange={(e) => setSelectedContract(e.target.value)}
+            className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+          >
+            {contracts.map((c) => {
+              const i = investors.find((x) => x.userId === c.userId);
+              const name = i?.fullName ?? i?.email ?? c.userId.slice(0, 8);
+              return (
+                <option key={c.id} value={c.id}>
+                  {name} — {c.businessUnit}
+                </option>
+              );
+            })}
+          </select>
+        </label>
+        {contract && (
+          <button
+            type="button"
+            onClick={() => setEditing("new")}
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
+          >
+            <Plus size={14} /> Tambah payout
+          </button>
+        )}
+      </div>
+
+      {contract && (
+        <p className="text-xs text-muted-foreground">
+          {investorName} · {contract.businessUnit} · Bagi hasil{" "}
+          {contract.bagiHasilPct}% / bulan · Total investasi{" "}
+          {formatRp(contract.totalInvestIdr)}
+        </p>
+      )}
+
+      <div className="rounded-2xl border border-border bg-card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40">
+            <tr className="text-left">
+              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Periode laba
+              </th>
+              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
+                Jumlah
+              </th>
+              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Tanggal transfer
+              </th>
+              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Referensi
+              </th>
+              <th className="px-3 py-2 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payouts.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="px-3 py-8 text-center text-muted-foreground"
+                >
+                  Belum ada payout.
+                </td>
+              </tr>
+            ) : (
+              payouts.map((p) => (
+                <tr key={p.id} className="border-t border-border">
+                  <td className="px-3 py-2 font-medium">
+                    {MONTH_NAMES[p.periodMonth - 1]} {p.periodYear}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold">
+                    {formatRp(p.amountIdr)}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {p.paidAt
+                      ? new Date(p.paidAt).toLocaleDateString("id-ID", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                    {p.ref ?? "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(p)}
+                      className="text-muted-foreground hover:text-foreground p-1"
+                      aria-label="Edit"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && contract && (
+        <PayoutForm
+          payout={editing === "new" ? null : editing}
+          contract={contract}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            listPayoutsForContract(selectedContract).then(setPayouts);
+            router.refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PayoutForm({
+  payout,
+  contract,
+  onClose,
+  onSaved,
+}: {
+  payout: InvestorPayout | null;
+  contract: InvestorContract;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isNew = !payout;
+  const now = new Date();
+  const [periodYear, setPeriodYear] = useState(
+    payout?.periodYear ?? now.getFullYear()
+  );
+  const [periodMonth, setPeriodMonth] = useState(
+    payout?.periodMonth ?? now.getMonth() + 1
+  );
+  const [amount, setAmount] = useState(String(payout?.amountIdr ?? ""));
+  const [paidAt, setPaidAt] = useState(
+    payout?.paidAt ? payout.paidAt.slice(0, 10) : ""
+  );
+  const [ref, setRef] = useState(payout?.ref ?? "");
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    startTransition(async () => {
+      const res = await upsertPayout({
+        id: payout?.id,
+        contractId: contract.id,
+        periodYear,
+        periodMonth,
+        amountIdr: Number(amount),
+        paidAt: paidAt ? new Date(paidAt).toISOString() : null,
+        ref: ref || null,
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal");
+        return;
+      }
+      toast.success(isNew ? "Payout dicatat" : "Payout diperbarui");
+      onSaved();
+    });
+  }
+  function remove() {
+    if (!payout) return;
+    if (!confirm("Hapus payout ini?")) return;
+    startTransition(async () => {
+      const res = await deletePayout(payout.id);
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal");
+        return;
+      }
+      toast.success("Payout dihapus");
+      onSaved();
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-foreground/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-card border border-border p-5 space-y-3 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-semibold">
+          {isNew ? "Tambah payout" : "Edit payout"}
+        </h3>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs">
+            <span className="text-muted-foreground">Tahun</span>
+            <input
+              type="number"
+              value={periodYear}
+              onChange={(e) => setPeriodYear(Number(e.target.value))}
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="text-muted-foreground">Bulan</span>
+            <select
+              value={periodMonth}
+              onChange={(e) => setPeriodMonth(Number(e.target.value))}
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+            >
+              {MONTH_NAMES.map((m, i) => (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs col-span-2">
+            <span className="text-muted-foreground">Jumlah (Rp)</span>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="text-muted-foreground">Tanggal transfer</span>
+            <input
+              type="date"
+              value={paidAt}
+              onChange={(e) => setPaidAt(e.target.value)}
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="text-muted-foreground">Referensi</span>
+            <input
+              value={ref}
+              onChange={(e) => setRef(e.target.value)}
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm font-mono"
+            />
+          </label>
+        </div>
+        <div className="flex items-center justify-between pt-2">
+          {!isNew && (
+            <button
+              type="button"
+              onClick={remove}
+              disabled={pending}
+              className="inline-flex items-center gap-1 text-destructive text-sm font-semibold"
+            >
+              <Trash2 size={14} /> Hapus
+            </button>
+          )}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={pending}
+              className="h-9 px-3 rounded-lg border border-border text-sm font-semibold"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={pending}
+              className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2"
+            >
+              {pending && <Loader2 size={14} className="animate-spin" />}
+              Simpan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

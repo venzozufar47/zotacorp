@@ -1,66 +1,122 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import Link from "next/link";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { listInvestorsForAdmin } from "@/lib/actions/investor.actions";
+import {
+  listInvestorsForAdmin,
+  listInvestorContracts,
+} from "@/lib/actions/investor.actions";
+import { getBuMetrics } from "@/lib/actions/investor-metrics.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { InvestorAccessManager } from "@/components/admin/InvestorAccessManager";
+import { InvestorContractsManager } from "@/components/admin/InvestorContractsManager";
+import { InvestorPayoutsManager } from "@/components/admin/InvestorPayoutsManager";
+import { BuMonthlyMetricsManager } from "@/components/admin/BuMonthlyMetricsManager";
 
-/**
- * Admin tools untuk kelola investor: lihat siapa yang daftar, assign
- * unit bisnis tempat mereka berinvestasi, revoke akses kalau perlu.
- */
-export default async function AdminInvestorsPage() {
+interface SearchParams {
+  tab?: string;
+  bu?: string;
+}
+
+const TABS = [
+  { id: "contracts", label: "Kontrak" },
+  { id: "payouts", label: "Payouts" },
+  { id: "metrics", label: "Metrik BU" },
+] as const;
+
+export default async function AdminInvestorsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [investorsRes, businessUnits] = await Promise.all([
+  const sp = await searchParams;
+  const tab = (TABS.find((t) => t.id === sp.tab)?.id ?? "contracts") as
+    | "contracts"
+    | "payouts"
+    | "metrics";
+
+  const [investorsRes, businessUnits, contractsRes] = await Promise.all([
     listInvestorsForAdmin(),
     listBusinessUnits(),
+    listInvestorContracts(),
   ]);
   const investors = investorsRes.ok ? investorsRes.data ?? [] : [];
+  const contracts = contractsRes.ok ? contractsRes.data ?? [] : [];
   const buNames = businessUnits.map((b) => b.name);
 
-  // Map (userId|businessUnit) → assignment.id, supaya UI bisa render
-  // tombol revoke per chip tanpa re-query.
-  const assignmentIdByPair: Record<string, string> = {};
-  if (investors.length > 0) {
-    const supabase = createServiceClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    const { data } = await supabase
-      .from("investor_business_unit_assignments" as never)
-      .select("id, user_id, business_unit")
-      .in(
-        "user_id",
-        investors.map((i) => i.userId)
-      );
-    for (const r of (data ?? []) as unknown as Array<{
-      id: string;
-      user_id: string;
-      business_unit: string;
-    }>) {
-      assignmentIdByPair[`${r.user_id}|${r.business_unit}`] = r.id;
+  // Metric tab — preload data untuk BU yang dipilih
+  const metricsBu = sp.bu && buNames.includes(sp.bu) ? sp.bu : buNames[0] ?? "";
+  let metricsRows: Awaited<ReturnType<typeof getBuMetrics>> = [];
+  if (tab === "metrics" && metricsBu) {
+    const now = new Date();
+    const toY = now.getFullYear();
+    const toM = now.getMonth() + 1;
+    let fromY = toY,
+      fromM = toM - 17;
+    while (fromM < 1) {
+      fromM += 12;
+      fromY -= 1;
     }
+    metricsRows = await getBuMetrics({
+      businessUnit: metricsBu,
+      from: { year: fromY, month: fromM },
+      to: { year: toY, month: toM },
+    });
+    metricsRows = metricsRows.slice().reverse(); // newest first
   }
 
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="Investor"
-        subtitle="Daftar investor + assignment unit bisnis. Investor self-daftar via /register-investor; halaman dashboard mereka kosong sampai admin meng-assign minimal satu unit bisnis."
+        subtitle="Kelola investor: assignment, kontrak, payouts, dan metrik operasional BU."
       />
-      <InvestorAccessManager
-        investors={investors}
-        businessUnits={buNames}
-        assignmentIdByPair={assignmentIdByPair}
-      />
+
+      {/* Tab nav */}
+      <div className="flex gap-1 border-b border-border overflow-x-auto">
+        {TABS.map((t) => {
+          const active = t.id === tab;
+          return (
+            <Link
+              key={t.id}
+              href={`/admin/investors?tab=${t.id}`}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${
+                active
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      {tab === "contracts" && (
+        <InvestorContractsManager
+          contracts={contracts}
+          investors={investors}
+          businessUnits={buNames}
+        />
+      )}
+
+      {tab === "payouts" && (
+        <InvestorPayoutsManager contracts={contracts} investors={investors} />
+      )}
+
+      {tab === "metrics" && metricsBu && (
+        <BuMonthlyMetricsManager
+          businessUnits={buNames}
+          initialBu={metricsBu}
+          initialMetrics={metricsRows}
+        />
+      )}
     </div>
   );
 }
