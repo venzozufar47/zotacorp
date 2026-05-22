@@ -320,12 +320,18 @@ export function FinanceView({
                       <span
                         className={
                           "text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded " +
-                          (s.status === "confirmed"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-amber-100 text-amber-800")
+                          (activeAcc.bank === "cash"
+                            ? "bg-sky-100 text-sky-800"
+                            : s.status === "confirmed"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-amber-100 text-amber-800")
                         }
                       >
-                        {s.status === "confirmed" ? "Match" : "Proses"}
+                        {activeAcc.bank === "cash"
+                          ? "Sync"
+                          : s.status === "confirmed"
+                            ? "Match"
+                            : "Proses"}
                       </span>
                     </button>
                   </li>
@@ -408,14 +414,35 @@ export function BundleDetail({
   // Integrity check: jumlah tx yang tanggal-nya di luar periode
   // statement. Kalau ada → label statement vs data tidak sinkron
   // (admin upload salah set period). Surface ke user supaya tidak
-  // bingung lihat angka yang aneh.
-  const outOfPeriodCount = bundle.transactions.reduce((n, t) => {
-    const [y, m] = t.date.split("-");
-    return Number(y) === bundle.statement.periodYear &&
-      Number(m) === bundle.statement.periodMonth
-      ? n
-      : n + 1;
-  }, 0);
+  // bingung lihat angka yang aneh. Skip untuk cash karena tx-nya
+  // di-derive dari Google Sheet sync — opening tx kadang punya
+  // tanggal carry-over yang sah.
+  const outOfPeriodCount =
+    acc.bank === "cash"
+      ? 0
+      : bundle.transactions.reduce((n, t) => {
+          const [y, m] = t.date.split("-");
+          return Number(y) === bundle.statement.periodYear &&
+            Number(m) === bundle.statement.periodMonth
+            ? n
+            : n + 1;
+        }, 0);
+
+  // Cash account tidak punya opening/closing balance konsep statement
+  // (tidak ada PDF rekening koran). Derive saldo dari running_balance
+  // tx pertama/terakhir kalau opening/closing di-DB nol.
+  const isCash = acc.bank === "cash";
+  const txAsc = bundle.transactions; // already chronological asc from server
+  const firstTx = txAsc[0];
+  const lastTx = txAsc[txAsc.length - 1];
+  const displayOpening =
+    isCash && firstTx?.runningBalance != null
+      ? firstTx.runningBalance - firstTx.credit + firstTx.debit
+      : bundle.statement.openingBalance;
+  const displayClosing =
+    isCash && lastTx?.runningBalance != null
+      ? lastTx.runningBalance
+      : bundle.statement.closingBalance;
 
   const uploaderAt = bundle.uploader.at
     ? new Date(bundle.uploader.at).toLocaleDateString("id-ID", {
@@ -484,7 +511,7 @@ export function BundleDetail({
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <SumStat
             label="Saldo awal"
-            value={formatRp(bundle.statement.openingBalance)}
+            value={formatRp(displayOpening)}
           />
           <SumStat
             label="Total kredit (masuk)"
@@ -498,7 +525,7 @@ export function BundleDetail({
           />
           <SumStat
             label="Saldo akhir"
-            value={formatRp(bundle.statement.closingBalance)}
+            value={formatRp(displayClosing)}
             tone="accent"
           />
         </div>
@@ -580,14 +607,16 @@ export function BundleDetail({
               <Th className="text-right w-[140px]">Debit</Th>
               <Th className="text-right w-[140px]">Kredit</Th>
               <Th className="text-right w-[160px]">Saldo</Th>
-              <Th className="text-right w-[110px]">Status</Th>
+              {acc.bank !== "cash" && (
+                <Th className="text-right w-[110px]">Status</Th>
+              )}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={acc.bank === "cash" ? 6 : 7}
                   className="px-6 py-10 text-center text-[12px] text-muted-foreground"
                 >
                   Tidak ada transaksi yang cocok dengan filter.
@@ -642,15 +671,17 @@ export function BundleDetail({
                 <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
                   {t.runningBalance != null ? formatIDR(t.runningBalance) : "—"}
                 </td>
-                <td className="px-6 py-2.5 text-right">
-                  <StatusBadge
-                    status={
-                      bundle.statement.status === "confirmed"
-                        ? "matched"
-                        : "pending"
-                    }
-                  />
-                </td>
+                {acc.bank !== "cash" && (
+                  <td className="px-6 py-2.5 text-right">
+                    <StatusBadge
+                      status={
+                        bundle.statement.status === "confirmed"
+                          ? "matched"
+                          : "pending"
+                      }
+                    />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
