@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useProgressRouter } from "@/lib/route-progress";
 import {
   ArrowDownUp,
   Banknote,
@@ -87,8 +88,9 @@ export function FinanceView({
   activeStmtId: string | null;
   bundle: StmtBundleProp | null;
 }) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const sp = useSearchParams();
+  const [navPending, startNavTransition] = useTransition();
 
   function setParam(updates: Record<string, string | null>) {
     const params = new URLSearchParams(sp?.toString() ?? "");
@@ -96,7 +98,11 @@ export function FinanceView({
       if (v === null) params.delete(k);
       else params.set(k, v);
     }
-    router.replace(`/investor/finance?${params.toString()}`, { scroll: false });
+    startNavTransition(() => {
+      router.replace(`/investor/finance?${params.toString()}`, {
+        scroll: false,
+      });
+    });
   }
 
   const activeAcc = accounts.find((a) => a.id === activeAccId) ?? null;
@@ -137,7 +143,7 @@ export function FinanceView({
                 key={bu}
                 href={`/investor/finance?bu=${encodeURIComponent(bu)}`}
                 className={
-                  "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border-2 transition " +
+                  "press-feedback inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border-2 transition " +
                   (active
                     ? "bg-primary text-primary-foreground border-primary"
                     : "bg-card text-foreground border-border hover:border-primary/50")
@@ -173,7 +179,7 @@ export function FinanceView({
                 key={a.id}
                 type="button"
                 onClick={() => setParam({ acc: a.id, stmt: null })}
-                className="group relative text-left rounded-2xl p-5 overflow-hidden transition-all"
+                className="press-feedback group relative text-left rounded-2xl p-5 overflow-hidden transition-all"
                 style={{
                   background: active ? color : "var(--card, #fff)",
                   color: active ? "#fff" : undefined,
@@ -242,7 +248,12 @@ export function FinanceView({
 
       {/* Statement list + detail */}
       {activeAcc && (
-        <section className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4">
+        <section
+          className={
+            "grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4 " +
+            (navPending ? "is-pending" : "")
+          }
+        >
           {/* Statement list */}
           <aside className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border">
@@ -270,7 +281,7 @@ export function FinanceView({
                       type="button"
                       onClick={() => setParam({ stmt: s.id })}
                       className={
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors " +
+                        "press-feedback w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors " +
                         (active
                           ? "bg-accent text-primary"
                           : "hover:bg-muted/40 text-foreground")

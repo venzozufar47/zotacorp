@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import { useProgressRouter } from "@/lib/route-progress";
 import Link from "next/link";
 import { formatRp } from "@/lib/cashflow/format";
 import {
@@ -47,9 +48,10 @@ export function InvestorDashboardView({
   commentCounts,
   isAdmin = false,
 }: Props) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const sp = useSearchParams();
   const [period, setPeriod] = useState<Period>(initialPeriod);
+  const [navPending, startNavTransition] = useTransition();
   const [commentOpen, setCommentOpen] = useState<{
     metricId: string;
     label: string;
@@ -66,13 +68,17 @@ export function InvestorDashboardView({
       params.delete("from");
       params.delete("to");
     }
-    router.push(`/investor?${params.toString()}`);
+    startNavTransition(() => {
+      router.push(`/investor?${params.toString()}`);
+    });
   }
 
   function switchBu(bu: string) {
     const params = new URLSearchParams(sp?.toString() ?? "");
     params.set("bu", bu);
-    router.push(`/investor?${params.toString()}`);
+    startNavTransition(() => {
+      router.push(`/investor?${params.toString()}`);
+    });
   }
 
   const agg = useMemo(() => {
@@ -146,6 +152,7 @@ export function InvestorDashboardView({
         />
       )}
 
+      <div className={navPending ? "is-pending space-y-6" : "space-y-6"}>
       <HeroContract
         investorName={investorName}
         contract={data.contract}
@@ -330,11 +337,12 @@ export function InvestorDashboardView({
         </div>
         <Link
           href={`/investor/finance?bu=${encodeURIComponent(businessUnit)}`}
-          className="inline-flex items-center gap-1.5 px-3 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
+          className="press-feedback inline-flex items-center gap-1.5 px-3 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
         >
           Buka detail →
         </Link>
       </section>
+      </div>
 
       {commentOpen && (
         <MetricCommentSheet
@@ -369,7 +377,7 @@ function BuPicker({
             key={bu}
             type="button"
             onClick={() => onChange(bu)}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors border-2 ${
+            className={`press-feedback px-4 py-2 rounded-full text-sm font-semibold transition-colors border-2 ${
               active
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-card text-foreground border-border hover:border-primary/50"

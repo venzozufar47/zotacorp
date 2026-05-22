@@ -38,7 +38,7 @@ export function InvestorPeriodSelector({
             key={p.id}
             type="button"
             onClick={() => onChange({ id: p.id })}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            className={`press-feedback px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               active
                 ? "bg-card text-primary shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
@@ -51,7 +51,7 @@ export function InvestorPeriodSelector({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
+        className={`press-feedback px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
           value.id === "custom"
             ? "bg-card text-primary shadow-sm"
             : "text-muted-foreground hover:text-foreground"

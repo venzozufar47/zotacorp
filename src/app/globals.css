@@ -383,6 +383,40 @@
     .transition-bouncy { transition-timing-function: ease; transition-duration: 150ms; }
   }
 
+  /* ── Press feedback ────────────────────────────────────────────
+   * Instant tactile cue saat user klik element non-<Button> (kartu,
+   * tab, list item). Subtle scale-down + opacity dim, 80ms — kerasa
+   * "press registered" tapi tidak distracting. Apply ke raw
+   * <button>/<a>/<Link> yang clickable.
+   *
+   * Untuk async transition (mid-fetch), pakai `.is-pending` (lihat
+   * di bawah) — beda visual cue.
+   */
+  .press-feedback {
+    transition: transform 80ms ease-out, opacity 80ms ease-out;
+  }
+  .press-feedback:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+
+  /* ── Pending dim ────────────────────────────────────────────────
+   * Untuk panel yang sedang refresh (mid-navigation). Beda dari
+   * press-feedback: ini steady-state opacity drop yang tetap selama
+   * pending, bukan flash 80ms.
+   */
+  .is-pending {
+    opacity: 0.55;
+    pointer-events: none;
+    transition: opacity 150ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .press-feedback,
+    .press-feedback:active { transform: none; transition: none; }
+    .is-pending { transition: none; }
+  }
+
   /* ── Card Wiggle Hover ─────────────────────────────────────── */
   .card-wiggle {
     transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);

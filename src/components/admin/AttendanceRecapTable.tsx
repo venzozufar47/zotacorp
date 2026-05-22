@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useProgressRouter } from "@/lib/route-progress";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Bell, CheckCircle, XCircle, MessageSquare, Pencil, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
 import { AdminEditAttendanceDialog } from "./AdminEditAttendanceDialog";
@@ -114,7 +115,7 @@ export function AttendanceRecapTable({
   sortBy = null,
   sortDir = "desc",
 }: AttendanceRecapTableProps) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 

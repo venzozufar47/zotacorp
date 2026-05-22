@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { onRouteProgressStart } from "@/lib/route-progress";
 
 /**
  * Public wrapper — Suspense boundary diperlukan karena
@@ -65,6 +66,13 @@ function RouteProgressBarInner() {
     document.addEventListener("click", handleClick, { capture: true });
     return () =>
       document.removeEventListener("click", handleClick, { capture: true });
+  }, []);
+
+  // Programmatic nav (router.push/replace/refresh via useProgressRouter)
+  // fires through this emitter — supaya bar muncul juga untuk klik
+  // tombol/card yang trigger nav non-<a>.
+  useEffect(() => {
+    return onRouteProgressStart(() => setPhase("running"));
   }, []);
 
   // Pathname/search change → finish bar. Juga handle programmatic nav

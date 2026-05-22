@@ -3,6 +3,7 @@ import Link from "next/link";
 import { LayoutDashboard, LineChart, UserCircle2, LogOut } from "lucide-react";
 import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { signOut } from "@/lib/actions/auth.actions";
+import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
 
 /**
  * Layout investor portal. Theme Oceanic Editorial — premium, kalem,
@@ -30,6 +31,7 @@ export default async function InvestorLayout({
 
   return (
     <div data-theme="oceanic" className="min-h-screen bg-background">
+      <RouteProgressBar />
       <div className="flex min-h-screen">
         {/* Desktop sidebar */}
         <aside className="hidden md:flex flex-col w-60 border-r border-border bg-card sticky top-0 h-screen">
@@ -53,7 +55,7 @@ export default async function InvestorLayout({
                 <Link
                   key={it.href}
                   href={it.href}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  className="press-feedback flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 >
                   <Icon size={16} strokeWidth={2} />
                   {it.label}
@@ -65,7 +67,7 @@ export default async function InvestorLayout({
             <form action={signOut}>
               <button
                 type="submit"
-                className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                className="press-feedback flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
               >
                 <LogOut size={16} strokeWidth={2} />
                 Sign out
@@ -93,7 +95,7 @@ export default async function InvestorLayout({
               <Link
                 key={it.href}
                 href={it.href}
-                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-foreground"
+                className="press-feedback flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-foreground"
               >
                 <Icon size={18} strokeWidth={2} />
                 {it.label}
@@ -103,7 +105,7 @@ export default async function InvestorLayout({
           <form action={signOut} className="flex-1 flex items-center justify-center">
             <button
               type="submit"
-              className="flex flex-col items-center gap-0.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-destructive"
+              className="press-feedback flex flex-col items-center gap-0.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-destructive"
               aria-label="Sign out"
             >
               <LogOut size={18} strokeWidth={2} />

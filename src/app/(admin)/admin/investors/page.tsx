@@ -86,7 +86,7 @@ export default async function AdminInvestorsPage({
             <Link
               key={t.id}
               href={`/admin/investors?tab=${t.id}`}
-              className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${
+              className={`press-feedback px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${
                 active
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
