@@ -10,6 +10,7 @@ import {
 } from "@/lib/actions/cashflow.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatementEditorClient } from "@/components/admin/finance/StatementEditorClient";
+import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 import { getCategoryPresets } from "@/lib/cashflow/categories";
 
 export default async function StatementEditorPage({
@@ -49,6 +50,12 @@ export default async function StatementEditorPage({
 
   return (
     <div className="space-y-5 animate-fade-up">
+      <RealtimeRefresher
+        channel={`admin-statement-${result.statement.id}`}
+        table="cashflow_transactions"
+        filter={`statement_id=eq.${result.statement.id}`}
+        debounceMs={300}
+      />
       <Link
         href={`/admin/finance?bu=${encodeURIComponent(bankAccount.business_unit)}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

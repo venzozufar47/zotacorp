@@ -13,6 +13,7 @@ import type { Database } from "@/lib/supabase/types";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FinanceLandingClient } from "@/components/admin/finance/FinanceLandingClient";
+import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { computeLatestBalance as computeLatestBalanceFromRows } from "@/lib/cashflow/balance";
@@ -153,6 +154,17 @@ export default async function AdminFinancePage({
 
   return (
     <div className="space-y-5 animate-fade-up">
+      {/* Live update saat ada tx baru / statement baru di-upload */}
+      <RealtimeRefresher
+        channel={`admin-finance-landing-${businessUnit}`}
+        table="cashflow_transactions"
+        debounceMs={500}
+      />
+      <RealtimeRefresher
+        channel={`admin-finance-landing-stmt-${businessUnit}`}
+        table="cashflow_statements"
+        debounceMs={500}
+      />
       <PageHeader
         title="Keuangan"
         subtitle="Cashflow per rekening & per business unit"

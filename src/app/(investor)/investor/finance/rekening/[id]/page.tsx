@@ -18,6 +18,7 @@ import {
 } from "@/components/investor/InvestorLedgerTable";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
 import { BranchBreakdownPanel } from "@/components/admin/finance/BranchBreakdownPanel";
+import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 
 const BANK_LABELS: Record<string, string> = {
   mandiri: "Bank Mandiri",
@@ -121,6 +122,11 @@ export default async function InvestorRekeningDetailPage({
 
   return (
     <div className="space-y-5 animate-fade-up">
+      <RealtimeRefresher
+        channel={`investor-lifetime-${account.id}`}
+        table="cashflow_transactions"
+        debounceMs={600}
+      />
       <Link
         href={`/investor/finance?bu=${encodeURIComponent(account.business_unit)}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

@@ -13,6 +13,7 @@ import {
   listPosAuthorizerCandidates,
 } from "@/lib/actions/cashflow.actions";
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
+import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
 import { BranchBreakdownPanel } from "@/components/admin/finance/BranchBreakdownPanel";
 import { getCategoryPresets, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
@@ -201,6 +202,18 @@ export default async function RekeningDetailPage({
 
   return (
     <div className="space-y-5 animate-fade-up">
+      {/* Live update saat ada tx baru di rekening ini */}
+      <RealtimeRefresher
+        channel={`admin-rekening-${account.id}-tx`}
+        table="cashflow_transactions"
+        debounceMs={400}
+      />
+      <RealtimeRefresher
+        channel={`admin-rekening-${account.id}-stmt`}
+        table="cashflow_statements"
+        filter={`bank_account_id=eq.${account.id}`}
+        debounceMs={400}
+      />
       <Link
         href={`/admin/finance?bu=${encodeURIComponent(account.business_unit)}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

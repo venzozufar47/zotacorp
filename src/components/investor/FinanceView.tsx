@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useProgressRouter } from "@/lib/route-progress";
+import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
 import {
   ArrowDownUp,
   Banknote,
@@ -96,6 +97,22 @@ export function FinanceView({
   const router = useProgressRouter();
   const sp = useSearchParams();
   const [navPending, startNavTransition] = useTransition();
+
+  // Realtime: subscribe ke statement aktif (untuk panel detail) +
+  // broad subscribe ke cashflow_statements untuk catch upload baru
+  // yang affect kartu picker & sidebar.
+  useRealtimeRefresh({
+    channel: `investor-finance-stmt-${activeStmtId ?? "none"}`,
+    table: "cashflow_transactions",
+    filter: activeStmtId ? `statement_id=eq.${activeStmtId}` : undefined,
+    enabled: !!activeStmtId,
+    debounceMs: 500,
+  });
+  useRealtimeRefresh({
+    channel: `investor-finance-stmts-${activeBu}`,
+    table: "cashflow_statements",
+    debounceMs: 600,
+  });
 
   function setParam(updates: Record<string, string | null>) {
     const params = new URLSearchParams(sp?.toString() ?? "");

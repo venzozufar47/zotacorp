@@ -9,6 +9,7 @@ import {
   deleteMetricComment,
   type MetricComment,
 } from "@/lib/actions/investor-comments.actions";
+import { createClient } from "@/lib/supabase/client";
 
 interface Props {
   businessUnit: string;
@@ -43,17 +44,48 @@ export function MetricCommentSheet({
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    listMetricComments({ businessUnit, metricId })
-      .then((rows) => {
-        if (cancelled) return;
-        setComments(rows);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
+    function refetch() {
+      listMetricComments({ businessUnit, metricId })
+        .then((rows) => {
+          if (cancelled) return;
+          setComments(rows);
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setLoading(false);
+        });
+    }
+    refetch();
+
+    // Realtime: subscribe ke comment events untuk thread ini. Pakai
+    // refetch list (bukan router.refresh — sheet pakai local state).
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`metric-comments-${businessUnit}-${metricId}`)
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
+        {
+          event: "*",
+          schema: "public",
+          table: "bu_metric_comments",
+          filter: `business_unit=eq.${businessUnit}`,
+        },
+        (payload: { new?: { metric_id?: string }; old?: { metric_id?: string } }) => {
+          // Realtime filter cuma support 1 column equality, jadi
+          // filter metric_id di sini.
+          const newMetric = payload.new?.metric_id;
+          const oldMetric = payload.old?.metric_id;
+          if (newMetric === metricId || oldMetric === metricId) {
+            refetch();
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, [open, businessUnit, metricId]);
 

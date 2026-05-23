@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProgressRouter } from "@/lib/route-progress";
+import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
 import Link from "next/link";
 import { formatRp } from "@/lib/cashflow/format";
 import {
@@ -56,6 +57,23 @@ export function InvestorDashboardView({
     metricId: string;
     label: string;
   } | null>(null);
+
+  // Realtime: PnL/KPI aggregate cukup mahal di-recompute, jadi
+  // debounce 1000ms. Subscribe ke cashflow_transactions (broad
+  // dengan filter dari RLS — investor cuma terima event untuk BU
+  // yang di-assign) + investor_payouts untuk cashback updates.
+  useRealtimeRefresh({
+    channel: `investor-dashboard-tx-${businessUnit}`,
+    table: "cashflow_transactions",
+    debounceMs: 1000,
+  });
+  useRealtimeRefresh({
+    channel: `investor-dashboard-payouts-${data.contract?.id ?? "none"}`,
+    table: "investor_payouts",
+    filter: data.contract ? `contract_id=eq.${data.contract.id}` : undefined,
+    enabled: !!data.contract,
+    debounceMs: 500,
+  });
 
   function applyPeriod(p: Period) {
     setPeriod(p);

@@ -1296,6 +1296,9 @@ export async function findPosAccountForCurrentUser(): Promise<
 export interface PosShiftSummary {
   /** Jakarta date saat query (YYYY-MM-DD) */
   today: string;
+  /** ID statement bulan ini — dipakai client untuk subscribe Realtime
+   *  filter. Null kalau belum ada statement. */
+  currentStatementId: string | null;
   /** ISO timestamp saat server menghitung — dirender sebagai jam WIB di UI. */
   asOf: string;
   /** Kas fisik di 00:00 WIB hari ini. null kalau statement bulan ini
@@ -1330,20 +1333,28 @@ export async function getPosShiftSummary(
   const supabase = await createClient();
   const now = new Date();
   const today = jakartaDateString(now);
+  const [yearStr, monthStr] = today.split("-");
+  const periodYear = Number(yearStr);
+  const periodMonth = Number(monthStr);
 
   // Ambil semua statement_id untuk account ini — kita butuh lintas
   // bulan untuk lifetime carry-forward saldo awal hari.
   const { data: stmts } = await supabase
     .from("cashflow_statements")
-    .select("id")
+    .select("id, period_year, period_month")
     .eq("bank_account_id", bankAccountId);
   const stmtIds = (stmts ?? []).map((s) => s.id);
+  const currentStatementId =
+    (stmts ?? []).find(
+      (s) => s.period_year === periodYear && s.period_month === periodMonth
+    )?.id ?? null;
 
   if (stmtIds.length === 0) {
     return {
       ok: true,
       data: {
         today,
+        currentStatementId: null,
         asOf: now.toISOString(),
         openingTill: null,
         cashCreditsToday: 0,
@@ -1436,6 +1447,7 @@ export async function getPosShiftSummary(
     ok: true,
     data: {
       today,
+      currentStatementId,
       asOf: now.toISOString(),
       openingTill,
       cashCreditsToday,

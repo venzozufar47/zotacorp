@@ -8,6 +8,7 @@ import { CheckCircle2, QrCode, RefreshCw, Wallet } from "lucide-react";
 import type { PosShiftSummary } from "@/lib/actions/pos.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatDateTime } from "@/lib/utils/date";
+import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
 
 interface Props {
   accountName: string;
@@ -21,6 +22,7 @@ export default function PosShiftClient({ accountName, summary, isAdmin }: Props)
 
   const {
     asOf,
+    currentStatementId,
     openingTill,
     cashCreditsToday,
     cashSalesCount,
@@ -31,6 +33,20 @@ export default function PosShiftClient({ accountName, summary, isAdmin }: Props)
     expectedTill,
   } = summary;
 
+  // Realtime: subscribe ke cashflow_transactions untuk statement aktif
+  // → setiap tx baru / edit / void, page auto-refresh (debounce 300ms
+  // supaya burst tx tidak refresh storm). Kasir tidak perlu klik
+  // tombol Refresh.
+  useRealtimeRefresh({
+    channel: `pos-shift-${currentStatementId ?? "none"}`,
+    table: "cashflow_transactions",
+    filter: currentStatementId
+      ? `statement_id=eq.${currentStatementId}`
+      : undefined,
+    enabled: !!currentStatementId,
+    debounceMs: 300,
+  });
+
   const handleRefresh = () => {
     startTransition(() => {
       router.refresh();
@@ -39,11 +55,19 @@ export default function PosShiftClient({ accountName, summary, isAdmin }: Props)
 
   const actions = (
     <>
+      <span
+        className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-emerald-50 px-3 h-9 text-xs font-semibold text-emerald-800 whitespace-nowrap"
+        title="Auto-update via Supabase Realtime — tidak perlu klik refresh"
+      >
+        <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        Live
+      </span>
       <button
         type="button"
         onClick={handleRefresh}
         disabled={isPending}
         className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 h-9 text-xs font-semibold text-foreground hover:translate-x-[1px] hover:translate-y-[1px] transition-transform disabled:opacity-50 whitespace-nowrap"
+        title="Manual refresh (jaga-jaga kalau live update lag)"
       >
         <RefreshCw size={13} className={isPending ? "animate-spin" : ""} />
         Refresh
