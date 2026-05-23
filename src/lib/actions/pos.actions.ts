@@ -11,6 +11,8 @@ import {
   type ActionResult,
 } from "./_gates";
 import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
+import { computeLatestBalance } from "@/lib/cashflow/balance";
+import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { getActiveDiscount } from "./pos-discount.actions";
 import { applyDiscount } from "@/lib/pos/discount";
@@ -1315,8 +1317,9 @@ export interface PosShiftSummary {
  * laci". Fungsi ini memisahkan keduanya: `expectedTill` hanya
  * memasukkan credit cash, sementara QRIS dipisah sebagai info.
  *
- * Statement-only — tidak perlu lintas bulan karena opening_balance
- * bulan ini sudah mengkalkulasi semua bulan sebelumnya.
+ * Saldo awal hari = lifetime balance pre-today (semua tx sebelum
+ * hari ini di semua statement, exclude QRIS) — bukan opening_balance
+ * statement bulan ini (yang untuk cash selalu 0).
  */
 export async function getPosShiftSummary(
   bankAccountId: string
@@ -1327,19 +1330,16 @@ export async function getPosShiftSummary(
   const supabase = await createClient();
   const now = new Date();
   const today = jakartaDateString(now);
-  const [yearStr, monthStr] = today.split("-");
-  const periodYear = Number(yearStr);
-  const periodMonth = Number(monthStr);
 
-  const { data: statement } = await supabase
+  // Ambil semua statement_id untuk account ini — kita butuh lintas
+  // bulan untuk lifetime carry-forward saldo awal hari.
+  const { data: stmts } = await supabase
     .from("cashflow_statements")
-    .select("id, opening_balance")
-    .eq("bank_account_id", bankAccountId)
-    .eq("period_year", periodYear)
-    .eq("period_month", periodMonth)
-    .maybeSingle();
+    .select("id")
+    .eq("bank_account_id", bankAccountId);
+  const stmtIds = (stmts ?? []).map((s) => s.id);
 
-  if (!statement) {
+  if (stmtIds.length === 0) {
     return {
       ok: true,
       data: {
@@ -1357,14 +1357,35 @@ export async function getPosShiftSummary(
     };
   }
 
-  const { data: rows } = await supabase
-    .from("cashflow_transactions")
-    .select("transaction_date, debit, credit, category")
-    .eq("statement_id", statement.id)
-    .lte("transaction_date", today);
+  // Paginate — statement Cash bulan sibuk bisa >1000 tx (default
+  // PostgREST cap). Kalau ke-cap, tx hari ini (yang biasanya di
+  // page paling akhir) ke-drop → counter undercounted.
+  type Row = {
+    transaction_date: string;
+    transaction_time: string | null;
+    debit: number | string;
+    credit: number | string;
+    category: string | null;
+    running_balance: number | string | null;
+  };
+  const allRows: Row[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "transaction_date, transaction_time, debit, credit, category, running_balance"
+      )
+      .in("statement_id", stmtIds)
+      .lte("transaction_date", today)
+      .range(offset, offset + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    allRows.push(...(data as Row[]));
+    if (data.length < PAGE) break;
+  }
 
-  let beforeCreditNonQris = 0;
-  let beforeDebit = 0;
+  // Bagi rows: today vs pre-today.
+  const preToday: ChronoRow[] = [];
   let cashCreditsToday = 0;
   let cashSalesCount = 0;
   let qrisCreditsToday = 0;
@@ -1372,7 +1393,7 @@ export async function getPosShiftSummary(
   let debitsToday = 0;
   let debitsCount = 0;
 
-  for (const r of rows ?? []) {
+  for (const r of allRows) {
     const debit = Number(r.debit) || 0;
     const credit = Number(r.credit) || 0;
     const isQris = r.category === POS_QRIS_CATEGORY;
@@ -1391,13 +1412,24 @@ export async function getPosShiftSummary(
         }
       }
     } else {
-      if (!isQris) beforeCreditNonQris += credit;
-      beforeDebit += debit;
+      // Pre-today: exclude QRIS (QRIS langsung masuk rekening
+      // bank, tidak ada di laci). Kemudian computeLatestBalance
+      // dengan anchor running_balance — match metode lifetime
+      // saldo kas fisik di rekening detail.
+      if (!isQris) {
+        preToday.push({
+          date: r.transaction_date,
+          time: r.transaction_time,
+          debit,
+          credit,
+          runningBalance:
+            r.running_balance !== null ? Number(r.running_balance) : null,
+        });
+      }
     }
   }
 
-  const openingTill =
-    Number(statement.opening_balance) + beforeCreditNonQris - beforeDebit;
+  const openingTill = computeLatestBalance(preToday);
   const expectedTill = openingTill + cashCreditsToday - debitsToday;
 
   return {
