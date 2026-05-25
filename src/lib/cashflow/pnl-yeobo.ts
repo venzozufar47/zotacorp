@@ -117,15 +117,14 @@ function monthsBetween(
   return out;
 }
 
-// Cabang fisik = bukan "All", bukan sentinel 2-cabang, bukan
-// "Needs Assignment". Pakai exclusion list eksplisit supaya tidak
-// tergantung urutan di YEOBO_SPACE_BRANCHES.
-const TWO_BRANCH_SENTINEL_SET = new Set(Object.keys(YEOBO_TWO_BRANCH_SENTINELS));
+// Cabang fisik = bukan "All", bukan sentinel 2-cabang. "Needs Assignment"
+// adalah category sentinel (bukan branch di YEOBO_SPACE_BRANCHES) jadi
+// tidak perlu di-exclude di filter ini.
+const TWO_BRANCH_SENTINEL_SET = new Set<string>(
+  Object.keys(YEOBO_TWO_BRANCH_SENTINELS)
+);
 const PHYSICAL_BRANCHES = YEOBO_SPACE_BRANCHES.filter(
-  (b) =>
-    b !== ALL_BRANCH_SENTINEL &&
-    b !== "Needs Assignment" &&
-    !TWO_BRANCH_SENTINEL_SET.has(b)
+  (b) => b !== ALL_BRANCH_SENTINEL && !TWO_BRANCH_SENTINEL_SET.has(b)
 ) as readonly string[];
 
 export async function fetchYeoboPnL(
