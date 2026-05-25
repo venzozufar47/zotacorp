@@ -4,6 +4,7 @@ import { formatIDR } from "@/lib/cashflow/format";
 import type { YeoboBoothBookingWithFreelance } from "@/lib/yeobo-booth/types";
 import {
   BookingStatusBadge,
+  CancellationKindBadge,
   PaymentStatusBadge,
 } from "./StatusBadges";
 
@@ -62,6 +63,9 @@ export function BookingTable({ bookings, emptyHint }: Props) {
             {/* Status badges */}
             <div className="flex flex-wrap items-center gap-1.5 mb-2">
               <BookingStatusBadge status={b.status} />
+              {b.status === "cancelled" && b.cancellation_kind && (
+                <CancellationKindBadge kind={b.cancellation_kind} />
+              )}
               <PaymentStatusBadge status={b.payment_status} />
             </div>
 

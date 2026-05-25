@@ -390,7 +390,10 @@ export async function cancelBooking(
 
   const { error } = await supabase
     .from("yeobo_booth_bookings" as never)
-    .update({ status: "cancelled" } as never)
+    .update({
+      status: "cancelled",
+      cancellation_kind: parsed.data.choice,
+    } as never)
     .eq("id", parsed.data.booking_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/yeobo-booth", "layout");

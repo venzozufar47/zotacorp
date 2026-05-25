@@ -1,8 +1,10 @@
 import { cn } from "@/lib/utils";
 import {
   BOOKING_STATUS_LABEL,
+  CANCELLATION_KIND_LABEL,
   PAYMENT_STATUS_LABEL,
   type BookingStatus,
+  type CancellationKind,
   type PaymentStatus,
 } from "@/lib/yeobo-booth/types";
 
@@ -41,6 +43,32 @@ export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
       )}
     >
       {PAYMENT_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+const CANCEL_KIND_TONE: Record<CancellationKind, string> = {
+  // Hangus: uang ditahan → tone netral abu-abu agar tidak terlihat
+  // negatif (revenue tetap diakui).
+  forfeit: "bg-muted text-foreground/70 border-border",
+  // Refund: uang keluar lagi → tone biru info supaya visual beda jelas.
+  refund:
+    "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-200 dark:border-sky-700",
+};
+
+export function CancellationKindBadge({
+  kind,
+}: {
+  kind: CancellationKind;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded-full border",
+        CANCEL_KIND_TONE[kind]
+      )}
+    >
+      {CANCELLATION_KIND_LABEL[kind]}
     </span>
   );
 }

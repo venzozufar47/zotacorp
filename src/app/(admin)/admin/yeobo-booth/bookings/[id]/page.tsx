@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Ban, CalendarDays, Clock, MapPin, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, MapPin, Users } from "lucide-react";
 import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
 import {
   getBooking,
@@ -15,6 +15,7 @@ import { CancelBookingButton } from "@/components/yeobo-booth/CancelBookingButto
 import { PaymentPanel } from "@/components/yeobo-booth/PaymentPanel";
 import {
   BookingStatusBadge,
+  CancellationKindBadge,
   PaymentStatusBadge,
 } from "@/components/yeobo-booth/StatusBadges";
 import { formatIDR } from "@/lib/cashflow/format";
@@ -57,12 +58,10 @@ export default async function BookingDetailPage({ params }: PageProps) {
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <BookingStatusBadge status={booking.status} />
-          <PaymentStatusBadge status={booking.payment_status} />
-          {booking.status === "cancelled" && (
-            <span className="inline-flex items-center gap-1 text-xs text-destructive">
-              <Ban size={12} /> Dibatalkan
-            </span>
+          {booking.status === "cancelled" && booking.cancellation_kind && (
+            <CancellationKindBadge kind={booking.cancellation_kind} />
           )}
+          <PaymentStatusBadge status={booking.payment_status} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <Field icon={<CalendarDays size={14} />} label="Tanggal">

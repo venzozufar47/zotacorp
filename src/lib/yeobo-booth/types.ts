@@ -15,7 +15,14 @@ export type BookingStatus =
 
 export type PaymentStatus = "belum_bayar" | "dp" | "lunas";
 
+export type CancellationKind = "forfeit" | "refund";
+
 export type ReminderCheckpoint = "H-7" | "H-3" | "H-1";
+
+export const CANCELLATION_KIND_LABEL: Record<CancellationKind, string> = {
+  forfeit: "Hangus",
+  refund: "Refund",
+};
 
 export interface YeoboBoothFreelance {
   id: string;
@@ -48,6 +55,7 @@ export interface YeoboBoothBooking {
   pelunasan_bank_account_id: string | null;
   pelunasan_cashflow_transaction_id: string | null;
   status: BookingStatus;
+  cancellation_kind: CancellationKind | null;
   catatan: string | null;
   created_by: string | null;
   created_at: string;
