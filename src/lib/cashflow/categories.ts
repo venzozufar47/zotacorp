@@ -52,6 +52,7 @@ export const YEOBO_SPACE_CREDIT_CATEGORIES = [
   "Investment",
   "Owner's Debt",
   "Wealth Transfer",
+  "Needs Assignment",
 ] as const;
 
 export const YEOBO_SPACE_DEBIT_CATEGORIES = [
@@ -70,14 +71,33 @@ export const YEOBO_SPACE_DEBIT_CATEGORIES = [
   "Dividend",
   "Owner's Debt Repayment",
   "Wealth Transfer",
+  "Needs Assignment",
 ] as const;
 
 export const YEOBO_SPACE_BRANCHES = [
   "All",
+  "Yeosari + Yeotem",
+  "Yeosari + Yeosol",
+  "Yeotem + Yeosol",
   "Tlogosari",
   "Tembalang",
   "Jebres",
 ] as const;
+
+/**
+ * 2-cabang sentinel → daftar physical branch yang dapat alokasi 50-50.
+ * Sentinel disimpan apa adanya di `cashflow_transactions.branch`
+ * (text column, no DB migration). PnL aggregator + auto-split helper
+ * memakai map ini untuk distribusi nominal saat agregasi.
+ *
+ * Naming pakai short-code Yeo* yang konsisten dengan keyword rule
+ * existing (Yeotem=Tembalang, Yeosol=Jebres, Yeosari=Tlogosari).
+ */
+export const YEOBO_TWO_BRANCH_SENTINELS: Record<string, readonly string[]> = {
+  "Yeosari + Yeotem": ["Tlogosari", "Tembalang"],
+  "Yeosari + Yeosol": ["Tlogosari", "Jebres"],
+  "Yeotem + Yeosol": ["Tembalang", "Jebres"],
+};
 
 /**
  * Cash flows non-operasional Yeobo Space — capital movement, bukan

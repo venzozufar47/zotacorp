@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,14 @@ export function LoginForm() {
   const tl = t.login;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Banner notice dari middleware (mis. force-logout karena akun
+  // dinonaktifkan/resign). Tampil di atas form sampai user submit.
+  const searchParams = useSearchParams();
+  const noticeKey = searchParams.get("error");
+  const notice =
+    noticeKey === "account-deactivated"
+      ? "Akun kamu sudah dinonaktifkan oleh admin. Hubungi admin kalau ini salah."
+      : null;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -59,6 +68,11 @@ export function LoginForm() {
         <CardDescription>{tl.subtitle}</CardDescription>
       </CardHeader>
       <CardContent>
+        {notice && !error && (
+          <p className="text-sm text-amber-800 bg-amber-100 border-2 border-amber-600 rounded-xl px-3 py-2 font-medium mb-4">
+            {notice}
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">{tl.emailLabel}</Label>

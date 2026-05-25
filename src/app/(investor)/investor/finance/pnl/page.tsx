@@ -6,8 +6,10 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getMyInvestorAccess } from "@/lib/investor/access";
 import { fetchPnL } from "@/lib/cashflow/pnl";
+import { fetchYeoboPnL } from "@/lib/cashflow/pnl-yeobo";
 import { getNonOperatingCategories } from "@/lib/cashflow/categories";
 import { InvestorPnLClient } from "@/components/investor/InvestorPnLClient";
+import { PnLYeoboClient } from "@/components/admin/finance/PnLYeoboClient";
 
 interface SearchParams {
   bu?: string;
@@ -74,7 +76,9 @@ export default async function InvestorPnLPage({
   const from = parseYM(sp.from) ?? defaultFrom;
   const to = parseYM(sp.to) ?? defaultTo;
 
-  const report = await fetchPnL(supabase, businessUnit, from, to);
+  const isYeobo = businessUnit === "Yeobo Space";
+  const report = isYeobo ? null : await fetchPnL(supabase, businessUnit, from, to);
+  const yeoboReport = isYeobo ? await fetchYeoboPnL(supabase, from, to) : null;
   const nonOp = getNonOperatingCategories(businessUnit);
 
   return (
@@ -96,13 +100,24 @@ export default async function InvestorPnLPage({
           per cabang. Mode baca.
         </p>
       </header>
-      <InvestorPnLClient
-        businessUnit={businessUnit}
-        from={from}
-        to={to}
-        report={report}
-        nonOperatingCategories={[...nonOp]}
-      />
+      {isYeobo && yeoboReport ? (
+        <PnLYeoboClient
+          businessUnit={businessUnit}
+          from={from}
+          to={to}
+          report={yeoboReport}
+        />
+      ) : (
+        report && (
+          <InvestorPnLClient
+            businessUnit={businessUnit}
+            from={from}
+            to={to}
+            report={report}
+            nonOperatingCategories={[...nonOp]}
+          />
+        )
+      )}
     </div>
   );
 }

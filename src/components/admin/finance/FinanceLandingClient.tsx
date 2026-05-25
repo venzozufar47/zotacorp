@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, Plus, Banknote, ArrowRight, TrendingUp, Smartphone } from "lucide-react";
+import { Building2, Plus, Banknote, ArrowRight, TrendingUp, Smartphone, Inbox, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BankAccountFormDialog } from "./BankAccountFormDialog";
@@ -148,13 +148,27 @@ export function FinanceLandingClient({
           </p>
         </div>
         {isAdmin && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link
             href={`/admin/finance/pnl?bu=${encodeURIComponent(activeBusinessUnit)}`}
             className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition"
           >
             <TrendingUp size={14} />
             Profit &amp; Loss
+          </Link>
+          <Link
+            href="/admin/finance/assignments"
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition"
+          >
+            <Inbox size={14} />
+            Assignment queue
+          </Link>
+          <Link
+            href="/admin/finance/employees"
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition"
+          >
+            <Users size={14} />
+            Karyawan → cabang
           </Link>
           <Button
             type="button"

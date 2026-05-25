@@ -23,8 +23,12 @@ interface Suggestion {
   credit: number;
   currentCategory: string | null;
   currentBranch: string | null;
+  currentEffectivePeriodMonth: number | null;
+  currentEffectivePeriodYear: number | null;
   suggestedCategory: string | null;
   suggestedBranch: string | null;
+  suggestedEffectivePeriodMonth: number | null;
+  suggestedEffectivePeriodYear: number | null;
   hasChange: boolean;
 }
 
@@ -128,6 +132,8 @@ export function AutoCategorizeDialog({
             rowId: s.rowId,
             category: s.suggestedCategory,
             branch: s.suggestedBranch,
+            effectivePeriodMonth: s.suggestedEffectivePeriodMonth,
+            effectivePeriodYear: s.suggestedEffectivePeriodYear,
           })),
         }),
       });
@@ -267,6 +273,9 @@ export function AutoCategorizeDialog({
                         Cabang
                       </th>
                     )}
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2 w-32 border-b border-border">
+                      Periode efektif
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -314,6 +323,18 @@ export function AutoCategorizeDialog({
                             />
                           </td>
                         )}
+                        <td className="px-3 py-2 border-t border-border/60">
+                          <BeforeAfter
+                            before={formatPeriod(
+                              s.currentEffectivePeriodMonth,
+                              s.currentEffectivePeriodYear
+                            )}
+                            after={formatPeriod(
+                              s.suggestedEffectivePeriodMonth,
+                              s.suggestedEffectivePeriodYear
+                            )}
+                          />
+                        </td>
                       </tr>
                     );
                   })}
@@ -369,4 +390,14 @@ function BeforeAfter({
       </div>
     </div>
   );
+}
+
+/** "3/2026" style label, atau null saat tidak set (lebih singkat
+ *  daripada nama bulan supaya kolom tabel tidak terlalu lebar). */
+function formatPeriod(
+  month: number | null,
+  year: number | null
+): string | null {
+  if (!month || !year) return null;
+  return `${month}/${year}`;
 }

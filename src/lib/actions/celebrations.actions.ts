@@ -510,10 +510,12 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     const admin = createAdminClient<Database>(url, key);
 
     // Birthday candidates: anyone whose DOB MM-DD matches today.
+    // Skip resigned/inactive — mereka tidak boleh dapat WA notif lagi.
     const { data: bCandidates } = await admin
       .from("profiles")
       .select("id, full_name, nickname, whatsapp_number, date_of_birth, birthday_last_greeted")
-      .not("date_of_birth", "is", null);
+      .not("date_of_birth", "is", null)
+      .eq("is_active", true);
 
     for (const p of bCandidates ?? []) {
       if (!p.date_of_birth) continue;
@@ -552,13 +554,14 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     }
 
     // Anniversary candidates: first_day_of_work with the same MM-DD as today
-    // and years > 0.
+    // and years > 0. Skip resigned/inactive — tidak boleh dapat WA notif.
     const { data: aCandidates } = await admin
       .from("profiles")
       .select(
         "id, full_name, nickname, whatsapp_number, first_day_of_work, anniversary_last_greeted"
       )
-      .not("first_day_of_work", "is", null);
+      .not("first_day_of_work", "is", null)
+      .eq("is_active", true);
 
     for (const p of aCandidates ?? []) {
       if (!p.first_day_of_work) continue;

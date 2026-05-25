@@ -50,6 +50,15 @@ export interface CashflowRow {
   /** Path di bucket `cashflow-receipts`. null = belum ada lampiran.
    *  Kolom Bukti cuma tampil pada rekening cash. */
   attachmentPath: string | null;
+  /** User yang di-assign admin untuk handle tx ambiguous (mis.
+   *  Shopee/Tokopedia tanpa keterangan). null = belum di-assign.
+   *  Inline button "Assign" muncul saat category/branch = Needs
+   *  Assignment. */
+  assignedToUserId?: string | null;
+  /** Display name dari profile assigneeId; null kalau belum di-assign
+   *  atau profile gagal di-resolve. Server component yang isi via
+   *  batch fetch ke `profiles`. */
+  assigneeName?: string | null;
 }
 
 interface Props {
@@ -1205,9 +1214,25 @@ export function CashflowTable({
                           />
                         )
                       ) : (
-                        <span className="text-muted-foreground">
-                          {r.category || "—"}
-                        </span>
+                        <div className="space-y-0.5">
+                          <span className="text-muted-foreground">
+                            {r.category || "—"}
+                          </span>
+                          {/* Assignee badge — read-only di sini. Tombol
+                              Assign hanya tersedia di halaman
+                              /admin/finance/assignments (1 tombol bulk
+                              untuk semua needs-assignment). */}
+                          {(r.category === "Needs Assignment" ||
+                            r.branch === "Needs Assignment") &&
+                            r.assigneeName && (
+                              <div className="text-[10px] leading-snug text-muted-foreground">
+                                Assigned:{" "}
+                                <span className="font-medium text-foreground">
+                                  {r.assigneeName}
+                                </span>
+                              </div>
+                            )}
+                        </div>
                       )}
                     </Td>
 

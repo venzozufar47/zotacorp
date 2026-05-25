@@ -6,13 +6,19 @@ import { ArrowLeft } from "lucide-react";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
 import { fetchPnL } from "@/lib/cashflow/pnl";
+import { fetchYeoboPnL } from "@/lib/cashflow/pnl-yeobo";
 import {
   getCategoryPresets,
   getNonOperatingCategories,
 } from "@/lib/cashflow/categories";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
+import { listSalaryAllocationsForBU } from "@/lib/actions/salary-allocations.actions";
+import { listEmployeeBranchMap } from "@/lib/actions/employee-branch-map.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PnLClient } from "@/components/admin/finance/PnLClient";
+import { PnLYeoboClient } from "@/components/admin/finance/PnLYeoboClient";
+import { SalaryAllocationSection } from "@/components/admin/finance/SalaryAllocationSection";
+import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 
 interface SearchParams {
   bu?: string;
@@ -92,12 +98,63 @@ export default async function PnLPage({
   })();
   const from = parseYM(params.from) ?? defaultFrom;
   const to = parseYM(params.to) ?? defaultTo;
-  const report = await fetchPnL(supabase, businessUnit, from, to);
+  const isYeobo = businessUnit === "Yeobo Space";
+  // BU dispatch: Yeobo Space pakai aggregator yang sadar salary_allocations
+  // dan auto-split "All". Haengbocake pakai aggregator legacy (Pusat editor).
+  const report = isYeobo
+    ? null
+    : await fetchPnL(supabase, businessUnit, from, to);
+  const yeoboReport = isYeobo
+    ? await fetchYeoboPnL(supabase, from, to)
+    : null;
   const presets = getCategoryPresets(businessUnit);
   const nonOp = getNonOperatingCategories(businessUnit);
 
+  // Salary allocations: fetch tx Salaries & Wages branch=All dalam range
+  // + alokasinya. Hanya render section kalau BU punya cabang fisik
+  // (saat ini: Yeobo Space dan Haengbocake).
+  const startDate = `${from.year}-${String(from.month).padStart(2, "0")}-01`;
+  const toLastDay = new Date(to.year, to.month, 0).getDate();
+  const endDate = `${to.year}-${String(to.month).padStart(2, "0")}-${String(toLastDay).padStart(2, "0")}`;
+  const salaryRes = await listSalaryAllocationsForBU(businessUnit, {
+    startDate,
+    endDate,
+  });
+  const salaryAllocations = salaryRes.ok && salaryRes.data ? salaryRes.data : [];
+  const empRes = await listEmployeeBranchMap(businessUnit);
+  const employeeSuggestions =
+    empRes.ok && empRes.data
+      ? empRes.data.map((e) => ({ name: e.nameKeyword, branch: e.branch }))
+      : [];
+  // Branch options untuk allocation input — exclude "All" (gak masuk
+  // akal alokasi per-karyawan ke seluruh 3 cabang sekaligus; gunakan
+  // auto-split fallback saja). Sentinel 2-cabang TETAP boleh: admin
+  // bisa alokasi 1 karyawan ke 2 cabang, aggregator split 50-50.
+  const allocBranches = presets.branches.filter((b) => b !== "All");
+
   return (
     <div className="space-y-5 animate-fade-up">
+      {/* PnL ber-react ke perubahan tx + alokasi + map karyawan supaya
+          angka di table & section langsung sinkron tanpa refresh manual. */}
+      <RealtimeRefresher
+        channel="pnl-tx"
+        table="cashflow_transactions"
+        debounceMs={500}
+      />
+      {isYeobo && (
+        <>
+          <RealtimeRefresher
+            channel="pnl-salary-alloc"
+            table="salary_allocations"
+            debounceMs={500}
+          />
+          <RealtimeRefresher
+            channel="pnl-employee-map"
+            table="employee_branch_map"
+            debounceMs={500}
+          />
+        </>
+      )}
       <Link
         href={`/admin/finance?bu=${encodeURIComponent(businessUnit)}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -107,19 +164,42 @@ export default async function PnLPage({
       </Link>
       <PageHeader
         title="Profit & Loss"
-        subtitle={`${businessUnit} · sumber: rekening Bank Jago · per cabang operasional`}
+        subtitle={
+          isYeobo
+            ? `${businessUnit} · alokasi gaji + auto-split per cabang`
+            : `${businessUnit} · sumber: rekening Bank Jago · per cabang operasional`
+        }
       />
-      <PnLClient
-        businessUnit={businessUnit}
-        from={from}
-        to={to}
-        report={report}
-        presets={{
-          credit: [...presets.credit],
-          debit: [...presets.debit],
-        }}
-        nonOperatingCategories={[...nonOp]}
-      />
+      {isYeobo && yeoboReport ? (
+        <PnLYeoboClient
+          businessUnit={businessUnit}
+          from={from}
+          to={to}
+          report={yeoboReport}
+        />
+      ) : (
+        report && (
+          <PnLClient
+            businessUnit={businessUnit}
+            from={from}
+            to={to}
+            report={report}
+            presets={{
+              credit: [...presets.credit],
+              debit: [...presets.debit],
+            }}
+            nonOperatingCategories={[...nonOp]}
+          />
+        )
+      )}
+
+      {isYeobo && (
+        <SalaryAllocationSection
+          summaries={salaryAllocations}
+          branches={allocBranches}
+          employeeSuggestions={employeeSuggestions}
+        />
+      )}
     </div>
   );
 }

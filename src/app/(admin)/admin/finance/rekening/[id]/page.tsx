@@ -15,7 +15,6 @@ import {
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
-import { BranchBreakdownPanel } from "@/components/admin/finance/BranchBreakdownPanel";
 import { getCategoryPresets, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { formatIDR } from "@/lib/cashflow/format";
 import { verifyBalance } from "@/lib/cashflow/parsers/shared";
@@ -101,6 +100,7 @@ export default async function RekeningDetailPage({
     effective_period_year: number | null;
     effective_period_month: number | null;
     attachment_path: string | null;
+    assigned_to_user_id: string | null;
   };
   async function fetchAllTransactions(): Promise<TxRow[]> {
     const PAGE = 1000;
@@ -109,7 +109,7 @@ export default async function RekeningDetailPage({
       const { data, error } = await supabase
         .from("cashflow_transactions")
         .select(
-          "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, effective_period_year, effective_period_month, attachment_path, cashflow_statements!inner(bank_account_id)"
+          "id, transaction_date, transaction_time, source_destination, transaction_details, description, debit, credit, running_balance, category, branch, notes, sort_order, effective_period_year, effective_period_month, attachment_path, assigned_to_user_id, cashflow_statements!inner(bank_account_id)"
         )
         .eq("cashflow_statements.bank_account_id", id)
         // Newest first at the top. Within a single date, sort by time
@@ -142,6 +142,28 @@ export default async function RekeningDetailPage({
   ]);
 
   const statementList = statements ?? [];
+
+  // Batch-fetch nama profile untuk semua assignee unik di tx list,
+  // supaya CashflowTable bisa render label "Assigned: <name>" tanpa
+  // round-trip per row. Empty set kalau tidak ada tx ter-assign.
+  const assigneeIds = Array.from(
+    new Set(
+      (transactions ?? [])
+        .map((t) => t.assigned_to_user_id)
+        .filter((v): v is string => !!v)
+    )
+  );
+  const assigneeNameById = new Map<string, string>();
+  if (assigneeIds.length > 0) {
+    const { data: profileRows } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", assigneeIds);
+    for (const p of profileRows ?? []) {
+      assigneeNameById.set(p.id, p.full_name);
+    }
+  }
+
   const rawTxList = (transactions ?? []).map((t) => ({
     id: t.id,
     date: t.transaction_date,
@@ -158,6 +180,10 @@ export default async function RekeningDetailPage({
     effectivePeriodYear: t.effective_period_year,
     effectivePeriodMonth: t.effective_period_month,
     attachmentPath: t.attachment_path,
+    assignedToUserId: t.assigned_to_user_id,
+    assigneeName: t.assigned_to_user_id
+      ? assigneeNameById.get(t.assigned_to_user_id) ?? null
+      : null,
   }));
   // Re-sort in memory with the balance-chain tiebreaker for rows
   // that share the same (date, time). SQL ORDER BY can't model the
@@ -310,21 +336,6 @@ export default async function RekeningDetailPage({
             debit: t.debit,
             credit: t.credit,
             category: t.category,
-          }))}
-          businessUnit={account.business_unit}
-        />
-      )}
-
-      {/* Per-cabang panel — hanya dirender untuk BU dengan auto-split
-          semantik (saat ini Yeobo Space). Transaksi cabang="All"
-          dibagi rata ke cabang-cabang fisik sebelum agregasi. */}
-      {isAdmin && (
-        <BranchBreakdownPanel
-          transactions={txList.map((t) => ({
-            date: t.date,
-            debit: t.debit,
-            credit: t.credit,
-            branch: t.branch,
           }))}
           businessUnit={account.business_unit}
         />

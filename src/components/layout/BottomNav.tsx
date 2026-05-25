@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -11,11 +11,13 @@ export function BottomNav({
   hasFinance = false,
   hasCakeOrders = false,
   hasCakeProduction = false,
+  assignmentCount = 0,
   me = null,
 }: {
   hasFinance?: boolean;
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
+  assignmentCount?: number;
   me?: MenuViewer | null;
 }) {
   const pathname = usePathname();
@@ -48,6 +50,17 @@ export function BottomNav({
           },
         ]
       : []),
+    ...(assignmentCount > 0
+      ? [
+          {
+            href: "/employee/assignments",
+            icon: Inbox,
+            label: "Assign",
+            color: "bg-pop-pink",
+            badge: assignmentCount,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -66,7 +79,9 @@ export function BottomNav({
           className="flex items-center gap-1 flex-1 overflow-x-auto py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
           aria-label="Main navigation"
         >
-          {navItems.map(({ href, icon: Icon, label, color }) => {
+          {navItems.map((item) => {
+            const { href, icon: Icon, label, color } = item;
+            const badge = "badge" in item ? item.badge : undefined;
             const active =
               pathname === href || pathname.startsWith(href + "/");
             return (
@@ -77,13 +92,18 @@ export function BottomNav({
               >
                 <span
                   className={cn(
-                    "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
+                    "relative flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
                     active
                       ? color + " text-foreground"
                       : "bg-card text-muted-foreground"
                   )}
                 >
                   <Icon size={18} strokeWidth={2.5} />
+                  {badge !== undefined && badge > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full text-[9px] font-bold bg-pop-pink text-foreground border-2 border-foreground">
+                      {badge}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={cn(

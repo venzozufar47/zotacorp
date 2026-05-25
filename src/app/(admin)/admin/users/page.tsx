@@ -103,6 +103,9 @@ export default async function AdminUsersPage() {
       assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
       payslip_excluded: p.payslip_excluded ?? false,
       is_probation: p.is_probation ?? false,
+      is_active: p.is_active ?? true,
+      resigned_at: p.resigned_at ?? null,
+      resigned_by: p.resigned_by ?? null,
     };
   });
 

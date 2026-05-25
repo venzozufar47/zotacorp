@@ -238,25 +238,56 @@ export async function POST(req: Request) {
     statementId = inserted.id;
   }
 
+  // Tarik default assignee per BU sekali — kalau ada tx Needs Assignment
+  // di batch, semuanya otomatis ter-assign ke default user. Lookup via BU
+  // dari bank account (parent dari statement). Optional, default null.
+  let defaultAssigneeId: string | null = null;
+  {
+    const { data: ba } = await supabase
+      .from("bank_accounts")
+      .select("business_unit")
+      .eq("id", body.bankAccountId)
+      .maybeSingle();
+    if (ba?.business_unit) {
+      const { data: bu } = await supabase
+        .from("business_units")
+        .select("default_needs_assignment_user_id")
+        .eq("name", ba.business_unit)
+        .maybeSingle();
+      defaultAssigneeId = bu?.default_needs_assignment_user_id ?? null;
+    }
+  }
+
   // Insert new transactions. Bulk insert Supabase batas payload
   // praktis ~500-1000 row per request — chunk untuk aman di upload
   // besar (CSV Jago full-history bisa 3000+ row baru).
   if (newTransactions.length > 0) {
-    const rows = newTransactions.map((t, idx) => ({
-      statement_id: statementId,
-      transaction_date: t.date,
-      transaction_time: t.time?.trim() || null,
-      source_destination: t.sourceDestination?.trim() || null,
-      transaction_details: t.transactionDetails?.trim() || null,
-      notes: t.notes?.trim() || null,
-      description: t.description.trim(),
-      debit: t.debit,
-      credit: t.credit,
-      running_balance: t.runningBalance ?? null,
-      category: t.category?.trim() || null,
-      branch: t.branch?.trim() || null,
-      sort_order: idx,
-    }));
+    const rows = newTransactions.map((t, idx) => {
+      const cat = t.category?.trim() || null;
+      const br = t.branch?.trim() || null;
+      // Auto-assign tx Needs Assignment ke default user BU. Tidak
+      // override existing (commit flow selalu insert baru).
+      const isNeedsAssignment =
+        cat === "Needs Assignment" || br === "Needs Assignment";
+      return {
+        statement_id: statementId,
+        transaction_date: t.date,
+        transaction_time: t.time?.trim() || null,
+        source_destination: t.sourceDestination?.trim() || null,
+        transaction_details: t.transactionDetails?.trim() || null,
+        notes: t.notes?.trim() || null,
+        description: t.description.trim(),
+        debit: t.debit,
+        credit: t.credit,
+        running_balance: t.runningBalance ?? null,
+        category: cat,
+        branch: br,
+        effective_period_month: t.effectivePeriodMonth ?? null,
+        effective_period_year: t.effectivePeriodYear ?? null,
+        assigned_to_user_id: isNeedsAssignment ? defaultAssigneeId : null,
+        sort_order: idx,
+      };
+    });
     const CHUNK = 500;
     for (let i = 0; i < rows.length; i += CHUNK) {
       const { error: insertError } = await supabase

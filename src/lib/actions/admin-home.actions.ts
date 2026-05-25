@@ -71,7 +71,8 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     supabase
       .from("profiles")
       .select("id", { count: "exact", head: true })
-      .eq("payslip_excluded", false),
+      .eq("payslip_excluded", false)
+      .eq("is_active", true),
     supabase
       .from("attendance_logs")
       .select(
@@ -174,9 +175,10 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
   const { data } = await supabase
     .from("attendance_logs")
     .select(
-      "user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit)"
+      "user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit, is_active)"
     )
-    .eq("date", todayIso);
+    .eq("date", todayIso)
+    .eq("profiles.is_active", true);
   const logs = (data ?? []) as Array<{
     user_id: string;
     status: string;
@@ -187,6 +189,7 @@ export async function getFloorToday(): Promise<ClockedInEmployee[]> {
       avatar_url: string | null;
       avatar_seed: string | null;
       business_unit: string | null;
+      is_active: boolean;
     };
   }>;
 

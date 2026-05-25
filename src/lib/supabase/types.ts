@@ -401,23 +401,34 @@ export type Database = {
       business_units: {
         Row: {
           created_at: string
+          default_needs_assignment_user_id: string | null
           id: string
           name: string
           updated_at: string
         }
         Insert: {
           created_at?: string
+          default_needs_assignment_user_id?: string | null
           id?: string
           name: string
           updated_at?: string
         }
         Update: {
           created_at?: string
+          default_needs_assignment_user_id?: string | null
           id?: string
           name?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "business_units_default_needs_assignment_user_id_fkey"
+            columns: ["default_needs_assignment_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cashflow_pusat_allocations: {
         Row: {
@@ -612,6 +623,7 @@ export type Database = {
       }
       cashflow_transactions: {
         Row: {
+          assigned_to_user_id: string | null
           attachment_path: string | null
           branch: string | null
           category: string | null
@@ -633,6 +645,7 @@ export type Database = {
           transaction_time: string | null
         }
         Insert: {
+          assigned_to_user_id?: string | null
           attachment_path?: string | null
           branch?: string | null
           category?: string | null
@@ -654,6 +667,7 @@ export type Database = {
           transaction_time?: string | null
         }
         Update: {
+          assigned_to_user_id?: string | null
           attachment_path?: string | null
           branch?: string | null
           category?: string | null
@@ -676,10 +690,103 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "cashflow_transactions_assigned_to_user_id_fkey"
+            columns: ["assigned_to_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cashflow_transactions_statement_id_fkey"
             columns: ["statement_id"]
             isOneToOne: false
             referencedRelation: "cashflow_statements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salary_allocations: {
+        Row: {
+          amount: number
+          branch: string
+          created_at: string
+          created_by: string | null
+          employee_name: string
+          id: string
+          transaction_id: string
+        }
+        Insert: {
+          amount: number
+          branch: string
+          created_at?: string
+          created_by?: string | null
+          employee_name: string
+          id?: string
+          transaction_id: string
+        }
+        Update: {
+          amount?: number
+          branch?: string
+          created_at?: string
+          created_by?: string | null
+          employee_name?: string
+          id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_allocations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_allocations_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_branch_map: {
+        Row: {
+          branch: string
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name_keyword: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch: string
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name_keyword: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch?: string
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name_keyword?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_branch_map_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1725,6 +1832,8 @@ export type Database = {
           place_of_birth: string | null
           pos_pin_hash: string | null
           position: string
+          resigned_at: string | null
+          resigned_by: string | null
           role: string
           shirt_size: string | null
           streak_last_milestone: number
@@ -1776,6 +1885,8 @@ export type Database = {
           place_of_birth?: string | null
           pos_pin_hash?: string | null
           position?: string
+          resigned_at?: string | null
+          resigned_by?: string | null
           role?: string
           shirt_size?: string | null
           streak_last_milestone?: number
@@ -1827,6 +1938,8 @@ export type Database = {
           place_of_birth?: string | null
           pos_pin_hash?: string | null
           position?: string
+          resigned_at?: string | null
+          resigned_by?: string | null
           role?: string
           shirt_size?: string | null
           streak_last_milestone?: number
@@ -1838,7 +1951,15 @@ export type Database = {
           workday_check_enabled?: boolean
           workdays?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_resigned_by_fkey"
+            columns: ["resigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_notification_recipients: {
         Row: {

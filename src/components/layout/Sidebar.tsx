@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -12,6 +12,7 @@ export function Sidebar({
   hasFinance = false,
   hasCakeOrders = false,
   hasCakeProduction = false,
+  assignmentCount = 0,
   me = null,
 }: {
   className?: string;
@@ -19,6 +20,8 @@ export function Sidebar({
   hasFinance?: boolean;
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
+  /** Jumlah transaksi yang di-assign ke user & masih "Needs Assignment". */
+  assignmentCount?: number;
   me?: MenuViewer | null;
 }) {
   const pathname = usePathname();
@@ -52,6 +55,17 @@ export function Sidebar({
           },
         ]
       : []),
+    ...(assignmentCount > 0
+      ? [
+          {
+            href: "/employee/assignments",
+            icon: Inbox,
+            label: "Assignment",
+            color: "bg-pop-pink",
+            badge: assignmentCount,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -70,7 +84,9 @@ export function Sidebar({
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1.5">
-        {navItems.map(({ href, icon: Icon, label, color }) => {
+        {navItems.map((item) => {
+          const { href, icon: Icon, label, color } = item;
+          const badge = "badge" in item ? item.badge : undefined;
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -91,7 +107,17 @@ export function Sidebar({
               >
                 <Icon size={14} strokeWidth={2.5} />
               </span>
-              {label}
+              <span className="flex-1">{label}</span>
+              {badge !== undefined && badge > 0 && (
+                <span
+                  className={cn(
+                    "min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold border-2 border-foreground",
+                    active ? "bg-background text-foreground" : "bg-pop-pink text-foreground"
+                  )}
+                >
+                  {badge}
+                </span>
+              )}
             </Link>
           );
         })}

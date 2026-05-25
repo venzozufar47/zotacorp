@@ -37,6 +37,12 @@ export interface ParsedTransaction {
   category?: string | null;
   /** Auto-assigned branch (from rules). Null = no match. */
   branch?: string | null;
+  /** Optional effective accounting period override (1-12). Set when the tx
+   *  description contains a month name (e.g. "Gaji Maret 2026" paid in April
+   *  → effectivePeriodMonth=3). Persisted into effective_period_month column. */
+  effectivePeriodMonth?: number | null;
+  /** Effective accounting year override, paired with effectivePeriodMonth. */
+  effectivePeriodYear?: number | null;
 }
 
 export interface ParsedStatement {

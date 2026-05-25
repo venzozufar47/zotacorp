@@ -13,7 +13,10 @@ import {
   CheckCircle2,
   CircleDashed,
   MapPin,
+  UserX,
+  UserCheck,
 } from "lucide-react";
+import { setUserResignStatus } from "@/lib/actions/profile-status.actions";
 import { LocationAssignmentDialog } from "./LocationAssignmentDialog";
 import { SortableHeader, type SortDir } from "./SortableHeader";
 import { sortRows } from "@/lib/utils/sort";
@@ -84,6 +87,14 @@ interface UserRow {
   /** Probation = invisible from coworker celebration feeds (birthday +
    *  anniversary). Self-celebration + system WA tetap nyala. */
   is_probation: boolean;
+  /** Resign toggle. false = di-tag resign: tidak bisa login, tidak
+   *  dapat WA notif, tidak masuk payslip generator. Reversible. */
+  is_active: boolean;
+  /** Saat is_active=false → timestamp resign. Dipertahankan walau
+   *  admin re-activate (history audit). */
+  resigned_at: string | null;
+  /** Admin yang nge-tag resign. Pair dengan resigned_at. */
+  resigned_by: string | null;
 }
 
 interface LocationOption {
@@ -119,6 +130,10 @@ export function UsersTable({
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [editingLocations, setEditingLocations] = useState<UserRow | null>(null);
+  // Resign toggle: dialog konfirmasi sebelum apply karena efek samping
+  // signifikan (lose access, lose notif, lose payslip generation).
+  const [resignTarget, setResignTarget] = useState<UserRow | null>(null);
+  const [resignPending, startResignTransition] = useTransition();
   const [sortKey, setSortKey] = useState<UserSortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -269,6 +284,20 @@ export function UsersTable({
                             Probation
                           </span>
                         )}
+                        {!row.is_active && (
+                          <span
+                            className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-red-100 text-red-900 border border-red-300 whitespace-nowrap"
+                            title={
+                              row.resigned_at
+                                ? `Resigned ${formatResignDate(row.resigned_at)}`
+                                : "Akun dinonaktifkan"
+                            }
+                          >
+                            {row.resigned_at
+                              ? `Resigned · ${formatResignDate(row.resigned_at)}`
+                              : "Inactive"}
+                          </span>
+                        )}
                         {isSelf && (
                           <span className="text-xs text-muted-foreground">
                             {tu.selfTag}
@@ -330,6 +359,38 @@ export function UsersTable({
                       >
                         <Pencil size={16} />
                       </Link>
+                      {/* Resign toggle: tag resign (deaktivasi) atau
+                          aktifkan kembali. Disabled untuk diri sendiri
+                          supaya admin tidak nge-kunci dirinya. */}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isSelf}
+                        onClick={() => setResignTarget(row)}
+                        className={cn(
+                          "disabled:opacity-30",
+                          row.is_active
+                            ? "text-amber-700 hover:bg-amber-100 hover:text-amber-900"
+                            : "text-emerald-700 hover:bg-emerald-100 hover:text-emerald-900"
+                        )}
+                        aria-label={
+                          row.is_active
+                            ? "Tandai resign"
+                            : "Aktifkan kembali"
+                        }
+                        title={
+                          row.is_active
+                            ? "Tandai resign — non-aktifkan akses & notif"
+                            : "Aktifkan kembali"
+                        }
+                      >
+                        {row.is_active ? (
+                          <UserX size={16} />
+                        ) : (
+                          <UserCheck size={16} />
+                        )}
+                      </Button>
                       <Button
                         type="button"
                         variant="ghost"
@@ -349,6 +410,93 @@ export function UsersTable({
           </TableBody>
         </Table>
       </div>
+
+      {/* Resign confirm dialog — efek non-reversible "soft": login
+          terblok, WA notif berhenti, payslip generator skip. Bisa
+          dikembalikan kapan saja via tombol Aktifkan. */}
+      <Dialog
+        open={resignTarget !== null}
+        onOpenChange={(open) => !open && setResignTarget(null)}
+      >
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>
+              {resignTarget?.is_active
+                ? "Tandai resign?"
+                : "Aktifkan kembali?"}
+            </DialogTitle>
+            <DialogDescription>
+              {resignTarget?.is_active ? (
+                <>
+                  <span className="font-semibold text-foreground">
+                    {resignTarget?.full_name || resignTarget?.email}
+                  </span>{" "}
+                  akan dinonaktifkan: akses login, notifikasi WhatsApp
+                  (birthday, anniversary), dan generation payslip akan
+                  berhenti. History payslip & data lama tetap tersimpan.
+                  Bisa dikembalikan aktif kapan saja.
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-foreground">
+                    {resignTarget?.full_name || resignTarget?.email}
+                  </span>{" "}
+                  akan diaktifkan kembali. Akses login, notifikasi, dan
+                  payslip generator kembali normal. Catatan audit
+                  (kapan & siapa yang nge-tag resign) tetap tersimpan.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResignTarget(null)}
+              disabled={resignPending}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!resignTarget) return;
+                const target = resignTarget;
+                const willResign = target.is_active;
+                startResignTransition(async () => {
+                  const res = await setUserResignStatus(
+                    target.id,
+                    willResign
+                  );
+                  if (!res.ok) {
+                    toast.error(res.error);
+                    return;
+                  }
+                  toast.success(
+                    willResign
+                      ? `${target.full_name || target.email} di-tag resign.`
+                      : `${target.full_name || target.email} kembali aktif.`
+                  );
+                  setResignTarget(null);
+                  router.refresh();
+                });
+              }}
+              disabled={resignPending}
+              className={
+                resignTarget?.is_active
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }
+            >
+              {resignPending
+                ? "Menyimpan…"
+                : resignTarget?.is_active
+                  ? "Ya, tandai resign"
+                  : "Ya, aktifkan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={target !== null} onOpenChange={(open) => !open && setTarget(null)}>
         <DialogContent className="sm:max-w-[420px]">
@@ -446,6 +594,22 @@ async function patchProfile(
     body: JSON.stringify({ targetId: userId, ...fields }),
   });
   return res.ok;
+}
+
+/** Format tanggal resign yang ringkas untuk badge — "25 Mei 2026"
+ *  Indonesian style. Jatuh balik ke "—" kalau input invalid. */
+function formatResignDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "—";
+  }
 }
 
 /**

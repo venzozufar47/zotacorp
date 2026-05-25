@@ -17,7 +17,6 @@ import {
   type InvestorLedgerRow,
 } from "@/components/investor/InvestorLedgerTable";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
-import { BranchBreakdownPanel } from "@/components/admin/finance/BranchBreakdownPanel";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 
 const BANK_LABELS: Record<string, string> = {
@@ -170,20 +169,6 @@ export default async function InvestorRekeningDetailPage({
           }))}
           businessUnit={account.business_unit}
         />
-        {account.bank !== "cash" && (
-          <BranchBreakdownPanel
-            transactions={txList.map((t) => ({
-              id: t.id,
-              date: t.date,
-              time: t.time,
-              debit: t.debit,
-              credit: t.credit,
-              category: t.category,
-              branch: t.branch,
-            }))}
-            businessUnit={account.business_unit}
-          />
-        )}
       </div>
 
       {/* Ledger lengkap */}

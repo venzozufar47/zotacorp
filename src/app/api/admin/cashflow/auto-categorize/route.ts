@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
   applyCategorization,
+  fetchEmployeeBranchMap,
   fetchHistoricalMap,
   fetchRules,
   presetsFor,
@@ -41,8 +42,12 @@ interface Suggestion {
   credit: number;
   currentCategory: string | null;
   currentBranch: string | null;
+  currentEffectivePeriodMonth: number | null;
+  currentEffectivePeriodYear: number | null;
   suggestedCategory: string | null;
   suggestedBranch: string | null;
+  suggestedEffectivePeriodMonth: number | null;
+  suggestedEffectivePeriodYear: number | null;
   /** True only if at least one field changes vs current (so UI can hide no-ops). */
   hasChange: boolean;
 }
@@ -90,6 +95,8 @@ export async function POST(req: Request) {
     running_balance: string | number | null;
     category: string | null;
     branch: string | null;
+    effective_period_month: number | null;
+    effective_period_year: number | null;
   };
   const PAGE = 1000;
   const rows: TxRow[] = [];
@@ -97,7 +104,7 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from("cashflow_transactions")
       .select(
-        "id, transaction_date, transaction_time, source_destination, transaction_details, notes, description, debit, credit, running_balance, category, branch, cashflow_statements!inner(bank_account_id)"
+        "id, transaction_date, transaction_time, source_destination, transaction_details, notes, description, debit, credit, running_balance, category, branch, effective_period_month, effective_period_year, cashflow_statements!inner(bank_account_id)"
       )
       .eq("cashflow_statements.bank_account_id", body.bankAccountId)
       .order("transaction_date", { ascending: false })
@@ -109,9 +116,17 @@ export async function POST(req: Request) {
     rows.push(...page);
     if (page.length < PAGE) break;
   }
+  // "empty" scope: tetap include rows yang category/branch null, atau
+  // yang masih kosong effective_period_month/year — supaya backfill
+  // bulan-name detector ke-pick up tanpa harus jalanin scope=all.
   const targets = scope === "all"
     ? rows
-    : rows.filter((r) => r.category === null || r.branch === null);
+    : rows.filter(
+        (r) =>
+          r.category === null ||
+          r.branch === null ||
+          (r.effective_period_month === null && r.effective_period_year === null)
+      );
 
   if (targets.length === 0) {
     return NextResponse.json({
@@ -125,9 +140,10 @@ export async function POST(req: Request) {
   // Build the pipeline inputs. Rules are per-rekening; historical is
   // BU-wide but excludes this rekening so a row can't "vote for
   // itself" when computing the suggestion.
-  const [rules, historical] = await Promise.all([
+  const [rules, historical, employeeMap] = await Promise.all([
     fetchRules(supabase, body.bankAccountId),
     fetchHistoricalMap(supabase, bu, body.bankAccountId),
+    fetchEmployeeBranchMap(supabase, bu),
   ]);
   const presets = presetsFor(bu);
 
@@ -148,9 +164,13 @@ export async function POST(req: Request) {
       r.running_balance !== null ? Number(r.running_balance) : undefined,
     category: scope === "all" ? null : r.category,
     branch: scope === "all" ? null : r.branch,
+    effectivePeriodMonth:
+      scope === "all" ? null : r.effective_period_month,
+    effectivePeriodYear:
+      scope === "all" ? null : r.effective_period_year,
   }));
 
-  const result = applyCategorization(txs, rules, historical, presets);
+  const result = applyCategorization(txs, rules, historical, presets, employeeMap);
 
   // Map each target row → Suggestion with before/after. hasChange lets
   // the UI hide rows that ended up with the same value (e.g. no rule
@@ -159,8 +179,12 @@ export async function POST(req: Request) {
     const out = result.transactions[idx];
     const curCat = r.category;
     const curBr = r.branch;
+    const curEffM = r.effective_period_month;
+    const curEffY = r.effective_period_year;
     const sugCat = out.category ?? null;
     const sugBr = out.branch ?? null;
+    const sugEffM = out.effectivePeriodMonth ?? null;
+    const sugEffY = out.effectivePeriodYear ?? null;
     return {
       rowId: r.id,
       date: r.transaction_date,
@@ -171,9 +195,17 @@ export async function POST(req: Request) {
       credit: Number(r.credit),
       currentCategory: curCat,
       currentBranch: curBr,
+      currentEffectivePeriodMonth: curEffM,
+      currentEffectivePeriodYear: curEffY,
       suggestedCategory: sugCat,
       suggestedBranch: sugBr,
-      hasChange: sugCat !== curCat || sugBr !== curBr,
+      suggestedEffectivePeriodMonth: sugEffM,
+      suggestedEffectivePeriodYear: sugEffY,
+      hasChange:
+        sugCat !== curCat ||
+        sugBr !== curBr ||
+        sugEffM !== curEffM ||
+        sugEffY !== curEffY,
     };
   });
 
@@ -189,7 +221,13 @@ export async function POST(req: Request) {
 
 interface PatchBody {
   bankAccountId: string;
-  updates: Array<{ rowId: string; category?: string | null; branch?: string | null }>;
+  updates: Array<{
+    rowId: string;
+    category?: string | null;
+    branch?: string | null;
+    effectivePeriodMonth?: number | null;
+    effectivePeriodYear?: number | null;
+  }>;
 }
 
 export async function PATCH(req: Request) {
@@ -229,9 +267,15 @@ export async function PATCH(req: Request) {
     const patch: {
       category?: string | null;
       branch?: string | null;
+      effective_period_month?: number | null;
+      effective_period_year?: number | null;
     } = {};
     if (u.category !== undefined) patch.category = u.category;
     if (u.branch !== undefined) patch.branch = u.branch;
+    if (u.effectivePeriodMonth !== undefined)
+      patch.effective_period_month = u.effectivePeriodMonth;
+    if (u.effectivePeriodYear !== undefined)
+      patch.effective_period_year = u.effectivePeriodYear;
     if (Object.keys(patch).length === 0) continue;
     const { error } = await supabase
       .from("cashflow_transactions")

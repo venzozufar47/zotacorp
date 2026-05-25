@@ -23,7 +23,6 @@ import {
 import { formatRp, formatIDR } from "@/lib/cashflow/format";
 import { BANK_LABELS, BANK_COLORS } from "@/lib/cashflow/bank-display";
 import { CategoryBreakdownPanel } from "@/components/admin/finance/CategoryBreakdownPanel";
-import { BranchBreakdownPanel } from "@/components/admin/finance/BranchBreakdownPanel";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { InvestorTxRow } from "@/lib/actions/investor-finance.actions";
 import { getStatementPdfUrlForInvestor } from "@/lib/actions/investor-finance.actions";
@@ -747,20 +746,6 @@ export function BundleDetail({
             }))}
             businessUnit={businessUnit}
           />
-          {acc.bank !== "cash" && (
-            <BranchBreakdownPanel
-              transactions={bundle.transactions.map((t) => ({
-                id: t.id,
-                date: t.date,
-                time: t.time,
-                debit: t.debit,
-                credit: t.credit,
-                category: t.category,
-                branch: t.branch,
-              }))}
-              businessUnit={businessUnit}
-            />
-          )}
         </div>
       )}
     </div>

@@ -7,10 +7,15 @@
  *   1. Rules (admin-owned, highest priority). First rule that matches
  *      a tx fills its null slots. Iteration continues across rules
  *      until both slots are filled or rules are exhausted.
- *   2. Historical exact-match (only for `category`). Group past
+ *   2. Employee-name lookup (Salaries & Wages only). When a tx is
+ *      tagged Salaries & Wages but branch is still null, scan the
+ *      description for known employee names from `employee_branch_map`
+ *      and infer branch. Multi-employee with conflicting branches →
+ *      leave null (admin handles).
+ *   3. Historical exact-match (only for `category`). Group past
  *      categorized rows by `(sourceDestination, transactionDetails)`
  *      → majority category per key. Threshold 60% to use.
- *   3. Anything still null → null. Admin edits manually.
+ *   4. Anything still null → null. Admin edits manually.
  *
  * Branch has no fallback beyond rules — the user explicitly asked
  * for branch auto-fill to be a rule like everything else, not a
@@ -22,6 +27,7 @@ import type { Database } from "@/lib/supabase/types";
 import type { ParsedTransaction } from "./types";
 import { parseExtraConditions, ruleMatches, type Rule } from "./rules";
 import { getCategoryPresets, type CategoryPresets } from "./categories";
+import { extractEffectivePeriod } from "./effective-period";
 
 /** Aggregated counts so the API can surface where categorization came from. */
 export interface CategorizationSummary {
@@ -33,6 +39,19 @@ export interface CategorizationSummary {
 export interface HistoricalMap {
   /** (normalized sd + "│" + normalized td) → majority category */
   byKey: Map<string, string>;
+}
+
+/**
+ * Resolved employee → branch entries for a business unit. Used to
+ * post-process Salaries & Wages rows when the rule engine didn't
+ * supply a branch (no Yeotem/Yeosol/Yeosari keyword in description).
+ *
+ * `nameKeyword` is matched case-insensitively as a whole-word
+ * substring of the tx description (e.g. "Ika" matches "Gaji Ika
+ * April 26" but not "Ikatan"). Empty array = lookup is a no-op.
+ */
+export interface EmployeeBranchMap {
+  entries: ReadonlyArray<{ nameKeyword: string; branch: string }>;
 }
 
 const HIST_MONTHS_WINDOW = 12;
@@ -124,6 +143,54 @@ export async function fetchHistoricalMap(
 }
 
 /**
+ * Fetch all employee→branch entries for a business unit. Returns an
+ * empty map when the table is empty or the BU has no entries — the
+ * pipeline treats that as "no lookup", same as if employees weren't
+ * configured.
+ */
+export async function fetchEmployeeBranchMap(
+  supabase: SupabaseClient<Database>,
+  businessUnit: string
+): Promise<EmployeeBranchMap> {
+  const { data, error } = await supabase
+    .from("employee_branch_map")
+    .select("name_keyword, branch")
+    .eq("business_unit", businessUnit);
+  if (error || !data) return { entries: [] };
+  return {
+    entries: data.map((r) => ({
+      nameKeyword: r.name_keyword,
+      branch: r.branch,
+    })),
+  };
+}
+
+/**
+ * Scan a description for any employee names from the map. Word-boundary
+ * match (case-insensitive) prevents "Ika" from matching inside
+ * "Ikatan". Returns the inferred branch when EXACTLY one distinct
+ * branch is hit; returns null on zero matches, multi-employee with
+ * conflicting branches (bulk payroll), or empty input.
+ */
+export function lookupEmployeeBranch(
+  description: string | null | undefined,
+  map: EmployeeBranchMap
+): string | null {
+  if (!description || map.entries.length === 0) return null;
+  const branches = new Set<string>();
+  for (const entry of map.entries) {
+    if (!entry.nameKeyword) continue;
+    // Whole-word, case-insensitive. Escape any regex metachars in the
+    // keyword so names like "O'Brien" don't blow up the matcher.
+    const escaped = entry.nameKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    if (re.test(description)) branches.add(entry.branch);
+  }
+  if (branches.size !== 1) return null;
+  return branches.values().next().value ?? null;
+}
+
+/**
  * Check whether a category belongs to the relevant preset half
  * (credit or debit) for this tx. Rows ingested before preset changes
  * may reference categories no longer in the list — we still accept
@@ -149,7 +216,8 @@ export function applyCategorization(
   txs: ParsedTransaction[],
   rules: Rule[],
   historical: HistoricalMap,
-  presets: CategoryPresets
+  presets: CategoryPresets,
+  employeeMap?: EmployeeBranchMap
 ): { transactions: ParsedTransaction[]; summary: CategorizationSummary } {
   const summary: CategorizationSummary = {
     ruleMatched: 0,
@@ -165,23 +233,49 @@ export function applyCategorization(
     return a.priority - b.priority;
   });
 
+  // Run non-fallback rules first to claim slots, then fallback rules.
+  // We split the loop so the employee-name lookup can sit BETWEEN
+  // non-fallback (which set category=Salaries & Wages) and fallback
+  // (which would otherwise grab branch=All before we get a chance).
+  const nonFallback = sorted.filter((r) => !r.isFallback);
+  const fallback = sorted.filter((r) => r.isFallback);
+  const map: EmployeeBranchMap = employeeMap ?? { entries: [] };
+
   const transactions = txs.map((tx) => {
     let category: string | null = tx.category ?? null;
     let branch: string | null = tx.branch ?? null;
     let hitRule = false;
 
-    for (const rule of sorted) {
-      if (!ruleMatches(rule, tx)) continue;
-      if (category === null && rule.setCategory) {
-        category = rule.setCategory;
+    const runRules = (pool: Rule[]) => {
+      for (const rule of pool) {
+        if (category !== null && branch !== null) break;
+        if (!ruleMatches(rule, tx)) continue;
+        if (category === null && rule.setCategory) {
+          category = rule.setCategory;
+          hitRule = true;
+        }
+        if (branch === null && rule.setBranch) {
+          branch = rule.setBranch;
+          hitRule = true;
+        }
+      }
+    };
+
+    runRules(nonFallback);
+
+    // Salaries & Wages without an explicit branch keyword (e.g. "Gaji
+    // Hasna April 26") flows through here. Employee name → branch
+    // from the map; bulk payroll ("Gaji 10 Yeobo Fams") finds no
+    // unique match and falls through to the fallback below.
+    if (category === "Salaries & Wages" && branch === null) {
+      const inferred = lookupEmployeeBranch(tx.description, map);
+      if (inferred) {
+        branch = inferred;
         hitRule = true;
       }
-      if (branch === null && rule.setBranch) {
-        branch = rule.setBranch;
-        hitRule = true;
-      }
-      if (category !== null && branch !== null) break;
     }
+
+    runRules(fallback);
 
     let hitHistorical = false;
     if (category === null) {
@@ -193,11 +287,31 @@ export function applyCategorization(
       }
     }
 
+    // Effective accounting period: when description menyebut nama bulan
+    // (e.g. "Gaji Maret 2026"), override agar tx ter-bucket di bulan
+    // tersebut di PnL — bukan di tanggal settlement. Slot-fill juga:
+    // tidak menimpa nilai yang sudah ada dari admin override.
+    let effectivePeriodMonth: number | null = tx.effectivePeriodMonth ?? null;
+    let effectivePeriodYear: number | null = tx.effectivePeriodYear ?? null;
+    if (effectivePeriodMonth === null && effectivePeriodYear === null) {
+      const detected = extractEffectivePeriod(tx.description, tx.date);
+      if (detected) {
+        effectivePeriodMonth = detected.month;
+        effectivePeriodYear = detected.year;
+      }
+    }
+
     if (hitRule) summary.ruleMatched++;
     else if (hitHistorical) summary.historicalMatched++;
     else if (category === null && branch === null) summary.uncategorized++;
 
-    return { ...tx, category, branch };
+    return {
+      ...tx,
+      category,
+      branch,
+      effectivePeriodMonth,
+      effectivePeriodYear,
+    };
   });
 
   return { transactions, summary };

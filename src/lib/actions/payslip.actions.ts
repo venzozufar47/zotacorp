@@ -901,7 +901,26 @@ export async function bulkCalculatePayslips(
       errorCount: 1,
     };
   const settingsList = (finalizedSettings ?? []) as PayslipSettings[];
-  const userIds = settingsList.map((s) => s.user_id);
+  const allCandidateIds = settingsList.map((s) => s.user_id);
+  if (allCandidateIds.length === 0) {
+    return {
+      calculatedCount: 0,
+      cachedCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+    };
+  }
+
+  // Filter out resigned/inactive users — payslip generator tidak boleh
+  // bikin payslip baru untuk karyawan yang sudah di-tag resign. History
+  // bulan-bulan lalu tetap accessible (DB row tidak dihapus).
+  const { data: activeProfilesData } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("is_active", true)
+    .in("id", allCandidateIds);
+  const activeIdSet = new Set((activeProfilesData ?? []).map((p) => p.id));
+  const userIds = allCandidateIds.filter((id) => activeIdSet.has(id));
   if (userIds.length === 0) {
     return {
       calculatedCount: 0,

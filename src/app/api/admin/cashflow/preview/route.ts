@@ -25,6 +25,7 @@ import { PdfPasswordRequiredError } from "@/lib/cashflow/pdf-extract";
 import { validateZeroSum, verifyBalance } from "@/lib/cashflow/parsers/shared";
 import {
   applyCategorization,
+  fetchEmployeeBranchMap,
   fetchHistoricalMap,
   fetchRules,
   presetsFor,
@@ -284,16 +285,18 @@ export async function POST(req: Request) {
   // BU-wide so learning persists even if rules are still empty on
   // this account.
   const bu = bankAccount.business_unit;
-  const [rules, historical] = await Promise.all([
+  const [rules, historical, employeeMap] = await Promise.all([
     fetchRules(supabase, bankAccountId),
     fetchHistoricalMap(supabase, bu),
+    fetchEmployeeBranchMap(supabase, bu),
   ]);
   const presets = presetsFor(bu);
   const categorized = applyCategorization(
     newTransactions,
     rules,
     historical,
-    presets
+    presets,
+    employeeMap
   );
   // Merge back preserving original chronological order: duplicates
   // passthrough tanpa categorization, non-dup ambil versi yang sudah

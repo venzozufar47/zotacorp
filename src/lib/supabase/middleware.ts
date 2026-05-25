@@ -61,9 +61,20 @@ export async function updateSession(request: NextRequest) {
     if (isPublic || onAdminRoute || onEmployeeRoute || onInvestorRoute) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, is_active")
         .eq("id", user.id)
         .single();
+
+      // Resign gate: kalau akun di-nonaktifkan admin, force sign-out
+      // + redirect ke landing dengan banner notice. Tidak gate /api
+      // (sudah kefilter di awal) supaya logout/callback tetap jalan.
+      if (profile && profile.is_active === false) {
+        await supabase.auth.signOut();
+        const url = request.nextUrl.clone();
+        url.pathname = "/";
+        url.searchParams.set("error", "account-deactivated");
+        return NextResponse.redirect(url);
+      }
 
       const isAdmin = profile?.role === "admin";
       const isInvestor = profile?.role === "investor";
