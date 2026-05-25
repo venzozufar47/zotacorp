@@ -167,10 +167,10 @@ export function FreelanceManager({ freelance }: Props) {
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4">
           <form
             onSubmit={onSave}
-            className="w-full max-w-md rounded-2xl bg-card border border-border p-5 space-y-4 shadow-2xl"
+            className="w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-card border border-border p-5 space-y-4 shadow-2xl"
           >
             <div className="flex items-center justify-between">
               <h3 className="font-display font-bold text-lg">

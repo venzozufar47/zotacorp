@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Cake,
+  Camera,
   ClipboardList,
   LogOut,
   MapPin,
@@ -50,6 +51,7 @@ export function AdminMobileNav({
     { href: "/admin/celebrations", icon: PartyPopper, label: "Celebrations", color: "bg-pop-pink" },
     { href: "/admin/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
     { href: "/admin/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" },
+    { href: "/admin/yeobo-booth", icon: Camera, label: "Booth", color: "bg-pop-emerald" },
     { href: "/admin/investors", icon: TrendingUp, label: "Investor", color: "bg-quaternary" },
     { href: "/admin/settings", icon: Settings, label: t.nav.settings, color: "bg-card" },
   ];

@@ -79,10 +79,7 @@ export default async function LaporanPage() {
           value={formatIDR(totalOutstanding)}
           tone="warn"
         />
-        <Metric
-          label="DP / Lunas (booking aktif)"
-          value={`${dpCount} / ${lunasCount}`}
-        />
+        <Metric label="DP / Lunas" value={`${dpCount} / ${lunasCount}`} />
       </section>
 
       <LaporanCharts bookings={bookings} />
@@ -113,15 +110,15 @@ function Metric({
   tone?: "warn";
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="rounded-2xl border border-border bg-card p-3 sm:p-4">
+      <div className="text-[10.5px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
       <div
         className={
           tone === "warn"
-            ? "font-display font-bold text-xl text-destructive mt-1"
-            : "font-display font-bold text-xl text-foreground mt-1"
+            ? "font-display font-bold text-base sm:text-xl text-destructive mt-1 break-words"
+            : "font-display font-bold text-base sm:text-xl text-foreground mt-1 break-words"
         }
       >
         {value}

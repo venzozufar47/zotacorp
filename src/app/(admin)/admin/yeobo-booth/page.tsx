@@ -6,10 +6,12 @@ import {
   CalendarDays,
   ClipboardList,
   Plus,
+  Shield,
   Users,
   Wallet,
 } from "lucide-react";
 import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
+import { getCurrentRole } from "@/lib/supabase/cached";
 import { listBookings } from "@/lib/actions/yeobo-booth.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingTable } from "@/components/yeobo-booth/BookingTable";
@@ -24,6 +26,8 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
  */
 export default async function YeoboBoothOverviewPage() {
   if (!(await canAccessYeoboBooth())) redirect("/dashboard");
+  const role = await getCurrentRole();
+  const isAdminZota = role === "admin";
 
   const today = jakartaDateString(new Date());
   const monthStart = today.slice(0, 7) + "-01";
@@ -63,45 +67,27 @@ export default async function YeoboBoothOverviewPage() {
         title="Yeobo Booth"
         subtitle="Scheduling + booking + pembayaran unit persewaan photobooth."
         action={
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/admin/yeobo-booth/calendar"
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <CalendarDays size={14} strokeWidth={2.5} />
-              Kalender
-            </Link>
-            <Link
-              href="/admin/yeobo-booth/laporan"
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <Wallet size={14} strokeWidth={2.5} />
-              Laporan
-            </Link>
-            <Link
-              href="/admin/yeobo-booth/freelance"
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <Users size={14} strokeWidth={2.5} />
-              Freelance
-            </Link>
-            <Link
-              href="/admin/yeobo-booth/bookings"
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <ClipboardList size={14} strokeWidth={2.5} />
-              Semua Booking
-            </Link>
-            <Link
-              href="/admin/yeobo-booth/bookings/new"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover:opacity-90"
-            >
-              <Plus size={14} strokeWidth={2.5} />
-              Booking Baru
-            </Link>
-          </div>
+          <Link
+            href="/admin/yeobo-booth/bookings/new"
+            className="hidden md:inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover:opacity-90"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            Booking Baru
+          </Link>
         }
       />
+
+      {/* Tool row — di mobile horizontal scroll dengan icon kompak;
+          di desktop wrap inline di sebelah primary CTA atas. */}
+      <div className="flex gap-2 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <ToolLink href="/admin/yeobo-booth/calendar" icon={CalendarDays} label="Kalender" />
+        <ToolLink href="/admin/yeobo-booth/bookings" icon={ClipboardList} label="Semua Booking" />
+        <ToolLink href="/admin/yeobo-booth/laporan" icon={Wallet} label="Laporan" />
+        <ToolLink href="/admin/yeobo-booth/freelance" icon={Users} label="Freelance" />
+        {isAdminZota && (
+          <ToolLink href="/admin/yeobo-booth/admins" icon={Shield} label="Akses Admin" />
+        )}
+      </div>
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricCard
@@ -136,7 +122,40 @@ export default async function YeoboBoothOverviewPage() {
           emptyHint="Tidak ada sesi mendatang. Buat booking baru untuk mulai."
         />
       </section>
+
+      {/* Mobile-only floating action button. md+ pakai tombol di header. */}
+      <Link
+        href="/admin/yeobo-booth/bookings/new"
+        aria-label="Booking baru"
+        className="md:hidden fixed right-4 z-40 inline-flex items-center justify-center gap-1.5 rounded-full bg-primary text-primary-foreground px-5 py-3 text-sm font-bold shadow-lg shadow-primary/30 hover:opacity-90"
+        style={{
+          bottom: "calc(5rem + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
+        <Plus size={18} strokeWidth={2.5} />
+        Booking Baru
+      </Link>
     </div>
+  );
+}
+
+function ToolLink({
+  href,
+  icon: Icon,
+  label,
+}: {
+  href: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+    >
+      <Icon size={14} strokeWidth={2.5} />
+      {label}
+    </Link>
   );
 }
 
@@ -152,16 +171,16 @@ function MetricCard({
   tone?: "warn";
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-        {icon}
-        {label}
+    <div className="rounded-2xl border border-border bg-card p-3 sm:p-4">
+      <div className="text-[10.5px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+        <span className="shrink-0">{icon}</span>
+        <span className="truncate">{label}</span>
       </div>
       <div
         className={
           tone === "warn"
-            ? "font-display font-bold text-xl text-destructive mt-1"
-            : "font-display font-bold text-xl text-foreground mt-1"
+            ? "font-display font-bold text-base sm:text-xl text-destructive mt-1 break-words"
+            : "font-display font-bold text-base sm:text-xl text-foreground mt-1 break-words"
         }
       >
         {value}

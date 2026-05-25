@@ -40,51 +40,55 @@ export function BookingTable({ bookings, emptyHint }: Props) {
           <Link
             key={b.id}
             href={`/admin/yeobo-booth/bookings/${b.id}`}
-            className="block rounded-2xl border border-border bg-card hover:bg-muted/40 transition p-4"
+            className="block rounded-2xl border border-border bg-card hover:bg-muted/40 active:bg-muted/40 transition p-3 sm:p-4"
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                  <h3 className="font-semibold text-foreground text-base truncate">
-                    {b.nama_klien}
-                  </h3>
-                  <BookingStatusBadge status={b.status} />
-                  <PaymentStatusBadge status={b.payment_status} />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <CalendarDays size={13} />
-                    {formatTanggal(b.tanggal)}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Clock size={13} />
-                    {b.jam_mulai.slice(0, 5)} – {b.jam_selesai.slice(0, 5)} WIB
-                  </span>
-                  {b.lokasi_event && (
-                    <span className="inline-flex items-center gap-1.5 col-span-2 truncate">
-                      <MapPin size={13} />
-                      {b.lokasi_event}
-                    </span>
-                  )}
-                  {b.freelance.length > 0 && (
-                    <span className="inline-flex items-center gap-1.5 col-span-2 truncate">
-                      <Users size={13} />
-                      {b.freelance.map((f) => f.nama).join(", ")}
-                    </span>
-                  )}
-                </div>
-              </div>
+            {/* Header row: nama + total */}
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <h3 className="font-semibold text-foreground text-[15px] sm:text-base leading-tight min-w-0 break-words">
+                {b.nama_klien}
+              </h3>
               <div className="text-right shrink-0">
-                <div className="text-xs text-muted-foreground">Total</div>
-                <div className="font-display font-bold text-lg text-foreground">
+                <div className="font-display font-bold text-base sm:text-lg text-foreground leading-tight">
                   {formatIDR(b.harga_total)}
                 </div>
                 {sisa > 0 && b.status !== "cancelled" && (
                   <div className="text-[11px] text-destructive font-medium mt-0.5">
-                    Sisa: {formatIDR(sisa)}
+                    Sisa {formatIDR(sisa)}
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Status badges */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <BookingStatusBadge status={b.status} />
+              <PaymentStatusBadge status={b.payment_status} />
+            </div>
+
+            {/* Meta rows */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[12.5px] sm:text-[13px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 truncate">
+                <CalendarDays size={13} className="shrink-0" />
+                <span className="truncate">{formatTanggal(b.tanggal)}</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Clock size={13} className="shrink-0" />
+                {b.jam_mulai.slice(0, 5)}–{b.jam_selesai.slice(0, 5)} WIB
+              </span>
+              {b.lokasi_event && (
+                <span className="inline-flex items-center gap-1.5 sm:col-span-2 truncate">
+                  <MapPin size={13} className="shrink-0" />
+                  <span className="truncate">{b.lokasi_event}</span>
+                </span>
+              )}
+              {b.freelance.length > 0 && (
+                <span className="inline-flex items-center gap-1.5 sm:col-span-2 truncate">
+                  <Users size={13} className="shrink-0" />
+                  <span className="truncate">
+                    {b.freelance.map((f) => f.nama).join(", ")}
+                  </span>
+                </span>
+              )}
             </div>
           </Link>
         );
