@@ -2109,6 +2109,28 @@ export type Database = {
       }
     }
     Functions: {
+      count_my_needs_assignments: { Args: never; Returns: number }
+      get_my_needs_assignments: {
+        Args: never
+        Returns: {
+          id: string
+          transaction_date: string
+          description: string
+          source_destination: string | null
+          transaction_details: string | null
+          notes: string | null
+          debit: number
+          credit: number
+          category: string | null
+          branch: string | null
+          effective_period_month: number | null
+          effective_period_year: number | null
+          assigned_to_user_id: string | null
+          bank_account_id: string
+          bank_account_name: string
+          business_unit: string
+        }[]
+      }
       get_ui_theme: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_assignee: { Args: { account_id: string }; Returns: boolean }
