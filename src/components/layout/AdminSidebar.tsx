@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Radio,
   Cake,
+  Camera,
   Factory,
   Database,
   TrendingUp,
@@ -42,6 +43,7 @@ export function AdminSidebar({
   pendingCount = 0,
   disputesCount = 0,
   profile,
+  scope = "full",
 }: {
   pendingCount?: number;
   disputesCount?: number;
@@ -49,11 +51,14 @@ export function AdminSidebar({
     Profile,
     "id" | "full_name" | "email" | "avatar_url" | "avatar_seed"
   > | null;
+  /** "full" = admin Zota (semua nav). "yeobo-booth" = admin unit Yeobo
+   *  Booth (hanya nav group Yeobo Booth, tanpa modul lain). */
+  scope?: "full" | "yeobo-booth";
 }) {
   const pathname = usePathname();
   const { t } = useTranslation();
 
-  const groups: Array<{
+  const allGroups: Array<{
     label: string;
     items: Array<{
       href: string;
@@ -111,6 +116,12 @@ export function AdminSidebar({
       ],
     },
     {
+      label: "Yeobo Booth",
+      items: [
+        { href: "/admin/yeobo-booth", icon: Camera, label: "Scheduling" },
+      ],
+    },
+    {
       label: "Stakeholders",
       items: [
         { href: "/admin/investors", icon: TrendingUp, label: "Investor" },
@@ -124,6 +135,14 @@ export function AdminSidebar({
       ],
     },
   ];
+
+  // Filter nav berdasarkan scope. Admin Yeobo Booth (unit-only) hanya
+  // melihat group Yeobo Booth — segment lain disembunyikan agar tidak
+  // mengundang klik yang berakhir di middleware redirect.
+  const groups =
+    scope === "yeobo-booth"
+      ? allGroups.filter((g) => g.label === "Yeobo Booth")
+      : allGroups;
 
   const isActive = (href: string) => {
     if (href === "/admin") return pathname === "/admin";

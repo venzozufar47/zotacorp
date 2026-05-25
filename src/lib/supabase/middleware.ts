@@ -106,15 +106,17 @@ export async function updateSession(request: NextRequest) {
       }
 
       // Non-admin on admin route → send to employee home, EXCEPT
-      // finance pages. Non-admin assignees of a cash rekening can
-      // access the finance landing + their assigned rekening details.
-      // The pages themselves enforce per-rekening permission.
+      // finance pages (cash rekening assignees) ATAU yeobo-booth pages
+      // (admin Yeobo Booth via `yeobo_booth_admins` membership; lihat
+      // migration 063). Page-level gate enforces — middleware hanya
+      // let-through agar pages bisa di-load.
       if (onAdminRoute && !isAdmin) {
         const isFinanceAssigneePath =
           pathname === "/admin/finance" ||
           pathname === "/admin/finance/" ||
           pathname.startsWith("/admin/finance/rekening/");
-        if (!isFinanceAssigneePath) {
+        const isYeoboBoothPath = pathname.startsWith("/admin/yeobo-booth");
+        if (!isFinanceAssigneePath && !isYeoboBoothPath) {
           const url = request.nextUrl.clone();
           url.pathname = home;
           return NextResponse.redirect(url);

@@ -8,6 +8,7 @@ import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
+import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 
 export default async function AdminLayout({
   children,
@@ -22,6 +23,32 @@ export default async function AdminLayout({
   const isAdmin = role === "admin";
 
   if (!isAdmin) {
+    // Yeobo Booth admin (non-global) juga reach /admin via carve-out
+    // di middleware. Render admin chrome (sidebar terbatas auto by
+    // AdminSidebar filter) supaya UX konsisten dengan admin Zota.
+    const isYbAdmin = await isYeoboBoothAdmin();
+    if (isYbAdmin) {
+      const profile = await getCurrentProfile();
+      return (
+        <div className="flex min-h-screen bg-background">
+          <RouteProgressBar />
+          <AdminMobileNav pendingConfirmations={[]} />
+          <AdminSidebar
+            pendingCount={0}
+            disputesCount={0}
+            profile={profile}
+            scope="yeobo-booth"
+          />
+          <main className="flex-1 min-w-0 flex flex-col">
+            <AdminTopbar pendingConfirmations={[]} />
+            <div className="flex-1 max-w-[1700px] w-full mx-auto px-4 pt-16 pb-24 md:px-6 md:pt-6 md:pb-6">
+              {children}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
     const assignedIds = await listMyAssignedBankAccountIds();
     const hasFinance = assignedIds.length > 0;
     return (

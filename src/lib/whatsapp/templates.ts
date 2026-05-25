@@ -21,7 +21,10 @@ export type TemplateKey =
   | "celebration_birthday_broadcast"
   | "streak_milestone"
   | "attendance_check_in_alert"
-  | "attendance_check_out_alert";
+  | "attendance_check_out_alert"
+  | "yeobo_booth_reminder_h7"
+  | "yeobo_booth_reminder_h3"
+  | "yeobo_booth_reminder_h1";
 
 export interface PlaceholderInfo {
   key: string;
@@ -156,6 +159,57 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
       },
     ],
     defaultBody: "🏁 {fullName} sign out jam {time} dari {location}{note}{mapsUrl}",
+  },
+  yeobo_booth_reminder_h7: {
+    label: "Yeobo Booth — Reminder H-7",
+    description:
+      "Dikirim 7 hari sebelum sesi photobooth, jam 11:00 WIB. Tujuan: admin/operator Yeobo Booth siap-siap koordinasi awal (konfirmasi tim, alat, transport).",
+    recipient: "Admin (dari WA notification recipients)",
+    placeholders: [
+      { key: "namaKlien", description: "Nama klien" },
+      { key: "tanggal", description: "Tanggal sesi (mis. Sen, 1 Jun 2026)" },
+      { key: "jamMulai", description: "Jam mulai (HH:mm)" },
+      { key: "jamSelesai", description: "Jam selesai (HH:mm)" },
+      { key: "lokasi", description: "Lokasi event (kosong kalau tidak diisi)" },
+      { key: "freelance", description: "Nama-nama freelance yang ditugaskan" },
+      { key: "sisaTagihan", description: "Sisa tagihan dalam IDR formatted" },
+    ],
+    defaultBody:
+      "📸 Reminder H-7 Yeobo Booth\n\nKlien: {namaKlien}\nTanggal: {tanggal}\nJam: {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nSisa tagihan: {sisaTagihan}\n\nMohon koordinasi awal.",
+  },
+  yeobo_booth_reminder_h3: {
+    label: "Yeobo Booth — Reminder H-3",
+    description:
+      "Dikirim 3 hari sebelum sesi, jam 11:00 WIB. Tujuan: cek alat + konfirmasi ulang tim freelance.",
+    recipient: "Admin (dari WA notification recipients)",
+    placeholders: [
+      { key: "namaKlien", description: "Nama klien" },
+      { key: "tanggal", description: "Tanggal sesi" },
+      { key: "jamMulai", description: "Jam mulai" },
+      { key: "jamSelesai", description: "Jam selesai" },
+      { key: "lokasi", description: "Lokasi event" },
+      { key: "freelance", description: "Nama-nama freelance" },
+      { key: "sisaTagihan", description: "Sisa tagihan IDR" },
+    ],
+    defaultBody:
+      "📸 Reminder H-3 Yeobo Booth\n\nKlien: {namaKlien}\nTanggal: {tanggal}\nJam: {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nSisa tagihan: {sisaTagihan}\n\nPastikan alat siap & tim sudah konfirmasi.",
+  },
+  yeobo_booth_reminder_h1: {
+    label: "Yeobo Booth — Reminder H-1",
+    description:
+      "Dikirim sehari sebelum sesi, jam 11:00 WIB. Tujuan: final check & briefing tim.",
+    recipient: "Admin (dari WA notification recipients)",
+    placeholders: [
+      { key: "namaKlien", description: "Nama klien" },
+      { key: "tanggal", description: "Tanggal sesi" },
+      { key: "jamMulai", description: "Jam mulai" },
+      { key: "jamSelesai", description: "Jam selesai" },
+      { key: "lokasi", description: "Lokasi event" },
+      { key: "freelance", description: "Nama-nama freelance" },
+      { key: "sisaTagihan", description: "Sisa tagihan IDR" },
+    ],
+    defaultBody:
+      "📸 Reminder H-1 Yeobo Booth\n\nBesok: {namaKlien}\n{tanggal}\nJam {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nSisa tagihan: {sisaTagihan}\n\nFinal check & briefing tim hari ini. Semangat!",
   },
 };
 

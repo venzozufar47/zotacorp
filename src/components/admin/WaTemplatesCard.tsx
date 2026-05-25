@@ -267,5 +267,17 @@ function sampleValuesFor(
         note: "",
         mapsUrl: "",
       };
+    case "yeobo_booth_reminder_h7":
+    case "yeobo_booth_reminder_h3":
+    case "yeobo_booth_reminder_h1":
+      return {
+        namaKlien: "Putri Wedding",
+        tanggal: "Sab, 6 Jun 2026",
+        jamMulai: "16:00",
+        jamSelesai: "21:00",
+        lokasi: "Gedung Serbaguna, Jl. Mawar No. 5",
+        freelance: "Dimas, Rara",
+        sisaTagihan: "Rp 500.000",
+      };
   }
 }

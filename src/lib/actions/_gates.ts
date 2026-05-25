@@ -164,6 +164,28 @@ export async function requireCakeProductionAccess(): Promise<
 }
 
 /**
+ * Yeobo Booth — admin Zota atau admin Yeobo Booth (membership table
+ * `yeobo_booth_admins`, lihat migration 063). Dipakai semua server
+ * action di modul scheduling photobooth.
+ */
+export async function requireYeoboBoothAccess(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("yeobo_booth_admins" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/**
  * Sub-gate for production sub-roles. Bagian produksi punya dua sub-role
  * (baker, decorator). User dengan `production_role=null` (legacy) atau
  * scope `'orders'` lolos sebagai both. Admin Zota app TIDAK lolos —
