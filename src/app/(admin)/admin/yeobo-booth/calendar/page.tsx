@@ -11,13 +11,15 @@ import { BookingCalendar } from "@/components/yeobo-booth/BookingCalendar";
 export default async function CalendarPage() {
   if (!(await canAccessYeoboBooth())) redirect("/dashboard");
 
-  // Load 3-month window untuk calendar (sebelumnya 1 bulan, bulan ini,
-  // 1 bulan ke depan) — user bisa navigate ±1 bulan dari current view.
+  // Window lebar — calendar component support navigasi ke bulan apa
+  // saja, jadi fetch 6 bulan ke belakang + 12 bulan ke depan biar user
+  // tidak kehilangan event saat geser bulan. Volume booking photobooth
+  // moderate (puluhan/bulan), aman fetch sebanyak ini di satu request.
   const today = new Date();
-  const fromDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  const fromDate = new Date(today.getFullYear(), today.getMonth() - 6, 1)
     .toISOString()
     .slice(0, 10);
-  const toDate = new Date(today.getFullYear(), today.getMonth() + 2, 0)
+  const toDate = new Date(today.getFullYear(), today.getMonth() + 13, 0)
     .toISOString()
     .slice(0, 10);
   const bookings = await listBookings({ fromDate, toDate });

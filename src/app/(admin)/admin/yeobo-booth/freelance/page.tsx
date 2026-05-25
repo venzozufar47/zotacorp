@@ -14,7 +14,10 @@ export default async function FreelancePage() {
   const freelance = await listFreelance({ includeInactive: true });
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    // NOTE: tidak pakai `animate-fade-up` — modal di FreelanceManager
+    // pakai position:fixed yang akan terikat ke root div (bukan
+    // viewport) jika parent punya `transform` (animate-fade-up).
+    <div className="space-y-5">
       <PageHeader
         title="Master Freelance"
         subtitle="Daftar operator/kru lepas yang ditugaskan di sesi photobooth. Tidak punya akun login."

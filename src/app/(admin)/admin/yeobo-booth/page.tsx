@@ -62,7 +62,10 @@ export default async function YeoboBoothOverviewPage() {
   ).length;
 
   return (
-    <div className="space-y-6 animate-fade-up pb-28 md:pb-0">
+    // NOTE: tidak pakai `animate-fade-up` — animation memakai
+    // `transform` yang bikin FAB <position:fixed> jadi terikat ke
+    // root div (bukan viewport).
+    <div className="space-y-6 pb-28 md:pb-0">
       <PageHeader
         title="Yeobo Booth"
         subtitle="Scheduling + booking + pembayaran unit persewaan photobooth."

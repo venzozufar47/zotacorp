@@ -34,7 +34,10 @@ export default async function BookingDetailPage({ params }: PageProps) {
   if (!booking) notFound();
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    // NOTE: tidak pakai `animate-fade-up` di root — animation memakai
+    // `transform` yang bikin <position:fixed> sticky bar di BookingForm
+    // jadi terikat ke parent (bukan viewport).
+    <div className="space-y-5">
       <PageHeader
         title={booking.nama_klien}
         subtitle={`Booking #${booking.id.slice(0, 8)}`}

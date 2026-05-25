@@ -23,7 +23,10 @@ export default async function AdminsPage() {
   ]);
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    // NOTE: tidak pakai `animate-fade-up` — modal di AdminsManager
+    // pakai position:fixed (full viewport) yang akan terikat ke root
+    // div jika parent punya `transform` dari animate-fade-up.
+    <div className="space-y-5">
       <PageHeader
         title="Akses Admin Yeobo Booth"
         subtitle="Karyawan yang boleh CRUD jadwal & booking Yeobo Booth tanpa harus admin Zota. Khusus admin Zota yang bisa mengatur."

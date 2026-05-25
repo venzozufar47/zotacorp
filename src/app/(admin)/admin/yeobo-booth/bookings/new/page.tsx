@@ -12,7 +12,11 @@ export default async function NewBookingPage() {
   const freelance = await listFreelance();
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    // NOTE: tidak pakai `animate-fade-up` di root — animation memakai
+    // `transform` yang bikin <position:fixed> sticky bar di BookingForm
+    // jadi terikat ke parent (bukan viewport). Acceptable trade-off:
+    // halaman muncul tanpa entrance animation.
+    <div className="space-y-5">
       <PageHeader
         title="Booking Baru"
         subtitle="Isi data klien, sesi, harga, dan freelance yang bertugas."
