@@ -3801,6 +3801,9 @@ export type PayslipBreakdown = {
   late_penalty_daily_cap?: number;
   extra_work_days?: Array<{ date: string; kind: string; pay: number }>;
   extra_work_rate_idr?: number;
+  /** Hari hadir karyawan dalam periode — ditambah dari sibling chat
+   *  slip-gaji untuk render daftar attendance di PayslipPdfDocument. */
+  attendance_days?: Array<{ date: string }>;
 };
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AttendanceLog = Database['public']['Tables']['attendance_logs']['Row'];
