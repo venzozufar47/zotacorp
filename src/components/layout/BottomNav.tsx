@@ -53,7 +53,7 @@ export function BottomNav({
     ...(assignmentCount > 0
       ? [
           {
-            href: "/employee/assignments",
+            href: "/assignments",
             icon: Inbox,
             label: "Assign",
             color: "bg-pop-pink",

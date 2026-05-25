@@ -58,7 +58,7 @@ export function Sidebar({
     ...(assignmentCount > 0
       ? [
           {
-            href: "/employee/assignments",
+            href: "/assignments",
             icon: Inbox,
             label: "Assignment",
             color: "bg-pop-pink",

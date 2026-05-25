@@ -174,7 +174,7 @@ export async function setBusinessUnitDefaultAssignee(
   }
 
   revalidatePath("/admin/finance", "layout");
-  revalidatePath("/employee/assignments");
+  revalidatePath("/assignments");
   return { ok: true, data: { backfilled } };
 }
 
@@ -286,7 +286,7 @@ export async function resolveAssignment(
   }
 
   revalidatePath("/admin/finance", "layout");
-  revalidatePath("/employee/assignments");
+  revalidatePath("/assignments");
   return { ok: true };
 }
 

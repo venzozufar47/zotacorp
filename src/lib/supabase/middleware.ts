@@ -50,7 +50,7 @@ export async function updateSession(request: NextRequest) {
 
   // Logged in → resolve role once for all guards below
   if (user) {
-    const employeeRoutes = ["/dashboard", "/attendance", "/profile"];
+    const employeeRoutes = ["/dashboard", "/attendance", "/profile", "/assignments"];
     const onEmployeeRoute = employeeRoutes.some(
       (r) => pathname === r || pathname.startsWith(r + "/")
     );
