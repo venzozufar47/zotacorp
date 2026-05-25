@@ -38,7 +38,7 @@ export default async function BookingDetailPage({ params }: PageProps) {
     // NOTE: tidak pakai `animate-fade-up` di root — animation memakai
     // `transform` yang bikin <position:fixed> sticky bar di BookingForm
     // jadi terikat ke parent (bukan viewport).
-    <div className="space-y-5">
+    <div className="space-y-5 pb-8 md:pb-0">
       <PageHeader
         title={booking.nama_klien}
         subtitle={`Booking #${booking.id.slice(0, 8)}`}
@@ -121,7 +121,11 @@ export default async function BookingDetailPage({ params }: PageProps) {
         <h2 className="font-display text-xl font-bold text-foreground mb-3">
           Edit Booking
         </h2>
-        <BookingForm freelance={freelance} editing={booking} />
+        <BookingForm
+          freelance={freelance}
+          editing={booking}
+          stickyMobileBar={false}
+        />
       </section>
 
       {/* Danger zone — cancel booking */}

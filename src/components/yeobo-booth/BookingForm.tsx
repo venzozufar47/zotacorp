@@ -19,6 +19,11 @@ import { BOOKING_STATUS_LABEL } from "@/lib/yeobo-booth/types";
 interface Props {
   freelance: YeoboBoothFreelance[];
   editing?: YeoboBoothBookingWithFreelance;
+  /** Pakai sticky bottom action bar di mobile. Default true (cocok
+   *  untuk /new page yang form-only). Untuk detail page yang punya
+   *  section lain di bawah form (cancel, dst), set ke false supaya
+   *  sticky bar tidak overlap konten setelahnya. */
+  stickyMobileBar?: boolean;
 }
 
 const STATUS_OPTIONS: BookingStatus[] = [
@@ -33,7 +38,11 @@ const FIELD =
 const LABEL =
   "block text-[12px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
 
-export function BookingForm({ freelance, editing }: Props) {
+export function BookingForm({
+  freelance,
+  editing,
+  stickyMobileBar = true,
+}: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
 
@@ -271,57 +280,99 @@ export function BookingForm({ freelance, editing }: Props) {
         )}
       </section>
 
-      {/* Desktop: inline justify-end. Mobile: sticky bottom bar di atas
-          AdminMobileNav (h-14 + safe-area). Tambah spacer di mobile
-          supaya konten terakhir tidak ketutup. */}
-      <div className="hidden md:flex justify-end gap-2">
-        <Link
-          href={
-            editing
-              ? `/admin/yeobo-booth/bookings/${editing.id}`
-              : "/admin/yeobo-booth/bookings"
-          }
-          className="px-4 py-2 rounded-xl border-2 border-foreground/20 text-sm font-medium hover:bg-muted"
-        >
-          Batal
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-        >
-          <Save size={14} />
-          {pending ? "Menyimpan…" : editing ? "Simpan Perubahan" : "Buat Booking"}
-        </button>
-      </div>
+      {/* Mode INLINE — selalu inline (mobile & desktop). Cocok untuk
+          detail page di mana form bukan satu-satunya konten; menghindari
+          sticky bar overlap section setelahnya (mis. Batalkan Booking).
+          Di mobile stack vertikal (Simpan di atas, Batal di bawah). */}
+      {!stickyMobileBar && (
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <Link
+            href={
+              editing
+                ? `/admin/yeobo-booth/bookings/${editing.id}`
+                : "/admin/yeobo-booth/bookings"
+            }
+            className="px-4 py-2.5 sm:py-2 rounded-xl border-2 border-foreground/20 text-sm font-medium hover:bg-muted text-center"
+          >
+            Batal
+          </Link>
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+          >
+            <Save size={14} />
+            {pending
+              ? "Menyimpan…"
+              : editing
+                ? "Simpan Perubahan"
+                : "Buat Booking"}
+          </button>
+        </div>
+      )}
 
-      {/* Mobile sticky action bar */}
-      <div className="md:hidden h-20" aria-hidden />
-      <div
-        className="md:hidden fixed left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t-2 border-foreground/15 px-4 py-3 flex gap-2"
-        style={{
-          bottom: "calc(3.75rem + env(safe-area-inset-bottom, 0px))",
-        }}
-      >
-        <Link
-          href={
-            editing
-              ? `/admin/yeobo-booth/bookings/${editing.id}`
-              : "/admin/yeobo-booth/bookings"
-          }
-          className="px-4 py-2.5 rounded-xl border-2 border-foreground/20 text-sm font-medium hover:bg-muted shrink-0"
-        >
-          Batal
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-        >
-          <Save size={14} />
-          {pending ? "Menyimpan…" : editing ? "Simpan Perubahan" : "Buat Booking"}
-        </button>
-      </div>
+      {/* Mode STICKY — desktop inline, mobile sticky bottom bar. Cocok
+          untuk /new page yang form-only — sticky bar selalu accessible
+          tanpa scroll. */}
+      {stickyMobileBar && (
+        <>
+          <div className="hidden md:flex justify-end gap-2">
+            <Link
+              href={
+                editing
+                  ? `/admin/yeobo-booth/bookings/${editing.id}`
+                  : "/admin/yeobo-booth/bookings"
+              }
+              className="px-4 py-2 rounded-xl border-2 border-foreground/20 text-sm font-medium hover:bg-muted"
+            >
+              Batal
+            </Link>
+            <button
+              type="submit"
+              disabled={pending}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+            >
+              <Save size={14} />
+              {pending
+                ? "Menyimpan…"
+                : editing
+                  ? "Simpan Perubahan"
+                  : "Buat Booking"}
+            </button>
+          </div>
+
+          <div className="md:hidden h-20" aria-hidden />
+          <div
+            className="md:hidden fixed left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t-2 border-foreground/15 px-4 py-3 flex gap-2"
+            style={{
+              bottom: "calc(3.75rem + env(safe-area-inset-bottom, 0px))",
+            }}
+          >
+            <Link
+              href={
+                editing
+                  ? `/admin/yeobo-booth/bookings/${editing.id}`
+                  : "/admin/yeobo-booth/bookings"
+              }
+              className="px-4 py-2.5 rounded-xl border-2 border-foreground/20 text-sm font-medium hover:bg-muted shrink-0"
+            >
+              Batal
+            </Link>
+            <button
+              type="submit"
+              disabled={pending}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+            >
+              <Save size={14} />
+              {pending
+                ? "Menyimpan…"
+                : editing
+                  ? "Simpan Perubahan"
+                  : "Buat Booking"}
+            </button>
+          </div>
+        </>
+      )}
     </form>
   );
 }
