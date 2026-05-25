@@ -14,10 +14,8 @@ import {
 import { HeroContract } from "./HeroContract";
 import { KpiTile } from "./KpiTile";
 import {
-  RevenueChart,
-  PnLBreakdownChart,
-  MarginTrendChart,
-  UtilizationChart,
+  FinancialOverviewChart,
+  NetDividenChart,
 } from "./InvestorCharts";
 import { PayoutsTable } from "./PayoutsTable";
 import { MetricCommentSheet } from "./MetricCommentSheet";
@@ -116,6 +114,12 @@ export function InvestorDashboardView({
       ? utilRows.reduce((s, r) => s + (r.utilizationPct ?? 0), 0) /
         utilRows.length
       : null;
+    // Net dividen owner-level per bulan dari kategori cashflow
+    // (Investment + Dividend). Owner-POV: positif = owner menarik
+    // dividen, negatif = owner menyetor modal. Konsisten dengan
+    // angka "Net Dividen - Investment" di admin finance dashboard.
+    const netDividenPerMonth = rows.map((r) => r.netDividen);
+    const netDividenInPeriod = netDividenPerMonth.reduce((s, v) => s + v, 0);
     return {
       n: rows.length,
       rev,
@@ -132,6 +136,8 @@ export function InvestorDashboardView({
       customers: sum("uniqueCustomers"),
       tax: Math.max(0, op * 0.005),
       avgRev: avg("revenue"),
+      netDividenInPeriod,
+      netDividenPerMonth,
     };
   }, [data.rows]);
 
@@ -189,6 +195,9 @@ export function InvestorDashboardView({
         contract={data.contract}
         contractProgress={data.contractProgress}
         bepProgress={data.bepProgress}
+        heroPerformance={data.heroPerformance}
+        totalCashback={data.totalCashback}
+        payoutsCount={data.payouts.length}
       />
 
       {/* Period selector + section heading */}
@@ -205,7 +214,7 @@ export function InvestorDashboardView({
       </section>
 
       {/* 6 KPI tiles */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiTile
           metricId={METRIC_IDS.revenue.id}
           label="Revenue"
@@ -249,7 +258,7 @@ export function InvestorDashboardView({
           metricId={METRIC_IDS.opMargin.id}
           label="Op. margin"
           value={`${agg.opMargin.toFixed(1)}%`}
-          help="(Gross − Opex) / Revenue. Efisiensi operasional sehari-hari."
+          help="(Gross − Opex) / Revenue. Efisiensi operasional sehari-hari. Saat ini sama dengan Net margin karena pajak final sudah ter-record di Opex (tidak ada deduction lain)."
           sparkPoints={data.rows.map((r) =>
             r.revenue ? (r.operatingProfit / r.revenue) * 100 : 0
           )}
@@ -261,79 +270,40 @@ export function InvestorDashboardView({
           onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
         />
         <KpiTile
-          metricId={METRIC_IDS.npMargin.id}
-          label="Net margin"
-          value={`${agg.npMargin.toFixed(1)}%`}
-          help="Net Profit / Revenue. Basis bagi hasil ke investor."
-          sparkPoints={data.rows.map((r) =>
-            r.revenue ? (r.netProfit / r.revenue) * 100 : 0
-          )}
+          metricId={METRIC_IDS.netDividen.id}
+          label="Net dividen"
+          value={formatRp(agg.netDividenInPeriod)}
+          help="Aliran modal ke/dari owner pada periode terpilih (kategori Investment + Dividend di cashflow). Positif = owner menarik dividen, negatif = owner menyetor modal. Bukan bagi hasil investor."
+          sparkPoints={agg.netDividenPerMonth.map((v) => v / 1e6)}
           sparkColor="#1d6b3a"
-          commentCount={commentFor(METRIC_IDS.npMargin.id)?.count}
+          commentCount={commentFor(METRIC_IDS.netDividen.id)?.count}
           commentLastAuthorRole={
-            commentFor(METRIC_IDS.npMargin.id)?.lastAuthorRole
-          }
-          onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
-        />
-        <KpiTile
-          metricId={METRIC_IDS.utilization.id}
-          label="Utilization"
-          value={agg.avgUtil != null ? `${agg.avgUtil.toFixed(0)}%` : "—"}
-          help="Rata-rata pemakaian kapasitas produksi terhadap kapasitas maksimum. Diisi admin per bulan."
-          sparkPoints={data.rows
-            .map((r) => r.utilizationPct ?? 0)
-            .filter((v, i, a) => a.some((x) => x > 0) || i > 0)}
-          commentCount={commentFor(METRIC_IDS.utilization.id)?.count}
-          commentLastAuthorRole={
-            commentFor(METRIC_IDS.utilization.id)?.lastAuthorRole
+            commentFor(METRIC_IDS.netDividen.id)?.lastAuthorRole
           }
           onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
         />
       </section>
 
-      {/* Charts grid */}
-      <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      {/* Charts: financial overview (combined) + utilization (terpisah
+          karena bukan ukuran finansial). Dual axis pada chart finansial
+          memungkinkan banding Rp (bars + Net profit line) terhadap
+          margin % (dashed lines) di satu canvas. */}
+      <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2">
+          <ChartCard
+            eyebrow="Performa finansial"
+            title={formatRp(agg.np)}
+            subtitle={`operating profit total · rata-rata revenue ${formatRp(agg.avgRev)}/bln`}
+          >
+            <FinancialOverviewChart rows={data.rows} />
+          </ChartCard>
+        </div>
         <ChartCard
-          eyebrow="Revenue per bulan"
-          title={`${formatRp(agg.avgRev)} / bln`}
-          subtitle="rata-rata bulanan periode ini"
+          eyebrow="Net dividen"
+          title={formatRp(agg.netDividenInPeriod)}
+          subtitle={`aliran modal ${agg.netDividenInPeriod >= 0 ? "ke" : "dari"} owner · ${agg.netDividenPerMonth.filter((v) => v !== 0).length} bulan ada aktivitas`}
         >
-          <RevenueChart rows={data.rows} />
-        </ChartCard>
-        <ChartCard
-          eyebrow="Profit &amp; loss"
-          title={formatRp(agg.np)}
-          subtitle={`net profit total · margin ${agg.npMargin.toFixed(1)}%`}
-          legend={[
-            { color: "var(--primary)", label: "Revenue" },
-            { color: "#b5dde6", label: "COGS + Opex" },
-            { color: "#1d6b3a", label: "Net profit", line: true },
-          ]}
-        >
-          <PnLBreakdownChart rows={data.rows} />
-        </ChartCard>
-        <ChartCard
-          eyebrow="Margin trend"
-          title="Gross · Op · Net"
-          subtitle="dalam %"
-          legend={[
-            { color: "var(--primary)", label: "Gross PM" },
-            { color: "#7c5cd6", label: "Op. PM" },
-            { color: "#1d6b3a", label: "Net PM" },
-          ]}
-        >
-          <MarginTrendChart rows={data.rows} />
-        </ChartCard>
-        <ChartCard
-          eyebrow="Utilization rate"
-          title={
-            agg.avgUtil != null
-              ? `${agg.avgUtil.toFixed(0)}% rata-rata`
-              : "Belum ada data"
-          }
-          subtitle="target operasional 80%"
-        >
-          <UtilizationChart rows={data.rows} />
+          <NetDividenChart rows={data.rows} />
         </ChartCard>
       </section>
 

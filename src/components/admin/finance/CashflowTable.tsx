@@ -21,6 +21,13 @@ import {
   EDIT_INPUT_NUM_CLS,
   EDIT_SELECT_CLS,
 } from "./edit-input-styles";
+import { MonthPicker } from "@/components/shared/MonthPicker";
+import {
+  parseYM,
+  formatYM,
+  ymLabelShort,
+} from "@/components/shared/MonthRangePicker";
+import { CalendarDays } from "lucide-react";
 
 export interface CashflowRow {
   id: string;
@@ -126,6 +133,7 @@ export function CashflowTable({
   // every selected row". We render two actions side-by-side (apply
   // override vs clear override) so admin can both assign and revert.
   const [batchEffPeriod, setBatchEffPeriod] = useState<string>("");
+  const [batchPickerOpen, setBatchPickerOpen] = useState(false);
 
   // Working copy — mutated inline while editing. Reset on cancel, sent
   // as a diff on save. Indexed by id to avoid findIndex churn.
@@ -724,15 +732,38 @@ export function CashflowTable({
             </span>
           ) : (
             <>
-              <input
-                type="month"
-                value={batchEffPeriod}
-                onChange={(e) => setBatchEffPeriod(e.target.value)}
+              <button
+                type="button"
+                onClick={() => setBatchPickerOpen(true)}
                 disabled={pending}
-                className={EDIT_SELECT_CLS + " h-7 text-foreground w-[130px]"}
+                className={
+                  EDIT_SELECT_CLS +
+                  " h-7 text-foreground w-[130px] inline-flex items-center justify-start gap-1.5 px-2"
+                }
                 aria-label="Periode efektif batch"
-                placeholder="Periode…"
-              />
+              >
+                <CalendarDays
+                  size={12}
+                  strokeWidth={2.2}
+                  className="text-primary shrink-0"
+                />
+                <span className="tabular-nums">
+                  {batchEffPeriod
+                    ? ymLabelShort(parseYM(batchEffPeriod))
+                    : "Periode…"}
+                </span>
+              </button>
+              {batchPickerOpen && (
+                <MonthPicker
+                  value={parseYM(batchEffPeriod)}
+                  title="Pilih periode efektif"
+                  onApply={(ym) => {
+                    setBatchEffPeriod(formatYM(ym));
+                    setBatchPickerOpen(false);
+                  }}
+                  onClose={() => setBatchPickerOpen(false)}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => setBatchEffPeriod("__clear__")}
@@ -1547,26 +1578,62 @@ function EffectivePeriodCell({
     );
   }
 
-  // Edit mode
-  const value = `${activeYear}-${String(activeMonth).padStart(2, "0")}`;
+  // Edit mode — trigger button + MonthPicker popover.
+  return (
+    <EffectivePeriodEditor
+      activeYear={activeYear}
+      activeMonth={activeMonth}
+      hasOverride={hasOverride}
+      onChange={onChange}
+    />
+  );
+}
+
+function EffectivePeriodEditor({
+  activeYear,
+  activeMonth,
+  hasOverride,
+  onChange,
+}: {
+  activeYear: number;
+  activeMonth: number;
+  hasOverride: boolean;
+  onChange: (year: number | null, month: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
   return (
     <div className="flex items-center gap-1">
-      <input
-        type="month"
-        value={value}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (!v) {
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="press-feedback rounded-md border border-input bg-background px-1.5 h-7 text-xs w-full min-w-0 inline-flex items-center gap-1 hover:border-primary/50"
+        title="Klik untuk pilih periode efektif"
+      >
+        <CalendarDays
+          size={11}
+          strokeWidth={2.2}
+          className="text-primary shrink-0"
+        />
+        <span className="tabular-nums truncate">
+          {MONTH_NAMES_SHORT[activeMonth - 1]} {activeYear}
+        </span>
+      </button>
+      {open && (
+        <MonthPicker
+          value={{ year: activeYear, month: activeMonth }}
+          title="Pilih periode efektif"
+          allowClear={hasOverride}
+          onClear={() => {
             onChange(null, null);
-            return;
-          }
-          const [yy, mm] = v.split("-").map(Number);
-          if (Number.isFinite(yy) && Number.isFinite(mm)) {
-            onChange(yy, mm);
-          }
-        }}
-        className="rounded-md border border-input bg-background px-1.5 h-7 text-xs w-full min-w-0"
-      />
+            setOpen(false);
+          }}
+          onApply={(ym) => {
+            onChange(ym.year, ym.month);
+            setOpen(false);
+          }}
+          onClose={() => setOpen(false)}
+        />
+      )}
       {hasOverride && (
         <button
           type="button"

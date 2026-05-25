@@ -10,6 +10,7 @@ export const METRIC_IDS = {
   opMargin: { id: "opMargin", label: "Operating margin" },
   npMargin: { id: "npMargin", label: "Net margin" },
   utilization: { id: "utilization", label: "Utilization" },
+  netDividen: { id: "netDividen", label: "Net dividen" },
   revenueTrend: { id: "revenueTrend", label: "Revenue per bulan" },
   pnlBreakdown: { id: "pnlBreakdown", label: "P&L breakdown" },
   marginTrend: { id: "marginTrend", label: "Margin trend" },
