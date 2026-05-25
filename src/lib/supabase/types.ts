@@ -2282,6 +2282,13 @@ export type PayslipBreakdown = {
   late_penalty_daily_cap?: number;
   extra_work_days?: Array<{ date: string; kind: string; pay: number }>;
   extra_work_rate_idr?: number;
+  /** Snapshot of every date the karyawan actually checked out (completed work
+   *  day) within the payslip period, sorted ascending. Drives the per-day
+   *  diary timeline on the employee view — lets it list every work day, not
+   *  just days with events. Optional for backward compat with older payslips
+   *  that were finalized before this field existed; UI falls back to a sparse
+   *  view (only event days + roll-up) when absent. */
+  attendance_days?: Array<{ date: string }>;
 };
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AttendanceLog = Database['public']['Tables']['attendance_logs']['Row'];

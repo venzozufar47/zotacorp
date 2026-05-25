@@ -341,6 +341,9 @@ function calculateFromAttendance(
     overtime_days: overtimeDays.sort((a, b) => a.date.localeCompare(b.date)),
     late_days: lateDaysBreakdown.sort((a, b) => a.date.localeCompare(b.date)),
     late_penalty_daily_cap: dailyPayCapApplied,
+    attendance_days: completedLogs
+      .map((l) => ({ date: l.date }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
   };
 
   return {

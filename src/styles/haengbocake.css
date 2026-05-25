@@ -1,0 +1,82 @@
+/**
+ * Haengbocake admin visual tokens — scoped to [data-haengbocake]
+ * elements so they don't leak into the rest of the app's Oceanic
+ * theme. Loaded once from `src/app/cake-orders/layout.tsx`.
+ *
+ * Values mirror the prototype in `Haengbocake Admin.html` so the
+ * production UI matches the approved design's color signals
+ * (urgency colors, column tints, Pare/Sem chips, etc).
+ */
+[data-haengbocake] {
+  /* surface */
+  --cake-bg: #FBF8EF;
+  --cake-bg-elev: #FFFDF7;
+  --cake-surface: #FFFFFF;
+  --cake-fg: #1B2540;
+  --cake-fg-soft: #475569;
+  --cake-muted: #94A3B8;
+  --cake-muted-2: #CBD5E1;
+  --cake-border: #E5E7EB;
+  --cake-border-strong: #1B2540;
+
+  /* primary */
+  --cake-primary: #2A7F62;
+  --cake-primary-light: #E8F3EE;
+  --cake-primary-fg: #FFFFFF;
+
+  /* branch chips */
+  --cake-pare-soft: #DCFCE7;
+  --cake-pare-fg: #14532D;
+  --cake-sem-soft: #FCE7F3;
+  --cake-sem-fg: #831843;
+
+  /* urgency (border + soft fill for cards) */
+  --cake-late: #E11D48;
+  --cake-late-soft: #FEE2E2;
+  --cake-today: #10B981;
+  --cake-today-soft: #D1FAE5;
+  --cake-week: #F59E0B;
+  --cake-week-soft: #FEF3C7;
+  --cake-far: #CBD5E1;
+  --cake-far-soft: #F1F5F9;
+
+  /* kanban column tints */
+  --cake-col-baru: #F4EEDD;
+  --cake-col-baru-chip: #F9E2B0;
+  --cake-col-baru-chip-fg: #92400E;
+  --cake-col-kerja: #EFE3D6;
+  --cake-col-kerja-chip: #FFD4B5;
+  --cake-col-kerja-chip-fg: #9A3412;
+  --cake-col-siap: #E5EFDF;
+  --cake-col-siap-chip: #BBE3B6;
+  --cake-col-siap-chip-fg: #14532D;
+  --cake-col-kirim: #EAE4F2;
+  --cake-col-kirim-chip: #D8C7F0;
+  --cake-col-kirim-chip-fg: #5B21B6;
+  --cake-col-selesai: #E6E8EE;
+  --cake-col-selesai-chip: #C7CCDB;
+  --cake-col-selesai-chip-fg: #1B2540;
+
+  /* status chips on cards */
+  --cake-paid-soft: #D1FAE5;
+  --cake-paid-fg: #065F46;
+  --cake-dp-soft: #FEF3C7;
+  --cake-dp-fg: #92400E;
+  --cake-unpaid-soft: #FEE2E2;
+  --cake-unpaid-fg: #991B1B;
+  --cake-prod-soft: #EDE9FE;
+  --cake-prod-fg: #5B21B6;
+  --cake-deco-soft: #FCE7F3;
+  --cake-deco-fg: #831843;
+
+  /* shadows */
+  --cake-shadow-card: 0 1px 0 rgba(27, 37, 64, 0.06), 0 1px 2px rgba(27, 37, 64, 0.04);
+  --cake-shadow-pop: 0 2px 0 var(--cake-border-strong);
+  --cake-shadow-lg: 0 12px 32px -12px rgba(27, 37, 64, 0.18), 0 4px 12px -4px rgba(27, 37, 64, 0.08);
+
+  /* radii */
+  --cake-radius-sm: 8px;
+  --cake-radius-md: 12px;
+  --cake-radius-lg: 16px;
+  --cake-radius-xl: 22px;
+}

@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# claude local scratch (design refs, backups, plans)
+.claude/tmp/
+
 # vercel
 .vercel
 

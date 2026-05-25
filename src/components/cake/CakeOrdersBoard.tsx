@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { format, isToday, isTomorrow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import {
-  CalendarClock,
+  Cake as CakeIcon,
+  Clock,
+  Phone,
   Truck,
   Package,
   ChevronRight,
@@ -23,7 +25,7 @@ import { formatIDR } from "@/lib/cashflow/format";
 import { makeLabelFor } from "@/lib/cake-orders/helpers";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { CakeOrderDetailLoader } from "./CakeOrderDetailLoader";
-import { BranchBadge } from "./BranchBadge";
+import { UrgencyLegend as DesignUrgencyLegend } from "./parts/UrgencyLegend";
 import type {
   CakeBaseDiameterPrice,
   CakeDiameterOption,
@@ -63,26 +65,61 @@ interface Column {
   status: CakeOrderStatus;
   label: string;
   emoji: string;
-  /** Tailwind class for the column header pill background. */
-  cls: string;
+  /** Subtitle below the column header, per Haengbocake design. */
+  sub: string;
+  /** Inline-style background for the column shell (cake- CSS var). */
+  colBg: string;
+  /** Inline-style background for the small chip in the header. */
+  chipBg: string;
+  chipFg: string;
 }
 
 const COLUMNS: Column[] = [
-  { status: "submitted", label: "Baru", emoji: "🆕", cls: "bg-pop-pink/30" },
+  {
+    status: "submitted",
+    label: "Baru",
+    emoji: "🆕",
+    sub: "Order baru masuk",
+    colBg: "var(--cake-col-baru)",
+    chipBg: "var(--cake-col-baru-chip)",
+    chipFg: "var(--cake-col-baru-chip-fg)",
+  },
   {
     status: "in_progress",
     label: "Dikerjakan",
     emoji: "👨‍🍳",
-    cls: "bg-tertiary/30",
+    sub: "Sedang produksi",
+    colBg: "var(--cake-col-kerja)",
+    chipBg: "var(--cake-col-kerja-chip)",
+    chipFg: "var(--cake-col-kerja-chip-fg)",
   },
-  { status: "ready", label: "Siap", emoji: "📦", cls: "bg-pop-emerald/30" },
+  {
+    status: "ready",
+    label: "Siap",
+    emoji: "📦",
+    sub: "Siap diambil / dikirim",
+    colBg: "var(--cake-col-siap)",
+    chipBg: "var(--cake-col-siap-chip)",
+    chipFg: "var(--cake-col-siap-chip-fg)",
+  },
   {
     status: "delivering",
     label: "Pengiriman",
     emoji: "🚚",
-    cls: "bg-pop-pink/30",
+    sub: "Dalam perjalanan",
+    colBg: "var(--cake-col-kirim)",
+    chipBg: "var(--cake-col-kirim-chip)",
+    chipFg: "var(--cake-col-kirim-chip-fg)",
   },
-  { status: "done", label: "Selesai", emoji: "✅", cls: "bg-muted" },
+  {
+    status: "done",
+    label: "Selesai",
+    emoji: "✅",
+    sub: "Tutup buku",
+    colBg: "var(--cake-col-selesai)",
+    chipBg: "var(--cake-col-selesai-chip)",
+    chipFg: "var(--cake-col-selesai-chip-fg)",
+  },
 ];
 
 /** Determine the next-step button shown on a card, or null if the
@@ -392,12 +429,11 @@ export function CakeOrdersBoard({
           onChange={setBranchFilter}
           counts={branchCounts}
         />
-        <UrgencyLegend />
+        <DesignUrgencyLegend />
         <div className={gridCls}>
           {COLUMNS.map((col) => {
           const list = grouped.get(col.status) ?? [];
           const isOver = dragOverStatus === col.status;
-          // Auto-only columns — drag-and-drop ke sini di-block penuh.
           const isAutoOnly =
             col.status === "submitted" || col.status === "in_progress";
           return (
@@ -405,7 +441,7 @@ export function CakeOrdersBoard({
               key={col.status}
               onDragOver={(e) => {
                 if (!canMove || !draggingId) return;
-                if (isAutoOnly) return; // jangan signal droppable
+                if (isAutoOnly) return;
                 e.preventDefault();
                 setDragOverStatus(col.status);
               }}
@@ -417,26 +453,45 @@ export function CakeOrdersBoard({
                 setDraggingId(null);
                 setDragOverStatus(null);
               }}
-              className={`rounded-2xl border-2 ${
-                isOver ? "border-foreground" : "border-border"
-              } bg-card p-2 space-y-2 min-h-[120px] transition-colors ${
-                isOver ? "bg-muted/40" : ""
-              }`}
+              className="flex flex-col rounded-[22px] p-2.5 pb-3 min-h-[320px] transition-colors"
+              style={{
+                background: col.colBg,
+                outline: isOver ? "2px dashed var(--cake-fg)" : "none",
+                outlineOffset: -4,
+              }}
             >
-              <div className="flex items-center justify-between gap-2 px-1">
-                <h2
-                  className={`flex items-center gap-1.5 rounded-full ${col.cls} border border-foreground px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-foreground`}
-                >
-                  <span aria-hidden>{col.emoji}</span>
+              {/* Column header per Haengbocake design: chip + UPPERCASE
+                  label on left, count on right. Subtitle below. */}
+              <div className="flex items-center justify-between px-2 pt-1.5 pb-2.5">
+                <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: "var(--cake-fg)" }}>
+                  <span
+                    aria-hidden
+                    className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-[7px] text-[11px]"
+                    style={{ background: col.chipBg, color: col.chipFg }}
+                  >
+                    {col.emoji}
+                  </span>
                   <span>{col.label}</span>
-                </h2>
-                <span className="text-[11px] tabular-nums font-semibold text-muted-foreground">
+                </span>
+                <span
+                  className="text-[12px] font-bold tabular-nums"
+                  style={{ color: "var(--cake-fg-soft)" }}
+                >
                   {list.length}
                 </span>
               </div>
-              <ul className="space-y-1.5">
+              <div
+                className="text-[10.5px] mb-2 px-2"
+                style={{ color: "var(--cake-fg-soft)" }}
+              >
+                {col.sub}
+              </div>
+              <ul className="flex flex-col gap-2">
                 {list.length === 0 ? (
-                  <li className="text-[11px] italic text-muted-foreground px-1 py-2 text-center">
+                  <li
+                    className="text-[11px] italic text-center px-1 py-3"
+                    style={{ color: "var(--cake-muted)" }}
+                  >
                     Kosong
                   </li>
                 ) : (
@@ -555,6 +610,18 @@ export function CakeOrdersBoard({
   );
 }
 
+/**
+ * Card visuals match the Haengbocake design (cake_design_pages.jsx).
+ * Key details:
+ *  - white surface with subtle border
+ *  - 3px urgency stripe on the left (::before-like)
+ *  - tinted left wash (linear-gradient first 6px) for late/soon/week
+ *  - branch chip (PARE/SEM) + uppercase name + total on top row
+ *  - 4 info rows (phone when not submitted, base/shape/dim, when/delivery)
+ *  - payment + production chips
+ *  - per-status action footer (Sudah diambil / Kirim sekarang / Terkirim
+ *    & diterima) and archive/unarchive secondary actions
+ */
 function Card({
   order,
   labelFor,
@@ -582,9 +649,7 @@ function Card({
   onToggleArchive?: (orderId: string, archive: boolean) => void;
   onSelect?: (orderId: string) => void;
   isActive?: boolean;
-  /** True kalau card ini cocok dengan query search (jika ada). */
   isMatch?: boolean;
-  /** True kalau ada query search aktif (untuk dim non-match). */
   hasSearch?: boolean;
   showArchiveButton?: boolean;
   showUnarchiveButton?: boolean;
@@ -597,22 +662,11 @@ function Card({
       ? `Besok · ${format(dt, "HH:mm", { locale: idLocale })}`
       : format(dt, "EEE, d MMM · HH:mm", { locale: idLocale });
 
-  // Pickup detection: if delivery option is "Pickup" the lifecycle
-  // skips the 'delivering' column. We rely on the option label since
-  // the option id varies per environment.
   const deliveryLabel = labelFor("delivery", order.delivery_option_id);
   const isPickup = deliveryLabel.toLowerCase().includes("pickup");
   const next = nextAction(order, isPickup);
 
-  // Urgency color berdasarkan selisih hari (Jakarta) antara
-  // scheduled_at dan hari ini:
-  //   <0  (sudah lewat)         → merah  (kelewat dikerjakan)
-  //   0–1 (hari ini / besok)    → hijau  (prioritas tinggi)
-  //   2–5 (minggu ini)          → kuning (perhatian)
-  //   >5                        → default card
-  // `subText` ikut shift saat ada tint: muted-foreground (abu-abu)
-  // kontrasnya buruk di atas pink/emerald/warning — pakai foreground
-  // dengan opacity supaya tetap readable.
+  // Urgency (calendar-day diff, Jakarta TZ).
   const urgency = (() => {
     const today = jakartaDateString(new Date());
     const sched = jakartaDateString(dt);
@@ -627,102 +681,132 @@ function Card({
       Number(sched.slice(8, 10))
     );
     const diff = Math.round((schedMs - todayMs) / 86_400_000);
-    if (diff < 0)
-      return {
-        bg: "bg-destructive/25",
-        sub: "text-foreground/75",
-        chipRing: "ring-1 ring-foreground/20",
-      };
-    if (diff <= 1)
-      return {
-        bg: "bg-pop-emerald/30",
-        sub: "text-foreground/75",
-        chipRing: "ring-1 ring-foreground/20",
-      };
-    if (diff <= 5)
-      return {
-        // Warning token (#FBBF24 amber default) butuh opacity penuh
-        // supaya kuning jelas terpisah dari card default — opacity
-        // parsial bleed jadi cream pucat.
-        bg: "bg-warning",
-        sub: "text-foreground/85",
-        chipRing: "ring-1 ring-foreground/20",
-      };
-    return {
-      bg: "bg-card",
-      sub: "text-muted-foreground",
-      chipRing: "",
-    };
+    if (diff < 0) return "late" as const;
+    if (diff <= 1) return "soon" as const;
+    if (diff <= 5) return "week" as const;
+    return "far" as const;
   })();
 
-  // Search highlight: card yang match dapat ring tebal kuning + glow,
-  // non-match di-redam (opacity & saturate) supaya match menonjol tapi
-  // konteks kanban masih terlihat.
-  const matchHighlight = isMatch
-    ? "ring-4 ring-warning ring-offset-1 ring-offset-background"
+  // Map urgency → stripe color + left wash.
+  const URGENCY_STRIPE: Record<typeof urgency, string> = {
+    late: "var(--cake-late)",
+    soon: "var(--cake-today)",
+    week: "var(--cake-week)",
+    far: "var(--cake-muted-2, #CBD5E1)",
+  };
+  const URGENCY_WASH: Record<typeof urgency, string> = {
+    late: "linear-gradient(90deg, #FEF2F2 0 6px, var(--cake-surface) 6px)",
+    soon: "linear-gradient(90deg, #ECFDF5 0 6px, var(--cake-surface) 6px)",
+    week: "linear-gradient(90deg, #FFFBEB 0 6px, var(--cake-surface) 6px)",
+    far: "var(--cake-surface)",
+  };
+
+  // Active/match/dim visual states.
+  const activeRing = isActive
+    ? "shadow-[0_0_0_3px_rgba(42,127,98,0.15)]"
     : "";
-  const nonMatchDim =
-    hasSearch && !isMatch ? "opacity-40 saturate-50" : "";
+  const matchRing = isMatch
+    ? "shadow-[0_0_0_3px_rgba(245,158,11,0.45)]"
+    : "";
+  const dimCls =
+    hasSearch && !isMatch ? "opacity-[0.35] saturate-[0.5]" : "";
+
   return (
     <li
       data-cake-order-id={order.id}
-      className={`rounded-xl border-2 ${
-        isActive ? "border-primary ring-2 ring-primary/30" : "border-foreground"
-      } ${urgency.bg} ${matchHighlight} ${nonMatchDim} p-2.5 hover:brightness-95 transition-[filter,background-color,opacity] space-y-1.5 ${
+      className={`relative rounded-[14px] overflow-hidden transition-all hover:-translate-y-px ${activeRing} ${matchRing} ${dimCls} ${
         dimmed ? "opacity-60" : ""
       } ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      style={{
+        background: URGENCY_WASH[urgency],
+        boxShadow:
+          isActive || isMatch
+            ? undefined
+            : "var(--cake-shadow-card, 0 1px 2px rgba(27,37,64,0.06))",
+        border: `1px solid ${
+          isActive
+            ? "var(--cake-primary)"
+            : "rgba(27, 37, 64, 0.06)"
+        }`,
+      }}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
+      {/* Urgency stripe (::before equivalent) */}
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 bottom-0 w-[3px]"
+        style={{ background: URGENCY_STRIPE[urgency] }}
+      />
       <button
         type="button"
         onClick={() => onSelect?.(order.id)}
-        className="block w-full text-left space-y-1.5"
+        className="block w-full text-left px-3 pt-2.5 pb-3 space-y-[3px]"
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <BranchBadge branch={order.branch} short />
-              <div className="font-semibold text-sm text-foreground truncate">
-                {order.customer_name}
-              </div>
-            </div>
-            {order.customer_phone && (
-              <div className={`text-[10px] truncate ${urgency.sub}`}>
-                📱 {order.customer_phone}
-              </div>
-            )}
+        {/* Top row: branch chip + name + total */}
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <BranchChipInline branch={order.branch} />
+            <span
+              className="font-bold text-[14px] tracking-[-0.005em] truncate uppercase"
+              style={{ color: "var(--cake-fg)" }}
+            >
+              {order.customer_name}
+            </span>
           </div>
-          <span className="text-[11px] font-semibold tabular-nums text-foreground shrink-0">
+          <span
+            className="text-[12px] font-bold tabular-nums whitespace-nowrap"
+            style={{ color: "var(--cake-fg)" }}
+          >
             Rp {formatIDR(order.total_idr)}
           </span>
         </div>
 
-        <div className={`text-[11px] truncate ${urgency.sub}`}>
-          {labelFor("base_cake", order.base_cake_option_id)}
-          {" · "}
-          {labelFor("shape", order.shape_option_id)}
-          {order.shape_custom ? ` (${order.shape_custom})` : ""}
-          {order.dimension_cm != null ? (
-            <span className="ml-1 inline-block rounded-full border border-foreground bg-card px-1 py-0 text-[10px] font-semibold tabular-nums text-foreground align-middle">
-              {order.dimension_cm} cm
+        {/* Phone (skip on submitted to keep early cards minimal) */}
+        {order.customer_phone && order.status !== "submitted" && (
+          <CardRow icon={<Phone size={11} />}>
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>
+              {order.customer_phone}
             </span>
-          ) : null}
-        </div>
+          </CardRow>
+        )}
 
-        <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-          <span className={`inline-flex items-center gap-1 ${urgency.sub}`}>
-            <CalendarClock size={10} className="shrink-0" />
-            {dateLabel}
+        {/* Base · Shape (· dim chip) */}
+        <CardRow icon={<CakeIcon size={11} />}>
+          <span>
+            {labelFor("base_cake", order.base_cake_option_id)}
+            {" · "}
+            {labelFor("shape", order.shape_option_id)}
+            {order.shape_custom ? ` (${order.shape_custom})` : ""}
+            {order.dimension_cm != null && (
+              <span
+                className="ml-1.5 inline-flex items-center px-1.5 h-[19px] rounded-full text-[10.5px] font-medium tabular-nums align-middle"
+                style={{
+                  background: "rgba(27, 37, 64, 0.06)",
+                  color: "var(--cake-fg)",
+                }}
+              >
+                {order.dimension_cm} cm
+              </span>
+            )}
           </span>
-          <span className={`inline-flex items-center gap-1 ${urgency.sub}`}>
-            <Truck size={10} className="shrink-0" />
+        </CardRow>
+
+        {/* When · Delivery */}
+        <CardRow icon={<Clock size={11} />}>
+          <span>{dateLabel}</span>
+          <span className="mx-1" style={{ color: "var(--cake-muted)" }}>
+            ·
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Truck size={11} style={{ color: "var(--cake-muted)" }} />
             {deliveryLabel}
           </span>
-        </div>
+        </CardRow>
 
-        <div className="flex flex-wrap gap-1">
+        {/* Chips */}
+        <div className="flex flex-wrap gap-1.5 mt-2">
           <PaymentChip order={order} />
           <ProductionChip status={order.production_status} />
         </div>
@@ -736,15 +820,17 @@ function Card({
             e.stopPropagation();
             onMoveTo(order.id, next.target);
           }}
-          className="w-full flex items-center justify-center gap-1 rounded-lg bg-foreground/90 text-background px-2 py-1 text-[11px] font-medium hover:opacity-90 active:scale-95 transition-transform"
+          className="mx-3 mb-2.5 w-[calc(100%-1.5rem)] inline-flex items-center justify-center gap-1 h-8 rounded-[10px] text-[12px] font-semibold hover:opacity-90"
+          style={{
+            background: "var(--cake-fg)",
+            color: "#fff",
+          }}
         >
           {next.label}
-          <ChevronRight size={11} strokeWidth={2.5} />
+          <ChevronRight size={12} strokeWidth={2.5} />
         </button>
       )}
 
-      {/* Archive on done; restore on archived. The two buttons are
-          mutually exclusive — page passes whichever applies. */}
       {order.status === "done" &&
         showArchiveButton &&
         !order.archived_at &&
@@ -756,9 +842,13 @@ function Card({
               e.stopPropagation();
               onToggleArchive(order.id, true);
             }}
-            className="w-full flex items-center justify-center gap-1 rounded-lg border border-dashed border-border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
+            className="mx-3 mb-2.5 w-[calc(100%-1.5rem)] inline-flex items-center justify-center gap-1 h-7 rounded-[8px] border border-dashed text-[10.5px] font-medium transition-colors"
+            style={{
+              borderColor: "var(--cake-border)",
+              color: "var(--cake-muted)",
+            }}
           >
-            <Archive size={10} strokeWidth={2.5} />
+            <Archive size={11} strokeWidth={2.5} />
             Arsipkan
           </button>
         )}
@@ -770,21 +860,68 @@ function Card({
             e.stopPropagation();
             onToggleArchive(order.id, false);
           }}
-          className="w-full flex items-center justify-center gap-1 rounded-lg border border-dashed border-border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
+          className="mx-3 mb-2.5 w-[calc(100%-1.5rem)] inline-flex items-center justify-center gap-1 h-7 rounded-[8px] border text-[10.5px] font-medium transition-colors"
+          style={{
+            borderColor: "var(--cake-primary)",
+            color: "var(--cake-primary)",
+          }}
         >
-          <ArchiveRestore size={10} strokeWidth={2.5} />
-          Kembalikan
+          <ArchiveRestore size={11} strokeWidth={2.5} />
+          Kembalikan ke daftar utama
         </button>
       )}
     </li>
   );
 }
 
+/** Inline branch chip per design's `.branch-chip` style. */
+function BranchChipInline({ branch }: { branch: "pare" | "semarang" }) {
+  const isPare = branch === "pare";
+  return (
+    <span
+      className="inline-flex items-center px-1.5 h-[18px] rounded-[5px] text-[10px] font-bold uppercase tracking-[0.06em]"
+      style={{
+        background: isPare ? "var(--cake-pare-soft)" : "var(--cake-sem-soft)",
+        color: isPare ? "var(--cake-pare-fg)" : "var(--cake-sem-fg)",
+      }}
+    >
+      {isPare ? "PARE" : "SEM"}
+    </span>
+  );
+}
+
+/** Card info-row with leading lucide icon per design. */
+function CardRow({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1.5 text-[11.5px] leading-tight"
+      style={{ color: "var(--cake-fg-soft)" }}
+    >
+      <span
+        aria-hidden
+        className="inline-flex items-center justify-center w-3.5 shrink-0"
+        style={{ color: "var(--cake-muted)" }}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 truncate">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Chip styles match design: pill-shaped, no border, soft pastel
+ * background + ink-toned text. 10.5px / 600 / tabular numerals.
+ */
+const CHIP_BASE = "inline-flex items-center px-2 h-[20px] rounded-full text-[10.5px] font-semibold tabular-nums";
+
 function PaymentChip({ order }: { order: CakeOrder }) {
-  // 5 visual states: refunded > partial_refund > paid > DP > unpaid.
-  // We show the actual paid amount when DP is recorded so the kanban
-  // tells the cake-input employee "Bu Tasya sudah DP Rp 50k" without
-  // opening the side panel.
   const { payment_status, paid_idr, total_idr } = order;
   const formatRp = (n: number) => {
     if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)}jt`;
@@ -793,34 +930,49 @@ function PaymentChip({ order }: { order: CakeOrder }) {
   };
   if (payment_status === "refunded") {
     return (
-      <span className="inline-block rounded-full border border-foreground bg-destructive/20 px-1.5 py-0 text-[10px] font-medium text-foreground">
+      <span
+        className={CHIP_BASE}
+        style={{ background: "var(--cake-unpaid-soft)", color: "var(--cake-unpaid-fg)" }}
+      >
         Refund
       </span>
     );
   }
   if (payment_status === "partial_refund") {
     return (
-      <span className="inline-block rounded-full border border-foreground bg-pop-pink/20 px-1.5 py-0 text-[10px] font-medium text-foreground">
+      <span
+        className={CHIP_BASE}
+        style={{ background: "var(--cake-sem-soft)", color: "var(--cake-sem-fg)" }}
+      >
         Refund sebagian
       </span>
     );
   }
   if (payment_status === "paid") {
     return (
-      <span className="inline-block rounded-full border border-foreground bg-pop-emerald/30 px-1.5 py-0 text-[10px] font-medium text-foreground">
+      <span
+        className={CHIP_BASE}
+        style={{ background: "var(--cake-paid-soft)", color: "var(--cake-paid-fg)" }}
+      >
         ● Lunas
       </span>
     );
   }
   if (paid_idr > 0 && paid_idr < total_idr) {
     return (
-      <span className="inline-block rounded-full border border-foreground bg-tertiary/40 px-1.5 py-0 text-[10px] font-medium text-foreground tabular-nums">
+      <span
+        className={CHIP_BASE}
+        style={{ background: "var(--cake-dp-soft)", color: "var(--cake-dp-fg)" }}
+      >
         DP {formatRp(paid_idr)}
       </span>
     );
   }
   return (
-    <span className="inline-block rounded-full border border-border bg-muted px-1.5 py-0 text-[10px] font-medium text-muted-foreground">
+    <span
+      className={CHIP_BASE}
+      style={{ background: "var(--cake-unpaid-soft)", color: "var(--cake-unpaid-fg)" }}
+    >
       Belum dibayar
     </span>
   );
@@ -832,34 +984,37 @@ function ProductionChip({
   status: CakeOrder["production_status"];
 }) {
   if (status === "pending") return null;
-  const map: Record<
+  const STYLES: Record<
     CakeOrder["production_status"],
-    { label: string; cls: string }
+    { label: string; bg: string; fg: string } | null
   > = {
-    pending: { label: "Pending", cls: "" },
+    pending: null,
     in_progress: {
       label: "Diproduksi",
-      cls: "bg-tertiary/40 text-foreground border-foreground",
+      bg: "var(--cake-prod-soft)",
+      fg: "var(--cake-prod-fg)",
     },
     decorating: {
       label: "Digambar",
-      cls: "bg-pop-pink/30 text-foreground border-foreground",
+      bg: "var(--cake-deco-soft)",
+      fg: "var(--cake-deco-fg)",
     },
     done: {
       label: "Prod. selesai",
-      cls: "bg-pop-emerald/30 text-foreground border-foreground",
+      bg: "var(--cake-paid-soft)",
+      fg: "var(--cake-paid-fg)",
     },
     cancelled: {
       label: "Batal",
-      cls: "bg-muted text-muted-foreground border-border",
+      bg: "var(--cake-bg-elev)",
+      fg: "var(--cake-muted)",
     },
   };
-  const m = map[status];
+  const s = STYLES[status];
+  if (!s) return null;
   return (
-    <span
-      className={`inline-block rounded-full border px-1.5 py-0 text-[10px] font-medium ${m.cls}`}
-    >
-      {m.label}
+    <span className={CHIP_BASE} style={{ background: s.bg, color: s.fg }}>
+      {s.label}
     </span>
   );
 }
@@ -869,32 +1024,6 @@ function ProductionChip({
  * supaya admin tidak perlu menebak arti warna. Kompak: 4 chip
  * berwarna + label di satu baris (wrap di mobile).
  */
-function UrgencyLegend() {
-  // Swatch size kecil (3×3) jadi tint /30 hampir tak terlihat —
-  // pakai opacity penuh + thin border foreground supaya semua warna
-  // (terutama warning kuning yang light) jelas.
-  const items: Array<{ bg: string; label: string }> = [
-    { bg: "bg-destructive", label: "Lewat" },
-    { bg: "bg-pop-emerald", label: "Hari ini / besok" },
-    { bg: "bg-warning", label: "2–5 hari lagi" },
-    { bg: "bg-card", label: ">5 hari" },
-  ];
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-      <span className="font-semibold uppercase tracking-wider">Warna kartu:</span>
-      {items.map((it) => (
-        <span key={it.label} className="inline-flex items-center gap-1">
-          <span
-            className={`inline-block size-3 rounded border border-foreground ${it.bg}`}
-            aria-hidden
-          />
-          {it.label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function SearchBar({
   value,
   onChange,

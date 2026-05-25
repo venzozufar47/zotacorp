@@ -48,6 +48,8 @@ import {
 } from "@/lib/actions/cake-orders.actions";
 import { jakartaDateMinusDays } from "@/lib/utils/jakarta";
 import { ImagePopup } from "@/components/cake/ImagePopup";
+import { CakePageHeader } from "@/components/cake/parts/CakePageHeader";
+import { FileText } from "lucide-react";
 
 interface Props {
   bundle: TomorrowSlipBundle;
@@ -260,34 +262,29 @@ export function SlipPreview({
 
   return (
     <div className="space-y-3 animate-fade-up pb-36 sm:pb-24">
-      <div className="flex items-center gap-2">
-        <Link
-          href="/cake-orders"
-          className="rounded-full p-1.5 hover:bg-muted text-muted-foreground"
-          aria-label="Kembali"
-        >
-          <ArrowLeft size={16} strokeWidth={2.5} />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-base sm:text-lg font-semibold text-foreground leading-tight">
-            Slip {relativeLabel.toLowerCase()} ·{" "}
-            {format(
-              new Date(`${targetDate}T00:00:00`),
-              "EEEE, d MMM yyyy",
-              { locale: idLocale }
-            )}
-          </h1>
-          <p className="text-[11px] text-muted-foreground">
-            {includedIds.size} cake siap dikirim ke produksi
+      <CakePageHeader
+        backHref="/cake-orders"
+        icon={<FileText size={20} strokeWidth={2.25} />}
+        iconStyle={{
+          background: "linear-gradient(140deg, #FEF3C7 0%, #FDE68A 100%)",
+          borderColor: "#92400E",
+          color: "#92400E",
+        }}
+        eyebrow={`Pembuatan slip produksi · ${branch === "pare" ? "Pare" : "Semarang"}`}
+        title={`Slip ${relativeLabel.toLowerCase()}`}
+        sub={
+          <>
+            {format(new Date(`${targetDate}T00:00:00`), "EEEE, d MMMM yyyy", {
+              locale: idLocale,
+            })}{" "}
+            · {includedIds.size} cake siap dikirim ke produksi
             {slip.sent_count > 0 && (
-              <span className="ml-1.5">
-                · sudah dikirim {slip.sent_count}×
-              </span>
+              <span className="ml-1">· sudah dikirim {slip.sent_count}×</span>
             )}
-          </p>
-        </div>
-        <SlipStatusBadge status={slip.status} />
-      </div>
+          </>
+        }
+        actions={<SlipStatusBadge status={slip.status} />}
+      />
 
       {/* Banner urgency + date picker. Warna dirancang supaya admin
           tidak bisa keliru: hijau = hari ini, kuning = jauh, merah =
