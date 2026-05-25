@@ -156,3 +156,105 @@ export async function deletePaymentCashflowTx(
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
+
+/**
+ * Buat baris cashflow_transactions sebagai REFUND saat booking
+ * dibatalkan dengan opsi "kembalikan uang ke klien". Bedanya dengan
+ * deletePaymentCashflowTx:
+ *
+ *   - delete: menghapus tx asli dari ledger (audit trail hilang).
+ *     Pakai ini untuk reverse "salah input" — uang sebenarnya tidak
+ *     pernah masuk/keluar di dunia nyata.
+ *   - refund (di sini): biarkan tx asli, lalu insert tx debit baru
+ *     dengan kategori 'Yeobo Booth - Refund'. Audit trail utuh —
+ *     ledger menunjukkan uang masuk lalu dikembalikan. Pakai ini saat
+ *     uang sungguh-sungguh balik ke klien.
+ *
+ * Statement target: bulan transaction_date (default: hari ini WIB),
+ * di rekening yang sama dengan tx asli (uang keluar dari rekening
+ * yang sama tempat ia masuk). Find-or-create statement seperti
+ * createPaymentCashflowTx.
+ */
+export interface CreateRefundTxArgs {
+  bookingId: string;
+  originalKind: "dp" | "lunas";
+  nominal: number;
+  bankAccountId: string;
+  bookingName: string;
+  refundDate: string; // YYYY-MM-DD WIB
+  createdByUserId: string;
+}
+
+export async function createRefundCashflowTx(
+  args: CreateRefundTxArgs
+): Promise<{ ok: boolean; error?: string }> {
+  const db = admin();
+
+  const [yearStr, monthStr] = args.refundDate.split("-");
+  const periodYear = Number(yearStr);
+  const periodMonth = Number(monthStr);
+  if (!Number.isFinite(periodYear) || !Number.isFinite(periodMonth)) {
+    return { ok: false, error: "Tanggal refund tidak valid" };
+  }
+
+  const { data: existingStmt } = await db
+    .from("cashflow_statements")
+    .select("id")
+    .eq("bank_account_id", args.bankAccountId)
+    .eq("period_year", periodYear)
+    .eq("period_month", periodMonth)
+    .maybeSingle();
+
+  let statementId: string;
+  if (existingStmt) {
+    statementId = existingStmt.id;
+  } else {
+    const { data: newStmt, error: newErr } = await db
+      .from("cashflow_statements")
+      .insert({
+        bank_account_id: args.bankAccountId,
+        period_year: periodYear,
+        period_month: periodMonth,
+        opening_balance: 0,
+        closing_balance: 0,
+        status: "draft",
+        created_by: args.createdByUserId,
+      })
+      .select("id")
+      .single();
+    if (newErr || !newStmt) {
+      return {
+        ok: false,
+        error: newErr?.message ?? "Gagal membuat statement",
+      };
+    }
+    statementId = newStmt.id;
+  }
+
+  const { data: maxRow } = await db
+    .from("cashflow_transactions")
+    .select("sort_order")
+    .eq("statement_id", statementId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextSortOrder = (maxRow?.sort_order ?? -1) + 1;
+
+  const label = args.originalKind === "dp" ? "DP" : "Pelunasan";
+  const description = `Yeobo Booth Refund ${label} — ${args.bookingName} (cancel)`;
+
+  const { error: txErr } = await db.from("cashflow_transactions").insert({
+    statement_id: statementId,
+    transaction_date: args.refundDate,
+    description,
+    debit: args.nominal, // uang keluar = debit
+    credit: 0,
+    category: "Yeobo Booth - Refund",
+    notes: `booking:${args.bookingId} (refund of ${args.originalKind})`,
+    sort_order: nextSortOrder,
+  });
+  if (txErr) {
+    return { ok: false, error: txErr.message };
+  }
+  return { ok: true };
+}

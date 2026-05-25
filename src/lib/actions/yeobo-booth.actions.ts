@@ -6,15 +6,18 @@ import { createClient } from "@/lib/supabase/server";
 import { requireYeoboBoothAccess, type ActionResult } from "./_gates";
 import {
   createPaymentCashflowTx,
+  createRefundCashflowTx,
   deletePaymentCashflowTx,
 } from "@/lib/yeobo-booth/cashflow";
-import type {
-  CreateBookingInput,
-  RecordPaymentInput,
-  UpdateBookingInput,
-  YeoboBoothBooking,
-  YeoboBoothBookingWithFreelance,
-  YeoboBoothFreelance,
+import { jakartaDateString } from "@/lib/utils/jakarta";
+import {
+  YEOBO_BOOTH_BU,
+  type CreateBookingInput,
+  type RecordPaymentInput,
+  type UpdateBookingInput,
+  type YeoboBoothBooking,
+  type YeoboBoothBookingWithFreelance,
+  type YeoboBoothFreelance,
 } from "@/lib/yeobo-booth/types";
 
 const timeRegex = /^[0-2][0-9]:[0-5][0-9]$/;
@@ -288,19 +291,110 @@ export async function updateBooking(
   return { ok: true };
 }
 
-/** Soft cancel — preserves audit trail. Pembayaran yang sudah masuk
- *  TIDAK otomatis ter-reverse: admin harus hapus cashflow tx manual
- *  kalau memang mau refund (trigger DB akan clear FK di booking). */
-export async function cancelBooking(id: string): Promise<ActionResult> {
+/**
+ * Pilihan saat membatalkan booking yang sudah ada pembayaran:
+ *
+ *   - "forfeit": uang hangus / ditahan. Tidak ada reversal cashflow —
+ *     pendapatan tetap diakui Yeobo Booth. Booking ditandai cancelled
+ *     sebagai info bahwa sesi tidak jadi dilaksanakan.
+ *   - "refund": uang dikembalikan ke klien. Insert baris debit baru di
+ *     cashflow_transactions (kategori 'Yeobo Booth - Refund'),
+ *     audit trail booking + payment tetap utuh, ledger seimbang.
+ */
+export type CancelChoice = "forfeit" | "refund";
+
+const cancelSchema = z.object({
+  booking_id: z.string().uuid(),
+  choice: z.enum(["forfeit", "refund"]),
+});
+
+export interface CancelBookingInput {
+  booking_id: string;
+  choice: CancelChoice;
+}
+
+export async function cancelBooking(
+  input: CancelBookingInput
+): Promise<ActionResult> {
   const gate = await requireYeoboBoothAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
+  const parsed = cancelSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Input invalid",
+    };
+  }
+
   const supabase = await createClient();
+  const { data: row, error: bErr } = await supabase
+    .from("yeobo_booth_bookings" as never)
+    .select("*")
+    .eq("id", parsed.data.booking_id)
+    .maybeSingle();
+  if (bErr) return { ok: false, error: bErr.message };
+  if (!row) return { ok: false, error: "Booking tidak ditemukan" };
+  const b = row as unknown as YeoboBoothBooking;
+  if (b.status === "cancelled") {
+    return { ok: false, error: "Booking sudah dibatalkan" };
+  }
+
+  // Kalau pilih refund DAN ada pembayaran yang sudah masuk, buat
+  // reversing cashflow tx per leg pembayaran. Tx asli dibiarkan utuh
+  // sehingga audit trail "masuk → keluar" terbaca.
+  if (parsed.data.choice === "refund") {
+    const refundDate = jakartaDateString(new Date());
+    if (
+      b.dp_cashflow_transaction_id &&
+      b.dp_nominal &&
+      b.dp_bank_account_id
+    ) {
+      const r = await createRefundCashflowTx({
+        bookingId: b.id,
+        originalKind: "dp",
+        nominal: b.dp_nominal,
+        bankAccountId: b.dp_bank_account_id,
+        bookingName: b.nama_klien,
+        refundDate,
+        createdByUserId: gate.userId,
+      });
+      if (!r.ok) {
+        return {
+          ok: false,
+          error: r.error ?? "Gagal membuat refund tx untuk DP",
+        };
+      }
+    }
+    if (
+      b.pelunasan_cashflow_transaction_id &&
+      b.pelunasan_nominal &&
+      b.pelunasan_bank_account_id
+    ) {
+      const r = await createRefundCashflowTx({
+        bookingId: b.id,
+        originalKind: "lunas",
+        nominal: b.pelunasan_nominal,
+        bankAccountId: b.pelunasan_bank_account_id,
+        bookingName: b.nama_klien,
+        refundDate,
+        createdByUserId: gate.userId,
+      });
+      if (!r.ok) {
+        return {
+          ok: false,
+          error: r.error ?? "Gagal membuat refund tx untuk pelunasan",
+        };
+      }
+    }
+  }
+
   const { error } = await supabase
     .from("yeobo_booth_bookings" as never)
     .update({ status: "cancelled" } as never)
-    .eq("id", id);
+    .eq("id", parsed.data.booking_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/yeobo-booth", "layout");
+  revalidatePath("/admin/finance", "layout");
   return { ok: true };
 }
 
@@ -465,6 +559,12 @@ export interface BankAccountOption {
   account_number: string | null;
 }
 
+/**
+ * Hanya rekening yang business_unit='Yeobo Booth' yang valid. Tujuannya:
+ * pendapatan booking masuk ke ledger Yeobo Booth, bukan unit lain. Kalau
+ * admin lupa create rekening dulu, dropdown akan kosong dan UI memandu
+ * mereka untuk buat lewat /admin/finance.
+ */
 export async function listBankAccountOptions(): Promise<BankAccountOption[]> {
   const gate = await requireYeoboBoothAccess();
   if (!gate.ok) return [];
@@ -473,7 +573,7 @@ export async function listBankAccountOptions(): Promise<BankAccountOption[]> {
     .from("bank_accounts")
     .select("id, business_unit, bank, account_name, account_number")
     .eq("is_active", true)
-    .order("business_unit")
+    .eq("business_unit", YEOBO_BOOTH_BU)
     .order("account_name");
   return (data ?? []) as unknown as BankAccountOption[];
 }

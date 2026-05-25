@@ -11,6 +11,7 @@ import {
 import { listFreelance } from "@/lib/actions/yeobo-booth-freelance.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingForm } from "@/components/yeobo-booth/BookingForm";
+import { CancelBookingButton } from "@/components/yeobo-booth/CancelBookingButton";
 import { PaymentPanel } from "@/components/yeobo-booth/PaymentPanel";
 import {
   BookingStatusBadge,
@@ -122,6 +123,21 @@ export default async function BookingDetailPage({ params }: PageProps) {
         </h2>
         <BookingForm freelance={freelance} editing={booking} />
       </section>
+
+      {/* Danger zone — cancel booking */}
+      {booking.status !== "cancelled" && (
+        <section className="rounded-2xl border-2 border-destructive/30 bg-destructive/[0.03] p-4 sm:p-5">
+          <h2 className="font-display text-base font-bold text-destructive mb-1">
+            Batalkan Booking
+          </h2>
+          <p className="text-[12.5px] text-muted-foreground mb-3">
+            Sesi tidak jadi dilaksanakan. Kalau sudah ada pembayaran, kamu
+            bisa pilih uang hangus (revenue tetap) atau dikembalikan ke
+            klien (refund di cashflow).
+          </p>
+          <CancelBookingButton booking={booking} />
+        </section>
+      )}
     </div>
   );
 }

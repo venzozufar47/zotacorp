@@ -122,8 +122,32 @@ export function PaymentPanel({ booking, bankAccounts }: Props) {
         />
       </div>
 
+      {/* Empty state: belum ada rekening Yeobo Booth */}
+      {!fullyPaid &&
+        booking.status !== "cancelled" &&
+        bankAccounts.length === 0 && (
+          <div className="rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 p-3 text-sm text-amber-800 dark:text-amber-200">
+            <p className="font-semibold mb-1">
+              Belum ada rekening Yeobo Booth
+            </p>
+            <p className="text-[12.5px] mb-2">
+              Buat rekening dengan business unit{" "}
+              <span className="font-mono">Yeobo Booth</span> dulu supaya
+              pendapatan masuk ke ledger unit yang benar.
+            </p>
+            <a
+              href="/admin/finance"
+              className="inline-flex items-center gap-1 text-[12.5px] font-semibold underline"
+            >
+              Buka /admin/finance →
+            </a>
+          </div>
+        )}
+
       {/* New payment form */}
-      {!fullyPaid && booking.status !== "cancelled" && (
+      {!fullyPaid &&
+        booking.status !== "cancelled" &&
+        bankAccounts.length > 0 && (
         <form
           onSubmit={onSubmit}
           className="space-y-3 pt-3 border-t border-border"
