@@ -62,7 +62,7 @@ export default async function YeoboBoothOverviewPage() {
   ).length;
 
   return (
-    <div className="space-y-6 animate-fade-up">
+    <div className="space-y-6 animate-fade-up pb-28 md:pb-0">
       <PageHeader
         title="Yeobo Booth"
         subtitle="Scheduling + booking + pembayaran unit persewaan photobooth."
