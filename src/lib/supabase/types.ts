@@ -186,6 +186,63 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_runs: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          manifest: Json | null
+          status: string
+          storage_prefix: string
+          trigger: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          manifest?: Json | null
+          status?: string
+          storage_prefix: string
+          trigger: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          manifest?: Json | null
+          status?: string
+          storage_prefix?: string
+          trigger?: string
+        }
+        Relationships: []
+      }
+      backup_settings: {
+        Row: {
+          cadence: string
+          enabled: boolean
+          id: number
+          retention_days: number
+          updated_at: string
+        }
+        Insert: {
+          cadence?: string
+          enabled?: boolean
+          id?: number
+          retention_days?: number
+          updated_at?: string
+        }
+        Update: {
+          cadence?: string
+          enabled?: boolean
+          id?: number
+          retention_days?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bank_account_assignees: {
         Row: {
           assigned_at: string
@@ -369,6 +426,111 @@ export type Database = {
           },
         ]
       }
+      bu_metric_comments: {
+        Row: {
+          author_id: string
+          author_role: string
+          body: string
+          business_unit: string
+          created_at: string
+          id: string
+          metric_id: string
+        }
+        Insert: {
+          author_id: string
+          author_role: string
+          body: string
+          business_unit: string
+          created_at?: string
+          id?: string
+          metric_id: string
+        }
+        Update: {
+          author_id?: string
+          author_role?: string
+          body?: string
+          business_unit?: string
+          created_at?: string
+          id?: string
+          metric_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bu_metric_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bu_metric_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bu_monthly_metrics: {
+        Row: {
+          business_unit: string
+          created_at: string
+          id: string
+          notes: string | null
+          orders_count: number | null
+          period_month: number
+          period_year: number
+          production_capacity_max: number | null
+          unique_customers: number | null
+          updated_at: string
+          updated_by: string | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          business_unit: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          orders_count?: number | null
+          period_month: number
+          period_year: number
+          production_capacity_max?: number | null
+          unique_customers?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          business_unit?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          orders_count?: number | null
+          period_month?: number
+          period_year?: number
+          production_capacity_max?: number | null
+          unique_customers?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          utilization_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bu_monthly_metrics_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bu_monthly_metrics_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_unit_roles: {
         Row: {
           business_unit_id: string
@@ -426,6 +588,645 @@ export type Database = {
             columns: ["default_needs_assignment_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_units_default_needs_assignment_user_id_fkey"
+            columns: ["default_needs_assignment_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_access_assignments: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          branch: string | null
+          id: string
+          production_role: string | null
+          scope: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          branch?: string | null
+          id?: string
+          production_role?: string | null
+          scope: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          branch?: string | null
+          id?: string
+          production_role?: string | null
+          scope?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_access_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_access_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_access_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_access_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_base_diameter_prices: {
+        Row: {
+          base_option_id: string
+          diameter_id: string
+          price_pare_idr: number | null
+          price_semarang_idr: number | null
+          updated_at: string
+        }
+        Insert: {
+          base_option_id: string
+          diameter_id: string
+          price_pare_idr?: number | null
+          price_semarang_idr?: number | null
+          updated_at?: string
+        }
+        Update: {
+          base_option_id?: string
+          diameter_id?: string
+          price_pare_idr?: number | null
+          price_semarang_idr?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_base_diameter_prices_base_option_id_fkey"
+            columns: ["base_option_id"]
+            isOneToOne: false
+            referencedRelation: "cake_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_base_diameter_prices_diameter_id_fkey"
+            columns: ["diameter_id"]
+            isOneToOne: false
+            referencedRelation: "cake_diameter_options"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_diameter_options: {
+        Row: {
+          created_at: string
+          diameter_cm: number
+          id: string
+          is_active: boolean
+          label: string | null
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          diameter_cm: number
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          diameter_cm?: number
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      cake_options: {
+        Row: {
+          base_price_idr: number | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_custom_freeform: boolean
+          kind: string
+          label: string
+          needs_address: boolean
+          sort_order: number
+        }
+        Insert: {
+          base_price_idr?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_custom_freeform?: boolean
+          kind: string
+          label: string
+          needs_address?: boolean
+          sort_order?: number
+        }
+        Update: {
+          base_price_idr?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_custom_freeform?: boolean
+          kind?: string
+          label?: string
+          needs_address?: boolean
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      cake_order_attachments: {
+        Row: {
+          cake_order_id: string
+          created_at: string
+          field: string
+          id: string
+          mime_type: string | null
+          size_bytes: number | null
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          cake_order_id: string
+          created_at?: string
+          field: string
+          id?: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          cake_order_id?: string
+          created_at?: string
+          field?: string
+          id?: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_order_attachments_cake_order_id_fkey"
+            columns: ["cake_order_id"]
+            isOneToOne: false
+            referencedRelation: "cake_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_order_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_order_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_order_payments: {
+        Row: {
+          amount_idr: number
+          attachment_id: string | null
+          cake_order_id: string
+          created_at: string
+          created_by: string
+          id: string
+          kind: string
+          label: string
+          notes: string | null
+          paid_at: string
+          payment_option_id: string
+        }
+        Insert: {
+          amount_idr: number
+          attachment_id?: string | null
+          cake_order_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          kind: string
+          label: string
+          notes?: string | null
+          paid_at?: string
+          payment_option_id: string
+        }
+        Update: {
+          amount_idr?: number
+          attachment_id?: string | null
+          cake_order_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          kind?: string
+          label?: string
+          notes?: string | null
+          paid_at?: string
+          payment_option_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_order_payments_attachment_id_fkey"
+            columns: ["attachment_id"]
+            isOneToOne: false
+            referencedRelation: "cake_order_attachments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_order_payments_cake_order_id_fkey"
+            columns: ["cake_order_id"]
+            isOneToOne: false
+            referencedRelation: "cake_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_order_payments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_order_payments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_order_payments_payment_option_id_fkey"
+            columns: ["payment_option_id"]
+            isOneToOne: false
+            referencedRelation: "cake_options"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_orders: {
+        Row: {
+          accessories_notes: string | null
+          add_ons_breakdown: Json | null
+          add_ons_idr: number
+          archived_at: string | null
+          base_cake_option_id: string
+          base_price_idr: number
+          branch: string
+          color_notes: string | null
+          created_at: string
+          created_by: string
+          customer_name: string
+          customer_phone: string | null
+          decorating_started_at: string | null
+          decoration_notes: string | null
+          delivery_address: string | null
+          delivery_fee_idr: number
+          delivery_option_id: string
+          dimension_cm: number | null
+          discount_idr: number
+          discount_kind: string
+          discount_value: number
+          filling_option_id: string | null
+          greeting_card: string | null
+          id: string
+          paid_at: string | null
+          paid_idr: number
+          payment_option_id: string | null
+          payment_status: string
+          production_done_at: string | null
+          production_started_at: string | null
+          production_status: string
+          refund_idr: number
+          refund_notes: string | null
+          refunded_at: string | null
+          scheduled_at: string
+          shape_custom: string | null
+          shape_option_id: string
+          status: string
+          texture_notes: string | null
+          total_idr: number
+          updated_at: string
+        }
+        Insert: {
+          accessories_notes?: string | null
+          add_ons_breakdown?: Json | null
+          add_ons_idr?: number
+          archived_at?: string | null
+          base_cake_option_id: string
+          base_price_idr: number
+          branch?: string
+          color_notes?: string | null
+          created_at?: string
+          created_by: string
+          customer_name: string
+          customer_phone?: string | null
+          decorating_started_at?: string | null
+          decoration_notes?: string | null
+          delivery_address?: string | null
+          delivery_fee_idr?: number
+          delivery_option_id: string
+          dimension_cm?: number | null
+          discount_idr?: number
+          discount_kind?: string
+          discount_value?: number
+          filling_option_id?: string | null
+          greeting_card?: string | null
+          id?: string
+          paid_at?: string | null
+          paid_idr?: number
+          payment_option_id?: string | null
+          payment_status?: string
+          production_done_at?: string | null
+          production_started_at?: string | null
+          production_status?: string
+          refund_idr?: number
+          refund_notes?: string | null
+          refunded_at?: string | null
+          scheduled_at: string
+          shape_custom?: string | null
+          shape_option_id: string
+          status?: string
+          texture_notes?: string | null
+          total_idr: number
+          updated_at?: string
+        }
+        Update: {
+          accessories_notes?: string | null
+          add_ons_breakdown?: Json | null
+          add_ons_idr?: number
+          archived_at?: string | null
+          base_cake_option_id?: string
+          base_price_idr?: number
+          branch?: string
+          color_notes?: string | null
+          created_at?: string
+          created_by?: string
+          customer_name?: string
+          customer_phone?: string | null
+          decorating_started_at?: string | null
+          decoration_notes?: string | null
+          delivery_address?: string | null
+          delivery_fee_idr?: number
+          delivery_option_id?: string
+          dimension_cm?: number | null
+          discount_idr?: number
+          discount_kind?: string
+          discount_value?: number
+          filling_option_id?: string | null
+          greeting_card?: string | null
+          id?: string
+          paid_at?: string | null
+          paid_idr?: number
+          payment_option_id?: string | null
+          payment_status?: string
+          production_done_at?: string | null
+          production_started_at?: string | null
+          production_status?: string
+          refund_idr?: number
+          refund_notes?: string | null
+          refunded_at?: string | null
+          scheduled_at?: string
+          shape_custom?: string | null
+          shape_option_id?: string
+          status?: string
+          texture_notes?: string | null
+          total_idr?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_orders_base_cake_option_id_fkey"
+            columns: ["base_cake_option_id"]
+            isOneToOne: false
+            referencedRelation: "cake_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_orders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_orders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_orders_delivery_option_id_fkey"
+            columns: ["delivery_option_id"]
+            isOneToOne: false
+            referencedRelation: "cake_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_orders_filling_option_id_fkey"
+            columns: ["filling_option_id"]
+            isOneToOne: false
+            referencedRelation: "cake_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_orders_payment_option_id_fkey"
+            columns: ["payment_option_id"]
+            isOneToOne: false
+            referencedRelation: "cake_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_orders_shape_option_id_fkey"
+            columns: ["shape_option_id"]
+            isOneToOne: false
+            referencedRelation: "cake_options"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_production_slip_items: {
+        Row: {
+          cake_order_id: string
+          override_notes: string | null
+          slip_id: string
+          sort_order: number
+        }
+        Insert: {
+          cake_order_id: string
+          override_notes?: string | null
+          slip_id: string
+          sort_order?: number
+        }
+        Update: {
+          cake_order_id?: string
+          override_notes?: string | null
+          slip_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_production_slip_items_cake_order_id_fkey"
+            columns: ["cake_order_id"]
+            isOneToOne: false
+            referencedRelation: "cake_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slip_items_slip_id_fkey"
+            columns: ["slip_id"]
+            isOneToOne: false
+            referencedRelation: "cake_production_slips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_production_slips: {
+        Row: {
+          branch: string
+          closed_at: string | null
+          diff_acknowledged_at: string | null
+          id: string
+          last_sent_snapshot: Json | null
+          notes: string | null
+          pending_diff: Json | null
+          prepared_at: string
+          prepared_by: string | null
+          received_at: string | null
+          received_by: string | null
+          sent_at: string | null
+          sent_by: string | null
+          sent_count: number
+          status: string
+          target_date: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          branch?: string
+          closed_at?: string | null
+          diff_acknowledged_at?: string | null
+          id?: string
+          last_sent_snapshot?: Json | null
+          notes?: string | null
+          pending_diff?: Json | null
+          prepared_at?: string
+          prepared_by?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_count?: number
+          status?: string
+          target_date: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          branch?: string
+          closed_at?: string | null
+          diff_acknowledged_at?: string | null
+          id?: string
+          last_sent_snapshot?: Json | null
+          notes?: string | null
+          pending_diff?: Json | null
+          prepared_at?: string
+          prepared_by?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_count?: number
+          status?: string
+          target_date?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_production_slips_prepared_by_fkey"
+            columns: ["prepared_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slips_prepared_by_fkey"
+            columns: ["prepared_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slips_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slips_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slips_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slips_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slips_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_production_slips_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -697,96 +1498,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cashflow_transactions_assigned_to_user_id_fkey"
+            columns: ["assigned_to_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cashflow_transactions_statement_id_fkey"
             columns: ["statement_id"]
             isOneToOne: false
             referencedRelation: "cashflow_statements"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      salary_allocations: {
-        Row: {
-          amount: number
-          branch: string
-          created_at: string
-          created_by: string | null
-          employee_name: string
-          id: string
-          transaction_id: string
-        }
-        Insert: {
-          amount: number
-          branch: string
-          created_at?: string
-          created_by?: string | null
-          employee_name: string
-          id?: string
-          transaction_id: string
-        }
-        Update: {
-          amount?: number
-          branch?: string
-          created_at?: string
-          created_by?: string | null
-          employee_name?: string
-          id?: string
-          transaction_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "salary_allocations_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "salary_allocations_transaction_id_fkey"
-            columns: ["transaction_id"]
-            isOneToOne: false
-            referencedRelation: "cashflow_transactions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      employee_branch_map: {
-        Row: {
-          branch: string
-          business_unit: string
-          created_at: string
-          created_by: string | null
-          id: string
-          name_keyword: string
-          notes: string | null
-          updated_at: string
-        }
-        Insert: {
-          branch: string
-          business_unit: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          name_keyword: string
-          notes?: string | null
-          updated_at?: string
-        }
-        Update: {
-          branch?: string
-          business_unit?: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          name_keyword?: string
-          notes?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "employee_branch_map_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -859,6 +1581,54 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "celebration_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_branch_map: {
+        Row: {
+          branch: string
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name_keyword: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch: string
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name_keyword: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch?: string
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name_keyword?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_branch_map_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_branch_map_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1021,6 +1791,203 @@ export type Database = {
           {
             foreignKeyName: "extra_work_logs_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      investor_business_unit_assignments: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          business_unit: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          business_unit: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          business_unit?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investor_business_unit_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_business_unit_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_business_unit_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_business_unit_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      investor_contracts: {
+        Row: {
+          bagi_hasil_pct: number
+          bep_target_idr: number
+          business_unit: string
+          contract_ref: string | null
+          created_at: string
+          created_by: string | null
+          durasi_bulan: number | null
+          id: string
+          notes: string | null
+          payout_bank_name: string | null
+          payout_rekening_label: string | null
+          payout_rekening_number: string | null
+          start_date: string
+          total_invest_idr: number
+          user_id: string
+        }
+        Insert: {
+          bagi_hasil_pct: number
+          bep_target_idr: number
+          business_unit: string
+          contract_ref?: string | null
+          created_at?: string
+          created_by?: string | null
+          durasi_bulan?: number | null
+          id?: string
+          notes?: string | null
+          payout_bank_name?: string | null
+          payout_rekening_label?: string | null
+          payout_rekening_number?: string | null
+          start_date: string
+          total_invest_idr: number
+          user_id: string
+        }
+        Update: {
+          bagi_hasil_pct?: number
+          bep_target_idr?: number
+          business_unit?: string
+          contract_ref?: string | null
+          created_at?: string
+          created_by?: string | null
+          durasi_bulan?: number | null
+          id?: string
+          notes?: string | null
+          payout_bank_name?: string | null
+          payout_rekening_label?: string | null
+          payout_rekening_number?: string | null
+          start_date?: string
+          total_invest_idr?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investor_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_contracts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_contracts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      investor_payouts: {
+        Row: {
+          amount_idr: number
+          contract_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          paid_at: string | null
+          period_month: number
+          period_year: number
+          ref: string | null
+        }
+        Insert: {
+          amount_idr: number
+          contract_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          period_month: number
+          period_year: number
+          ref?: string | null
+        }
+        Update: {
+          amount_idr?: number
+          contract_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          period_month?: number
+          period_year?: number
+          ref?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investor_payouts_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "investor_contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_payouts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_payouts_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
@@ -1425,6 +2392,67 @@ export type Database = {
           },
         ]
       }
+      pos_discount_campaigns: {
+        Row: {
+          bank_account_id: string
+          created_at: string
+          created_by: string | null
+          end_date: string
+          id: string
+          note: string | null
+          percent_off: number
+          rounding_mode: string
+          rounding_unit: number
+          start_date: string
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string
+          created_by?: string | null
+          end_date: string
+          id?: string
+          note?: string | null
+          percent_off: number
+          rounding_mode?: string
+          rounding_unit?: number
+          start_date: string
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string
+          id?: string
+          note?: string | null
+          percent_off?: number
+          rounding_mode?: string
+          rounding_unit?: number
+          start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_discount_campaigns_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_discount_campaigns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_discount_campaigns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pos_product_variants: {
         Row: {
           active: boolean
@@ -1521,6 +2549,7 @@ export type Database = {
       }
       pos_sale_items: {
         Row: {
+          fulfillment_type: string | null
           id: string
           product_id: string | null
           product_name: string
@@ -1532,6 +2561,7 @@ export type Database = {
           variant_name: string | null
         }
         Insert: {
+          fulfillment_type?: string | null
           id?: string
           product_id?: string | null
           product_name: string
@@ -1543,6 +2573,7 @@ export type Database = {
           variant_name?: string | null
         }
         Update: {
+          fulfillment_type?: string | null
           id?: string
           product_id?: string | null
           product_name?: string
@@ -1583,10 +2614,20 @@ export type Database = {
           cashflow_transaction_id: string | null
           created_at: string
           created_by: string | null
+          customer_name: string | null
+          discount_amount: number
+          discount_campaign_id: string | null
+          fulfillment_type: string | null
+          gross_total: number | null
           id: string
           payment_method: string
+          payment_status: string
+          pending_at: string | null
           sale_date: string
           sale_time: string
+          settled_at: string | null
+          settled_by: string | null
+          settled_via: string | null
           total: number
           voided_at: string | null
         }
@@ -1595,10 +2636,20 @@ export type Database = {
           cashflow_transaction_id?: string | null
           created_at?: string
           created_by?: string | null
+          customer_name?: string | null
+          discount_amount?: number
+          discount_campaign_id?: string | null
+          fulfillment_type?: string | null
+          gross_total?: number | null
           id?: string
           payment_method: string
+          payment_status?: string
+          pending_at?: string | null
           sale_date: string
           sale_time?: string
+          settled_at?: string | null
+          settled_by?: string | null
+          settled_via?: string | null
           total: number
           voided_at?: string | null
         }
@@ -1607,10 +2658,20 @@ export type Database = {
           cashflow_transaction_id?: string | null
           created_at?: string
           created_by?: string | null
+          customer_name?: string | null
+          discount_amount?: number
+          discount_campaign_id?: string | null
+          fulfillment_type?: string | null
+          gross_total?: number | null
           id?: string
           payment_method?: string
+          payment_status?: string
+          pending_at?: string | null
           sale_date?: string
           sale_time?: string
+          settled_at?: string | null
+          settled_by?: string | null
+          settled_via?: string | null
           total?: number
           voided_at?: string | null
         }
@@ -1627,6 +2688,27 @@ export type Database = {
             columns: ["cashflow_transaction_id"]
             isOneToOne: false
             referencedRelation: "cashflow_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_discount_campaign_id_fkey"
+            columns: ["discount_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "pos_discount_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_settled_by_fkey"
+            columns: ["settled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_settled_by_fkey"
+            columns: ["settled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1959,7 +3041,136 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "profiles_resigned_by_fkey"
+            columns: ["resigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      salary_allocations: {
+        Row: {
+          amount: number
+          branch: string
+          created_at: string
+          created_by: string | null
+          employee_name: string
+          id: string
+          transaction_id: string
+        }
+        Insert: {
+          amount: number
+          branch: string
+          created_at?: string
+          created_by?: string | null
+          employee_name: string
+          id?: string
+          transaction_id: string
+        }
+        Update: {
+          amount?: number
+          branch?: string
+          created_at?: string
+          created_by?: string | null
+          employee_name?: string
+          id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_allocations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_allocations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_allocations_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_room_presence: {
+        Row: {
+          joined_at: string
+          last_seen: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          joined_at?: string
+          last_seen?: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          joined_at?: string
+          last_seen?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_room_presence_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "voice_rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_room_presence_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_room_presence_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_rooms: {
+        Row: {
+          business_unit: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          business_unit?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          business_unit?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
       }
       whatsapp_notification_recipients: {
         Row: {
@@ -2072,6 +3283,299 @@ export type Database = {
           },
         ]
       }
+      yeobo_booth_admins: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_booth_admins_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_admins_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_admins_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_admins_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_booth_booking_freelance: {
+        Row: {
+          assigned_at: string
+          booking_id: string
+          freelance_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          booking_id: string
+          freelance_id: string
+        }
+        Update: {
+          assigned_at?: string
+          booking_id?: string
+          freelance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_booth_booking_freelance_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "yeobo_booth_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_booking_freelance_freelance_id_fkey"
+            columns: ["freelance_id"]
+            isOneToOne: false
+            referencedRelation: "yeobo_booth_freelance"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_booth_bookings: {
+        Row: {
+          cancellation_kind: string | null
+          catatan: string | null
+          created_at: string
+          created_by: string | null
+          dp_bank_account_id: string | null
+          dp_cashflow_transaction_id: string | null
+          dp_nominal: number | null
+          dp_tanggal: string | null
+          harga_total: number
+          id: string
+          jam_mulai: string
+          jam_selesai: string
+          lokasi_event: string | null
+          nama_klien: string
+          no_hp_klien: string | null
+          payment_status: string
+          pelunasan_bank_account_id: string | null
+          pelunasan_cashflow_transaction_id: string | null
+          pelunasan_nominal: number | null
+          pelunasan_tanggal: string | null
+          status: string
+          tanggal: string
+          updated_at: string
+        }
+        Insert: {
+          cancellation_kind?: string | null
+          catatan?: string | null
+          created_at?: string
+          created_by?: string | null
+          dp_bank_account_id?: string | null
+          dp_cashflow_transaction_id?: string | null
+          dp_nominal?: number | null
+          dp_tanggal?: string | null
+          harga_total: number
+          id?: string
+          jam_mulai: string
+          jam_selesai: string
+          lokasi_event?: string | null
+          nama_klien: string
+          no_hp_klien?: string | null
+          payment_status?: string
+          pelunasan_bank_account_id?: string | null
+          pelunasan_cashflow_transaction_id?: string | null
+          pelunasan_nominal?: number | null
+          pelunasan_tanggal?: string | null
+          status?: string
+          tanggal: string
+          updated_at?: string
+        }
+        Update: {
+          cancellation_kind?: string | null
+          catatan?: string | null
+          created_at?: string
+          created_by?: string | null
+          dp_bank_account_id?: string | null
+          dp_cashflow_transaction_id?: string | null
+          dp_nominal?: number | null
+          dp_tanggal?: string | null
+          harga_total?: number
+          id?: string
+          jam_mulai?: string
+          jam_selesai?: string
+          lokasi_event?: string | null
+          nama_klien?: string
+          no_hp_klien?: string | null
+          payment_status?: string
+          pelunasan_bank_account_id?: string | null
+          pelunasan_cashflow_transaction_id?: string | null
+          pelunasan_nominal?: number | null
+          pelunasan_tanggal?: string | null
+          status?: string
+          tanggal?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_booth_bookings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_bookings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_bookings_dp_bank_account_id_fkey"
+            columns: ["dp_bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_bookings_dp_cashflow_transaction_id_fkey"
+            columns: ["dp_cashflow_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_bookings_pelunasan_bank_account_id_fkey"
+            columns: ["pelunasan_bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_bookings_pelunasan_cashflow_transaction_id_fkey"
+            columns: ["pelunasan_cashflow_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_booth_freelance: {
+        Row: {
+          aktif: boolean
+          catatan: string | null
+          created_at: string
+          created_by: string | null
+          fee_per_sesi: number | null
+          id: string
+          nama: string
+          no_hp: string | null
+          updated_at: string
+        }
+        Insert: {
+          aktif?: boolean
+          catatan?: string | null
+          created_at?: string
+          created_by?: string | null
+          fee_per_sesi?: number | null
+          id?: string
+          nama: string
+          no_hp?: string | null
+          updated_at?: string
+        }
+        Update: {
+          aktif?: boolean
+          catatan?: string | null
+          created_at?: string
+          created_by?: string | null
+          fee_per_sesi?: number | null
+          id?: string
+          nama?: string
+          no_hp?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_booth_freelance_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_freelance_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_booth_reminder_logs: {
+        Row: {
+          booking_id: string
+          checkpoint: string
+          error_message: string | null
+          id: string
+          recipient_count: number
+          sent_at: string
+          status: string
+        }
+        Insert: {
+          booking_id: string
+          checkpoint: string
+          error_message?: string | null
+          id?: string
+          recipient_count?: number
+          sent_at?: string
+          status?: string
+        }
+        Update: {
+          booking_id?: string
+          checkpoint?: string
+          error_message?: string | null
+          id?: string
+          recipient_count?: number
+          sent_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_booth_reminder_logs_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "yeobo_booth_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       profiles_celebrations_public: {
@@ -2109,26 +3613,38 @@ export type Database = {
       }
     }
     Functions: {
+      can_manage_yeobo_booth: { Args: never; Returns: boolean }
       count_my_needs_assignments: { Args: never; Returns: number }
+      get_intercom_presence: {
+        Args: { room_ids: string[] }
+        Returns: {
+          avatar_seed: string
+          avatar_url: string
+          full_name: string
+          joined_at: string
+          room_id: string
+          user_id: string
+        }[]
+      }
       get_my_needs_assignments: {
         Args: never
         Returns: {
-          id: string
-          transaction_date: string
-          description: string
-          source_destination: string | null
-          transaction_details: string | null
-          notes: string | null
-          debit: number
-          credit: number
-          category: string | null
-          branch: string | null
-          effective_period_month: number | null
-          effective_period_year: number | null
-          assigned_to_user_id: string | null
+          assigned_to_user_id: string
           bank_account_id: string
           bank_account_name: string
+          branch: string
           business_unit: string
+          category: string
+          credit: number
+          debit: number
+          description: string
+          effective_period_month: number
+          effective_period_year: number
+          id: string
+          notes: string
+          source_destination: string
+          transaction_date: string
+          transaction_details: string
         }[]
       }
       get_ui_theme: { Args: never; Returns: string }
@@ -2138,6 +3654,9 @@ export type Database = {
         Args: { account_id: string }
         Returns: boolean
       }
+      is_investor_for_business_unit: { Args: { bu: string }; Returns: boolean }
+      is_yeobo_booth_admin: { Args: never; Returns: boolean }
+      voice_sweep_stale_presence: { Args: never; Returns: number }
     }
     Enums: {
       [_ in never]: never
@@ -2282,13 +3801,6 @@ export type PayslipBreakdown = {
   late_penalty_daily_cap?: number;
   extra_work_days?: Array<{ date: string; kind: string; pay: number }>;
   extra_work_rate_idr?: number;
-  /** Snapshot of every date the karyawan actually checked out (completed work
-   *  day) within the payslip period, sorted ascending. Drives the per-day
-   *  diary timeline on the employee view — lets it list every work day, not
-   *  just days with events. Optional for backward compat with older payslips
-   *  that were finalized before this field existed; UI falls back to a sparse
-   *  view (only event days + roll-up) when absent. */
-  attendance_days?: Array<{ date: string }>;
 };
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AttendanceLog = Database['public']['Tables']['attendance_logs']['Row'];
