@@ -34,6 +34,14 @@ interface CommitTransaction {
   category?: string | null;
   branch?: string | null;
   /**
+   * Effective accounting period override — diisi otomatis oleh detector
+   * di pipeline `applyCategorization` saat description menyebut nama
+   * bulan (mis. "Gaji Maret 2026" bulan settle April → effectivePeriodMonth=3).
+   * Persisted ke kolom effective_period_month / effective_period_year.
+   */
+  effectivePeriodMonth?: number | null;
+  effectivePeriodYear?: number | null;
+  /**
    * Flag dari preview: row yang sudah ada di DB. Tetap ikut di payload
    * supaya verifikasi saldo server-side punya ALL tx (kalau dupes
    * di-skip, net-effect mereka hilang dari reconciliation). Row
