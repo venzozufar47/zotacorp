@@ -121,6 +121,14 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+  const looksPdf =
+    lowerName.endsWith(".pdf") || file.type.includes("pdf");
+  if (bankAccount.bank === "bca" && !looksPdf) {
+    return NextResponse.json(
+      { error: "Untuk rekening BCA, unggah file PDF 'Mutasi Rekening' dari myBCA/KlikBCA" },
+      { status: 400 }
+    );
+  }
 
   // If admin didn't type a password this upload but the rekening has
   // one saved, use the saved one. User-typed password wins (lets

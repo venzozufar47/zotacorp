@@ -7,6 +7,7 @@
 
 import { parseJagoStatement } from "./parsers/jago";
 import { parseMandiriXlsxStatement } from "./parsers/mandiri-xlsx";
+import { parseBcaStatement } from "./parsers/bca";
 import type { BankCode, ParsedStatement } from "./types";
 
 /** Options passed through to individual parsers. */
@@ -24,6 +25,8 @@ export async function parseRekeningKoran(
       return parseMandiriXlsxStatement(buffer, options.password);
     case "jago":
       return parseJagoStatement(buffer, options.password);
+    case "bca":
+      return parseBcaStatement(buffer, options.password);
     default: {
       const now = new Date();
       return {
