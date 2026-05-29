@@ -221,9 +221,16 @@ export async function POST(req: Request) {
   // time of the latest date, and the closing-balance derivation used
   // the wrong row. `sortChronologicalAsc` adds a (time, balance-chain)
   // tiebreaker so the last element is truly the last transaction.
-  const chronological = sortChronologicalAsc(
-    parsed.transactions.filter((t) => typeof t.runningBalance === "number")
-  );
+  // Bank tanpa saldo otoritatif (BCA CSV) tetap menghitung
+  // running_balance dari 0 untuk display + dedupe, TAPI angka itu
+  // bukan saldo bank sebenarnya — jadi opening/closing tidak boleh
+  // diturunkan darinya dan verifikasi tetap di-skip (canVerify=false).
+  const supportsBalance = bankAccount.bank !== "bca";
+  const chronological = supportsBalance
+    ? sortChronologicalAsc(
+        parsed.transactions.filter((t) => typeof t.runningBalance === "number")
+      )
+    : [];
   if (chronological.length > 0) {
     const first = chronological[0];
     const last = chronological[chronological.length - 1];

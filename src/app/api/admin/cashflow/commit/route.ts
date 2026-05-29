@@ -126,17 +126,17 @@ export async function POST(req: Request) {
   // gates the Konfirmasi button on this check, but we re-run it server
   // side so a tampered payload can't bypass the guard.
   //
-  // Exception: bank tanpa kolom saldo (BCA CSV) mengirim
-  // openingBalance=0 + closingBalance=0 dengan SEMUA runningBalance=null.
-  // Dalam kasus ini tidak ada angka saldo untuk dicocokkan, jadi skip
-  // validasi — sama persis dengan logika di client-side noBalanceBank.
-  const hasAnyRunningBalance = body.transactions.some(
-    (t) => t.runningBalance != null
-  );
+  // Verifikasi hanya bermakna kalau ada saldo awal/akhir OTORITATIF
+  // untuk dicocokkan. Bank tanpa saldo (BCA CSV) mengirim
+  // openingBalance=0 + closingBalance=0 → skip.
+  //
+  // Catatan: kita TIDAK memicu verifikasi dari adanya runningBalance
+  // per baris, karena BCA kini mengirim running_balance sintetis
+  // (dihitung dari 0 untuk dedupe). Memicu dari situ akan membuat
+  // verifyBalance(0, 0, txs) gagal padahal memang tidak ada saldo bank
+  // riil. Trigger murni dari opening/closing yang non-nol.
   const canVerifyBalance =
-    hasAnyRunningBalance ||
-    body.openingBalance !== 0 ||
-    body.closingBalance !== 0;
+    body.openingBalance !== 0 || body.closingBalance !== 0;
 
   if (canVerifyBalance) {
     const verification = verifyBalance(

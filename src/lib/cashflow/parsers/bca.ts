@@ -36,6 +36,17 @@ export async function parseBcaStatement(
   const dataLines =
     lines.length > 0 && /^tanggal/i.test(lines[0]) ? lines.slice(1) : lines;
 
+  // Running balance dihitung dari 0 (BCA CSV tidak menyertakan kolom
+  // saldo). Ini BUKAN saldo bank riil — fungsinya dua:
+  //   1. Kolom "Saldo" menampilkan running total kredit − debit.
+  //   2. Pembeda per-baris untuk dedupe. Tanpa ini, dua transaksi
+  //      identik (tanggal + keterangan + nominal sama, mis. dua QRIS
+  //      100rb di hari yang sama) menghasilkan dedupe key yang sama
+  //      dan salah dianggap duplikat saat re-upload. Dengan saldo
+  //      berjalan, tiap baris dapat nilai berbeda → dedupe BCA jadi
+  //      identik perilakunya dengan Mandiri/Jago.
+  let running = 0;
+
   for (const line of dataLines) {
     // Format: YYYY-MM-DD,<keterangan>,<nominal>,(CR|DB)
     // Keterangan mungkin mengandung koma, jadi kita anchor dari kanan.
@@ -53,12 +64,18 @@ export async function parseBcaStatement(
 
     if (isNaN(mutasi)) continue;
 
+    const debit = tipe === "DB" ? mutasi : 0;
+    const credit = tipe === "CR" ? mutasi : 0;
+    // Round ke 2 desimal supaya akumulasi float tetap stabil antar
+    // upload (penting agar dedupe key konsisten).
+    running = Math.round((running + credit - debit) * 100) / 100;
+
     transactions.push({
       date,
       description: description || "(tanpa keterangan)",
-      debit: tipe === "DB" ? mutasi : 0,
-      credit: tipe === "CR" ? mutasi : 0,
-      runningBalance: undefined, // BCA CSV tidak punya kolom saldo
+      debit,
+      credit,
+      runningBalance: running,
     });
   }
 
