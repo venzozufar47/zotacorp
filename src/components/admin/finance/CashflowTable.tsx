@@ -100,13 +100,14 @@ export function CashflowTable({
   // For BCA CSV, source/details/notes/balance are always null.
   const hasAnySource = transactions.some((t) => t.sourceDestination);
   const hasAnyDetails = transactions.some((t) => t.transactionDetails);
-  const hasAnyNotes = transactions.some((t) => t.notes);
-  const hasAnyBalance = transactions.some((t) => t.runningBalance != null);
   // "Keterangan" column: show description directly when source+details
   // are both empty (BCA CSV style).
   const showDescription =
     bank !== "cash" && !hasAnySource && !hasAnyDetails;
-  const showBalance = bank === "cash" || hasAnyBalance;
+  // Saldo selalu tampil — untuk bank tanpa stored balance (BCA CSV),
+  // nilai diambil dari computedBalances yang dihitung dari akumulasi
+  // kredit − debit. Baseline = 0 karena tidak ada anchor dari bank.
+  const showBalance = true;
   const showBranchColumn = bank !== "cash";
   // Cash workflow is fully manual — auto-categorization pipeline
   // doesn't apply there.
@@ -125,7 +126,9 @@ export function CashflowTable({
   // edit mode so admin can annotate any transaction.
   const showSource = bank !== "cash" && !showDescription && (editing || hasAnySource);
   const showDetails = bank !== "cash" && !showDescription && (editing || hasAnyDetails);
-  const showNotes = editing || hasAnyNotes;
+  // Catatan selalu tampil (bukan cash) — admin bisa menambah catatan
+  // kapanpun tanpa harus masuk mode edit dulu.
+  const showNotes = bank !== "cash";
   const [pending, startTransition] = useTransition();
   // Filter toggles for the lifetime table — cumulative AND: enable
   // both to show only rows missing BOTH category and branch.

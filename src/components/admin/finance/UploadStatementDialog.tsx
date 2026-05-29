@@ -1049,19 +1049,28 @@ function PreviewStep({
     patch: Partial<Pick<PreviewTx, "category" | "branch">>
   ) => void;
 }) {
-  // Adaptive columns — hide entirely when no row has data for that
-  // field. Keeps the table clean for CSV banks (BCA) that only supply
-  // date + description + amount.
+  // Adaptive columns — hide source/details/time/notes when no data,
+  // but always show Saldo (computed from running total) and Catatan.
   const txs = preview.transactions;
   const hasSrcDest = txs.some((t) => t.sourceDestination);
   const hasTxDetails = txs.some((t) => t.transactionDetails);
-  const hasNotes = txs.some((t) => t.notes);
   const hasTime = txs.some((t) => t.time);
-  const hasBalance = txs.some((t) => t.runningBalance != null);
   // "Keterangan" column: show description directly when source +
-  // details are both empty (BCA CSV style). Replaces the two split
-  // columns with the single keterangan field.
+  // details are both empty (BCA CSV style).
   const showDescCol = !hasSrcDest && !hasTxDetails;
+
+  // Compute running balance for display. For banks with stored saldo
+  // the stored value is used; for banks without (BCA CSV), we
+  // accumulate from 0 using the ordered transaction list.
+  const computedRunningBalances: number[] = [];
+  {
+    let cum = 0;
+    for (const t of txs) {
+      // If stored running balance exists, use it as anchor for this row
+      cum = t.runningBalance != null ? t.runningBalance : cum + t.credit - t.debit;
+      computedRunningBalances.push(cum);
+    }
+  }
   return (
     <div className="space-y-3">
       {/* Compact summary row — inline stats instead of fat cards */}
@@ -1123,22 +1132,15 @@ function PreviewStep({
                       Detail Transaksi
                     </th>
                   )}
-                  {hasNotes && (
-                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
-                      Catatan
-                    </th>
-                  )}
                   <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
                     Debit
                   </th>
                   <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
                     Kredit
                   </th>
-                  {hasBalance && (
-                    <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-32 border-b border-border">
-                      Saldo
-                    </th>
-                  )}
+                  <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-32 border-b border-border">
+                    Saldo
+                  </th>
                   <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
                     Kategori
                   </th>
@@ -1199,13 +1201,8 @@ function PreviewStep({
                         </span>
                       </td>
                     )}
-                    {hasNotes && (
-                      <td className="px-3 py-2 text-muted-foreground border-t border-border/60">
-                        <span className="block line-clamp-2 leading-snug break-words" title={t.notes ?? ""}>
-                          {t.notes || "—"}
-                        </span>
-                      </td>
-                    )}
+                    {/* Catatan selalu tampil (read-only di preview;
+                        bisa diedit setelah data masuk ke ledger) */}
                     <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
                       {t.debit > 0 ? (
                         <span className="text-destructive">
@@ -1222,13 +1219,9 @@ function PreviewStep({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    {hasBalance && (
-                      <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground whitespace-nowrap border-t border-border/60">
-                        {t.runningBalance != null
-                          ? formatIDR(t.runningBalance)
-                          : "—"}
-                      </td>
-                    )}
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground whitespace-nowrap border-t border-border/60">
+                      {formatIDR(computedRunningBalances[idx] ?? 0)}
+                    </td>
                     <td className="px-3 py-2 border-t border-border/60">
                       {t.duplicate ? (
                         <span className="text-[10px] text-muted-foreground italic">
