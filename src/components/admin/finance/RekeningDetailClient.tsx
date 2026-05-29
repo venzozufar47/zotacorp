@@ -145,7 +145,7 @@ export function RekeningDetailClient({ account, presets, isAdmin }: Props) {
           <Upload size={14} />
           {account.bank === "mandiri"
             ? "Upload Excel"
-            : account.bank === "jago"
+            : account.bank === "jago" || account.bank === "bca"
             ? "Upload CSV"
             : "Upload PDF"}
         </Button>
