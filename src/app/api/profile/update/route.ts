@@ -107,6 +107,7 @@ export async function POST(request: Request) {
     // karyawan, employee dashboard, payslip variables editor (filter
     // payslip_excluded), dll.
     revalidatePath("/admin/users");
+    revalidatePath("/admin/investors");
     revalidatePath("/admin/payslips");
     revalidatePath("/admin/payslips/variables");
     revalidatePath("/admin/attendance");

@@ -45,10 +45,14 @@ export default async function PayslipVariablesPage({
         : "variables";
 
   const supabase = await createClient();
+  // Investors never receive payslips — exclude them from the payroll
+  // editor so an admin can't accidentally create/finalize payslip
+  // settings for an investor account. (No NULL roles exist in profiles.)
   const { data: employees } = await supabase
     .from("profiles")
     .select("id, full_name, email, business_unit")
     .eq("payslip_excluded", false)
+    .neq("role", "investor")
     .order("business_unit", { ascending: true, nullsFirst: false })
     .order("full_name");
 

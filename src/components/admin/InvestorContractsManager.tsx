@@ -64,8 +64,8 @@ export function InvestorContractsManager({
               <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
                 Investasi
               </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                Bagi hasil
+              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right" title="Sebelum BEP → Setelah BEP">
+                Bagi hasil (pre→post BEP)
               </th>
               <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
                 Durasi
@@ -103,7 +103,11 @@ export function InvestorContractsManager({
                     {formatRp(c.totalInvestIdr)}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {c.bagiHasilPct}%
+                    <span title="Sebelum BEP → Setelah BEP">
+                      {c.bagiHasilPctBeforeBep}%
+                      <span className="text-muted-foreground"> → </span>
+                      {c.bagiHasilPctAfterBep}%
+                    </span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {c.durasiBulan === null ? "Permanen" : `${c.durasiBulan} bln`}
@@ -174,8 +178,11 @@ function ContractForm({
   const [totalInvest, setTotalInvest] = useState(
     String(contract?.totalInvestIdr ?? "")
   );
-  const [bagiHasilPct, setBagiHasilPct] = useState(
-    String(contract?.bagiHasilPct ?? "25")
+  const [bagiHasilBefore, setBagiHasilBefore] = useState(
+    String(contract?.bagiHasilPctBeforeBep ?? contract?.bagiHasilPct ?? "25")
+  );
+  const [bagiHasilAfter, setBagiHasilAfter] = useState(
+    String(contract?.bagiHasilPctAfterBep ?? contract?.bagiHasilPct ?? "25")
   );
   const [isPermanent, setIsPermanent] = useState(
     contract ? contract.durasiBulan === null : false
@@ -201,7 +208,8 @@ function ContractForm({
         userId,
         businessUnit,
         totalInvestIdr: Number(totalInvest),
-        bagiHasilPct: Number(bagiHasilPct),
+        bagiHasilPctBeforeBep: Number(bagiHasilBefore),
+        bagiHasilPctAfterBep: Number(bagiHasilAfter),
         durasiBulan: isPermanent ? null : Number(durasiBulan),
         startDate,
         bepTargetIdr: Number(bepTarget),
@@ -304,12 +312,22 @@ function ContractForm({
             />
           </label>
           <label className="text-xs">
-            <span className="text-muted-foreground">Bagi hasil (%)</span>
+            <span className="text-muted-foreground">Bagi hasil sebelum BEP (%)</span>
             <input
               type="number"
               step="0.01"
-              value={bagiHasilPct}
-              onChange={(e) => setBagiHasilPct(e.target.value)}
+              value={bagiHasilBefore}
+              onChange={(e) => setBagiHasilBefore(e.target.value)}
+              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="text-muted-foreground">Bagi hasil setelah BEP (%)</span>
+            <input
+              type="number"
+              step="0.01"
+              value={bagiHasilAfter}
+              onChange={(e) => setBagiHasilAfter(e.target.value)}
               className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
             />
           </label>

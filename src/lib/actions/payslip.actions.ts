@@ -917,12 +917,18 @@ export async function bulkCalculatePayslips(
   // Filter out resigned/inactive users — payslip generator tidak boleh
   // bikin payslip baru untuk karyawan yang sudah di-tag resign. History
   // bulan-bulan lalu tetap accessible (DB row tidak dihapus).
+  // Investor juga di-skip: mereka tidak pernah masuk payroll walaupun
+  // (secara legacy) punya payslip_settings ter-finalize.
   const { data: activeProfilesData } = await supabase
     .from("profiles")
-    .select("id")
+    .select("id, role")
     .eq("is_active", true)
     .in("id", allCandidateIds);
-  const activeIdSet = new Set((activeProfilesData ?? []).map((p) => p.id));
+  const activeIdSet = new Set(
+    (activeProfilesData ?? [])
+      .filter((p) => p.role !== "investor")
+      .map((p) => p.id)
+  );
   const userIds = allCandidateIds.filter((id) => activeIdSet.has(id));
   if (userIds.length === 0) {
     return {

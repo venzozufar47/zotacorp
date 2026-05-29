@@ -18,6 +18,15 @@ export interface InvestorSummary {
   fullName: string | null;
   businessUnits: string[];
   createdAt: string;
+  /** Investor-account profile fields surfaced for the admin edit panel
+   *  (investor-appropriate only — no employee/HR fields). */
+  nickname: string | null;
+  whatsappNumber: string | null;
+  npwp: string | null;
+  domisiliKota: string | null;
+  domisiliAlamat: string | null;
+  avatarUrl: string | null;
+  avatarSeed: string | null;
 }
 
 /**
@@ -34,7 +43,9 @@ export async function listInvestorsForAdmin(): Promise<
   const supabase = adminClient() as any;
   const { data: profiles, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, created_at")
+    .select(
+      "id, email, full_name, created_at, nickname, whatsapp_number, npwp, domisili_kota, domisili_alamat, avatar_url, avatar_seed"
+    )
     .eq("role", "investor")
     .order("created_at", { ascending: false });
   if (error) return { ok: false, error: error.message };
@@ -43,6 +54,13 @@ export async function listInvestorsForAdmin(): Promise<
     email: string | null;
     full_name: string | null;
     created_at: string;
+    nickname: string | null;
+    whatsapp_number: string | null;
+    npwp: string | null;
+    domisili_kota: string | null;
+    domisili_alamat: string | null;
+    avatar_url: string | null;
+    avatar_seed: string | null;
   };
   const profs = (profiles ?? []) as ProfileRow[];
   const userIds = profs.map((p) => p.id);
@@ -69,6 +87,13 @@ export async function listInvestorsForAdmin(): Promise<
       fullName: p.full_name,
       businessUnits: (byUser.get(p.id) ?? []).sort(),
       createdAt: p.created_at,
+      nickname: p.nickname,
+      whatsappNumber: p.whatsapp_number,
+      npwp: p.npwp,
+      domisiliKota: p.domisili_kota,
+      domisiliAlamat: p.domisili_alamat,
+      avatarUrl: p.avatar_url,
+      avatarSeed: p.avatar_seed,
     })),
   };
 }
@@ -135,7 +160,13 @@ export interface InvestorContract {
   userId: string;
   businessUnit: string;
   totalInvestIdr: number;
+  /** @deprecated Legacy flat rate; kept in sync with bagiHasilPctBeforeBep
+   *  for backward compatibility. Use the before/after-BEP rates below. */
   bagiHasilPct: number;
+  /** Profit-share % applied while cumulative payouts < BEP target. */
+  bagiHasilPctBeforeBep: number;
+  /** Profit-share % applied once BEP target is reached. */
+  bagiHasilPctAfterBep: number;
   durasiBulan: number | null;
   startDate: string;
   bepTargetIdr: number;
@@ -153,6 +184,8 @@ interface ContractRow {
   business_unit: string;
   total_invest_idr: number | string;
   bagi_hasil_pct: number | string;
+  bagi_hasil_pct_before_bep: number | string | null;
+  bagi_hasil_pct_after_bep: number | string | null;
   durasi_bulan: number | null;
   start_date: string;
   bep_target_idr: number | string;
@@ -171,6 +204,12 @@ function mapContract(r: ContractRow): InvestorContract {
     businessUnit: r.business_unit,
     totalInvestIdr: Number(r.total_invest_idr),
     bagiHasilPct: Number(r.bagi_hasil_pct),
+    bagiHasilPctBeforeBep: Number(
+      r.bagi_hasil_pct_before_bep ?? r.bagi_hasil_pct
+    ),
+    bagiHasilPctAfterBep: Number(
+      r.bagi_hasil_pct_after_bep ?? r.bagi_hasil_pct
+    ),
     durasiBulan: r.durasi_bulan,
     startDate: r.start_date,
     bepTargetIdr: Number(r.bep_target_idr),
@@ -222,7 +261,8 @@ export async function upsertInvestorContract(input: {
   userId: string;
   businessUnit: string;
   totalInvestIdr: number;
-  bagiHasilPct: number;
+  bagiHasilPctBeforeBep: number;
+  bagiHasilPctAfterBep: number;
   durasiBulan: number | null;
   startDate: string;
   bepTargetIdr: number;
@@ -243,7 +283,11 @@ export async function upsertInvestorContract(input: {
     user_id: input.userId,
     business_unit: input.businessUnit.trim(),
     total_invest_idr: input.totalInvestIdr,
-    bagi_hasil_pct: input.bagiHasilPct,
+    // Keep legacy flat column in sync (= before-BEP) for any reader that
+    // still consumes bagi_hasil_pct.
+    bagi_hasil_pct: input.bagiHasilPctBeforeBep,
+    bagi_hasil_pct_before_bep: input.bagiHasilPctBeforeBep,
+    bagi_hasil_pct_after_bep: input.bagiHasilPctAfterBep,
     durasi_bulan: input.durasiBulan,
     start_date: input.startDate,
     bep_target_idr: input.bepTargetIdr,

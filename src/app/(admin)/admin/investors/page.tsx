@@ -10,6 +10,7 @@ import {
 import { getBuMetrics } from "@/lib/actions/investor-metrics.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { InvestorAccountsList } from "@/components/admin/InvestorAccountsList";
 import { InvestorContractsManager } from "@/components/admin/InvestorContractsManager";
 import { InvestorPayoutsManager } from "@/components/admin/InvestorPayoutsManager";
 import { BuMonthlyMetricsManager } from "@/components/admin/BuMonthlyMetricsManager";
@@ -20,6 +21,7 @@ interface SearchParams {
 }
 
 const TABS = [
+  { id: "accounts", label: "Akun" },
   { id: "contracts", label: "Kontrak" },
   { id: "payouts", label: "Payouts" },
   { id: "metrics", label: "Metrik BU" },
@@ -36,7 +38,8 @@ export default async function AdminInvestorsPage({
   if (role !== "admin") redirect("/dashboard");
 
   const sp = await searchParams;
-  const tab = (TABS.find((t) => t.id === sp.tab)?.id ?? "contracts") as
+  const tab = (TABS.find((t) => t.id === sp.tab)?.id ?? "accounts") as
+    | "accounts"
     | "contracts"
     | "payouts"
     | "metrics";
@@ -97,6 +100,10 @@ export default async function AdminInvestorsPage({
           );
         })}
       </div>
+
+      {tab === "accounts" && (
+        <InvestorAccountsList investors={investors} contracts={contracts} />
+      )}
 
       {tab === "contracts" && (
         <InvestorContractsManager

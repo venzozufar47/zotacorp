@@ -72,7 +72,15 @@ export default async function AdminUsersPage() {
     {}
   );
 
-  const rows = (profiles ?? []).map((p) => {
+  // Investors are managed on /admin/investors — they have no payslip,
+  // schedule, probation, or attendance concept. Keep them out of the
+  // employee/admin users table so employee-only controls never apply
+  // to them. (No NULL roles exist, so this won't hide anyone else.)
+  const employeeProfiles = (profiles ?? []).filter(
+    (p) => p.role !== "investor"
+  );
+
+  const rows = employeeProfiles.map((p) => {
     // Profile is complete when every completion key is non-empty. Numbers
     // 0 and booleans false are not valid completion keys in our schema
     // (all of them are string-shaped), so a loose-truthy check is fine.
