@@ -433,74 +433,10 @@ function InsightsBody({ insights }: { insights: PosInsights }) {
         title={`Revenue harian (${insights.periodDays} hari)`}
         subtitle="Bar = revenue per tanggal — angka di atas bar"
       >
-        {(() => {
-          const slice = trimToActiveDays(daily);
-          const peakRev = Math.max(0, ...slice.map((d) => d.revenue));
-          // Untuk slice padat (>10 bar) label tiap bar bakal saling
-          // tabrak — tampilkan hanya untuk peak + sample jarang.
-          const dense = slice.length > 10;
-          return (
-            <>
-              <div className="flex items-stretch gap-[3px] h-36 px-1">
-                {slice.map((d, idx) => {
-                  const heightPct = (d.revenue / maxDailyRevenue) * 100;
-                  const isPeak = d.revenue === peakRev && d.revenue > 0;
-                  const showLabel =
-                    d.revenue > 0 && (!dense || isPeak || idx % 3 === 0);
-                  return (
-                    <div
-                      key={d.date}
-                      className="flex-1 min-w-[3px] flex flex-col items-center"
-                      title={`${formatDate(d.date, { weekday: "short" })} · ${formatRp(d.revenue)} · ${d.txCount} tx`}
-                    >
-                      <div className="w-full flex flex-col justify-end items-center h-32">
-                        {showLabel && (
-                          <span
-                            className={
-                              "text-[10px] tabular-nums leading-none mb-0.5 whitespace-nowrap " +
-                              (isPeak
-                                ? "font-bold text-primary"
-                                : "font-semibold text-foreground")
-                            }
-                          >
-                            {formatRpCompact(d.revenue)}
-                          </span>
-                        )}
-                        <div
-                          className={
-                            "w-full rounded-t-[3px] transition " +
-                            (isPeak
-                              ? "bg-primary"
-                              : "bg-primary/60 hover:bg-primary/80")
-                          }
-                          style={{
-                            height: `${heightPct}%`,
-                            minHeight: d.revenue > 0 ? "3px" : 0,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5 px-1 tabular-nums">
-                <span>{formatDate(slice[0].date, { weekday: "short" })}</span>
-                {slice.length > 4 && (
-                  <span>
-                    {formatDate(slice[Math.floor(slice.length / 2)].date, {
-                      weekday: "short",
-                    })}
-                  </span>
-                )}
-                <span>
-                  {formatDate(slice[slice.length - 1].date, {
-                    weekday: "short",
-                  })}
-                </span>
-              </div>
-            </>
-          );
-        })()}
+        <DailyRevenueChart
+          slice={trimToActiveDays(daily)}
+          maxDailyRevenue={maxDailyRevenue}
+        />
       </Section>
 
       <Section
@@ -619,6 +555,109 @@ function SummaryCard({
         <p className="text-[10px] text-muted-foreground tabular-nums mt-0.5">{sub}</p>
       )}
     </div>
+  );
+}
+
+/**
+ * Bar chart revenue harian dengan hover tooltip custom. Label statis
+ * di atas bar tetap tampil untuk peak + sample (anti-tabrakan di slice
+ * padat); hover memunculkan tooltip lengkap (tanggal + revenue + tx)
+ * untuk SEMUA bar — termasuk yang label statisnya disembunyikan.
+ */
+function DailyRevenueChart({
+  slice,
+  maxDailyRevenue,
+}: {
+  slice: Array<{ date: string; revenue: number; txCount: number }>;
+  maxDailyRevenue: number;
+}) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  const peakRev = Math.max(0, ...slice.map((d) => d.revenue));
+  const dense = slice.length > 10;
+  return (
+    <>
+      <div className="flex items-stretch gap-[3px] h-36 px-1">
+        {slice.map((d, idx) => {
+          const heightPct = (d.revenue / maxDailyRevenue) * 100;
+          const isPeak = d.revenue === peakRev && d.revenue > 0;
+          const showLabel =
+            d.revenue > 0 && (!dense || isPeak || idx % 3 === 0);
+          const isHovered = hovered === idx;
+          return (
+            <div
+              key={d.date}
+              className="flex-1 min-w-[3px] flex flex-col items-center relative cursor-pointer"
+              onMouseEnter={() => setHovered(idx)}
+              onMouseLeave={() =>
+                setHovered((h) => (h === idx ? null : h))
+              }
+            >
+              {/* Hover tooltip — muncul instan di atas kolom bar. */}
+              {isHovered && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 pointer-events-none rounded-lg bg-foreground text-background px-2.5 py-1.5 shadow-lg whitespace-nowrap">
+                  <p className="text-[11px] font-semibold leading-tight">
+                    {formatDate(d.date, {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </p>
+                  <p className="text-[12.5px] font-bold tabular-nums leading-tight mt-0.5">
+                    {formatRp(d.revenue)}
+                  </p>
+                  <p className="text-[10px] opacity-75 tabular-nums leading-tight">
+                    {d.txCount} transaksi
+                  </p>
+                </div>
+              )}
+              <div className="w-full flex flex-col justify-end items-center h-32">
+                {showLabel && (
+                  <span
+                    className={
+                      "text-[10px] tabular-nums leading-none mb-0.5 whitespace-nowrap " +
+                      (isPeak
+                        ? "font-bold text-primary"
+                        : "font-semibold text-foreground")
+                    }
+                  >
+                    {formatRpCompact(d.revenue)}
+                  </span>
+                )}
+                <div
+                  className={
+                    "w-full rounded-t-[3px] transition " +
+                    (isPeak
+                      ? "bg-primary"
+                      : isHovered
+                        ? "bg-primary/90"
+                        : "bg-primary/60 hover:bg-primary/80")
+                  }
+                  style={{
+                    height: `${heightPct}%`,
+                    minHeight: d.revenue > 0 ? "3px" : 0,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5 px-1 tabular-nums">
+        <span>{formatDate(slice[0].date, { weekday: "short" })}</span>
+        {slice.length > 4 && (
+          <span>
+            {formatDate(slice[Math.floor(slice.length / 2)].date, {
+              weekday: "short",
+            })}
+          </span>
+        )}
+        <span>
+          {formatDate(slice[slice.length - 1].date, {
+            weekday: "short",
+          })}
+        </span>
+      </div>
+    </>
   );
 }
 
