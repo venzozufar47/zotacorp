@@ -121,11 +121,15 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  const looksPdf =
-    lowerName.endsWith(".pdf") || file.type.includes("pdf");
-  if (bankAccount.bank === "bca" && !looksPdf) {
+  // BCA menggunakan CSV yang di-parse manual (PDF BCA adalah image,
+  // tidak bisa dibaca mesin). Format: Tanggal,Keterangan,Mutasi,Tipe
+  if (bankAccount.bank === "bca" && !looksCsv) {
     return NextResponse.json(
-      { error: "Untuk rekening BCA, unggah file PDF 'Mutasi Rekening' dari myBCA/KlikBCA" },
+      {
+        error:
+          "Untuk rekening BCA, unggah file CSV dengan format: " +
+          "Tanggal,Keterangan,Mutasi,Tipe (hasil parse manual dari PDF BCA)",
+      },
       { status: 400 }
     );
   }

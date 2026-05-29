@@ -96,8 +96,17 @@ export function CashflowTable({
   bankAccountId,
   bank,
 }: Props) {
-  const showSource = bank !== "cash";
-  const showDetails = bank !== "cash";
+  // Adaptive columns (data-driven, non-editing-dependent).
+  // For BCA CSV, source/details/notes/balance are always null.
+  const hasAnySource = transactions.some((t) => t.sourceDestination);
+  const hasAnyDetails = transactions.some((t) => t.transactionDetails);
+  const hasAnyNotes = transactions.some((t) => t.notes);
+  const hasAnyBalance = transactions.some((t) => t.runningBalance != null);
+  // "Keterangan" column: show description directly when source+details
+  // are both empty (BCA CSV style).
+  const showDescription =
+    bank !== "cash" && !hasAnySource && !hasAnyDetails;
+  const showBalance = bank === "cash" || hasAnyBalance;
   const showBranchColumn = bank !== "cash";
   // Cash workflow is fully manual — auto-categorization pipeline
   // doesn't apply there.
@@ -111,6 +120,12 @@ export function CashflowTable({
   const router = useRouter();
   const [autoDialogOpen, setAutoDialogOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  // Editing-dependent column visibility: source/details show when data
+  // exists OR in edit mode (only for non-BCA banks); notes visible in
+  // edit mode so admin can annotate any transaction.
+  const showSource = bank !== "cash" && !showDescription && (editing || hasAnySource);
+  const showDetails = bank !== "cash" && !showDescription && (editing || hasAnyDetails);
+  const showNotes = editing || hasAnyNotes;
   const [pending, startTransition] = useTransition();
   // Filter toggles for the lifetime table — cumulative AND: enable
   // both to show only rows missing BOTH category and branch.
@@ -937,9 +952,10 @@ export function CashflowTable({
                   />
                 </Th>
                 <Th className="w-28">Tanggal & Jam</Th>
+                {showDescription && <Th className="w-72">Keterangan</Th>}
                 {showSource && <Th className="w-56">Sumber / Tujuan</Th>}
                 {showDetails && <Th className="w-56">Detail Transaksi</Th>}
-                <Th className="w-56">Catatan</Th>
+                {showNotes && <Th className="w-56">Catatan</Th>}
                 {/* +/− cues clarify direction at a glance: Debit = uang
                     keluar (−), Kredit = uang masuk (+). Matches the
                     red/green colouring on the amount cells. */}
@@ -949,9 +965,11 @@ export function CashflowTable({
                 <Th className="w-28 text-right">
                   <span className="text-success">+</span> Kredit
                 </Th>
-                <Th className="w-32 text-right">
-                  {bank === "cash" ? "Saldo Kas" : "Saldo"}
-                </Th>
+                {showBalance && (
+                  <Th className="w-32 text-right">
+                    {bank === "cash" ? "Saldo Kas" : "Saldo"}
+                  </Th>
+                )}
                 <Th className="w-44">Kategori</Th>
                 {showBranchColumn && categoryPresets.branches.length > 0 && (
                   <Th className="w-28">Cabang</Th>
@@ -1029,6 +1047,18 @@ export function CashflowTable({
                       )}
                     </Td>
 
+                    {/* Keterangan (description) — BCA CSV style */}
+                    {showDescription && (
+                      <Td>
+                        <span
+                          className="block line-clamp-2 leading-snug break-words text-foreground"
+                          title={r.description}
+                        >
+                          {r.description || "—"}
+                        </span>
+                      </Td>
+                    )}
+
                     {/* Sumber / Tujuan */}
                     {showSource && (
                       <Td>
@@ -1080,25 +1110,27 @@ export function CashflowTable({
                     )}
 
                     {/* Catatan */}
-                    <Td>
-                      {editing ? (
-                        <Input
-                          value={r.notes ?? ""}
-                          onChange={(e) =>
-                            updateRow(r.id, { notes: e.target.value || null })
-                          }
-                          placeholder="—"
-                          className={EDIT_INPUT_CLS}
-                        />
-                      ) : (
-                        <span
-                          className="block line-clamp-2 leading-snug break-words text-muted-foreground"
-                          title={r.notes ?? ""}
-                        >
-                          {r.notes || "—"}
-                        </span>
-                      )}
-                    </Td>
+                    {showNotes && (
+                      <Td>
+                        {editing ? (
+                          <Input
+                            value={r.notes ?? ""}
+                            onChange={(e) =>
+                              updateRow(r.id, { notes: e.target.value || null })
+                            }
+                            placeholder="—"
+                            className={EDIT_INPUT_CLS}
+                          />
+                        ) : (
+                          <span
+                            className="block line-clamp-2 leading-snug break-words text-muted-foreground"
+                            title={r.notes ?? ""}
+                          >
+                            {r.notes || "—"}
+                          </span>
+                        )}
+                      </Td>
+                    )}
 
                     {/* Debit */}
                     <Td className="text-right">
@@ -1161,20 +1193,22 @@ export function CashflowTable({
                       )}
                     </Td>
 
-                    {/* Saldo — read-only. For rows yang tidak mempengaruhi
-                        saldo kas (mis. QRIS non-operasional di rekening
-                        cash), render "—" supaya admin tidak bingung
-                        lihat saldo yang sama berulang. */}
-                    <Td className="text-right font-mono tabular-nums whitespace-nowrap text-muted-foreground">
-                      {(() => {
-                        const skipsBalance =
-                          bank === "cash" && r.category === POS_QRIS_CATEGORY;
-                        if (skipsBalance) return "—";
-                        const bal =
-                          computedBalances.get(r.id) ?? r.runningBalance;
-                        return bal != null ? formatIDR(bal) : "—";
-                      })()}
-                    </Td>
+                    {/* Saldo — read-only. Hidden for banks without
+                        running balance (BCA CSV). For rows yang tidak
+                        mempengaruhi saldo kas (mis. QRIS non-operasional
+                        di rekening cash), render "—". */}
+                    {showBalance && (
+                      <Td className="text-right font-mono tabular-nums whitespace-nowrap text-muted-foreground">
+                        {(() => {
+                          const skipsBalance =
+                            bank === "cash" && r.category === POS_QRIS_CATEGORY;
+                          if (skipsBalance) return "—";
+                          const bal =
+                            computedBalances.get(r.id) ?? r.runningBalance;
+                          return bal != null ? formatIDR(bal) : "—";
+                        })()}
+                      </Td>
+                    )}
 
                     {/* Kategori — dropdown when BU has preset, text otherwise */}
                     <Td>

@@ -84,11 +84,11 @@ interface PreviewResult {
   verification: PreviewVerification;
 }
 
-/** Kata benda file sesuai bank: Mandiri = Excel, Jago = CSV, lainnya
- *  = PDF. Dipakai di label progress bar + tombol. */
+/** Kata benda file sesuai bank: Mandiri = Excel, Jago/BCA = CSV,
+ *  lainnya = PDF. Dipakai di label progress bar + tombol. */
 function fileNounFor(bank: BankCode | null | undefined): string {
   if (bank === "mandiri") return "Excel";
-  if (bank === "jago") return "CSV";
+  if (bank === "jago" || bank === "bca") return "CSV";
   return "PDF";
 }
 
@@ -830,18 +830,20 @@ function FormStep(props: FormStepProps) {
   // Per-bank format + password behaviour:
   //   Mandiri → e-Statement Excel, selalu password-protected.
   //   Jago    → CSV export dari app (plain, tidak perlu password).
+  //   BCA     → CSV hasil parse manual (PDF BCA adalah image, tidak
+  //              bisa dibaca mesin). Tidak perlu password.
   //   Lainnya → PDF rekening koran.
   const fileLabel = isMandiri
     ? "File Excel (.xlsx)"
-    : isJago
+    : isJago || isBca
     ? "File CSV (.csv)"
     : "File PDF";
   const fileAccept = isMandiri
     ? ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-    : isJago
+    : isJago || isBca
     ? ".csv,text/csv,text/plain"
     : "application/pdf";
-  const showPasswordField = !isJago;
+  const showPasswordField = !isJago && !isBca;
   const passwordLabel = isMandiri ? "Password Excel" : "Password PDF";
   const passwordHint = isMandiri
     ? "E-Statement Mandiri selalu password-protected. Ketik passwordnya di sini — akan tersimpan otomatis setelah parse sukses."
@@ -891,7 +893,7 @@ function FormStep(props: FormStepProps) {
           {isMandiri
             ? "Maksimal 10MB/file. Bisa pilih banyak file sekaligus (Ctrl/Shift+klik) untuk batch upload per bulan."
             : isBca
-            ? "Maksimal 10MB/file. Bisa pilih banyak file sekaligus (Ctrl/Shift+klik) untuk batch upload per periode (mis. mingguan)."
+            ? "Maksimal 10MB/file. Bisa pilih banyak file sekaligus (Ctrl/Shift+klik) untuk batch upload per bulan. Format CSV: Tanggal,Keterangan,Mutasi,Tipe"
             : "Maksimal 10MB. File tidak disimpan — hanya dipakai sekali untuk mengekstrak transaksi."}
         </p>
       </div>
@@ -1047,6 +1049,19 @@ function PreviewStep({
     patch: Partial<Pick<PreviewTx, "category" | "branch">>
   ) => void;
 }) {
+  // Adaptive columns — hide entirely when no row has data for that
+  // field. Keeps the table clean for CSV banks (BCA) that only supply
+  // date + description + amount.
+  const txs = preview.transactions;
+  const hasSrcDest = txs.some((t) => t.sourceDestination);
+  const hasTxDetails = txs.some((t) => t.transactionDetails);
+  const hasNotes = txs.some((t) => t.notes);
+  const hasTime = txs.some((t) => t.time);
+  const hasBalance = txs.some((t) => t.runningBalance != null);
+  // "Keterangan" column: show description directly when source +
+  // details are both empty (BCA CSV style). Replaces the two split
+  // columns with the single keterangan field.
+  const showDescCol = !hasSrcDest && !hasTxDetails;
   return (
     <div className="space-y-3">
       {/* Compact summary row — inline stats instead of fat cards */}
@@ -1091,26 +1106,39 @@ function PreviewStep({
               <thead className="text-muted-foreground uppercase tracking-wider">
                 <tr>
                   <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-28 border-b border-border">
-                    Tanggal & Jam
+                    Tanggal{hasTime ? " & Jam" : ""}
                   </th>
-                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
-                    Sumber / Tujuan
-                  </th>
-                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
-                    Detail Transaksi
-                  </th>
-                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
-                    Catatan
-                  </th>
+                  {showDescCol && (
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-80 border-b border-border">
+                      Keterangan
+                    </th>
+                  )}
+                  {hasSrcDest && (
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
+                      Sumber / Tujuan
+                    </th>
+                  )}
+                  {hasTxDetails && (
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
+                      Detail Transaksi
+                    </th>
+                  )}
+                  {hasNotes && (
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
+                      Catatan
+                    </th>
+                  )}
                   <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
                     Debit
                   </th>
                   <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
                     Kredit
                   </th>
-                  <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-32 border-b border-border">
-                    Saldo
-                  </th>
+                  {hasBalance && (
+                    <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-32 border-b border-border">
+                      Saldo
+                    </th>
+                  )}
                   <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
                     Kategori
                   </th>
@@ -1144,27 +1172,40 @@ function PreviewStep({
                           </span>
                         )}
                       </div>
-                      {t.time && (
+                      {hasTime && t.time && (
                         <div className="text-muted-foreground text-[10px]">
                           {t.time}
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-foreground border-t border-border/60">
-                      <span className="block line-clamp-2 leading-snug break-words" title={t.sourceDestination ?? ""}>
-                        {t.sourceDestination || "—"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-foreground border-t border-border/60">
-                      <span className="block line-clamp-2 leading-snug break-words" title={t.transactionDetails ?? ""}>
-                        {t.transactionDetails || "—"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground border-t border-border/60">
-                      <span className="block line-clamp-2 leading-snug break-words" title={t.notes ?? ""}>
-                        {t.notes || "—"}
-                      </span>
-                    </td>
+                    {showDescCol && (
+                      <td className="px-3 py-2 text-foreground border-t border-border/60">
+                        <span className="block line-clamp-2 leading-snug break-words" title={t.description}>
+                          {t.description || "—"}
+                        </span>
+                      </td>
+                    )}
+                    {hasSrcDest && (
+                      <td className="px-3 py-2 text-foreground border-t border-border/60">
+                        <span className="block line-clamp-2 leading-snug break-words" title={t.sourceDestination ?? ""}>
+                          {t.sourceDestination || "—"}
+                        </span>
+                      </td>
+                    )}
+                    {hasTxDetails && (
+                      <td className="px-3 py-2 text-foreground border-t border-border/60">
+                        <span className="block line-clamp-2 leading-snug break-words" title={t.transactionDetails ?? ""}>
+                          {t.transactionDetails || "—"}
+                        </span>
+                      </td>
+                    )}
+                    {hasNotes && (
+                      <td className="px-3 py-2 text-muted-foreground border-t border-border/60">
+                        <span className="block line-clamp-2 leading-snug break-words" title={t.notes ?? ""}>
+                          {t.notes || "—"}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
                       {t.debit > 0 ? (
                         <span className="text-destructive">
@@ -1181,11 +1222,13 @@ function PreviewStep({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground whitespace-nowrap border-t border-border/60">
-                      {t.runningBalance != null
-                        ? formatIDR(t.runningBalance)
-                        : "—"}
-                    </td>
+                    {hasBalance && (
+                      <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground whitespace-nowrap border-t border-border/60">
+                        {t.runningBalance != null
+                          ? formatIDR(t.runningBalance)
+                          : "—"}
+                      </td>
+                    )}
                     <td className="px-3 py-2 border-t border-border/60">
                       {t.duplicate ? (
                         <span className="text-[10px] text-muted-foreground italic">
