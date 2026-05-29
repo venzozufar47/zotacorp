@@ -50,7 +50,11 @@ export const YEOBO_SPACE_CREDIT_CATEGORIES = [
   "Revenue",
   "Other Revenue",
   "Investment",
+  // Owner MENYETOR / meminjamkan ke perusahaan (perusahaan berutang).
   "Owner's Debt",
+  // Owner MENGEMBALIKAN pinjaman yang ia ambil dari perusahaan
+  // (uang masuk; pasangan dari "Owner's Loan" di sisi debit).
+  "Owner's Loan Repayment",
   "Wealth Transfer",
   "Needs Assignment",
 ] as const;
@@ -69,7 +73,12 @@ export const YEOBO_SPACE_DEBIT_CATEGORIES = [
   "Rent",
   "Sales Refund",
   "Dividend",
+  // Perusahaan MENGEMBALIKAN utang ke owner (owner sebelumnya
+  // menyetor/meminjamkan ke perusahaan). Pasangan dari "Owner's Debt".
   "Owner's Debt Repayment",
+  // Perusahaan MEMINJAMKAN ke owner (uang keluar; owner berutang dan
+  // wajib mengembalikan). Pasangan dari "Owner's Loan Repayment".
+  "Owner's Loan",
   "Wealth Transfer",
   "Needs Assignment",
 ] as const;
@@ -110,6 +119,8 @@ export const YEOBO_SPACE_NON_OPERATING_CATEGORIES = [
   "Dividend",
   "Owner's Debt",
   "Owner's Debt Repayment",
+  "Owner's Loan",
+  "Owner's Loan Repayment",
 ] as const;
 
 /**
