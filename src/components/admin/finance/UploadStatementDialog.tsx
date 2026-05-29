@@ -186,6 +186,12 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
 
   const isJago = account?.bank === "jago";
   const isMandiri = account?.bank === "mandiri";
+  // BCA mutasi rekening tidak punya kolom saldo per baris, jadi
+  // reconciliation saldo (opening/closing) tidak bisa dilakukan.
+  // Untuk bank semacam ini, commit/batch tidak boleh di-block oleh
+  // gate verifikasi saldo — toh tidak ada angka untuk dicocokkan.
+  const isBca = account?.bank === "bca";
+  const noBalanceBank = isBca;
 
   useEffect(() => {
     if (!account) return;
@@ -245,11 +251,14 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
         update({ status: "error", message: body?.error ?? `HTTP ${status}` });
         return;
       }
-      if (!body.verification?.canVerify || !body.verification?.match) {
+      // Bank dengan saldo (Mandiri/Jago) wajib lolos reconciliation
+      // sebelum auto-commit. Bank tanpa saldo (BCA) tidak punya angka
+      // untuk dicocokkan → skip gate, commit langsung.
+      if (!noBalanceBank && (!body.verification?.canVerify || !body.verification?.match)) {
         update({
           status: "error",
           message: body.verification?.canVerify
-            ? `Saldo tidak cocok (selisih Rp ${Math.round(body.verification.diff).toLocaleString("id-ID")})`
+            ? `Saldo tidak cocok (selisih Rp ${Math.round(body.verification.diff ?? 0).toLocaleString("id-ID")})`
             : "Saldo awal/akhir tidak terbaca",
         });
         return;
@@ -507,6 +516,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
               setEndDate={setEndDate}
               isJago={isJago}
               isMandiri={isMandiri}
+              isBca={isBca}
               savedPassword={Boolean(account?.pdfPassword)}
               editPassword={editPassword || passwordChallenge === "wrong"}
               setEditPassword={setEditPassword}
@@ -532,6 +542,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
           <PreviewStep
             preview={preview}
             presets={presets}
+            noBalanceBank={noBalanceBank}
             onPatchRow={(idx, patch) => {
               setPreview((prev) =>
                 prev
@@ -566,15 +577,16 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
                 disabled={
                   committing ||
                   preview.newCount === 0 ||
-                  !preview.verification.canVerify ||
-                  !preview.verification.match
+                  (!noBalanceBank &&
+                    (!preview.verification.canVerify ||
+                      !preview.verification.match))
                 }
               >
                 {committing
                   ? "Menyimpan…"
-                  : !preview.verification.canVerify
+                  : !noBalanceBank && !preview.verification.canVerify
                   ? "Saldo awal/akhir tidak terbaca"
-                  : !preview.verification.match
+                  : !noBalanceBank && !preview.verification.match
                   ? "Saldo tidak cocok"
                   : preview.newCount === 0
                   ? "Tidak ada data baru"
@@ -774,9 +786,9 @@ interface FormStepProps {
   file: File | null;
   setFile: (f: File | null) => void;
   /**
-   * Dipanggil khusus saat admin pilih >1 file (hanya enabled untuk
-   * Mandiri). Parent akan mem-populate `batch` state dan render
-   * BatchUploadProgress view.
+   * Dipanggil khusus saat admin pilih >1 file (enabled untuk bank
+   * yang file-nya self-contained per periode: Mandiri & BCA). Parent
+   * akan mem-populate `batch` state dan render BatchUploadProgress view.
    */
   onMultiFiles?: (files: File[]) => void;
   pdfPassword: string;
@@ -793,6 +805,7 @@ interface FormStepProps {
   setEndDate: (v: string) => void;
   isJago: boolean;
   isMandiri: boolean;
+  isBca: boolean;
   savedPassword: boolean;
   editPassword: boolean;
   setEditPassword: (v: boolean) => void;
@@ -807,9 +820,13 @@ function FormStep(props: FormStepProps) {
     useRange, setUseRange,
     startDate, setStartDate,
     endDate, setEndDate,
-    isJago, isMandiri,
+    isJago, isMandiri, isBca,
     savedPassword, editPassword, setEditPassword,
   } = props;
+  // Batch multi-file: Mandiri (1 file = 1 bulan) & BCA (1 file = 1
+  // minggu) sama-sama self-contained per file, jadi boleh diunggah
+  // banyak sekaligus. Jago = 1 CSV berisi seluruh history → single.
+  const allowMulti = isMandiri || isBca;
   // Per-bank format + password behaviour:
   //   Mandiri → e-Statement Excel, selalu password-protected.
   //   Jago    → CSV export dari app (plain, tidak perlu password).
@@ -851,7 +868,7 @@ function FormStep(props: FormStepProps) {
             type="file"
             accept={fileAccept}
             required
-            multiple={isMandiri}
+            multiple={allowMulti}
             onChange={(e) => {
               const files = Array.from(e.target.files ?? []);
               if (files.length > 1 && onMultiFiles) {
@@ -873,6 +890,8 @@ function FormStep(props: FormStepProps) {
         <p className="text-[11px] text-muted-foreground">
           {isMandiri
             ? "Maksimal 10MB/file. Bisa pilih banyak file sekaligus (Ctrl/Shift+klik) untuk batch upload per bulan."
+            : isBca
+            ? "Maksimal 10MB/file. Bisa pilih banyak file sekaligus (Ctrl/Shift+klik) untuk batch upload per periode (mis. mingguan)."
             : "Maksimal 10MB. File tidak disimpan — hanya dipakai sekali untuk mengekstrak transaksi."}
         </p>
       </div>
@@ -1017,10 +1036,12 @@ function FormStep(props: FormStepProps) {
 function PreviewStep({
   preview,
   presets,
+  noBalanceBank,
   onPatchRow,
 }: {
   preview: PreviewResult;
   presets: CategoryPresets;
+  noBalanceBank: boolean;
   onPatchRow: (
     idx: number,
     patch: Partial<Pick<PreviewTx, "category" | "branch">>
@@ -1038,7 +1059,7 @@ function PreviewStep({
       </div>
 
       {/* Balance reconciliation — gating panel for the Konfirmasi button */}
-      <ReconciliationPanel preview={preview} />
+      <ReconciliationPanel preview={preview} noBalanceBank={noBalanceBank} />
 
       {/* Warnings */}
       {preview.warnings.length > 0 && (
@@ -1220,9 +1241,34 @@ function PreviewStep({
  *     the full arithmetic so the admin can see exactly where it
  *     breaks, and the Konfirmasi button stays disabled.
  */
-function ReconciliationPanel({ preview }: { preview: PreviewResult }) {
+function ReconciliationPanel({
+  preview,
+  noBalanceBank,
+}: {
+  preview: PreviewResult;
+  noBalanceBank: boolean;
+}) {
   const v = preview.verification;
   if (!v.canVerify) {
+    // Bank tanpa kolom saldo (BCA): bukan error — memang formatnya
+    // tidak menyertakan saldo. Tampilkan catatan informatif, commit
+    // tetap diizinkan.
+    if (noBalanceBank) {
+      return (
+        <div className="rounded-xl border-2 border-warning/40 bg-warning/5 p-4 space-y-1.5">
+          <p className="text-sm font-semibold text-warning flex items-center gap-2">
+            <AlertTriangle size={14} />
+            Verifikasi saldo dilewati
+          </p>
+          <p className="text-xs text-foreground leading-snug">
+            Mutasi rekening bank ini tidak menyertakan kolom saldo per
+            baris, jadi sistem tidak bisa merekonsiliasi saldo awal/akhir
+            otomatis. Transaksi tetap bisa disimpan — pastikan kamu sudah
+            memeriksa daftar di bawah sebelum konfirmasi.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="rounded-xl border-2 border-destructive/40 bg-destructive/5 p-4 space-y-1.5">
         <p className="text-sm font-semibold text-destructive flex items-center gap-2">
