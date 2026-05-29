@@ -125,30 +125,45 @@ export async function POST(req: Request) {
   // Defense-in-depth balance verification. Client-side dialog already
   // gates the Konfirmasi button on this check, but we re-run it server
   // side so a tampered payload can't bypass the guard.
-  const verification = verifyBalance(
-    body.openingBalance,
-    body.closingBalance,
-    body.transactions
+  //
+  // Exception: bank tanpa kolom saldo (BCA CSV) mengirim
+  // openingBalance=0 + closingBalance=0 dengan SEMUA runningBalance=null.
+  // Dalam kasus ini tidak ada angka saldo untuk dicocokkan, jadi skip
+  // validasi — sama persis dengan logika di client-side noBalanceBank.
+  const hasAnyRunningBalance = body.transactions.some(
+    (t) => t.runningBalance != null
   );
-  if (!verification.match) {
-    return NextResponse.json(
-      {
-        error: `Saldo tidak cocok. Saldo awal ${body.openingBalance.toLocaleString(
-          "id-ID"
-        )} + kredit ${verification.sumCredit.toLocaleString(
-          "id-ID"
-        )} − debit ${verification.sumDebit.toLocaleString(
-          "id-ID"
-        )} = ${verification.computed.toLocaleString(
-          "id-ID"
-        )}, tapi saldo akhir ${body.closingBalance.toLocaleString(
-          "id-ID"
-        )}. Selisih ${verification.diff.toLocaleString(
-          "id-ID"
-        )}. Perbaiki di preview dulu.`,
-      },
-      { status: 400 }
+  const canVerifyBalance =
+    hasAnyRunningBalance ||
+    body.openingBalance !== 0 ||
+    body.closingBalance !== 0;
+
+  if (canVerifyBalance) {
+    const verification = verifyBalance(
+      body.openingBalance,
+      body.closingBalance,
+      body.transactions
     );
+    if (!verification.match) {
+      return NextResponse.json(
+        {
+          error: `Saldo tidak cocok. Saldo awal ${body.openingBalance.toLocaleString(
+            "id-ID"
+          )} + kredit ${verification.sumCredit.toLocaleString(
+            "id-ID"
+          )} − debit ${verification.sumDebit.toLocaleString(
+            "id-ID"
+          )} = ${verification.computed.toLocaleString(
+            "id-ID"
+          )}, tapi saldo akhir ${body.closingBalance.toLocaleString(
+            "id-ID"
+          )}. Selisih ${verification.diff.toLocaleString(
+            "id-ID"
+          )}. Perbaiki di preview dulu.`,
+        },
+        { status: 400 }
+      );
+    }
   }
 
   // Server-side dedupe — paginate supaya rekening dengan history >1000
