@@ -44,9 +44,26 @@ export function LateCheckoutDialog({
   const [overtimeReason, setOvertimeReason] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  // Determine if selected time qualifies for overtime
+  // Extract check-in time for display + cross-midnight detection —
+  // always in the admin org timezone so comparisons match the server.
+  const checkinTime = formatTime(checkedInAt, timezone);
+
+  // Cross-midnight: jam checkout lebih awal/sama dengan jam check-in →
+  // shift menyeberang tengah malam (server me-roll ke hari berikutnya).
+  const crossesMidnight = (() => {
+    if (!time) return false;
+    const [th, tm] = time.split(":").map(Number);
+    const [ch, cm] = checkinTime.split(":").map(Number);
+    if (isNaN(th) || isNaN(ch)) return false;
+    return th * 60 + tm <= ch * 60 + cm;
+  })();
+
+  // Determine if selected time qualifies for overtime. Kerja lewat
+  // tengah malam pasti melewati jam pulang → otomatis eligible; selain
+  // itu bandingkan jam dinding terhadap work_end_time.
   const eligibleForOvertime = (() => {
     if (!time || !workEndTime || isFlexibleSchedule) return false;
+    if (crossesMidnight) return true;
     const [h, m] = time.split(":").map(Number);
     const [eh, em] = workEndTime.split(":").map(Number);
     if (isNaN(h) || isNaN(m) || isNaN(eh) || isNaN(em)) return false;
@@ -58,17 +75,9 @@ export function LateCheckoutDialog({
       toast.error("Please enter a checkout time");
       return;
     }
-    // Block same-or-before check-in (compare minute-of-day)
-    const [th, tm] = time.split(":").map(Number);
-    const [ch, cm] = checkinTime.split(":").map(Number);
-    if (!isNaN(th) && !isNaN(ch)) {
-      const checkoutMin = th * 60 + tm;
-      const checkinMin = ch * 60 + cm;
-      if (checkoutMin <= checkinMin) {
-        toast.error(`Checkout time must be after check-in (${checkinTime})`);
-        return;
-      }
-    }
+    // Jam checkout sebelum/sama dengan check-in TIDAK lagi diblokir di
+    // sini — kalau lebih awal, server menafsirkannya sebagai hari
+    // berikutnya (shift lewat tengah malam) dan memvalidasi durasi.
     if (!reason.trim()) {
       toast.error("Please provide a reason for the missed checkout");
       return;
@@ -106,11 +115,6 @@ export function LateCheckoutDialog({
     });
   }
 
-  // Extract check-in time for display — always rendered in the admin
-  // org timezone so late-checkout comparisons match the attendance
-  // calculation. Never uses the browser's local timezone.
-  const checkinTime = formatTime(checkedInAt, timezone);
-
   return (
     <>
       <button
@@ -135,8 +139,13 @@ export function LateCheckoutDialog({
               type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              min={checkinTime}
             />
+            {crossesMidnight && (
+              <p className="text-[10px] text-muted-foreground">
+                Lewat tengah malam — dihitung sebagai hari berikutnya
+                (setelah check-in {checkinTime}).
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Reason for missed checkout *</Label>

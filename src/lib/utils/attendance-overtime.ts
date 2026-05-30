@@ -15,6 +15,96 @@
 
 const EARLY_THRESHOLD_MS = 30 * 60_000;
 
+/** Batas atas durasi shift untuk entry checkout manual. Shift yang
+ *  ter-roll melebihi ini hampir pasti salah ketik (mis. 08:00 padahal
+ *  maksud 18:00) → ditolak. */
+const MAX_SHIFT_MS = 20 * 60 * 60 * 1000;
+
+/**
+ * Konversi `YYYY-MM-DD` (tanggal) + `HH:mm` (jam dinding di `timezone`)
+ * → instant UTC (`Date`). Mengganti trik offset-TZ yang sebelumnya
+ * diduplikasi di `checkOut`, `lateCheckout`, dan `adminUpdateAttendanceLog`.
+ *
+ * Cara kerja: parse string seolah-olah UTC, lalu ukur seberapa jauh
+ * wall-clock TZ-nya dari UTC pada momen itu, dan kurangi offset-nya.
+ * Return `null` bila HH:mm tidak valid.
+ */
+export function hhmmToInstant(
+  dateIso: string,
+  hhmm: string,
+  timezone: string
+): Date | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mm = Number(m[2]);
+  if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+  const hh = String(h).padStart(2, "0");
+  const min = String(mm).padStart(2, "0");
+  const assumedUtc = new Date(`${dateIso}T${hh}:${min}:00Z`);
+  const utcWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: "UTC" }));
+  const tzWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: timezone }));
+  const offsetMs = tzWall.getTime() - utcWall.getTime();
+  return new Date(assumedUtc.getTime() - offsetMs);
+}
+
+export type CheckoutResolution =
+  | { ok: true; instant: Date; crossedMidnight: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Resolusi jam checkout manual (`HH:mm`) terhadap instant check-in yang
+ * diketahui. Bangun checkout di tanggal kalender check-in (di `timezone`);
+ * kalau hasilnya **lebih awal** dari check-in, artinya shift lewat tengah
+ * malam → roll +1 hari. Menolak:
+ *   - jam checkout == jam check-in (durasi nol / ambigu 24 jam), dan
+ *   - durasi hasil > 20 jam (kemungkinan salah ketik).
+ *
+ * Dengan single roll, durasi valid selalu < 24 jam dan instant hasil
+ * dijamin setelah check-in — jadi pemanggil tidak perlu validasi
+ * "checkout harus setelah check-in" lagi.
+ */
+export function resolveCheckoutInstant(
+  checkInInstant: Date,
+  checkoutHHmm: string,
+  timezone: string
+): CheckoutResolution {
+  const dateInTz = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(checkInInstant);
+
+  let instant = hhmmToInstant(dateInTz, checkoutHHmm, timezone);
+  if (!instant) {
+    return { ok: false, error: "Format jam checkout tidak valid (HH:mm)." };
+  }
+
+  if (instant.getTime() === checkInInstant.getTime()) {
+    return {
+      ok: false,
+      error: "Jam checkout tidak boleh sama dengan jam check-in.",
+    };
+  }
+
+  let crossedMidnight = false;
+  if (instant.getTime() < checkInInstant.getTime()) {
+    instant = new Date(instant.getTime() + 24 * 60 * 60 * 1000);
+    crossedMidnight = true;
+  }
+
+  if (instant.getTime() - checkInInstant.getTime() > MAX_SHIFT_MS) {
+    return {
+      ok: false,
+      error:
+        "Durasi shift lebih dari 20 jam — cek lagi jam check-in/checkout.",
+    };
+  }
+
+  return { ok: true, instant, crossedMidnight };
+}
+
 /**
  * Parse "HH:MM" or "HH:MM:SS" into [h, m]. Seconds are ignored — work
  * times in this app are only defined to the minute.

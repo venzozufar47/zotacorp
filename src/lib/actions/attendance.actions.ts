@@ -15,6 +15,8 @@ import { evaluateCheckIn, evaluateCheckOut } from "@/lib/location/enforce";
 import {
   isEarlyArrival,
   getEffectiveWorkEnd,
+  hhmmToInstant,
+  resolveCheckoutInstant,
 } from "@/lib/utils/attendance-overtime";
 import { computeStreak, type StreakLogInput } from "@/lib/utils/streak";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
@@ -838,51 +840,41 @@ export async function adminUpdateAttendanceLog(
   const settings = await getCachedAttendanceSettings();
   const timezone = settings?.timezone ?? "Asia/Jakarta";
 
-  /**
-   * Konversi `YYYY-MM-DD` + `HH:mm` di target timezone → UTC ISO
-   * string. Reuse trick yang sama dengan `lateCheckout`: parse as UTC
-   * lalu koreksi offset TZ.
-   */
-  function hhmmToUtc(dateIso: string, hhmm: string): string | null {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
-    if (!m) return null;
-    const h = Number(m[1]);
-    const mm = Number(m[2]);
-    if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
-    const assumedUtc = new Date(`${dateIso}T${hhmm.padStart(5, "0")}:00Z`);
-    const utcWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: "UTC" }));
-    const tzWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: timezone }));
-    const offsetMs = tzWall.getTime() - utcWall.getTime();
-    return new Date(assumedUtc.getTime() - offsetMs).toISOString();
-  }
-
   // Build patch object — hanya sertakan field yang diubah.
   const patch: Record<string, unknown> = {};
 
+  // Check-in efektif (instant) sebagai acuan resolusi checkout
+  // cross-midnight: pakai jam check-in baru kalau diubah, selain itu
+  // pakai yang sudah tersimpan.
+  let effectiveCheckIn = new Date(log.checked_in_at);
+
   if (payload.checkInTime !== undefined && payload.checkInTime !== null) {
-    const iso = hhmmToUtc(log.date, payload.checkInTime);
-    if (!iso) return { error: "Format jam check-in tidak valid (HH:mm)." };
-    patch.checked_in_at = iso;
+    const inst = hhmmToInstant(log.date, payload.checkInTime, timezone);
+    if (!inst) return { error: "Format jam check-in tidak valid (HH:mm)." };
+    patch.checked_in_at = inst.toISOString();
+    effectiveCheckIn = inst;
   }
 
   if (payload.checkOutTime !== undefined) {
     if (payload.checkOutTime === null || payload.checkOutTime === "") {
       patch.checked_out_at = null;
     } else {
-      const iso = hhmmToUtc(log.date, payload.checkOutTime);
-      if (!iso) return { error: "Format jam check-out tidak valid (HH:mm)." };
-      patch.checked_out_at = iso;
+      // resolveCheckoutInstant otomatis me-roll ke hari berikutnya kalau
+      // jam checkout lebih awal dari jam check-in (shift lewat tengah
+      // malam), dan menjamin hasilnya setelah check-in — jadi tak perlu
+      // lagi validasi "checkout harus SETELAH check-in" terpisah.
+      const resolved = resolveCheckoutInstant(
+        effectiveCheckIn,
+        payload.checkOutTime,
+        timezone
+      );
+      if (!resolved.ok) return { error: resolved.error };
+      patch.checked_out_at = resolved.instant.toISOString();
     }
-  }
-
-  if (patch.checked_in_at && patch.checked_out_at) {
-    if (new Date(patch.checked_in_at as string).getTime() >=
-        new Date(patch.checked_out_at as string).getTime()) {
-      return { error: "Jam checkout harus SETELAH jam check-in." };
-    }
-  } else if (patch.checked_in_at && log) {
-    // Kalau hanya check-in yang diubah, validasi tetap konsisten
-    // dengan checkout existing (kalau ada).
+  } else if (patch.checked_in_at) {
+    // Hanya check-in yang diubah (checkout tidak disentuh): pastikan
+    // check-in baru tetap sebelum checkout existing. Perbandingan absolut
+    // — checkout lewat tengah malam = waktu absolut lebih besar → lolos.
     const existingCheckout = (
       await supabase
         .from("attendance_logs")
@@ -892,7 +884,7 @@ export async function adminUpdateAttendanceLog(
     ).data?.checked_out_at;
     if (
       existingCheckout &&
-      new Date(patch.checked_in_at as string).getTime() >=
+      effectiveCheckIn.getTime() >=
         new Date(existingCheckout as string).getTime()
     ) {
       return { error: "Jam check-in harus SEBELUM jam checkout existing." };
@@ -990,27 +982,19 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
 
   const checkinDate = new Date(log.checked_in_at);
 
-  // Find the checkout date (YYYY-MM-DD) in the target TZ, based on check-in moment.
-  const dateInTz = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(checkinDate);
-
-  // Convert "YYYY-MM-DDTHH:mm" in target TZ → UTC instant.
-  // Trick: parse as if UTC, then measure how far off that moment's TZ wall-clock is,
-  // and subtract the offset.
-  const assumedUtc = new Date(`${dateInTz}T${payload.checkoutTime}:00Z`);
-  const utcWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: "UTC" }));
-  const tzWall = new Date(assumedUtc.toLocaleString("en-US", { timeZone: timezone }));
-  const offsetMs = tzWall.getTime() - utcWall.getTime();
-  const checkoutDate = new Date(assumedUtc.getTime() - offsetMs);
-
-  // Ensure checkout time is strictly after check-in time (same day, same TZ)
-  if (checkoutDate.getTime() <= checkinDate.getTime()) {
-    return { error: "Checkout time cannot be the same as or before check-in time." };
+  // Resolusi jam checkout terhadap check-in. Kalau jam checkout lebih
+  // awal dari jam check-in (mis. check-in 22:00, checkout 01:00), helper
+  // me-roll ke hari berikutnya (shift lewat tengah malam) — inilah jalur
+  // utama "belum sign-out sampai lewat tengah malam, isi manual".
+  const resolved = resolveCheckoutInstant(
+    checkinDate,
+    payload.checkoutTime,
+    timezone
+  );
+  if (!resolved.ok) {
+    return { error: resolved.error };
   }
+  const checkoutDate = resolved.instant;
 
   // Compute overtime if requested (same logic as checkOut)
   const isOvertime = payload.isOvertime ?? false;
