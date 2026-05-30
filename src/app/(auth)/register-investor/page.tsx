@@ -14,6 +14,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 /**
  * Halaman registrasi khusus investor — terpisah dari /register
@@ -22,6 +23,8 @@ import { TrendingUp } from "lucide-react";
  * dengan state "menunggu admin assignment").
  */
 export default function RegisterInvestorPage() {
+  const { t } = useTranslation();
+  const tl = t.registerInvestor;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +53,7 @@ export default function RegisterInvestorPage() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.error ?? "Gagal mendaftar. Coba lagi.");
+        setError(body.error ?? tl.errFailed);
         setLoading(false);
         return;
       }
@@ -68,7 +71,7 @@ export default function RegisterInvestorPage() {
 
       window.location.href = "/investor";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
+      setError(err instanceof Error ? err.message : tl.errGeneric);
       setLoading(false);
     }
   }
@@ -81,63 +84,60 @@ export default function RegisterInvestorPage() {
             <TrendingUp size={18} strokeWidth={2.5} />
           </span>
           <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-primary">
-            Investor portal
+            {tl.eyebrow}
           </span>
         </div>
         <CardTitle className="text-2xl">
-          Bergabung sebagai investor Zota Corp
+          {tl.title}
           <span className="text-primary">.</span>
         </CardTitle>
-        <CardDescription>
-          Daftar untuk mengakses laporan keuangan dan profit &amp; loss
-          unit bisnis yang Anda investasikan. Setelah daftar, admin
-          akan mengaktifkan akses Anda dalam waktu 1×24 jam.
-        </CardDescription>
+        <CardDescription>{tl.description}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="full_name">Nama lengkap</Label>
+            <Label htmlFor="full_name">{tl.fullNameLabel}</Label>
             <Input
               id="full_name"
               name="full_name"
               type="text"
-              placeholder="Nama sesuai dokumen"
+              placeholder={tl.fullNamePlaceholder}
               required
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="company">
-              Perusahaan / posisi <span className="text-muted-foreground">(opsional)</span>
+              {tl.companyLabel}{" "}
+              <span className="text-muted-foreground">{tl.companyOptional}</span>
             </Label>
             <Input
               id="company"
               name="company"
               type="text"
-              placeholder="mis. PT Mitra Sejahtera / Angel investor"
+              placeholder={tl.companyPlaceholder}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{tl.emailLabel}</Label>
             <Input
               id="email"
               name="email"
               type="email"
-              placeholder="anda@perusahaan.com"
+              placeholder={tl.emailPlaceholder}
               required
               autoComplete="email"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{tl.passwordLabel}</Label>
             <Input
               id="password"
               name="password"
               type="password"
-              placeholder="Minimal 8 karakter"
+              placeholder={tl.passwordPlaceholder}
               required
               minLength={8}
               autoComplete="new-password"
@@ -151,23 +151,23 @@ export default function RegisterInvestorPage() {
           )}
 
           <Button type="submit" size="lg" className="w-full" disabled={loading}>
-            {loading ? "Mendaftar..." : "Daftar sebagai investor"}
+            {loading ? tl.submitting : tl.submit}
           </Button>
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-5 font-medium">
-          Sudah punya akun?{" "}
+          {tl.haveAccount}{" "}
           <Link
             href="/"
             className="font-display font-bold text-primary hover:underline underline-offset-4"
           >
-            Masuk di sini
+            {tl.loginCta}
           </Link>
         </p>
         <p className="text-center text-[11px] text-muted-foreground mt-2">
-          Bukan investor?{" "}
+          {tl.notInvestor}{" "}
           <Link href="/register" className="underline">
-            Daftar sebagai karyawan
+            {tl.employeeCta}
           </Link>
         </p>
       </CardContent>
