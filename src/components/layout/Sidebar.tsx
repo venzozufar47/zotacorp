@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -12,6 +12,7 @@ export function Sidebar({
   hasFinance = false,
   hasCakeOrders = false,
   hasCakeProduction = false,
+  hasYeoboBooth = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -20,6 +21,8 @@ export function Sidebar({
   hasFinance?: boolean;
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
+  /** Show the "Yeobo Booth" tab for users in the yeobo_booth_admins allowlist. */
+  hasYeoboBooth?: boolean;
   /** Jumlah transaksi yang di-assign ke user & masih "Needs Assignment". */
   assignmentCount?: number;
   me?: MenuViewer | null;
@@ -51,6 +54,16 @@ export function Sidebar({
             href: "/admin/finance",
             icon: Wallet,
             label: "Keuangan",
+            color: "bg-pop-emerald",
+          },
+        ]
+      : []),
+    ...(hasYeoboBooth
+      ? [
+          {
+            href: "/admin/yeobo-booth",
+            icon: Camera,
+            label: "Yeobo Booth",
             color: "bg-pop-emerald",
           },
         ]

@@ -5,22 +5,25 @@ import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
 import { countMyAssignments } from "@/lib/actions/cashflow-assignments.actions";
 import { getCurrentProfile } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
+import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 
 export default async function EmployeeLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Expose conditional tabs (Keuangan / Pesanan Cake / Produksi Cake)
-  // only when the user actually has access. All four queries run in
-  // parallel — each is a cheap indexed lookup scoped to the current
+  // Expose conditional tabs (Keuangan / Pesanan Cake / Produksi Cake /
+  // Yeobo Booth) only when the user actually has access. All queries run
+  // in parallel — each is a cheap indexed lookup scoped to the current
   // user via RLS.
-  const [assignedIds, profile, cakeAccess, assignmentCount] = await Promise.all([
-    listMyAssignedBankAccountIds(),
-    getCurrentProfile(),
-    getMyCakeAccess(),
-    countMyAssignments(),
-  ]);
+  const [assignedIds, profile, cakeAccess, assignmentCount, hasYeoboBooth] =
+    await Promise.all([
+      listMyAssignedBankAccountIds(),
+      getCurrentProfile(),
+      getMyCakeAccess(),
+      countMyAssignments(),
+      isYeoboBoothAdmin(),
+    ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
     ? {
@@ -39,6 +42,7 @@ export default async function EmployeeLayout({
         hasFinance={hasFinance}
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
+        hasYeoboBooth={hasYeoboBooth}
         assignmentCount={assignmentCount}
         me={me}
       />
@@ -51,6 +55,7 @@ export default async function EmployeeLayout({
         hasFinance={hasFinance}
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
+        hasYeoboBooth={hasYeoboBooth}
         assignmentCount={assignmentCount}
         me={me}
       />
