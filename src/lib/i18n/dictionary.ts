@@ -129,8 +129,8 @@ export const dictionary = {
       passwordPlaceholder: "••••••••",
       submit: "Sign in",
       submitting: "Signing in…",
-      noAccount: "No account?",
-      registerCta: "Register",
+      noAccount: "New employee?",
+      registerCta: "Register as employee",
       errGeneric: "An unexpected error occurred.",
     },
     register: {
@@ -795,8 +795,8 @@ export const dictionary = {
       passwordPlaceholder: "••••••••",
       submit: "Masuk",
       submitting: "Sedang masuk…",
-      noAccount: "Belum punya akun?",
-      registerCta: "Daftar",
+      noAccount: "Karyawan baru?",
+      registerCta: "Daftar karyawan",
       errGeneric: "Ada yang salah. Coba lagi ya",
     },
     register: {
