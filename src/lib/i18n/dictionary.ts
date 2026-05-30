@@ -131,6 +131,8 @@ export const dictionary = {
       submitting: "Signing in…",
       noAccount: "New employee?",
       registerCta: "Register as employee",
+      investorPrompt: "Investor?",
+      investorCta: "Register via investor portal",
       errGeneric: "An unexpected error occurred.",
     },
     register: {
@@ -820,6 +822,8 @@ export const dictionary = {
       submitting: "Sedang masuk…",
       noAccount: "Karyawan baru?",
       registerCta: "Daftar karyawan",
+      investorPrompt: "Investor?",
+      investorCta: "Daftar via investor portal",
       errGeneric: "Ada yang salah. Coba lagi ya",
     },
     register: {
