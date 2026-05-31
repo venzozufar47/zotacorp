@@ -371,12 +371,13 @@ function calculateFromAttendance(
   }
 
   // ─── Bonus-day hourly pay (mode bonus_day_hourly) ──────────────────────
-  // Each bonus day is paid by ACTUAL hours worked, not as a full day:
+  // Each bonus day is paid by ACTUAL hours worked, not as a full day, at a
+  // TIERED premium on every hour:
   //   hourly_rate = base / (expected × standard_hours)
-  //   regular pay = min(hours_worked, standard_hours) × hourly_rate
-  //   overtime    = only when hours_worked > standard_hours; the excess is
-  //                 paid via the employee's configured overtime_mode/rate and
-  //                 folded into overtime_pay / overtime_days.
+  //   1st hour    = 1.5 × hourly_rate
+  //   later hours = 2 × hourly_rate (incl. any hours beyond standard duration)
+  // The whole bonus day sits in `bonus_day_pay`; there is no separate overtime
+  // line for bonus days (the premium is already baked in).
   let bonusDayPay = 0;
   const bonusDays: NonNullable<PayslipBreakdown["bonus_days"]> = [];
   if (bonusHourly) {
@@ -390,34 +391,17 @@ function calculateFromAttendance(
           new Date(log.checked_in_at).getTime()) /
         3_600_000;
       if (hoursWorked <= 0) continue;
-      const regHours = Math.min(hoursWorked, stdHours);
-      const regPay = Math.round(regHours * hourlyRate);
-      bonusDayPay += regPay;
+      const firstHour = Math.min(hoursWorked, 1);
+      const laterHours = Math.max(hoursWorked - 1, 0);
+      const pay = Math.round(
+        firstHour * hourlyRate * 1.5 + laterHours * hourlyRate * 2
+      );
+      bonusDayPay += pay;
       bonusDays.push({
         date: log.date,
         hours: Math.round(hoursWorked * 100) / 100,
-        pay: regPay,
+        pay,
       });
-
-      const otHours = Math.max(hoursWorked - stdHours, 0);
-      if (otHours <= 0) continue;
-      const otMin = Math.round(otHours * 60);
-      let otPay = 0;
-      if (settings.overtime_mode === "hourly_tiered") {
-        const firstHour = Math.min(otHours, 1);
-        const nextHours = Math.max(otHours - 1, 0);
-        otPay = Math.round(
-          firstHour * hourlyRate * 1.5 + nextHours * hourlyRate * 2
-        );
-      } else if (settings.overtime_mode === "half_daily") {
-        otPay = expected > 0 ? Math.round((baseSalary / expected) * 0.5) : 0;
-      } else {
-        // fixed_per_day — flat rate for any overtime on the day
-        otPay = Math.round(Number(settings.ot_fixed_daily_rate));
-      }
-      overtimePay += otPay;
-      totalOvertimeMinutes += otMin;
-      overtimeDays.push({ date: log.date, minutes: otMin, pay: otPay });
     }
   }
 
