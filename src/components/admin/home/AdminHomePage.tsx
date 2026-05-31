@@ -477,42 +477,42 @@ function InboxRow({
     info: "bg-accent text-[var(--teal-700)]",
   };
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/50 transition">
+    <button
+      type="button"
+      onClick={onSubject}
+      className="group/sub w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-muted/50 transition"
+    >
+      {/* Fixed-width tag so every avatar + name lines up vertically
+          regardless of tag length (OVERTIME / LATE PROOF / DISPUTE). */}
       <span
-        className={`text-[10px] font-semibold uppercase tracking-[0.1em] px-2 py-1 rounded-full ${tagClass[item.tagTone]}`}
+        className={`shrink-0 w-[84px] inline-flex items-center justify-center text-[9.5px] font-semibold uppercase tracking-[0.06em] py-1 rounded-full ${tagClass[item.tagTone]}`}
       >
         {item.tag}
       </span>
-      <button
-        type="button"
-        onClick={onSubject}
-        className="flex items-center gap-2 group/sub"
-      >
-        <EmployeeAvatar
-          size="sm"
-          full_name={item.userName}
-          avatar_url={item.userAvatarUrl}
-          avatar_seed={item.userAvatarSeed}
-        />
-        <span className="text-[13px] font-medium text-foreground group-hover/sub:underline">
+      <EmployeeAvatar
+        size="sm"
+        full_name={item.userName}
+        avatar_url={item.userAvatarUrl}
+        avatar_seed={item.userAvatarSeed}
+      />
+      {/* Two-line block: name over description, both truncating so long
+          names never push the timestamp out of alignment. */}
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13px] font-medium text-foreground truncate group-hover/sub:underline">
           {item.userName}
         </span>
-      </button>
-      <span className="text-[12px] text-muted-foreground flex-1 min-w-0 truncate">
-        {item.desc}
+        <span className="block text-[11.5px] text-muted-foreground truncate">
+          {item.desc}
+        </span>
       </span>
-      <span className="text-[10.5px] text-muted-foreground/80">
+      <span className="shrink-0 text-[10.5px] text-muted-foreground/80 tabular-nums">
         {item.ago}
       </span>
-      <button
-        type="button"
-        onClick={onSubject}
-        className="grid place-items-center size-7 rounded-full hover:bg-muted transition text-muted-foreground"
-        aria-label="Open"
-      >
-        <ArrowRight size={13} />
-      </button>
-    </div>
+      <ArrowRight
+        size={13}
+        className="shrink-0 text-muted-foreground/70 group-hover/sub:text-foreground transition"
+      />
+    </button>
   );
 }
 
