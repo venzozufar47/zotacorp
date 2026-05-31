@@ -1803,9 +1803,7 @@ function MonthlyRow({
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         </td>
-        <td className="px-2 py-1.5">
-          <NameCell row={row} />
-        </td>
+        <NameCell row={row} />
         <td className="px-2 py-1.5">
           <span
             className={
