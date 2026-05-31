@@ -14,3 +14,12 @@ alter table public.payslip_settings
     references public.profiles(id) on delete set null,
   add column if not exists expected_pair_primary boolean not null default false,
   add column if not exists expected_pair_anchor date;
+
+-- Allow the new mode value in the existing CHECK constraint.
+alter table public.payslip_settings
+  drop constraint if exists payslip_settings_expected_days_mode_check;
+alter table public.payslip_settings
+  add constraint payslip_settings_expected_days_mode_check
+  check (expected_days_mode = any (array[
+    'manual'::text, 'weekly_pattern'::text, 'none'::text, 'paired_alternating'::text
+  ]));
