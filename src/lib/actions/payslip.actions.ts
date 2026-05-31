@@ -143,6 +143,9 @@ type PairInfo = {
   partnerWeekdays: number[];
   primary: boolean;
   anchor: string;
+  /** Shared weekdays where BOTH members work ("bareng") → counted for each,
+   *  never alternated. Shared weekdays NOT listed here alternate as usual. */
+  together: number[];
 } | null;
 
 /**
@@ -164,41 +167,46 @@ function buildPairInfo(
     anchor:
       settings.expected_pair_anchor ??
       `${year}-${String(month).padStart(2, "0")}-01`,
+    together: settings.expected_pair_together ?? [],
   };
 }
 
 /**
  * Expected work days for ONE member of a paired_alternating couple, in
- * (month, year):
- * - Exclusive weekdays (mine but not the partner's) always count.
- * - Shared weekdays alternate weekly: occurrence #1 (the first on/after the
- *   anchor) goes to the PRIMARY member, #2 to the partner, #3 to primary, …
- *   The partner takes the complement, so every shared occurrence is covered
- *   exactly once — never double-booked, never lost.
+ * (month, year). Per weekday the member is scheduled on:
+ * - Exclusive (mine but not the partner's) → always counts.
+ * - Shared + "bareng" (weekday in `together`) → both work it, always counts
+ *   for each member (no alternation).
+ * - Shared + "gantian" (shared, not in `together`) → alternates weekly:
+ *   occurrence #1 (first on/after the anchor) goes to the PRIMARY member, #2 to
+ *   the partner, … so each shared occurrence is covered exactly once.
  *
- * Occurrence index is measured per shared weekday from a fixed reference derived
- * from `anchor`, so the rotation is continuous across months (the first shared
- * day of a new month is NOT forced back to the primary). Each shared weekday
- * starts its own count, so multiple shared days each begin with the primary.
+ * The alternate occurrence index is measured per weekday from a fixed reference
+ * derived from `anchor`, so the rotation is continuous across months (the first
+ * alternate day of a new month is NOT forced back to the primary).
  */
 function countPairedDaysInMonth(
   myWeekdays: number[],
   partnerWeekdays: number[],
   primary: boolean,
   anchorIso: string,
+  together: number[],
   month: number,
   year: number
 ): number {
   const mine = new Set(myWeekdays);
   if (mine.size === 0) return 0;
   const partner = new Set(partnerWeekdays);
+  const togetherSet = new Set(together);
   const anchorDate = anchorIso
     ? new Date(`${anchorIso}T00:00:00`)
     : new Date(year, month - 1, 1);
-  // Per-shared-weekday reference for occurrence #1 (taken by the primary member).
+  // Per-alternating-weekday reference for occurrence #1 (taken by the primary).
+  // "Bareng" shared days are excluded — they don't alternate.
   const refByDow = new Map<number, Date>();
   for (const dow of mine) {
-    if (partner.has(dow)) refByDow.set(dow, firstOccurrenceOnOrAfter(anchorDate, dow));
+    if (partner.has(dow) && !togetherSet.has(dow))
+      refByDow.set(dow, firstOccurrenceOnOrAfter(anchorDate, dow));
   }
   const daysInMonth = new Date(year, month, 0).getDate();
   let count = 0;
@@ -208,11 +216,12 @@ function countPairedDaysInMonth(
     if (!mine.has(dow)) continue;
     const ref = refByDow.get(dow);
     if (ref) {
-      // Shared day: I take it iff the occurrence's owner matches me.
+      // Alternating shared day: I take it iff the occurrence's owner matches me.
       const ownerIsPrimary = isPrimaryOccurrence(date, ref);
       if (ownerIsPrimary === primary) count++;
     } else {
-      count++; // Exclusive day — always mine.
+      // Exclusive day, or a "bareng" shared day — always mine.
+      count++;
     }
   }
   return count;
@@ -240,6 +249,7 @@ function resolveExpectedWorkDays(
       pair.partnerWeekdays,
       pair.primary,
       pair.anchor,
+      pair.together,
       month,
       year
     );
@@ -666,7 +676,7 @@ function computeInputsSignature(inputs: CalcInputs): string {
       edm: s.expected_days_mode,
       ewd: s.expected_weekdays,
       pr: inputs.pair
-        ? [inputs.pair.partnerWeekdays, inputs.pair.primary, inputs.pair.anchor]
+        ? [inputs.pair.partnerWeekdays, inputs.pair.primary, inputs.pair.anchor, inputs.pair.together]
         : null,
       om: s.overtime_mode,
       ofh: s.ot_first_hour_rate,

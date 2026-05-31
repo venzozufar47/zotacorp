@@ -2128,6 +2128,7 @@ export type Database = {
           expected_days_mode: string
           expected_pair_anchor: string | null
           expected_pair_primary: boolean
+          expected_pair_together: number[]
           expected_pair_user_id: string | null
           expected_weekdays: number[]
           expected_work_days: number
@@ -2155,6 +2156,7 @@ export type Database = {
           expected_days_mode?: string
           expected_pair_anchor?: string | null
           expected_pair_primary?: boolean
+          expected_pair_together?: number[]
           expected_pair_user_id?: string | null
           expected_weekdays?: number[]
           expected_work_days?: number
@@ -2182,6 +2184,7 @@ export type Database = {
           expected_days_mode?: string
           expected_pair_anchor?: string | null
           expected_pair_primary?: boolean
+          expected_pair_together?: number[]
           expected_pair_user_id?: string | null
           expected_weekdays?: number[]
           expected_work_days?: number

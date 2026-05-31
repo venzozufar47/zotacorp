@@ -176,49 +176,65 @@ function buildPairedPreview(opts: {
   partnerWeekdays: number[];
   primary: boolean;
   anchorIso: string;
+  together: number[];
   myName: string;
   partnerName: string;
 }): {
   myCount: number;
-  lines: { label: string; seq: { name: string; mine: boolean }[] }[];
+  lines: {
+    label: string;
+    mode: "gantian" | "bareng";
+    count: number;
+    seq: { name: string; mine: boolean }[];
+  }[];
 } {
-  const { month, year, myWeekdays, partnerWeekdays, primary, anchorIso } = opts;
+  const { month, year, myWeekdays, partnerWeekdays, primary, anchorIso, together } =
+    opts;
   const mine = new Set(myWeekdays);
   const partner = new Set(partnerWeekdays);
+  const togetherSet = new Set(together);
   const shared = [...mine].filter((d) => partner.has(d)).sort((a, b) => a - b);
   const anchorDate = anchorIso
     ? new Date(`${anchorIso}T00:00:00`)
     : new Date(year, month - 1, 1);
   const refByDow = new Map<number, Date>();
   for (const dow of shared) {
-    refByDow.set(dow, firstOccurrenceOnOrAfterClient(anchorDate, dow));
+    if (!togetherSet.has(dow))
+      refByDow.set(dow, firstOccurrenceOnOrAfterClient(anchorDate, dow));
   }
   const daysInMonth = new Date(year, month, 0).getDate();
   const seqByDow = new Map<number, { name: string; mine: boolean }[]>();
+  const countByDow = new Map<number, number>();
   let myCount = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month - 1, d);
     const dow = date.getDay();
     if (!mine.has(dow)) continue;
-    const ref = refByDow.get(dow);
-    if (ref) {
-      const ownerIsPrimary = isPrimaryOccurrenceClient(date, ref);
-      const isMine = ownerIsPrimary === primary;
-      if (isMine) myCount++;
-      const arr = seqByDow.get(dow) ?? [];
-      arr.push({
-        name: isMine ? shortName(opts.myName) : shortName(opts.partnerName),
-        mine: isMine,
-      });
-      seqByDow.set(dow, arr);
+    if (partner.has(dow)) {
+      countByDow.set(dow, (countByDow.get(dow) ?? 0) + 1);
+      if (togetherSet.has(dow)) {
+        myCount++; // "bareng" — both work it, always mine too.
+      } else {
+        const ref = refByDow.get(dow)!;
+        const isMine = isPrimaryOccurrenceClient(date, ref) === primary;
+        if (isMine) myCount++;
+        const arr = seqByDow.get(dow) ?? [];
+        arr.push({
+          name: isMine ? shortName(opts.myName) : shortName(opts.partnerName),
+          mine: isMine,
+        });
+        seqByDow.set(dow, arr);
+      }
     } else {
-      myCount++;
+      myCount++; // exclusive day
     }
   }
   return {
     myCount,
     lines: shared.map((dow) => ({
       label: WEEKDAY_LABELS[dow],
+      mode: togetherSet.has(dow) ? ("bareng" as const) : ("gantian" as const),
+      count: countByDow.get(dow) ?? 0,
       seq: seqByDow.get(dow) ?? [],
     })),
   };
@@ -724,6 +740,7 @@ function ExpectedDaysSection({
     weekdays?: number[];
     partnerUserId?: string | null;
     primary?: boolean;
+    together?: number[];
   };
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [pending, startTransition] = useTransition();
@@ -740,6 +757,7 @@ function ExpectedDaysSection({
           ? d.partnerUserId
           : r.settings?.expected_pair_user_id ?? null,
       primary: d.primary ?? r.settings?.expected_pair_primary ?? false,
+      together: d.together ?? r.settings?.expected_pair_together ?? [],
     };
   }
 
@@ -762,6 +780,12 @@ function ExpectedDaysSection({
         if (eff.partnerUserId !== (orig?.expected_pair_user_id ?? null))
           return true;
         if (eff.primary !== (orig?.expected_pair_primary ?? false)) return true;
+        const origTog = orig?.expected_pair_together ?? [];
+        if (
+          eff.together.length !== origTog.length ||
+          eff.together.some((d) => !origTog.includes(d))
+        )
+          return true;
         return false;
       }),
     [drafts, rows]
@@ -782,16 +806,25 @@ function ExpectedDaysSection({
 
       if (eff.mode === "paired_alternating") {
         const anchor = r.settings?.expected_pair_anchor ?? anchorDefault;
+        const pr = eff.partnerUserId
+          ? rows.find((x) => x.userId === eff.partnerUserId)
+          : null;
+        const pWeekdays = pr ? effective(pr).weekdays : [];
+        // "bareng" days only make sense on shared weekdays — drop stale ones,
+        // and store the SAME set on both members (it's a pair-level property).
+        const sharedDays = new Set(
+          eff.weekdays.filter((d) => pWeekdays.includes(d))
+        );
+        const together = [...eff.together].filter((d) => sharedDays.has(d)).sort();
         byUser.set(uid, {
           expected_days_mode: "paired_alternating",
           expected_weekdays: [...eff.weekdays].sort(),
           expected_pair_user_id: eff.partnerUserId ?? null,
           expected_pair_primary: eff.primary,
           expected_pair_anchor: anchor,
+          expected_pair_together: together,
         });
         if (eff.partnerUserId) {
-          const pr = rows.find((x) => x.userId === eff.partnerUserId);
-          const pWeekdays = pr ? effective(pr).weekdays : [];
           derived.push({
             userId: eff.partnerUserId,
             fields: {
@@ -800,6 +833,7 @@ function ExpectedDaysSection({
               expected_pair_user_id: uid,
               expected_pair_primary: !eff.primary,
               expected_pair_anchor: anchor,
+              expected_pair_together: together,
             },
           });
         }
@@ -813,6 +847,7 @@ function ExpectedDaysSection({
         if (r.settings?.expected_days_mode === "paired_alternating") {
           fields.expected_pair_user_id = null;
           fields.expected_pair_primary = false;
+          fields.expected_pair_together = [];
           const oldPartner = r.settings?.expected_pair_user_id;
           if (oldPartner) {
             derived.push({
@@ -820,6 +855,7 @@ function ExpectedDaysSection({
               fields: {
                 expected_pair_user_id: null,
                 expected_pair_primary: false,
+                expected_pair_together: [],
               },
             });
           }
@@ -861,6 +897,18 @@ function ExpectedDaysSection({
     setDrafts((d) => ({
       ...d,
       [uid]: { ...d[uid], weekdays: next },
+    }));
+  }
+
+  // Toggle a shared weekday between "gantian" (alternate) and "bareng" (both
+  // work it). Membership in `together` = bareng.
+  function toggleTogether(uid: string, dow: number, current: number[]) {
+    const next = current.includes(dow)
+      ? current.filter((d) => d !== dow)
+      : [...current, dow];
+    setDrafts((d) => ({
+      ...d,
+      [uid]: { ...d[uid], together: next },
     }));
   }
 
@@ -911,6 +959,10 @@ function ExpectedDaysSection({
               const sharedSet = new Set(
                 eff.weekdays.filter((d) => partnerWeekdays.includes(d))
               );
+              const togetherSet = new Set(
+                eff.together.filter((d) => sharedSet.has(d))
+              );
+              const sharedDays = [...sharedSet].sort((a, b) => a - b);
               const preview =
                 isPaired && partnerRow
                   ? buildPairedPreview({
@@ -922,6 +974,7 @@ function ExpectedDaysSection({
                       anchorIso:
                         r.settings?.expected_pair_anchor ??
                         `${year}-${String(month).padStart(2, "0")}-01`,
+                      together: eff.together,
                       myName: r.fullName,
                       partnerName: partnerRow.fullName,
                     })
@@ -1051,6 +1104,7 @@ function ExpectedDaysSection({
                           {WEEKDAY_LABELS.map((lbl, idx) => {
                             const active = eff.weekdays.includes(idx);
                             const shared = sharedSet.has(idx);
+                            const bareng = togetherSet.has(idx);
                             return (
                               <button
                                 key={idx}
@@ -1061,44 +1115,93 @@ function ExpectedDaysSection({
                                 className={
                                   "h-7 w-9 rounded-md border text-[10px] font-semibold transition " +
                                   (shared
-                                    ? "border-amber-400 bg-amber-100 text-amber-900"
+                                    ? bareng
+                                      ? "border-emerald-400 bg-emerald-100 text-emerald-900"
+                                      : "border-amber-400 bg-amber-100 text-amber-900"
                                     : active
                                       ? "border-primary bg-primary/15 text-primary"
                                       : "border-border text-muted-foreground hover:text-foreground")
                                 }
-                                title={shared ? "Hari irisan (selang-seling)" : undefined}
+                                title={
+                                  shared
+                                    ? bareng
+                                      ? "Hari irisan — bareng (keduanya masuk)"
+                                      : "Hari irisan — gantian (selang-seling)"
+                                    : undefined
+                                }
                               >
                                 {lbl}
                               </button>
                             );
                           })}
                         </div>
+                        {sharedDays.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                              Hari irisan:
+                            </span>
+                            {sharedDays.map((dow) => {
+                              const bareng = togetherSet.has(dow);
+                              return (
+                                <button
+                                  key={dow}
+                                  type="button"
+                                  onClick={() =>
+                                    toggleTogether(r.userId, dow, eff.together)
+                                  }
+                                  className={
+                                    "h-6 rounded-full border px-2 text-[10px] font-medium transition " +
+                                    (bareng
+                                      ? "border-emerald-400 bg-emerald-50 text-emerald-800"
+                                      : "border-amber-400 bg-amber-50 text-amber-800")
+                                  }
+                                  title="Klik untuk ganti gantian ⇄ bareng"
+                                >
+                                  {WEEKDAY_LABELS[dow]}:{" "}
+                                  {bareng ? "bareng 👥" : "gantian ⇄"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
                         {preview && preview.lines.length > 0 ? (
                           <div className="space-y-0.5">
-                            {preview.lines.map((ln) => (
-                              <p
-                                key={ln.label}
-                                className="text-[10px] text-muted-foreground"
-                              >
-                                <span className="font-semibold text-amber-700">
-                                  {ln.label}:
-                                </span>{" "}
-                                {ln.seq.map((s, i) => (
-                                  <span key={i}>
-                                    <span
-                                      className={
-                                        s.mine
-                                          ? "font-semibold text-foreground"
-                                          : ""
-                                      }
-                                    >
-                                      {s.name}
+                            {preview.lines.map((ln) =>
+                              ln.mode === "bareng" ? (
+                                <p
+                                  key={ln.label}
+                                  className="text-[10px] text-muted-foreground"
+                                >
+                                  <span className="font-semibold text-emerald-700">
+                                    {ln.label}:
+                                  </span>{" "}
+                                  berdua bareng tiap minggu ({ln.count}×)
+                                </p>
+                              ) : (
+                                <p
+                                  key={ln.label}
+                                  className="text-[10px] text-muted-foreground"
+                                >
+                                  <span className="font-semibold text-amber-700">
+                                    {ln.label}:
+                                  </span>{" "}
+                                  {ln.seq.map((s, i) => (
+                                    <span key={i}>
+                                      <span
+                                        className={
+                                          s.mine
+                                            ? "font-semibold text-foreground"
+                                            : ""
+                                        }
+                                      >
+                                        {s.name}
+                                      </span>
+                                      {i < ln.seq.length - 1 ? " · " : ""}
                                     </span>
-                                    {i < ln.seq.length - 1 ? " · " : ""}
-                                  </span>
-                                ))}
-                              </p>
-                            ))}
+                                  ))}
+                                </p>
+                              )
+                            )}
                           </div>
                         ) : isPaired && !partnerRow ? (
                           <p className="text-[10px] text-muted-foreground italic">
