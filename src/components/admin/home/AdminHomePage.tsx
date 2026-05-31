@@ -582,10 +582,10 @@ function buildInbox(
       id: `pending-${p.rowId}`,
       tag: p.kind === "late_proof" ? "Late proof" : "Overtime",
       tagTone: p.kind === "late_proof" ? "warn" : "info",
-      userId: "", // not present on PendingConfirmationItem; click → just shows drawer with the name
+      userId: p.userId,
       userName: p.employeeName,
-      userAvatarUrl: null,
-      userAvatarSeed: null,
+      userAvatarUrl: p.userAvatarUrl,
+      userAvatarSeed: p.userAvatarSeed,
       desc: p.kind === "late_proof" ? "Awaiting approval" : "OT awaiting approval",
       ago: agoLabel(p.date),
     });

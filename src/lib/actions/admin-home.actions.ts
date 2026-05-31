@@ -322,3 +322,87 @@ export async function getEmployeeDrawerData(
     whatsappNumber: profileRes.data?.whatsapp_number ?? null,
   };
 }
+
+/**
+ * Pending approvals for ONE employee — surfaced inside the admin Home
+ * EmployeeDrawer so an admin can review + approve/reject every item for
+ * that person in one place (not just the single inbox row they clicked).
+ *
+ * Two sources, same as the global inbox:
+ *   - late_proof: attendance_logs with late_proof_status='pending' + a
+ *     proof url. The approval target id is the attendance_logs.id
+ *     (consumed by `reviewLateProof`).
+ *   - overtime: overtime_requests with status='pending'. The approval
+ *     target id is the overtime_requests.id (consumed by
+ *     `reviewOvertimeRequest`) — NOT the attendance_logs.id.
+ */
+export type EmployeeApproval =
+  | {
+      kind: "late_proof";
+      /** attendance_logs.id → reviewLateProof */
+      id: string;
+      date: string;
+      lateMinutes: number;
+      reason: string | null;
+      hasProof: boolean;
+    }
+  | {
+      kind: "overtime";
+      /** overtime_requests.id → reviewOvertimeRequest */
+      id: string;
+      date: string;
+      minutes: number;
+      reason: string | null;
+    };
+
+export async function getEmployeeApprovals(
+  userId: string
+): Promise<EmployeeApproval[]> {
+  const role = await getCurrentRole();
+  if (role !== "admin" || !userId) return [];
+
+  const supabase = await createClient();
+  const [lateRes, otRes] = await Promise.all([
+    supabase
+      .from("attendance_logs")
+      .select("id, date, late_minutes, late_proof_reason, late_proof_url")
+      .eq("user_id", userId)
+      .eq("late_proof_status", "pending")
+      .not("late_proof_url", "is", null)
+      .order("date", { ascending: false }),
+    supabase
+      .from("overtime_requests")
+      .select("id, date, overtime_minutes, reason")
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .order("date", { ascending: false }),
+  ]);
+
+  const out: EmployeeApproval[] = [];
+  for (const r of lateRes.data ?? []) {
+    out.push({
+      kind: "late_proof",
+      id: r.id,
+      date: r.date,
+      lateMinutes: Number(r.late_minutes ?? 0),
+      reason: r.late_proof_reason ?? null,
+      hasProof: Boolean(r.late_proof_url),
+    });
+  }
+  for (const r of otRes.data ?? []) {
+    out.push({
+      kind: "overtime",
+      id: r.id,
+      date: r.date,
+      minutes: Number(r.overtime_minutes ?? 0),
+      reason: r.reason ?? null,
+    });
+  }
+  // Newest first, late_proof before overtime on a date tie.
+  out.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    if (a.kind !== b.kind) return a.kind === "late_proof" ? -1 : 1;
+    return 0;
+  });
+  return out;
+}

@@ -2,13 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { X, ExternalLink, MessageCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  X,
+  ExternalLink,
+  MessageCircle,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import {
   getEmployeeDrawerData,
+  getEmployeeApprovals,
   type EmployeeDrawerData,
+  type EmployeeApproval,
 } from "@/lib/actions/admin-home.actions";
+import { reviewLateProof } from "@/lib/actions/attendance.actions";
+import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
@@ -68,26 +81,37 @@ export function EmployeeDrawer({
   // Portal to body so a transform-establishing ancestor (e.g. the page-
   // entrance `animate-fade-up`) doesn't trap our `position: fixed` and
   // anchor the drawer to the document instead of the viewport.
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Lazy-load per-employee data when a subject is selected.
+  // Lazy-load per-employee data + pending approvals when a subject is
+  // selected. Both run in parallel.
   const [data, setData] = useState<EmployeeDrawerData | null>(null);
+  const [approvals, setApprovals] = useState<EmployeeApproval[]>([]);
   const [loading, setLoading] = useState(false);
+  /** Approval item id currently being approved/rejected (disables its row). */
+  const [actingId, setActingId] = useState<string | null>(null);
   useEffect(() => {
     if (!subject) {
       setData(null);
+      setApprovals([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setData(null);
-    getEmployeeDrawerData(subject.userId)
-      .then((d) => {
+    setApprovals([]);
+    Promise.all([
+      getEmployeeDrawerData(subject.userId),
+      getEmployeeApprovals(subject.userId),
+    ])
+      .then(([d, a]) => {
         if (!cancelled) {
           setData(d);
+          setApprovals(a);
           setLoading(false);
         }
       })
@@ -98,6 +122,30 @@ export function EmployeeDrawer({
       cancelled = true;
     };
   }, [subject]);
+
+  async function handleApproval(
+    item: EmployeeApproval,
+    decision: "approved" | "rejected"
+  ) {
+    setActingId(item.id);
+    try {
+      const res =
+        item.kind === "late_proof"
+          ? await reviewLateProof(item.id, decision)
+          : await reviewOvertimeRequest(item.id, decision);
+      if (res && "error" in res && res.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(decision === "approved" ? "Disetujui" : "Ditolak");
+      // Optimistically drop the resolved item; refresh so the Home inbox
+      // count + list re-render from the server.
+      setApprovals((prev) => prev.filter((x) => x.id !== item.id));
+      router.refresh();
+    } finally {
+      setActingId(null);
+    }
+  }
 
   useEffect(() => {
     if (!subject) return;
@@ -161,6 +209,26 @@ export function EmployeeDrawer({
             </div>
           ) : (
             <>
+              {approvals.length > 0 && (
+                <section>
+                  <SectionLabel>
+                    Perlu persetujuan ({approvals.length})
+                  </SectionLabel>
+                  <ul className="space-y-2">
+                    {approvals.map((item) => (
+                      <ApprovalCard
+                        key={item.id}
+                        item={item}
+                        acting={actingId === item.id}
+                        disabled={actingId !== null}
+                        onApprove={() => handleApproval(item, "approved")}
+                        onReject={() => handleApproval(item, "rejected")}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )}
+
               <section>
                 <SectionLabel>Bulan ini</SectionLabel>
                 <div className="grid grid-cols-2 gap-2">
@@ -314,6 +382,105 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2">
       {children}
     </div>
+  );
+}
+
+function formatMinutes(m: number): string {
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const rem = m % 60;
+    return rem > 0 ? `${h}j ${rem}m` : `${h}j`;
+  }
+  return `${m}m`;
+}
+
+/**
+ * One pending-approval row inside the drawer — late proof or overtime —
+ * with inline Tolak / Setujui buttons wired by the parent to
+ * reviewLateProof / reviewOvertimeRequest.
+ */
+function ApprovalCard({
+  item,
+  acting,
+  disabled,
+  onApprove,
+  onReject,
+}: {
+  item: EmployeeApproval;
+  acting: boolean;
+  disabled: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const tag = item.kind === "late_proof" ? "Late proof" : "Overtime";
+  const tagTone =
+    item.kind === "late_proof"
+      ? "bg-warning/15 text-warning"
+      : "bg-accent text-[var(--teal-700)]";
+  const detail =
+    item.kind === "late_proof"
+      ? `Telat ${formatMinutes(item.lateMinutes)}`
+      : `OT ${formatMinutes(item.minutes)}`;
+
+  return (
+    <li className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span
+          className={
+            "text-[9.5px] font-semibold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded-full " +
+            tagTone
+          }
+        >
+          {tag}
+        </span>
+        <span className="text-[11.5px] text-muted-foreground">
+          {formatActivityDate(item.date)}
+        </span>
+        <span className="ml-auto text-[11.5px] font-medium tabular-nums text-foreground">
+          {detail}
+        </span>
+      </div>
+      {item.reason && (
+        <p className="text-[12px] italic text-foreground leading-snug">
+          &ldquo;{item.reason}&rdquo;
+        </p>
+      )}
+      {item.kind === "late_proof" && item.hasProof && (
+        <p className="text-[10.5px] text-muted-foreground">📷 Ada foto bukti</p>
+      )}
+      <div className="flex items-center gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={onReject}
+          disabled={disabled}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium bg-card border border-border/70 hover:bg-muted transition disabled:opacity-50"
+        >
+          {acting ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <XCircle size={12} />
+          )}
+          Tolak
+        </button>
+        <button
+          type="button"
+          onClick={onApprove}
+          disabled={disabled}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-medium text-white transition hover:brightness-110 disabled:opacity-50"
+          style={{
+            background: "var(--grad-teal)",
+            boxShadow: "0 2px 10px rgba(17, 122, 140, 0.32)",
+          }}
+        >
+          {acting ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <CheckCircle2 size={12} />
+          )}
+          Setujui
+        </button>
+      </div>
+    </li>
   );
 }
 

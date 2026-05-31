@@ -6,7 +6,12 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 export type PendingConfirmationItem = {
   rowId: string;
   kind: "late_proof" | "overtime";
+  /** Owner of the attendance row — lets the admin drawer load this
+   *  employee's stats + full pending-approval list when clicked. */
+  userId: string;
   employeeName: string;
+  userAvatarUrl: string | null;
+  userAvatarSeed: string | null;
   date: string;
 };
 
@@ -28,14 +33,18 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
   const [lateRes, otRes] = await Promise.all([
     supabase
       .from("attendance_logs")
-      .select("id, date, profiles!inner(full_name, email)")
+      .select(
+        "id, date, user_id, profiles!inner(full_name, email, avatar_url, avatar_seed)"
+      )
       .eq("late_proof_status", "pending")
       .not("late_proof_url", "is", null)
       .order("date", { ascending: false })
       .limit(200),
     supabase
       .from("attendance_logs")
-      .select("id, date, profiles!inner(full_name, email)")
+      .select(
+        "id, date, user_id, profiles!inner(full_name, email, avatar_url, avatar_seed)"
+      )
       .eq("overtime_status", "pending")
       .eq("is_overtime", true)
       .order("date", { ascending: false })
@@ -45,7 +54,13 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
   type Row = {
     id: string;
     date: string;
-    profiles: { full_name: string | null; email: string | null } | null;
+    user_id: string;
+    profiles: {
+      full_name: string | null;
+      email: string | null;
+      avatar_url: string | null;
+      avatar_seed: string | null;
+    } | null;
   };
 
   const items: PendingConfirmationItem[] = [];
@@ -53,7 +68,10 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     items.push({
       rowId: r.id,
       kind: "late_proof",
+      userId: r.user_id,
       employeeName: r.profiles?.full_name || r.profiles?.email || "?",
+      userAvatarUrl: r.profiles?.avatar_url ?? null,
+      userAvatarSeed: r.profiles?.avatar_seed ?? null,
       date: r.date,
     });
   }
@@ -61,7 +79,10 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     items.push({
       rowId: r.id,
       kind: "overtime",
+      userId: r.user_id,
       employeeName: r.profiles?.full_name || r.profiles?.email || "?",
+      userAvatarUrl: r.profiles?.avatar_url ?? null,
+      userAvatarSeed: r.profiles?.avatar_seed ?? null,
       date: r.date,
     });
   }
