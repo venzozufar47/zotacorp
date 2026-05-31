@@ -1836,3 +1836,41 @@ function AttachmentCell({
     </label>
   );
 }
+
+/** Toolbar filter chip — label + count badge, toggles active state.
+ *  Dipakai untuk filter Tanpa kategori / Debit / Kredit di toolbar
+ *  cashflow. */
+function FilterChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-xs font-semibold transition",
+        active
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border bg-card text-muted-foreground hover:border-primary/50"
+      )}
+    >
+      {label}
+      <span
+        className={cn(
+          "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] tabular-nums",
+          active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
