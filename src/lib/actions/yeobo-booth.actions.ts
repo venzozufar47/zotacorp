@@ -2,8 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/types";
 import { requireYeoboBoothAccess, type ActionResult } from "./_gates";
+
+/**
+ * Service-role client — bypasses RLS. Yeobo Booth admins (non-global)
+ * have NO RLS SELECT policy on `bank_accounts` (those policies only
+ * cover global admins, cash/POS assignees, and investors — see
+ * migrations 020/031/035/053). Mirrors `cashflow.ts admin()` which does
+ * the same for booth cashflow WRITES. Only ever called AFTER
+ * `requireYeoboBoothAccess()` gates the caller.
+ */
+function serviceClient() {
+  return createServiceClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 import {
   createPaymentCashflowTx,
   createRefundCashflowTx,
@@ -571,7 +588,12 @@ export interface BankAccountOption {
 export async function listBankAccountOptions(): Promise<BankAccountOption[]> {
   const gate = await requireYeoboBoothAccess();
   if (!gate.ok) return [];
-  const supabase = await createClient();
+  // Service-role read: a Yeobo Booth admin (role=employee) has no RLS
+  // SELECT grant on bank_accounts, so the user-scoped client returns
+  // zero rows and the UI wrongly shows "Belum ada rekening". The gate
+  // above already restricts this to authorized booth/global admins, and
+  // we only ever return Yeobo Booth rows.
+  const supabase = serviceClient();
   const { data } = await supabase
     .from("bank_accounts")
     .select("id, business_unit, bank, account_name, account_number")
