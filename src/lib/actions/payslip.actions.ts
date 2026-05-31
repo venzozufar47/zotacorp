@@ -1136,7 +1136,29 @@ export async function bulkCalculatePayslips(
       .from("payslips")
       .upsert(rows, { onConflict: "user_id,month,year" });
     if (upsertErr) {
-      errorCount += finalUpserts.length;
+      // Batch upsert is all-or-nothing: a single bad row (e.g. an
+      // out-of-range/NaN numeric, or one row tripping a constraint) would
+      // otherwise mark EVERY payslip in the run as failed ("N gagal") with
+      // no way to tell which row is at fault. Fall back to per-row upserts
+      // so the healthy rows still persist and only the genuinely-bad row(s)
+      // are counted as errors — each logged with its user_id for triage.
+      console.error(
+        "bulkCalculatePayslips batch upsert failed, retrying per-row",
+        upsertErr
+      );
+      for (const row of rows) {
+        const { error: rowErr } = await supabase
+          .from("payslips")
+          .upsert([row], { onConflict: "user_id,month,year" });
+        if (rowErr) {
+          console.error(
+            "payslip upsert failed for user",
+            (row as { user_id?: string }).user_id,
+            rowErr
+          );
+          errorCount++;
+        }
+      }
     }
   }
   revalidatePath("/admin/payslips");
