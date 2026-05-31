@@ -48,6 +48,7 @@ function buildEarnings(
   const extra = Number(p.extra_work_pay);
   const deliv = Number(p.deliverables_pay);
   const bonus = Number(p.monthly_bonus);
+  const bonusDayPay = Number(p.bonus_day_pay ?? 0);
 
   if (basis === "presence" || basis === "both") {
     if (prorated > 0) {
@@ -65,6 +66,18 @@ function buildEarnings(
                 .replace("{actual}", String(p.actual_work_days))
                 .replace("{expected}", String(p.expected_work_days))
             : undefined,
+      });
+    }
+    if (bonusDayPay > 0) {
+      const bdays = breakdown?.bonus_days ?? [];
+      const totalHours = bdays.reduce((a, r) => a + r.hours, 0);
+      rows.push({
+        key: "bonus_day",
+        label: detail.earningBonusDay,
+        amount: bonusDayPay,
+        note: detail.earningBonusDayNote
+          .replace("{days}", String(bdays.length))
+          .replace("{hours}", String(Math.round(totalHours * 10) / 10)),
       });
     }
     if (ot > 0) {

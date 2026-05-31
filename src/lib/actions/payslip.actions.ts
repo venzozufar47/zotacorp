@@ -269,14 +269,27 @@ function resolveExpectedWorkDays(
  */
 function calculateFromAttendance(
   settings: PayslipSettings,
-  logs: Pick<AttendanceLog, "date" | "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime" | "late_proof_admin_note" | "late_proof_reason">[],
+  logs: Pick<AttendanceLog, "date" | "checked_in_at" | "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime" | "late_proof_admin_note" | "late_proof_reason">[],
   overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[],
   gracePeriodMin: number = 0
 ) {
   const completedLogs = logs.filter((l) => l.checked_out_at);
-  const actualWorkDays = completedLogs.length;
   const expected = settings.expected_work_days;
   const baseSalary = Number(settings.monthly_fixed_amount);
+
+  // Bonus-day hourly mode (opt-in per employee): "bonus" days are paid by
+  // actual hours worked (computed below) and EXCLUDED from the full-day
+  // proration. When off, every completed day counts as a full day as before.
+  const bonusHourly = settings.bonus_day_hourly === true;
+  const bonusLogs = bonusHourly
+    ? completedLogs.filter((l) => l.status === "bonus")
+    : [];
+  // Days that feed proration + the normal overtime/late loops. Bonus days are
+  // pulled out only when bonusHourly is on.
+  const regularLogs = bonusHourly
+    ? completedLogs.filter((l) => l.status !== "bonus")
+    : completedLogs;
+  const actualWorkDays = regularLogs.length;
 
   // Prorate — this already rewards extra days (actual/expected > 1 when over-worked),
   // so there is no separate extra-day bonus.
@@ -310,7 +323,7 @@ function calculateFromAttendance(
         : 0;
     const firstHourRate = hourlyRate * 1.5;
     const nextHourRate = hourlyRate * 2;
-    for (const log of completedLogs) {
+    for (const log of regularLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
       const mins = log.overtime_minutes;
@@ -333,7 +346,7 @@ function calculateFromAttendance(
     const dailyHalfPay = expectedDays > 0
       ? Math.round((baseSalary / expectedDays) * 0.5)
       : 0;
-    for (const log of completedLogs) {
+    for (const log of regularLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
       totalOvertimeMinutes += log.overtime_minutes;
@@ -347,13 +360,64 @@ function calculateFromAttendance(
   } else {
     // fixed_per_day
     const dailyRate = Number(settings.ot_fixed_daily_rate);
-    for (const log of completedLogs) {
+    for (const log of regularLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
       totalOvertimeMinutes += log.overtime_minutes;
       const dayPay = Math.round(dailyRate);
       overtimePay += dayPay;
       overtimeDays.push({ date: log.date, minutes: log.overtime_minutes, pay: dayPay });
+    }
+  }
+
+  // ─── Bonus-day hourly pay (mode bonus_day_hourly) ──────────────────────
+  // Each bonus day is paid by ACTUAL hours worked, not as a full day:
+  //   hourly_rate = base / (expected × standard_hours)
+  //   regular pay = min(hours_worked, standard_hours) × hourly_rate
+  //   overtime    = only when hours_worked > standard_hours; the excess is
+  //                 paid via the employee's configured overtime_mode/rate and
+  //                 folded into overtime_pay / overtime_days.
+  let bonusDayPay = 0;
+  const bonusDays: NonNullable<PayslipBreakdown["bonus_days"]> = [];
+  if (bonusHourly) {
+    const stdHours = Number(settings.standard_working_hours ?? 8);
+    const hourlyRate =
+      expected > 0 && stdHours > 0 ? baseSalary / (expected * stdHours) : 0;
+    for (const log of bonusLogs) {
+      if (!log.checked_in_at || !log.checked_out_at) continue;
+      const hoursWorked =
+        (new Date(log.checked_out_at).getTime() -
+          new Date(log.checked_in_at).getTime()) /
+        3_600_000;
+      if (hoursWorked <= 0) continue;
+      const regHours = Math.min(hoursWorked, stdHours);
+      const regPay = Math.round(regHours * hourlyRate);
+      bonusDayPay += regPay;
+      bonusDays.push({
+        date: log.date,
+        hours: Math.round(hoursWorked * 100) / 100,
+        pay: regPay,
+      });
+
+      const otHours = Math.max(hoursWorked - stdHours, 0);
+      if (otHours <= 0) continue;
+      const otMin = Math.round(otHours * 60);
+      let otPay = 0;
+      if (settings.overtime_mode === "hourly_tiered") {
+        const firstHour = Math.min(otHours, 1);
+        const nextHours = Math.max(otHours - 1, 0);
+        otPay = Math.round(
+          firstHour * hourlyRate * 1.5 + nextHours * hourlyRate * 2
+        );
+      } else if (settings.overtime_mode === "half_daily") {
+        otPay = expected > 0 ? Math.round((baseSalary / expected) * 0.5) : 0;
+      } else {
+        // fixed_per_day — flat rate for any overtime on the day
+        otPay = Math.round(Number(settings.ot_fixed_daily_rate));
+      }
+      overtimePay += otPay;
+      totalOvertimeMinutes += otMin;
+      overtimeDays.push({ date: log.date, minutes: otMin, pay: otPay });
     }
   }
 
@@ -374,7 +438,7 @@ function calculateFromAttendance(
   };
   const lateRows: LateRow[] = [];
 
-  for (const log of completedLogs) {
+  for (const log of regularLogs) {
     // Show excused late days too — zero penalty, flagged — so employees see
     // the full picture. Only 'late' (unexcused) counts toward penalty.
     if (log.status === "late_excused" && log.late_minutes > 0) {
@@ -472,9 +536,10 @@ function calculateFromAttendance(
     overtime_days: overtimeDays.sort((a, b) => a.date.localeCompare(b.date)),
     late_days: lateDaysBreakdown.sort((a, b) => a.date.localeCompare(b.date)),
     late_penalty_daily_cap: dailyPayCapApplied,
-    attendance_days: completedLogs
+    attendance_days: regularLogs
       .map((l) => ({ date: l.date }))
       .sort((a, b) => a.date.localeCompare(b.date)),
+    bonus_days: bonusDays.sort((a, b) => a.date.localeCompare(b.date)),
   };
 
   return {
@@ -482,6 +547,7 @@ function calculateFromAttendance(
     expected_work_days: expected,
     base_salary: baseSalary,
     prorated_salary: proratedSalary,
+    bonus_day_pay: bonusDayPay,
     extra_day_bonus: 0,
     total_overtime_minutes: totalOvertimeMinutes,
     overtime_pay: overtimePay,
@@ -525,6 +591,7 @@ function computeNetTotal(
   delW: number,
   fields: {
     prorated_salary: number;
+    bonus_day_pay: number;
     overtime_pay: number;
     late_penalty: number;
     deliverables_pay: number;
@@ -535,8 +602,13 @@ function computeNetTotal(
     base_salary: number;
   }
 ): number {
+  // bonus_day_pay (hourly pay for bonus days) sits in the attendance bucket
+  // alongside prorated salary + overtime.
   const attendanceBucket =
-    fields.prorated_salary + fields.overtime_pay - fields.late_penalty;
+    fields.prorated_salary +
+    fields.bonus_day_pay +
+    fields.overtime_pay -
+    fields.late_penalty;
   const deliverablesBucket = fields.deliverables_pay;
 
   let combined = 0;
@@ -608,6 +680,7 @@ type CalcInputs = {
     AttendanceLog,
     | "id"
     | "date"
+    | "checked_in_at"
     | "checked_out_at"
     | "overtime_minutes"
     | "overtime_status"
@@ -682,6 +755,8 @@ function computeInputsSignature(inputs: CalcInputs): string {
       ofh: s.ot_first_hour_rate,
       onh: s.ot_next_hour_rate,
       ofd: s.ot_fixed_daily_rate,
+      swh: s.standard_working_hours,
+      bdh: s.bonus_day_hourly,
       lpm: s.late_penalty_mode,
       lpa: s.late_penalty_amount,
       lpi: s.late_penalty_interval_min,
@@ -696,6 +771,7 @@ function computeInputsSignature(inputs: CalcInputs): string {
       .map((l) => [
         l.id,
         l.date,
+        l.checked_in_at,
         l.checked_out_at,
         l.late_minutes,
         l.overtime_minutes,
@@ -777,6 +853,7 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
     expected_work_days: resolvedExpected,
     base_salary: baseSalary,
     prorated_salary: 0,
+    bonus_day_pay: 0,
     total_overtime_minutes: 0,
     overtime_pay: 0,
     total_late_minutes: 0,
@@ -867,6 +944,7 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
     Number(settings.deliverables_weight_pct),
     {
       prorated_salary: attCalc.prorated_salary,
+      bonus_day_pay: attCalc.bonus_day_pay,
       overtime_pay: attCalc.overtime_pay,
       late_penalty: attCalc.late_penalty,
       deliverables_pay: deliverablesPay,
@@ -1092,7 +1170,7 @@ export async function bulkCalculatePayslips(
     supabase
       .from("attendance_logs")
       .select(
-        "id, user_id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
+        "id, user_id, date, checked_in_at, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
       )
       .in("user_id", userIds)
       .gte("date", monthStart)
@@ -1388,7 +1466,7 @@ export async function calculatePayslip(
     supabase
       .from("attendance_logs")
       .select(
-        "id, date, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
+        "id, date, checked_in_at, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
       )
       .eq("user_id", userId)
       .gte("date", monthStart)
@@ -1675,6 +1753,7 @@ export async function updatePayslipManualEntries(
     Number(settings?.deliverables_weight_pct ?? 0),
     {
       prorated_salary: Number(existing.prorated_salary),
+      bonus_day_pay: Number(existing.bonus_day_pay ?? 0),
       overtime_pay: Number(existing.overtime_pay),
       late_penalty: Number(existing.late_penalty),
       deliverables_pay: Number(existing.deliverables_pay),

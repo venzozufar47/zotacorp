@@ -2122,6 +2122,7 @@ export type Database = {
       payslip_settings: {
         Row: {
           attendance_weight_pct: number
+          bonus_day_hourly: boolean
           calculation_basis: string
           created_at: string | null
           deliverables_weight_pct: number
@@ -2150,6 +2151,7 @@ export type Database = {
         }
         Insert: {
           attendance_weight_pct?: number
+          bonus_day_hourly?: boolean
           calculation_basis?: string
           created_at?: string | null
           deliverables_weight_pct?: number
@@ -2178,6 +2180,7 @@ export type Database = {
         }
         Update: {
           attendance_weight_pct?: number
+          bonus_day_hourly?: boolean
           calculation_basis?: string
           created_at?: string | null
           deliverables_weight_pct?: number
@@ -2276,6 +2279,7 @@ export type Database = {
         Row: {
           actual_work_days: number
           base_salary: number
+          bonus_day_pay: number
           breakdown_json: Json | null
           created_at: string | null
           debt_deduction: number
@@ -2314,6 +2318,7 @@ export type Database = {
         Insert: {
           actual_work_days?: number
           base_salary?: number
+          bonus_day_pay?: number
           breakdown_json?: Json | null
           created_at?: string | null
           debt_deduction?: number
@@ -2352,6 +2357,7 @@ export type Database = {
         Update: {
           actual_work_days?: number
           base_salary?: number
+          bonus_day_pay?: number
           breakdown_json?: Json | null
           created_at?: string | null
           debt_deduction?: number
@@ -3862,6 +3868,10 @@ export type PayslipBreakdown = {
   /** Hari hadir karyawan dalam periode — ditambah dari sibling chat
    *  slip-gaji untuk render daftar attendance di PayslipPdfDocument. */
   attendance_days?: Array<{ date: string }>;
+  /** Hari "bonus" yang dibayar per jam (mode bonus_day_hourly). `hours` =
+   *  jam kerja aktual, `pay` = pembayaran reguler (jam × tarif/jam); lembur
+   *  di atas jam standar masuk ke `overtime_days`. */
+  bonus_days?: Array<{ date: string; hours: number; pay: number }>;
 };
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AttendanceLog = Database['public']['Tables']['attendance_logs']['Row'];
