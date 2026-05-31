@@ -127,9 +127,11 @@ export function CashflowTable({
   // edit mode so admin can annotate any transaction.
   const showSource = bank !== "cash" && !showDescription && (editing || hasAnySource);
   const showDetails = bank !== "cash" && !showDescription && (editing || hasAnyDetails);
-  // Catatan selalu tampil (bukan cash) — admin bisa menambah catatan
-  // kapanpun tanpa harus masuk mode edit dulu.
-  const showNotes = bank !== "cash";
+  // Catatan selalu tampil — admin bisa menambah/baca catatan kapanpun
+  // tanpa masuk edit dulu. Termasuk rekening cash: kas Semarang/Pare
+  // menyimpan keterangan transaksinya di field `notes`, jadi kolom ini
+  // harus tetap dirender supaya teksnya tidak hilang dari tampilan.
+  const showNotes = true;
   const [pending, startTransition] = useTransition();
   // Filter toggles for the lifetime table — cumulative AND: enable
   // both to show only rows missing BOTH category and branch.
