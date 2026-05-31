@@ -1642,6 +1642,7 @@ function ComprehensiveMonthlyTable({
                 "Status",
                 "Net",
                 "Prorated",
+                "Hr bonus",
                 "OT",
                 "Late",
                 "Deliv",
@@ -1666,7 +1667,7 @@ function ComprehensiveMonthlyTable({
           <tbody>
             {groups.map((g) => (
               <React.Fragment key={g.name}>
-                <GroupHeader name={g.name} count={g.rows.length} colspan={13} />
+                <GroupHeader name={g.name} count={g.rows.length} colspan={14} />
                 {g.rows.map((r) => (
                   <MonthlyRow
                     key={r.userId}
@@ -1820,6 +1821,9 @@ function MonthlyRow({
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
           {numCell(payslip?.prorated_salary)}
         </td>
+        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-emerald-700">
+          {numCell(payslip?.bonus_day_pay)}
+        </td>
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
           {numCell(payslip?.overtime_pay)}
         </td>
@@ -1874,7 +1878,7 @@ function MonthlyRow({
       </tr>
       {expanded && payslip && (
         <tr>
-          <td colSpan={13} className="px-3 py-3 bg-muted/20">
+          <td colSpan={14} className="px-3 py-3 bg-muted/20">
             <ExpandedDetail row={row} payslip={payslip} />
           </td>
         </tr>

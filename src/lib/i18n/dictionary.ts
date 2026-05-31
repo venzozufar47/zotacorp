@@ -401,6 +401,8 @@ export const dictionary = {
       extraWorkTitle: "Extra work",
       colKind: "Type",
       kindLabels: { belanja: "Shopping" },
+      bonusDayTitle: "Bonus days (hourly)",
+      colHours: "Hours",
     },
     payslipDetail: {
       // Headers
@@ -1092,6 +1094,8 @@ export const dictionary = {
       extraWorkTitle: "Kerjaan tambahan",
       colKind: "Jenis",
       kindLabels: { belanja: "Belanja" },
+      bonusDayTitle: "Hari bonus (per jam)",
+      colHours: "Jam",
     },
     payslipDetail: {
       calcSectionTitle: "Cara gaji dihitung",

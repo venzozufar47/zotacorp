@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, AlertTriangle, ShoppingBag } from "lucide-react";
+import { Clock, AlertTriangle, ShoppingBag, Sparkles } from "lucide-react";
 import type { PayslipBreakdown } from "@/lib/supabase/types";
 import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -123,6 +123,47 @@ export function PayslipBreakdownDetails({
           </div>
         )}
       </section>
+
+      {/* Bonus-day section — hari "bonus" yang dibayar per jam (tiered).
+          Tampil hanya kalau ada bonus_days di breakdown. */}
+      {breakdown.bonus_days && breakdown.bonus_days.length > 0 && (
+        <section className="rounded-2xl border-2 border-foreground bg-muted p-4 space-y-2">
+          <h4 className="flex items-center gap-2 font-display text-[0.6875rem] font-bold uppercase tracking-wider text-foreground">
+            <Sparkles size={14} />
+            {bt.bonusDayTitle}
+          </h4>
+          <div className="text-xs">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1 items-center">
+              <span className="font-medium text-muted-foreground">{bt.colDate}</span>
+              <span className="font-medium text-muted-foreground text-right">{bt.colHours}</span>
+              <span className="font-medium text-muted-foreground text-right">{bt.colPay}</span>
+              {breakdown.bonus_days.map((row) => (
+                <Fragment3 key={row.date}>
+                  <span>{formatDate(row.date, lang)}</span>
+                  <span className="text-right tabular-nums">
+                    {row.hours} {hShort}
+                  </span>
+                  <span className="text-right tabular-nums text-quaternary font-bold">
+                    + {formatIDR(row.pay)}
+                  </span>
+                </Fragment3>
+              ))}
+              <span className="pt-1 border-t border-border text-muted-foreground font-medium">
+                {bt.totals} ({breakdown.bonus_days.length} hari)
+              </span>
+              <span className="pt-1 border-t border-border text-right tabular-nums font-medium">
+                {Math.round(
+                  breakdown.bonus_days.reduce((a, r) => a + r.hours, 0) * 100
+                ) / 100}{" "}
+                {hShort}
+              </span>
+              <span className="pt-1 border-t border-border text-right tabular-nums font-semibold text-quaternary font-bold">
+                + {formatIDR(breakdown.bonus_days.reduce((a, r) => a + r.pay, 0))}
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Extra-work section — only rendered when the payslip earned any
           extra-work pay this month. Same row format as overtime but with
