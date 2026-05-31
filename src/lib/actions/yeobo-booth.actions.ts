@@ -2,33 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import type { Database } from "@/lib/supabase/types";
 import { requireYeoboBoothAccess, type ActionResult } from "./_gates";
-
-/**
- * Service-role client — bypasses RLS. Yeobo Booth admins (non-global)
- * have NO RLS SELECT policy on `bank_accounts` (those policies only
- * cover global admins, cash/POS assignees, and investors — see
- * migrations 020/031/035/053). Mirrors `cashflow.ts admin()` which does
- * the same for booth cashflow WRITES. Only ever called AFTER
- * `requireYeoboBoothAccess()` gates the caller.
- */
-function serviceClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 import {
-  createPaymentCashflowTx,
-  createRefundCashflowTx,
-  deletePaymentCashflowTx,
-} from "@/lib/yeobo-booth/cashflow";
-import { jakartaDateString } from "@/lib/utils/jakarta";
-import {
-  YEOBO_BOOTH_BU,
   type CreateBookingInput,
   type RecordPaymentInput,
   type UpdateBookingInput,
@@ -83,7 +59,6 @@ const recordPaymentSchema = z.object({
   kind: z.enum(["dp", "lunas"]),
   nominal: z.number().positive("Nominal harus > 0"),
   tanggal: z.string().regex(dateRegex),
-  bank_account_id: z.string().uuid(),
 });
 
 // ─────────────────────────────────────────────────────────────────────
@@ -356,55 +331,10 @@ export async function cancelBooking(
     return { ok: false, error: "Booking sudah dibatalkan" };
   }
 
-  // Kalau pilih refund DAN ada pembayaran yang sudah masuk, buat
-  // reversing cashflow tx per leg pembayaran. Tx asli dibiarkan utuh
-  // sehingga audit trail "masuk → keluar" terbaca.
-  if (parsed.data.choice === "refund") {
-    const refundDate = jakartaDateString(new Date());
-    if (
-      b.dp_cashflow_transaction_id &&
-      b.dp_nominal &&
-      b.dp_bank_account_id
-    ) {
-      const r = await createRefundCashflowTx({
-        bookingId: b.id,
-        originalKind: "dp",
-        nominal: b.dp_nominal,
-        bankAccountId: b.dp_bank_account_id,
-        bookingName: b.nama_klien,
-        refundDate,
-        createdByUserId: gate.userId,
-      });
-      if (!r.ok) {
-        return {
-          ok: false,
-          error: r.error ?? "Gagal membuat refund tx untuk DP",
-        };
-      }
-    }
-    if (
-      b.pelunasan_cashflow_transaction_id &&
-      b.pelunasan_nominal &&
-      b.pelunasan_bank_account_id
-    ) {
-      const r = await createRefundCashflowTx({
-        bookingId: b.id,
-        originalKind: "lunas",
-        nominal: b.pelunasan_nominal,
-        bankAccountId: b.pelunasan_bank_account_id,
-        bookingName: b.nama_klien,
-        refundDate,
-        createdByUserId: gate.userId,
-      });
-      if (!r.ok) {
-        return {
-          ok: false,
-          error: r.error ?? "Gagal membuat refund tx untuk pelunasan",
-        };
-      }
-    }
-  }
-
+  // `cancellation_kind` (forfeit/refund) hanya disimpan sebagai info
+  // pada booking — TIDAK menulis cashflow apa pun. Refund yang benar-
+  // benar terjadi akan muncul sendiri di rekening koran saat di-upload
+  // (sumber tunggal ledger Yeobo Booth).
   const { error } = await supabase
     .from("yeobo_booth_bookings" as never)
     .update({
@@ -414,7 +344,6 @@ export async function cancelBooking(
     .eq("id", parsed.data.booking_id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/yeobo-booth", "layout");
-  revalidatePath("/admin/finance", "layout");
   return { ok: true };
 }
 
@@ -424,7 +353,7 @@ export async function cancelBooking(
 
 export async function recordPayment(
   input: RecordPaymentInput
-): Promise<ActionResult<{ txId: string }>> {
+): Promise<ActionResult> {
   const gate = await requireYeoboBoothAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const parsed = recordPaymentSchema.safeParse(input);
@@ -463,35 +392,25 @@ export async function recordPayment(
       error: `Nominal (${parsed.data.nominal.toLocaleString("id-ID")}) melebihi sisa tagihan (${sisaTagihan.toLocaleString("id-ID")})`,
     };
   }
-  if (parsed.data.kind === "dp" && booking.dp_cashflow_transaction_id) {
+  // "Sudah tercatat" ditandai oleh tanggal pembayaran (bukan lagi FK
+  // cashflow — pembayaran booth TIDAK lagi menulis ke ledger).
+  if (parsed.data.kind === "dp" && booking.dp_tanggal) {
     return {
       ok: false,
       error: "DP sudah tercatat. Hapus dulu DP lama untuk input ulang.",
     };
   }
-  if (parsed.data.kind === "lunas" && booking.pelunasan_cashflow_transaction_id) {
+  if (parsed.data.kind === "lunas" && booking.pelunasan_tanggal) {
     return {
       ok: false,
       error: "Pelunasan sudah tercatat.",
     };
   }
 
-  // 3. Buat cashflow tx via admin client (bypass RLS — Yeobo Booth
-  //    admin tidak punya policy WRITE di cashflow_*).
-  const cf = await createPaymentCashflowTx({
-    bookingId: booking.id,
-    kind: parsed.data.kind,
-    nominal: parsed.data.nominal,
-    tanggal: parsed.data.tanggal,
-    bankAccountId: parsed.data.bank_account_id,
-    booking: { nama_klien: booking.nama_klien, tanggal: booking.tanggal },
-    createdByUserId: gate.userId,
-  });
-  if (!cf.ok || !cf.txId) {
-    return { ok: false, error: cf.error ?? "Gagal membuat cashflow tx" };
-  }
-
-  // 4. Update booking dengan field pembayaran + FK + payment_status.
+  // 3. Catat pembayaran di booking SAJA (status bayar) — tidak membuat
+  //    transaksi cashflow. Sumber tunggal ledger Yeobo Booth = upload
+  //    rekening koran. Kolom *_bank_account_id / *_cashflow_transaction_id
+  //    sengaja dibiarkan null.
   const totalBayarBaru =
     parsed.data.kind === "dp"
       ? sudahDP + parsed.data.nominal + sudahLunas
@@ -505,13 +424,9 @@ export async function recordPayment(
   if (parsed.data.kind === "dp") {
     updatePatch.dp_nominal = parsed.data.nominal;
     updatePatch.dp_tanggal = parsed.data.tanggal;
-    updatePatch.dp_bank_account_id = parsed.data.bank_account_id;
-    updatePatch.dp_cashflow_transaction_id = cf.txId;
   } else {
     updatePatch.pelunasan_nominal = parsed.data.nominal;
     updatePatch.pelunasan_tanggal = parsed.data.tanggal;
-    updatePatch.pelunasan_bank_account_id = parsed.data.bank_account_id;
-    updatePatch.pelunasan_cashflow_transaction_id = cf.txId;
   }
 
   const { error: updErr } = await supabase
@@ -519,21 +434,17 @@ export async function recordPayment(
     .update(updatePatch as never)
     .eq("id", booking.id);
   if (updErr) {
-    // Rollback cashflow tx kalau update booking gagal — jangan
-    // tinggalkan tx yatim.
-    await deletePaymentCashflowTx(cf.txId);
     return { ok: false, error: updErr.message };
   }
 
   revalidatePath("/admin/yeobo-booth", "layout");
-  revalidatePath("/admin/finance", "layout");
-  return { ok: true, data: { txId: cf.txId } };
+  return { ok: true };
 }
 
 /**
- * Reverse pembayaran dari sisi Yeobo Booth. Hapus cashflow tx
- * terkait — trigger DB akan reset field DP/pelunasan di booking
- * row (lihat migration 063).
+ * Reverse pembayaran (DP / pelunasan) dari sisi booking. Karena
+ * pembayaran booth tidak lagi menulis ke ledger, ini hanya mengosongkan
+ * field pembayaran pada booking + menyesuaikan ulang `payment_status`.
  */
 export async function reversePayment(
   bookingId: string,
@@ -544,61 +455,40 @@ export async function reversePayment(
   const supabase = await createClient();
   const { data: row } = await supabase
     .from("yeobo_booth_bookings" as never)
-    .select("dp_cashflow_transaction_id, pelunasan_cashflow_transaction_id")
+    .select("dp_tanggal, pelunasan_tanggal")
     .eq("id", bookingId)
     .maybeSingle();
   if (!row) return { ok: false, error: "Booking tidak ditemukan" };
   const r = row as unknown as {
-    dp_cashflow_transaction_id: string | null;
-    pelunasan_cashflow_transaction_id: string | null;
+    dp_tanggal: string | null;
+    pelunasan_tanggal: string | null;
   };
-  const txId =
-    kind === "dp"
-      ? r.dp_cashflow_transaction_id
-      : r.pelunasan_cashflow_transaction_id;
-  if (!txId) return { ok: false, error: "Pembayaran tidak ditemukan" };
 
-  const res = await deletePaymentCashflowTx(txId);
-  if (!res.ok) return { ok: false, error: res.error ?? "Gagal reverse" };
+  const target = kind === "dp" ? r.dp_tanggal : r.pelunasan_tanggal;
+  if (!target) return { ok: false, error: "Pembayaran tidak ditemukan" };
+
+  // Status setelah leg ini dihapus: kalau leg lain masih ada,
+  // turun ke 'dp'/'lunas' yang sesuai; kalau tidak, 'belum_bayar'.
+  const otherLeg = kind === "dp" ? r.pelunasan_tanggal : r.dp_tanggal;
+  const patch: Record<string, unknown> =
+    kind === "dp"
+      ? {
+          dp_nominal: null,
+          dp_tanggal: null,
+          payment_status: otherLeg ? "lunas" : "belum_bayar",
+        }
+      : {
+          pelunasan_nominal: null,
+          pelunasan_tanggal: null,
+          payment_status: otherLeg ? "dp" : "belum_bayar",
+        };
+
+  const { error } = await supabase
+    .from("yeobo_booth_bookings" as never)
+    .update(patch as never)
+    .eq("id", bookingId);
+  if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/yeobo-booth", "layout");
-  revalidatePath("/admin/finance", "layout");
   return { ok: true };
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Bank accounts dropdown (helper) — list rekening yang valid untuk
-// menerima pendapatan Yeobo Booth. Untuk simplicity, semua rekening
-// aktif boleh dipilih; admin tinggal pilih sesuai realita transfer.
-// ─────────────────────────────────────────────────────────────────────
-
-export interface BankAccountOption {
-  id: string;
-  business_unit: string;
-  bank: string;
-  account_name: string;
-  account_number: string | null;
-}
-
-/**
- * Hanya rekening yang business_unit='Yeobo Booth' yang valid. Tujuannya:
- * pendapatan booking masuk ke ledger Yeobo Booth, bukan unit lain. Kalau
- * admin lupa create rekening dulu, dropdown akan kosong dan UI memandu
- * mereka untuk buat lewat /admin/finance.
- */
-export async function listBankAccountOptions(): Promise<BankAccountOption[]> {
-  const gate = await requireYeoboBoothAccess();
-  if (!gate.ok) return [];
-  // Service-role read: a Yeobo Booth admin (role=employee) has no RLS
-  // SELECT grant on bank_accounts, so the user-scoped client returns
-  // zero rows and the UI wrongly shows "Belum ada rekening". The gate
-  // above already restricts this to authorized booth/global admins, and
-  // we only ever return Yeobo Booth rows.
-  const supabase = serviceClient();
-  const { data } = await supabase
-    .from("bank_accounts")
-    .select("id, business_unit, bank, account_name, account_number")
-    .eq("is_active", true)
-    .eq("business_unit", YEOBO_BOOTH_BU)
-    .order("account_name");
-  return (data ?? []) as unknown as BankAccountOption[];
-}

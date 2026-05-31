@@ -4,10 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CalendarDays, Clock, MapPin, Users } from "lucide-react";
 import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
-import {
-  getBooking,
-  listBankAccountOptions,
-} from "@/lib/actions/yeobo-booth.actions";
+import { getBooking } from "@/lib/actions/yeobo-booth.actions";
 import { listFreelance } from "@/lib/actions/yeobo-booth-freelance.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingForm } from "@/components/yeobo-booth/BookingForm";
@@ -28,10 +25,9 @@ export default async function BookingDetailPage({ params }: PageProps) {
   if (!(await canAccessYeoboBooth())) redirect("/dashboard");
   const { id } = await params;
 
-  const [booking, freelance, bankAccounts] = await Promise.all([
+  const [booking, freelance] = await Promise.all([
     getBooking(id),
     listFreelance({ includeInactive: true }),
-    listBankAccountOptions(),
   ]);
   if (!booking) notFound();
 
@@ -113,7 +109,7 @@ export default async function BookingDetailPage({ params }: PageProps) {
       </section>
 
       {/* Pembayaran */}
-      <PaymentPanel booking={booking} bankAccounts={bankAccounts} />
+      <PaymentPanel booking={booking} />
 
       {/* Edit form */}
       <section>

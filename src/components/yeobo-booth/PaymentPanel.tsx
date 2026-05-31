@@ -7,14 +7,12 @@ import { Banknote, X } from "lucide-react";
 import {
   recordPayment,
   reversePayment,
-  type BankAccountOption,
 } from "@/lib/actions/yeobo-booth.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 import type { YeoboBoothBooking } from "@/lib/yeobo-booth/types";
 
 interface Props {
   booking: YeoboBoothBooking;
-  bankAccounts: BankAccountOption[];
 }
 
 const FIELD =
@@ -22,26 +20,25 @@ const FIELD =
 const LABEL =
   "block text-[12px] font-semibold uppercase tracking-wider text-muted-foreground mb-1";
 
-export function PaymentPanel({ booking, bankAccounts }: Props) {
+export function PaymentPanel({ booking }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [kind, setKind] = useState<"dp" | "lunas">(() =>
-    booking.dp_cashflow_transaction_id ? "lunas" : "dp"
+    booking.dp_tanggal ? "lunas" : "dp"
   );
   const [nominal, setNominal] = useState("");
   const [tanggal, setTanggal] = useState(
     new Date().toISOString().slice(0, 10)
-  );
-  const [bankAccountId, setBankAccountId] = useState(
-    bankAccounts[0]?.id ?? ""
   );
 
   const sudahDP = booking.dp_nominal ?? 0;
   const sudahLunas = booking.pelunasan_nominal ?? 0;
   const sisa = booking.harga_total - sudahDP - sudahLunas;
 
-  const dpLocked = Boolean(booking.dp_cashflow_transaction_id);
-  const pelunasanLocked = Boolean(booking.pelunasan_cashflow_transaction_id);
+  // "Locked" = leg sudah dicatat (pakai tanggal sebagai penanda, bukan
+  // lagi FK cashflow — pembayaran booth tidak menulis ke ledger).
+  const dpLocked = Boolean(booking.dp_tanggal);
+  const pelunasanLocked = Boolean(booking.pelunasan_tanggal);
   const fullyPaid = sisa <= 0;
 
   function onSubmit(e: React.FormEvent) {
@@ -51,32 +48,25 @@ export function PaymentPanel({ booking, bankAccounts }: Props) {
       toast.error("Nominal wajib > 0");
       return;
     }
-    if (!bankAccountId) {
-      toast.error("Pilih rekening tujuan");
-      return;
-    }
     start(async () => {
       const res = await recordPayment({
         booking_id: booking.id,
         kind,
         nominal: nom,
         tanggal,
-        bank_account_id: bankAccountId,
       });
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
-      toast.success(
-        `${kind === "dp" ? "DP" : "Pelunasan"} tercatat (cashflow auto)`
-      );
+      toast.success(`${kind === "dp" ? "DP" : "Pelunasan"} tercatat`);
       setNominal("");
       router.refresh();
     });
   }
 
   function onReverse(k: "dp" | "lunas") {
-    if (!confirm(`Hapus pembayaran ${k.toUpperCase()}? Cashflow tx ikut dihapus.`)) {
+    if (!confirm(`Hapus catatan pembayaran ${k.toUpperCase()}?`)) {
       return;
     }
     start(async () => {
@@ -122,32 +112,11 @@ export function PaymentPanel({ booking, bankAccounts }: Props) {
         />
       </div>
 
-      {/* Empty state: belum ada rekening Yeobo Booth */}
+      {/* New payment form — hanya mencatat status bayar di booking,
+          tidak menulis ke ledger (sumber ledger = upload rekening
+          koran). */}
       {!fullyPaid &&
-        booking.status !== "cancelled" &&
-        bankAccounts.length === 0 && (
-          <div className="rounded-xl bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 p-3 text-sm text-amber-800 dark:text-amber-200">
-            <p className="font-semibold mb-1">
-              Belum ada rekening Yeobo Booth
-            </p>
-            <p className="text-[12.5px] mb-2">
-              Buat rekening dengan business unit{" "}
-              <span className="font-mono">Yeobo Booth</span> dulu supaya
-              pendapatan masuk ke ledger unit yang benar.
-            </p>
-            <a
-              href="/admin/finance"
-              className="inline-flex items-center gap-1 text-[12.5px] font-semibold underline"
-            >
-              Buka /admin/finance →
-            </a>
-          </div>
-        )}
-
-      {/* New payment form */}
-      {!fullyPaid &&
-        booking.status !== "cancelled" &&
-        bankAccounts.length > 0 && (
+        booking.status !== "cancelled" && (
         <form
           onSubmit={onSubmit}
           className="space-y-3 pt-3 border-t border-border"
@@ -199,21 +168,6 @@ export function PaymentPanel({ booking, bankAccounts }: Props) {
                 value={tanggal}
                 onChange={(e) => setTanggal(e.target.value)}
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className={LABEL}>Rekening Tujuan</label>
-              <select
-                className={FIELD}
-                value={bankAccountId}
-                onChange={(e) => setBankAccountId(e.target.value)}
-              >
-                {bankAccounts.map((ba) => (
-                  <option key={ba.id} value={ba.id}>
-                    {ba.business_unit} · {ba.bank.toUpperCase()} ·{" "}
-                    {ba.account_name}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
           <button

@@ -116,7 +116,6 @@ export interface RecordPaymentInput {
   kind: "dp" | "lunas";
   nominal: number;
   tanggal: string; // YYYY-MM-DD
-  bank_account_id: string;
 }
 
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
