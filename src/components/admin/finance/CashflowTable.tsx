@@ -135,6 +135,13 @@ export function CashflowTable({
   // both to show only rows missing BOTH category and branch.
   const [filterNoCategory, setFilterNoCategory] = useState(false);
   const [filterNoBranch, setFilterNoBranch] = useState(false);
+  // Arah transaksi: tampilkan semua, hanya debit (pengeluaran), atau
+  // hanya kredit (pemasukan). Diterapkan di `visibleRows` sebelum
+  // paginasi, jadi filter mencakup SELURUH dataset (server sudah memuat
+  // semua row via loop .range), bukan cuma halaman yang sedang tampil.
+  const [filterDirection, setFilterDirection] = useState<
+    "all" | "debit" | "credit"
+  >("all");
   // Free-text search across row fields. Case-insensitive substring
   // match against source/details/notes/description/category/branch.
   const [searchQuery, setSearchQuery] = useState("");
@@ -502,6 +509,8 @@ export function CashflowTable({
       return working.filter((r) => {
         if (filterNoCategory && r.category !== null) return false;
         if (filterNoBranch && r.branch !== null) return false;
+        if (filterDirection === "debit" && !(r.debit > 0)) return false;
+        if (filterDirection === "credit" && !(r.credit > 0)) return false;
         if (q) {
           // Concat all searchable fields once per row and substring-match.
           // Cheaper than calling toLowerCase per-field on every filter pass.
@@ -522,10 +531,13 @@ export function CashflowTable({
         return true;
       });
     },
-    [working, filterNoCategory, filterNoBranch, searchQuery]
+    [working, filterNoCategory, filterNoBranch, filterDirection, searchQuery]
   );
   const hasFilter =
-    filterNoCategory || filterNoBranch || Boolean(searchQuery.trim());
+    filterNoCategory ||
+    filterNoBranch ||
+    filterDirection !== "all" ||
+    Boolean(searchQuery.trim());
 
   // Auto-compute running balance per row so cash rekening (no stored
   // balance) and freshly-added rows get a number instead of em-dash.
@@ -579,7 +591,7 @@ export function CashflowTable({
   // disorienting.
   useEffect(() => {
     setPage(1);
-  }, [filterNoCategory, filterNoBranch, searchQuery]);
+  }, [filterNoCategory, filterNoBranch, filterDirection, searchQuery]);
 
   // Earliest → latest tx date across the whole dataset, for the header
   // caption. Scans once; works on raw `transactions` (not filtered) so
@@ -881,12 +893,33 @@ export function CashflowTable({
               count={working.filter((r) => r.branch === null).length}
             />
           )}
+          {/* Arah transaksi — Debit / Kredit saling eksklusif: klik chip
+              yang sedang aktif lagi untuk kembali ke "semua". Filter
+              berlaku ke seluruh dataset (semua halaman), bukan cuma
+              halaman yang sedang tampil. */}
+          <FilterChip
+            active={filterDirection === "debit"}
+            onClick={() =>
+              setFilterDirection((d) => (d === "debit" ? "all" : "debit"))
+            }
+            label="Debit"
+            count={working.filter((r) => r.debit > 0).length}
+          />
+          <FilterChip
+            active={filterDirection === "credit"}
+            onClick={() =>
+              setFilterDirection((d) => (d === "credit" ? "all" : "credit"))
+            }
+            label="Kredit"
+            count={working.filter((r) => r.credit > 0).length}
+          />
           {hasFilter && (
             <button
               type="button"
               onClick={() => {
                 setFilterNoCategory(false);
                 setFilterNoBranch(false);
+                setFilterDirection("all");
                 setSearchQuery("");
               }}
               className="ml-1 text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
@@ -1834,43 +1867,5 @@ function AttachmentCell({
       />
       {busy ? "Mengunggah…" : "+ Bukti"}
     </label>
-  );
-}
-
-/** Toolbar filter chip — label + count badge, toggles active state.
- *  Dipakai untuk filter Tanpa kategori / Debit / Kredit di toolbar
- *  cashflow. */
-function FilterChip({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-xs font-semibold transition",
-        active
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-border bg-card text-muted-foreground hover:border-primary/50"
-      )}
-    >
-      {label}
-      <span
-        className={cn(
-          "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] tabular-nums",
-          active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-        )}
-      >
-        {count}
-      </span>
-    </button>
   );
 }
