@@ -182,10 +182,42 @@ export async function fetchYeoboPnL(
     }
   }
 
+  // Fetch MONTHLY revenue allocations (admin membagi total revenue
+  // branch=All tiap bulan ke cabang). Build per-month ratio map:
+  // ratio_branch = amount_branch / Σamount. Diterapkan ke tiap tx
+  // operating-revenue branch=All bulan itu → split proporsional
+  // (drift-proof; selalu pas dengan revenue aktual).
+  const revenueRatioByMonth = new Map<string, Map<string, number>>();
+  {
+    const { data: monthAllocs } = await supabase
+      .from("revenue_month_allocations")
+      .select("period_year, period_month, branch, amount")
+      .eq("business_unit", "Yeobo Space");
+    const rawByMonth = new Map<string, Array<{ branch: string; amount: number }>>();
+    for (const a of monthAllocs ?? []) {
+      const key = ym(a.period_year, a.period_month);
+      const list = rawByMonth.get(key) ?? [];
+      list.push({ branch: a.branch, amount: Number(a.amount) });
+      rawByMonth.set(key, list);
+    }
+    for (const [key, list] of rawByMonth) {
+      const sum = list.reduce((s, a) => s + a.amount, 0);
+      if (sum <= 0) continue;
+      const ratio = new Map<string, number>();
+      for (const a of list) ratio.set(a.branch, a.amount / sum);
+      revenueRatioByMonth.set(key, ratio);
+    }
+  }
+
   const nonOpSet = new Set(getNonOperatingCategories("Yeobo Space"));
   const presets = getCategoryPresets("Yeobo Space");
   const debitCatSet = new Set(presets.debit);
   const creditCatSet = new Set(presets.credit);
+  // Operating-credit categories (Revenue + Other Revenue) — eligible for
+  // manual per-branch revenue allocation instead of auto-split.
+  const operatingCreditSet = new Set(
+    presets.credit.filter((c) => !nonOpSet.has(c))
+  );
   const rangeMonths = monthsBetween(from, to);
 
   // Bucket per (monthKey | branch | category | source) → { credit, debit }
@@ -374,6 +406,40 @@ export async function fetchYeoboPnL(
           }
           continue;
         }
+      }
+
+      // Operating-revenue branch=All dengan alokasi BULANAN? Bagi tx ini
+      // proporsional ke cabang sesuai ratio bulan tsb (amount_b / Σ).
+      // Kalau bulan belum dialokasi → jatuh ke auto-split 1/3 di bawah.
+      if (operatingCreditSet.has(category) && credit > 0) {
+        const ratio = revenueRatioByMonth.get(monthKey);
+        if (ratio && ratio.size > 0) {
+          const physicalRatios = [...ratio.entries()].filter(([b]) =>
+            PHYSICAL_BRANCHES.includes(b)
+          );
+          if (physicalRatios.length > 0) {
+            const total = Math.round(credit);
+            let assigned = 0;
+            physicalRatios.forEach(([b, r], i) => {
+              const share =
+                i === physicalRatios.length - 1
+                  ? total - assigned // sisa ke cabang terakhir → sum pas
+                  : Math.round(total * r);
+              assigned += share;
+              addToBucket(
+                sourceBuckets.allocation,
+                monthKey,
+                b,
+                category,
+                share,
+                0,
+                i === 0 ? detail : null
+              );
+            });
+            continue;
+          }
+        }
+        // Belum ada alokasi bulan ini → auto-split fallback di bawah.
       }
 
       // Default: auto-split rata sesuai jumlah cabang sentinel (2 atau 3).

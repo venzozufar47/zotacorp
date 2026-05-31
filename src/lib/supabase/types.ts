@@ -3102,6 +3102,42 @@ export type Database = {
           },
         ]
       }
+      revenue_month_allocations: {
+        Row: {
+          amount: number
+          branch: string
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          id: string
+          period_month: number
+          period_year: number
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          branch: string
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          period_month: number
+          period_year: number
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          branch?: string
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          period_month?: number
+          period_year?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       voice_room_presence: {
         Row: {
           joined_at: string
@@ -3656,6 +3692,16 @@ export type Database = {
       }
       is_investor_for_business_unit: { Args: { bu: string }; Returns: boolean }
       is_yeobo_booth_admin: { Args: never; Returns: boolean }
+      resolve_assignment: {
+        Args: {
+          p_row_id: string
+          p_category: string
+          p_branch: string
+          p_effective_period_month?: number | null
+          p_effective_period_year?: number | null
+        }
+        Returns: boolean
+      }
       voice_sweep_stale_presence: { Args: never; Returns: number }
     }
     Enums: {

@@ -252,33 +252,23 @@ export async function resolveAssignment(
   }
 
   const supabase = await createClient();
-  const update: {
-    category: string;
-    branch: string;
-    effective_period_month?: number | null;
-    effective_period_year?: number | null;
-  } = {
-    category: patch.category.trim(),
-    branch: patch.branch.trim(),
-  };
-  if (patch.effectivePeriodMonth !== undefined) {
-    update.effective_period_month = patch.effectivePeriodMonth;
-  }
-  if (patch.effectivePeriodYear !== undefined) {
-    update.effective_period_year = patch.effectivePeriodYear;
-  }
 
-  // Admin: pakai standard admin UPDATE (RLS admin policy allow).
-  // Non-admin assignee: pakai RLS UPDATE policy
-  // `cashflow_transactions_assignee_resolve_update` yang hanya allow
-  // row dengan assigned_to_user_id = me + status needs assignment.
-  // Kalau row bukan milik mereka, count=0 → tolak.
-  const { error, count } = await supabase
-    .from("cashflow_transactions")
-    .update(update, { count: "exact" })
-    .eq("id", rowId);
+  // Pakai RPC `resolve_assignment` (SECURITY DEFINER). Direct UPDATE
+  // tidak bisa dipakai non-admin assignee: tabel cashflow_transactions
+  // TIDAK punya SELECT policy untuk assignee (hanya admin/investor/POS),
+  // dan Postgres butuh row SELECT-visible untuk meng-UPDATE-nya → UPDATE
+  // assignee selalu match 0 row walau policy UPDATE-nya lolos. RPC ini
+  // melakukan cek admin-atau-assignee sendiri lalu update dengan
+  // privilege definer (tanpa membocorkan running_balance ke assignee).
+  const { data, error } = await supabase.rpc("resolve_assignment", {
+    p_row_id: rowId,
+    p_category: patch.category.trim(),
+    p_branch: patch.branch.trim(),
+    p_effective_period_month: patch.effectivePeriodMonth ?? null,
+    p_effective_period_year: patch.effectivePeriodYear ?? null,
+  });
   if (error) return { ok: false, error: error.message };
-  if (count === 0) {
+  if (data !== true) {
     return {
       ok: false,
       error: "Forbidden — kamu bukan assignee row ini atau row sudah resolved",

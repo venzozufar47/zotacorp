@@ -9,11 +9,23 @@
  *   - Highlight status alokasi gaji & needs-assignment count per bulan.
  */
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CalendarDays,
+  ChevronDown,
+} from "lucide-react";
 import type { YeoboPnLReport, YeoboBranchPnL } from "@/lib/cashflow/pnl-yeobo";
 import { formatIDR } from "@/lib/cashflow/format";
 import { PnLChartsYeobo } from "./PnLChartsYeobo";
+import {
+  MonthRangePicker,
+  parseYM,
+  formatYM,
+  ymLabelShort,
+} from "@/components/shared/MonthRangePicker";
 
 const MONTH_LABELS = [
   "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
@@ -33,35 +45,47 @@ function ymString(x: { year: number; month: number }): string {
 
 export function PnLYeoboClient({ businessUnit, from, to, report }: Props) {
   const router = useRouter();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const fromStr = ymString(from);
+  const toStr = ymString(to);
 
-  const handlePeriodChange = (which: "from" | "to", value: string) => {
+  function applyRange(f: string, t: string) {
     const url = new URL(window.location.href);
-    url.searchParams.set(which, value);
+    url.searchParams.set("bu", businessUnit);
+    url.searchParams.set("from", f);
+    url.searchParams.set("to", t);
     router.push(url.pathname + "?" + url.searchParams.toString());
-  };
+  }
 
   return (
     <div className="space-y-6">
-      {/* Period picker */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="text-xs text-muted-foreground">Dari</label>
-          <input
-            type="month"
-            value={ymString(from)}
-            onChange={(e) => handlePeriodChange("from", e.target.value)}
-            className="mt-1 text-sm px-3 py-1.5 rounded-md border border-border bg-background"
+      {/* Period picker: single trigger → MonthRangePicker popover.
+          Konsisten dengan PnLClient (Haengbocake) + investor PnL. */}
+      <div className="flex items-center gap-3 flex-wrap rounded-2xl border border-border bg-card p-3">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Periode:
+        </span>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="press-feedback inline-flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-xs font-semibold hover:border-primary/50 transition"
+        >
+          <CalendarDays size={13} strokeWidth={2.2} className="text-primary" />
+          <span className="tabular-nums">
+            {ymLabelShort(parseYM(fromStr))} – {ymLabelShort(parseYM(toStr))}
+          </span>
+          <ChevronDown size={11} strokeWidth={2.4} className="opacity-70" />
+        </button>
+        {pickerOpen && (
+          <MonthRangePicker
+            value={{ from: parseYM(fromStr), to: parseYM(toStr) }}
+            onApply={(range) => {
+              setPickerOpen(false);
+              applyRange(formatYM(range.from), formatYM(range.to));
+            }}
+            onClose={() => setPickerOpen(false)}
           />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Sampai</label>
-          <input
-            type="month"
-            value={ymString(to)}
-            onChange={(e) => handlePeriodChange("to", e.target.value)}
-            className="mt-1 text-sm px-3 py-1.5 rounded-md border border-border bg-background"
-          />
-        </div>
+        )}
       </div>
 
       {/* Chart bar profit per cabang + tren revenue/expense */}

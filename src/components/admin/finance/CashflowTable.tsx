@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/cashflow.actions";
 import type { CategoryPresets } from "@/lib/cashflow/categories";
 import { isAccrualEligible, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
+import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { AutoCategorizeDialog } from "./AutoCategorizeDialog";
 import { formatIDR } from "@/lib/cashflow/format";
 import {
@@ -334,10 +335,17 @@ export function CashflowTable({
   })();
 
   function handleAddRow() {
+    // Stamp tanggal + jam SAAT INI (WIB / Asia-Jakarta) supaya baris baru
+    // langsung punya waktu yang benar. Kalau `time` dibiarkan null, sort
+    // kronologis menaruh baris ini di urutan paling akhir (waktu kosong
+    // di-treat paling awal/akhir tergantung sort) → baris "lompat" ke
+    // bawah begitu disimpan. `new Date().toISOString()` = UTC, bukan WIB
+    // — jadi pakai helper Jakarta untuk date & time.
+    const now = new Date();
     const blank: CashflowRow = {
       id: nextNewId(),
-      date: new Date().toISOString().slice(0, 10),
-      time: null,
+      date: jakartaDateString(now),
+      time: jakartaHHMM(now),
       sourceDestination: null,
       transactionDetails: null,
       description: "(baris baru)",

@@ -18,6 +18,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { PnLClient } from "@/components/admin/finance/PnLClient";
 import { PnLYeoboClient } from "@/components/admin/finance/PnLYeoboClient";
 import { SalaryAllocationSection } from "@/components/admin/finance/SalaryAllocationSection";
+import { RevenueAllocationSection } from "@/components/admin/finance/RevenueAllocationSection";
+import { listRevenueMonthAllocations } from "@/lib/actions/revenue-allocations.actions";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 
 interface SearchParams {
@@ -121,16 +123,27 @@ export default async function PnLPage({
     endDate,
   });
   const salaryAllocations = salaryRes.ok && salaryRes.data ? salaryRes.data : [];
+  const revenueRes = await listRevenueMonthAllocations(businessUnit, {
+    from,
+    to,
+  });
+  const revenueAllocations =
+    revenueRes.ok && revenueRes.data ? revenueRes.data : [];
   const empRes = await listEmployeeBranchMap(businessUnit);
   const employeeSuggestions =
     empRes.ok && empRes.data
       ? empRes.data.map((e) => ({ name: e.nameKeyword, branch: e.branch }))
       : [];
-  // Branch options untuk allocation input — exclude "All" (gak masuk
-  // akal alokasi per-karyawan ke seluruh 3 cabang sekaligus; gunakan
-  // auto-split fallback saja). Sentinel 2-cabang TETAP boleh: admin
-  // bisa alokasi 1 karyawan ke 2 cabang, aggregator split 50-50.
-  const allocBranches = presets.branches.filter((b) => b !== "All");
+  // Branch options untuk allocation input. "All" (3-cabang split rata)
+  // ditaruh PALING AKHIR supaya default per-baris (branches[0]) tetap
+  // opsi konkret, bukan tidak sengaja split 3 arah. Pilih "All" eksplisit
+  // untuk membagi 1 transaksi gaji rata ke Tlogosari+Tembalang+Jebres;
+  // aggregator resolve via getPhysicalBranchesForSentinel. Sentinel
+  // 2-cabang TETAP boleh (split 50-50).
+  const allocBranches = [
+    ...presets.branches.filter((b) => b !== "All"),
+    "All",
+  ];
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -198,6 +211,16 @@ export default async function PnLPage({
           summaries={salaryAllocations}
           branches={allocBranches}
           employeeSuggestions={employeeSuggestions}
+        />
+      )}
+
+      {isYeobo && (
+        <RevenueAllocationSection
+          businessUnit={businessUnit}
+          summaries={revenueAllocations}
+          branches={allocBranches.filter(
+            (b) => b !== "All" && b !== "Needs Assignment" && !b.includes("+")
+          )}
         />
       )}
     </div>

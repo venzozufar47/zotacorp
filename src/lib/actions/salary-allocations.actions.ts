@@ -14,7 +14,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { getPhysicalBranchesForSentinel, ALL_BRANCH_SENTINEL } from "@/lib/cashflow/branch-split";
+import { getPhysicalBranchesForSentinel } from "@/lib/cashflow/branch-split";
 import { YEOBO_SPACE_BRANCHES } from "@/lib/cashflow/categories";
 
 type ActionResult<T = undefined> =
@@ -177,10 +177,10 @@ export async function upsertSalaryAllocations(
       error: `Total alokasi (${sum.toLocaleString("id-ID")}) > nominal tx (${debit.toLocaleString("id-ID")})`,
     };
   }
-  // Branch validation: physical (Tlogosari/Tembalang/Jebres) atau
-  // 2-cabang sentinel (Yeosari + Yeotem, dll). TOLAK "All" karena
-  // nonsensical untuk per-karyawan — kalau memang split rata 3,
-  // admin tidak perlu alokasi, biarkan auto-split fallback.
+  // Branch validation: physical (Tlogosari/Tembalang/Jebres), 2-cabang
+  // sentinel (Yeosari + Yeotem, dll), ATAU "All" (3 cabang). Karyawan
+  // yang gajinya menanggung seluruh cabang valid pakai "All" — aggregator
+  // split rata 1/3 via getPhysicalBranchesForSentinel("All").
   const validBranchSet = new Set<string>(YEOBO_SPACE_BRANCHES);
   for (const a of allocations) {
     if (!a.employeeName.trim())
@@ -189,22 +189,17 @@ export async function upsertSalaryAllocations(
     if (a.amount < 0)
       return { ok: false, error: "Nominal tidak boleh negatif" };
     const br = a.branch.trim();
-    if (br === ALL_BRANCH_SENTINEL) {
-      return {
-        ok: false,
-        error: `Branch "All" tidak boleh untuk alokasi per-karyawan. Pakai cabang spesifik atau sentinel 2-cabang.`,
-      };
-    }
     if (!validBranchSet.has(br)) {
       return { ok: false, error: `Branch "${br}" tidak dikenal` };
     }
-    // Sentinel 2-cabang valid: getPhysicalBranchesForSentinel akan
-    // resolve saat aggregator split.
+    // "All" → 3 cabang, sentinel 2-cabang → 2 cabang; keduanya resolve
+    // via getPhysicalBranchesForSentinel saat aggregator split. Cabang
+    // fisik tunggal pass apa adanya. "Needs Assignment" = tunda pilih.
     if (br !== "Needs Assignment") {
       const physical = getPhysicalBranchesForSentinel(br, "Yeobo Space");
       const isPhysicalSingle =
         physical === null && validBranchSet.has(br); // cabang fisik
-      if (!isPhysicalSingle && (!physical || physical.length < 2)) {
+      if (!isPhysicalSingle && (!physical || physical.length < 1)) {
         return {
           ok: false,
           error: `Branch "${br}" tidak valid untuk alokasi gaji`,

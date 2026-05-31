@@ -19,6 +19,14 @@ import {
 } from "@/lib/actions/salary-allocations.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 
+/** Display label for a branch dropdown value. The "All" sentinel stores
+ *  as "All" (resolved to a 3-cabang split rata in the PnL aggregator)
+ *  but shows a friendly label so admin knows it spans every cabang. */
+function branchOptionLabel(branch: string): string {
+  if (branch === "All") return "Semua cabang (Yeosari + Yeotem + Yeosol)";
+  return branch;
+}
+
 interface Props {
   summaries: SalaryTxSummary[];
   branches: string[];
@@ -212,7 +220,9 @@ function SalaryRow({
                   className="w-32 text-sm px-2 h-8 rounded border border-border bg-background"
                 >
                   {branches.map((b) => (
-                    <option key={b} value={b}>{b}</option>
+                    <option key={b} value={b}>
+                      {branchOptionLabel(b)}
+                    </option>
                   ))}
                 </select>
                 <Input

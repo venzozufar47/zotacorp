@@ -55,7 +55,7 @@ interface Props {
 const BU_AVAILABILITY: Record<string, boolean> = {
   Haengbocake: true,
   "Yeobo Space": true,
-  "Yeobo Booth": false,
+  "Yeobo Booth": true,
   Gritamora: false,
 };
 

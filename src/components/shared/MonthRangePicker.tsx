@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 /**
@@ -128,6 +129,11 @@ export function MonthRangePicker({
   hint?: string;
 }) {
   const now = new Date();
+  // Portal target = document.body so the fixed overlay escapes any
+  // transformed ancestor (e.g. `animate-fade-up`), which would otherwise
+  // re-anchor `position: fixed` and make the modal drift down the page.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [pendingFrom, setPendingFrom] = useState<YM | null>(value.from);
   const [pendingTo, setPendingTo] = useState<YM | null>(value.to);
   // Year yang sedang ditampilkan di grid. Default: tahun dari pendingFrom
@@ -186,7 +192,9 @@ export function MonthRangePicker({
 
   const applyDisabled = !pendingFrom || !pendingTo;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-foreground/30" onClick={onClose}>
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] rounded-2xl bg-card border border-border p-5 shadow-xl space-y-4"
@@ -301,6 +309,7 @@ export function MonthRangePicker({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

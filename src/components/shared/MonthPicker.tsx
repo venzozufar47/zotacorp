@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { YM } from "./MonthRangePicker";
 
@@ -70,6 +71,10 @@ export function MonthPicker({
   onClear?: () => void;
 }) {
   const now = new Date();
+  // Portal to document.body so the fixed overlay escapes transformed
+  // ancestors (e.g. `animate-fade-up`) that would re-anchor `fixed`.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [viewYear, setViewYear] = useState<number>(
     value?.year ?? now.getFullYear()
   );
@@ -82,7 +87,9 @@ export function MonthPicker({
     return { isSelected, isCurrent };
   }
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-foreground/30" onClick={onClose}>
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] rounded-2xl bg-card border border-border p-5 shadow-xl space-y-4"
@@ -164,6 +171,7 @@ export function MonthPicker({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

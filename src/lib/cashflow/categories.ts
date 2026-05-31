@@ -178,6 +178,11 @@ export const HAENGBOCAKE_NON_OPERATING_CATEGORIES = [
 export function getNonOperatingCategories(bu: string): readonly string[] {
   if (bu === "Haengbocake") return HAENGBOCAKE_NON_OPERATING_CATEGORIES;
   if (bu === "Yeobo Space") return YEOBO_SPACE_NON_OPERATING_CATEGORIES;
+  // Yeobo Booth ikut set non-operasional Haengbocake supaya PnL-nya
+  // membedakan operating vs non-operating identik dengan Haengbocake
+  // (bukan menganggap semua kategori operating — yang terjadi kalau
+  // jatuh ke fallback []).
+  if (bu === "Yeobo Booth") return HAENGBOCAKE_NON_OPERATING_CATEGORIES;
   return [];
 }
 
@@ -224,7 +229,10 @@ export function normalizePnLCategory(
 ): string {
   const raw = (category ?? "").trim();
   if (!raw) return "(tanpa kategori)";
-  if (businessUnit === "Haengbocake") {
+  // Yeobo Booth ikut normalisasi Haengbocake — rekening Bank Jago-nya
+  // memang di-treat sama persis, jadi alias kategori (Haengbo Cust →
+  // Sales, dll) berlaku sama supaya PnL konsisten.
+  if (businessUnit === "Haengbocake" || businessUnit === "Yeobo Booth") {
     return HAENGBOCAKE_CATEGORY_NORMALIZATION[raw] ?? raw;
   }
   return raw;
@@ -268,6 +276,18 @@ const BU_CATEGORY_PRESETS: Record<string, CategoryPresets> = {
     credit: YEOBO_SPACE_CREDIT_CATEGORIES,
     debit: YEOBO_SPACE_DEBIT_CATEGORIES,
     branches: YEOBO_SPACE_BRANCHES,
+  },
+  // Yeobo Booth: rekening Bank Jago-nya di-treat persis seperti Bank
+  // Jago Haengbocake — vokabuler kategori + branch list sama. Dibuat
+  // EKSPLISIT (bukan ngandelin fallback default) supaya kalau default
+  // berubah, Yeobo Booth tetap kunci ke kategori Haengbocake. Parsing
+  // sudah identik otomatis (parser registry keyed by bank, bukan BU).
+  // Auto-categorization rules SENGAJA tidak dibuat — itu per-rekening,
+  // jadi rekening Yeobo Booth mulai bersih tanpa rule (sesuai diminta).
+  "Yeobo Booth": {
+    credit: HAENGBOCAKE_CREDIT_CATEGORIES,
+    debit: HAENGBOCAKE_DEBIT_CATEGORIES,
+    branches: HAENGBOCAKE_BRANCHES,
   },
 };
 
