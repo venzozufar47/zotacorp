@@ -113,15 +113,136 @@ function matchLoanDebtsFromCashflow(
   return { total, note, matches: matches.map((m) => m.raw) };
 }
 
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * For a shared weekday `dow`, the first calendar date on/after `anchor` that
+ * falls on that weekday — the occurrence the "primary" member takes (occurrence
+ * #1). Every later occurrence is exactly N weeks after this reference.
+ */
+function firstOccurrenceOnOrAfter(anchor: Date, dow: number): Date {
+  const offset = (dow - anchor.getDay() + 7) % 7;
+  const ref = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  ref.setDate(ref.getDate() + offset);
+  return ref;
+}
+
+/**
+ * Does `date` belong to the PRIMARY member for a shared weekday whose reference
+ * (occurrence #1) is `ref`? Occurrences alternate every week: #1 (idx 0) →
+ * primary, #2 → partner, … Measured from the fixed `ref`, so the rotation flows
+ * continuously across month boundaries (giliran kontinu, tidak reset per bulan).
+ */
+function isPrimaryOccurrence(date: Date, ref: Date): boolean {
+  const idx = Math.round((date.getTime() - ref.getTime()) / WEEK_MS);
+  return (((idx % 2) + 2) % 2) === 0;
+}
+
+/** Pairing context for the "paired_alternating" mode (see resolveExpectedWorkDays). */
+type PairInfo = {
+  partnerWeekdays: number[];
+  primary: boolean;
+  anchor: string;
+} | null;
+
+/**
+ * Build PairInfo from a member's settings + its partner's settings. Returns
+ * null when the row isn't a configured pair (so callers fall back to a plain
+ * weekly pattern). Only the partner's weekdays are needed downstream.
+ */
+function buildPairInfo(
+  settings: PayslipSettings,
+  partner: Pick<PayslipSettings, "expected_weekdays"> | null | undefined,
+  month: number,
+  year: number
+): PairInfo {
+  if (settings.expected_days_mode !== "paired_alternating") return null;
+  if (!settings.expected_pair_user_id || !partner) return null;
+  return {
+    partnerWeekdays: partner.expected_weekdays ?? [],
+    primary: settings.expected_pair_primary ?? false,
+    anchor:
+      settings.expected_pair_anchor ??
+      `${year}-${String(month).padStart(2, "0")}-01`,
+  };
+}
+
+/**
+ * Expected work days for ONE member of a paired_alternating couple, in
+ * (month, year):
+ * - Exclusive weekdays (mine but not the partner's) always count.
+ * - Shared weekdays alternate weekly: occurrence #1 (the first on/after the
+ *   anchor) goes to the PRIMARY member, #2 to the partner, #3 to primary, …
+ *   The partner takes the complement, so every shared occurrence is covered
+ *   exactly once — never double-booked, never lost.
+ *
+ * Occurrence index is measured per shared weekday from a fixed reference derived
+ * from `anchor`, so the rotation is continuous across months (the first shared
+ * day of a new month is NOT forced back to the primary). Each shared weekday
+ * starts its own count, so multiple shared days each begin with the primary.
+ */
+function countPairedDaysInMonth(
+  myWeekdays: number[],
+  partnerWeekdays: number[],
+  primary: boolean,
+  anchorIso: string,
+  month: number,
+  year: number
+): number {
+  const mine = new Set(myWeekdays);
+  if (mine.size === 0) return 0;
+  const partner = new Set(partnerWeekdays);
+  const anchorDate = anchorIso
+    ? new Date(`${anchorIso}T00:00:00`)
+    : new Date(year, month - 1, 1);
+  // Per-shared-weekday reference for occurrence #1 (taken by the primary member).
+  const refByDow = new Map<number, Date>();
+  for (const dow of mine) {
+    if (partner.has(dow)) refByDow.set(dow, firstOccurrenceOnOrAfter(anchorDate, dow));
+  }
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month - 1, d);
+    const dow = date.getDay();
+    if (!mine.has(dow)) continue;
+    const ref = refByDow.get(dow);
+    if (ref) {
+      // Shared day: I take it iff the occurrence's owner matches me.
+      const ownerIsPrimary = isPrimaryOccurrence(date, ref);
+      if (ownerIsPrimary === primary) count++;
+    } else {
+      count++; // Exclusive day — always mine.
+    }
+  }
+  return count;
+}
+
 function resolveExpectedWorkDays(
   settings: PayslipSettings,
   month: number,
-  year: number
+  year: number,
+  pair?: PairInfo
 ): number {
   const mode = settings.expected_days_mode ?? "manual";
   if (mode === "none") return 0;
   if (mode === "weekly_pattern") {
     return countWeekdaysInMonth(month, year, settings.expected_weekdays ?? []);
+  }
+  if (mode === "paired_alternating") {
+    const myWeekdays = settings.expected_weekdays ?? [];
+    // Partner unconfigured → degrade gracefully to a plain weekly pattern.
+    if (!pair || pair.partnerWeekdays.length === 0) {
+      return countWeekdaysInMonth(month, year, myWeekdays);
+    }
+    return countPairedDaysInMonth(
+      myWeekdays,
+      pair.partnerWeekdays,
+      pair.primary,
+      pair.anchor,
+      month,
+      year
+    );
   }
   return settings.expected_work_days;
 }
@@ -500,6 +621,8 @@ type CalcInputs = {
     "target" | "realization" | "weight_pct"
   >[];
   cashflowMonth: CashflowMonthRow[];
+  // Pairing context for expected_days_mode === "paired_alternating".
+  pair?: PairInfo;
 };
 
 type CalcOutput = {
@@ -542,6 +665,9 @@ function computeInputsSignature(inputs: CalcInputs): string {
       ed: s.expected_work_days,
       edm: s.expected_days_mode,
       ewd: s.expected_weekdays,
+      pr: inputs.pair
+        ? [inputs.pair.partnerWeekdays, inputs.pair.primary, inputs.pair.anchor]
+        : null,
       om: s.overtime_mode,
       ofh: s.ot_first_hour_rate,
       onh: s.ot_next_hour_rate,
@@ -623,7 +749,7 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
   const includesDeliverables = basis === "deliverables" || basis === "both";
   const baseSalary = Number(settings.monthly_fixed_amount);
 
-  const resolvedExpected = resolveExpectedWorkDays(settings, month, year);
+  const resolvedExpected = resolveExpectedWorkDays(settings, month, year, inputs.pair);
   const effectiveSettings: PayslipSettings = {
     ...settings,
     expected_work_days: resolvedExpected,
@@ -904,6 +1030,7 @@ export async function bulkCalculatePayslips(
       errorCount: 1,
     };
   const settingsList = (finalizedSettings ?? []) as PayslipSettings[];
+  const settingsByUser = new Map(settingsList.map((s) => [s.user_id, s]));
   const allCandidateIds = settingsList.map((s) => s.user_id);
   if (allCandidateIds.length === 0) {
     return {
@@ -1099,6 +1226,14 @@ export async function bulkCalculatePayslips(
       existing,
       deliverables,
       cashflowMonth,
+      pair: buildPairInfo(
+        settings,
+        settings.expected_pair_user_id
+          ? settingsByUser.get(settings.expected_pair_user_id)
+          : null,
+        month,
+        year
+      ),
     };
     const sig = computeInputsSignature(inputs);
     if (
@@ -1278,6 +1413,21 @@ export async function calculatePayslip(
   const settings = settingsRes.data as PayslipSettings | null;
   if (!settings) return { error: "Payslip settings not found for this employee." };
   if (!settings.is_finalized) return { error: "Payslip settings must be finalized before calculating." };
+
+  // Paired-alternating mode needs the partner's weekday pattern to know which
+  // days are shared. Fetched only when this employee is actually paired.
+  let pair: PairInfo = null;
+  if (
+    settings.expected_days_mode === "paired_alternating" &&
+    settings.expected_pair_user_id
+  ) {
+    const { data: partnerSettings } = await supabase
+      .from("payslip_settings")
+      .select("expected_weekdays")
+      .eq("user_id", settings.expected_pair_user_id)
+      .maybeSingle();
+    pair = buildPairInfo(settings, partnerSettings, month, year);
+  }
   const existing = existingRes.data;
   if (existing && existing.status === "finalized") {
     return { error: "This payslip is already finalized. Reopen it first to recalculate." };
@@ -1349,6 +1499,7 @@ export async function calculatePayslip(
     existing,
     deliverables,
     cashflowMonth: (cashflowRes.data ?? []) as CashflowMonthRow[],
+    pair,
   };
 
   // Skip-if-clean: if signature matches existing, no work needed.

@@ -32,7 +32,7 @@ import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 
 type Basis = "presence" | "deliverables" | "both" | "fixed";
-type ExpectedDaysMode = "manual" | "weekly_pattern" | "none";
+type ExpectedDaysMode = "manual" | "weekly_pattern" | "none" | "paired_alternating";
 type OvertimeMode = "hourly_tiered" | "fixed_per_day" | "half_daily";
 type LatePenaltyMode = "per_minutes" | "per_day" | "none";
 
@@ -142,6 +142,88 @@ interface Props {
 
 const WEEKDAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
+const WEEK_MS_CLIENT = 7 * 24 * 60 * 60 * 1000;
+
+/** First date on/after `anchor` on weekday `dow` — mirrors the server helper. */
+function firstOccurrenceOnOrAfterClient(anchor: Date, dow: number): Date {
+  const offset = (dow - anchor.getDay() + 7) % 7;
+  const ref = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  ref.setDate(ref.getDate() + offset);
+  return ref;
+}
+
+/** True when `date` is a primary-owned occurrence relative to reference `ref`. */
+function isPrimaryOccurrenceClient(date: Date, ref: Date): boolean {
+  const idx = Math.round((date.getTime() - ref.getTime()) / WEEK_MS_CLIENT);
+  return (((idx % 2) + 2) % 2) === 0;
+}
+
+/** First word of a name, for compact preview chips. */
+function shortName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+/**
+ * Client-side mirror of the server's paired_alternating computation, used to
+ * preview the rotation + the auto-computed day count for the selected month.
+ * Returns this member's total expected days and, per shared weekday, the
+ * ordered sequence of who works each occurrence.
+ */
+function buildPairedPreview(opts: {
+  month: number;
+  year: number;
+  myWeekdays: number[];
+  partnerWeekdays: number[];
+  primary: boolean;
+  anchorIso: string;
+  myName: string;
+  partnerName: string;
+}): {
+  myCount: number;
+  lines: { label: string; seq: { name: string; mine: boolean }[] }[];
+} {
+  const { month, year, myWeekdays, partnerWeekdays, primary, anchorIso } = opts;
+  const mine = new Set(myWeekdays);
+  const partner = new Set(partnerWeekdays);
+  const shared = [...mine].filter((d) => partner.has(d)).sort((a, b) => a - b);
+  const anchorDate = anchorIso
+    ? new Date(`${anchorIso}T00:00:00`)
+    : new Date(year, month - 1, 1);
+  const refByDow = new Map<number, Date>();
+  for (const dow of shared) {
+    refByDow.set(dow, firstOccurrenceOnOrAfterClient(anchorDate, dow));
+  }
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const seqByDow = new Map<number, { name: string; mine: boolean }[]>();
+  let myCount = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month - 1, d);
+    const dow = date.getDay();
+    if (!mine.has(dow)) continue;
+    const ref = refByDow.get(dow);
+    if (ref) {
+      const ownerIsPrimary = isPrimaryOccurrenceClient(date, ref);
+      const isMine = ownerIsPrimary === primary;
+      if (isMine) myCount++;
+      const arr = seqByDow.get(dow) ?? [];
+      arr.push({
+        name: isMine ? shortName(opts.myName) : shortName(opts.partnerName),
+        mine: isMine,
+      });
+      seqByDow.set(dow, arr);
+    } else {
+      myCount++;
+    }
+  }
+  return {
+    myCount,
+    lines: shared.map((dow) => ({
+      label: WEEKDAY_LABELS[dow],
+      seq: seqByDow.get(dow) ?? [],
+    })),
+  };
+}
+
 /** Warna pill per basis — supaya admin scan tabel lebih cepat. */
 function basisSelectClass(basis: Basis): string {
   switch (basis) {
@@ -188,7 +270,7 @@ export function PayslipVariablesEditor({
       />
 
       {scope === "settings" ? (
-        <SettingsScope rows={rows} />
+        <SettingsScope rows={rows} month={month} year={year} />
       ) : (
         <MonthlyScope rows={rows} month={month} year={year} />
       )}
@@ -272,11 +354,19 @@ function ScopeAndPeriod({
 //  Settings scope
 // ─────────────────────────────────────────────────────────────────────
 
-function SettingsScope({ rows }: { rows: EmployeeRow[] }) {
+function SettingsScope({
+  rows,
+  month,
+  year,
+}: {
+  rows: EmployeeRow[];
+  month: number;
+  year: number;
+}) {
   return (
     <div className="space-y-4">
       <CompensationBasisSection rows={rows} />
-      <ExpectedDaysSection rows={rows} />
+      <ExpectedDaysSection rows={rows} month={month} year={year} />
       <OvertimePenaltySection rows={rows} />
       <ExtraWorkSection rows={rows} />
     </div>
@@ -619,11 +709,21 @@ function ExtraWorkSection({ rows }: { rows: EmployeeRow[] }) {
 }
 
 
-function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
+function ExpectedDaysSection({
+  rows,
+  month,
+  year,
+}: {
+  rows: EmployeeRow[];
+  month: number;
+  year: number;
+}) {
   type Draft = {
     mode?: ExpectedDaysMode;
     days?: string;
     weekdays?: number[];
+    partnerUserId?: string | null;
+    primary?: boolean;
   };
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [pending, startTransition] = useTransition();
@@ -635,6 +735,11 @@ function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
       mode: (d.mode ?? r.settings?.expected_days_mode ?? "manual") as ExpectedDaysMode,
       days: d.days ?? String(r.settings?.expected_work_days ?? 22),
       weekdays: d.weekdays ?? r.settings?.expected_weekdays ?? [],
+      partnerUserId:
+        d.partnerUserId !== undefined
+          ? d.partnerUserId
+          : r.settings?.expected_pair_user_id ?? null,
+      primary: d.primary ?? r.settings?.expected_pair_primary ?? false,
     };
   }
 
@@ -654,24 +759,88 @@ function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
           eff.weekdays.some((d) => !origWd.includes(d))
         )
           return true;
+        if (eff.partnerUserId !== (orig?.expected_pair_user_id ?? null))
+          return true;
+        if (eff.primary !== (orig?.expected_pair_primary ?? false)) return true;
         return false;
       }),
     [drafts, rows]
   );
 
   function save() {
-    const updates = dirtyUserIds.map((uid) => {
+    // Pairing writes BOTH members; collect explicit edits first, then fill in
+    // the partner side without clobbering an explicit edit on that partner.
+    const byUser = new Map<string, Partial<PayslipSettings>>();
+    const explicit = new Set<string>();
+    const derived: { userId: string; fields: Partial<PayslipSettings> }[] = [];
+    const anchorDefault = `${year}-${String(month).padStart(2, "0")}-01`;
+
+    for (const uid of dirtyUserIds) {
       const r = rows.find((x) => x.userId === uid)!;
       const eff = effective(r);
-      return {
-        userId: uid,
-        fields: {
+      explicit.add(uid);
+
+      if (eff.mode === "paired_alternating") {
+        const anchor = r.settings?.expected_pair_anchor ?? anchorDefault;
+        byUser.set(uid, {
+          expected_days_mode: "paired_alternating",
+          expected_weekdays: [...eff.weekdays].sort(),
+          expected_pair_user_id: eff.partnerUserId ?? null,
+          expected_pair_primary: eff.primary,
+          expected_pair_anchor: anchor,
+        });
+        if (eff.partnerUserId) {
+          const pr = rows.find((x) => x.userId === eff.partnerUserId);
+          const pWeekdays = pr ? effective(pr).weekdays : [];
+          derived.push({
+            userId: eff.partnerUserId,
+            fields: {
+              expected_days_mode: "paired_alternating",
+              expected_weekdays: [...pWeekdays].sort(),
+              expected_pair_user_id: uid,
+              expected_pair_primary: !eff.primary,
+              expected_pair_anchor: anchor,
+            },
+          });
+        }
+      } else {
+        const fields: Partial<PayslipSettings> = {
           expected_days_mode: eff.mode,
           expected_work_days: Number(eff.days),
           expected_weekdays: [...eff.weekdays].sort(),
-        } as Partial<PayslipSettings>,
-      };
-    });
+        };
+        // Switching away from a pairing: clear pair links on both sides.
+        if (r.settings?.expected_days_mode === "paired_alternating") {
+          fields.expected_pair_user_id = null;
+          fields.expected_pair_primary = false;
+          const oldPartner = r.settings?.expected_pair_user_id;
+          if (oldPartner) {
+            derived.push({
+              userId: oldPartner,
+              fields: {
+                expected_pair_user_id: null,
+                expected_pair_primary: false,
+              },
+            });
+          }
+        }
+        byUser.set(uid, fields);
+      }
+    }
+
+    // Merge derived partner writes: explicit edits win on overlapping keys.
+    for (const { userId, fields } of derived) {
+      const cur = byUser.get(userId) ?? {};
+      byUser.set(
+        userId,
+        explicit.has(userId) ? { ...fields, ...cur } : { ...cur, ...fields }
+      );
+    }
+
+    const updates = [...byUser.entries()].map(([userId, fields]) => ({
+      userId,
+      fields,
+    }));
     if (updates.length === 0) return;
     startTransition(async () => {
       const res = await bulkUpsertPayslipSettings(updates);
@@ -732,6 +901,31 @@ function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
                 );
               }
               const eff = effective(r);
+              const isPaired = eff.mode === "paired_alternating";
+              const partnerRow = eff.partnerUserId
+                ? rows.find((x) => x.userId === eff.partnerUserId)
+                : null;
+              const partnerWeekdays = partnerRow
+                ? effective(partnerRow).weekdays
+                : [];
+              const sharedSet = new Set(
+                eff.weekdays.filter((d) => partnerWeekdays.includes(d))
+              );
+              const preview =
+                isPaired && partnerRow
+                  ? buildPairedPreview({
+                      month,
+                      year,
+                      myWeekdays: eff.weekdays,
+                      partnerWeekdays,
+                      primary: eff.primary,
+                      anchorIso:
+                        r.settings?.expected_pair_anchor ??
+                        `${year}-${String(month).padStart(2, "0")}-01`,
+                      myName: r.fullName,
+                      partnerName: partnerRow.fullName,
+                    })
+                  : null;
               return (
                 <RowShell key={r.userId} locked={false}>
                   <NameCell row={r} />
@@ -751,6 +945,9 @@ function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
                     >
                       <option value="manual">Manual</option>
                       <option value="weekly_pattern">Weekly pattern</option>
+                      <option value="paired_alternating">
+                        Selang-seling berpasangan
+                      </option>
                       <option value="none">Gaji tetap</option>
                     </select>
                   </td>
@@ -772,6 +969,13 @@ function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
                         }
                         className="w-full h-8 px-2 rounded-md border border-border bg-background text-xs tabular-nums text-right"
                       />
+                    ) : isPaired && preview ? (
+                      <div className="text-right tabular-nums">
+                        <p className="text-[11px] font-semibold text-primary">
+                          {preview.myCount}
+                        </p>
+                        <p className="text-[9px] text-muted-foreground">auto</p>
+                      </div>
                     ) : (
                       <MutedCellText />
                     )}
@@ -799,6 +1003,112 @@ function ExpectedDaysSection({ rows }: { rows: EmployeeRow[] }) {
                             </button>
                           );
                         })}
+                      </div>
+                    ) : isPaired ? (
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={eff.partnerUserId ?? ""}
+                            onChange={(e) =>
+                              setDrafts((d) => ({
+                                ...d,
+                                [r.userId]: {
+                                  ...d[r.userId],
+                                  partnerUserId: e.target.value || null,
+                                },
+                              }))
+                            }
+                            className="h-7 rounded-md border border-border bg-background px-2 text-[11px] max-w-[12rem]"
+                          >
+                            <option value="">— pilih partner —</option>
+                            {rows
+                              .filter((x) => x.userId !== r.userId)
+                              .map((x) => (
+                                <option key={x.userId} value={x.userId}>
+                                  {x.fullName}
+                                </option>
+                              ))}
+                          </select>
+                          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={eff.primary}
+                              onChange={(e) =>
+                                setDrafts((d) => ({
+                                  ...d,
+                                  [r.userId]: {
+                                    ...d[r.userId],
+                                    primary: e.target.checked,
+                                  },
+                                }))
+                              }
+                              className="h-3 w-3 accent-primary"
+                            />
+                            masuk duluan
+                          </label>
+                        </div>
+                        <div className="flex gap-1">
+                          {WEEKDAY_LABELS.map((lbl, idx) => {
+                            const active = eff.weekdays.includes(idx);
+                            const shared = sharedSet.has(idx);
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() =>
+                                  toggleWeekday(r.userId, idx, eff.weekdays)
+                                }
+                                className={
+                                  "h-7 w-9 rounded-md border text-[10px] font-semibold transition " +
+                                  (shared
+                                    ? "border-amber-400 bg-amber-100 text-amber-900"
+                                    : active
+                                      ? "border-primary bg-primary/15 text-primary"
+                                      : "border-border text-muted-foreground hover:text-foreground")
+                                }
+                                title={shared ? "Hari irisan (selang-seling)" : undefined}
+                              >
+                                {lbl}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {preview && preview.lines.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {preview.lines.map((ln) => (
+                              <p
+                                key={ln.label}
+                                className="text-[10px] text-muted-foreground"
+                              >
+                                <span className="font-semibold text-amber-700">
+                                  {ln.label}:
+                                </span>{" "}
+                                {ln.seq.map((s, i) => (
+                                  <span key={i}>
+                                    <span
+                                      className={
+                                        s.mine
+                                          ? "font-semibold text-foreground"
+                                          : ""
+                                      }
+                                    >
+                                      {s.name}
+                                    </span>
+                                    {i < ln.seq.length - 1 ? " · " : ""}
+                                  </span>
+                                ))}
+                              </p>
+                            ))}
+                          </div>
+                        ) : isPaired && !partnerRow ? (
+                          <p className="text-[10px] text-muted-foreground italic">
+                            Pilih partner untuk menghitung otomatis.
+                          </p>
+                        ) : preview && preview.lines.length === 0 ? (
+                          <p className="text-[10px] text-muted-foreground italic">
+                            Tidak ada hari irisan — semua hari dihitung penuh.
+                          </p>
+                        ) : null}
                       </div>
                     ) : (
                       <MutedCellText />

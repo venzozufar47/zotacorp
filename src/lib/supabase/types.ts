@@ -2126,6 +2126,9 @@ export type Database = {
           created_at: string | null
           deliverables_weight_pct: number
           expected_days_mode: string
+          expected_pair_anchor: string | null
+          expected_pair_primary: boolean
+          expected_pair_user_id: string | null
           expected_weekdays: number[]
           expected_work_days: number
           extra_work_rate_idr: number
@@ -2150,6 +2153,9 @@ export type Database = {
           created_at?: string | null
           deliverables_weight_pct?: number
           expected_days_mode?: string
+          expected_pair_anchor?: string | null
+          expected_pair_primary?: boolean
+          expected_pair_user_id?: string | null
           expected_weekdays?: number[]
           expected_work_days?: number
           extra_work_rate_idr?: number
@@ -2174,6 +2180,9 @@ export type Database = {
           created_at?: string | null
           deliverables_weight_pct?: number
           expected_days_mode?: string
+          expected_pair_anchor?: string | null
+          expected_pair_primary?: boolean
+          expected_pair_user_id?: string | null
           expected_weekdays?: number[]
           expected_work_days?: number
           extra_work_rate_idr?: number
