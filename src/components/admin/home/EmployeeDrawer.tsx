@@ -12,6 +12,7 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  Paperclip,
 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import {
@@ -422,6 +423,29 @@ function ApprovalCard({
       ? `Telat ${formatMinutes(item.lateMinutes)}`
       : `OT ${formatMinutes(item.minutes)}`;
 
+  // Late-proof photo lives in a private bucket; fetch a short-lived
+  // signed URL on demand via the existing admin-gated proof route and
+  // open it in a new tab. `item.id` for late_proof is the log id.
+  const [loadingProof, setLoadingProof] = useState(false);
+  async function viewProof() {
+    if (item.kind !== "late_proof") return;
+    setLoadingProof(true);
+    try {
+      const res = await fetch(`/api/attendance/proof?logId=${item.id}`);
+      const body = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+      if (!res.ok || !body.url) {
+        toast.error(body.error ?? "Gagal memuat foto bukti.");
+        return;
+      }
+      window.open(body.url, "_blank", "noopener,noreferrer");
+    } finally {
+      setLoadingProof(false);
+    }
+  }
+
   return (
     <li className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
       <div className="flex items-center gap-2">
@@ -446,7 +470,19 @@ function ApprovalCard({
         </p>
       )}
       {item.kind === "late_proof" && item.hasProof && (
-        <p className="text-[10.5px] text-muted-foreground">📷 Ada foto bukti</p>
+        <button
+          type="button"
+          onClick={viewProof}
+          disabled={loadingProof}
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
+        >
+          {loadingProof ? (
+            <Loader2 size={11} className="animate-spin" />
+          ) : (
+            <Paperclip size={11} />
+          )}
+          {loadingProof ? "Memuat…" : "Lihat foto bukti"}
+        </button>
       )}
       <div className="flex items-center gap-2 pt-0.5">
         <button
