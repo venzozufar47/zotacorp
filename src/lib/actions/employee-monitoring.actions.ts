@@ -190,6 +190,7 @@ export async function listEmployeeMonitoring(): Promise<{
       "id, full_name, nickname, whatsapp_number, role, date_of_birth, first_day_of_work, birthday_last_greeted, anniversary_last_greeted, streak_personal_best, streak_last_milestone"
     )
     .neq("role", "admin")
+    .eq("is_active", true)
     .order("full_name");
   if (profErr) return { data: [], error: profErr.message };
 
@@ -454,6 +455,7 @@ async function findTodaysBirthdayCelebrants(): Promise<
     .from("profiles")
     .select("id, full_name, nickname, date_of_birth")
     .neq("role", "admin")
+    .eq("is_active", true)
     .eq("is_probation", false)
     .not("date_of_birth", "is", null);
 
@@ -566,7 +568,8 @@ export async function broadcastBirthdayReminder(): Promise<BroadcastResult> {
   const { data: recipients } = await admin
     .from("profiles")
     .select("id, full_name, nickname, whatsapp_number")
-    .neq("role", "admin");
+    .neq("role", "admin")
+    .eq("is_active", true);
 
   // Karyawan yang sudah ngucapin di dashboard untuk SALAH SATU
   // celebrant hari ini → di-skip dari broadcast. Cek event_type

@@ -136,6 +136,9 @@ export function UsersTable({
   const [resignPending, startResignTransition] = useTransition();
   const [sortKey, setSortKey] = useState<UserSortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  // Resigned (is_active=false) hidden by default so the roster reads like
+  // they were removed; toggle reveals them for reactivation.
+  const [showResigned, setShowResigned] = useState(false);
 
   function toggleSort(key: UserSortKey) {
     if (sortKey === key) {
@@ -160,9 +163,11 @@ export function UsersTable({
     position: (r) => r.job_role,
   };
 
+  const resignedCount = rows.filter((r) => !r.is_active).length;
+  const baseRows = showResigned ? rows : rows.filter((r) => r.is_active);
   const displayRows = sortKey
-    ? sortRows(rows, sortAccessors[sortKey], sortDir)
-    : rows;
+    ? sortRows(baseRows, sortAccessors[sortKey], sortDir)
+    : baseRows;
 
   if (rows.length === 0) {
     return (
@@ -206,6 +211,25 @@ export function UsersTable({
 
   return (
     <>
+      {resignedCount > 0 && (
+        <div className="flex items-center justify-end mb-2">
+          <button
+            type="button"
+            onClick={() => setShowResigned((v) => !v)}
+            className="inline-flex items-center gap-1.5 h-8 rounded-md border border-border bg-background px-3 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            {showResigned ? (
+              <>
+                <UserCheck size={13} /> Sembunyikan resigned
+              </>
+            ) : (
+              <>
+                <UserX size={13} /> Tampilkan resigned ({resignedCount})
+              </>
+            )}
+          </button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>

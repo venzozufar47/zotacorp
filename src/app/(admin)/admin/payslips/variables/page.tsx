@@ -52,6 +52,7 @@ export default async function PayslipVariablesPage({
     .from("profiles")
     .select("id, full_name, email, business_unit")
     .eq("payslip_excluded", false)
+    .eq("is_active", true)
     .neq("role", "investor")
     .order("business_unit", { ascending: true, nullsFirst: false })
     .order("full_name");
