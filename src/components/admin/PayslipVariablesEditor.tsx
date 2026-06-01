@@ -2040,6 +2040,8 @@ function ExpandedDetail({
               totalOvertimePay={Number(payslip.overtime_pay)}
               totalLatePenalty={Number(payslip.late_penalty)}
               totalExtraWorkPay={Number(payslip.extra_work_pay ?? 0)}
+              cakeBonus={Number(payslip.cake_bonus ?? 0)}
+              cakeBonusNote={payslip.cake_bonus_note}
             />
           ) : (
             <p className="text-xs text-muted-foreground italic">

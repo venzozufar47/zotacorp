@@ -104,6 +104,53 @@ export async function getDecoratorBonuses(
   };
 }
 
+/** Rp 12.000 — grouped thousands, no decimals (server-side safe). */
+function rp(n: number): string {
+  return "Rp" + Math.round(n).toLocaleString("id-ID");
+}
+
+export interface CakeBonusDetail {
+  amount: number;
+  /** Human-readable one-liner explaining how `amount` was derived, shown
+   *  in the payslip breakdown panel. */
+  note: string;
+}
+
+/**
+ * Computed cake bonus per recipient position for one month, WITH a
+ * descriptive note per role (diameter buckets for Semarang, omset×8%
+ * for Pare, rekening-koran source for the admin). Computed ONCE per
+ * payslip-generation run, then looked up per user by `profiles.position`.
+ */
+export async function getCakeBonusDetailByPosition(
+  month: number,
+  year: number
+): Promise<Record<string, CakeBonusDetail>> {
+  const [admin, dec] = await Promise.all([
+    getCustomCakeBonusMonth(month, year),
+    getDecoratorBonuses(month, year),
+  ]);
+  return {
+    [CAKE_BONUS_POSITIONS.adminHaengbocake]: {
+      amount: admin.totalBonus,
+      note: "Dihitung dari mutasi rekening koran (custom cake harian).",
+    },
+    [CAKE_BONUS_POSITIONS.decoratorSemarang]: {
+      amount: dec.semarang.bonus,
+      note:
+        `${dec.semarang.geCount} cake ≥${SEMARANG_DIAMETER_THRESHOLD_CM}cm × ` +
+        `${rp(SEMARANG_BONUS_GE_THRESHOLD)} + ${dec.semarang.ltCount} cake ` +
+        `<${SEMARANG_DIAMETER_THRESHOLD_CM}cm × ${rp(SEMARANG_BONUS_LT_THRESHOLD)}`,
+    },
+    [CAKE_BONUS_POSITIONS.decoratorPare]: {
+      amount: dec.pare.bonus,
+      note:
+        `${Math.round(PARE_OMSET_BONUS_RATE * 100)}% × omset Pare ` +
+        `${rp(dec.pare.omset)} (${dec.pare.cakeCount} cake)`,
+    },
+  };
+}
+
 /**
  * Computed cake bonus per recipient position for one month. Computed
  * ONCE per payslip-generation run, then looked up per user by their
@@ -113,13 +160,8 @@ export async function getCakeBonusesByPosition(
   month: number,
   year: number
 ): Promise<Record<string, number>> {
-  const [admin, dec] = await Promise.all([
-    getCustomCakeBonusMonth(month, year),
-    getDecoratorBonuses(month, year),
-  ]);
-  return {
-    [CAKE_BONUS_POSITIONS.adminHaengbocake]: admin.totalBonus,
-    [CAKE_BONUS_POSITIONS.decoratorSemarang]: dec.semarang.bonus,
-    [CAKE_BONUS_POSITIONS.decoratorPare]: dec.pare.bonus,
-  };
+  const detail = await getCakeBonusDetailByPosition(month, year);
+  return Object.fromEntries(
+    Object.entries(detail).map(([pos, d]) => [pos, d.amount])
+  );
 }

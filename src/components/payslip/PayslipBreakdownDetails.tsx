@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, AlertTriangle, ShoppingBag, Sparkles } from "lucide-react";
+import { Clock, AlertTriangle, ShoppingBag, Sparkles, Cake } from "lucide-react";
 import type { PayslipBreakdown } from "@/lib/supabase/types";
 import { formatRp as formatIDR } from "@/lib/cashflow/format";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -13,6 +13,11 @@ interface Props {
   /** Aggregate extra-work pay; rendered only when the breakdown
    *  carries any extra-work entries. */
   totalExtraWorkPay?: number;
+  /** Auto cake bonus (Tasya/Intan/Zahra). Rendered as its own section
+   *  only when > 0. */
+  cakeBonus?: number;
+  /** One-line explanation of how the cake bonus was derived. */
+  cakeBonusNote?: string | null;
 }
 
 function formatMinutes(mins: number, hLabel: string, mLabel: string): string {
@@ -45,6 +50,8 @@ export function PayslipBreakdownDetails({
   totalOvertimePay,
   totalLatePenalty,
   totalExtraWorkPay = 0,
+  cakeBonus = 0,
+  cakeBonusNote = null,
 }: Props) {
   const { t, lang } = useTranslation();
   const bt = t.payslipBreakdown;
@@ -201,6 +208,29 @@ export function PayslipBreakdownDetails({
               </span>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* Cake-bonus section — only for the 3 cake roles (Tasya / Intan /
+          Zahra). Single line: the auto-computed amount + a note explaining
+          the derivation (diameter buckets, omset×8%, or rekening koran). */}
+      {cakeBonus > 0 && (
+        <section className="rounded-2xl border-2 border-foreground bg-muted p-4 space-y-2">
+          <h4 className="flex items-center gap-2 font-display text-[0.6875rem] font-bold uppercase tracking-wider text-foreground">
+            <Cake size={14} />
+            Bonus Cake
+          </h4>
+          <div className="text-xs grid grid-cols-[1fr_auto] gap-x-3 items-center">
+            <span className="text-muted-foreground">Bonus cake bulan ini</span>
+            <span className="text-right tabular-nums text-quaternary font-bold">
+              + {formatIDR(cakeBonus)}
+            </span>
+          </div>
+          {cakeBonusNote && (
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              {cakeBonusNote}
+            </p>
+          )}
         </section>
       )}
 

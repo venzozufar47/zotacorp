@@ -12,7 +12,7 @@ import type {
   PayslipBreakdown,
   Database,
 } from "@/lib/supabase/types";
-import { getCakeBonusesByPosition } from "@/lib/cake-bonus";
+import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 
 // ---------------------------------------------------------------------------
@@ -698,6 +698,9 @@ type CalcInputs = {
    *  Computed once per run and injected — NOT read from the existing
    *  payslip, so it's always recomputed from cake_orders/cashflow. */
   cakeBonus?: number;
+  /** Human-readable note describing how `cakeBonus` was derived (diameter
+   *  buckets / omset×8% / rekening koran). Stored in `cake_bonus_note`. */
+  cakeBonusNote?: string;
 };
 
 type CalcOutput = {
@@ -934,6 +937,9 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
   // Auto cake bonus — recomputed from source every run (NOT read from
   // the existing payslip), so it stays in sync with cake_orders/cashflow.
   const cakeBonus = Math.round(Number(inputs.cakeBonus ?? 0));
+  // Only keep the explanatory note when there's actually a bonus.
+  const cakeBonusNote =
+    cakeBonus > 0 ? (inputs.cakeBonusNote ?? null) : null;
 
   const netTotal = computeNetTotal(
     basis,
@@ -973,6 +979,7 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
     extra_work_pay: extraWorkPay,
     ...manualEntries,
     cake_bonus: cakeBonus,
+    cake_bonus_note: cakeBonusNote,
     net_total: netTotal,
     status: "draft" as const,
     breakdown_json: breakdownToStore,
@@ -1281,7 +1288,7 @@ export async function bulkCalculatePayslips(
     isCakeBonusPosition(profileByUser.get(s.user_id)?.position)
   );
   const cakeBonusByPosition = anyCakeRole
-    ? await getCakeBonusesByPosition(month, year)
+    ? await getCakeBonusDetailByPosition(month, year)
     : {};
 
   const finalUpserts: Record<string, unknown>[] = [];
@@ -1333,7 +1340,8 @@ export async function bulkCalculatePayslips(
         month,
         year
       ),
-      cakeBonus: cakeBonusByPosition[profile.position ?? ""] ?? 0,
+      cakeBonus: cakeBonusByPosition[profile.position ?? ""]?.amount ?? 0,
+      cakeBonusNote: cakeBonusByPosition[profile.position ?? ""]?.note,
     };
     const sig = computeInputsSignature(inputs);
     if (
@@ -1600,11 +1608,14 @@ export async function calculatePayslip(
     deliverables,
     cashflowMonth: (cashflowRes.data ?? []) as CashflowMonthRow[],
     pair,
-    cakeBonus: isCakeBonusPosition(profileRes.data?.position)
-      ? (await getCakeBonusesByPosition(month, year))[
-          profileRes.data?.position ?? ""
-        ] ?? 0
-      : 0,
+    ...(isCakeBonusPosition(profileRes.data?.position)
+      ? await (async () => {
+          const detail = (await getCakeBonusDetailByPosition(month, year))[
+            profileRes.data?.position ?? ""
+          ];
+          return { cakeBonus: detail?.amount ?? 0, cakeBonusNote: detail?.note };
+        })()
+      : { cakeBonus: 0 }),
   };
 
   // Skip-if-clean: if signature matches existing, no work needed.
