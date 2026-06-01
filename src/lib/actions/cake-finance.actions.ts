@@ -20,6 +20,11 @@ import {
  *
  * Archived orders are still counted (archiving just closes a completed
  * order's books). Only CANCELLED orders are excluded.
+ *
+ * Delivery fee (ongkir) is stripped from ALL figures (netPaid, total
+ * value, outstanding) so the recap reflects pure product omset, not
+ * pass-through shipping. ongkir is baked into total_idr/paid_idr, so
+ * it's subtracted per order (floored at 0).
  */
 
 export interface CakeFinanceBranchSummary {
@@ -58,6 +63,7 @@ type RawOrder = {
   scheduled_at: string;
   total_idr: number | string;
   paid_idr: number | string;
+  delivery_fee_idr: number | string;
   payment_status: CakePaymentStatus;
   status: string;
 };
@@ -110,7 +116,7 @@ export async function getCakeFinanceRecapMonth(
     const { data, error } = await supabase
       .from("cake_orders" as never)
       .select(
-        "id, branch, customer_name, scheduled_at, total_idr, paid_idr, payment_status, status"
+        "id, branch, customer_name, scheduled_at, total_idr, paid_idr, delivery_fee_idr, payment_status, status"
       )
       .gte("scheduled_at", monthStart)
       .lt("scheduled_at", monthEnd)
@@ -139,8 +145,14 @@ export async function getCakeFinanceRecapMonth(
   const orderRows: CakeFinanceOrderRow[] = [];
   for (const o of orders) {
     const branch: CakeBranch = o.branch === "semarang" ? "semarang" : "pare";
-    const total = Number(o.total_idr) || 0;
-    const paid = Number(o.paid_idr) || 0;
+    const ongkir = Number(o.delivery_fee_idr) || 0;
+    // Strip delivery fee from every figure so the recap is pure product
+    // omset (kue + add-on − diskon). delivery_fee_idr is already baked
+    // into total_idr and paid_idr by the order math, so subtract it.
+    // netPaid: deduct the full ongkir, floored at 0 (a tiny DP that
+    // doesn't even cover ongkir yet contributes 0 product revenue).
+    const total = Math.max(0, (Number(o.total_idr) || 0) - ongkir);
+    const paid = Math.max(0, (Number(o.paid_idr) || 0) - ongkir);
     const summary = byBranch.get(branch)!;
     summary.orderCount += 1;
     summary.netPaid += paid;
