@@ -17,6 +17,9 @@ import {
  * the `paid_idr` snapshot column (kept in sync by the trigger on
  * `cake_order_payments` = Σ dp+pelunasan − Σ refund), so we never have
  * to join the payment ledger here.
+ *
+ * Archived orders are still counted (archiving just closes a completed
+ * order's books). Only CANCELLED orders are excluded.
  */
 
 export interface CakeFinanceBranchSummary {
@@ -96,6 +99,11 @@ export async function getCakeFinanceRecapMonth(
   // .range() until a partial page so busy months aren't truncated.
   // Stable secondary order by id keeps page boundaries from
   // dropping/duplicating rows.
+  //
+  // Archived orders ARE counted — archiving just closes the books on a
+  // completed order, the money was still received. Only CANCELLED
+  // orders are excluded: those are voided, and any forfeited DP isn't
+  // treated as recognized revenue here.
   const orders: RawOrder[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
@@ -106,6 +114,7 @@ export async function getCakeFinanceRecapMonth(
       )
       .gte("scheduled_at", monthStart)
       .lt("scheduled_at", monthEnd)
+      .neq("status", "cancelled")
       .order("scheduled_at")
       .order("id")
       .range(offset, offset + PAGE - 1);
