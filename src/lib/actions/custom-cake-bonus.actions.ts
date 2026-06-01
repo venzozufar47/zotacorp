@@ -166,20 +166,13 @@ export async function getCustomCakeBonusMonth(
       ? `${year + 1}-01-01`
       : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
-  // Single query — pull ALL transactions across the 4 Haengbocake
-  // accounts via JOIN to statements, then classify in-memory.
-  const { data } = await supabase
-    .from("cashflow_transactions")
-    .select(
-      "id, transaction_date, description, source_destination, notes, credit, custom_cake_included, statement_id, cashflow_statements!inner(bank_account_id)"
-    )
-    .gte("transaction_date", monthStart)
-    .lt("transaction_date", monthEnd)
-    .gt("credit", 0)
-    .in("cashflow_statements.bank_account_id", Object.values(BANK))
-    .order("transaction_date");
-
-  const rows = (data ?? []) as unknown as Array<{
+  // Pull ALL credit transactions across the 4 Haengbocake accounts via
+  // JOIN to statements, then classify in-memory. PostgREST (dan
+  // `db-max-rows`) nge-cap response ke 1000 row per request; sebulan
+  // ramai bisa >1400 row credit (Cash Pare sendiri ~80/hari), jadi
+  // tanpa paginasi `.range()` tanggal-tanggal akhir bulan ke-potong
+  // dan hilang dari tabel bonus. Loop sampai partial page.
+  type RawRow = {
     id: string;
     transaction_date: string;
     description: string;
@@ -189,7 +182,27 @@ export async function getCustomCakeBonusMonth(
     custom_cake_included: boolean | null;
     statement_id: string;
     cashflow_statements: { bank_account_id: string };
-  }>;
+  };
+  const rows: RawRow[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "id, transaction_date, description, source_destination, notes, credit, custom_cake_included, statement_id, cashflow_statements!inner(bank_account_id)"
+      )
+      .gte("transaction_date", monthStart)
+      .lt("transaction_date", monthEnd)
+      .gt("credit", 0)
+      .in("cashflow_statements.bank_account_id", Object.values(BANK))
+      .order("transaction_date")
+      .order("id")
+      .range(offset, offset + PAGE - 1);
+    if (error) break;
+    const batch = (data ?? []) as unknown as RawRow[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
 
   // Index bank_account_id → BankKey
   const idToKey = new Map<string, BankKey>();
