@@ -58,9 +58,18 @@ function autoIncludeRule(
       // SALES = custom cake by definition. Exclude:
       //   - Wholesale (Meidani) / mall outlet (Paragon) senders
       //   - Internal pocket movements (Bank Jago's "Pockets" feature)
-      //   - Internal transfer from Mandiri ("Pindah dana qris haengbo")
+      //   - Internal transfer from Mandiri (QRIS settlement moved over)
       if (src.includes("meidani") || src.includes("paragon")) return false;
-      if (desc.includes("pindah dana")) return false;
+      // Match bare "pindah" (not just "pindah dana") so typo'd notes like
+      // "Pindah dan qris haengbo" / "pindah dn" still get excluded — these
+      // are owner-internal QRIS-settlement transfers, never customer sales.
+      // Checked against notes + source too (not only the joined desc).
+      if (
+        desc.includes("pindah") ||
+        notes.includes("pindah") ||
+        src.includes("pindah")
+      )
+        return false;
       if (desc.includes("main pocket movement")) return false;
       if (desc.includes("pocket money")) return false;
       return true;
@@ -226,8 +235,14 @@ export async function getCustomCakeBonusMonth(
     }
     if (bankKey === "jago") {
       // Internal pocket / Mandiri-to-Jago movements are not sales.
+      // Bare "pindah" (matches typo'd "pindah dan qris") so these
+      // owner-internal QRIS-settlement transfers stay out of the bonus.
+      const jagoNotes = (r.notes ?? "").toLowerCase();
+      const jagoSrc = (r.source_destination ?? "").toLowerCase();
       if (
-        desc.includes("pindah dana") ||
+        desc.includes("pindah") ||
+        jagoNotes.includes("pindah") ||
+        jagoSrc.includes("pindah") ||
         desc.includes("main pocket movement") ||
         desc.includes("pocket money")
       ) {
