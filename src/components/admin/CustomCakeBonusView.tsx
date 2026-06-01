@@ -78,7 +78,7 @@ export function CustomCakeBonusView({
       <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard p-4 space-y-2">
         <div className="flex items-baseline justify-between flex-wrap gap-2">
           <div>
-            <h3 className="font-display text-base font-bold">Bonus Cake — Tasya Maynanda</h3>
+            <h3 className="font-display text-base font-bold">Bonus Cake — Admin Haengbocake</h3>
             <p className="text-xs text-muted-foreground">
               Berdasarkan transaksi custom cake harian (Haengbocake Semarang & Pare).
               <br />
@@ -94,12 +94,12 @@ export function CustomCakeBonusView({
             </p>
           </div>
         </div>
-        <div className="rounded-lg border border-amber-300 bg-amber-50/60 p-2 text-[11px] text-amber-900 flex items-start gap-1.5">
+        <div className="rounded-lg border border-[var(--teal-300,#9bd3df)] bg-accent p-2 text-[11px] text-[var(--teal-700)] flex items-start gap-1.5">
           <AlertCircle size={12} className="mt-0.5 shrink-0" />
           <span>
-            Viewer-only — angka ini perlu admin <strong>input manual</strong> ke{" "}
-            <em>monthly_bonus</em> di payslip Tasya. Klik tanggal untuk verifikasi
-            transaksi yang masuk hitungan.
+            Otomatis masuk ke <strong>cake_bonus</strong> di payslip pemegang
+            posisi <span className="font-mono">Admin Haengbocake</span> saat
+            generate. Klik tanggal untuk verifikasi transaksi yang masuk hitungan.
           </span>
         </div>
       </div>

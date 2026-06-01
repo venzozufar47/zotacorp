@@ -10,7 +10,13 @@ import { PayslipPaymentsTable, type PaymentRow } from "@/components/admin/Paysli
 import { PayslipTabsNav, type PayslipView } from "@/components/admin/PayslipTabsNav";
 import { PayslipViewPersist } from "@/components/admin/PayslipViewPersist";
 import { CustomCakeBonusView } from "@/components/admin/CustomCakeBonusView";
+import {
+  DecoratorBonusCards,
+  type DecoratorRecipient,
+} from "@/components/admin/DecoratorBonusCards";
 import { getCustomCakeBonusMonth } from "@/lib/actions/custom-cake-bonus.actions";
+import { getDecoratorBonuses } from "@/lib/cake-bonus";
+import { CAKE_BONUS_POSITIONS } from "@/lib/cake-bonus/positions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import type { PayslipSettings } from "@/lib/supabase/types";
 
@@ -234,14 +240,51 @@ async function CustomCakeBonusViewWrapper({
   year: number;
   monthLabel: string;
 }) {
-  const data = await getCustomCakeBonusMonth(month, year);
+  const supabase = await createClient();
+  const [data, decorator, recipientsRes] = await Promise.all([
+    getCustomCakeBonusMonth(month, year),
+    getDecoratorBonuses(month, year),
+    supabase
+      .from("profiles")
+      .select("full_name, position")
+      .in("position", [
+        CAKE_BONUS_POSITIONS.decoratorSemarang,
+        CAKE_BONUS_POSITIONS.decoratorPare,
+      ])
+      .eq("is_active", true),
+  ]);
+
+  const holders = (recipientsRes.data ?? []) as Array<{
+    full_name: string | null;
+    position: string | null;
+  }>;
+  const recipientFor = (position: string): DecoratorRecipient => {
+    const matches = holders.filter((h) => h.position === position);
+    return {
+      name: matches[0]?.full_name?.trim() ?? null,
+      count: matches.length,
+    };
+  };
+
   return (
-    <CustomCakeBonusView
-      month={month}
-      year={year}
-      monthLabel={monthLabel}
-      days={data.days}
-      totalBonus={data.totalBonus}
-    />
+    <div className="space-y-4">
+      <DecoratorBonusCards
+        semarang={{
+          ...decorator.semarang,
+          recipient: recipientFor(CAKE_BONUS_POSITIONS.decoratorSemarang),
+        }}
+        pare={{
+          ...decorator.pare,
+          recipient: recipientFor(CAKE_BONUS_POSITIONS.decoratorPare),
+        }}
+      />
+      <CustomCakeBonusView
+        month={month}
+        year={year}
+        monthLabel={monthLabel}
+        days={data.days}
+        totalBonus={data.totalBonus}
+      />
+    </div>
   );
 }

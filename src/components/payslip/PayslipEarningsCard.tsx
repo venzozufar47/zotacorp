@@ -48,6 +48,7 @@ function buildEarnings(
   const extra = Number(p.extra_work_pay);
   const deliv = Number(p.deliverables_pay);
   const bonus = Number(p.monthly_bonus);
+  const cakeBonus = Number(p.cake_bonus ?? 0);
   const bonusDayPay = Number(p.bonus_day_pay ?? 0);
 
   if (basis === "presence" || basis === "both") {
@@ -138,6 +139,14 @@ function buildEarnings(
       label: detail.earningBonus,
       amount: bonus,
       note: p.monthly_bonus_note ?? undefined,
+    });
+  }
+  if (cakeBonus > 0) {
+    rows.push({
+      key: "cake_bonus",
+      label: "Bonus Cake",
+      amount: cakeBonus,
+      note: p.cake_bonus_note ?? undefined,
     });
   }
   return rows;

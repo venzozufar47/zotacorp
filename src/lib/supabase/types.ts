@@ -2297,6 +2297,8 @@ export type Database = {
           id: string
           inputs_signature: string | null
           late_penalty: number
+          cake_bonus: number
+          cake_bonus_note: string | null
           month: number
           monthly_bonus: number
           monthly_bonus_note: string | null
@@ -2333,6 +2335,8 @@ export type Database = {
           expected_work_days?: number
           extra_day_bonus?: number
           extra_work_pay?: number
+          cake_bonus?: number
+          cake_bonus_note?: string | null
           id?: string
           inputs_signature?: string | null
           late_penalty?: number
@@ -2370,6 +2374,8 @@ export type Database = {
           employee_response_at?: string | null
           employee_response_message?: string | null
           expected_work_days?: number
+          cake_bonus?: number
+          cake_bonus_note?: string | null
           extra_day_bonus?: number
           extra_work_pay?: number
           id?: string

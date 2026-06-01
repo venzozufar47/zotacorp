@@ -225,6 +225,7 @@ function buildPdfEarnings(
   const extra = Number(p.extra_work_pay);
   const deliv = Number(p.deliverables_pay);
   const bonus = Number(p.monthly_bonus);
+  const cakeBonus = Number(p.cake_bonus ?? 0);
 
   if (basis === "presence" || basis === "both") {
     if (prorated > 0) {
@@ -271,6 +272,13 @@ function buildPdfEarnings(
     lines.push({
       label: "Bonus bulanan" + (p.monthly_bonus_note ? ` -${p.monthly_bonus_note}` : ""),
       amount: bonus,
+      sign: "+",
+    });
+  }
+  if (cakeBonus > 0) {
+    lines.push({
+      label: "Bonus Cake" + (p.cake_bonus_note ? ` -${p.cake_bonus_note}` : ""),
+      amount: cakeBonus,
       sign: "+",
     });
   }

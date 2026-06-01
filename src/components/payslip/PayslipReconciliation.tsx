@@ -38,6 +38,7 @@ export function PayslipReconciliation({ payslip: p, settings }: Props) {
   const deliv = Number(p.deliverables_pay);
   const extra = Number(p.extra_work_pay);
   const bonus = Number(p.monthly_bonus);
+  const cakeBonus = Number(p.cake_bonus ?? 0);
   const debt = Number(p.debt_deduction);
   const other = Number(p.other_penalty);
   const net = Number(p.net_total);
@@ -110,6 +111,8 @@ export function PayslipReconciliation({ payslip: p, settings }: Props) {
     rows.push({ kind: "item", label: detail.reconExtraWork, amount: extra, sign: "+" });
   if (bonus > 0)
     rows.push({ kind: "item", label: detail.reconBonus, amount: bonus, sign: "+" });
+  if (cakeBonus > 0)
+    rows.push({ kind: "item", label: "Bonus Cake", amount: cakeBonus, sign: "+" });
   if (debt > 0)
     rows.push({ kind: "item", label: detail.reconDebt, amount: debt, sign: "−" });
   if (other > 0)

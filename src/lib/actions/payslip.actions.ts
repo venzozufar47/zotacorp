@@ -12,6 +12,8 @@ import type {
   PayslipBreakdown,
   Database,
 } from "@/lib/supabase/types";
+import { getCakeBonusesByPosition } from "@/lib/cake-bonus";
+import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -580,6 +582,7 @@ function computeNetTotal(
     late_penalty: number;
     deliverables_pay: number;
     monthly_bonus: number;
+    cake_bonus: number;
     debt_deduction: number;
     other_penalty: number;
     extra_work_pay: number;
@@ -616,7 +619,8 @@ function computeNetTotal(
   return (
     combined +
     fields.extra_work_pay +
-    fields.monthly_bonus -
+    fields.monthly_bonus +
+    fields.cake_bonus -
     fields.debt_deduction -
     fields.other_penalty
   );
@@ -690,6 +694,10 @@ type CalcInputs = {
   cashflowMonth: CashflowMonthRow[];
   // Pairing context for expected_days_mode === "paired_alternating".
   pair?: PairInfo;
+  /** Auto cake bonus for this user's position this month (0 if none).
+   *  Computed once per run and injected — NOT read from the existing
+   *  payslip, so it's always recomputed from cake_orders/cashflow. */
+  cakeBonus?: number;
 };
 
 type CalcOutput = {
@@ -751,6 +759,7 @@ function computeInputsSignature(inputs: CalcInputs): string {
       n: inputs.profile.nickname,
       f: inputs.profile.full_name,
     },
+    cb: inputs.cakeBonus ?? 0,
     al: inputs.attendanceLogs
       .map((l) => [
         l.id,
@@ -922,6 +931,10 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
         other_penalty_note: null,
       };
 
+  // Auto cake bonus — recomputed from source every run (NOT read from
+  // the existing payslip), so it stays in sync with cake_orders/cashflow.
+  const cakeBonus = Math.round(Number(inputs.cakeBonus ?? 0));
+
   const netTotal = computeNetTotal(
     basis,
     Number(settings.attendance_weight_pct),
@@ -933,6 +946,7 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
       late_penalty: attCalc.late_penalty,
       deliverables_pay: deliverablesPay,
       monthly_bonus: manualEntries.monthly_bonus,
+      cake_bonus: cakeBonus,
       debt_deduction: manualEntries.debt_deduction,
       other_penalty: manualEntries.other_penalty,
       extra_work_pay: extraWorkPay,
@@ -958,6 +972,7 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
     deliverables_pay: deliverablesPay,
     extra_work_pay: extraWorkPay,
     ...manualEntries,
+    cake_bonus: cakeBonus,
     net_total: netTotal,
     status: "draft" as const,
     breakdown_json: breakdownToStore,
@@ -1149,7 +1164,7 @@ export async function bulkCalculatePayslips(
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, grace_period_min, nickname, full_name")
+      .select("id, grace_period_min, nickname, full_name, position")
       .in("id", userIds),
     supabase
       .from("attendance_logs")
@@ -1258,6 +1273,17 @@ export async function bulkCalculatePayslips(
 
   // 5. Per-employee compute with COMPLETE inputs.
   const cashflowMonth = (cashflowRes.data ?? []) as CashflowMonthRow[];
+
+  // Cake bonus per position — computed ONCE for the month, only when a
+  // cake-bonus role is actually in this batch (avoids the cashflow scan
+  // otherwise). Looked up per user by profiles.position below.
+  const anyCakeRole = settingsList.some((s) =>
+    isCakeBonusPosition(profileByUser.get(s.user_id)?.position)
+  );
+  const cakeBonusByPosition = anyCakeRole
+    ? await getCakeBonusesByPosition(month, year)
+    : {};
+
   const finalUpserts: Record<string, unknown>[] = [];
   let cachedCount = 0;
   let skippedCount = 0;
@@ -1269,6 +1295,7 @@ export async function bulkCalculatePayslips(
       grace_period_min: null,
       nickname: null,
       full_name: null,
+      position: null,
     };
     const existing = payslipByUser.get(userId) ?? null;
     if (existing && existing.status === "finalized") {
@@ -1306,6 +1333,7 @@ export async function bulkCalculatePayslips(
         month,
         year
       ),
+      cakeBonus: cakeBonusByPosition[profile.position ?? ""] ?? 0,
     };
     const sig = computeInputsSignature(inputs);
     if (
@@ -1444,7 +1472,7 @@ export async function calculatePayslip(
       .single(),
     supabase
       .from("profiles")
-      .select("grace_period_min, nickname, full_name")
+      .select("grace_period_min, nickname, full_name, position")
       .eq("id", userId)
       .single(),
     supabase
@@ -1572,6 +1600,11 @@ export async function calculatePayslip(
     deliverables,
     cashflowMonth: (cashflowRes.data ?? []) as CashflowMonthRow[],
     pair,
+    cakeBonus: isCakeBonusPosition(profileRes.data?.position)
+      ? (await getCakeBonusesByPosition(month, year))[
+          profileRes.data?.position ?? ""
+        ] ?? 0
+      : 0,
   };
 
   // Skip-if-clean: if signature matches existing, no work needed.
@@ -1745,6 +1778,9 @@ export async function updatePayslipManualEntries(
       // updates — only `calculatePayslip` recomputes it from the logs.
       extra_work_pay: Number(existing.extra_work_pay ?? 0),
       base_salary: Number(existing.base_salary ?? 0),
+      // Cake bonus is auto-computed at generation; preserve it across
+      // manual edits to other fields (don't zero it out here).
+      cake_bonus: Number(existing.cake_bonus ?? 0),
       ...merged,
     }
   );

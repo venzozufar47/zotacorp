@@ -85,7 +85,8 @@ export function PayslipDetailView({
       : 0) +
     (basis === "fixed" ? Number(active.base_salary) : 0) +
     Number(active.extra_work_pay) +
-    Number(active.monthly_bonus);
+    Number(active.monthly_bonus) +
+    Number(active.cake_bonus ?? 0);
   const totalDeduction =
     ((basis === "presence" || basis === "both")
       ? Number(active.late_penalty)
