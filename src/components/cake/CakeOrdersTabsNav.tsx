@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-export type CakeOrdersTab = "orders" | "finance";
+export type CakeOrdersTab = "orders" | "finance" | "archive";
 
 interface Props {
   current: CakeOrdersTab;
@@ -27,6 +27,7 @@ export function CakeOrdersTabsNav({ current }: Props) {
   const tabs: Array<{ key: CakeOrdersTab; label: string }> = [
     { key: "orders", label: "Order" },
     { key: "finance", label: "Finance" },
+    { key: "archive", label: "Arsip" },
   ];
 
   return (

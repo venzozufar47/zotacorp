@@ -345,6 +345,12 @@ export function CakeOrdersBoard({
     const flatGridCls = panelOpen
       ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2"
       : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2";
+    // Di flat layout (arsip) pencarian benar-benar MENYARING — bukan
+    // sekadar highlight — karena daftar arsip bisa panjang dan admin
+    // mau langsung melihat hanya hasil yang cocok.
+    const flatList = matchedIds
+      ? visibleOrders.filter((o) => matchedIds.has(o.id))
+      : visibleOrders;
     return (
       <div className="flex gap-3">
         <div className="flex-1 min-w-0 space-y-3">
@@ -361,23 +367,32 @@ export function CakeOrdersBoard({
             onChange={setBranchFilter}
             counts={branchCounts}
           />
-          <ul className={flatGridCls}>
-            {visibleOrders.map((o) => (
-              <Card
-                key={o.id}
-                order={o}
-                labelFor={labelFor}
-                canMove={false}
-                onToggleArchive={toggleArchive}
-                onSelect={setSelectedOrderId}
-                isActive={selectedOrderId === o.id}
-                isMatch={matchedIds?.has(o.id) ?? false}
-                hasSearch={matchedIds != null}
-                showArchiveButton={showArchiveButton}
-                showUnarchiveButton={showUnarchiveButton}
-              />
-            ))}
-          </ul>
+          {flatList.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-border bg-card p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Tidak ada pesanan yang cocok dengan pencarian
+                {searchQuery.trim() ? ` “${searchQuery.trim()}”` : ""}.
+              </p>
+            </div>
+          ) : (
+            <ul className={flatGridCls}>
+              {flatList.map((o) => (
+                <Card
+                  key={o.id}
+                  order={o}
+                  labelFor={labelFor}
+                  canMove={false}
+                  onToggleArchive={toggleArchive}
+                  onSelect={setSelectedOrderId}
+                  isActive={selectedOrderId === o.id}
+                  isMatch={matchedIds?.has(o.id) ?? false}
+                  hasSearch={matchedIds != null}
+                  showArchiveButton={showArchiveButton}
+                  showUnarchiveButton={showUnarchiveButton}
+                />
+              ))}
+            </ul>
+          )}
         </div>
         {selectedOrderId && (
           <aside className="hidden md:block w-[440px] xl:w-[520px] shrink-0 sticky top-4 self-start max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border-2 border-foreground bg-card shadow-lg p-3">

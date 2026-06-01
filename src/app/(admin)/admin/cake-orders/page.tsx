@@ -44,7 +44,12 @@ export default async function AdminCakeOrdersPage({
   if (role !== "admin") redirect("/dashboard");
 
   const sp = await searchParams;
-  const tab: CakeOrdersTab = sp.tab === "finance" ? "finance" : "orders";
+  const tab: CakeOrdersTab =
+    sp.tab === "finance"
+      ? "finance"
+      : sp.tab === "archive"
+        ? "archive"
+        : "orders";
   const today = new Date();
   const month = parseInt(sp.month ?? String(today.getMonth() + 1), 10);
   const year = parseInt(sp.year ?? String(today.getFullYear()), 10);
@@ -93,9 +98,12 @@ export default async function AdminCakeOrdersPage({
     );
   }
 
-  // Orders tab (default) — the kanban board.
+  // Orders tab (default) + Archive tab share the same board component;
+  // the archive variant fetches ONLY archived rows and renders a flat
+  // grid (no kanban columns — every archived order is "done").
+  const isArchive = tab === "archive";
   const [ordersRes, optsRes, diaRes, priceRes] = await Promise.all([
-    listMyCakeOrders(),
+    listMyCakeOrders(isArchive ? { onlyArchived: true } : undefined),
     listCakeOptions(),
     listCakeDiameterOptions({ activeOnly: true }),
     listCakeBasePrices(),
@@ -104,11 +112,13 @@ export default async function AdminCakeOrdersPage({
   return (
     <div className="space-y-5 animate-fade-up">
       {header}
-      <CakeOrdersTabsNav current="orders" />
+      <CakeOrdersTabsNav current={isArchive ? "archive" : "orders"} />
 
       {/* Admin is view-only on cake orders. Disable drag-and-drop +
           per-card next-step buttons; the side-panel detail also won't
-          show edit/payment/status controls (canMove → canEdit). */}
+          show edit/payment/status controls (canMove → canEdit).
+          Search is enabled on both the live board and the archive so
+          admin can find an order by name / phone / greeting card. */}
       <CakeOrdersBoard
         orders={ordersRes.ok ? ordersRes.data ?? [] : []}
         optionsByKind={optsRes.ok ? optsRes.data ?? null : null}
@@ -116,6 +126,8 @@ export default async function AdminCakeOrdersPage({
         prices={priceRes.ok ? priceRes.data ?? [] : []}
         canMove={false}
         showArchiveButton={false}
+        enableSearch
+        flatLayout={isArchive}
         isAdminView={true}
       />
     </div>
