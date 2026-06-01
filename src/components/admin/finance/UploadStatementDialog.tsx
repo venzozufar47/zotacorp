@@ -1054,6 +1054,7 @@ function PreviewStep({
   const txs = preview.transactions;
   const hasSrcDest = txs.some((t) => t.sourceDestination);
   const hasTxDetails = txs.some((t) => t.transactionDetails);
+  const hasNotes = txs.some((t) => t.notes);
   const hasTime = txs.some((t) => t.time);
   // "Keterangan" column: show description directly when source +
   // details are both empty (BCA CSV style).
@@ -1132,6 +1133,11 @@ function PreviewStep({
                       Detail Transaksi
                     </th>
                   )}
+                  {hasNotes && (
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-56 border-b border-border">
+                      Catatan
+                    </th>
+                  )}
                   <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
                     Debit
                   </th>
@@ -1201,8 +1207,21 @@ function PreviewStep({
                         </span>
                       </td>
                     )}
-                    {/* Catatan selalu tampil (read-only di preview;
-                        bisa diedit setelah data masuk ke ledger) */}
+                    {/* Catatan — read-only di preview; bisa diedit
+                        setelah data masuk ke ledger. Hanya muncul kalau
+                        ada minimal satu baris yang punya notes (CSV Jago
+                        kolom Notes), supaya bank tanpa notes tidak nampak
+                        kolom kosong. */}
+                    {hasNotes && (
+                      <td className="px-3 py-2 text-foreground border-t border-border/60">
+                        <span
+                          className="block line-clamp-2 leading-snug break-words text-muted-foreground"
+                          title={t.notes ?? ""}
+                        >
+                          {t.notes || "—"}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
                       {t.debit > 0 ? (
                         <span className="text-destructive">
