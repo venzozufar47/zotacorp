@@ -126,7 +126,6 @@ function MonthRow({
     0
   );
   const diff = target - allocatedTotal;
-  const isFull = Math.abs(diff) <= 1;
   const hasAlloc = summary.allocations.length > 0;
 
   const setAmount = (branch: string, v: string) =>
@@ -142,22 +141,54 @@ function MonthRow({
     setAmounts(next);
   };
 
+  /**
+   * Return the current per-branch amounts with any remainder/excess
+   * (target − Σinput) spread EVENLY across the branches. Used both by
+   * the "Ratakan sisa" button and automatically on save — so a gap from
+   * the session-vs-payment timing mismatch is absorbed equally instead
+   * of blocking the save. The integer rounding remainder lands on the
+   * first branches so the result sums to target exactly.
+   */
+  const withRemainderSpread = (): Record<string, number> => {
+    const base = branches.map((b) => parseFloat(amounts[b]) || 0);
+    const gap = target - base.reduce((s, v) => s + v, 0);
+    const n = branches.length;
+    const per = Math.trunc(gap / n);
+    let leftover = gap - per * n; // signed remainder (can be negative)
+    const out: Record<string, number> = {};
+    branches.forEach((b, i) => {
+      let v = base[i] + per;
+      if (leftover > 0) {
+        v += 1;
+        leftover -= 1;
+      } else if (leftover < 0) {
+        v -= 1;
+        leftover += 1;
+      }
+      out[b] = Math.max(0, v);
+    });
+    return out;
+  };
+
+  const distributeRemainder = () => {
+    const spread = withRemainderSpread();
+    setAmounts(
+      Object.fromEntries(branches.map((b) => [b, String(spread[b])]))
+    );
+  };
+
   const handleSave = () => {
-    if (!isFull) {
-      toast.error(
-        diff > 0
-          ? `Belum penuh — sisa ${formatIDR(diff)}`
-          : `Lebih ${formatIDR(-diff)} — kurangi nominal`
-      );
-      return;
-    }
+    // Auto-spread any remaining gap evenly so the save always reconciles
+    // to target — the gap is just timing noise between the photo-session
+    // ledger and the bank-statement payment dates.
+    const fullByBranch = withRemainderSpread();
     // Strip the cash already tagged to each branch before storing — the
     // stored value is the branch="All" portion that the PnL aggregator
     // will distribute. Floor at 0 so a branch whose cash exceeds its full
     // entry doesn't store a negative.
     const allocations = branches.map((b) => ({
       branch: b,
-      amount: Math.max(0, (parseFloat(amounts[b]) || 0) - cashOf(b)),
+      amount: Math.max(0, fullByBranch[b] - cashOf(b)),
     }));
     startTransition(async () => {
       const res = await upsertRevenueMonthAllocation(
@@ -316,6 +347,18 @@ function MonthRow({
               >
                 <Scale className="size-3.5 mr-1" /> Bagi rata
               </Button>
+              {Math.abs(diff) > 1 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={distributeRemainder}
+                  className="h-7 text-xs"
+                  title="Bagi rata sisa/lebih ke 3 cabang agar pas dengan target"
+                >
+                  {diff > 0 ? "Ratakan sisa" : "Ratakan lebih"}
+                </Button>
+              )}
               {hasAlloc && (
                 <Button
                   type="button"
@@ -354,17 +397,18 @@ function MonthRow({
               type="button"
               size="sm"
               onClick={handleSave}
-              disabled={isPending || !isFull}
+              disabled={isPending}
               className="h-7 text-xs"
             >
               <Save className="size-3.5 mr-1" />
               {isPending ? "Menyimpan…" : "Simpan"}
             </Button>
           </div>
-          {!isFull && (
+          {Math.abs(diff) > 1 && (
             <p className="text-[11px] text-muted-foreground">
-              Isi alokasi sampai pas dengan total revenue bulan ini sebelum
-              menyimpan.
+              {diff > 1 ? `Sisa ${formatIDR(diff)}` : `Lebih ${formatIDR(-diff)}`}{" "}
+              akan dibagi rata ke {branches.length} cabang otomatis saat
+              disimpan (beda waktu sesi foto vs tanggal bayar di rekening).
             </p>
           )}
         </div>
