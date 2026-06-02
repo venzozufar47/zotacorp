@@ -299,7 +299,12 @@ function ContractForm({
             <span className="text-muted-foreground">Unit bisnis</span>
             <select
               value={businessUnit}
-              onChange={(e) => setBusinessUnit(e.target.value)}
+              onChange={(e) => {
+                setBusinessUnit(e.target.value);
+                // Reset cabang saat ganti BU (cabang hanya relevan utk
+                // Yeobo Space). Biarkan admin pilih ulang.
+                if (e.target.value !== YEOBO_BU) setBranch("");
+              }}
               disabled={!isNew}
               className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm disabled:opacity-60"
             >
@@ -316,8 +321,7 @@ function ContractForm({
               <select
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
-                disabled={!isNew}
-                className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm disabled:opacity-60"
+                className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
               >
                 <option value="">— pilih cabang —</option>
                 {yeoboBranches.map((b) => (
