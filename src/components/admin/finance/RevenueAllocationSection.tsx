@@ -141,54 +141,16 @@ function MonthRow({
     setAmounts(next);
   };
 
-  /**
-   * Return the current per-branch amounts with any remainder/excess
-   * (target − Σinput) spread EVENLY across the branches. Used both by
-   * the "Ratakan sisa" button and automatically on save — so a gap from
-   * the session-vs-payment timing mismatch is absorbed equally instead
-   * of blocking the save. The integer rounding remainder lands on the
-   * first branches so the result sums to target exactly.
-   */
-  const withRemainderSpread = (): Record<string, number> => {
-    const base = branches.map((b) => parseFloat(amounts[b]) || 0);
-    const gap = target - base.reduce((s, v) => s + v, 0);
-    const n = branches.length;
-    const per = Math.trunc(gap / n);
-    let leftover = gap - per * n; // signed remainder (can be negative)
-    const out: Record<string, number> = {};
-    branches.forEach((b, i) => {
-      let v = base[i] + per;
-      if (leftover > 0) {
-        v += 1;
-        leftover -= 1;
-      } else if (leftover < 0) {
-        v -= 1;
-        leftover += 1;
-      }
-      out[b] = Math.max(0, v);
-    });
-    return out;
-  };
-
-  const distributeRemainder = () => {
-    const spread = withRemainderSpread();
-    setAmounts(
-      Object.fromEntries(branches.map((b) => [b, String(spread[b])]))
-    );
-  };
-
   const handleSave = () => {
-    // Auto-spread any remaining gap evenly so the save always reconciles
-    // to target — the gap is just timing noise between the photo-session
-    // ledger and the bank-statement payment dates.
-    const fullByBranch = withRemainderSpread();
-    // Strip the cash already tagged to each branch before storing — the
-    // stored value is the branch="All" portion that the PnL aggregator
-    // will distribute. Floor at 0 so a branch whose cash exceeds its full
-    // entry doesn't store a negative.
+    // Store the admin's input AS-IS (only stripping each branch's
+    // already-tagged cash, floored at 0). We deliberately do NOT
+    // auto-spread the gap to hit target: the aggregator stores these as
+    // PROPORTIONS and distributes the actual branch=All revenue by ratio,
+    // so the admin's numbers only need the right ratio — and the admin
+    // wants their entered figures preserved exactly so they can verify.
     const allocations = branches.map((b) => ({
       branch: b,
-      amount: Math.max(0, fullByBranch[b] - cashOf(b)),
+      amount: Math.max(0, (parseFloat(amounts[b]) || 0) - cashOf(b)),
     }));
     startTransition(async () => {
       const res = await upsertRevenueMonthAllocation(
@@ -347,18 +309,6 @@ function MonthRow({
               >
                 <Scale className="size-3.5 mr-1" /> Bagi rata
               </Button>
-              {Math.abs(diff) > 1 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={distributeRemainder}
-                  className="h-7 text-xs"
-                  title="Bagi rata sisa/lebih ke 3 cabang agar pas dengan target"
-                >
-                  {diff > 0 ? "Ratakan sisa" : "Ratakan lebih"}
-                </Button>
-              )}
               {hasAlloc && (
                 <Button
                   type="button"
@@ -380,7 +330,7 @@ function MonthRow({
               <span
                 className={
                   diff < -1
-                    ? "text-destructive font-medium"
+                    ? "text-amber-600"
                     : diff > 1
                       ? "text-amber-600"
                       : "text-emerald-600"
@@ -406,9 +356,9 @@ function MonthRow({
           </div>
           {Math.abs(diff) > 1 && (
             <p className="text-[11px] text-muted-foreground">
-              {diff > 1 ? `Sisa ${formatIDR(diff)}` : `Lebih ${formatIDR(-diff)}`}{" "}
-              akan dibagi rata ke {branches.length} cabang otomatis saat
-              disimpan (beda waktu sesi foto vs tanggal bayar di rekening).
+              Angka yang kamu isi disimpan apa adanya (sebagai proporsi). PnL
+              membagi revenue branch=All sesuai rasio ini — selisih
+              sisa/lebih tidak masalah, tidak perlu dipaskan.
             </p>
           )}
         </div>
