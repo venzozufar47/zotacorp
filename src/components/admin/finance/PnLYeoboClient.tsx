@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { YeoboPnLReport, YeoboBranchPnL } from "@/lib/cashflow/pnl-yeobo";
 import { formatIDR } from "@/lib/cashflow/format";
+import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import { PnLChartsYeobo } from "./PnLChartsYeobo";
 import {
   MonthRangePicker,
@@ -62,8 +63,8 @@ export function PnLYeoboClient({
   const report: YeoboPnLReport = allowedBranches
     ? {
         ...rawReport,
-        branches: rawReport.branches.filter((b) =>
-          allowedBranches.includes(b)
+        branches: orderYeoboBranches(
+          rawReport.branches.filter((b) => allowedBranches.includes(b))
         ),
         months: rawReport.months.map((m) => {
           const byBranch: Record<string, YeoboBranchPnL> = {};
@@ -73,7 +74,7 @@ export function PnLYeoboClient({
           return { ...m, byBranch };
         }),
       }
-    : rawReport;
+    : { ...rawReport, branches: orderYeoboBranches(rawReport.branches) };
   const router = useRouter();
   const [pickerOpen, setPickerOpen] = useState(false);
   const fromStr = ymString(from);

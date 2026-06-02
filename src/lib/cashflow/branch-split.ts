@@ -13,13 +13,13 @@
  * untuk widget per-cabang dan server-side untuk PnL aggregator.
  */
 
-import { YEOBO_TWO_BRANCH_SENTINELS } from "./categories";
+import { YEOBO_TWO_BRANCH_SENTINELS, YEOBO_BRANCH_ORDER } from "./categories";
 
 /** Cabang fisik yang menerima split untuk BU tertentu. Null = BU
- *  tidak punya semantik auto-split (branch="All" akan tetap "All"). */
+ *  tidak punya semantik auto-split (branch="All" akan tetap "All").
+ *  Urutan ikut konstanta kanonik tunggal `YEOBO_BRANCH_ORDER`. */
 export function getAutoSplitBranches(businessUnit: string): string[] | null {
-  if (businessUnit === "Yeobo Space")
-    return ["Tlogosari", "Tembalang", "Jebres"];
+  if (businessUnit === "Yeobo Space") return [...YEOBO_BRANCH_ORDER];
   return null;
 }
 

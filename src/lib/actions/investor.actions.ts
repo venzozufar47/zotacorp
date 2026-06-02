@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
+import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import { requireAdmin, type ActionResult } from "./_gates";
 
 function adminClient() {
@@ -285,7 +286,13 @@ export async function getInvestorContractsForBu(
     .eq("user_id", userId)
     .eq("business_unit", businessUnit)
     .order("branch", { ascending: true, nullsFirst: true });
-  return ((data ?? []) as ContractRow[]).map(mapContract);
+  // SQL order is alphabetical; re-order to the canonical branch order
+  // (Tlogosari→Tembalang→Jebres) so the investor view matches admin PnL.
+  // NULL-branch (BU-level) contracts have no rank → land at the end.
+  return orderYeoboBranches(
+    ((data ?? []) as ContractRow[]).map(mapContract),
+    (c) => c.branch ?? ""
+  );
 }
 
 export async function upsertInvestorContract(input: {

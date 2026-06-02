@@ -20,6 +20,7 @@ import {
 import { PayoutsTable } from "./PayoutsTable";
 import { MetricCommentSheet } from "./MetricCommentSheet";
 import { METRIC_IDS } from "@/lib/investor/metric-ids";
+import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import type {
   InvestorDashboardData,
   InvestorYeoboDashboardData,
@@ -64,8 +65,13 @@ export function InvestorDashboardView({
   } | null>(null);
 
   // Yeobo per-cabang: pilih block cabang aktif (default cabang pertama).
+  // Urutkan block ke urutan kanonik (Tlogosari→Tembalang→Jebres) supaya
+  // tab cabang konsisten dgn PnL admin, apa pun urutan dari server.
   const isYeobo = !!yeoboData;
-  const blocks = yeoboData?.blocks ?? [];
+  const blocks = useMemo(
+    () => orderYeoboBranches(yeoboData?.blocks ?? [], (b) => b.branch),
+    [yeoboData]
+  );
   const [activeBranch, setActiveBranch] = useState<string>(
     blocks[0]?.branch ?? ""
   );

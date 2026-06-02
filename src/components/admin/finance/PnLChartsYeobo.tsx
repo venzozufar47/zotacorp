@@ -24,6 +24,7 @@ import {
   YAxis,
 } from "recharts";
 import type { YeoboPnLReport } from "@/lib/cashflow/pnl-yeobo";
+import { orderYeoboBranches } from "@/lib/cashflow/categories";
 
 interface Props {
   report: YeoboPnLReport;
@@ -65,7 +66,9 @@ function formatTooltip(value: unknown): string {
 }
 
 export function PnLChartsYeobo({ report }: Props) {
-  const branches = report.branches;
+  // Defensive: force canonical branch order (Tlogosari→Tembalang→Jebres)
+  // for bars + legend regardless of the order report.branches arrives in.
+  const branches = orderYeoboBranches(report.branches);
 
   const profitData = report.months.map((m) => {
     const row: Record<string, string | number> = {

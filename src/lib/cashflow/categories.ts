@@ -94,6 +94,46 @@ export const YEOBO_SPACE_BRANCHES = [
 ] as const;
 
 /**
+ * Urutan kanonik cabang fisik Yeobo Space untuk SEMUA presentasi
+ * (tabel PnL, chart legend/bars, panel breakdown, alokasi, dashboard
+ * investor). Dipakai oleh `orderYeoboBranches` agar urutan tidak pernah
+ * drift walau data datang dengan urutan acak (mis. Object.keys, hasil
+ * query). Sumber tunggal kebenaran: ubah di sini saja.
+ */
+export const YEOBO_BRANCH_ORDER = ["Tlogosari", "Tembalang", "Jebres"] as const;
+
+const YEOBO_BRANCH_RANK = new Map<string, number>(
+  YEOBO_BRANCH_ORDER.map((b, i) => [b, i])
+);
+
+/** Rank kanonik sebuah branch; unknown → besar (taruh di akhir). */
+function yeoboBranchRank(branch: string): number {
+  const r = YEOBO_BRANCH_RANK.get(branch);
+  return r === undefined ? Number.MAX_SAFE_INTEGER : r;
+}
+
+/**
+ * Urutkan daftar ke urutan cabang kanonik. Bisa dipakai untuk array
+ * string (`orderYeoboBranches(["Jebres","Tlogosari"])`) atau array
+ * objek dengan key extractor
+ * (`orderYeoboBranches(blocks, (b) => b.branch)`). Item dengan cabang
+ * tak dikenal ("All", sentinel, "(tanpa cabang)") ditaruh di akhir
+ * dengan urutan relatif stabil. Tidak memutasi input.
+ */
+export function orderYeoboBranches<T>(
+  items: T[],
+  getBranch: (item: T) => string = (item) => item as unknown as string
+): T[] {
+  return [...items]
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => {
+      const d = yeoboBranchRank(getBranch(a.item)) - yeoboBranchRank(getBranch(b.item));
+      return d !== 0 ? d : a.i - b.i; // stable for ties / unknowns
+    })
+    .map((x) => x.item);
+}
+
+/**
  * 2-cabang sentinel → daftar physical branch yang dapat alokasi 50-50.
  * Sentinel disimpan apa adanya di `cashflow_transactions.branch`
  * (text column, no DB migration). PnL aggregator + auto-split helper
