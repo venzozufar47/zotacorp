@@ -197,7 +197,16 @@ function MonthRow({
             {MONTH_LABELS[summary.month - 1]} {summary.year}
           </div>
           <div className="text-[10px] text-muted-foreground">
-            Revenue branch=All: {formatIDR(summary.totalAll)}
+            Dialokasi (branch=All): {formatIDR(summary.totalAll)}
+            {summary.branchSpecificTotal > 0 && (
+              <>
+                {" "}
+                · + sudah ter-cabang {formatIDR(summary.branchSpecificTotal)} ={" "}
+                <span className="font-medium text-foreground">
+                  {formatIDR(summary.grandTotal)}
+                </span>
+              </>
+            )}
             {hasAlloc
               ? Math.abs(summary.totalAll - summary.allocatedTotal) <= 1
                 ? " · ✓ dialokasi manual"
@@ -215,6 +224,56 @@ function MonthRow({
       </button>
       {expanded && (
         <div className="px-4 py-3 border-t border-border/60 space-y-2 bg-muted/20">
+          {/* Penjelasan target: yang dialokasi HANYA revenue branch=All.
+              Revenue yang sudah ter-cabang (mis. setoran cash) dihitung
+              terpisah & otomatis — jangan dimasukkan ke kotak alokasi. */}
+          <div className="rounded-lg border border-border bg-card/60 p-2.5 text-[11px] space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">
+                Revenue dialokasi (branch=All)
+              </span>
+              <span className="font-mono tabular-nums font-medium">
+                {formatIDR(summary.totalAll)}
+              </span>
+            </div>
+            {summary.branchSpecificTotal > 0 && (
+              <>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>
+                    Revenue sudah ter-cabang (mis. setoran cash) — otomatis,
+                    di luar alokasi
+                  </span>
+                  <span className="font-mono tabular-nums">
+                    + {formatIDR(summary.branchSpecificTotal)}
+                  </span>
+                </div>
+                {branches.map((b) =>
+                  summary.branchSpecificByBranch[b] ? (
+                    <div
+                      key={b}
+                      className="flex items-center justify-between text-muted-foreground/80 pl-3"
+                    >
+                      <span>· {b}</span>
+                      <span className="font-mono tabular-nums">
+                        {formatIDR(summary.branchSpecificByBranch[b])}
+                      </span>
+                    </div>
+                  ) : null
+                )}
+                <div className="flex items-center justify-between border-t border-border/60 pt-1 font-medium">
+                  <span>Total revenue cabang bulan ini</span>
+                  <span className="font-mono tabular-nums">
+                    {formatIDR(summary.grandTotal)}
+                  </span>
+                </div>
+              </>
+            )}
+            <p className="text-[10px] text-muted-foreground pt-0.5">
+              Isi kotak di bawah agar pas dengan{" "}
+              <strong>{formatIDR(summary.totalAll)}</strong> (porsi branch=All
+              saja).
+            </p>
+          </div>
           {branches.map((b) => {
             const amt = parseFloat(amounts[b]) || 0;
             const pct =

@@ -60,6 +60,16 @@ export interface RevenueMonthSummary {
   /** Alokasi tersimpan (kosong = belum, PnL auto-split 1/3). */
   allocations: RevenueMonthAllocationRow[];
   allocatedTotal: number;
+  /**
+   * Operating revenue yang SUDAH ter-atribusi ke cabang spesifik
+   * (mis. setoran cash per cabang) — TIDAK masuk pot alokasi karena
+   * cabangnya sudah pasti. Ditampilkan agar admin paham total revenue
+   * cabang penuh = totalAll (dialokasi) + ini.
+   */
+  branchSpecificByBranch: Record<string, number>;
+  branchSpecificTotal: number;
+  /** totalAll + branchSpecificTotal — total revenue operasional bulan ini. */
+  grandTotal: number;
 }
 
 const ym = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;
@@ -84,28 +94,46 @@ export async function listRevenueMonthAllocations(
   const endDate = `${ym(range.to.year, range.to.month)}-${String(toLast).padStart(2, "0")}`;
 
   const supabase = await createClient();
-  const { data: txData, error: txErr } = await supabase
-    .from("cashflow_transactions")
-    .select(
-      "credit, transaction_date, effective_period_month, effective_period_year, cashflow_statements!inner(bank_accounts!inner(business_unit))"
-    )
-    .in("category", opCats)
-    .eq("branch", "All")
-    .gt("credit", 0)
-    .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
-    .gte("transaction_date", startDate)
-    .lte("transaction_date", endDate);
-  if (txErr) return { ok: false, error: txErr.message };
+  // Fetch ALL operating revenue (every branch) — we bucket branch="All"
+  // (goes into the allocation pot) separately from branch-specific
+  // revenue (e.g. cash setoran already tagged to a cabang, which is NOT
+  // allocated). Paginate to dodge the 1000-row PostgREST cap; a busy
+  // month easily exceeds it.
+  type RevRow = {
+    credit: number | string;
+    branch: string | null;
+    transaction_date: string;
+    effective_period_month: number | null;
+    effective_period_year: number | null;
+  };
+  const txRows: RevRow[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error: txErr } = await supabase
+      .from("cashflow_transactions")
+      .select(
+        "credit, branch, transaction_date, effective_period_month, effective_period_year, cashflow_statements!inner(bank_accounts!inner(business_unit))"
+      )
+      .in("category", opCats)
+      .gt("credit", 0)
+      .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
+      .gte("transaction_date", startDate)
+      .lte("transaction_date", endDate)
+      .order("transaction_date")
+      .order("id")
+      .range(offset, offset + PAGE - 1);
+    if (txErr) return { ok: false, error: txErr.message };
+    const batch = (data ?? []) as unknown as RevRow[];
+    txRows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
 
   // Sum per effective-period month (fall back to transaction_date).
+  // totalByMonth = branch="All" (allocatable); branchSpecificByMonth =
+  // already-attributed revenue keyed by month then branch.
   const totalByMonth = new Map<string, number>();
-  for (const r of txData ?? []) {
-    const row = r as unknown as {
-      credit: number | string;
-      transaction_date: string;
-      effective_period_month: number | null;
-      effective_period_year: number | null;
-    };
+  const branchSpecificByMonth = new Map<string, Record<string, number>>();
+  for (const row of txRows) {
     let y: number;
     let m: number;
     if (row.effective_period_year != null && row.effective_period_month != null) {
@@ -126,7 +154,15 @@ export async function listRevenueMonthAllocations(
     )
       continue;
     const key = ym(y, m);
-    totalByMonth.set(key, (totalByMonth.get(key) ?? 0) + Number(row.credit));
+    const amount = Number(row.credit);
+    const branch = (row.branch ?? "").trim();
+    if (branch === "All" || branch === "") {
+      totalByMonth.set(key, (totalByMonth.get(key) ?? 0) + amount);
+    } else {
+      const bucket = branchSpecificByMonth.get(key) ?? {};
+      bucket[branch] = (bucket[branch] ?? 0) + amount;
+      branchSpecificByMonth.set(key, bucket);
+    }
   }
 
   // Existing allocations for this BU in range.
@@ -143,20 +179,40 @@ export async function listRevenueMonthAllocations(
     allocByMonth.set(key, list);
   }
 
-  const summaries: RevenueMonthSummary[] = [...totalByMonth.entries()]
-    .filter(([, total]) => total > 0)
-    .map(([key, total]) => {
+  // Union of months that have either allocatable (All) or
+  // branch-specific operating revenue.
+  const allKeys = new Set<string>([
+    ...totalByMonth.keys(),
+    ...branchSpecificByMonth.keys(),
+  ]);
+
+  const summaries: RevenueMonthSummary[] = [...allKeys]
+    .map((key) => {
       const [y, m] = key.split("-").map(Number);
       const allocations = allocByMonth.get(key) ?? [];
+      const totalAll = Math.round(totalByMonth.get(key) ?? 0);
+      const bsRaw = branchSpecificByMonth.get(key) ?? {};
+      const branchSpecificByBranch: Record<string, number> = {};
+      let branchSpecificTotal = 0;
+      for (const [b, amt] of Object.entries(bsRaw)) {
+        const r = Math.round(amt);
+        branchSpecificByBranch[b] = r;
+        branchSpecificTotal += r;
+      }
       return {
         year: y,
         month: m,
         monthKey: key,
-        totalAll: Math.round(total),
+        totalAll,
         allocations,
         allocatedTotal: allocations.reduce((s, a) => s + a.amount, 0),
+        branchSpecificByBranch,
+        branchSpecificTotal,
+        grandTotal: totalAll + branchSpecificTotal,
       };
     })
+    // Keep months that have something to show (allocatable or attributed).
+    .filter((s) => s.totalAll > 0 || s.branchSpecificTotal > 0)
     .sort((a, b) => (a.monthKey < b.monthKey ? 1 : -1)); // newest first
 
   return { ok: true, data: summaries };
