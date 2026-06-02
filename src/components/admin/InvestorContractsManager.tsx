@@ -10,7 +10,10 @@ import {
   deleteInvestorContract,
   type InvestorContract,
 } from "@/lib/actions/investor.actions";
+import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { formatRp } from "@/lib/cashflow/format";
+
+const YEOBO_BU = "Yeobo Space";
 
 interface Investor {
   userId: string;
@@ -61,6 +64,9 @@ export function InvestorContractsManager({
               <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                 BU
               </th>
+              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Cabang
+              </th>
               <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
                 Investasi
               </th>
@@ -86,7 +92,7 @@ export function InvestorContractsManager({
             {contracts.length === 0 ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-3 py-8 text-center text-muted-foreground"
                 >
                   Belum ada kontrak.
@@ -99,6 +105,9 @@ export function InvestorContractsManager({
                     {investorNameById.get(c.userId) ?? c.userId.slice(0, 8)}
                   </td>
                   <td className="px-3 py-2">{c.businessUnit}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {c.branch ?? "—"}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {formatRp(c.totalInvestIdr)}
                   </td>
@@ -175,6 +184,9 @@ function ContractForm({
   const [businessUnit, setBusinessUnit] = useState(
     contract?.businessUnit ?? businessUnits[0] ?? ""
   );
+  const [branch, setBranch] = useState(contract?.branch ?? "");
+  const isYeobo = businessUnit === YEOBO_BU;
+  const yeoboBranches = getAutoSplitBranches(YEOBO_BU) ?? [];
   const [totalInvest, setTotalInvest] = useState(
     String(contract?.totalInvestIdr ?? "")
   );
@@ -202,11 +214,16 @@ function ContractForm({
   const [pending, startTransition] = useTransition();
 
   function submit() {
+    if (isYeobo && !branch) {
+      toast.error("Pilih cabang untuk kontrak Yeobo Space");
+      return;
+    }
     startTransition(async () => {
       const res = await upsertInvestorContract({
         id: contract?.id,
         userId,
         businessUnit,
+        branch: isYeobo ? branch : null,
         totalInvestIdr: Number(totalInvest),
         bagiHasilPctBeforeBep: Number(bagiHasilBefore),
         bagiHasilPctAfterBep: Number(bagiHasilAfter),
@@ -293,6 +310,24 @@ function ContractForm({
               ))}
             </select>
           </label>
+          {isYeobo && (
+            <label className="text-xs">
+              <span className="text-muted-foreground">Cabang</span>
+              <select
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                disabled={!isNew}
+                className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm disabled:opacity-60"
+              >
+                <option value="">— pilih cabang —</option>
+                {yeoboBranches.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="text-xs">
             <span className="text-muted-foreground">Start date</span>
             <input

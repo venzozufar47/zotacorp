@@ -169,10 +169,22 @@ function FinancialTooltip({
   );
 }
 
+const ZERO_SLICE: InvestorMonthlyBranchSlice = {
+  revenue: 0,
+  cogs: 0,
+  opex: 0,
+  grossProfit: 0,
+  operatingProfit: 0,
+};
+
 export function FinancialOverviewChart({
   rows,
+  singleBranch = false,
 }: {
   rows: InvestorMonthlyRow[];
+  /** Yeobo per-cabang: tiap block sudah satu cabang → sembunyikan toggle
+   *  Semua/Semarang/Pare dan selalu pakai angka block (aggregate). */
+  singleBranch?: boolean;
 }) {
   // Toggle visibility per series. Click pada legend chip → series
   // di-skip dari render → Recharts otomatis re-stack bar yang tersisa
@@ -185,7 +197,9 @@ export function FinancialOverviewChart({
   const toggle = (k: SeriesKey) =>
     setVisible((v) => ({ ...v, [k]: !v[k] }));
   // Branch selector: scope data ke cabang tertentu atau aggregate.
+  // Saat singleBranch (Yeobo per-cabang) dikunci ke "all" → angka block.
   const [branch, setBranch] = useState<BranchKey>("all");
+  const effectiveBranch: BranchKey = singleBranch ? "all" : branch;
   // Toggle baris % di tabel. Di-lift ke parent karena MetricNameColumn
   // (sticky-left) dan MonthColumnsTable (scrollable) harus rendering
   // jumlah baris yang sama supaya tinggi-nya sejajar.
@@ -194,14 +208,14 @@ export function FinancialOverviewChart({
   const data = rows.map((r) => {
     // Pilih sumber: BU-level aggregate atau per-branch slice.
     const slice =
-      branch === "all"
+      effectiveBranch === "all"
         ? {
             revenue: r.revenue,
             cogs: r.cogs,
             opex: r.opex,
             operatingProfit: r.operatingProfit,
           }
-        : r.byBranch[branch];
+        : r.byBranch?.[effectiveBranch] ?? ZERO_SLICE;
     // Pakai nilai exact (tanpa Math.round) supaya nilai kecil tidak
     // ter-rounded jadi 0 dan disappear dari chart. Rounding cuma di
     // tick-formatter Y-axis (untuk display).
@@ -259,7 +273,9 @@ export function FinancialOverviewChart({
 
   return (
     <div>
-      {/* Branch selector — segmented pill. */}
+      {/* Branch selector — segmented pill. Disembunyikan saat singleBranch
+          (Yeobo per-cabang: block sudah satu cabang). */}
+      {!singleBranch && (
       <div className="flex items-center gap-1 mb-3 p-0.5 rounded-full bg-muted/60 w-fit">
         {(Object.keys(BRANCH_META) as BranchKey[]).map((k) => {
           const active = branch === k;
@@ -280,6 +296,7 @@ export function FinancialOverviewChart({
           );
         })}
       </div>
+      )}
       {/* Legend dengan toggle. Click → hide/show series. Active state
           ditunjukkan dengan swatch berwarna penuh; inactive = outline
           + opacity rendah. */}
@@ -439,7 +456,7 @@ export function FinancialOverviewChart({
                 )}
               </ComposedChart>
             </ResponsiveContainer>
-            <MonthColumnsTable rows={rows} branch={branch} showPct={showPct} />
+            <MonthColumnsTable rows={rows} branch={effectiveBranch} showPct={showPct} />
           </div>
         </div>
       </div>
@@ -572,7 +589,7 @@ function MonthColumnsTable({
           grossProfit: r.grossProfit,
           operatingProfit: r.operatingProfit,
         }
-      : r.byBranch[branch]
+      : r.byBranch?.[branch] ?? ZERO_SLICE
   );
   const pctDelta = (cur: number, base: number | null): number | null => {
     if (base == null) return null;

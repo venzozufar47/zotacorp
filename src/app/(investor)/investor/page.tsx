@@ -8,7 +8,10 @@ import {
 } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
 import { getMyInvestorAccess } from "@/lib/investor/access";
-import { fetchInvestorDashboardData } from "@/lib/investor/dashboard";
+import {
+  fetchInvestorDashboardData,
+  fetchYeoboInvestorDashboard,
+} from "@/lib/investor/dashboard";
 import { countCommentsForBu } from "@/lib/actions/investor-comments.actions";
 import { InvestorDashboardView } from "@/components/investor/InvestorDashboardView";
 import { Sparkles, ShieldCheck } from "lucide-react";
@@ -105,14 +108,27 @@ export default async function InvestorHomePage({
   const period = resolvePeriod(sp);
 
   const supabase = await createClient();
-  const [data, commentCounts] = await Promise.all([
-    fetchInvestorDashboardData({
-      supabase,
-      userId: user.id,
-      businessUnit: activeBu,
-      from: period.from,
-      to: period.to,
-    }),
+  const isYeobo = activeBu === "Yeobo Space";
+  // Yeobo Space → per-cabang dashboard (1 block per cabang terkoneksi).
+  // BU lain (Haengbocake) → path lama, tidak berubah.
+  const [data, yeoboData, commentCounts] = await Promise.all([
+    isYeobo
+      ? Promise.resolve(null)
+      : fetchInvestorDashboardData({
+          supabase,
+          userId: user.id,
+          businessUnit: activeBu,
+          from: period.from,
+          to: period.to,
+        }),
+    isYeobo
+      ? fetchYeoboInvestorDashboard({
+          supabase,
+          userId: user.id,
+          from: period.from,
+          to: period.to,
+        })
+      : Promise.resolve(null),
     countCommentsForBu(activeBu),
   ]);
 
@@ -123,6 +139,7 @@ export default async function InvestorHomePage({
       businessUnit={activeBu}
       businessUnits={businessUnits}
       data={data}
+      yeoboData={yeoboData}
       initialPeriod={
         period.initial as {
           id: "3m" | "6m" | "12m" | "ytd" | "all" | "custom";

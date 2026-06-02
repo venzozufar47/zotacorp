@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getMyInvestorAccess } from "@/lib/investor/access";
+import {
+  getMyInvestorAccess,
+  getMyConnectedYeoboBranches,
+} from "@/lib/investor/access";
 import { fetchPnL } from "@/lib/cashflow/pnl";
 import { fetchYeoboPnL } from "@/lib/cashflow/pnl-yeobo";
 import { getNonOperatingCategories } from "@/lib/cashflow/categories";
@@ -79,6 +82,9 @@ export default async function InvestorPnLPage({
   const isYeobo = businessUnit === "Yeobo Space";
   const report = isYeobo ? null : await fetchPnL(supabase, businessUnit, from, to);
   const yeoboReport = isYeobo ? await fetchYeoboPnL(supabase, from, to) : null;
+  // Yeobo investor: scope ke cabang yang terhubung (kontrak per-cabang).
+  // Kosong = belum terhubung ke cabang manapun → JANGAN tampilkan semua.
+  const allowedBranches = isYeobo ? await getMyConnectedYeoboBranches() : null;
   const nonOp = getNonOperatingCategories(businessUnit);
 
   return (
@@ -101,12 +107,26 @@ export default async function InvestorPnLPage({
         </p>
       </header>
       {isYeobo && yeoboReport ? (
-        <PnLYeoboClient
-          businessUnit={businessUnit}
-          from={from}
-          to={to}
-          report={yeoboReport}
-        />
+        (allowedBranches?.length ?? 0) === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-8 text-center">
+            <h2 className="text-lg font-semibold text-foreground">
+              Belum terhubung ke cabang manapun
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Hubungi admin untuk menghubungkan akun Anda ke cabang Yeobo
+              Space beserta kontraknya.
+            </p>
+          </div>
+        ) : (
+          <PnLYeoboClient
+            businessUnit={businessUnit}
+            from={from}
+            to={to}
+            report={yeoboReport}
+            allowedBranches={allowedBranches ?? undefined}
+            hideBuTotal
+          />
+        )
       ) : (
         report && (
           <InvestorPnLClient

@@ -37,13 +37,43 @@ interface Props {
   from: { year: number; month: number };
   to: { year: number; month: number };
   report: YeoboPnLReport;
+  /** Scope tampilan ke subset cabang (investor per-cabang). Undefined =
+   *  semua cabang (admin). */
+  allowedBranches?: string[];
+  /** Sembunyikan angka "Operating profit total" lintas cabang (investor
+   *  per-cabang tidak boleh lihat agregat antar cabang). */
+  hideBuTotal?: boolean;
 }
 
 function ymString(x: { year: number; month: number }): string {
   return `${x.year}-${String(x.month).padStart(2, "0")}`;
 }
 
-export function PnLYeoboClient({ businessUnit, from, to, report }: Props) {
+export function PnLYeoboClient({
+  businessUnit,
+  from,
+  to,
+  report: rawReport,
+  allowedBranches,
+  hideBuTotal = false,
+}: Props) {
+  // Scope report ke cabang yang diizinkan (sekali) → otomatis men-scope
+  // chart + tiap MonthSection. Undefined = semua cabang (admin).
+  const report: YeoboPnLReport = allowedBranches
+    ? {
+        ...rawReport,
+        branches: rawReport.branches.filter((b) =>
+          allowedBranches.includes(b)
+        ),
+        months: rawReport.months.map((m) => {
+          const byBranch: Record<string, YeoboBranchPnL> = {};
+          for (const b of Object.keys(m.byBranch)) {
+            if (allowedBranches.includes(b)) byBranch[b] = m.byBranch[b];
+          }
+          return { ...m, byBranch };
+        }),
+      }
+    : rawReport;
   const router = useRouter();
   const [pickerOpen, setPickerOpen] = useState(false);
   const fromStr = ymString(from);
@@ -101,6 +131,7 @@ export function PnLYeoboClient({ businessUnit, from, to, report }: Props) {
           branches={report.branches}
           salaryStatus={m.salaryAllocationStatus}
           needsAssignmentCount={m.needsAssignmentCount}
+          hideBuTotal={hideBuTotal}
         />
       ))}
 
@@ -122,6 +153,7 @@ function MonthSection({
   branches,
   salaryStatus,
   needsAssignmentCount,
+  hideBuTotal = false,
 }: {
   year: number;
   month: number;
@@ -134,6 +166,7 @@ function MonthSection({
     unallocated: number;
   };
   needsAssignmentCount: number;
+  hideBuTotal?: boolean;
 }) {
   const monthLabel = `${MONTH_LABELS[month - 1]} ${year}`;
   const totalOpProfit = branches.reduce(
@@ -147,19 +180,21 @@ function MonthSection({
         <div>
           <h2 className="text-sm font-semibold">{monthLabel}</h2>
           <div className="text-[10px] text-muted-foreground mt-0.5 flex flex-wrap gap-3">
-            <span>
-              Operating profit total:{" "}
-              <span
-                className={
-                  totalOpProfit >= 0
-                    ? "text-emerald-600 font-semibold"
-                    : "text-destructive font-semibold"
-                }
-              >
-                {totalOpProfit >= 0 ? "+" : ""}
-                {formatIDR(totalOpProfit)}
+            {!hideBuTotal && (
+              <span>
+                Operating profit total:{" "}
+                <span
+                  className={
+                    totalOpProfit >= 0
+                      ? "text-emerald-600 font-semibold"
+                      : "text-destructive font-semibold"
+                  }
+                >
+                  {totalOpProfit >= 0 ? "+" : ""}
+                  {formatIDR(totalOpProfit)}
+                </span>
               </span>
-            </span>
+            )}
             {salaryStatus.totalTx > 0 && (
               <span className="flex items-center gap-1">
                 {salaryStatus.unallocated > 0 || salaryStatus.partiallyAllocated > 0 ? (

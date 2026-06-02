@@ -1,8 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchPnL, type PnLReport } from "@/lib/cashflow/pnl";
+import {
+  fetchYeoboPnL,
+  type YeoboBranchPnL,
+} from "@/lib/cashflow/pnl-yeobo";
 import { getBuMetrics, type BuMonthlyMetric } from "@/lib/actions/investor-metrics.actions";
 import { listPayoutsForContract, type InvestorPayout } from "@/lib/actions/investor-payouts.actions";
-import { getInvestorContractByPair, type InvestorContract } from "@/lib/actions/investor.actions";
+import {
+  getInvestorContractByPair,
+  getInvestorContractsForBu,
+  type InvestorContract,
+} from "@/lib/actions/investor.actions";
 
 /**
  * Per-month rollup yang menggabungkan PnL admin (revenue/COGS/opex/
@@ -45,7 +53,9 @@ export interface InvestorMonthlyRow {
    *  − cogs_total)` sementara opex per-cabang clamp per branch — jadi
    *  bisa beda tipis kalau salah satu cabang punya cogs > opExpense.
    */
-  byBranch: {
+  /** Haengbocake-only (Semarang/Pare). Per-branch Yeobo blocks omit
+   *  this (each block already IS one branch). */
+  byBranch?: {
     Semarang: InvestorMonthlyBranchSlice;
     Pare: InvestorMonthlyBranchSlice;
   };
@@ -94,8 +104,9 @@ export interface InvestorHeroPerformance {
   profitDeltaMoMPct: number | null;
   /** Total bulan dengan data sejak kontrak mulai, termasuk bulan ini. */
   monthsObserved: number;
-  /** Pecahan per cabang untuk expandable drill-down. */
-  byBranch: {
+  /** Pecahan per cabang untuk expandable drill-down (Haengbocake only).
+   *  Per-branch Yeobo blocks omit this. */
+  byBranch?: {
     Semarang: HeroBranchPerformance;
     Pare: HeroBranchPerformance;
   };
@@ -467,4 +478,265 @@ export async function fetchInvestorDashboardData(input: {
     contractProgress,
     heroPerformance,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Yeobo Space per-cabang dashboard (1 block per cabang yang terkoneksi)
+//
+//  Investor Yeobo yang punya kontrak per-cabang melihat performa TIAP
+//  cabang TERPISAH — tanpa agregat lintas cabang. Sumber angka =
+//  fetchYeoboPnL (byBranch[branch]); contract/bagi-hasil/payout/BEP
+//  diambil dari kontrak cabang itu. Tidak dipakai untuk Haengbocake.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface InvestorBranchDashboardBlock {
+  branch: string;
+  contract: InvestorContract;
+  rows: InvestorMonthlyRow[];
+  payouts: InvestorPayout[];
+  totalCashback: number;
+  bepProgress: { current: number; target: number; pct: number };
+  contractProgress: InvestorDashboardData["contractProgress"];
+  heroPerformance: InvestorHeroPerformance | null;
+}
+
+export interface InvestorYeoboDashboardData {
+  kind: "yeobo-per-branch";
+  businessUnit: "Yeobo Space";
+  /** Satu block per cabang yang terkoneksi (punya kontrak). Kosong =
+   *  investor belum dihubungkan ke cabang manapun. */
+  blocks: InvestorBranchDashboardBlock[];
+}
+
+const ZERO_BRANCH_PNL: YeoboBranchPnL = {
+  operatingRevenue: 0,
+  operatingExpense: 0,
+  operatingProfit: 0,
+  nonOpRevenue: 0,
+  nonOpExpense: 0,
+  byCategory: [],
+};
+
+function pctDeltaStandalone(cur: number, base: number | null): number | null {
+  if (base == null) return null;
+  if (Math.abs(base) < 1) return null;
+  return ((cur - base) / Math.abs(base)) * 100;
+}
+
+/** Revenue + operating profit untuk satu cabang Yeobo dari byBranch. */
+function yeoboBranchProfit(b: YeoboBranchPnL): { revenue: number; profit: number } {
+  let cogs = 0;
+  for (const cat of b.byCategory) {
+    if (cat.category === COGS_CATEGORY) cogs += cat.debit;
+  }
+  const revenue = b.operatingRevenue;
+  const opex = Math.max(0, b.operatingExpense - cogs);
+  const grossProfit = revenue - cogs;
+  return { revenue, profit: grossProfit - opex };
+}
+
+/** Full InvestorMonthlyRow untuk satu cabang Yeobo (byBranch dikosongkan). */
+function yeoboBranchRow(
+  b: YeoboBranchPnL,
+  year: number,
+  month: number
+): InvestorMonthlyRow {
+  let cogs = 0;
+  for (const cat of b.byCategory) {
+    if (cat.category === COGS_CATEGORY) cogs += cat.debit;
+  }
+  const revenue = b.operatingRevenue;
+  const opex = Math.max(0, b.operatingExpense - cogs);
+  const grossProfit = revenue - cogs;
+  const operatingProfit = grossProfit - opex;
+  return {
+    year,
+    month,
+    revenue,
+    cogs,
+    opex,
+    grossProfit,
+    operatingProfit,
+    netProfit: operatingProfit,
+    utilizationPct: null,
+    ordersCount: null,
+    uniqueCustomers: null,
+    netDividen: 0,
+    // byBranch omitted — block sudah merepresentasikan satu cabang.
+  };
+}
+
+function computeContractProgress(
+  contract: InvestorContract
+): InvestorDashboardData["contractProgress"] {
+  const start = new Date(contract.startDate);
+  const now = new Date();
+  const monthsRun = Math.max(
+    0,
+    (now.getFullYear() - start.getFullYear()) * 12 +
+      (now.getMonth() - start.getMonth())
+  );
+  const total = contract.durasiBulan;
+  if (total === null) {
+    return {
+      runMonths: monthsRun,
+      totalMonths: null,
+      pct: 0,
+      remainMonths: null,
+      permanent: true,
+    };
+  }
+  const run = Math.min(total, monthsRun);
+  return {
+    runMonths: run,
+    totalMonths: total,
+    pct: total > 0 ? (run / total) * 100 : 0,
+    remainMonths: total - run,
+    permanent: false,
+  };
+}
+
+/** Hero dari deret bulanan {revenue,profit} (tanpa byBranch). */
+function buildHeroFromSeries(
+  lifeRows: Array<{ revenue: number; profit: number }>,
+  currentYear: number,
+  currentMonth: number
+): InvestorHeroPerformance {
+  const last = lifeRows[lifeRows.length - 1] ?? null;
+  const prev = lifeRows.length >= 2 ? lifeRows[lifeRows.length - 2] : null;
+  const priorMonths = lifeRows.slice(0, -1);
+  const avgOf = (sel: (r: { revenue: number; profit: number }) => number) =>
+    priorMonths.length
+      ? priorMonths.reduce((s, r) => s + sel(r), 0) / priorMonths.length
+      : null;
+  const avgRev = avgOf((r) => r.revenue);
+  const avgProfit = avgOf((r) => r.profit);
+  return {
+    currentYear,
+    currentMonth,
+    revenueThisMonth: last?.revenue ?? 0,
+    revenueLifetimeAvg: avgRev,
+    revenueDeltaVsAvgPct: pctDeltaStandalone(last?.revenue ?? 0, avgRev),
+    revenuePrevMonth: prev?.revenue ?? null,
+    revenueDeltaMoMPct: pctDeltaStandalone(
+      last?.revenue ?? 0,
+      prev?.revenue ?? null
+    ),
+    profitThisMonth: last?.profit ?? 0,
+    profitLifetimeAvg: avgProfit,
+    profitDeltaVsAvgPct: pctDeltaStandalone(last?.profit ?? 0, avgProfit),
+    profitPrevMonth: prev?.profit ?? null,
+    profitDeltaMoMPct: pctDeltaStandalone(
+      last?.profit ?? 0,
+      prev?.profit ?? null
+    ),
+    monthsObserved: lifeRows.length,
+    // byBranch omitted (per-branch block).
+  };
+}
+
+export async function fetchYeoboInvestorDashboard(input: {
+  supabase: SupabaseClient;
+  userId: string;
+  from: { year: number; month: number };
+  to: { year: number; month: number };
+}): Promise<InvestorYeoboDashboardData> {
+  const contracts = (
+    await getInvestorContractsForBu(input.userId, "Yeobo Space")
+  ).filter((c) => !!c.branch);
+
+  if (contracts.length === 0) {
+    return { kind: "yeobo-per-branch", businessUnit: "Yeobo Space", blocks: [] };
+  }
+
+  // Satu fetch untuk periode terpilih, dipakai semua cabang.
+  const report = await fetchYeoboPnL(
+    input.supabase as never,
+    input.from,
+    input.to
+  );
+
+  const nowD = new Date();
+  const currentYear = nowD.getFullYear();
+  const currentMonth = nowD.getMonth() + 1;
+
+  // Lifetime: satu fetch dari start_date paling awal antar kontrak → now.
+  // Per kontrak nanti di-filter ke bulan ≥ start_date masing-masing.
+  let earliestY = currentYear;
+  let earliestM = currentMonth;
+  let anyStarted = false;
+  for (const c of contracts) {
+    const s = new Date(c.startDate);
+    const sy = s.getFullYear();
+    const sm = s.getMonth() + 1;
+    const startedNow =
+      sy < currentYear || (sy === currentYear && sm <= currentMonth);
+    if (startedNow) {
+      anyStarted = true;
+      if (sy < earliestY || (sy === earliestY && sm < earliestM)) {
+        earliestY = sy;
+        earliestM = sm;
+      }
+    }
+  }
+  const lifetimeReport = anyStarted
+    ? await fetchYeoboPnL(
+        input.supabase as never,
+        { year: earliestY, month: earliestM },
+        { year: currentYear, month: currentMonth }
+      )
+    : null;
+
+  const blocks: InvestorBranchDashboardBlock[] = [];
+  for (const contract of contracts) {
+    const b = contract.branch as string;
+    const rows = report.months.map((m) =>
+      yeoboBranchRow(m.byBranch[b] ?? ZERO_BRANCH_PNL, m.year, m.month)
+    );
+
+    const payouts = await listPayoutsForContract(contract.id);
+    const totalCashback = payouts.reduce((s, p) => s + p.amountIdr, 0);
+    const bepTarget = contract.bepTargetIdr ?? 0;
+    const bepProgress = {
+      current: totalCashback,
+      target: bepTarget,
+      pct: bepTarget > 0 ? Math.min(100, (totalCashback / bepTarget) * 100) : 0,
+    };
+    const contractProgress = computeContractProgress(contract);
+
+    // Hero per-cabang: deret bulanan profit cabang ini sejak start kontrak.
+    let heroPerformance: InvestorHeroPerformance | null = null;
+    const start = new Date(contract.startDate);
+    const startY = start.getFullYear();
+    const startM = start.getMonth() + 1;
+    const startedNow =
+      startY < currentYear || (startY === currentYear && startM <= currentMonth);
+    if (lifetimeReport && startedNow) {
+      const lifeRows = lifetimeReport.months
+        .filter(
+          (m) =>
+            m.year > startY || (m.year === startY && m.month >= startM)
+        )
+        .map((m) => yeoboBranchProfit(m.byBranch[b] ?? ZERO_BRANCH_PNL));
+      heroPerformance = buildHeroFromSeries(lifeRows, currentYear, currentMonth);
+    } else {
+      heroPerformance = buildHeroFromSeries([], currentYear, currentMonth);
+    }
+
+    blocks.push({
+      branch: b,
+      contract,
+      rows,
+      payouts,
+      totalCashback,
+      bepProgress,
+      contractProgress,
+      heroPerformance,
+    });
+  }
+
+  // Urutkan cabang biar stabil (alfabet).
+  blocks.sort((a, z) => a.branch.localeCompare(z.branch));
+
+  return { kind: "yeobo-per-branch", businessUnit: "Yeobo Space", blocks };
 }

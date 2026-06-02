@@ -20,7 +20,10 @@ import {
 import { PayoutsTable } from "./PayoutsTable";
 import { MetricCommentSheet } from "./MetricCommentSheet";
 import { METRIC_IDS } from "@/lib/investor/metric-ids";
-import type { InvestorDashboardData } from "@/lib/investor/dashboard";
+import type {
+  InvestorDashboardData,
+  InvestorYeoboDashboardData,
+} from "@/lib/investor/dashboard";
 import type { InvestorContract } from "@/lib/actions/investor.actions";
 
 interface Props {
@@ -28,7 +31,10 @@ interface Props {
   userId: string;
   businessUnit: string;
   businessUnits: string[];
-  data: InvestorDashboardData;
+  /** Haengbocake (+ other non-Yeobo BUs). Null for Yeobo Space. */
+  data: InvestorDashboardData | null;
+  /** Yeobo Space per-branch payload. Null for non-Yeobo BUs. */
+  yeoboData?: InvestorYeoboDashboardData | null;
   initialPeriod: Period;
   commentCounts: Record<
     string,
@@ -43,6 +49,7 @@ export function InvestorDashboardView({
   businessUnit,
   businessUnits,
   data,
+  yeoboData = null,
   initialPeriod,
   commentCounts,
   isAdmin = false,
@@ -56,6 +63,21 @@ export function InvestorDashboardView({
     label: string;
   } | null>(null);
 
+  // Yeobo per-cabang: pilih block cabang aktif (default cabang pertama).
+  const isYeobo = !!yeoboData;
+  const blocks = yeoboData?.blocks ?? [];
+  const [activeBranch, setActiveBranch] = useState<string>(
+    blocks[0]?.branch ?? ""
+  );
+  const activeBlock =
+    blocks.find((b) => b.branch === activeBranch) ?? blocks[0] ?? null;
+
+  // Kontrak aktif untuk realtime payouts: Yeobo → block aktif, lainnya →
+  // data.contract.
+  const activeContractId = isYeobo
+    ? activeBlock?.contract.id ?? null
+    : data?.contract?.id ?? null;
+
   // Realtime: PnL/KPI aggregate cukup mahal di-recompute, jadi
   // debounce 1000ms. Subscribe ke cashflow_transactions (broad
   // dengan filter dari RLS — investor cuma terima event untuk BU
@@ -66,10 +88,10 @@ export function InvestorDashboardView({
     debounceMs: 1000,
   });
   useRealtimeRefresh({
-    channel: `investor-dashboard-payouts-${data.contract?.id ?? "none"}`,
+    channel: `investor-dashboard-payouts-${activeContractId ?? "none"}`,
     table: "investor_payouts",
-    filter: data.contract ? `contract_id=eq.${data.contract.id}` : undefined,
-    enabled: !!data.contract,
+    filter: activeContractId ? `contract_id=eq.${activeContractId}` : undefined,
+    enabled: !!activeContractId,
     debounceMs: 500,
   });
 
@@ -97,6 +119,213 @@ export function InvestorDashboardView({
     });
   }
 
+  // ── Yeobo Space: layout per-cabang (1 block per cabang terkoneksi) ──
+  if (isYeobo) {
+    return (
+      <div className="space-y-6" data-theme="oceanic">
+        {businessUnits.length > 1 && (
+          <BuPicker
+            current={businessUnit}
+            options={businessUnits}
+            onChange={switchBu}
+          />
+        )}
+
+        {blocks.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-8 text-center">
+            <h2 className="text-lg font-semibold text-foreground">
+              Belum terhubung ke cabang manapun
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Hubungi admin untuk menghubungkan akun Anda ke cabang Yeobo
+              Space (Tlogosari / Tembalang / Jebres) beserta kontraknya.
+            </p>
+          </div>
+        ) : (
+          <>
+            <BranchSwitcher
+              branches={blocks.map((b) => b.branch)}
+              current={activeBranch || blocks[0].branch}
+              onChange={setActiveBranch}
+            />
+            <div className={navPending ? "is-pending space-y-6" : "space-y-6"}>
+              {activeBlock && (
+                <PerformanceBody
+                  key={activeBlock.branch}
+                  investorName={investorName}
+                  businessUnit={businessUnit}
+                  data={{
+                    contract: activeBlock.contract,
+                    rows: activeBlock.rows,
+                    metrics: [],
+                    payouts: activeBlock.payouts,
+                    totalCashback: activeBlock.totalCashback,
+                    totalNetDividen: 0,
+                    pusatUnbalancedCount: 0,
+                    bepProgress: activeBlock.bepProgress,
+                    contractProgress: activeBlock.contractProgress,
+                    heroPerformance: activeBlock.heroPerformance,
+                  }}
+                  period={period}
+                  onPeriodChange={applyPeriod}
+                  commentCounts={commentCounts}
+                  onOpenComment={(metricId, label) =>
+                    setCommentOpen({ metricId, label })
+                  }
+                  hideOwnerDividen
+                  singleBranchChart
+                  headingEyebrow={`Performa keuangan · Cabang ${activeBlock.branch}`}
+                />
+              )}
+            </div>
+          </>
+        )}
+
+        {commentOpen && (
+          <MetricCommentSheet
+            businessUnit={businessUnit}
+            metricId={commentOpen.metricId}
+            metricLabel={commentOpen.label}
+            open={true}
+            onClose={() => setCommentOpen(null)}
+            currentUserId={userId}
+            isAdmin={isAdmin}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Non-Yeobo (Haengbocake dll): layout lama, tidak berubah ──
+  if (!data || !data.contract) {
+    return (
+      <div className="space-y-6">
+        {businessUnits.length > 1 && (
+          <BuPicker
+            current={businessUnit}
+            options={businessUnits}
+            onChange={switchBu}
+          />
+        )}
+        <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-8 text-center">
+          <h2 className="text-lg font-semibold text-foreground">
+            Kontrak untuk {businessUnit} belum di-set
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Hubungi admin untuk mengaktifkan kontrak investor di unit
+            bisnis ini.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-theme="oceanic">
+      {businessUnits.length > 1 && (
+        <BuPicker
+          current={businessUnit}
+          options={businessUnits}
+          onChange={switchBu}
+        />
+      )}
+      <div className={navPending ? "is-pending space-y-6" : "space-y-6"}>
+        <PerformanceBody
+          investorName={investorName}
+          businessUnit={businessUnit}
+          data={data}
+          period={period}
+          onPeriodChange={applyPeriod}
+          commentCounts={commentCounts}
+          onOpenComment={(metricId, label) =>
+            setCommentOpen({ metricId, label })
+          }
+          headingEyebrow="Performa keuangan"
+        />
+      </div>
+
+      {commentOpen && (
+        <MetricCommentSheet
+          businessUnit={businessUnit}
+          metricId={commentOpen.metricId}
+          metricLabel={commentOpen.label}
+          open={true}
+          onClose={() => setCommentOpen(null)}
+          currentUserId={userId}
+          isAdmin={isAdmin}
+        />
+      )}
+    </div>
+  );
+}
+
+function BranchSwitcher({
+  branches,
+  current,
+  onChange,
+}: {
+  branches: string[];
+  current: string;
+  onChange: (b: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        Cabang:
+      </span>
+      {branches.map((b) => {
+        const active = b === current;
+        return (
+          <button
+            key={b}
+            type="button"
+            onClick={() => onChange(b)}
+            className={`press-feedback px-4 py-1.5 rounded-full text-sm font-semibold transition-colors border-2 ${
+              active
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-foreground border-border hover:border-primary/50"
+            }`}
+          >
+            {b}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface PerformanceBodyProps {
+  investorName: string;
+  businessUnit: string;
+  data: InvestorDashboardData;
+  period: Period;
+  onPeriodChange: (p: Period) => void;
+  commentCounts: Record<
+    string,
+    { count: number; lastAuthorRole: "investor" | "admin" }
+  >;
+  onOpenComment: (metricId: string, label: string) => void;
+  /** Yeobo per-cabang: sembunyikan kartu/KPI/chart Net Dividen owner. */
+  hideOwnerDividen?: boolean;
+  /** Yeobo per-cabang: chart finansial tanpa toggle cabang. */
+  singleBranchChart?: boolean;
+  headingEyebrow: string;
+}
+
+function PerformanceBody({
+  investorName,
+  businessUnit,
+  data,
+  period,
+  onPeriodChange,
+  commentCounts,
+  onOpenComment,
+  hideOwnerDividen = false,
+  singleBranchChart = false,
+  headingEyebrow,
+}: PerformanceBodyProps) {
+  const setCommentOpen = (v: { metricId: string; label: string }) =>
+    onOpenComment(v.metricId, v.label);
   const agg = useMemo(() => {
     const rows = data.rows;
     const sum = (k: keyof (typeof rows)[number]) =>
@@ -143,40 +372,13 @@ export function InvestorDashboardView({
 
   const commentFor = (id: string) => commentCounts[id];
 
-  if (!data.contract) {
-    return (
-      <div className="space-y-6">
-        {businessUnits.length > 1 && (
-          <BuPicker
-            current={businessUnit}
-            options={businessUnits}
-            onChange={switchBu}
-          />
-        )}
-        <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-8 text-center">
-          <h2 className="text-lg font-semibold text-foreground">
-            Kontrak untuk {businessUnit} belum di-set
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Hubungi admin untuk mengaktifkan kontrak investor di unit
-            bisnis ini.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Guard: outer component sudah memastikan ada kontrak sebelum render
+  // body ini (Haengbocake empty-state / Yeobo block selalu berkontrak).
+  const contract = data.contract;
+  if (!contract) return null;
 
   return (
-    <div className="space-y-6" data-theme="oceanic">
-      {businessUnits.length > 1 && (
-        <BuPicker
-          current={businessUnit}
-          options={businessUnits}
-          onChange={switchBu}
-        />
-      )}
-
-      <div className={navPending ? "is-pending space-y-6" : "space-y-6"}>
+    <>
       {data.pusatUnbalancedCount > 0 && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
           <span className="text-amber-700 mt-0.5">⚠</span>
@@ -192,7 +394,7 @@ export function InvestorDashboardView({
 
       <HeroContract
         investorName={investorName}
-        contract={data.contract}
+        contract={contract}
         contractProgress={data.contractProgress}
         bepProgress={data.bepProgress}
         heroPerformance={data.heroPerformance}
@@ -204,13 +406,13 @@ export function InvestorDashboardView({
       <section className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Performa keuangan
+            {headingEyebrow}
           </p>
           <h2 className="mt-1 text-xl font-semibold text-foreground">
             Metrik {agg.n} bulan terpilih
           </h2>
         </div>
-        <InvestorPeriodSelector value={period} onChange={applyPeriod} />
+        <InvestorPeriodSelector value={period} onChange={onPeriodChange} />
       </section>
 
       {/* 6 KPI tiles */}
@@ -269,42 +471,55 @@ export function InvestorDashboardView({
           }
           onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
         />
-        <KpiTile
-          metricId={METRIC_IDS.netDividen.id}
-          label="Net dividen"
-          value={formatRp(agg.netDividenInPeriod)}
-          help="Aliran modal ke/dari owner pada periode terpilih (kategori Investment + Dividend di cashflow). Positif = owner menarik dividen, negatif = owner menyetor modal. Bukan bagi hasil investor."
-          sparkPoints={agg.netDividenPerMonth.map((v) => v / 1e6)}
-          sparkColor="#1d6b3a"
-          commentCount={commentFor(METRIC_IDS.netDividen.id)?.count}
-          commentLastAuthorRole={
-            commentFor(METRIC_IDS.netDividen.id)?.lastAuthorRole
-          }
-          onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
-        />
+        {!hideOwnerDividen && (
+          <KpiTile
+            metricId={METRIC_IDS.netDividen.id}
+            label="Net dividen"
+            value={formatRp(agg.netDividenInPeriod)}
+            help="Aliran modal ke/dari owner pada periode terpilih (kategori Investment + Dividend di cashflow). Positif = owner menarik dividen, negatif = owner menyetor modal. Bukan bagi hasil investor."
+            sparkPoints={agg.netDividenPerMonth.map((v) => v / 1e6)}
+            sparkColor="#1d6b3a"
+            commentCount={commentFor(METRIC_IDS.netDividen.id)?.count}
+            commentLastAuthorRole={
+              commentFor(METRIC_IDS.netDividen.id)?.lastAuthorRole
+            }
+            onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
+          />
+        )}
       </section>
 
       {/* Charts: financial overview (combined) + utilization (terpisah
           karena bukan ukuran finansial). Dual axis pada chart finansial
           memungkinkan banding Rp (bars + Net profit line) terhadap
           margin % (dashed lines) di satu canvas. */}
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2">
+      <section
+        className={
+          hideOwnerDividen
+            ? "grid grid-cols-1 gap-4"
+            : "grid grid-cols-1 xl:grid-cols-3 gap-4"
+        }
+      >
+        <div className={hideOwnerDividen ? "" : "xl:col-span-2"}>
           <ChartCard
             eyebrow="Performa finansial"
             title={formatRp(agg.np)}
             subtitle={`operating profit total · rata-rata revenue ${formatRp(agg.avgRev)}/bln`}
           >
-            <FinancialOverviewChart rows={data.rows} />
+            <FinancialOverviewChart
+              rows={data.rows}
+              singleBranch={singleBranchChart}
+            />
           </ChartCard>
         </div>
-        <ChartCard
-          eyebrow="Net dividen"
-          title={formatRp(agg.netDividenInPeriod)}
-          subtitle={`aliran modal ${agg.netDividenInPeriod >= 0 ? "ke" : "dari"} owner · ${agg.netDividenPerMonth.filter((v) => v !== 0).length} bulan ada aktivitas`}
-        >
-          <NetDividenChart rows={data.rows} />
-        </ChartCard>
+        {!hideOwnerDividen && (
+          <ChartCard
+            eyebrow="Net dividen"
+            title={formatRp(agg.netDividenInPeriod)}
+            subtitle={`aliran modal ${agg.netDividenInPeriod >= 0 ? "ke" : "dari"} owner · ${agg.netDividenPerMonth.filter((v) => v !== 0).length} bulan ada aktivitas`}
+          >
+            <NetDividenChart rows={data.rows} />
+          </ChartCard>
+        )}
       </section>
 
       {/* P&L breakdown table + Operational metrics */}
@@ -320,27 +535,36 @@ export function InvestorDashboardView({
         />
       </section>
 
-      {/* Cashback + Net Dividen owner-level untuk konteks */}
-      <section className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+      {/* Cashback + Net Dividen owner-level untuk konteks. Net Dividen
+          owner disembunyikan di mode per-cabang Yeobo. */}
+      <section
+        className={
+          hideOwnerDividen
+            ? "grid grid-cols-1 gap-4"
+            : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4"
+        }
+      >
         <PayoutsTable
           payouts={data.payouts}
           totalCashback={data.totalCashback}
         />
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-muted-foreground">
-            Net Dividen owner
-          </p>
-          <h3 className="mt-1 text-base font-semibold text-foreground">
-            {formatRp(data.totalNetDividen)}
-          </h3>
-          <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-            Aliran modal{" "}
-            <strong>{data.totalNetDividen >= 0 ? "ke" : "dari"}</strong>{" "}
-            owner di {agg.n} bulan terpilih (kategori Investment +
-            Dividend). Bukan bagi hasil Anda — angka ini sebagai konteks
-            apakah owner sedang menarik atau menyetor modal.
-          </p>
-        </div>
+        {!hideOwnerDividen && (
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-muted-foreground">
+              Net Dividen owner
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-foreground">
+              {formatRp(data.totalNetDividen)}
+            </h3>
+            <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+              Aliran modal{" "}
+              <strong>{data.totalNetDividen >= 0 ? "ke" : "dari"}</strong>{" "}
+              owner di {agg.n} bulan terpilih (kategori Investment +
+              Dividend). Bukan bagi hasil Anda — angka ini sebagai konteks
+              apakah owner sedang menarik atau menyetor modal.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Quick link ke detail finance */}
@@ -363,20 +587,7 @@ export function InvestorDashboardView({
           Buka detail →
         </Link>
       </section>
-      </div>
-
-      {commentOpen && (
-        <MetricCommentSheet
-          businessUnit={businessUnit}
-          metricId={commentOpen.metricId}
-          metricLabel={commentOpen.label}
-          open={true}
-          onClose={() => setCommentOpen(null)}
-          currentUserId={userId}
-          isAdmin={isAdmin}
-        />
-      )}
-    </div>
+    </>
   );
 }
 

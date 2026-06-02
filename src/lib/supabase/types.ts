@@ -1854,6 +1854,7 @@ export type Database = {
         Row: {
           bagi_hasil_pct: number
           bep_target_idr: number
+          branch: string | null
           business_unit: string
           contract_ref: string | null
           created_at: string
@@ -1871,6 +1872,7 @@ export type Database = {
         Insert: {
           bagi_hasil_pct: number
           bep_target_idr: number
+          branch?: string | null
           business_unit: string
           contract_ref?: string | null
           created_at?: string
@@ -1888,6 +1890,7 @@ export type Database = {
         Update: {
           bagi_hasil_pct?: number
           bep_target_idr?: number
+          branch?: string | null
           business_unit?: string
           contract_ref?: string | null
           created_at?: string

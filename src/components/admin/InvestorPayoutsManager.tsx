@@ -88,6 +88,7 @@ export function InvestorPayoutsManager({
               return (
                 <option key={c.id} value={c.id}>
                   {name} — {c.businessUnit}
+                  {c.branch ? ` · ${c.branch}` : ""}
                 </option>
               );
             })}
@@ -106,7 +107,8 @@ export function InvestorPayoutsManager({
 
       {contract && (
         <p className="text-xs text-muted-foreground">
-          {investorName} · {contract.businessUnit} · Bagi hasil{" "}
+          {investorName} · {contract.businessUnit}
+          {contract.branch ? ` · Cabang ${contract.branch}` : ""} · Bagi hasil{" "}
           {contract.bagiHasilPct}% / bulan · Total investasi{" "}
           {formatRp(contract.totalInvestIdr)}
         </p>

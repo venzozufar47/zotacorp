@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { requireAdmin, type ActionResult } from "./_gates";
 
 function adminClient() {
@@ -159,6 +160,10 @@ export interface InvestorContract {
   id: string;
   userId: string;
   businessUnit: string;
+  /** Physical branch this contract is scoped to. NULL = whole business
+   *  unit (Haengbocake + legacy Yeobo). For the per-branch Yeobo model
+   *  this is one of Tlogosari/Tembalang/Jebres. */
+  branch: string | null;
   totalInvestIdr: number;
   /** @deprecated Legacy flat rate; kept in sync with bagiHasilPctBeforeBep
    *  for backward compatibility. Use the before/after-BEP rates below. */
@@ -182,6 +187,7 @@ interface ContractRow {
   id: string;
   user_id: string;
   business_unit: string;
+  branch: string | null;
   total_invest_idr: number | string;
   bagi_hasil_pct: number | string;
   bagi_hasil_pct_before_bep: number | string | null;
@@ -202,6 +208,7 @@ function mapContract(r: ContractRow): InvestorContract {
     id: r.id,
     userId: r.user_id,
     businessUnit: r.business_unit,
+    branch: r.branch ?? null,
     totalInvestIdr: Number(r.total_invest_idr),
     bagiHasilPct: Number(r.bagi_hasil_pct),
     bagiHasilPctBeforeBep: Number(
@@ -247,19 +254,47 @@ export async function getInvestorContractByPair(
 ): Promise<InvestorContract | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
+  // BU-level (branch IS NULL) contract only. Scoping to NULL keeps this
+  // single-row even after per-branch Yeobo contracts exist (otherwise
+  // maybeSingle() would throw on multiple matches).
   const { data } = await supabase
     .from("investor_contracts")
     .select("*")
     .eq("user_id", userId)
     .eq("business_unit", businessUnit)
+    .is("branch", null)
     .maybeSingle();
   return data ? mapContract(data as ContractRow) : null;
+}
+
+/**
+ * Semua kontrak untuk satu (user, business_unit) — termasuk kontrak
+ * per-cabang (Yeobo Space). Cabang terkoneksi = distinct `branch`
+ * non-null. Untuk BU non-Yeobo, biasanya mengembalikan 0/1 baris
+ * (branch NULL).
+ */
+export async function getInvestorContractsForBu(
+  userId: string,
+  businessUnit: string
+): Promise<InvestorContract[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = adminClient() as any;
+  const { data } = await supabase
+    .from("investor_contracts")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("business_unit", businessUnit)
+    .order("branch", { ascending: true, nullsFirst: true });
+  return ((data ?? []) as ContractRow[]).map(mapContract);
 }
 
 export async function upsertInvestorContract(input: {
   id?: string;
   userId: string;
   businessUnit: string;
+  /** Yeobo Space only: physical branch (Tlogosari/Tembalang/Jebres).
+   *  Forced to null for every other business unit. */
+  branch?: string | null;
   totalInvestIdr: number;
   bagiHasilPctBeforeBep: number;
   bagiHasilPctAfterBep: number;
@@ -274,14 +309,31 @@ export async function upsertInvestorContract(input: {
 }): Promise<ActionResult<InvestorContract>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  if (!input.userId || !input.businessUnit.trim()) {
+  const businessUnit = input.businessUnit.trim();
+  if (!input.userId || !businessUnit) {
     return { ok: false, error: "userId dan businessUnit wajib" };
+  }
+  // Branch is a Yeobo-Space-only concept. For Yeobo it's required and
+  // must be a physical branch; for any other BU it's forced to null so
+  // Haengbocake (etc.) can never accidentally get a per-branch contract.
+  let branch: string | null = null;
+  if (businessUnit === "Yeobo Space") {
+    const physical = getAutoSplitBranches(businessUnit) ?? [];
+    branch = input.branch?.trim() || null;
+    if (!branch || !physical.includes(branch)) {
+      return {
+        ok: false,
+        error:
+          "Kontrak Yeobo Space wajib pilih cabang (Tlogosari/Tembalang/Jebres)",
+      };
+    }
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
   const payload = {
     user_id: input.userId,
-    business_unit: input.businessUnit.trim(),
+    business_unit: businessUnit,
+    branch,
     total_invest_idr: input.totalInvestIdr,
     // Keep legacy flat column in sync (= before-BEP) for any reader that
     // still consumes bagi_hasil_pct.
@@ -325,7 +377,7 @@ export async function upsertInvestorContract(input: {
     .from("investor_business_unit_assignments")
     .insert({
       user_id: input.userId,
-      business_unit: input.businessUnit.trim(),
+      business_unit: businessUnit,
       assigned_by: gate.userId,
     });
   if (assignErr && !assignErr.message.includes("duplicate")) {
