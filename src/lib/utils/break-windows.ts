@@ -55,10 +55,6 @@ export function activeBreakWindow(
   return null;
 }
 
-export function windowKey(w: { start: string; end: string }): string {
-  return `${w.start}-${w.end}`;
-}
-
 function hhmmToMinutes(t: string): number {
   const [h, m] = t.split(":");
   return Number(h) * 60 + Number(m ?? 0);

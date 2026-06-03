@@ -225,10 +225,6 @@ export function CheckInButton({
    * time taking a selfie that can't be submitted. The selfie upload +
    * server action run in step 2 (handleSelfieConfirmed).
    */
-  async function handleCheckIn() {
-    await startSelfieFlow("check-in");
-  }
-
   /**
    * Step 2: dialog returns the captured Blob. Upload to Supabase Storage
    * under the signed-in employee's own folder (enforced by storage RLS),
@@ -617,13 +613,9 @@ export function CheckInButton({
         onOpenChange={setModalOpen}
         action={modalAction === "check-out" ? "check-out" : "check-in"}
         onConfirm={
-          modalAction === "check-in"
-            ? handleCheckIn
-            : modalAction === "check-out"
-              ? handleCheckOutAttempt
-              : modalAction === "break-out"
-                ? () => startSelfieFlow("break-out")
-                : () => startSelfieFlow("break-in")
+          modalAction === "check-out"
+            ? handleCheckOutAttempt
+            : () => startSelfieFlow(modalAction)
         }
       />
 

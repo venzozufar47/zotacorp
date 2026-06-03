@@ -262,46 +262,92 @@ export async function checkIn(payload: CheckInPayload) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Shared gate for break actions: auth + GPS + live-selfie path + geofence
+ * (hard, same rule as check-in). Returns the resolved user + geofence decision,
+ * or an `{ error }` with the action-specific message.
+ */
+async function authorizeBreakAction(
+  payload: CheckInPayload,
+  errs: { loc: string; selfie: string; geo: string }
+): Promise<
+  | { error: string }
+  | {
+      error?: undefined;
+      user: { id: string };
+      decision: Awaited<ReturnType<typeof evaluateCheckIn>>;
+    }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (payload.latitude == null || payload.longitude == null) {
+    return { error: errs.loc };
+  }
+  if (!payload.selfie_path?.trim()) {
+    return { error: errs.selfie };
+  }
+  if (!payload.selfie_path.startsWith(`${user.id}/`)) {
+    return { error: "Selfie path tidak valid." };
+  }
+  const decision = await evaluateCheckIn(
+    user.id,
+    payload.latitude,
+    payload.longitude
+  );
+  if (!decision.ok) {
+    return { error: decision.error ?? errs.geo };
+  }
+  return { user: { id: user.id }, decision };
+}
+
+/** Sum of completed break-session durations (minutes) for one attendance log.
+ *  Recomputing from the rows is idempotent + drift-proof vs incrementing. */
+function sumBreakMinutes(
+  rows: { break_out_at: string; break_in_at: string | null }[]
+): number {
+  return rows.reduce((sum, b) => {
+    if (!b.break_in_at) return sum;
+    const mins = Math.round(
+      (new Date(b.break_in_at).getTime() - new Date(b.break_out_at).getTime()) /
+        60_000
+    );
+    return sum + Math.max(0, mins);
+  }, 0);
+}
+
+/**
  * Break check-OUT: start a break session. Requires break_enabled, an active
  * check-in (not yet checked out), the current time inside a break window that
  * hasn't been used yet, and passing the employee's geofence rule (hard).
  */
 export async function breakOut(payload: CheckInPayload) {
-  const user = await getCurrentUser();
-  if (!user) return { error: "Not authenticated" };
-  if (payload.latitude == null || payload.longitude == null) {
-    return { error: "Lokasi wajib untuk istirahat. Aktifkan akses lokasi di browser." };
-  }
-  if (!payload.selfie_path?.trim()) {
-    return { error: "Foto selfie wajib diambil sebelum istirahat." };
-  }
-  if (!payload.selfie_path.startsWith(`${user.id}/`)) {
-    return { error: "Selfie path tidak valid." };
-  }
-
-  const decision = await evaluateCheckIn(user.id, payload.latitude, payload.longitude);
-  if (!decision.ok) {
-    return { error: decision.error ?? "Tidak diizinkan istirahat dari lokasi ini." };
-  }
+  const auth = await authorizeBreakAction(payload, {
+    loc: "Lokasi wajib untuk istirahat. Aktifkan akses lokasi di browser.",
+    selfie: "Foto selfie wajib diambil sebelum istirahat.",
+    geo: "Tidak diizinkan istirahat dari lokasi ini.",
+  });
+  if ("error" in auth) return { error: auth.error };
+  const { user, decision } = auth;
 
   const supabase = await createClient();
   const today = jakartaDateString(new Date());
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("break_enabled, break_windows")
-    .eq("id", user.id)
-    .single();
+  // Independent reads in parallel.
+  const [{ data: profile }, { data: log }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("break_enabled, break_windows")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("attendance_logs")
+      .select("id, checked_in_at, checked_out_at")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle(),
+  ]);
   if (!profile?.break_enabled) {
     return { error: "Fitur istirahat tidak aktif untuk akun ini." };
   }
-
-  const { data: log } = await supabase
-    .from("attendance_logs")
-    .select("id, checked_in_at, checked_out_at")
-    .eq("user_id", user.id)
-    .eq("date", today)
-    .maybeSingle();
   if (!log || !log.checked_in_at) {
     return { error: "Anda harus check in masuk dulu sebelum istirahat." };
   }
@@ -326,11 +372,12 @@ export async function breakOut(payload: CheckInPayload) {
     .from("attendance_break_logs")
     .select("id, window_start, window_end, break_in_at")
     .eq("attendance_log_id", log.id);
-  if ((breaks ?? []).some((b) => b.break_in_at == null)) {
+  const breakRows = breaks ?? [];
+  if (breakRows.some((b) => b.break_in_at == null)) {
     return { error: "Anda sedang istirahat. Silakan check in kembali dulu." };
   }
   if (
-    (breaks ?? []).some(
+    breakRows.some(
       (b) => b.window_start === win.start && b.window_end === win.end
     )
   ) {
@@ -362,33 +409,25 @@ export async function breakOut(payload: CheckInPayload) {
 
 /**
  * Break check-IN: close the open break session. Same selfie + geofence gates.
- * Flags `late_return` if the employee returns after the window ended, and adds
- * the break duration to attendance_logs.total_break_minutes.
+ * Flags `late_return` if the employee returns after the window ended. The
+ * per-day total (attendance_logs.total_break_minutes) is RECOMPUTED from all
+ * closed sessions — idempotent, so a double-tap / retry can't double-count.
  */
 export async function breakIn(payload: CheckInPayload) {
-  const user = await getCurrentUser();
-  if (!user) return { error: "Not authenticated" };
-  if (payload.latitude == null || payload.longitude == null) {
-    return { error: "Lokasi wajib untuk kembali dari istirahat." };
-  }
-  if (!payload.selfie_path?.trim()) {
-    return { error: "Foto selfie wajib diambil sebelum kembali kerja." };
-  }
-  if (!payload.selfie_path.startsWith(`${user.id}/`)) {
-    return { error: "Selfie path tidak valid." };
-  }
-
-  const decision = await evaluateCheckIn(user.id, payload.latitude, payload.longitude);
-  if (!decision.ok) {
-    return { error: decision.error ?? "Tidak diizinkan kembali dari lokasi ini." };
-  }
+  const auth = await authorizeBreakAction(payload, {
+    loc: "Lokasi wajib untuk kembali dari istirahat.",
+    selfie: "Foto selfie wajib diambil sebelum kembali kerja.",
+    geo: "Tidak diizinkan kembali dari lokasi ini.",
+  });
+  if ("error" in auth) return { error: auth.error };
+  const { user, decision } = auth;
 
   const supabase = await createClient();
   const today = jakartaDateString(new Date());
 
   const { data: log } = await supabase
     .from("attendance_logs")
-    .select("id, total_break_minutes")
+    .select("id")
     .eq("user_id", user.id)
     .eq("date", today)
     .maybeSingle();
@@ -409,15 +448,12 @@ export async function breakIn(payload: CheckInPayload) {
   const settings = await getCachedAttendanceSettings();
   const timezone = settings?.timezone ?? "Asia/Jakarta";
   const now = new Date();
-
-  // Returned after the window's end → flag (advisory; no auto-penalty).
   const late_return = localHhmm(now, timezone) > open.window_end;
-  const breakMinutes = Math.max(
-    0,
-    Math.round((now.getTime() - new Date(open.break_out_at).getTime()) / 60_000)
-  );
 
-  const { error: e1 } = await supabase
+  // Idempotent close: the conditional `.is("break_in_at", null)` means only the
+  // call that actually transitions the session proceeds. A concurrent retry /
+  // double-tap finds no row to update and returns without re-accruing.
+  const { data: closed } = await supabase
     .from("attendance_break_logs")
     .update({
       break_in_at: now.toISOString(),
@@ -428,19 +464,35 @@ export async function breakIn(payload: CheckInPayload) {
       late_return,
       updated_at: now.toISOString(),
     })
-    .eq("id", open.id);
-  if (e1) return { error: e1.message };
+    .eq("id", open.id)
+    .is("break_in_at", null)
+    .select("id")
+    .maybeSingle();
+  if (!closed) {
+    // Already closed by a concurrent call — succeed idempotently.
+    return { data: { id: open.id, late_return } };
+  }
 
+  // Recompute the day's total from all closed sessions (idempotent + self-
+  // healing) rather than incrementing a running value.
+  const { data: allBreaks } = await supabase
+    .from("attendance_break_logs")
+    .select("break_out_at, break_in_at")
+    .eq("attendance_log_id", log.id);
   await supabase
     .from("attendance_logs")
     .update({
-      total_break_minutes: (log.total_break_minutes ?? 0) + breakMinutes,
+      total_break_minutes: sumBreakMinutes(allBreaks ?? []),
       updated_at: now.toISOString(),
     })
     .eq("id", log.id);
 
   revalidatePath("/dashboard");
   revalidatePath("/attendance");
+  const breakMinutes = Math.max(
+    0,
+    Math.round((now.getTime() - new Date(open.break_out_at).getTime()) / 60_000)
+  );
   return { data: { id: open.id, late_return, breakMinutes } };
 }
 

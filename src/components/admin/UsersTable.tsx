@@ -1104,6 +1104,10 @@ function ScheduleEditDialog({
   const [workdays, setWorkdays] = useState(126); // Mon–Sat default
   const [breakEnabled, setBreakEnabled] = useState(false);
   const [breakWindows, setBreakWindows] = useState<BreakWindow[]>([]);
+  const updateWindow = (i: number, field: "start" | "end", value: string) =>
+    setBreakWindows((ws) =>
+      ws.map((x, idx) => (idx === i ? { ...x, [field]: value } : x))
+    );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1380,13 +1384,7 @@ function ScheduleEditDialog({
                         type="time"
                         step={60}
                         value={w.start}
-                        onChange={(e) =>
-                          setBreakWindows((ws) =>
-                            ws.map((x, idx) =>
-                              idx === i ? { ...x, start: e.target.value } : x
-                            )
-                          )
-                        }
+                        onChange={(e) => updateWindow(i, "start", e.target.value)}
                         className="w-28"
                       />
                       <span className="text-muted-foreground">–</span>
@@ -1394,13 +1392,7 @@ function ScheduleEditDialog({
                         type="time"
                         step={60}
                         value={w.end}
-                        onChange={(e) =>
-                          setBreakWindows((ws) =>
-                            ws.map((x, idx) =>
-                              idx === i ? { ...x, end: e.target.value } : x
-                            )
-                          )
-                        }
+                        onChange={(e) => updateWindow(i, "end", e.target.value)}
                         className="w-28"
                       />
                       <button
