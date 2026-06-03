@@ -34,8 +34,11 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote, streak 
           60_000
       )
     : 0;
-  const workedH = Math.floor(totalMin / 60);
-  const workedM = totalMin % 60;
+  // Net worked excludes break time (total_break_minutes accrued via istirahat).
+  const breakMin = log.total_break_minutes ?? 0;
+  const netMin = Math.max(0, totalMin - breakMin);
+  const workedH = Math.floor(netMin / 60);
+  const workedM = netMin % 60;
 
   const overtimeStatus: "approved" | "rejected" | "pending" =
     log.overtime_status === "approved"
@@ -107,6 +110,11 @@ export function AttendanceStatusCard({ log, timezone, overtimeAdminNote, streak 
               )}
             </div>
           </div>
+          {breakMin > 0 && (
+            <p className="text-xs text-muted-foreground font-medium">
+              ☕ {t.attendanceStatus.breakTotal}: {formatMinutesHuman(breakMin, t.units)}
+            </p>
+          )}
           {log.checked_out_at && (
             <div className="space-y-0.5">
               <p className="text-xs text-muted-foreground font-medium">

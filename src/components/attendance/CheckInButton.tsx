@@ -3,10 +3,11 @@
 import { useState, useTransition, useRef } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import { MapPin, MapPinOff, Clock } from "lucide-react";
+import { MapPin, MapPinOff, Clock, Coffee } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { checkIn, checkOut } from "@/lib/actions/attendance.actions";
+import { checkIn, checkOut, breakOut, breakIn } from "@/lib/actions/attendance.actions";
 import { CheckoutConfirmDialog } from "./CheckoutConfirmDialog";
+import { activeBreakWindow } from "@/lib/utils/break-windows";
 
 /**
  * The password-confirm modal pulls in @base-ui/react's Dialog, Input,
@@ -47,7 +48,12 @@ async function fireConfetti() {
   });
 }
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
-import type { AttendanceLog, AttendanceSettings } from "@/lib/supabase/types";
+import type {
+  AttendanceLog,
+  AttendanceSettings,
+  AttendanceBreakLog,
+  BreakWindow,
+} from "@/lib/supabase/types";
 import { formatMinutesHuman } from "@/lib/utils/date";
 import { getEffectiveWorkEnd } from "@/lib/utils/attendance-overtime";
 import { SelfieCaptureDialog } from "./SelfieCaptureDialog";
@@ -66,10 +72,15 @@ interface CheckInButtonProps {
    * overtime minutes, so gating the UI on the same value keeps things
    * consistent. */
   workEndTime?: string | null;
+  /** Istirahat feature: enabled flag + windows + today's break sessions. */
+  breakEnabled?: boolean;
+  breakWindows?: BreakWindow[];
+  breakLogs?: AttendanceBreakLog[];
   onSuccess?: () => void;
 }
 
 type AttendanceState = "idle" | "checked-in" | "checked-out";
+type ModalAction = "check-in" | "check-out" | "break-out" | "break-in";
 
 function getState(log: AttendanceLog | null): AttendanceState {
   if (!log) return "idle";
@@ -83,11 +94,17 @@ export function CheckInButton({
   isFlexible = false,
   workStartTime,
   workEndTime,
+  breakEnabled = false,
+  breakWindows = [],
+  breakLogs = [],
   onSuccess,
 }: CheckInButtonProps) {
   const [log, setLog] = useState<AttendanceLog | null>(todayLog);
+  const [breaks, setBreaks] = useState<AttendanceBreakLog[]>(breakLogs);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalAction, setModalAction] = useState<"check-in" | "check-out">("check-in");
+  const [modalAction, setModalAction] = useState<ModalAction>("check-in");
+  // Which flow the GPS→selfie→action pipeline is currently running.
+  const pendingActionRef = useRef<ModalAction>("check-in");
   const [overtimeChecked, setOvertimeChecked] = useState(false);
   const [overtimeReason, setOvertimeReason] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -120,6 +137,24 @@ export function CheckInButton({
   const state = getState(log);
   const pastEndTime = canOptInOvertime();
 
+  // ── Istirahat (break) derivation ──────────────────────────────────────
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const openBreak = breaks.find((b) => b.break_in_at == null) ?? null;
+  // The break window the current local time falls inside (client-side; the
+  // server re-validates). Only relevant while checked-in and not on break.
+  const currentWindow =
+    breakEnabled && state === "checked-in" && !openBreak
+      ? activeBreakWindow(new Date(), breakWindows, tz)
+      : null;
+  const windowAlreadyUsed =
+    currentWindow != null &&
+    breaks.some(
+      (b) =>
+        b.window_start === currentWindow.start &&
+        b.window_end === currentWindow.end
+    );
+  const canBreakOut = currentWindow != null && !windowAlreadyUsed;
+
   function openCheckIn() {
     setModalAction("check-in");
     setModalOpen(true);
@@ -128,6 +163,28 @@ export function CheckInButton({
   function openCheckOut() {
     setModalAction("check-out");
     setModalOpen(true);
+  }
+
+  function openBreakOut() {
+    setModalAction("break-out");
+    setModalOpen(true);
+  }
+
+  function openBreakIn() {
+    setModalAction("break-in");
+    setModalOpen(true);
+  }
+
+  /** GPS → selfie pipeline shared by check-in and break-out/in. */
+  async function startSelfieFlow(action: ModalAction) {
+    const coords = await requestLocation();
+    if (!coords) {
+      toast.error(t.checkIn.toastLocationRequired, { duration: 6000 });
+      return;
+    }
+    pendingActionRef.current = action;
+    pendingCoordsRef.current = coords;
+    setSelfieOpen(true);
   }
 
   /**
@@ -169,13 +226,7 @@ export function CheckInButton({
    * server action run in step 2 (handleSelfieConfirmed).
    */
   async function handleCheckIn() {
-    const coords = await requestLocation();
-    if (!coords) {
-      toast.error(t.checkIn.toastLocationRequired, { duration: 6000 });
-      return;
-    }
-    pendingCoordsRef.current = coords;
-    setSelfieOpen(true);
+    await startSelfieFlow("check-in");
   }
 
   /**
@@ -213,11 +264,56 @@ export function CheckInButton({
         return;
       }
 
-      const result = await checkIn({
+      const payload = {
         latitude: coords.latitude,
         longitude: coords.longitude,
         selfie_path: path,
-      });
+      };
+      const action = pendingActionRef.current;
+
+      // ── Break-out: start a break session ──
+      if (action === "break-out") {
+        const result = await breakOut(payload);
+        if (result?.error) {
+          toast.error(result.error);
+          return;
+        }
+        if (result?.data) {
+          setSelfieOpen(false);
+          setBreaks((b) => [...b, result.data as AttendanceBreakLog]);
+          toast.success(t.checkIn.toastBreakOut);
+          onSuccess?.();
+        }
+        return;
+      }
+
+      // ── Break-in: close the open break session ──
+      if (action === "break-in") {
+        const result = await breakIn(payload);
+        if (result?.error) {
+          toast.error(result.error);
+          return;
+        }
+        if (result?.data) {
+          const d = result.data as { id: string; late_return: boolean };
+          const nowIso = new Date().toISOString();
+          setSelfieOpen(false);
+          setBreaks((b) =>
+            b.map((x) =>
+              x.id === d.id
+                ? { ...x, break_in_at: nowIso, late_return: d.late_return }
+                : x
+            )
+          );
+          if (d.late_return) toast.warning(t.checkIn.toastBreakInLate);
+          else toast.success(t.checkIn.toastBreakIn);
+          onSuccess?.();
+        }
+        return;
+      }
+
+      // ── Default: normal check-in ──
+      const result = await checkIn(payload);
 
       if (result?.error) {
         toast.error(result.error);
@@ -396,6 +492,38 @@ export function CheckInButton({
 
         {state === "checked-in" && (
           <>
+            {/* Istirahat — on-break: must check back in; or within a window:
+                offer break-out. Advisory: never blocks the Check Out below. */}
+            {breakEnabled && openBreak && (
+              <button
+                className="w-full h-[60px] rounded-full border-2 border-foreground bg-tertiary/40 flex items-center justify-center gap-2 font-display font-bold uppercase tracking-wide text-sm shadow-hard-sm disabled:opacity-50"
+                onClick={openBreakIn}
+                disabled={isPending}
+              >
+                <Coffee size={18} />
+                {isPending ? t.checkIn.processing : t.checkIn.breakIn}
+              </button>
+            )}
+            {breakEnabled && !openBreak && canBreakOut && (
+              <button
+                className="w-full h-[60px] rounded-full border-2 border-foreground bg-tertiary/20 flex items-center justify-center gap-2 font-display font-bold uppercase tracking-wide text-sm hover:bg-tertiary/40 disabled:opacity-50"
+                onClick={openBreakOut}
+                disabled={isPending}
+              >
+                <Coffee size={18} />
+                {isPending ? t.checkIn.processing : t.checkIn.breakOut}
+              </button>
+            )}
+            {breakEnabled && !openBreak && !canBreakOut && breakWindows.length > 0 && (
+              <p className="text-xs text-center text-muted-foreground">
+                <Coffee size={13} className="inline-block mr-1 opacity-60" />
+                {t.checkIn.breakWindowHint.replace(
+                  "{windows}",
+                  breakWindows.map((w) => `${w.start}–${w.end}`).join(", ")
+                )}
+              </p>
+            )}
+
             <button
               className="btn-action-secondary w-full flex items-center justify-center gap-2"
               onClick={openCheckOut}
@@ -487,8 +615,16 @@ export function CheckInButton({
       <PasswordConfirmModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        action={modalAction}
-        onConfirm={modalAction === "check-in" ? handleCheckIn : handleCheckOutAttempt}
+        action={modalAction === "check-out" ? "check-out" : "check-in"}
+        onConfirm={
+          modalAction === "check-in"
+            ? handleCheckIn
+            : modalAction === "check-out"
+              ? handleCheckOutAttempt
+              : modalAction === "break-out"
+                ? () => startSelfieFlow("break-out")
+                : () => startSelfieFlow("break-in")
+        }
       />
 
       {/* Step 2 of check-in: live selfie capture. The dialog manages its

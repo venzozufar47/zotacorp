@@ -26,6 +26,8 @@ import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { getDictionary } from "@/lib/i18n/server";
+import { parseBreakWindows } from "@/lib/utils/break-windows";
+import type { AttendanceBreakLog } from "@/lib/supabase/types";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -86,6 +88,7 @@ export default async function DashboardPage() {
     extraWorkRes,
     celebrationsFeed,
     floorToday,
+    breakLogsRes,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -106,6 +109,12 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: false }),
     getCelebrationsFeed(),
     getFloorToday(),
+    supabase
+      .from("attendance_break_logs")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("date", todayDate)
+      .order("break_out_at", { ascending: true }),
   ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -197,6 +206,9 @@ export default async function DashboardPage() {
             isFlexible={profile?.is_flexible_schedule ?? false}
             workStartTime={profile?.work_start_time ?? null}
             workEndTime={profile?.work_end_time ?? null}
+            breakEnabled={profile?.break_enabled ?? false}
+            breakWindows={parseBreakWindows(profile?.break_windows)}
+            breakLogs={(breakLogsRes.data ?? []) as AttendanceBreakLog[]}
           />
           {extraWorkKindNames.length > 0 && (
             <ExtraWorkButton todayEntries={extraWorkToday} kinds={extraWorkKindNames} />

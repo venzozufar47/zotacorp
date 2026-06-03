@@ -49,6 +49,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import type { Dictionary } from "@/lib/i18n/dictionary";
+import type { BreakWindow } from "@/lib/supabase/types";
 
 /** The slice of the dictionary this component tree needs. Lets us pass
  *  a single `tu` prop to every sub-component instead of re-calling
@@ -76,6 +77,10 @@ interface UserRow {
   workday_check_enabled: boolean;
   /** Bitmask: bit 0=Sun … bit 6=Sat. Default 126 = Mon-Sat. */
   workdays: number;
+  /** Istirahat: kalau true, karyawan wajib check-out/in istirahat di window. */
+  break_enabled: boolean;
+  /** Daftar rentang jam istirahat (HH:MM). */
+  break_windows: BreakWindow[];
   profile_complete: boolean;
   /** IDs of attendance_locations this employee is allowed to check in at.
    *  Empty array = unrestricted (can check in anywhere). */
@@ -1097,6 +1102,8 @@ function ScheduleEditDialog({
   const [grace, setGrace] = useState(15);
   const [workdayCheckEnabled, setWorkdayCheckEnabled] = useState(false);
   const [workdays, setWorkdays] = useState(126); // Mon–Sat default
+  const [breakEnabled, setBreakEnabled] = useState(false);
+  const [breakWindows, setBreakWindows] = useState<BreakWindow[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1110,6 +1117,8 @@ function ScheduleEditDialog({
     setGrace(row.grace_period_min);
     setWorkdayCheckEnabled(row.workday_check_enabled);
     setWorkdays(row.workdays);
+    setBreakEnabled(row.break_enabled);
+    setBreakWindows(row.break_windows ?? []);
     setError(null);
   }, [row]);
 
@@ -1132,6 +1141,23 @@ function ScheduleEditDialog({
       }
     }
 
+    if (breakEnabled) {
+      for (const w of breakWindows) {
+        if (!w.start || !w.end) {
+          setError("Lengkapi jam istirahat (mulai & selesai).");
+          return;
+        }
+        if (w.start >= w.end) {
+          setError("Jam istirahat: jam mulai harus sebelum jam selesai.");
+          return;
+        }
+        if (!flexible && (w.start < start || w.end > end)) {
+          setError("Jam istirahat harus berada di dalam jam kerja.");
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const res = await fetch("/api/profile/update", {
@@ -1149,6 +1175,8 @@ function ScheduleEditDialog({
           grace_period_min: Math.round(grace),
           workday_check_enabled: workdayCheckEnabled,
           workdays,
+          break_enabled: breakEnabled,
+          break_windows: breakEnabled ? breakWindows : [],
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -1317,6 +1345,88 @@ function ScheduleEditDialog({
                       </button>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Istirahat (break) windows — opt-in per karyawan */}
+          {!flexible && (
+            <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={breakEnabled}
+                  onChange={(e) => setBreakEnabled(e.target.checked)}
+                  className="size-4"
+                />
+                <span className="text-sm font-medium">Aktifkan istirahat</span>
+              </label>
+              <p className="text-[11.5px] text-muted-foreground leading-snug">
+                Karyawan wajib check-out istirahat lalu kembali (password +
+                selfie + lokasi) di dalam rentang jam istirahat. Bisa lebih
+                dari satu rentang.
+              </p>
+              {breakEnabled && (
+                <div className="space-y-2 pt-1">
+                  {breakWindows.length === 0 && (
+                    <p className="text-[11.5px] text-muted-foreground italic">
+                      Belum ada rentang. Tambahkan minimal satu.
+                    </p>
+                  )}
+                  {breakWindows.map((w, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input
+                        type="time"
+                        step={60}
+                        value={w.start}
+                        onChange={(e) =>
+                          setBreakWindows((ws) =>
+                            ws.map((x, idx) =>
+                              idx === i ? { ...x, start: e.target.value } : x
+                            )
+                          )
+                        }
+                        className="w-28"
+                      />
+                      <span className="text-muted-foreground">–</span>
+                      <Input
+                        type="time"
+                        step={60}
+                        value={w.end}
+                        onChange={(e) =>
+                          setBreakWindows((ws) =>
+                            ws.map((x, idx) =>
+                              idx === i ? { ...x, end: e.target.value } : x
+                            )
+                          )
+                        }
+                        className="w-28"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBreakWindows((ws) => ws.filter((_, idx) => idx !== i))
+                        }
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label="Hapus rentang"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBreakWindows((ws) => [
+                        ...ws,
+                        { start: "12:00", end: "13:00" },
+                      ])
+                    }
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    + Tambah jam istirahat
+                  </button>
                 </div>
               )}
             </div>

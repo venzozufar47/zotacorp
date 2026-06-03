@@ -70,6 +70,7 @@ export type Database = {
           overtime_status: string | null
           selfie_path: string | null
           status: string
+          total_break_minutes: number
           updated_at: string
           user_id: string
         }
@@ -98,6 +99,7 @@ export type Database = {
           overtime_status?: string | null
           selfie_path?: string | null
           status?: string
+          total_break_minutes?: number
           updated_at?: string
           user_id: string
         }
@@ -126,6 +128,7 @@ export type Database = {
           overtime_status?: string | null
           selfie_path?: string | null
           status?: string
+          total_break_minutes?: number
           updated_at?: string
           user_id?: string
         }
@@ -149,6 +152,87 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_break_logs: {
+        Row: {
+          attendance_log_id: string
+          break_in_at: string | null
+          break_in_latitude: number | null
+          break_in_longitude: number | null
+          break_in_matched_location_id: string | null
+          break_in_selfie_path: string | null
+          break_out_at: string
+          break_out_latitude: number | null
+          break_out_longitude: number | null
+          break_out_matched_location_id: string | null
+          break_out_selfie_path: string | null
+          created_at: string
+          date: string
+          id: string
+          late_return: boolean
+          updated_at: string
+          user_id: string
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          attendance_log_id: string
+          break_in_at?: string | null
+          break_in_latitude?: number | null
+          break_in_longitude?: number | null
+          break_in_matched_location_id?: string | null
+          break_in_selfie_path?: string | null
+          break_out_at: string
+          break_out_latitude?: number | null
+          break_out_longitude?: number | null
+          break_out_matched_location_id?: string | null
+          break_out_selfie_path?: string | null
+          created_at?: string
+          date: string
+          id?: string
+          late_return?: boolean
+          updated_at?: string
+          user_id: string
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          attendance_log_id?: string
+          break_in_at?: string | null
+          break_in_latitude?: number | null
+          break_in_longitude?: number | null
+          break_in_matched_location_id?: string | null
+          break_in_selfie_path?: string | null
+          break_out_at?: string
+          break_out_latitude?: number | null
+          break_out_longitude?: number | null
+          break_out_matched_location_id?: string | null
+          break_out_selfie_path?: string | null
+          created_at?: string
+          date?: string
+          id?: string
+          late_return?: boolean
+          updated_at?: string
+          user_id?: string
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_break_logs_attendance_log_id_fkey"
+            columns: ["attendance_log_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_break_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2911,6 +2995,8 @@ export type Database = {
           avatar_seed: string | null
           avatar_url: string | null
           birthday_last_greeted: string | null
+          break_enabled: boolean
+          break_windows: Json
           business_unit: string | null
           created_at: string
           current_city: string | null
@@ -2964,6 +3050,8 @@ export type Database = {
           avatar_seed?: string | null
           avatar_url?: string | null
           birthday_last_greeted?: string | null
+          break_enabled?: boolean
+          break_windows?: Json
           business_unit?: string | null
           created_at?: string
           current_city?: string | null
@@ -3017,6 +3105,8 @@ export type Database = {
           avatar_seed?: string | null
           avatar_url?: string | null
           birthday_last_greeted?: string | null
+          break_enabled?: boolean
+          break_windows?: Json
           business_unit?: string | null
           created_at?: string
           current_city?: string | null
@@ -3884,6 +3974,10 @@ export type PayslipBreakdown = {
 };
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AttendanceLog = Database['public']['Tables']['attendance_logs']['Row'];
+export type AttendanceBreakLog = Database['public']['Tables']['attendance_break_logs']['Row'];
+
+/** A single break window in profiles.break_windows (jsonb array). HH:MM. */
+export type BreakWindow = { start: string; end: string };
 export type AttendanceSettings = Database['public']['Tables']['attendance_settings']['Row'];
 export type OvertimeRequest = Database['public']['Tables']['overtime_requests']['Row'];
 export type PayslipSettings = Database['public']['Tables']['payslip_settings']['Row'];

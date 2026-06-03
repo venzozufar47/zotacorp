@@ -271,7 +271,7 @@ function resolveExpectedWorkDays(
  */
 function calculateFromAttendance(
   settings: PayslipSettings,
-  logs: Pick<AttendanceLog, "date" | "checked_in_at" | "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime" | "late_proof_admin_note" | "late_proof_reason">[],
+  logs: Pick<AttendanceLog, "date" | "checked_in_at" | "checked_out_at" | "overtime_minutes" | "overtime_status" | "late_minutes" | "status" | "is_overtime" | "total_break_minutes" | "late_proof_admin_note" | "late_proof_reason">[],
   overtimeRequests: Pick<OvertimeRequest, "attendance_log_id" | "overtime_minutes" | "status">[],
   gracePeriodMin: number = 0
 ) {
@@ -388,10 +388,15 @@ function calculateFromAttendance(
       expected > 0 && stdHours > 0 ? baseSalary / (expected * stdHours) : 0;
     for (const log of bonusLogs) {
       if (!log.checked_in_at || !log.checked_out_at) continue;
-      const hoursWorked =
+      const grossHours =
         (new Date(log.checked_out_at).getTime() -
           new Date(log.checked_in_at).getTime()) /
         3_600_000;
+      // Istirahat is unpaid: subtract break minutes from the paid hours.
+      const hoursWorked = Math.max(
+        0,
+        grossHours - (log.total_break_minutes ?? 0) / 60
+      );
       if (hoursWorked <= 0) continue;
       const firstHour = Math.min(hoursWorked, 1);
       const laterHours = Math.max(hoursWorked - 1, 0);
@@ -675,6 +680,7 @@ type CalcInputs = {
     | "late_minutes"
     | "status"
     | "is_overtime"
+    | "total_break_minutes"
     | "late_proof_admin_note"
     | "late_proof_reason"
   >[];
@@ -774,6 +780,7 @@ function computeInputsSignature(inputs: CalcInputs): string {
         l.is_overtime,
         l.status,
         l.overtime_status,
+        l.total_break_minutes,
         l.late_proof_admin_note ?? "",
         l.late_proof_reason ?? "",
       ])
@@ -1176,7 +1183,7 @@ export async function bulkCalculatePayslips(
     supabase
       .from("attendance_logs")
       .select(
-        "id, user_id, date, checked_in_at, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
+        "id, user_id, date, checked_in_at, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, total_break_minutes, late_proof_admin_note, late_proof_reason"
       )
       .in("user_id", userIds)
       .gte("date", monthStart)
@@ -1486,7 +1493,7 @@ export async function calculatePayslip(
     supabase
       .from("attendance_logs")
       .select(
-        "id, date, checked_in_at, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, late_proof_admin_note, late_proof_reason"
+        "id, date, checked_in_at, checked_out_at, overtime_minutes, overtime_status, late_minutes, status, is_overtime, total_break_minutes, late_proof_admin_note, late_proof_reason"
       )
       .eq("user_id", userId)
       .gte("date", monthStart)

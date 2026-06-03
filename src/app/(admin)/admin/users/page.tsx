@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { getDictionary } from "@/lib/i18n/server";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
+import { parseBreakWindows } from "@/lib/utils/break-windows";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { UsersTable } from "@/components/admin/UsersTable";
 
@@ -107,6 +108,8 @@ export default async function AdminUsersPage() {
       grace_period_min: p.grace_period_min ?? 15,
       workday_check_enabled: p.workday_check_enabled ?? false,
       workdays: p.workdays ?? 126,
+      break_enabled: p.break_enabled ?? false,
+      break_windows: parseBreakWindows(p.break_windows),
       profile_complete: profileComplete,
       assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
       payslip_excluded: p.payslip_excluded ?? false,

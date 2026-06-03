@@ -19,6 +19,11 @@ import {
   resolveCheckoutInstant,
 } from "@/lib/utils/attendance-overtime";
 import { computeStreak, type StreakLogInput } from "@/lib/utils/streak";
+import {
+  parseBreakWindows,
+  activeBreakWindow,
+  localHhmm,
+} from "@/lib/utils/break-windows";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
@@ -248,6 +253,195 @@ export async function checkIn(payload: CheckInPayload) {
   revalidatePath("/dashboard");
   revalidatePath("/attendance");
   return { data };
+}
+
+// ---------------------------------------------------------------------------
+// Istirahat (break) — check-out for break + check back in. Same gates as
+// check-in (selfie + geofence + the client-side password modal). Only allowed
+// while inside a configured break window; supports multiple breaks/day.
+// ---------------------------------------------------------------------------
+
+/**
+ * Break check-OUT: start a break session. Requires break_enabled, an active
+ * check-in (not yet checked out), the current time inside a break window that
+ * hasn't been used yet, and passing the employee's geofence rule (hard).
+ */
+export async function breakOut(payload: CheckInPayload) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (payload.latitude == null || payload.longitude == null) {
+    return { error: "Lokasi wajib untuk istirahat. Aktifkan akses lokasi di browser." };
+  }
+  if (!payload.selfie_path?.trim()) {
+    return { error: "Foto selfie wajib diambil sebelum istirahat." };
+  }
+  if (!payload.selfie_path.startsWith(`${user.id}/`)) {
+    return { error: "Selfie path tidak valid." };
+  }
+
+  const decision = await evaluateCheckIn(user.id, payload.latitude, payload.longitude);
+  if (!decision.ok) {
+    return { error: decision.error ?? "Tidak diizinkan istirahat dari lokasi ini." };
+  }
+
+  const supabase = await createClient();
+  const today = jakartaDateString(new Date());
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("break_enabled, break_windows")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.break_enabled) {
+    return { error: "Fitur istirahat tidak aktif untuk akun ini." };
+  }
+
+  const { data: log } = await supabase
+    .from("attendance_logs")
+    .select("id, checked_in_at, checked_out_at")
+    .eq("user_id", user.id)
+    .eq("date", today)
+    .maybeSingle();
+  if (!log || !log.checked_in_at) {
+    return { error: "Anda harus check in masuk dulu sebelum istirahat." };
+  }
+  if (log.checked_out_at) {
+    return { error: "Anda sudah check out pulang hari ini." };
+  }
+
+  const settings = await getCachedAttendanceSettings();
+  const timezone = settings?.timezone ?? "Asia/Jakarta";
+  const now = new Date();
+
+  const windows = parseBreakWindows(profile.break_windows);
+  const win = activeBreakWindow(now, windows, timezone);
+  if (!win) {
+    return {
+      error:
+        "Belum masuk jam istirahat. Anda hanya bisa istirahat di dalam rentang jam istirahat yang ditentukan.",
+    };
+  }
+
+  const { data: breaks } = await supabase
+    .from("attendance_break_logs")
+    .select("id, window_start, window_end, break_in_at")
+    .eq("attendance_log_id", log.id);
+  if ((breaks ?? []).some((b) => b.break_in_at == null)) {
+    return { error: "Anda sedang istirahat. Silakan check in kembali dulu." };
+  }
+  if (
+    (breaks ?? []).some(
+      (b) => b.window_start === win.start && b.window_end === win.end
+    )
+  ) {
+    return { error: "Anda sudah istirahat untuk sesi jam ini." };
+  }
+
+  const { data, error } = await supabase
+    .from("attendance_break_logs")
+    .insert({
+      attendance_log_id: log.id,
+      user_id: user.id,
+      date: today,
+      window_start: win.start,
+      window_end: win.end,
+      break_out_at: now.toISOString(),
+      break_out_latitude: payload.latitude,
+      break_out_longitude: payload.longitude,
+      break_out_selfie_path: payload.selfie_path,
+      break_out_matched_location_id: decision.matchedLocationId,
+    })
+    .select()
+    .single();
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/attendance");
+  return { data };
+}
+
+/**
+ * Break check-IN: close the open break session. Same selfie + geofence gates.
+ * Flags `late_return` if the employee returns after the window ended, and adds
+ * the break duration to attendance_logs.total_break_minutes.
+ */
+export async function breakIn(payload: CheckInPayload) {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (payload.latitude == null || payload.longitude == null) {
+    return { error: "Lokasi wajib untuk kembali dari istirahat." };
+  }
+  if (!payload.selfie_path?.trim()) {
+    return { error: "Foto selfie wajib diambil sebelum kembali kerja." };
+  }
+  if (!payload.selfie_path.startsWith(`${user.id}/`)) {
+    return { error: "Selfie path tidak valid." };
+  }
+
+  const decision = await evaluateCheckIn(user.id, payload.latitude, payload.longitude);
+  if (!decision.ok) {
+    return { error: decision.error ?? "Tidak diizinkan kembali dari lokasi ini." };
+  }
+
+  const supabase = await createClient();
+  const today = jakartaDateString(new Date());
+
+  const { data: log } = await supabase
+    .from("attendance_logs")
+    .select("id, total_break_minutes")
+    .eq("user_id", user.id)
+    .eq("date", today)
+    .maybeSingle();
+  if (!log) return { error: "Tidak ada data absensi hari ini." };
+
+  const { data: open } = await supabase
+    .from("attendance_break_logs")
+    .select("id, break_out_at, window_end")
+    .eq("attendance_log_id", log.id)
+    .is("break_in_at", null)
+    .order("break_out_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!open) {
+    return { error: "Tidak ada sesi istirahat yang sedang berjalan." };
+  }
+
+  const settings = await getCachedAttendanceSettings();
+  const timezone = settings?.timezone ?? "Asia/Jakarta";
+  const now = new Date();
+
+  // Returned after the window's end → flag (advisory; no auto-penalty).
+  const late_return = localHhmm(now, timezone) > open.window_end;
+  const breakMinutes = Math.max(
+    0,
+    Math.round((now.getTime() - new Date(open.break_out_at).getTime()) / 60_000)
+  );
+
+  const { error: e1 } = await supabase
+    .from("attendance_break_logs")
+    .update({
+      break_in_at: now.toISOString(),
+      break_in_latitude: payload.latitude,
+      break_in_longitude: payload.longitude,
+      break_in_selfie_path: payload.selfie_path,
+      break_in_matched_location_id: decision.matchedLocationId,
+      late_return,
+      updated_at: now.toISOString(),
+    })
+    .eq("id", open.id);
+  if (e1) return { error: e1.message };
+
+  await supabase
+    .from("attendance_logs")
+    .update({
+      total_break_minutes: (log.total_break_minutes ?? 0) + breakMinutes,
+      updated_at: now.toISOString(),
+    })
+    .eq("id", log.id);
+
+  revalidatePath("/dashboard");
+  revalidatePath("/attendance");
+  return { data: { id: open.id, late_return, breakMinutes } };
 }
 
 /**
