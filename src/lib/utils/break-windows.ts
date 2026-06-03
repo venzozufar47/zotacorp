@@ -58,3 +58,29 @@ export function activeBreakWindow(
 export function windowKey(w: { start: string; end: string }): string {
   return `${w.start}-${w.end}`;
 }
+
+function hhmmToMinutes(t: string): number {
+  const [h, m] = t.split(":");
+  return Number(h) * 60 + Number(m ?? 0);
+}
+
+/**
+ * Effective standard work hours per day = (work_end − work_start) minus the
+ * total break-window duration. Breaks are unpaid, so they don't count toward
+ * "jam kerja" — this value is the denominator for hourly pay + overtime rate.
+ * Accepts "HH:MM" or "HH:MM:SS". Returns hours (may be fractional).
+ */
+export function effectiveStandardHours(
+  workStart: string | null | undefined,
+  workEnd: string | null | undefined,
+  windows: BreakWindow[]
+): number {
+  if (!workStart || !workEnd) return 0;
+  const spanMin = hhmmToMinutes(workEnd) - hhmmToMinutes(workStart);
+  if (spanMin <= 0) return 0;
+  const breakMin = windows.reduce(
+    (a, w) => a + Math.max(0, hhmmToMinutes(w.end) - hhmmToMinutes(w.start)),
+    0
+  );
+  return Math.max(0, (spanMin - breakMin) / 60);
+}

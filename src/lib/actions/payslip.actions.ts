@@ -12,6 +12,7 @@ import type {
   PayslipBreakdown,
   Database,
 } from "@/lib/supabase/types";
+import { parseBreakWindows, effectiveStandardHours } from "@/lib/utils/break-windows";
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 
@@ -668,6 +669,12 @@ type CalcInputs = {
     grace_period_min: number | null;
     nickname: string | null;
     full_name: string | null;
+    /** Per-employee work schedule + break config — used to derive the
+     *  effective standard work hours (span − breaks) for hourly pay/OT rate. */
+    work_start_time?: string | null;
+    work_end_time?: string | null;
+    break_enabled?: boolean | null;
+    break_windows?: unknown;
   };
   attendanceLogs: Pick<
     AttendanceLog,
@@ -767,6 +774,10 @@ function computeInputsSignature(inputs: CalcInputs): string {
       g: inputs.profile.grace_period_min,
       n: inputs.profile.nickname,
       f: inputs.profile.full_name,
+      ws: inputs.profile.work_start_time ?? null,
+      we: inputs.profile.work_end_time ?? null,
+      be: inputs.profile.break_enabled ?? false,
+      bw: inputs.profile.break_windows ?? null,
     },
     cb: inputs.cakeBonus ?? 0,
     al: inputs.attendanceLogs
@@ -839,9 +850,22 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
   const baseSalary = Number(settings.monthly_fixed_amount);
 
   const resolvedExpected = resolveExpectedWorkDays(settings, month, year, inputs.pair);
+  // Break is unpaid: when enabled, the standard work hours per day exclude the
+  // break windows → (work_end − work_start) − Σ breaks. This becomes the
+  // denominator for the hourly pay rate + overtime rate.
+  const effectiveStdHours = inputs.profile.break_enabled
+    ? effectiveStandardHours(
+        inputs.profile.work_start_time,
+        inputs.profile.work_end_time,
+        parseBreakWindows(inputs.profile.break_windows)
+      )
+    : null;
   const effectiveSettings: PayslipSettings = {
     ...settings,
     expected_work_days: resolvedExpected,
+    ...(effectiveStdHours != null && effectiveStdHours > 0
+      ? { standard_working_hours: effectiveStdHours }
+      : {}),
   };
 
   const emptyBreakdown: PayslipBreakdown = {
@@ -1178,7 +1202,7 @@ export async function bulkCalculatePayslips(
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, grace_period_min, nickname, full_name, position")
+      .select("id, grace_period_min, nickname, full_name, position, work_start_time, work_end_time, break_enabled, break_windows")
       .in("id", userIds),
     supabase
       .from("attendance_logs")
@@ -1310,6 +1334,10 @@ export async function bulkCalculatePayslips(
       nickname: null,
       full_name: null,
       position: null,
+      work_start_time: null,
+      work_end_time: null,
+      break_enabled: false,
+      break_windows: [],
     };
     const existing = payslipByUser.get(userId) ?? null;
     if (existing && existing.status === "finalized") {
@@ -1331,6 +1359,10 @@ export async function bulkCalculatePayslips(
         grace_period_min: profile.grace_period_min ?? null,
         nickname: profile.nickname ?? null,
         full_name: profile.full_name ?? null,
+        work_start_time: profile.work_start_time ?? null,
+        work_end_time: profile.work_end_time ?? null,
+        break_enabled: profile.break_enabled ?? false,
+        break_windows: profile.break_windows ?? [],
       },
       attendanceLogs: userLogs,
       overtimeRequests: userOT,
@@ -1487,7 +1519,7 @@ export async function calculatePayslip(
       .single(),
     supabase
       .from("profiles")
-      .select("grace_period_min, nickname, full_name, position")
+      .select("grace_period_min, nickname, full_name, position, work_start_time, work_end_time, break_enabled, break_windows")
       .eq("id", userId)
       .single(),
     supabase
@@ -1606,6 +1638,10 @@ export async function calculatePayslip(
       grace_period_min: profileRes.data?.grace_period_min ?? null,
       nickname: profileRes.data?.nickname ?? null,
       full_name: profileRes.data?.full_name ?? null,
+      work_start_time: profileRes.data?.work_start_time ?? null,
+      work_end_time: profileRes.data?.work_end_time ?? null,
+      break_enabled: profileRes.data?.break_enabled ?? false,
+      break_windows: profileRes.data?.break_windows ?? [],
     },
     attendanceLogs: logs,
     overtimeRequests,
