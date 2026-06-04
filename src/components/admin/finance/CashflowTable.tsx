@@ -1779,9 +1779,14 @@ function AttachmentCell({
     // dihapus dan mau upload ulang.
     ev.target.value = "";
     if (!file) return;
+    // Kompres foto di sisi client sebelum upload — bukti transaksi foto
+    // HP bisa 1–4 MB; resize ≤1600px + JPEG q0.7 → ~150–250 KB. PDF lewat
+    // apa adanya. Hemat storage Supabase secara drastis.
+    const { compressImageFile } = await import("@/lib/images/compress-image");
+    const toUpload = await compressImageFile(file);
     const form = new FormData();
     form.set("transactionId", transactionId);
-    form.set("file", file);
+    form.set("file", toUpload);
     const { uploadCashflowAttachment } = await import(
       "@/lib/actions/cashflow-attachments.actions"
     );
