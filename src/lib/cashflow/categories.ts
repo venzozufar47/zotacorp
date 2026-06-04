@@ -50,35 +50,33 @@ export const YEOBO_SPACE_CREDIT_CATEGORIES = [
   "Revenue",
   "Other Revenue",
   "Investment",
-  // Owner MENYETOR / meminjamkan ke perusahaan (perusahaan berutang).
-  "Owner's Debt",
-  // Owner MENGEMBALIKAN pinjaman yang ia ambil dari perusahaan
-  // (uang masuk; pasangan dari "Owner's Loan" di sisi debit).
-  "Owner's Loan Repayment",
+  // Owner MENGEMBALIKAN dana ke Yeobo (dari rekening owner → rekening
+  // Yeobo). Uang MASUK → non-operasional income. Pasangan dari
+  // "Owner's Debt" di sisi debit.
+  "Owner's Debt Repayment",
   "Wealth Transfer",
   "Needs Assignment",
 ] as const;
 
 export const YEOBO_SPACE_DEBIT_CATEGORIES = [
+  // Office Supplies & Subscription DIHAPUS sebagai kategori terpisah —
+  // untuk Yeobo Space keduanya dianggap Cost of Goods Sold. (Tidak ada
+  // transaksi lama yang memakainya, jadi tak perlu migrasi data.)
   "Cost of Goods Sold",
-  "Office Supplies",
   "Shipping Cost",
   "Advertising",
   "Bank Administration",
   "Utilities",
   "Maintenance",
   "Asset Investment",
-  "Subscription",
   "Salaries & Wages",
   "Rent",
   "Sales Refund",
   "Dividend",
-  // Perusahaan MENGEMBALIKAN utang ke owner (owner sebelumnya
-  // menyetor/meminjamkan ke perusahaan). Pasangan dari "Owner's Debt".
-  "Owner's Debt Repayment",
-  // Perusahaan MEMINJAMKAN ke owner (uang keluar; owner berutang dan
-  // wajib mengembalikan). Pasangan dari "Owner's Loan Repayment".
-  "Owner's Loan",
+  // Owner MEMINJAM dari Yeobo (dari rekening Yeobo → rekening owner).
+  // Uang KELUAR → non-operasional expense. Pasangan dari
+  // "Owner's Debt Repayment" di sisi credit.
+  "Owner's Debt",
   "Wealth Transfer",
   "Needs Assignment",
 ] as const;
@@ -156,11 +154,14 @@ export const YEOBO_TWO_BRANCH_SENTINELS: Record<string, readonly string[]> = {
 export const YEOBO_SPACE_NON_OPERATING_CATEGORIES = [
   "Wealth Transfer",
   "Investment",
+  // Dividend = pengeluaran non-operasional, dicatat terpisah (dipakai
+  // dashboard investor — baca byCategory dgn category === "Dividend").
   "Dividend",
+  // Utang owner (1 pasang): Owner's Debt = owner meminjam (uang keluar,
+  // non-op expense); Owner's Debt Repayment = owner mengembalikan
+  // (uang masuk, non-op income).
   "Owner's Debt",
   "Owner's Debt Repayment",
-  "Owner's Loan",
-  "Owner's Loan Repayment",
 ] as const;
 
 /**

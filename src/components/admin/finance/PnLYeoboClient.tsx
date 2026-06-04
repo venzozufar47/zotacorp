@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -21,6 +21,7 @@ import type { YeoboPnLReport, YeoboBranchPnL } from "@/lib/cashflow/pnl-yeobo";
 import { formatIDR } from "@/lib/cashflow/format";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import { PnLChartsYeobo } from "./PnLChartsYeobo";
+import { PnLYeoboSpreadsheet } from "./PnLYeoboSpreadsheet";
 import {
   MonthRangePicker,
   parseYM,
@@ -76,9 +77,20 @@ export function PnLYeoboClient({
       }
     : { ...rawReport, branches: orderYeoboBranches(rawReport.branches) };
   const router = useRouter();
+  const sp = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
   const fromStr = ymString(from);
   const toStr = ymString(to);
+
+  // View toggle: spreadsheet (default) vs kartu lama. Persist via ?view=.
+  const viewMode: "spreadsheet" | "cards" =
+    sp.get("view") === "cards" ? "cards" : "spreadsheet";
+
+  function setView(v: "spreadsheet" | "cards") {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", v);
+    router.push(url.pathname + "?" + url.searchParams.toString());
+  }
 
   function applyRange(f: string, t: string) {
     const url = new URL(window.location.href);
@@ -88,8 +100,47 @@ export function PnLYeoboClient({
     router.push(url.pathname + "?" + url.searchParams.toString());
   }
 
+  // View toggle pill (shared by both modes).
+  const viewToggle = (
+    <div className="inline-flex rounded-xl border-2 border-foreground bg-card p-1 gap-1">
+      {(["spreadsheet", "cards"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => setView(v)}
+          className={
+            "px-3 h-8 rounded-md text-xs font-display font-bold uppercase tracking-wider transition " +
+            (viewMode === v
+              ? "bg-primary text-primary-foreground shadow-hard-sm"
+              : "text-muted-foreground hover:bg-muted")
+          }
+        >
+          {v === "spreadsheet" ? "Spreadsheet" : "Kartu"}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Spreadsheet mode: render the audit-friendly matrix (it has its own
+  // period + branch toolbar). Toggle sits above it.
+  if (viewMode === "spreadsheet") {
+    return (
+      <div className="space-y-3">
+        {viewToggle}
+        <PnLYeoboSpreadsheet
+          businessUnit={businessUnit}
+          from={from}
+          to={to}
+          report={report}
+          allowedBranches={allowedBranches}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {viewToggle}
       {/* Period picker: single trigger → MonthRangePicker popover.
           Konsisten dengan PnLClient (Haengbocake) + investor PnL. */}
       <div className="flex items-center gap-3 flex-wrap rounded-2xl border border-border bg-card p-3">
@@ -174,10 +225,19 @@ function MonthSection({
     (s, b) => s + (byBranch[b]?.operatingProfit ?? 0),
     0
   );
+  const [open, setOpen] = useState(false);
 
   return (
     <section className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/40 flex flex-wrap items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={
+          "w-full text-left px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors flex flex-wrap items-center justify-between gap-2 " +
+          (open ? "border-b border-border" : "")
+        }
+      >
         <div>
           <h2 className="text-sm font-semibold">{monthLabel}</h2>
           <div className="text-[10px] text-muted-foreground mt-0.5 flex flex-wrap gap-3">
@@ -220,8 +280,16 @@ function MonthSection({
             )}
           </div>
         </div>
-      </div>
+        <ChevronDown
+          className={
+            "size-4 shrink-0 text-muted-foreground transition-transform " +
+            (open ? "rotate-180" : "")
+          }
+        />
+      </button>
 
+      {open && (
+      <>
       <div className="overflow-auto">
         <table className="w-full text-xs border-separate border-spacing-0">
           <thead className="bg-muted/60 text-muted-foreground uppercase tracking-wider">
@@ -334,6 +402,8 @@ function MonthSection({
           );
         })}
       </div>
+      </>
+      )}
     </section>
   );
 }

@@ -34,10 +34,24 @@ export type PnLSide = "credit" | "debit";
 export type PnLCategoryClass = "operating" | "nonop";
 
 export interface YeoboTxDetail {
+  /** Transaction id. Sama untuk semua porsi cabang dari satu tx split —
+   *  dipakai konsumen "Semua cabang" untuk men-dedup baris (jumlahkan
+   *  porsi kembali jadi nominal penuh, 1 baris per tx). */
+  txId: string;
   date: string;
   description: string;
-  /** Positive credit, negative debit. */
+  /** Porsi cabang ini. Positive credit, negative debit. Untuk tx yang
+   *  di-split ("All"/sentinel/alokasi gaji) ini hanya bagian cabang
+   *  tersebut, bukan nominal penuh. */
   amount: number;
+  /** Nominal transaksi PENUH (signed) sebelum di-split. Sama dengan
+   *  `amount` untuk tx direct. Dipakai di drill-down audit agar admin
+   *  lihat "porsi X dari total Y". Optional → konsumen lama aman. */
+  fullAmount?: number;
+  /** Info pembagian saat tx ini di-split ke beberapa cabang.
+   *  `n` = jumlah cabang penerima, `origin` = nilai branch asli
+   *  ("All", "Yeosari + Yeotem", dll). Absent untuk tx direct. */
+  branchShare?: { n: number; origin: string };
 }
 
 export interface YeoboCategoryBreakdown {
@@ -294,11 +308,32 @@ export async function fetchYeoboPnL(
     const credit = Number(t.credit) || 0;
     if (credit === 0 && debit === 0) continue;
 
+    const fullSigned = credit > 0 ? credit : -debit;
     const detail: YeoboTxDetail = {
+      txId: t.id,
       date: t.transaction_date,
       description: (t.description ?? "").trim() || "(tanpa deskripsi)",
-      amount: credit > 0 ? credit : -debit,
+      amount: fullSigned,
+      fullAmount: fullSigned,
     };
+
+    // Build a per-branch detail for a split tx: same date/description but
+    // the branch's PORTION as `amount`, the full tx value as `fullAmount`,
+    // plus how it was split (n branches, origin = original branch value).
+    // Used so each branch's drill-down shows accurate, audit-complete rows.
+    const splitDetail = (
+      portionCredit: number,
+      portionDebit: number,
+      n: number,
+      origin: string
+    ): YeoboTxDetail => ({
+      txId: t.id,
+      date: t.transaction_date,
+      description: (t.description ?? "").trim() || "(tanpa deskripsi)",
+      amount: portionCredit > 0 ? portionCredit : -portionDebit,
+      fullAmount: fullSigned,
+      branchShare: { n, origin },
+    });
 
     // Track Needs Assignment per month
     if (branchRaw === "Needs Assignment" || category === "Needs Assignment") {
@@ -363,25 +398,29 @@ export async function fetchYeoboPnL(
                 allocPhysical.length
               );
               allocPhysical.forEach((b, i) => {
+                const c = credit > 0 ? shares[i] : 0;
+                const d = debit > 0 ? shares[i] : 0;
                 addToBucket(
                   sourceBuckets.allocation,
                   monthKey,
                   b,
                   category,
-                  credit > 0 ? shares[i] : 0,
-                  debit > 0 ? shares[i] : 0,
-                  null
+                  c,
+                  d,
+                  splitDetail(c, d, allocPhysical.length, `alokasi: ${a.branch}`)
                 );
               });
             } else if (PHYSICAL_BRANCHES.includes(a.branch)) {
+              const c = credit > 0 ? a.amount : 0;
+              const d = debit > 0 ? a.amount : 0;
               addToBucket(
                 sourceBuckets.allocation,
                 monthKey,
                 a.branch,
                 category,
-                credit > 0 ? a.amount : 0,
-                debit > 0 ? a.amount : 0,
-                null
+                c,
+                d,
+                splitDetail(c, d, 1, `alokasi: ${a.branch}`)
               );
             }
             // Branch "Needs Assignment" pada allocation = admin tunda
@@ -400,7 +439,7 @@ export async function fetchYeoboPnL(
                 category,
                 0,
                 shares[i],
-                null
+                splitDetail(0, shares[i], splitN, `${branchRaw} (sisa)`)
               );
             });
           }
@@ -433,7 +472,12 @@ export async function fetchYeoboPnL(
                 category,
                 share,
                 0,
-                i === 0 ? detail : null
+                splitDetail(
+                  share,
+                  0,
+                  physicalRatios.length,
+                  `${branchRaw} (alokasi proporsi)`
+                )
               );
             });
             continue;
@@ -453,10 +497,10 @@ export async function fetchYeoboPnL(
           category,
           creditShares[i],
           debitShares[i],
-          // Detail tx hanya dilampirkan ke cabang pertama supaya tidak
-          // duplikat 2-3x; sisanya bisa drill-down ke cabang lain juga
-          // tapi konteks sama persis.
-          i === 0 ? detail : null
+          // Detail dilampirkan ke SETIAP cabang penerima split (porsi
+          // masing-masing) supaya drill-down audit per-cabang lengkap —
+          // tiap baris menandai "dibagi N" + porsi vs nominal penuh.
+          splitDetail(creditShares[i], debitShares[i], splitN, branchRaw)
         );
       });
       continue;
