@@ -30,6 +30,7 @@ const ALLOWED_FIELDS = [
   "workdays",
   "break_enabled",
   "break_windows",
+  "holiday_bonus_enabled",
   "domisili_provinsi",
   "domisili_kota",
   "domisili_kecamatan",

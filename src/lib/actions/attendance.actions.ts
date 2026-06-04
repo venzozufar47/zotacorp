@@ -53,12 +53,23 @@ function computeCheckInStatus(
     workdays?: number;
   },
   timezone: string,
-  isFlexible: boolean
+  isFlexible: boolean,
+  /** Per-employee opt-in: holiday check-ins count as bonus. */
+  holidayBonusEnabled: boolean = false,
+  /** Whether the check-in date is a national holiday. */
+  isHoliday: boolean = false
 ): {
   status: "on_time" | "late" | "flexible" | "bonus" | "unknown";
   late_minutes: number;
   bonus_day: boolean;
 } {
+  // National-holiday gate (highest priority): an opted-in employee who checks
+  // in on a holiday is counted as bonus — no late penalty, treated as a
+  // non-workday (same path as the workday gate). Reuses the bonus_day flow.
+  if (holidayBonusEnabled && isHoliday) {
+    return { status: "bonus", late_minutes: 0, bonus_day: true };
+  }
+
   if (isFlexible) {
     return { status: "flexible", late_minutes: 0, bonus_day: false };
   }
@@ -151,11 +162,21 @@ export async function checkIn(payload: CheckInPayload) {
   // Out by mistake; they can recover by taking the Check In flow again.
 
   // Get profile for per-user working time settings + name (used in WA notify)
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, is_flexible_schedule, work_start_time, work_end_time, grace_period_min, workday_check_enabled, workdays")
-    .eq("id", user.id)
-    .single();
+  // + today's national-holiday lookup (for the holiday-bonus gate). Both are
+  // independent reads → run them together.
+  const [{ data: profile }, { data: holidayRow }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("full_name, is_flexible_schedule, work_start_time, work_end_time, grace_period_min, workday_check_enabled, workdays, holiday_bonus_enabled")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("national_holidays")
+      .select("id")
+      .eq("holiday_date", today)
+      .maybeSingle(),
+  ]);
+  const isHoliday = holidayRow != null;
 
   // Get global timezone
   const settings = await getCachedAttendanceSettings();
@@ -172,7 +193,9 @@ export async function checkIn(payload: CheckInPayload) {
           workdays: profile.workdays,
         },
         timezone,
-        profile.is_flexible_schedule
+        profile.is_flexible_schedule,
+        profile.holiday_bonus_enabled ?? false,
+        isHoliday
       )
     : { status: "unknown" as const, late_minutes: 0, bonus_day: false };
 

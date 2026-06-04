@@ -81,6 +81,8 @@ interface UserRow {
   break_enabled: boolean;
   /** Daftar rentang jam istirahat (HH:MM). */
   break_windows: BreakWindow[];
+  /** Kalau true, check-in di tanggal libur nasional dihitung bonus. */
+  holiday_bonus_enabled: boolean;
   profile_complete: boolean;
   /** IDs of attendance_locations this employee is allowed to check in at.
    *  Empty array = unrestricted (can check in anywhere). */
@@ -1104,6 +1106,7 @@ function ScheduleEditDialog({
   const [workdays, setWorkdays] = useState(126); // Mon–Sat default
   const [breakEnabled, setBreakEnabled] = useState(false);
   const [breakWindows, setBreakWindows] = useState<BreakWindow[]>([]);
+  const [holidayBonusEnabled, setHolidayBonusEnabled] = useState(false);
   const updateWindow = (i: number, field: "start" | "end", value: string) =>
     setBreakWindows((ws) =>
       ws.map((x, idx) => (idx === i ? { ...x, [field]: value } : x))
@@ -1123,6 +1126,7 @@ function ScheduleEditDialog({
     setWorkdays(row.workdays);
     setBreakEnabled(row.break_enabled);
     setBreakWindows(row.break_windows ?? []);
+    setHolidayBonusEnabled(row.holiday_bonus_enabled ?? false);
     setError(null);
   }, [row]);
 
@@ -1181,6 +1185,7 @@ function ScheduleEditDialog({
           workdays,
           break_enabled: breakEnabled,
           break_windows: breakEnabled ? breakWindows : [],
+          holiday_bonus_enabled: holidayBonusEnabled,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -1423,6 +1428,26 @@ function ScheduleEditDialog({
               )}
             </div>
           )}
+
+          {/* Hari libur nasional → bonus (opt-in; berlaku juga utk flexible) */}
+          <div className="space-y-1 rounded-xl border border-border/70 bg-muted/30 p-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={holidayBonusEnabled}
+                onChange={(e) => setHolidayBonusEnabled(e.target.checked)}
+                className="size-4"
+              />
+              <span className="text-sm font-medium">
+                Libur nasional dihitung bonus
+              </span>
+            </label>
+            <p className="text-[11.5px] text-muted-foreground leading-snug">
+              Saat check-in di tanggal merah (daftar di Settings → Hari libur
+              nasional), absensi otomatis jadi <strong>bonus</strong> — tanpa
+              penalti telat.
+            </p>
+          </div>
 
           {error && (
             <p className="text-sm text-destructive bg-destructive/10 border-2 border-destructive rounded-xl px-3 py-2 font-medium">

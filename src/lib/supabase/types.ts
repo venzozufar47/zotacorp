@@ -2984,6 +2984,27 @@ export type Database = {
           },
         ]
       }
+      national_holidays: {
+        Row: {
+          created_at: string
+          holiday_date: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          holiday_date: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          holiday_date?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           anniversary_last_greeted: string | null
@@ -3015,6 +3036,7 @@ export type Database = {
           full_name: string
           gender: string | null
           grace_period_min: number
+          holiday_bonus_enabled: boolean
           id: string
           is_active: boolean
           is_flexible_schedule: boolean
@@ -3070,6 +3092,7 @@ export type Database = {
           full_name?: string
           gender?: string | null
           grace_period_min?: number
+          holiday_bonus_enabled?: boolean
           id: string
           is_active?: boolean
           is_flexible_schedule?: boolean
@@ -3125,6 +3148,7 @@ export type Database = {
           full_name?: string
           gender?: string | null
           grace_period_min?: number
+          holiday_bonus_enabled?: boolean
           id?: string
           is_active?: boolean
           is_flexible_schedule?: boolean
@@ -3975,6 +3999,7 @@ export type PayslipBreakdown = {
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AttendanceLog = Database['public']['Tables']['attendance_logs']['Row'];
 export type AttendanceBreakLog = Database['public']['Tables']['attendance_break_logs']['Row'];
+export type NationalHoliday = Database['public']['Tables']['national_holidays']['Row'];
 
 /** A single break window in profiles.break_windows (jsonb array). HH:MM. */
 export type BreakWindow = { start: string; end: string };

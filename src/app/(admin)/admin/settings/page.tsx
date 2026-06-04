@@ -15,10 +15,12 @@ import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { ThemeSettingsCard } from "@/components/admin/ThemeSettingsCard";
 import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
 import { ExtraWorkKindsCard } from "@/components/admin/ExtraWorkKindsCard";
+import { HolidayCalendarCard } from "@/components/admin/HolidayCalendarCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { listWhatsAppRecipients } from "@/lib/actions/whatsapp-recipients.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { listExtraWorkKinds } from "@/lib/actions/extra-work-kinds.actions";
+import { listHolidays } from "@/lib/actions/holidays.actions";
 import { listWaTemplates } from "@/lib/whatsapp/templates";
 import { getTheme } from "@/lib/themes";
 import { createClient } from "@/lib/supabase/server";
@@ -31,7 +33,7 @@ export default async function AdminSettingsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile] =
+  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile, holidays] =
     await Promise.all([
       getCachedAttendanceSettings(),
       listWhatsAppRecipients(),
@@ -44,6 +46,7 @@ export default async function AdminSettingsPage() {
         .eq("is_active", true)
         .order("full_name"),
       getCurrentProfile(),
+      listHolidays(),
     ]);
   const employees = (employeesRes.data ?? []).map((e) => ({
     id: e.id,
@@ -77,6 +80,7 @@ export default async function AdminSettingsPage() {
       <AttendanceSettingsForm settings={settings} />
       <BusinessUnitsCard initial={businessUnits} />
       <ExtraWorkKindsCard initial={extraWorkKinds} employees={employees} />
+      <HolidayCalendarCard initial={holidays} />
       <ThemeSettingsCard current={currentTheme} />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard

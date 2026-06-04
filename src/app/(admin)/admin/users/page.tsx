@@ -110,6 +110,7 @@ export default async function AdminUsersPage() {
       workdays: p.workdays ?? 126,
       break_enabled: p.break_enabled ?? false,
       break_windows: parseBreakWindows(p.break_windows),
+      holiday_bonus_enabled: p.holiday_bonus_enabled ?? false,
       profile_complete: profileComplete,
       assigned_location_ids: assignmentsByEmployee[p.id] ?? [],
       payslip_excluded: p.payslip_excluded ?? false,
