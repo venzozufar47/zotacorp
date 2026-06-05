@@ -226,11 +226,44 @@ export async function POST(req: Request) {
   // bukan saldo bank sebenarnya — jadi opening/closing tidak boleh
   // diturunkan darinya dan verifikasi tetap di-skip (canVerify=false).
   const supportsBalance = bankAccount.bank !== "bca";
-  const chronological = supportsBalance
-    ? sortChronologicalAsc(
-        parsed.transactions.filter((t) => typeof t.runningBalance === "number")
-      )
-    : [];
+
+  // Balance-less banks (BCA CSV punya kolom saldo) → parser hitung
+  // running_balance dari 0 PER upload. Tanpa anchor, tiap statement
+  // bulanan restart di 0 dan rantai saldo lifetime rekening patah
+  // (opening 0, header ≠ tabel). Fix: re-anchor saldo sintetik itu ke
+  // `closing_balance` statement TEPAT SEBELUM periode ini, sehingga
+  // rantai nyambung otomatis antar bulan. Statement pertama → 0 (admin
+  // set saldo awal manual sekali bila rekening sudah ada saldonya).
+  let firstStatementNoPrior = false;
+  if (!supportsBalance && parsed.transactions.length > 0) {
+    const { data: priorStmts } = await supabase
+      .from("cashflow_statements")
+      .select("closing_balance, period_year, period_month")
+      .eq("bank_account_id", bankAccountId)
+      .order("period_year", { ascending: false })
+      .order("period_month", { ascending: false });
+    const prior = (priorStmts ?? []).find(
+      (s) =>
+        s.period_year < parsed.periodYear ||
+        (s.period_year === parsed.periodYear &&
+          s.period_month < parsed.periodMonth)
+    );
+    const priorClosing = prior ? Number(prior.closing_balance) : 0;
+    firstStatementNoPrior = !prior;
+    for (const t of parsed.transactions) {
+      if (typeof t.runningBalance === "number") {
+        t.runningBalance =
+          Math.round((t.runningBalance + priorClosing) * 100) / 100;
+      }
+    }
+  }
+
+  // Sekarang SEMUA bank (termasuk BCA setelah re-anchor) punya
+  // running_balance, jadi opening/closing diturunkan dari baris secara
+  // seragam + verifikasi saldo aktif.
+  const chronological = sortChronologicalAsc(
+    parsed.transactions.filter((t) => typeof t.runningBalance === "number")
+  );
   if (chronological.length > 0) {
     const first = chronological[0];
     const last = chronological[chronological.length - 1];
@@ -241,6 +274,12 @@ export async function POST(req: Request) {
     // warnings no longer matter — we're using row-derived values now.
     parsed.warnings = parsed.warnings.filter(
       (w) => !/saldo\s*(awal|akhir)[^\n]*tidak\s*ditemukan/i.test(w)
+    );
+  }
+  if (firstStatementNoPrior) {
+    parsed.warnings.push(
+      "Statement pertama untuk rekening ini — saldo awal diasumsikan Rp 0. " +
+        "Kalau rekening sudah punya saldo sebelumnya, set 'Saldo awal' manual setelah commit."
     );
   }
 
