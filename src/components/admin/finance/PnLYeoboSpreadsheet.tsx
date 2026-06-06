@@ -14,6 +14,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   CalendarDays,
@@ -38,7 +39,6 @@ import type {
   YeoboPnLMonth,
   YeoboBranchPnL,
   YeoboCategoryBreakdown,
-  YeoboTxDetail,
 } from "@/lib/cashflow/pnl-yeobo";
 
 interface Props {
@@ -74,6 +74,13 @@ function txDateLabel(iso: string): string {
   const [y, mm, d] = iso.split("-").map(Number);
   if (!y || !mm) return iso;
   return `${String(d ?? 1).padStart(2, "0")} ${MONTH_NAMES[(mm ?? 1) - 1]}`;
+}
+
+/** Full date label incl. year — dipakai di tooltip hover drill-down. */
+function txDateFull(iso: string): string {
+  const [y, mm, d] = iso.split("-").map(Number);
+  if (!y || !mm) return iso;
+  return `${String(d ?? 1).padStart(2, "0")} ${MONTH_NAMES[(mm ?? 1) - 1]} ${y}`;
 }
 
 /** Empty branch P&L for months/branches with no rows. */
@@ -253,39 +260,66 @@ export function PnLYeoboSpreadsheet({
   // row whose amount sums to the full transaction (so no 2-3× repeats).
   // In a single-branch view there's only one portion per tx, so this is
   // a no-op there. Sorted by date.
-  const detailsForCategory = (category: string): YeoboTxDetail[] => {
-    const byTx = new Map<string, YeoboTxDetail>();
-    const fallback: YeoboTxDetail[] = []; // legacy rows w/o txId (defensive)
-    for (const { data } of monthCells) {
+  // Like detailsForCategory but keeps the PER-MONTH placement: each row
+  // carries a `perMonth[]` array (length = monthCells.length) so the
+  // drill-down can render each tx's nominal in the column aligned with
+  // its effective month — mirroring the matrix above. Dedup by txId
+  // (split tx in "Semua cabang" view sums its branch portions back into
+  // one row), with the "dibagi N" chip dropped once recombined.
+  const detailRowsForCategory = (category: string): DetailRow[] => {
+    const n = monthCells.length;
+    const byTx = new Map<string, DetailRow>();
+    const extra: DetailRow[] = []; // legacy rows w/o txId (defensive)
+    monthCells.forEach(({ data }, mi) => {
       const c = data.byCategory.find((x) => x.category === category);
-      if (!c?.details) continue;
+      if (!c?.details) return;
       for (const d of c.details) {
         if (!d.txId) {
-          fallback.push(d);
+          const perMonth = Array<number>(n).fill(0);
+          perMonth[mi] = d.amount;
+          extra.push({
+            txId: "",
+            date: d.date,
+            description: d.description,
+            notes: d.notes,
+            branchShare: d.branchShare,
+            fullAmount: d.fullAmount,
+            perMonth,
+            total: d.amount,
+          });
           continue;
         }
-        const cur = byTx.get(d.txId);
-        if (!cur) {
-          byTx.set(d.txId, { ...d });
-        } else {
-          // Same tx seen for another branch → accumulate the portion.
-          cur.amount += d.amount;
+        let row = byTx.get(d.txId);
+        if (!row) {
+          row = {
+            txId: d.txId,
+            date: d.date,
+            description: d.description,
+            notes: d.notes,
+            branchShare: d.branchShare,
+            fullAmount: d.fullAmount,
+            perMonth: Array<number>(n).fill(0),
+            total: 0,
+          };
+          byTx.set(d.txId, row);
         }
+        // Same tx seen for another branch → accumulate the portion in
+        // its month column (a tx lives in exactly one effective month).
+        row.perMonth[mi] += d.amount;
+        row.total += d.amount;
       }
-    }
-    // After merge, drop the "dibagi N" chip when the row now represents
-    // the full tx (all portions recombined → amount ≈ fullAmount).
-    const merged = [...byTx.values()].map((d) => {
-      if (
-        d.branchShare &&
-        d.fullAmount != null &&
-        Math.abs(Math.abs(d.amount) - Math.abs(d.fullAmount)) <= 1
-      ) {
-        return { ...d, branchShare: undefined };
-      }
-      return d;
     });
-    const out = [...merged, ...fallback];
+    const rows = [...byTx.values()].map((r) => {
+      if (
+        r.branchShare &&
+        r.fullAmount != null &&
+        Math.abs(Math.abs(r.total) - Math.abs(r.fullAmount)) <= 1
+      ) {
+        return { ...r, branchShare: undefined };
+      }
+      return r;
+    });
+    const out = [...rows, ...extra];
     out.sort((a, b) => a.date.localeCompare(b.date));
     return out;
   };
@@ -400,7 +434,7 @@ export function PnLYeoboSpreadsheet({
                   catNet={catNet}
                   expanded={expanded.has(`rev:${cat}`)}
                   onToggle={() => toggle(`rev:${cat}`)}
-                  details={expanded.has(`rev:${cat}`) ? detailsForCategory(cat) : null}
+                  detailRows={expanded.has(`rev:${cat}`) ? detailRowsForCategory(cat) : null}
                   colCount={colCount}
                 />
               ))}
@@ -422,7 +456,7 @@ export function PnLYeoboSpreadsheet({
                   catNet={catNet}
                   expanded={expanded.has(`exp:${cat}`)}
                   onToggle={() => toggle(`exp:${cat}`)}
-                  details={expanded.has(`exp:${cat}`) ? detailsForCategory(cat) : null}
+                  detailRows={expanded.has(`exp:${cat}`) ? detailRowsForCategory(cat) : null}
                   colCount={colCount}
                 />
               ))}
@@ -564,6 +598,19 @@ function SectionRow({ label, colSpan }: { label: string; colSpan: number }) {
 
 type MonthCell = { month: YeoboPnLMonth; data: YeoboBranchPnL };
 
+/** One transaction row in the drill-down, with its nominal spread across
+ *  the month columns (`perMonth[i]` aligns with `monthCells[i]`). */
+type DetailRow = {
+  txId: string;
+  date: string;
+  description: string;
+  notes?: string;
+  branchShare?: { n: number; origin: string };
+  fullAmount?: number;
+  perMonth: number[];
+  total: number;
+};
+
 function TotalRow({
   label,
   monthCells,
@@ -601,7 +648,7 @@ function CategoryRow({
   catNet,
   expanded,
   onToggle,
-  details,
+  detailRows,
   colCount,
 }: {
   category: string;
@@ -610,7 +657,7 @@ function CategoryRow({
   catNet: (d: YeoboBranchPnL, category: string) => number;
   expanded: boolean;
   onToggle: () => void;
-  details: YeoboTxDetail[] | null;
+  detailRows: DetailRow[] | null;
   colCount: number;
 }) {
   const total = monthCells.reduce((s, { data }) => s + catNet(data, category), 0);
@@ -641,86 +688,200 @@ function CategoryRow({
         ))}
         <NumCell value={total} tone={tone} strong />
       </tr>
-      {expanded && details && (
-        <tr>
-          <td colSpan={colCount} className="sticky left-0 bg-muted/10 px-3 py-2 border-t border-border/40">
-            <DrillDown category={category} details={details} />
-          </td>
-        </tr>
+      {expanded && detailRows && (
+        <DrillDownRows
+          rows={detailRows}
+          monthCells={monthCells}
+          colCount={colCount}
+        />
       )}
     </>
   );
 }
 
-function DrillDown({
-  category,
-  details,
+/** Signed amount cell, colored ±, used inside the drill-down rows. */
+function AmtCell({
+  value,
+  strong,
 }: {
-  category: string;
-  details: YeoboTxDetail[];
+  value: number;
+  strong?: boolean;
 }) {
+  return (
+    <td
+      className={
+        "border-t border-border/30 px-3 py-1 text-right font-mono tabular-nums text-[11px] whitespace-nowrap" +
+        (strong ? " font-semibold border-border/60" : "")
+      }
+    >
+      {value === 0 ? (
+        <span className="text-muted-foreground/30">·</span>
+      ) : (
+        <span className={value > 0 ? "text-emerald-600" : "text-destructive"}>
+          {value > 0 ? "+" : "−"}
+          {formatIDR(Math.abs(value))}
+        </span>
+      )}
+    </td>
+  );
+}
+
+/**
+ * Drill-down rendered as REAL table rows (not a colSpan box) so each
+ * transaction's nominal sits in the column that matches its month —
+ * aligned 1:1 with the matrix header. Hover a row to see the full date
+ * & notes. Ends with a per-month subtotal row + a masuk/keluar/net cap.
+ */
+function DrillDownRows({
+  rows,
+  monthCells,
+  colCount,
+}: {
+  rows: DetailRow[];
+  monthCells: MonthCell[];
+  colCount: number;
+}) {
+  // Rich hover tooltip (tanggal + catatan + deskripsi). Rendered via a
+  // portal to document.body so it isn't clipped by the table's
+  // overflow-auto scroll container, and follows the cursor.
+  const [tip, setTip] = useState<{ x: number; y: number; row: DetailRow } | null>(
+    null
+  );
+
+  if (rows.length === 0) {
+    return (
+      <tr>
+        <td
+          colSpan={colCount}
+          className="sticky left-0 bg-muted/5 px-3 py-2 pl-9 text-[11px] italic text-muted-foreground border-t border-border/30"
+        >
+          Tidak ada rincian transaksi.
+        </td>
+      </tr>
+    );
+  }
+
   let masuk = 0;
   let keluar = 0;
-  for (const d of details) {
-    if (d.amount > 0) masuk += d.amount;
-    else keluar += -d.amount;
+  for (const r of rows) {
+    if (r.total > 0) masuk += r.total;
+    else keluar += -r.total;
   }
+  const perMonthNet = monthCells.map((_, mi) =>
+    rows.reduce((s, r) => s + r.perMonth[mi], 0)
+  );
+  const grandTotal = perMonthNet.reduce((a, b) => a + b, 0);
+
   return (
-    <div className="rounded-lg border border-border bg-card p-2 max-w-[900px]">
-      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
-        Rincian transaksi — {category} ({details.length})
-      </p>
-      {details.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground italic">
-          Tidak ada rincian transaksi.
-        </p>
-      ) : (
-        <ul className="space-y-0.5">
-          {details.map((d, i) => {
-            const isCredit = d.amount > 0;
-            const split =
-              d.branchShare && d.fullAmount != null &&
-              Math.abs(d.fullAmount) !== Math.abs(d.amount);
-            return (
-              <li
-                key={i}
-                className="flex items-center gap-2 text-[11px] py-0.5 border-b border-border/30 last:border-0"
-              >
-                <span className="font-mono tabular-nums text-muted-foreground shrink-0 w-14">
-                  {txDateLabel(d.date)}
+    <>
+      {rows.map((r, i) => {
+        const split =
+          r.branchShare &&
+          r.fullAmount != null &&
+          Math.abs(r.fullAmount) !== Math.abs(r.total);
+        return (
+          <tr
+            key={r.txId || `x${i}`}
+            className="group"
+            onMouseEnter={(e) =>
+              setTip({ x: e.clientX, y: e.clientY, row: r })
+            }
+            onMouseMove={(e) =>
+              setTip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))
+            }
+            onMouseLeave={() => setTip(null)}
+          >
+            <td className="sticky left-0 z-10 bg-muted/5 group-hover:bg-muted/30 border-t border-border/30 px-3 py-1 pl-9 text-[11px] font-mono tabular-nums text-muted-foreground/80 cursor-help whitespace-nowrap">
+              {txDateLabel(r.date)}
+              {split && (
+                <span className="ml-1 text-amber-500" title="Transaksi dibagi antar cabang — arahkan kursor untuk detail">
+                  *
                 </span>
-                <span className="flex-1 min-w-0 truncate" title={d.description}>
-                  {d.description}
-                  {split && d.branchShare && (
-                    <span className="ml-1.5 text-[9px] text-amber-600 whitespace-nowrap">
-                      dibagi {d.branchShare.n} · porsi {formatIDR(Math.abs(d.amount))} dari{" "}
-                      {formatIDR(Math.abs(d.fullAmount ?? 0))}
-                    </span>
-                  )}
-                </span>
-                <span
-                  className={
-                    "font-mono tabular-nums shrink-0 " +
-                    (isCredit ? "text-emerald-600" : "text-destructive")
-                  }
-                >
-                  {isCredit ? "+" : "−"}
-                  {formatIDR(Math.abs(d.amount))}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <div className="flex items-center justify-end gap-4 mt-1.5 pt-1.5 border-t border-border text-[11px] font-semibold">
-        <span className="text-emerald-600">Masuk +{formatIDR(masuk)}</span>
-        <span className="text-destructive">Keluar −{formatIDR(keluar)}</span>
-        <span className={masuk - keluar >= 0 ? "text-emerald-600" : "text-destructive"}>
-          Net {masuk - keluar >= 0 ? "+" : ""}
-          {formatIDR(masuk - keluar)}
-        </span>
-      </div>
-    </div>
+              )}
+            </td>
+            {monthCells.map((mc, mi) => (
+              <AmtCell
+                key={`${mc.month.year}-${mc.month.month}`}
+                value={r.perMonth[mi]}
+              />
+            ))}
+            <AmtCell value={r.total} strong />
+          </tr>
+        );
+      })}
+
+      {/* Subtotal per bulan (cocokkan dgn angka di baris kategori) */}
+      <tr className="bg-muted/20">
+        <td className="sticky left-0 z-10 bg-muted/20 border-t border-border/60 px-3 py-1 pl-9 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+          Subtotal
+        </td>
+        {perMonthNet.map((v, mi) => (
+          <AmtCell key={mi} value={v} strong />
+        ))}
+        <AmtCell value={grandTotal} strong />
+      </tr>
+
+      {/* Ringkasan masuk / keluar / net */}
+      <tr>
+        <td
+          colSpan={colCount}
+          className="bg-muted/10 px-3 py-1.5 border-t border-border/40 text-[11px] font-semibold"
+        >
+          <span className="flex items-center justify-end gap-4">
+            <span className="text-emerald-600">Masuk +{formatIDR(masuk)}</span>
+            <span className="text-destructive">Keluar −{formatIDR(keluar)}</span>
+            <span
+              className={
+                masuk - keluar >= 0 ? "text-emerald-600" : "text-destructive"
+              }
+            >
+              Net {masuk - keluar >= 0 ? "+" : ""}
+              {formatIDR(masuk - keluar)}
+            </span>
+          </span>
+        </td>
+      </tr>
+
+      {tip &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[60] max-w-[300px] rounded-lg border border-border bg-card px-3 py-2 text-[11px] shadow-xl"
+            style={{
+              left: Math.min(
+                tip.x + 14,
+                (typeof window !== "undefined" ? window.innerWidth : 1200) - 320
+              ),
+              top: tip.y + 16,
+            }}
+          >
+            <p className="font-semibold text-foreground">
+              {txDateFull(tip.row.date)}
+            </p>
+            <p className="mt-0.5 text-muted-foreground">{tip.row.description}</p>
+            {tip.row.branchShare &&
+              tip.row.fullAmount != null &&
+              Math.abs(tip.row.fullAmount) !== Math.abs(tip.row.total) && (
+                <p className="mt-1 text-amber-600">
+                  Dibagi {tip.row.branchShare.n} cabang · porsi{" "}
+                  {formatIDR(Math.abs(tip.row.total))} dari{" "}
+                  {formatIDR(Math.abs(tip.row.fullAmount))}
+                </p>
+              )}
+            {tip.row.notes ? (
+              <p className="mt-1 border-t border-border/50 pt-1 text-foreground/90">
+                <span className="font-medium">Catatan: </span>
+                {tip.row.notes}
+              </p>
+            ) : (
+              <p className="mt-1 border-t border-border/50 pt-1 italic text-muted-foreground/60">
+                Tanpa catatan
+              </p>
+            )}
+          </div>,
+          document.body
+        )}
+    </>
   );
 }
 

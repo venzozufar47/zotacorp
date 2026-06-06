@@ -40,6 +40,9 @@ export interface YeoboTxDetail {
   txId: string;
   date: string;
   description: string;
+  /** Catatan tambahan (kolom `notes` di cashflow_transactions). Dipakai
+   *  di drill-down audit untuk tooltip hover. Optional → bisa kosong. */
+  notes?: string;
   /** Porsi cabang ini. Positive credit, negative debit. Untuk tx yang
    *  di-split ("All"/sentinel/alokasi gaji) ini hanya bagian cabang
    *  tersebut, bukan nominal penuh. */
@@ -156,6 +159,7 @@ export async function fetchYeoboPnL(
     category: string | null;
     branch: string | null;
     description: string | null;
+    notes: string | null;
   };
 
   // Pull all Yeobo Space tx (paginate to bypass 1000-row cap).
@@ -165,7 +169,7 @@ export async function fetchYeoboPnL(
     const { data, error } = await supabase
       .from("cashflow_transactions")
       .select(
-        "id, transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, cashflow_statements!inner(bank_accounts!inner(business_unit))"
+        "id, transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, notes, cashflow_statements!inner(bank_accounts!inner(business_unit))"
       )
       .eq("cashflow_statements.bank_accounts.business_unit", "Yeobo Space")
       .range(offset, offset + PAGE - 1);
@@ -313,6 +317,7 @@ export async function fetchYeoboPnL(
       txId: t.id,
       date: t.transaction_date,
       description: (t.description ?? "").trim() || "(tanpa deskripsi)",
+      notes: (t.notes ?? "").trim() || undefined,
       amount: fullSigned,
       fullAmount: fullSigned,
     };
@@ -330,6 +335,7 @@ export async function fetchYeoboPnL(
       txId: t.id,
       date: t.transaction_date,
       description: (t.description ?? "").trim() || "(tanpa deskripsi)",
+      notes: (t.notes ?? "").trim() || undefined,
       amount: portionCredit > 0 ? portionCredit : -portionDebit,
       fullAmount: fullSigned,
       branchShare: { n, origin },
