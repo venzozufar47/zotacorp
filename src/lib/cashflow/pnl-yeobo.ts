@@ -43,6 +43,10 @@ export interface YeoboTxDetail {
   /** Catatan tambahan (kolom `notes` di cashflow_transactions). Dipakai
    *  di drill-down audit untuk tooltip hover. Optional → bisa kosong. */
   notes?: string;
+  /** Nilai mentah kolom `branch` (mis. "All", sentinel 2-cabang, atau
+   *  cabang fisik). Dipakai sebagai default dropdown saat edit cabang
+   *  dari drill-down. Optional → kosong jika tx tanpa cabang. */
+  branch?: string;
   /** Porsi cabang ini. Positive credit, negative debit. Untuk tx yang
    *  di-split ("All"/sentinel/alokasi gaji) ini hanya bagian cabang
    *  tersebut, bukan nominal penuh. */
@@ -318,6 +322,7 @@ export async function fetchYeoboPnL(
       date: t.transaction_date,
       description: (t.description ?? "").trim() || "(tanpa deskripsi)",
       notes: (t.notes ?? "").trim() || undefined,
+      branch: branchRaw || undefined,
       amount: fullSigned,
       fullAmount: fullSigned,
     };
@@ -336,6 +341,7 @@ export async function fetchYeoboPnL(
       date: t.transaction_date,
       description: (t.description ?? "").trim() || "(tanpa deskripsi)",
       notes: (t.notes ?? "").trim() || undefined,
+      branch: branchRaw || undefined,
       amount: portionCredit > 0 ? portionCredit : -portionDebit,
       fullAmount: fullSigned,
       branchShare: { n, origin },

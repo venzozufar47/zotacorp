@@ -73,6 +73,7 @@ export default async function PnLSheetPage({
       report={report}
       initialBranch={params.branch}
       fullscreen
+      editable
     />
   );
 }

@@ -133,6 +133,7 @@ export function PnLYeoboClient({
           to={to}
           report={report}
           allowedBranches={allowedBranches}
+          editable={!allowedBranches}
         />
       </div>
     );

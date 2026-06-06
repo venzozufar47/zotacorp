@@ -181,8 +181,11 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
   const [preview, setPreview] = useState<PreviewResult | null>(null);
 
   const [batch, setBatch] = useState<BatchItem[]>([]);
-  const [batchRunning, setBatchRunning] = useState(false);
-  const [batchIdx, setBatchIdx] = useState<number>(-1);
+  // Index file yang sedang di-preview saat loading batch (-1 = idle).
+  const [batchCursor, setBatchCursor] = useState<number>(-1);
+  // True setelah SEMUA file ter-preview → tampilkan view gabungan +
+  // tombol Simpan semua.
+  const [mergedReady, setMergedReady] = useState(false);
 
   const isJago = account?.bank === "jago";
   const isMandiri = account?.bank === "mandiri";
@@ -215,103 +218,52 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
     setUploadPct(0);
     setEditPassword(false);
     setBatch([]);
-    setBatchRunning(false);
-    setBatchIdx(-1);
+    setBatchCursor(-1);
+    setMergedReady(false);
   }
 
-  /**
-   * Process satu file dalam batch: preview → kalau lolos verifikasi,
-   * auto-commit. File gagal verifikasi ditandai "error" supaya admin
-   * bisa re-upload manual nanti, tapi batch tetap jalan ke file
-   * berikutnya. Password dipakai sama dari input form / saved password.
-   */
-  async function processBatchItem(idx: number): Promise<void> {
-    if (!account) return;
-    const item = batch[idx];
-    if (!item) return;
-    const update = (patch: Partial<BatchItem>) =>
-      setBatch((prev) => prev.map((b, i) => (i === idx ? { ...b, ...patch } : b)));
-    update({ status: "uploading", message: undefined });
-    try {
-      const formData = new FormData();
-      formData.append("bankAccountId", account.id);
-      formData.append("pdf", item.file);
-      if (pdfPassword) formData.append("pdfPassword", pdfPassword);
-      const { status, body } = await uploadWithProgress({
-        url: "/api/admin/cashflow/preview",
-        formData,
-        onProgress: () => {},
-        onUploadFinished: () => update({ status: "parsing" }),
-      });
-      if (status === 401 && body?.passwordRequired) {
-        update({ status: "error", message: body.wrongPassword ? "Password salah" : "Perlu password" });
-        return;
-      }
-      if (status < 200 || status >= 300 || !body?.ok) {
-        update({ status: "error", message: body?.error ?? `HTTP ${status}` });
-        return;
-      }
-      // Bank dengan saldo (Mandiri/Jago) wajib lolos reconciliation
-      // sebelum auto-commit. Bank tanpa saldo (BCA) tidak punya angka
-      // untuk dicocokkan → skip gate, commit langsung.
-      if (!noBalanceBank && (!body.verification?.canVerify || !body.verification?.match)) {
-        update({
-          status: "error",
-          message: body.verification?.canVerify
-            ? `Saldo tidak cocok (selisih Rp ${Math.round(body.verification.diff ?? 0).toLocaleString("id-ID")})`
-            : "Saldo awal/akhir tidak terbaca",
-        });
-        return;
-      }
-      const transactions = body.transactions ?? [];
-      update({ status: "committing" });
-      const res = await fetch("/api/admin/cashflow/commit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bankAccountId: account.id,
-          periodMonth: body.periodMonth,
-          periodYear: body.periodYear,
-          openingBalance: body.openingBalance,
-          closingBalance: body.closingBalance,
-          transactions,
-        }),
-      });
-      const commitBody = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        addedCount?: number;
-        skippedCount?: number;
-        error?: string;
-      };
-      if (!res.ok || !commitBody.ok) {
-        update({ status: "error", message: commitBody.error ?? `HTTP ${res.status}` });
-        return;
-      }
-      update({
-        status: "done",
-        addedCount: commitBody.addedCount ?? 0,
-        skippedCount: commitBody.skippedCount ?? 0,
-      });
-    } catch (err) {
-      update({
-        status: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
+  /** Core: kirim satu file ke /preview. Dipakai single & wizard batch. */
+  async function requestPreviewFor(f: File) {
+    const formData = new FormData();
+    formData.append("bankAccountId", account!.id);
+    formData.append("pdf", f);
+    if (useRange && startDate && endDate) {
+      formData.append("startDate", startDate);
+      formData.append("endDate", endDate);
     }
+    if (pdfPassword) formData.append("pdfPassword", pdfPassword);
+    // fetch() doesn't expose upload progress, so we drop down to XHR.
+    return uploadWithProgress({
+      url: "/api/admin/cashflow/preview",
+      formData,
+      onProgress: (pct) => setUploadPct(pct),
+      onUploadFinished: () => setStage("parsing"),
+    });
   }
 
-  async function handleRunBatch() {
-    if (!account || batch.length === 0 || batchRunning) return;
-    setBatchRunning(true);
-    for (let i = 0; i < batch.length; i++) {
-      setBatchIdx(i);
-      await processBatchItem(i);
-    }
-    setBatchIdx(-1);
-    setBatchRunning(false);
-    router.refresh();
+  function buildPreviewFromBody(body: PreviewResponseBody): PreviewResult {
+    return {
+      periodMonth: body.periodMonth ?? new Date().getMonth() + 1,
+      periodYear: body.periodYear ?? new Date().getFullYear(),
+      openingBalance: body.openingBalance ?? 0,
+      closingBalance: body.closingBalance ?? 0,
+      parsedCount: body.parsedCount ?? 0,
+      newCount: body.newCount ?? 0,
+      skippedCount: body.skippedCount ?? 0,
+      transactions: body.transactions ?? [],
+      warnings: body.warnings ?? [],
+      verification: body.verification ?? {
+        canVerify: false,
+        match: false,
+        computedClosing: 0,
+        diff: 0,
+        sumCredit: 0,
+        sumDebit: 0,
+      },
+    };
   }
 
+  /** Single-file preview (alur lama: 1 file → tabel preview → commit). */
   async function handlePreview() {
     if (!account) return;
     if (!file) {
@@ -337,27 +289,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
     setStage("uploading");
     setUploadPct(0);
     try {
-      const formData = new FormData();
-      formData.append("bankAccountId", account.id);
-      formData.append("pdf", file);
-      if (useRange) {
-        formData.append("startDate", startDate);
-        formData.append("endDate", endDate);
-      }
-      if (pdfPassword) formData.append("pdfPassword", pdfPassword);
-
-      // fetch() doesn't expose upload progress, so we drop down to
-      // XHR. Real byte-progress during upload, then we flip to the
-      // "parsing" stage once the server is actually working — the
-      // parse itself (Gemini) has no progress signal so that stage
-      // shows an indeterminate animated bar.
-      const { status, body } = await uploadWithProgress({
-        url: "/api/admin/cashflow/preview",
-        formData,
-        onProgress: (pct) => setUploadPct(pct),
-        onUploadFinished: () => setStage("parsing"),
-      });
-
+      const { status, body } = await requestPreviewFor(file);
       if (status === 401 && body?.passwordRequired) {
         setPasswordChallenge(body.wrongPassword ? "wrong" : "need");
         toast.error(
@@ -375,26 +307,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
         setStage("idle");
         return;
       }
-
-      setPreview({
-        periodMonth: body.periodMonth ?? new Date().getMonth() + 1,
-        periodYear: body.periodYear ?? new Date().getFullYear(),
-        openingBalance: body.openingBalance ?? 0,
-        closingBalance: body.closingBalance ?? 0,
-        parsedCount: body.parsedCount ?? 0,
-        newCount: body.newCount ?? 0,
-        skippedCount: body.skippedCount ?? 0,
-        transactions: body.transactions ?? [],
-        warnings: body.warnings ?? [],
-        verification: body.verification ?? {
-          canVerify: false,
-          match: false,
-          computedClosing: 0,
-          diff: 0,
-          sumCredit: 0,
-          sumDebit: 0,
-        },
-      });
+      setPreview(buildPreviewFromBody(body));
       setParsing(false);
       setStage("idle");
     } catch (err) {
@@ -403,6 +316,184 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
       setParsing(false);
       setStage("idle");
     }
+  }
+
+  /**
+   * Preview SEMUA file batch sekaligus → simpan hasil tiap file di
+   * batch[i].preview, lalu tampilkan satu view gabungan (campuran semua
+   * file) sebelum admin klik Simpan semua. File gagal (password/parse)
+   * ditandai error tapi tidak menghentikan file lain.
+   */
+  async function previewAllBatch() {
+    if (!account || batch.length === 0) return;
+    setCommitting(false);
+    for (let idx = 0; idx < batch.length; idx++) {
+      const item = batch[idx];
+      if (!item) continue;
+      setBatchCursor(idx);
+      setParsing(true);
+      setStage("uploading");
+      setUploadPct(0);
+      setBatch((prev) =>
+        prev.map((b, i) =>
+          i === idx ? { ...b, status: "parsing", message: undefined } : b
+        )
+      );
+      try {
+        const { status, body } = await requestPreviewFor(item.file);
+        if (status === 401 && body?.passwordRequired) {
+          setBatch((prev) =>
+            prev.map((b, i) =>
+              i === idx
+                ? { ...b, status: "error", message: body.wrongPassword ? "Password salah" : "Perlu password", preview: undefined }
+                : b
+            )
+          );
+          continue;
+        }
+        if (status < 200 || status >= 300 || !body?.ok) {
+          setBatch((prev) =>
+            prev.map((b, i) =>
+              i === idx ? { ...b, status: "error", message: body?.error ?? `HTTP ${status}`, preview: undefined } : b
+            )
+          );
+          continue;
+        }
+        const result = buildPreviewFromBody(body);
+        setBatch((prev) =>
+          prev.map((b, i) => (i === idx ? { ...b, status: "reviewing", preview: result } : b))
+        );
+      } catch (err) {
+        setBatch((prev) =>
+          prev.map((b, i) =>
+            i === idx
+              ? { ...b, status: "error", message: err instanceof Error ? err.message : String(err), preview: undefined }
+              : b
+          )
+        );
+      }
+    }
+    setBatchCursor(-1);
+    setParsing(false);
+    setStage("idle");
+    setMergedReady(true);
+  }
+
+  /** Edit kategori/cabang satu baris di view gabungan (file fileIdx, row rowIdx). */
+  function patchMergedRow(
+    fileIdx: number,
+    rowIdx: number,
+    patch: Partial<Pick<PreviewTx, "category" | "branch">>
+  ) {
+    setBatch((prev) =>
+      prev.map((b, i) =>
+        i === fileIdx && b.preview
+          ? {
+              ...b,
+              preview: {
+                ...b.preview,
+                transactions: b.preview.transactions.map((t, r) =>
+                  r === rowIdx ? { ...t, ...patch } : t
+                ),
+              },
+            }
+          : b
+      )
+    );
+  }
+
+  /** Commit semua file yang sudah ter-preview & lolos gate (per file). */
+  async function commitAllBatch() {
+    if (!account) return;
+    setCommitting(true);
+    let totalAdded = 0;
+    let totalSkipped = 0;
+    let anyError = false;
+    for (let idx = 0; idx < batch.length; idx++) {
+      const item = batch[idx];
+      if (!item?.preview) continue; // file error saat preview → skip
+      const p = item.preview;
+      // Gate verifikasi per file (Mandiri); BCA (noBalanceBank) lewat.
+      if (!noBalanceBank && (!p.verification.canVerify || !p.verification.match)) {
+        setBatch((prev) =>
+          prev.map((b, i) =>
+            i === idx ? { ...b, status: "error", message: "Saldo tidak cocok — tidak disimpan" } : b
+          )
+        );
+        anyError = true;
+        continue;
+      }
+      setBatch((prev) =>
+        prev.map((b, i) => (i === idx ? { ...b, status: "committing" } : b))
+      );
+      try {
+        const res = await fetch("/api/admin/cashflow/commit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bankAccountId: account.id,
+            periodMonth: p.periodMonth,
+            periodYear: p.periodYear,
+            openingBalance: p.openingBalance,
+            closingBalance: p.closingBalance,
+            transactions: p.transactions,
+          }),
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          addedCount?: number;
+          skippedCount?: number;
+          error?: string;
+        };
+        if (!res.ok || !body.ok) {
+          setBatch((prev) =>
+            prev.map((b, i) =>
+              i === idx ? { ...b, status: "error", message: body.error ?? `HTTP ${res.status}` } : b
+            )
+          );
+          anyError = true;
+          continue;
+        }
+        const added = body.addedCount ?? 0;
+        const skipped = body.skippedCount ?? 0;
+        totalAdded += added;
+        totalSkipped += skipped;
+        setBatch((prev) =>
+          prev.map((b, i) =>
+            i === idx ? { ...b, status: "done", addedCount: added, skippedCount: skipped } : b
+          )
+        );
+      } catch (err) {
+        setBatch((prev) =>
+          prev.map((b, i) =>
+            i === idx ? { ...b, status: "error", message: err instanceof Error ? err.message : String(err) } : b
+          )
+        );
+        anyError = true;
+      }
+    }
+    setCommitting(false);
+    setMergedReady(false);
+    router.refresh();
+    if (anyError) {
+      toast.warning(
+        `${totalAdded} transaksi disimpan${totalSkipped ? `, ${totalSkipped} dup` : ""}. Sebagian file gagal — cek daftar.`
+      );
+    } else {
+      toast.success(
+        `${totalAdded} transaksi disimpan${totalSkipped ? `, ${totalSkipped} duplikat dilewati` : ""}.`
+      );
+    }
+  }
+
+  /** Batalkan view gabungan, kembali ke daftar pilih file. */
+  function cancelMerged() {
+    setMergedReady(false);
+    setBatch((prev) =>
+      prev.map((b) =>
+        b.status === "reviewing" ? { ...b, status: "pending", preview: undefined } : b
+      )
+    );
   }
 
   async function handleCommit() {
@@ -440,9 +531,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
       const added = body.addedCount ?? 0;
       const skipped = body.skippedCount ?? 0;
       if (skipped > 0) {
-        toast.success(
-          `${added} transaksi disimpan. ${skipped} duplikat dilewati.`
-        );
+        toast.success(`${added} transaksi disimpan. ${skipped} duplikat dilewati.`);
       } else {
         toast.success(`${added} transaksi disimpan.`);
       }
@@ -457,6 +546,35 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
   }
 
   const inPreview = preview !== null;
+  const commitDisabled = !preview
+    ? true
+    : committing ||
+      preview.newCount === 0 ||
+      (!noBalanceBank &&
+        (!preview.verification.canVerify || !preview.verification.match));
+
+  // Agregat untuk view gabungan batch.
+  const mergedPreviews = batch
+    .map((b, i) => ({ idx: i, item: b }))
+    .filter((x) => x.item.preview);
+  const mergedTotals = mergedPreviews.reduce(
+    (acc, { item }) => {
+      const p = item.preview!;
+      acc.parsed += p.parsedCount;
+      acc.new += p.newCount;
+      acc.skipped += p.skippedCount;
+      return acc;
+    },
+    { parsed: 0, new: 0, skipped: 0 }
+  );
+  const mergedHasUnverified =
+    !noBalanceBank &&
+    mergedPreviews.some(
+      ({ item }) =>
+        !item.preview!.verification.canVerify || !item.preview!.verification.match
+    );
+  const mergedCommitDisabled =
+    committing || mergedTotals.new === 0 || mergedHasUnverified;
 
   return (
     <Dialog
@@ -468,7 +586,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
     >
       <DialogContent
         className={
-          inPreview
+          inPreview || mergedReady
             ? // Wide + tall-responsive: dialog can scroll internally
               // when content exceeds viewport so the top/bottom don't
               // get clipped at 100% zoom or tall transaction lists.
@@ -478,10 +596,21 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
       >
         <DialogHeader>
           <DialogTitle>
-            {inPreview ? "Review sebelum simpan" : "Upload rekening koran"}
+            {inPreview
+              ? "Review sebelum simpan"
+              : mergedReady
+              ? "Review gabungan sebelum simpan"
+              : "Upload rekening koran"}
           </DialogTitle>
           <DialogDescription>
             Rekening: <strong>{account?.accountName}</strong>
+            {mergedReady && (
+              <>
+                {" "}· Gabungan <strong>{mergedPreviews.length}</strong> file.
+                Tidak ada data yang disimpan sampai kamu klik{" "}
+                <strong>Simpan semua</strong>.
+              </>
+            )}
             {inPreview && (
               <>
                 {" "}
@@ -492,8 +621,16 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
           </DialogDescription>
         </DialogHeader>
 
-        {!inPreview ? (
+        {mergedReady ? (
+          <MergedPreview
+            batch={batch}
+            presets={presets}
+            noBalanceBank={noBalanceBank}
+            onPatchRow={patchMergedRow}
+          />
+        ) : !inPreview ? (
           <>
+            {batchCursor < 0 && (
             <FormStep
               file={file}
               setFile={setFile}
@@ -521,16 +658,17 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
               editPassword={editPassword || passwordChallenge === "wrong"}
               setEditPassword={setEditPassword}
             />
+            )}
             {batch.length > 0 && (
               <BatchUploadList
                 batch={batch}
-                currentIdx={batchIdx}
+                currentIdx={batchCursor}
                 onRemove={(idx) =>
                   setBatch((prev) => prev.filter((_, i) => i !== idx))
                 }
               />
             )}
-            {stage !== "idle" && batch.length === 0 && (
+            {stage !== "idle" && (
               <UploadProgress
                 stage={stage}
                 uploadPct={uploadPct}
@@ -559,7 +697,35 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
         )}
 
         <div className="flex justify-end gap-2 pt-2">
-          {inPreview ? (
+          {mergedReady ? (
+            // ── View gabungan: satu tombol Simpan semua ──
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={cancelMerged}
+                disabled={committing}
+                className="gap-1.5"
+              >
+                <ArrowLeft size={14} />
+                Kembali
+              </Button>
+              <Button
+                type="button"
+                onClick={commitAllBatch}
+                disabled={mergedCommitDisabled}
+              >
+                {committing
+                  ? "Menyimpan…"
+                  : mergedHasUnverified
+                  ? "Ada saldo tidak cocok"
+                  : mergedTotals.new === 0
+                  ? "Tidak ada data baru"
+                  : `Simpan semua (${mergedTotals.new})`}
+              </Button>
+            </>
+          ) : inPreview && preview ? (
+            // ── Single file preview ──
             <>
               <Button
                 type="button"
@@ -571,17 +737,7 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
                 <ArrowLeft size={14} />
                 Kembali
               </Button>
-              <Button
-                type="button"
-                onClick={handleCommit}
-                disabled={
-                  committing ||
-                  preview.newCount === 0 ||
-                  (!noBalanceBank &&
-                    (!preview.verification.canVerify ||
-                      !preview.verification.match))
-                }
-              >
+              <Button type="button" onClick={handleCommit} disabled={commitDisabled}>
                 {committing
                   ? "Menyimpan…"
                   : !noBalanceBank && !preview.verification.canVerify
@@ -593,30 +749,37 @@ export function UploadStatementDialog({ account, presets, onOpenChange }: Props)
                   : `Konfirmasi & simpan (${preview.newCount})`}
               </Button>
             </>
+          ) : batchCursor >= 0 ? (
+            // Sedang memuat preview semua file
+            <Button type="button" variant="ghost" disabled>
+              Memuat preview {batchCursor + 1}/{batch.length}…
+            </Button>
           ) : batch.length > 0 ? (
             <>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => onOpenChange(false)}
-                disabled={batchRunning}
+                disabled={parsing || committing}
               >
                 Tutup
               </Button>
-              {batch.every((b) => b.status === "done" || b.status === "error") &&
-              !batchRunning ? (
+              {batch.every(
+                (b) =>
+                  b.status === "done" ||
+                  b.status === "error" ||
+                  b.status === "skipped"
+              ) ? (
                 <Button type="button" onClick={() => reset()}>
                   Upload lagi
                 </Button>
               ) : (
                 <Button
                   type="button"
-                  onClick={handleRunBatch}
-                  disabled={batchRunning || batch.length === 0}
+                  onClick={previewAllBatch}
+                  disabled={parsing || committing || batch.length === 0}
                 >
-                  {batchRunning
-                    ? `Memproses ${batchIdx + 1}/${batch.length}…`
-                    : `Mulai upload (${batch.length} file)`}
+                  Preview semua ({batch.length} file)
                 </Button>
               )}
             </>
@@ -667,6 +830,7 @@ export interface BatchItem {
     | "pending"
     | "uploading"
     | "parsing"
+    | "reviewing"
     | "committing"
     | "done"
     | "skipped"
@@ -674,6 +838,8 @@ export interface BatchItem {
   message?: string;
   addedCount?: number;
   skippedCount?: number;
+  /** Hasil preview file ini (diisi saat previewAllBatch). */
+  preview?: PreviewResult;
 }
 
 function BatchUploadList({
@@ -693,6 +859,8 @@ function BatchUploadList({
         return { label: "Mengupload…", cls: "text-primary" };
       case "parsing":
         return { label: "Parsing…", cls: "text-primary" };
+      case "reviewing":
+        return { label: "Ditinjau…", cls: "text-primary" };
       case "committing":
         return { label: "Menyimpan…", cls: "text-primary" };
       case "done":
@@ -1265,6 +1433,264 @@ function PreviewStep({
                             value={t.branch ?? null}
                             branches={presets.branches}
                             onChange={(v) => onPatchRow(idx, { branch: v })}
+                          />
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const MONTHS_ID = [
+  "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+  "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+];
+function periodLabel(p: PreviewResult): string {
+  return `${MONTHS_ID[(p.periodMonth - 1 + 12) % 12]} ${p.periodYear}`;
+}
+
+/**
+ * View gabungan multi-file: hasil preview SEMUA file dicampur jadi satu
+ * tabel + ringkasan per file, lalu admin klik "Simpan semua" sekali.
+ * Tiap baris tetap tahu file & index asalnya untuk edit kategori/cabang
+ * dan untuk commit per-statement (periode/saldo masing-masing).
+ */
+function MergedPreview({
+  batch,
+  presets,
+  noBalanceBank,
+  onPatchRow,
+}: {
+  batch: BatchItem[];
+  presets: CategoryPresets;
+  noBalanceBank: boolean;
+  onPatchRow: (
+    fileIdx: number,
+    rowIdx: number,
+    patch: Partial<Pick<PreviewTx, "category" | "branch">>
+  ) => void;
+}) {
+  const files = batch
+    .map((item, idx) => ({ idx, item }))
+    .filter((x) => x.item.preview);
+
+  let parsed = 0;
+  let added = 0;
+  let dup = 0;
+  for (const { item } of files) {
+    const p = item.preview!;
+    parsed += p.parsedCount;
+    added += p.newCount;
+    dup += p.skippedCount;
+  }
+
+  // Flatten semua transaksi, simpan asal (fileIdx, rowIdx), urut by tanggal.
+  const rows: Array<{
+    fileIdx: number;
+    rowIdx: number;
+    period: string;
+    tx: PreviewTx;
+  }> = [];
+  for (const { idx, item } of files) {
+    const p = item.preview!;
+    p.transactions.forEach((tx, r) =>
+      rows.push({ fileIdx: idx, rowIdx: r, period: periodLabel(p), tx })
+    );
+  }
+  rows.sort((a, b) => a.tx.date.localeCompare(b.tx.date));
+
+  const showBranch = presets.branches.length > 0;
+  const anyUnverified =
+    !noBalanceBank &&
+    files.some(
+      ({ item }) =>
+        !item.preview!.verification.canVerify ||
+        !item.preview!.verification.match
+    );
+
+  return (
+    <div className="space-y-3">
+      {/* Ringkasan gabungan */}
+      <div className="flex items-center gap-4 flex-wrap rounded-xl border border-border bg-muted/30 px-4 py-2.5">
+        <Stat label="File" value={files.length} tone="neutral" />
+        <span className="text-border">·</span>
+        <Stat label="Ter-parse" value={parsed} tone="neutral" />
+        <span className="text-border">·</span>
+        <Stat label="Akan ditambah" value={added} tone="success" />
+        <span className="text-border">·</span>
+        <Stat label="Duplikat" value={dup} tone="muted" />
+      </div>
+
+      {/* Ringkasan + rekonsiliasi per file */}
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-3 py-2 border-b border-border text-xs font-semibold text-foreground bg-muted/30">
+          Ringkasan per file
+        </div>
+        <ul className="divide-y divide-border/60">
+          {batch.map((b, idx) => {
+            if (!b.preview && b.status !== "error") return null;
+            const p = b.preview;
+            const ok = p
+              ? noBalanceBank || (p.verification.canVerify && p.verification.match)
+              : false;
+            return (
+              <li key={idx} className="flex items-center gap-3 px-3 py-2 text-xs">
+                <span
+                  className="flex-1 min-w-0 truncate text-foreground"
+                  title={b.file.name}
+                >
+                  {b.file.name}
+                  {p && (
+                    <span className="text-muted-foreground"> · {periodLabel(p)}</span>
+                  )}
+                </span>
+                {p ? (
+                  <>
+                    <span
+                      className={
+                        "font-semibold whitespace-nowrap " +
+                        (ok ? "text-success" : "text-destructive")
+                      }
+                    >
+                      {noBalanceBank
+                        ? "Tanpa verifikasi saldo"
+                        : ok
+                        ? "Saldo cocok"
+                        : "Saldo tidak cocok"}
+                    </span>
+                    <span className="text-muted-foreground whitespace-nowrap">
+                      +{p.newCount}
+                      {p.skippedCount ? ` (${p.skippedCount} dup)` : ""}
+                    </span>
+                  </>
+                ) : (
+                  <span
+                    className="font-semibold text-destructive whitespace-nowrap max-w-[260px] truncate"
+                    title={b.message}
+                  >
+                    Gagal: {b.message ?? "error"}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {anyUnverified && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive leading-snug">
+          Sebagian file saldonya tidak cocok / tidak terbaca. Tombol{" "}
+          <strong>Simpan semua</strong> nonaktif sampai semua file lolos —
+          upload ulang file yang bermasalah dengan rentang lebih presisi.
+        </div>
+      )}
+
+      {/* Tabel transaksi gabungan */}
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic py-4 text-center">
+          Tidak ada transaksi baru untuk ditambahkan.
+        </p>
+      ) : (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="overflow-auto max-h-[min(60vh,560px)]">
+            <table className="w-full text-xs border-separate border-spacing-0">
+              <thead className="text-muted-foreground uppercase tracking-wider">
+                <tr>
+                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-24 border-b border-border">
+                    Periode
+                  </th>
+                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-24 border-b border-border">
+                    Tanggal
+                  </th>
+                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 border-b border-border">
+                    Keterangan
+                  </th>
+                  <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
+                    Debit
+                  </th>
+                  <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 w-28 border-b border-border">
+                    Kredit
+                  </th>
+                  <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-40 border-b border-border">
+                    Kategori
+                  </th>
+                  {showBranch && (
+                    <th className="sticky top-0 z-20 bg-muted text-left font-semibold px-3 py-2.5 w-28 border-b border-border">
+                      Cabang
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ fileIdx, rowIdx, period, tx }, i) => (
+                  <tr
+                    key={`${fileIdx}-${rowIdx}-${i}`}
+                    className={"align-top " + (tx.duplicate ? "bg-muted/40 opacity-70" : "")}
+                  >
+                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap border-t border-border/60">
+                      {period}
+                    </td>
+                    <td className="px-3 py-2 text-foreground whitespace-nowrap font-mono tabular-nums border-t border-border/60">
+                      {tx.date}
+                      {tx.duplicate && (
+                        <span className="ml-1 text-[9px] font-sans font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                          Dup
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-foreground border-t border-border/60">
+                      <span
+                        className="block line-clamp-2 leading-snug break-words"
+                        title={tx.description}
+                      >
+                        {tx.description || tx.sourceDestination || "—"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
+                      {tx.debit > 0 ? (
+                        <span className="text-destructive">{formatIDR(tx.debit)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap border-t border-border/60">
+                      {tx.credit > 0 ? (
+                        <span className="text-success">{formatIDR(tx.credit)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 border-t border-border/60">
+                      {tx.duplicate ? (
+                        <span className="text-[10px] text-muted-foreground italic">
+                          (sudah di DB)
+                        </span>
+                      ) : (
+                        <CategoryCell
+                          tx={tx}
+                          presets={presets}
+                          onChange={(v) => onPatchRow(fileIdx, rowIdx, { category: v })}
+                        />
+                      )}
+                    </td>
+                    {showBranch && (
+                      <td className="px-3 py-2 border-t border-border/60">
+                        {tx.duplicate ? (
+                          <span className="text-[10px] text-muted-foreground italic">
+                            —
+                          </span>
+                        ) : (
+                          <BranchCell
+                            value={tx.branch ?? null}
+                            branches={presets.branches}
+                            onChange={(v) => onPatchRow(fileIdx, rowIdx, { branch: v })}
                           />
                         )}
                       </td>

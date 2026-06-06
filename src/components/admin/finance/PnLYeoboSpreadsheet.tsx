@@ -33,7 +33,9 @@ import {
   orderYeoboBranches,
   YEOBO_SPACE_CREDIT_CATEGORIES,
   YEOBO_SPACE_DEBIT_CATEGORIES,
+  YEOBO_SPACE_BRANCHES,
 } from "@/lib/cashflow/categories";
+import { updateCashflowTransactions } from "@/lib/actions/cashflow.actions";
 import type {
   YeoboPnLReport,
   YeoboPnLMonth,
@@ -53,6 +55,9 @@ interface Props {
   /** True di route layar-penuh: sembunyikan tombol "layar penuh",
    *  tampilkan link "kembali". */
   fullscreen?: boolean;
+  /** Izinkan edit kategori & cabang transaksi dari drill-down (admin
+   *  saja). Default false → aman (investor tak bisa edit). */
+  editable?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -68,12 +73,6 @@ function ymString(x: { year: number; month: number }): string {
 
 function monthLabel(m: { year: number; month: number }): string {
   return `${MONTH_NAMES[m.month - 1]} ${String(m.year).slice(-2)}`;
-}
-
-function txDateLabel(iso: string): string {
-  const [y, mm, d] = iso.split("-").map(Number);
-  if (!y || !mm) return iso;
-  return `${String(d ?? 1).padStart(2, "0")} ${MONTH_NAMES[(mm ?? 1) - 1]}`;
 }
 
 /** Full date label incl. year — dipakai di tooltip hover drill-down. */
@@ -147,6 +146,7 @@ export function PnLYeoboSpreadsheet({
   allowedBranches,
   initialBranch,
   fullscreen = false,
+  editable = false,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -260,68 +260,60 @@ export function PnLYeoboSpreadsheet({
   // row whose amount sums to the full transaction (so no 2-3× repeats).
   // In a single-branch view there's only one portion per tx, so this is
   // a no-op there. Sorted by date.
-  // Like detailsForCategory but keeps the PER-MONTH placement: each row
-  // carries a `perMonth[]` array (length = monthCells.length) so the
-  // drill-down can render each tx's nominal in the column aligned with
-  // its effective month — mirroring the matrix above. Dedup by txId
-  // (split tx in "Semua cabang" view sums its branch portions back into
-  // one row), with the "dibagi N" chip dropped once recombined.
-  const detailRowsForCategory = (category: string): DetailRow[] => {
-    const n = monthCells.length;
-    const byTx = new Map<string, DetailRow>();
-    const extra: DetailRow[] = []; // legacy rows w/o txId (defensive)
-    monthCells.forEach(({ data }, mi) => {
+  // Build a spreadsheet GRID for a category: one tx-list per month column
+  // (index aligns with monthCells). The drill-down then packs these into
+  // shared rows — row r holds the r-th tx of EACH month, side by side, so
+  // transactions of different months sit on the same row (each cell's own
+  // detail shows on hover). Within a month, split tx ("All"/sentinel in
+  // "Semua cabang" view) are deduped by txId (portions summed back to the
+  // full amount), and the "dibagi N" chip is dropped once recombined.
+  const detailGridForCategory = (category: string): DetailTx[][] => {
+    return monthCells.map(({ data }) => {
       const c = data.byCategory.find((x) => x.category === category);
-      if (!c?.details) return;
+      if (!c?.details) return [];
+      const byTx = new Map<string, DetailTx>();
+      const extra: DetailTx[] = []; // legacy rows w/o txId (defensive)
       for (const d of c.details) {
         if (!d.txId) {
-          const perMonth = Array<number>(n).fill(0);
-          perMonth[mi] = d.amount;
           extra.push({
             txId: "",
             date: d.date,
             description: d.description,
             notes: d.notes,
+            branch: d.branch,
             branchShare: d.branchShare,
             fullAmount: d.fullAmount,
-            perMonth,
-            total: d.amount,
+            amount: d.amount,
           });
           continue;
         }
-        let row = byTx.get(d.txId);
-        if (!row) {
-          row = {
+        const cur = byTx.get(d.txId);
+        if (!cur) {
+          byTx.set(d.txId, {
             txId: d.txId,
             date: d.date,
             description: d.description,
             notes: d.notes,
+            branch: d.branch,
             branchShare: d.branchShare,
             fullAmount: d.fullAmount,
-            perMonth: Array<number>(n).fill(0),
-            total: 0,
-          };
-          byTx.set(d.txId, row);
+            amount: d.amount,
+          });
+        } else {
+          cur.amount += d.amount; // accumulate branch portion
         }
-        // Same tx seen for another branch → accumulate the portion in
-        // its month column (a tx lives in exactly one effective month).
-        row.perMonth[mi] += d.amount;
-        row.total += d.amount;
       }
+      const list = [...byTx.values()].map((t) =>
+        t.branchShare &&
+        t.fullAmount != null &&
+        Math.abs(Math.abs(t.amount) - Math.abs(t.fullAmount)) <= 1
+          ? { ...t, branchShare: undefined }
+          : t
+      );
+      const out = [...list, ...extra];
+      out.sort((a, b) => a.date.localeCompare(b.date));
+      return out;
     });
-    const rows = [...byTx.values()].map((r) => {
-      if (
-        r.branchShare &&
-        r.fullAmount != null &&
-        Math.abs(Math.abs(r.total) - Math.abs(r.fullAmount)) <= 1
-      ) {
-        return { ...r, branchShare: undefined };
-      }
-      return r;
-    });
-    const out = [...rows, ...extra];
-    out.sort((a, b) => a.date.localeCompare(b.date));
-    return out;
   };
 
   const colCount = monthCells.length + 2; // label + months + total
@@ -360,18 +352,30 @@ export function PnLYeoboSpreadsheet({
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground ml-1">
           Cabang:
         </span>
-        <select
-          value={branchView}
-          onChange={(e) => setBranchView(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-2 text-xs font-semibold"
-        >
-          <option value={ALL_BRANCHES}>Semua cabang</option>
-          {branchOptions.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
+        <div className="inline-flex items-center gap-1 rounded-lg border border-input bg-background p-0.5">
+          {[
+            { value: ALL_BRANCHES, label: "Semua cabang" },
+            ...branchOptions.map((b) => ({ value: b, label: b })),
+          ].map((opt) => {
+            const active = branchView === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setBranchView(opt.value)}
+                aria-pressed={active}
+                className={
+                  "press-feedback h-8 px-3 rounded-md text-xs font-semibold transition " +
+                  (active
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground")
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="ml-auto flex items-center gap-2">
           {fullscreen ? (
@@ -434,8 +438,10 @@ export function PnLYeoboSpreadsheet({
                   catNet={catNet}
                   expanded={expanded.has(`rev:${cat}`)}
                   onToggle={() => toggle(`rev:${cat}`)}
-                  detailRows={expanded.has(`rev:${cat}`) ? detailRowsForCategory(cat) : null}
+                  grid={expanded.has(`rev:${cat}`) ? detailGridForCategory(cat) : null}
                   colCount={colCount}
+                  editable={editable}
+                  onSaved={() => router.refresh()}
                 />
               ))}
               <TotalRow
@@ -456,8 +462,10 @@ export function PnLYeoboSpreadsheet({
                   catNet={catNet}
                   expanded={expanded.has(`exp:${cat}`)}
                   onToggle={() => toggle(`exp:${cat}`)}
-                  detailRows={expanded.has(`exp:${cat}`) ? detailRowsForCategory(cat) : null}
+                  grid={expanded.has(`exp:${cat}`) ? detailGridForCategory(cat) : null}
                   colCount={colCount}
+                  editable={editable}
+                  onSaved={() => router.refresh()}
                 />
               ))}
               <TotalRow
@@ -598,17 +606,18 @@ function SectionRow({ label, colSpan }: { label: string; colSpan: number }) {
 
 type MonthCell = { month: YeoboPnLMonth; data: YeoboBranchPnL };
 
-/** One transaction row in the drill-down, with its nominal spread across
- *  the month columns (`perMonth[i]` aligns with `monthCells[i]`). */
-type DetailRow = {
+/** One transaction (or recombined split tx) inside a category drill-down.
+ *  `amount` is signed (+credit / −debit). */
+type DetailTx = {
   txId: string;
   date: string;
   description: string;
   notes?: string;
+  /** Nilai mentah kolom branch (default dropdown saat edit). */
+  branch?: string;
   branchShare?: { n: number; origin: string };
   fullAmount?: number;
-  perMonth: number[];
-  total: number;
+  amount: number;
 };
 
 function TotalRow({
@@ -648,8 +657,10 @@ function CategoryRow({
   catNet,
   expanded,
   onToggle,
-  detailRows,
+  grid,
   colCount,
+  editable,
+  onSaved,
 }: {
   category: string;
   kind: "revenue" | "expense";
@@ -657,8 +668,10 @@ function CategoryRow({
   catNet: (d: YeoboBranchPnL, category: string) => number;
   expanded: boolean;
   onToggle: () => void;
-  detailRows: DetailRow[] | null;
+  grid: DetailTx[][] | null;
   colCount: number;
+  editable: boolean;
+  onSaved: () => void;
 }) {
   const total = monthCells.reduce((s, { data }) => s + catNet(data, category), 0);
   const tone = kind === "revenue" ? "revenue" : "expense";
@@ -688,11 +701,14 @@ function CategoryRow({
         ))}
         <NumCell value={total} tone={tone} strong />
       </tr>
-      {expanded && detailRows && (
+      {expanded && grid && (
         <DrillDownRows
-          rows={detailRows}
+          category={category}
+          grid={grid}
           monthCells={monthCells}
           colCount={colCount}
+          editable={editable}
+          onSaved={onSaved}
         />
       )}
     </>
@@ -727,28 +743,45 @@ function AmtCell({
 }
 
 /**
- * Drill-down rendered as REAL table rows (not a colSpan box) so each
- * transaction's nominal sits in the column that matches its month —
- * aligned 1:1 with the matrix header. Hover a row to see the full date
- * & notes. Ends with a per-month subtotal row + a masuk/keluar/net cap.
+ * Drill-down rendered as a true spreadsheet GRID: row r holds the r-th
+ * transaction of EACH month side by side, so transactions of different
+ * months share one row (the left column has no date — a row isn't one
+ * date). Each amount cell's own detail (tanggal, deskripsi, catatan)
+ * shows on HOVER via a portal tooltip anchored to the cell. The tooltip
+ * position is set only on mouseEnter (never on mousemove) to avoid
+ * per-pixel re-render lag. Ends with a per-month subtotal + masuk/keluar.
  */
 function DrillDownRows({
-  rows,
+  category,
+  grid,
   monthCells,
   colCount,
+  editable,
+  onSaved,
 }: {
-  rows: DetailRow[];
+  category: string;
+  grid: DetailTx[][];
   monthCells: MonthCell[];
   colCount: number;
+  editable: boolean;
+  onSaved: () => void;
 }) {
-  // Rich hover tooltip (tanggal + catatan + deskripsi). Rendered via a
-  // portal to document.body so it isn't clipped by the table's
-  // overflow-auto scroll container, and follows the cursor.
-  const [tip, setTip] = useState<{ x: number; y: number; row: DetailRow } | null>(
-    null
-  );
+  const [tip, setTip] = useState<{
+    left: number;
+    top: number;
+    tx: DetailTx;
+  } | null>(null);
+  // Click-to-edit popover (kategori, cabang, periode efektif). Separate
+  // from hover tip. `period` = bulan bucket sel (periode efektif tx saat
+  // ini), dipakai sebagai default kontrol periode di editor. Editor
+  // tampil sebagai modal ter-pusat (fixed) → tak ikut scroll.
+  const [editing, setEditing] = useState<{
+    tx: DetailTx;
+    period: { year: number; month: number };
+  } | null>(null);
 
-  if (rows.length === 0) {
+  const isEmpty = grid.every((list) => list.length === 0);
+  if (isEmpty) {
     return (
       <tr>
         <td
@@ -763,52 +796,84 @@ function DrillDownRows({
 
   let masuk = 0;
   let keluar = 0;
-  for (const r of rows) {
-    if (r.total > 0) masuk += r.total;
-    else keluar += -r.total;
-  }
-  const perMonthNet = monthCells.map((_, mi) =>
-    rows.reduce((s, r) => s + r.perMonth[mi], 0)
-  );
+  for (const list of grid)
+    for (const t of list) {
+      if (t.amount > 0) masuk += t.amount;
+      else keluar += -t.amount;
+    }
+  const perMonthNet = grid.map((list) => list.reduce((s, t) => s + t.amount, 0));
   const grandTotal = perMonthNet.reduce((a, b) => a + b, 0);
+  const maxRows = grid.reduce((m, list) => Math.max(m, list.length), 0);
+
+  const showTip = (
+    e: React.MouseEvent<HTMLTableCellElement>,
+    tx: DetailTx
+  ) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    // Prefer below the cell; flip above if it would overflow the viewport.
+    const top = r.bottom + 110 > vh ? r.top - 110 : r.bottom + 4;
+    setTip({ left: r.left, top, tx });
+  };
+
+  const openEdit = (tx: DetailTx, period: { year: number; month: number }) => {
+    if (!editable || !tx.txId) return;
+    setTip(null);
+    setEditing({ tx, period });
+  };
 
   return (
     <>
-      {rows.map((r, i) => {
-        const split =
-          r.branchShare &&
-          r.fullAmount != null &&
-          Math.abs(r.fullAmount) !== Math.abs(r.total);
-        return (
-          <tr
-            key={r.txId || `x${i}`}
-            className="group"
-            onMouseEnter={(e) =>
-              setTip({ x: e.clientX, y: e.clientY, row: r })
+      {Array.from({ length: maxRows }).map((_, r) => (
+        <tr key={r} className="hover:bg-muted/10">
+          <td className="sticky left-0 z-10 bg-muted/5 border-t border-border/30 px-3 py-1 pl-9" />
+          {grid.map((list, mi) => {
+            const tx = list[r];
+            if (!tx) {
+              return (
+                <td
+                  key={mi}
+                  className="border-t border-border/30 px-3 py-1 text-right text-[11px] text-muted-foreground/20"
+                >
+                  ·
+                </td>
+              );
             }
-            onMouseMove={(e) =>
-              setTip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))
-            }
-            onMouseLeave={() => setTip(null)}
-          >
-            <td className="sticky left-0 z-10 bg-muted/5 group-hover:bg-muted/30 border-t border-border/30 px-3 py-1 pl-9 text-[11px] font-mono tabular-nums text-muted-foreground/80 cursor-help whitespace-nowrap">
-              {txDateLabel(r.date)}
-              {split && (
-                <span className="ml-1 text-amber-500" title="Transaksi dibagi antar cabang — arahkan kursor untuk detail">
-                  *
+            const split =
+              tx.branchShare &&
+              tx.fullAmount != null &&
+              Math.abs(tx.fullAmount) !== Math.abs(tx.amount);
+            const canEdit = editable && !!tx.txId;
+            return (
+              <td
+                key={mi}
+                onMouseEnter={(e) => showTip(e, tx)}
+                onMouseLeave={() => setTip(null)}
+                onClick={
+                  canEdit ? () => openEdit(tx, monthCells[mi].month) : undefined
+                }
+                title={canEdit ? "Klik untuk edit kategori & cabang" : undefined}
+                className={
+                  "border-t border-border/30 px-3 py-1 text-right font-mono tabular-nums text-[11px] whitespace-nowrap hover:bg-muted/40 " +
+                  (canEdit ? "cursor-pointer" : "cursor-help")
+                }
+              >
+                <span
+                  className={
+                    (tx.amount > 0 ? "text-emerald-600" : "text-destructive") +
+                    (canEdit ? " underline decoration-dotted underline-offset-2" : "")
+                  }
+                >
+                  {tx.amount > 0 ? "+" : "−"}
+                  {formatIDR(Math.abs(tx.amount))}
                 </span>
-              )}
-            </td>
-            {monthCells.map((mc, mi) => (
-              <AmtCell
-                key={`${mc.month.year}-${mc.month.month}`}
-                value={r.perMonth[mi]}
-              />
-            ))}
-            <AmtCell value={r.total} strong />
-          </tr>
-        );
-      })}
+                {split && <span className="ml-0.5 text-amber-500">*</span>}
+              </td>
+            );
+          })}
+          <td className="border-t border-border/30 px-3 py-1" />
+        </tr>
+      ))}
 
       {/* Subtotal per bulan (cocokkan dgn angka di baris kategori) */}
       <tr className="bg-muted/20">
@@ -843,35 +908,36 @@ function DrillDownRows({
       </tr>
 
       {tip &&
+        !editing &&
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-[60] max-w-[300px] rounded-lg border border-border bg-card px-3 py-2 text-[11px] shadow-xl"
+            className="pointer-events-none fixed z-[60] w-[260px] rounded-lg border border-border bg-card px-3 py-2 text-[11px] shadow-xl"
             style={{
               left: Math.min(
-                tip.x + 14,
-                (typeof window !== "undefined" ? window.innerWidth : 1200) - 320
+                tip.left,
+                (typeof window !== "undefined" ? window.innerWidth : 1200) - 276
               ),
-              top: tip.y + 16,
+              top: tip.top,
             }}
           >
             <p className="font-semibold text-foreground">
-              {txDateFull(tip.row.date)}
+              {txDateFull(tip.tx.date)}
             </p>
-            <p className="mt-0.5 text-muted-foreground">{tip.row.description}</p>
-            {tip.row.branchShare &&
-              tip.row.fullAmount != null &&
-              Math.abs(tip.row.fullAmount) !== Math.abs(tip.row.total) && (
+            <p className="mt-0.5 text-muted-foreground">{tip.tx.description}</p>
+            {tip.tx.branchShare &&
+              tip.tx.fullAmount != null &&
+              Math.abs(tip.tx.fullAmount) !== Math.abs(tip.tx.amount) && (
                 <p className="mt-1 text-amber-600">
-                  Dibagi {tip.row.branchShare.n} cabang · porsi{" "}
-                  {formatIDR(Math.abs(tip.row.total))} dari{" "}
-                  {formatIDR(Math.abs(tip.row.fullAmount))}
+                  Dibagi {tip.tx.branchShare.n} cabang · porsi{" "}
+                  {formatIDR(Math.abs(tip.tx.amount))} dari{" "}
+                  {formatIDR(Math.abs(tip.tx.fullAmount))}
                 </p>
               )}
-            {tip.row.notes ? (
+            {tip.tx.notes ? (
               <p className="mt-1 border-t border-border/50 pt-1 text-foreground/90">
                 <span className="font-medium">Catatan: </span>
-                {tip.row.notes}
+                {tip.tx.notes}
               </p>
             ) : (
               <p className="mt-1 border-t border-border/50 pt-1 italic text-muted-foreground/60">
@@ -881,7 +947,230 @@ function DrillDownRows({
           </div>,
           document.body
         )}
+
+      {editing && (
+        <TxEditPopover
+          tx={editing.tx}
+          category={category}
+          initialPeriod={editing.period}
+          onClose={() => setEditing(null)}
+          onSaved={onSaved}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * Pop-up editor (portal, tanpa pindah halaman) untuk mengubah kategori &
+ * cabang satu transaksi langsung dari drill-down. Menulis ke DB lewat
+ * `updateCashflowTransactions` (revalidate server) lalu `onSaved`
+ * (router.refresh) agar matriks & semua view ikut konsisten.
+ */
+function TxEditPopover({
+  tx,
+  category,
+  initialPeriod,
+  onClose,
+  onSaved,
+}: {
+  tx: DetailTx;
+  category: string;
+  initialPeriod: { year: number; month: number };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [cat, setCat] = useState(category);
+  const [branch, setBranch] = useState(tx.branch ?? "");
+  // Periode efektif (bucket bulan untuk PnL). Default = bulan bucket sel.
+  const [pMonth, setPMonth] = useState(initialPeriod.month);
+  const [pYear, setPYear] = useState(initialPeriod.year);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const catOptions = useMemo(() => {
+    const base =
+      tx.amount > 0
+        ? YEOBO_SPACE_CREDIT_CATEGORIES
+        : YEOBO_SPACE_DEBIT_CATEGORIES;
+    const list = [...base] as string[];
+    if (category && !list.includes(category)) list.unshift(category);
+    return list;
+  }, [tx.amount, category]);
+
+  const branchOptions = useMemo(() => {
+    const list = [...YEOBO_SPACE_BRANCHES] as string[];
+    if (tx.branch && !list.includes(tx.branch)) list.unshift(tx.branch);
+    return list;
+  }, [tx.branch]);
+
+  const periodChanged =
+    pMonth !== initialPeriod.month || pYear !== initialPeriod.year;
+  const yearOptions = useMemo(() => {
+    const ys = new Set([
+      initialPeriod.year - 1,
+      initialPeriod.year,
+      initialPeriod.year + 1,
+    ]);
+    return [...ys].sort((a, b) => a - b);
+  }, [initialPeriod.year]);
+
+  const dirty =
+    cat !== category || (branch || "") !== (tx.branch ?? "") || periodChanged;
+  const isSalary = category === "Salaries & Wages";
+
+  const save = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    setErr(null);
+    const res = await updateCashflowTransactions([
+      {
+        id: tx.txId,
+        category: cat || null,
+        branch: branch || null,
+        // Hanya kirim periode kalau diubah → set override eksplisit.
+        ...(periodChanged
+          ? { effectivePeriod: { year: pYear, month: pMonth } }
+          : {}),
+      },
+    ]);
+    setSaving(false);
+    if (!res.ok) {
+      setErr(res.error || "Gagal menyimpan");
+      return;
+    }
+    onSaved();
+    onClose();
+  };
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[65] flex items-center justify-center bg-black/30 p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        className="w-[300px] max-h-[85vh] overflow-y-auto rounded-xl border border-border bg-card p-3 text-[12px] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="font-semibold text-foreground">{txDateFull(tx.date)}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground break-words">
+          {tx.description}
+        </p>
+        <p
+          className={
+            "mt-1 font-mono text-[11px] " +
+            (tx.amount > 0 ? "text-emerald-600" : "text-destructive")
+          }
+        >
+          {tx.amount > 0 ? "+" : "−"}
+          {formatIDR(Math.abs(tx.amount))}
+        </p>
+        {tx.branchShare &&
+          tx.fullAmount != null &&
+          Math.abs(tx.fullAmount) !== Math.abs(tx.amount) && (
+            <p className="mt-1 rounded-md bg-amber-500/10 px-2 py-1 text-[10px] leading-snug text-amber-600">
+              Dibagi {tx.branchShare.n} cabang ({tx.branchShare.origin}) · porsi{" "}
+              {formatIDR(Math.abs(tx.amount))} dari{" "}
+              {formatIDR(Math.abs(tx.fullAmount))}. Mengubah cabang di sini
+              mengubah pembagian seluruh transaksi.
+            </p>
+          )}
+
+        <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Kategori
+        </label>
+        <select
+          value={cat}
+          onChange={(e) => setCat(e.target.value)}
+          className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
+        >
+          {catOptions.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+
+        <label className="mt-2 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Cabang
+        </label>
+        <select
+          value={branch}
+          onChange={(e) => setBranch(e.target.value)}
+          className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
+        >
+          <option value="">— (tanpa cabang) —</option>
+          {branchOptions.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
+
+        <label className="mt-2 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Periode Efektif
+        </label>
+        <div className="mt-0.5 flex gap-2">
+          <select
+            value={pMonth}
+            onChange={(e) => setPMonth(Number(e.target.value))}
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
+          >
+            {MONTH_NAMES.map((name, i) => (
+              <option key={i} value={i + 1}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={pYear}
+            onChange={(e) => setPYear(Number(e.target.value))}
+            className="w-[88px] rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
+          >
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+          Bulan tempat transaksi dihitung di PnL (bisa beda dari tanggal
+          transaksi, mis. sewa/listrik dibayar di bulan berikutnya).
+        </p>
+
+        {isSalary && (
+          <p className="mt-2 text-[10px] leading-snug text-amber-600">
+            Tx Salaries & Wages punya alokasi per-karyawan. Mengubah cabang di
+            sini hanya mengubah kolom branch; alokasi gaji tetap. Pakai panel
+            alokasi gaji untuk distribusi per cabang.
+          </p>
+        )}
+        {err && <p className="mt-2 text-[10px] text-destructive">{err}</p>}
+
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            disabled={!dirty || saving}
+            onClick={save}
+            className="rounded-md bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            {saving ? "Menyimpan…" : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
