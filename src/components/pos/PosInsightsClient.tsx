@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Trophy, Clock, Calendar } from "lucide-react";
+import { toast } from "sonner";
+import { TrendingUp, Trophy, Clock, Calendar, Download } from "lucide-react";
 import { PosShell } from "./PosShell";
 import type { PosInsights } from "@/lib/actions/pos-insights.actions";
 import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
@@ -174,6 +175,24 @@ export function PosInsightsClient({
     applyCustom(from, to);
   }
 
+  const [downloading, setDownloading] = useState(false);
+  const canDownload = !!insights && insights.summary.txCount > 0;
+  async function handleDownloadExcel() {
+    if (!insights) return;
+    setDownloading(true);
+    try {
+      const { downloadPosInsightsExcel } = await import(
+        "@/lib/pos/exportInsightsExcel"
+      );
+      await downloadPosInsightsExcel({ accountName, insights });
+    } catch (e) {
+      console.error("Excel export failed", e);
+      toast.error("Gagal membuat file Excel");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <PosShell
       outletName={accountName}
@@ -247,6 +266,18 @@ export function PosInsightsClient({
               : "Custom"}
           </button>
         </div>
+
+        {/* Unduh laporan Excel (periode aktif). Disable kalau tidak ada
+            transaksi di periode terpilih. */}
+        <button
+          type="button"
+          onClick={handleDownloadExcel}
+          disabled={!canDownload || downloading}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download size={13} />
+          {downloading ? "Menyiapkan…" : "Unduh Excel"}
+        </button>
 
         {customOpen && (
           <div className="rounded-2xl border border-border bg-card p-3 space-y-3 max-w-sm shadow-sm">
