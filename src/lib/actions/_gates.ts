@@ -26,6 +26,50 @@ export async function requireAdmin(): Promise<
 }
 
 /**
+ * Self-or-admin gate for investor-scoped READS. Admin passes for any
+ * `userId`; otherwise the caller may only act on their OWN id.
+ *
+ * Closes an IDOR: several investor reads run on the service-role client
+ * (which bypasses RLS) while trusting a client-supplied `userId`. Server
+ * actions are publicly invokable, so without this gate an investor could
+ * pass another investor's id and read their contracts/payouts.
+ */
+export async function requireSelfOrAdmin(
+  userId: string
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  if (user.id === userId) return { ok: true, userId: user.id };
+  return { ok: false, error: "Forbidden" };
+}
+
+/**
+ * Admin OR an investor assigned to `businessUnit`. Mirrors the DB RLS
+ * helper `is_investor_for_business_unit`: an investor may read a BU's
+ * aggregate data only if they hold an assignment row for it. Used to gate
+ * service-role reads of BU-level investor data (e.g. monthly metrics).
+ */
+export async function requireAdminOrInvestorForBu(
+  businessUnit: string
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("investor_business_unit_assignments")
+    .select("business_unit")
+    .eq("user_id", user.id)
+    .eq("business_unit", businessUnit)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/**
  * Admin + `scope='full'` assignees of `bankAccountId`. Used for
  * cashflow transaction CRUD on per-rekening ACL'd accounts (currently
  * cash rekening). Delete paths still call `requireAdmin` since

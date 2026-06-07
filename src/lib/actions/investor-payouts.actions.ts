@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
-import { requireAdmin, type ActionResult } from "./_gates";
+import {
+  requireAdmin,
+  requireSelfOrAdmin,
+  type ActionResult,
+} from "./_gates";
+import { isValidMoney } from "./_validate";
 
 function adminClient() {
   return createServiceClient<Database>(
@@ -59,6 +64,17 @@ export async function listPayoutsForContract(
 ): Promise<InvestorPayout[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
+  // Owner-or-admin gate. Service-role bypasses RLS, so resolve the
+  // contract's owner and verify the caller before returning payouts —
+  // otherwise any investor could read another's payout history.
+  const { data: owner } = await supabase
+    .from("investor_contracts")
+    .select("user_id")
+    .eq("id", contractId)
+    .maybeSingle();
+  if (!owner) return [];
+  const gate = await requireSelfOrAdmin(owner.user_id as string);
+  if (!gate.ok) return [];
   const { data } = await supabase
     .from("investor_payouts")
     .select("*")
@@ -83,8 +99,8 @@ export async function upsertPayout(input: {
   if (!input.contractId) return { ok: false, error: "contractId wajib" };
   if (input.periodMonth < 1 || input.periodMonth > 12)
     return { ok: false, error: "periodMonth tidak valid" };
-  if (input.amountIdr < 0)
-    return { ok: false, error: "amount tidak boleh negatif" };
+  if (!isValidMoney(input.amountIdr))
+    return { ok: false, error: "amount tidak valid" };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
@@ -141,7 +157,7 @@ export async function bulkUpsertPayouts(input: {
   if (input.periodMonth < 1 || input.periodMonth > 12)
     return { ok: false, error: "Bulan tidak valid" };
   const rows = input.rows.filter(
-    (r) => r.contractId && Number.isFinite(r.amountIdr) && r.amountIdr > 0
+    (r) => r.contractId && isValidMoney(r.amountIdr) && r.amountIdr > 0
   );
   if (rows.length === 0)
     return { ok: false, error: "Tidak ada nominal untuk disimpan" };

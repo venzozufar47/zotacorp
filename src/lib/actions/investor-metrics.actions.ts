@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
-import { requireAdmin, type ActionResult } from "./_gates";
+import {
+  requireAdmin,
+  requireAdminOrInvestorForBu,
+  type ActionResult,
+} from "./_gates";
+import { clampCount, clampPct } from "./_validate";
 
 function adminClient() {
   return createServiceClient<Database>(
@@ -50,6 +55,10 @@ export async function getBuMetrics(input: {
   from: { year: number; month: number };
   to: { year: number; month: number };
 }): Promise<BuMonthlyMetric[]> {
+  // Admin or an investor assigned to this BU. Service-role bypasses RLS,
+  // so gate explicitly before returning BU-level metrics.
+  const gate = await requireAdminOrInvestorForBu(input.businessUnit);
+  if (!gate.ok) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
   const startIso = `${input.from.year}-${String(input.from.month).padStart(2, "0")}-01`;
@@ -168,10 +177,10 @@ export async function upsertBuMetric(input: {
     business_unit: input.businessUnit,
     period_year: input.periodYear,
     period_month: input.periodMonth,
-    utilization_pct: input.utilizationPct ?? null,
-    orders_count: input.ordersCount ?? null,
-    unique_customers: input.uniqueCustomers ?? null,
-    production_capacity_max: input.productionCapacityMax ?? null,
+    utilization_pct: clampPct(input.utilizationPct),
+    orders_count: clampCount(input.ordersCount),
+    unique_customers: clampCount(input.uniqueCustomers),
+    production_capacity_max: clampCount(input.productionCapacityMax),
     notes: input.notes ?? null,
     updated_at: new Date().toISOString(),
     updated_by: gate.userId,

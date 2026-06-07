@@ -5,7 +5,8 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
-import { requireAdmin, type ActionResult } from "./_gates";
+import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
+import { isValidMoney, isValidPct, isValidYmd } from "./_validate";
 
 function adminClient() {
   return createServiceClient<Database>(
@@ -223,6 +224,9 @@ export async function listInvestorContracts(filter?: {
   userId?: string;
   businessUnit?: string;
 }): Promise<ActionResult<InvestorContract[]>> {
+  // Admin-only: lists across ALL investors (optionally filtered).
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -242,6 +246,9 @@ export async function getInvestorContractByPair(
   userId: string,
   businessUnit: string
 ): Promise<InvestorContract | null> {
+  // Owner-or-admin: never let one investor read another's contract.
+  const gate = await requireSelfOrAdmin(userId);
+  if (!gate.ok) return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
   // BU-level (branch IS NULL) contract only. Scoping to NULL keeps this
@@ -267,6 +274,9 @@ export async function getInvestorContractsForBu(
   userId: string,
   businessUnit: string
 ): Promise<InvestorContract[]> {
+  // Owner-or-admin: never let one investor read another's contracts.
+  const gate = await requireSelfOrAdmin(userId);
+  if (!gate.ok) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
   const { data } = await supabase
@@ -307,6 +317,21 @@ export async function upsertInvestorContract(input: {
   const businessUnit = input.businessUnit.trim();
   if (!input.userId || !businessUnit) {
     return { ok: false, error: "userId dan businessUnit wajib" };
+  }
+  if (!isValidMoney(input.totalInvestIdr) || input.totalInvestIdr <= 0) {
+    return { ok: false, error: "Total investasi tidak valid" };
+  }
+  if (!isValidMoney(input.bepTargetIdr)) {
+    return { ok: false, error: "Target BEP tidak valid" };
+  }
+  if (!isValidPct(input.bagiHasilPct)) {
+    return { ok: false, error: "Bagi hasil harus 0–100%" };
+  }
+  if (!isValidYmd(input.startDate)) {
+    return { ok: false, error: "Start date harus format YYYY-MM-DD" };
+  }
+  if (input.durasiBulan != null && (!Number.isInteger(input.durasiBulan) || input.durasiBulan <= 0)) {
+    return { ok: false, error: "Durasi bulan tidak valid" };
   }
   // Branch is a Yeobo-Space-only concept. For Yeobo it's required and
   // must be a physical branch; for any other BU it's forced to null so
@@ -406,7 +431,15 @@ export async function bulkCreateInvestorContracts(input: {
   if (!gate.ok) return { ok: false, error: gate.error };
   const businessUnit = input.businessUnit.trim();
   if (!businessUnit) return { ok: false, error: "businessUnit wajib" };
-  if (!input.startDate) return { ok: false, error: "Start date wajib" };
+  if (!isValidYmd(input.startDate))
+    return { ok: false, error: "Start date harus format YYYY-MM-DD" };
+  if (!isValidPct(input.bagiHasilPct))
+    return { ok: false, error: "Bagi hasil harus 0–100%" };
+  if (
+    input.durasiBulan != null &&
+    (!Number.isInteger(input.durasiBulan) || input.durasiBulan <= 0)
+  )
+    return { ok: false, error: "Durasi bulan tidak valid" };
 
   let branch: string | null = null;
   if (businessUnit === "Yeobo Space") {
@@ -420,8 +453,13 @@ export async function bulkCreateInvestorContracts(input: {
     }
   }
 
+  // Drop rows with an invalid investasi or BEP target (finite, in-range).
   const rows = input.rows.filter(
-    (r) => r.userId && Number.isFinite(r.totalInvestIdr) && r.totalInvestIdr > 0
+    (r) =>
+      r.userId &&
+      isValidMoney(r.totalInvestIdr) &&
+      r.totalInvestIdr > 0 &&
+      isValidMoney(r.bepTargetIdr)
   );
   if (rows.length === 0)
     return { ok: false, error: "Tidak ada investor/nominal untuk disimpan" };
