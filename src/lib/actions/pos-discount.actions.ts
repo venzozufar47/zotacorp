@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import {
@@ -10,13 +9,6 @@ import {
   type DiscountCampaignLite,
   type RoundingMode,
 } from "@/lib/pos/discount";
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 export interface PosDiscountCampaign {
   id: string;

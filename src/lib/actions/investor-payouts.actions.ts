@@ -1,21 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import {
   requireAdmin,
   requireSelfOrAdmin,
   type ActionResult,
 } from "./_gates";
 import { isValidMoney } from "./_validate";
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 export interface InvestorPayout {
   id: string;

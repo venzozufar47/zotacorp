@@ -1,18 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import { createClient } from "@/lib/supabase/server";
-import type { Database } from "@/lib/supabase/types";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import type { ActionResult } from "./_gates";
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 export interface MetricComment {
   id: string;

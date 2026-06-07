@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import {
   BACKUP_CATEGORIES,
@@ -18,13 +17,6 @@ import { restoreCategory, type RestoreMode } from "@/lib/backups/restore";
 import { zonedDateString } from "@/lib/utils/celebrations";
 
 const BUCKET = "database-backups";
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 function cadenceHours(c: BackupCadence): number {
   if (c === "daily") return 24;

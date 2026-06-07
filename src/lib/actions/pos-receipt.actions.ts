@@ -1,9 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import { createClient } from "@/lib/supabase/server";
-import type { Database } from "@/lib/supabase/types";
 import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
 import { jakartaHHMM } from "@/lib/utils/jakarta";
 
@@ -23,13 +22,6 @@ import { jakartaHHMM } from "@/lib/utils/jakarta";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const BUCKET = "cashflow-receipts";
-
-function adminClient() {
-  return createAdminClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 export async function attachPosQrisReceipt(
   formData: FormData

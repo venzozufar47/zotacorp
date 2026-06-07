@@ -3756,6 +3756,205 @@ export type Database = {
           },
         ]
       }
+      yeobo_dividend_allocations: {
+        Row: {
+          after_bep: boolean
+          amount_idr: number
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          period_month: number
+          period_year: number
+          pool_idr: number | null
+          recipient_id: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          after_bep?: boolean
+          amount_idr: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          period_month: number
+          period_year: number
+          pool_idr?: number | null
+          recipient_id: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          after_bep?: boolean
+          amount_idr?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          period_month?: number
+          period_year?: number
+          pool_idr?: number | null
+          recipient_id?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_dividend_allocations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_dividend_allocations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_dividend_allocations_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "yeobo_dividend_recipients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_dividend_branch_config: {
+        Row: {
+          bep_reached_ym: string | null
+          branch: string
+          mgmt_pct_after_bep: number
+          mgmt_pct_before_bep: number
+          total_investment_idr: number | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          bep_reached_ym?: string | null
+          branch: string
+          mgmt_pct_after_bep?: number
+          mgmt_pct_before_bep?: number
+          total_investment_idr?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          bep_reached_ym?: string | null
+          branch?: string
+          mgmt_pct_after_bep?: number
+          mgmt_pct_before_bep?: number
+          total_investment_idr?: number | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_dividend_branch_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_dividend_branch_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_dividend_recipients: {
+        Row: {
+          active: boolean
+          branch: string
+          contract_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          invest_idr: number | null
+          kind: string
+          label: string
+          notes: string | null
+          pool_pct: number | null
+          sort_order: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          branch: string
+          contract_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invest_idr?: number | null
+          kind: string
+          label: string
+          notes?: string | null
+          pool_pct?: number | null
+          sort_order?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          branch?: string
+          contract_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invest_idr?: number | null
+          kind?: string
+          label?: string
+          notes?: string | null
+          pool_pct?: number | null
+          sort_order?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_dividend_recipients_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "investor_contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_dividend_recipients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_dividend_recipients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_dividend_recipients_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_dividend_recipients_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       profiles_celebrations_public: {

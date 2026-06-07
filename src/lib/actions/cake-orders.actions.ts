@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import {
   requireCakeOrderAccess,
   requireCakeProductionAccess,
@@ -65,13 +64,6 @@ async function loadPriceMatrix(
     diameters: (diaRes.data ?? []) as unknown as CakeDiameterOption[],
     prices: (priceRes.data ?? []) as unknown as CakeBaseDiameterPrice[],
   };
-}
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
 }
 
 // ---------- Pricing math (server-trusted) ----------------------------

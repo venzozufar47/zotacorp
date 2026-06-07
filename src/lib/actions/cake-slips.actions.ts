@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import {
   requireCakeOrderAccess,
   requireCakeProductionAccess,
@@ -58,13 +57,6 @@ const COMPLETED_PRODUCTION_STATUSES_LIST: readonly CakeProductionStatus[] = [
  * invisible to them until the next send. `pending_diff` carries the
  * change summary that drives the warning banner.
  */
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 // ---------- Date helpers ---------------------------------------------
 

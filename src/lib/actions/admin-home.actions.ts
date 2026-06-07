@@ -1,21 +1,13 @@
 "use server";
 
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import { createClient } from "@/lib/supabase/server";
-import type { Database } from "@/lib/supabase/types";
 import {
   getCurrentRole,
   getCurrentUser,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { zonedDateString } from "@/lib/utils/celebrations";
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 /**
  * Live snapshot for the admin Home dashboard. All numbers are scoped

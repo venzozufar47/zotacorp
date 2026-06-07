@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/investor-payouts.actions";
 import type { InvestorContract } from "@/lib/actions/investor.actions";
 import { formatRp } from "@/lib/cashflow/format";
+import { MONTH_NAMES } from "@/lib/utils/date-formats";
 
 interface Investor {
   userId: string;
@@ -21,20 +22,6 @@ interface Investor {
   email: string | null;
 }
 
-const MONTH_NAMES = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "Mei",
-  "Jun",
-  "Jul",
-  "Agu",
-  "Sep",
-  "Okt",
-  "Nov",
-  "Des",
-];
 
 export function InvestorPayoutsManager({
   contracts,

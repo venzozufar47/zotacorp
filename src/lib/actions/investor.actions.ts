@@ -1,19 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
 import { isValidMoney, isValidPct, isValidYmd } from "./_validate";
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 export interface InvestorSummary {
   userId: string;

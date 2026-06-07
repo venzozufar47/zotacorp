@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import type { VoiceRoom } from "@/lib/voice/types";
 
@@ -14,13 +13,6 @@ import type { VoiceRoom } from "@/lib/voice/types";
  *
  * Same pattern as `src/app/api/admin/users/delete/route.ts`.
  */
-
-function adminClient() {
-  return createServiceClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 export interface VoiceRoomInput {
   name: string;

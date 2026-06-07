@@ -29,6 +29,7 @@ import {
   ymLabelShort,
 } from "@/components/shared/MonthRangePicker";
 import { formatIDR } from "@/lib/cashflow/format";
+import { MONTH_NAMES } from "@/lib/utils/date-formats";
 import {
   orderYeoboBranches,
   YEOBO_SPACE_CREDIT_CATEGORIES,
@@ -61,10 +62,6 @@ interface Props {
   editable?: boolean;
 }
 
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
-  "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
-];
 
 const ALL_BRANCHES = "__all__";
 
