@@ -193,7 +193,17 @@ export async function fetchYeoboPnL(
     notes: string | null;
   };
 
-  // Pull all Yeobo Space tx (paginate to bypass 1000-row cap).
+  // Bound the scan to the requested period at the DB level via the
+  // generated `effective_period` column (migration 083) — exactly
+  // equivalent to the `inRange` test below (first-of-month of the same
+  // coalesced period), so it only avoids fetching all-time history. The
+  // pre-2026 hardcode overlay replaces byBranch per-month regardless, and
+  // this function only ever builds the [from,to] report (lifetime is a
+  // separate call with a wider range), so bounding changes no output.
+  const periodStart = `${from.year}-${String(from.month).padStart(2, "0")}-01`;
+  const endY = to.month === 12 ? to.year + 1 : to.year;
+  const endM = to.month === 12 ? 1 : to.month + 1;
+  const periodEndExcl = `${endY}-${String(endM).padStart(2, "0")}-01`;
   const txs: TxRow[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
@@ -203,6 +213,8 @@ export async function fetchYeoboPnL(
         "id, transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, notes, cashflow_statements!inner(bank_accounts!inner(business_unit))"
       )
       .eq("cashflow_statements.bank_accounts.business_unit", "Yeobo Space")
+      .gte("effective_period", periodStart)
+      .lt("effective_period", periodEndExcl)
       .range(offset, offset + PAGE - 1);
     if (error) throw error;
     const rows = (data ?? []) as unknown as TxRow[];

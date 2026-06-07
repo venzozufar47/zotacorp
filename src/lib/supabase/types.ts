@@ -1517,6 +1517,7 @@ export type Database = {
           custom_cake_included: boolean | null
           debit: number
           description: string
+          effective_period: string
           effective_period_month: number | null
           effective_period_year: number | null
           id: string
@@ -1539,6 +1540,7 @@ export type Database = {
           custom_cake_included?: boolean | null
           debit?: number
           description: string
+          effective_period?: never
           effective_period_month?: number | null
           effective_period_year?: number | null
           id?: string
@@ -1561,6 +1563,7 @@ export type Database = {
           custom_cake_included?: boolean | null
           debit?: number
           description?: string
+          effective_period?: never
           effective_period_month?: number | null
           effective_period_year?: number | null
           id?: string

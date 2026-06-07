@@ -84,6 +84,46 @@ export async function listPayoutsForContract(
   return ((data ?? []) as PayoutRow[]).map(mapPayout);
 }
 
+/**
+ * Batched version of {@link listPayoutsForContract} — one query for many
+ * contracts, grouped by contractId. Used by the Yeobo investor dashboard
+ * (one block per branch-contract) to avoid an N+1 of per-contract reads.
+ * Each contract is owner-or-admin gated; contracts the caller may not
+ * read are silently dropped.
+ */
+export async function listPayoutsForContracts(
+  contractIds: string[]
+): Promise<Map<string, InvestorPayout[]>> {
+  const out = new Map<string, InvestorPayout[]>();
+  if (contractIds.length === 0) return out;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = adminClient() as any;
+  // Resolve owners and keep only contracts the caller may read.
+  const { data: owners } = await supabase
+    .from("investor_contracts")
+    .select("id, user_id")
+    .in("id", contractIds);
+  const allowedIds: string[] = [];
+  for (const o of (owners ?? []) as Array<{ id: string; user_id: string }>) {
+    const gate = await requireSelfOrAdmin(o.user_id);
+    if (gate.ok) allowedIds.push(o.id);
+  }
+  if (allowedIds.length === 0) return out;
+  const { data } = await supabase
+    .from("investor_payouts")
+    .select("*")
+    .in("contract_id", allowedIds)
+    .order("period_year", { ascending: false })
+    .order("period_month", { ascending: false });
+  for (const r of (data ?? []) as PayoutRow[]) {
+    const p = mapPayout(r);
+    const list = out.get(p.contractId) ?? [];
+    list.push(p);
+    out.set(p.contractId, list);
+  }
+  return out;
+}
+
 export async function upsertPayout(input: {
   id?: string;
   contractId: string;

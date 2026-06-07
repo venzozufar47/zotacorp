@@ -5,7 +5,11 @@ import {
   type YeoboBranchPnL,
 } from "@/lib/cashflow/pnl-yeobo";
 import { getBuMetrics, type BuMonthlyMetric } from "@/lib/actions/investor-metrics.actions";
-import { listPayoutsForContract, type InvestorPayout } from "@/lib/actions/investor-payouts.actions";
+import {
+  listPayoutsForContract,
+  listPayoutsForContracts,
+  type InvestorPayout,
+} from "@/lib/actions/investor-payouts.actions";
 import {
   getInvestorContractByPair,
   getInvestorContractsForBu,
@@ -163,14 +167,50 @@ export async function fetchInvestorDashboardData(input: {
     input.businessUnit
   );
 
-  // PnL data via admin aggregator — pakai server-side supabase
-  // dengan typed Database.
-  const report = (await fetchPnL(
+  // PnL data via the admin aggregator. The hero card needs the full
+  // contract lifetime while the table needs the selected period — so
+  // fetch the UNION of both ranges ONCE and slice each in memory,
+  // instead of two separate full-aggregator passes. Each fetch is now
+  // period-bounded at the DB level (generated effective_period column).
+  const nowD = new Date();
+  const currentYear = nowD.getFullYear();
+  const currentMonth = nowD.getMonth() + 1;
+  const mIdx = (y: number, m: number) => y * 12 + m;
+  // Lifetime = [contract start, now], only once the contract has started
+  // (null for no-contract / future-start — no hero in that case).
+  let lifetime: { fromY: number; fromM: number } | null = null;
+  if (contract) {
+    const s = new Date(contract.startDate);
+    const sy = s.getFullYear();
+    const sm = s.getMonth() + 1;
+    if (mIdx(sy, sm) <= mIdx(currentYear, currentMonth)) {
+      lifetime = { fromY: sy, fromM: sm };
+    }
+  }
+  const selLo = mIdx(input.from.year, input.from.month);
+  const selHi = mIdx(input.to.year, input.to.month);
+  const loIdx = lifetime
+    ? Math.min(selLo, mIdx(lifetime.fromY, lifetime.fromM))
+    : selLo;
+  const hiIdx = lifetime
+    ? Math.max(selHi, mIdx(currentYear, currentMonth))
+    : selHi;
+  const idxToYm = (idx: number) => ({
+    year: Math.floor((idx - 1) / 12),
+    month: ((idx - 1) % 12) + 1,
+  });
+  const bigReport = (await fetchPnL(
     input.supabase as never,
     input.businessUnit,
-    input.from,
-    input.to
+    idxToYm(loIdx),
+    idxToYm(hiIdx)
   )) as PnLReport;
+  const report: PnLReport = {
+    ...bigReport,
+    months: bigReport.months.filter(
+      (m) => mIdx(m.year, m.month) >= selLo && mIdx(m.year, m.month) <= selHi
+    ),
+  };
 
   // Per-month rollup: jumlahkan semua branch + Pusat alocation.
   // operatingRevenue includes Pusat allocations yang sudah balanced.
@@ -317,31 +357,21 @@ export async function fetchInvestorDashboardData(input: {
     }
   }
 
-  // Hero performance: dihitung dari sejarah penuh kontrak, tidak
-  // terikat ke period selector. Sengaja fetchPnL kedua kalinya: di
-  // bawah hood-nya tetap satu query ke cashflow_transactions (selalu
-  // pull semua tx BU), tapi rentang `inRange` lebih lebar — jadi rows
-  // yang ke-include lebih banyak. Cost ekstra: O(months) loop saja.
+  // Hero performance: full contract lifetime (independent of the period
+  // selector), sliced from the single union fetch above — no second
+  // aggregator pass.
   let heroPerformance: InvestorHeroPerformance | null = null;
-  const nowD = new Date();
-  const currentYear = nowD.getFullYear();
-  const currentMonth = nowD.getMonth() + 1;
-  if (contract) {
-    const start = new Date(contract.startDate);
-    const startY = start.getFullYear();
-    const startM = start.getMonth() + 1;
-    // Edge case: kontrak start_date di masa depan (mis. admin baru
-    // setup, kontrak mulai bulan depan). Skip lifetime fetch.
-    const startBeforeOrEqualNow =
-      startY < currentYear || (startY === currentYear && startM <= currentMonth);
-    if (startBeforeOrEqualNow) {
-      const lifetimeReport = (await fetchPnL(
-        input.supabase as never,
-        input.businessUnit,
-        { year: startY, month: startM },
-        { year: currentYear, month: currentMonth }
-      )) as PnLReport;
-      // Per cabang Semarang/Pare di-extract terpisah supaya hero card
+  if (contract && lifetime) {
+    const life = lifetime;
+    const lifetimeReport: PnLReport = {
+      ...bigReport,
+      months: bigReport.months.filter(
+        (m) =>
+          mIdx(m.year, m.month) >= mIdx(life.fromY, life.fromM) &&
+          mIdx(m.year, m.month) <= mIdx(currentYear, currentMonth)
+      ),
+    };
+    // Per cabang Semarang/Pare di-extract terpisah supaya hero card
       // bisa expand ke drill-down per cabang. Pendekatan operating
       // profit per branch sengaja replikasi rumus BU-level (Revenue −
       // COGS − Opex) supaya angka per-cabang ter-rekonsiliasi: Profit
@@ -436,7 +466,7 @@ export async function fetchInvestorDashboardData(input: {
           Pare: buildBranchPerf("Pare"),
         },
       };
-    } else {
+    } else if (contract) {
       const emptyBranch: HeroBranchPerformance = {
         revenueThisMonth: 0,
         revenuePrevMonth: null,
@@ -464,7 +494,6 @@ export async function fetchInvestorDashboardData(input: {
         byBranch: { Semarang: emptyBranch, Pare: emptyBranch },
       };
     }
-  }
 
   return {
     contract,
@@ -649,19 +678,13 @@ export async function fetchYeoboInvestorDashboard(input: {
     return { kind: "yeobo-per-branch", businessUnit: "Yeobo Space", blocks: [] };
   }
 
-  // Satu fetch untuk periode terpilih, dipakai semua cabang.
-  const report = await fetchYeoboPnL(
-    input.supabase as never,
-    input.from,
-    input.to
-  );
-
   const nowD = new Date();
   const currentYear = nowD.getFullYear();
   const currentMonth = nowD.getMonth() + 1;
+  const mIdx = (y: number, m: number) => y * 12 + m;
 
-  // Lifetime: satu fetch dari start_date paling awal antar kontrak → now.
-  // Per kontrak nanti di-filter ke bulan ≥ start_date masing-masing.
+  // Lifetime span = earliest started contract → now. Per contract later
+  // filtered to months ≥ its own start.
   let earliestY = currentYear;
   let earliestM = currentMonth;
   let anyStarted = false;
@@ -673,28 +696,48 @@ export async function fetchYeoboInvestorDashboard(input: {
       sy < currentYear || (sy === currentYear && sm <= currentMonth);
     if (startedNow) {
       anyStarted = true;
-      if (sy < earliestY || (sy === earliestY && sm < earliestM)) {
+      if (mIdx(sy, sm) < mIdx(earliestY, earliestM)) {
         earliestY = sy;
         earliestM = sm;
       }
     }
   }
-  const lifetimeReport = anyStarted
-    ? await fetchYeoboPnL(
-        input.supabase as never,
-        { year: earliestY, month: earliestM },
-        { year: currentYear, month: currentMonth }
-      )
-    : null;
+
+  // ONE Yeobo PnL fetch covering the UNION of the selected period and the
+  // lifetime span; slice both in memory (was two separate full fetches).
+  const selLo = mIdx(input.from.year, input.from.month);
+  const selHi = mIdx(input.to.year, input.to.month);
+  const loIdx = anyStarted ? Math.min(selLo, mIdx(earliestY, earliestM)) : selLo;
+  const hiIdx = anyStarted
+    ? Math.max(selHi, mIdx(currentYear, currentMonth))
+    : selHi;
+  const idxToYm = (idx: number) => ({
+    year: Math.floor((idx - 1) / 12),
+    month: ((idx - 1) % 12) + 1,
+  });
+  const bigReport = await fetchYeoboPnL(
+    input.supabase as never,
+    idxToYm(loIdx),
+    idxToYm(hiIdx)
+  );
+  const selectedMonths = bigReport.months.filter(
+    (m) => mIdx(m.year, m.month) >= selLo && mIdx(m.year, m.month) <= selHi
+  );
+  const lifetimeReport = anyStarted ? bigReport : null;
+
+  // Batch every contract's payouts into one query (was N round-trips).
+  const payoutsByContract = await listPayoutsForContracts(
+    contracts.map((c) => c.id)
+  );
 
   const blocks: InvestorBranchDashboardBlock[] = [];
   for (const contract of contracts) {
     const b = contract.branch as string;
-    const rows = report.months.map((m) =>
+    const rows = selectedMonths.map((m) =>
       yeoboBranchRow(m.byBranch[b] ?? ZERO_BRANCH_PNL, m.year, m.month)
     );
 
-    const payouts = await listPayoutsForContract(contract.id);
+    const payouts = payoutsByContract.get(contract.id) ?? [];
     const totalCashback = payouts.reduce((s, p) => s + p.amountIdr, 0);
     const bepTarget = contract.bepTargetIdr ?? 0;
     const bepProgress = {
@@ -715,7 +758,8 @@ export async function fetchYeoboInvestorDashboard(input: {
       const lifeRows = lifetimeReport.months
         .filter(
           (m) =>
-            m.year > startY || (m.year === startY && m.month >= startM)
+            mIdx(m.year, m.month) >= mIdx(startY, startM) &&
+            mIdx(m.year, m.month) <= mIdx(currentYear, currentMonth)
         )
         .map((m) => yeoboBranchProfit(m.byBranch[b] ?? ZERO_BRANCH_PNL));
       heroPerformance = buildHeroFromSeries(lifeRows, currentYear, currentMonth);

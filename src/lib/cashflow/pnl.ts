@@ -236,6 +236,16 @@ export async function fetchPnL(
       bank_accounts?: { account_name?: string | null } | null;
     } | null;
   };
+  // Bound the scan to the requested period at the DB level. The generated
+  // `effective_period` column (migration 083) = first-of-month of the SAME
+  // coalesced (effective_period_year/month, else transaction_date) that the
+  // JS `inRange` below uses, so this half-open window [periodStart,
+  // periodEndExcl) is exactly equivalent to `inRange` — it only avoids
+  // fetching a BU's whole history. `inRange` stays as the source of truth.
+  const periodStart = `${from.year}-${String(from.month).padStart(2, "0")}-01`;
+  const endY = to.month === 12 ? to.year + 1 : to.year;
+  const endM = to.month === 12 ? 1 : to.month + 1;
+  const periodEndExcl = `${endY}-${String(endM).padStart(2, "0")}-01`;
   const txs: PnLTxRow[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
@@ -245,6 +255,8 @@ export async function fetchPnL(
         "transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, cashflow_statements!inner(bank_account_id, bank_accounts!inner(business_unit, account_name))"
       )
       .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
+      .gte("effective_period", periodStart)
+      .lt("effective_period", periodEndExcl)
       .range(offset, offset + PAGE - 1);
     if (error) throw error;
     const rows = (page ?? []) as PnLTxRow[];
