@@ -141,11 +141,9 @@ export function HeroContract({
                   ·
                 </span>
                 <span className="font-semibold">
-                  {contract.bagiHasilPctBeforeBep}%
-                  <span className="opacity-60"> → </span>
-                  {contract.bagiHasilPctAfterBep}%
+                  {contract.bagiHasilPct}%
                 </span>{" "}
-                bagi hasil (sebelum → setelah BEP)
+                bagi hasil
                 <span aria-hidden className="opacity-50 mx-1.5">
                   ·
                 </span>

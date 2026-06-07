@@ -14,6 +14,15 @@ import { InvestorAccountsList } from "@/components/admin/InvestorAccountsList";
 import { InvestorContractsManager } from "@/components/admin/InvestorContractsManager";
 import { InvestorPayoutsManager } from "@/components/admin/InvestorPayoutsManager";
 import { BuMonthlyMetricsManager } from "@/components/admin/BuMonthlyMetricsManager";
+import { YeoboDividendStructureManager } from "@/components/admin/YeoboDividendStructureManager";
+import {
+  listDividendRecipients,
+  getDividendBranchConfig,
+  type DividendRecipient,
+  type DividendBranchConfig,
+} from "@/lib/actions/yeobo-dividend.actions";
+
+const YEOBO_DIVIDEND_BRANCHES = ["Tlogosari", "Tembalang", "Jebres"] as const;
 
 interface SearchParams {
   tab?: string;
@@ -24,6 +33,7 @@ const TABS = [
   { id: "accounts", label: "Akun" },
   { id: "contracts", label: "Kontrak" },
   { id: "payouts", label: "Payouts" },
+  { id: "dividen", label: "Dividen Yeobo" },
   { id: "metrics", label: "Metrik BU" },
 ] as const;
 
@@ -42,6 +52,7 @@ export default async function AdminInvestorsPage({
     | "accounts"
     | "contracts"
     | "payouts"
+    | "dividen"
     | "metrics";
 
   const [investorsRes, businessUnits, contractsRes] = await Promise.all([
@@ -72,6 +83,23 @@ export default async function AdminInvestorsPage({
       to: { year: toY, month: toM },
     });
     metricsRows = metricsRows.slice().reverse(); // newest first
+  }
+
+  // Dividen tab — preload dividend recipients + config per Yeobo branch.
+  let divRecipientsByBranch: Record<string, DividendRecipient[]> = {};
+  let divConfigByBranch: Record<string, DividendBranchConfig> = {};
+  if (tab === "dividen") {
+    const results = await Promise.all(
+      YEOBO_DIVIDEND_BRANCHES.map(async (b) => ({
+        b,
+        recipients: await listDividendRecipients(b),
+        config: await getDividendBranchConfig(b),
+      }))
+    );
+    divRecipientsByBranch = Object.fromEntries(
+      results.map((r) => [r.b, r.recipients])
+    );
+    divConfigByBranch = Object.fromEntries(results.map((r) => [r.b, r.config]));
   }
 
   return (
@@ -115,6 +143,15 @@ export default async function AdminInvestorsPage({
 
       {tab === "payouts" && (
         <InvestorPayoutsManager contracts={contracts} investors={investors} />
+      )}
+
+      {tab === "dividen" && (
+        <YeoboDividendStructureManager
+          recipientsByBranch={divRecipientsByBranch}
+          configByBranch={divConfigByBranch}
+          investors={investors}
+          contracts={contracts}
+        />
       )}
 
       {tab === "metrics" && metricsBu && (

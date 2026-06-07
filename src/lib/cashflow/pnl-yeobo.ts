@@ -29,6 +29,10 @@ import {
   ALL_BRANCH_SENTINEL,
   getPhysicalBranchesForSentinel,
 } from "./branch-split";
+import {
+  YEOBO_PNL_HARDCODE,
+  YEOBO_HARDCODE_BEFORE,
+} from "./pnl-yeobo-hardcode";
 
 export type PnLSide = "credit" | "debit";
 export type PnLCategoryClass = "operating" | "nonop";
@@ -147,6 +151,29 @@ const TWO_BRANCH_SENTINEL_SET = new Set<string>(
 const PHYSICAL_BRANCHES = YEOBO_SPACE_BRANCHES.filter(
   (b) => b !== ALL_BRANCH_SENTINEL && !TWO_BRANCH_SENTINEL_SET.has(b)
 ) as readonly string[];
+
+/**
+ * Index hardcode PnL: `${y}-${MM}` → branch → category → amount.
+ * Dibangun sekali di module load dari YEOBO_PNL_HARDCODE.
+ */
+const HC_INDEX: Map<string, Map<string, Map<string, number>>> = (() => {
+  const idx = new Map<string, Map<string, Map<string, number>>>();
+  for (const r of YEOBO_PNL_HARDCODE) {
+    const k = `${r.y}-${String(r.m).padStart(2, "0")}`;
+    let bm = idx.get(k);
+    if (!bm) {
+      bm = new Map();
+      idx.set(k, bm);
+    }
+    let cm = bm.get(r.b);
+    if (!cm) {
+      cm = new Map();
+      bm.set(r.b, cm);
+    }
+    cm.set(r.c, (cm.get(r.c) ?? 0) + r.a);
+  }
+  return idx;
+})();
 
 export async function fetchYeoboPnL(
   supabase: SupabaseClient<Database>,
@@ -639,6 +666,82 @@ export async function fetchYeoboPnL(
       needsAssignmentCount: needsAssignmentPerMonth.get(monthKey) ?? 0,
     };
   });
+
+  // ── Overlay PnL hard-code (input langsung dashboard) untuk bulan
+  //    SEBELUM 2026. Periode pra-2026 tidak punya cashflow_transactions
+  //    (Mandiri 2025 dihapus; BCA/cash mulai 2026), jadi byBranch-nya
+  //    kosong → kita isi dari angka per-kategori dashboard. 2026 dst
+  //    dibiarkan apa adanya (dihitung dari bank statement). ──
+  const emptyHcBranch = (): YeoboBranchPnL => ({
+    operatingRevenue: 0,
+    operatingExpense: 0,
+    operatingProfit: 0,
+    nonOpRevenue: 0,
+    nonOpExpense: 0,
+    byCategory: [],
+  });
+  for (const mo of months) {
+    if (mo.year >= YEOBO_HARDCODE_BEFORE.year) continue;
+    const bm = HC_INDEX.get(ym(mo.year, mo.month));
+    for (const branch of PHYSICAL_BRANCHES) {
+      const cm = bm?.get(branch);
+      if (!cm) {
+        mo.byBranch[branch] = emptyHcBranch();
+        continue;
+      }
+      const hcCategory: YeoboCategoryBreakdown[] = [];
+      let opRev = 0;
+      let opExp = 0;
+      let nopRev = 0;
+      let nopExp = 0;
+      for (const [cat, amt] of cm) {
+        const isRevenue = creditCatSet.has(cat);
+        const isNonOp = nonOpSet.has(cat);
+        const credit = isRevenue ? amt : 0;
+        const debit = isRevenue ? 0 : amt;
+        const detail: YeoboTxDetail = {
+          txId: `hc-${branch}-${mo.year}-${mo.month}-${cat}`,
+          date: `${mo.year}-${String(mo.month).padStart(2, "0")}-01`,
+          description: `Input langsung (dashboard) — ${cat}`,
+          branch,
+          amount: isRevenue ? amt : -amt,
+          fullAmount: isRevenue ? amt : -amt,
+        };
+        hcCategory.push({
+          category: cat,
+          credit,
+          debit,
+          kind: isNonOp ? "nonop" : "operating",
+          directCredit: credit,
+          directDebit: debit,
+          allSplitCredit: 0,
+          allSplitDebit: 0,
+          allocationCredit: 0,
+          allocationDebit: 0,
+          details: [detail],
+        });
+        if (isNonOp) {
+          nopRev += credit;
+          nopExp += debit;
+        } else {
+          opRev += credit;
+          opExp += debit;
+        }
+      }
+      hcCategory.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "operating" ? -1 : 1;
+        return Math.max(b.credit, b.debit) - Math.max(a.credit, a.debit);
+      });
+      mo.byBranch[branch] = {
+        operatingRevenue: Math.round(opRev),
+        operatingExpense: Math.round(opExp),
+        operatingProfit: Math.round(opRev - opExp),
+        nonOpRevenue: Math.round(nopRev),
+        nonOpExpense: Math.round(nopExp),
+        byCategory: hcCategory,
+      };
+    }
+  }
 
   return {
     businessUnit: "Yeobo Space",

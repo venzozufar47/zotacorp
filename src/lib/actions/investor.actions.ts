@@ -166,13 +166,10 @@ export interface InvestorContract {
    *  this is one of Tlogosari/Tembalang/Jebres. */
   branch: string | null;
   totalInvestIdr: number;
-  /** @deprecated Legacy flat rate; kept in sync with bagiHasilPctBeforeBep
-   *  for backward compatibility. Use the before/after-BEP rates below. */
+  /** Profit-share % for this contract. Single flat rate — the
+   *  before/after-BEP split now lives in the Yeobo dividend pool, not
+   *  per-contract. BEP target below is still tracked as a recoup goal. */
   bagiHasilPct: number;
-  /** Profit-share % applied while cumulative payouts < BEP target. */
-  bagiHasilPctBeforeBep: number;
-  /** Profit-share % applied once BEP target is reached. */
-  bagiHasilPctAfterBep: number;
   durasiBulan: number | null;
   startDate: string;
   bepTargetIdr: number;
@@ -191,8 +188,6 @@ interface ContractRow {
   branch: string | null;
   total_invest_idr: number | string;
   bagi_hasil_pct: number | string;
-  bagi_hasil_pct_before_bep: number | string | null;
-  bagi_hasil_pct_after_bep: number | string | null;
   durasi_bulan: number | null;
   start_date: string;
   bep_target_idr: number | string;
@@ -212,12 +207,6 @@ function mapContract(r: ContractRow): InvestorContract {
     branch: r.branch ?? null,
     totalInvestIdr: Number(r.total_invest_idr),
     bagiHasilPct: Number(r.bagi_hasil_pct),
-    bagiHasilPctBeforeBep: Number(
-      r.bagi_hasil_pct_before_bep ?? r.bagi_hasil_pct
-    ),
-    bagiHasilPctAfterBep: Number(
-      r.bagi_hasil_pct_after_bep ?? r.bagi_hasil_pct
-    ),
     durasiBulan: r.durasi_bulan,
     startDate: r.start_date,
     bepTargetIdr: Number(r.bep_target_idr),
@@ -303,8 +292,7 @@ export async function upsertInvestorContract(input: {
    *  Forced to null for every other business unit. */
   branch?: string | null;
   totalInvestIdr: number;
-  bagiHasilPctBeforeBep: number;
-  bagiHasilPctAfterBep: number;
+  bagiHasilPct: number;
   durasiBulan: number | null;
   startDate: string;
   bepTargetIdr: number;
@@ -342,11 +330,7 @@ export async function upsertInvestorContract(input: {
     business_unit: businessUnit,
     branch,
     total_invest_idr: input.totalInvestIdr,
-    // Keep legacy flat column in sync (= before-BEP) for any reader that
-    // still consumes bagi_hasil_pct.
-    bagi_hasil_pct: input.bagiHasilPctBeforeBep,
-    bagi_hasil_pct_before_bep: input.bagiHasilPctBeforeBep,
-    bagi_hasil_pct_after_bep: input.bagiHasilPctAfterBep,
+    bagi_hasil_pct: input.bagiHasilPct,
     durasi_bulan: input.durasiBulan,
     start_date: input.startDate,
     bep_target_idr: input.bepTargetIdr,
@@ -396,6 +380,93 @@ export async function upsertInvestorContract(input: {
   revalidatePath("/admin/investors");
   revalidatePath("/investor", "layout");
   return { ok: true, data: mapContract(data as ContractRow) };
+}
+
+/**
+ * Batch-create contracts for MANY investors at once with SHARED terms
+ * (BU, branch, bagi hasil %, durasi, start) and per-investor amount +
+ * BEP target. Speeds up onboarding a whole branch/cohort. Rows whose
+ * (investor × BU × branch) already exists are skipped (unique), the rest
+ * are created. Each also gets a BU assignment (idempotent).
+ */
+export async function bulkCreateInvestorContracts(input: {
+  businessUnit: string;
+  branch?: string | null;
+  bagiHasilPct: number;
+  durasiBulan: number | null;
+  startDate: string;
+  rows: Array<{
+    userId: string;
+    totalInvestIdr: number;
+    bepTargetIdr: number;
+    contractRef?: string | null;
+  }>;
+}): Promise<ActionResult<{ count: number; skipped: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const businessUnit = input.businessUnit.trim();
+  if (!businessUnit) return { ok: false, error: "businessUnit wajib" };
+  if (!input.startDate) return { ok: false, error: "Start date wajib" };
+
+  let branch: string | null = null;
+  if (businessUnit === "Yeobo Space") {
+    const physical = getAutoSplitBranches(businessUnit) ?? [];
+    branch = input.branch?.trim() || null;
+    if (!branch || !physical.includes(branch)) {
+      return {
+        ok: false,
+        error: "Kontrak Yeobo Space wajib pilih cabang",
+      };
+    }
+  }
+
+  const rows = input.rows.filter(
+    (r) => r.userId && Number.isFinite(r.totalInvestIdr) && r.totalInvestIdr > 0
+  );
+  if (rows.length === 0)
+    return { ok: false, error: "Tidak ada investor/nominal untuk disimpan" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = adminClient() as any;
+  let count = 0;
+  let skipped = 0;
+  for (const r of rows) {
+    const payload = {
+      user_id: r.userId,
+      business_unit: businessUnit,
+      branch,
+      total_invest_idr: r.totalInvestIdr,
+      bagi_hasil_pct: input.bagiHasilPct,
+      durasi_bulan: input.durasiBulan,
+      start_date: input.startDate,
+      bep_target_idr: r.bepTargetIdr,
+      contract_ref: r.contractRef ?? null,
+      created_by: gate.userId,
+    };
+    const { error } = await supabase.from("investor_contracts").insert(payload);
+    if (error) {
+      if (/duplicate|unique/i.test(error.message)) {
+        skipped++;
+        continue;
+      }
+      return { ok: false, error: error.message };
+    }
+    count++;
+    const { error: assignErr } = await supabase
+      .from("investor_business_unit_assignments")
+      .insert({
+        user_id: r.userId,
+        business_unit: businessUnit,
+        assigned_by: gate.userId,
+      });
+    if (assignErr && !/duplicate/i.test(assignErr.message)) {
+      console.warn("[bulkCreateInvestorContracts] assignment:", assignErr);
+    }
+  }
+
+  revalidatePath("/admin/investors");
+  revalidatePath("/investor", "layout");
+  return { ok: true, data: { count, skipped } };
 }
 
 export async function deleteInvestorContract(

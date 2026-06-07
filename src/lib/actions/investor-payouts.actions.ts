@@ -123,6 +123,53 @@ export async function upsertPayout(input: {
   return { ok: true, data: mapPayout(data as PayoutRow) };
 }
 
+/**
+ * Bulk-upsert payouts for MANY contracts in one period at once (admin
+ * inputs a whole month's bagi hasil across investors quickly). Shared
+ * period + transfer date + ref; per-contract amount. Rows with amount
+ * ≤ 0 are skipped. Upsert by (contract, period) so re-running replaces.
+ */
+export async function bulkUpsertPayouts(input: {
+  periodYear: number;
+  periodMonth: number;
+  paidAt?: string | null;
+  ref?: string | null;
+  rows: Array<{ contractId: string; amountIdr: number }>;
+}): Promise<ActionResult<{ count: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (input.periodMonth < 1 || input.periodMonth > 12)
+    return { ok: false, error: "Bulan tidak valid" };
+  const rows = input.rows.filter(
+    (r) => r.contractId && Number.isFinite(r.amountIdr) && r.amountIdr > 0
+  );
+  if (rows.length === 0)
+    return { ok: false, error: "Tidak ada nominal untuk disimpan" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = adminClient() as any;
+  let count = 0;
+  for (const r of rows) {
+    const { error } = await supabase.from("investor_payouts").upsert(
+      {
+        contract_id: r.contractId,
+        period_year: input.periodYear,
+        period_month: input.periodMonth,
+        amount_idr: r.amountIdr,
+        paid_at: input.paidAt ?? null,
+        ref: input.ref ?? null,
+        created_by: gate.userId,
+      },
+      { onConflict: "contract_id,period_year,period_month" }
+    );
+    if (error) return { ok: false, error: error.message };
+    count++;
+  }
+  revalidatePath("/admin/investors");
+  revalidatePath("/investor", "layout");
+  return { ok: true, data: { count } };
+}
+
 export async function deletePayout(
   payoutId: string
 ): Promise<ActionResult> {
