@@ -7,13 +7,13 @@ import {
   listInvestorsForAdmin,
   listInvestorContracts,
 } from "@/lib/actions/investor.actions";
-import { getBuMetrics } from "@/lib/actions/investor-metrics.actions";
+import { listYeoboPhotoSessions } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { InvestorAccountsList } from "@/components/admin/InvestorAccountsList";
 import { InvestorContractsManager } from "@/components/admin/InvestorContractsManager";
 import { InvestorPayoutsManager } from "@/components/admin/InvestorPayoutsManager";
-import { BuMonthlyMetricsManager } from "@/components/admin/BuMonthlyMetricsManager";
+import { YeoboPhotoSessionsManager } from "@/components/admin/YeoboPhotoSessionsManager";
 import { YeoboDividendStructureManager } from "@/components/admin/YeoboDividendStructureManager";
 import {
   listDividendRecipients,
@@ -34,7 +34,7 @@ const TABS = [
   { id: "contracts", label: "Kontrak" },
   { id: "payouts", label: "Payouts" },
   { id: "dividen", label: "Dividen Yeobo" },
-  { id: "metrics", label: "Metrik BU" },
+  { id: "sesi", label: "Sesi Foto" },
 ] as const;
 
 export default async function AdminInvestorsPage({
@@ -53,7 +53,7 @@ export default async function AdminInvestorsPage({
     | "contracts"
     | "payouts"
     | "dividen"
-    | "metrics";
+    | "sesi";
 
   const [investorsRes, businessUnits, contractsRes] = await Promise.all([
     listInvestorsForAdmin(),
@@ -64,25 +64,10 @@ export default async function AdminInvestorsPage({
   const contracts = contractsRes.ok ? contractsRes.data ?? [] : [];
   const buNames = businessUnits.map((b) => b.name);
 
-  // Metric tab — preload data untuk BU yang dipilih
-  const metricsBu = sp.bu && buNames.includes(sp.bu) ? sp.bu : buNames[0] ?? "";
-  let metricsRows: Awaited<ReturnType<typeof getBuMetrics>> = [];
-  if (tab === "metrics" && metricsBu) {
-    const now = new Date();
-    const toY = now.getFullYear();
-    const toM = now.getMonth() + 1;
-    let fromY = toY,
-      fromM = toM - 17;
-    while (fromM < 1) {
-      fromM += 12;
-      fromY -= 1;
-    }
-    metricsRows = await getBuMetrics({
-      businessUnit: metricsBu,
-      from: { year: fromY, month: fromM },
-      to: { year: toY, month: toM },
-    });
-    metricsRows = metricsRows.slice().reverse(); // newest first
+  // Sesi Foto tab — preload all Yeobo photo sessions (per studio/month).
+  let photoSessions: Awaited<ReturnType<typeof listYeoboPhotoSessions>> = [];
+  if (tab === "sesi") {
+    photoSessions = await listYeoboPhotoSessions();
   }
 
   // Dividen tab — preload dividend recipients + config per Yeobo branch.
@@ -154,12 +139,8 @@ export default async function AdminInvestorsPage({
         />
       )}
 
-      {tab === "metrics" && metricsBu && (
-        <BuMonthlyMetricsManager
-          businessUnits={buNames}
-          initialBu={metricsBu}
-          initialMetrics={metricsRows}
-        />
+      {tab === "sesi" && (
+        <YeoboPhotoSessionsManager sessions={photoSessions} />
       )}
     </div>
   );

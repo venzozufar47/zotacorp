@@ -13,6 +13,7 @@ import {
   fetchYeoboInvestorDashboard,
 } from "@/lib/investor/dashboard";
 import { countCommentsForBu } from "@/lib/actions/investor-comments.actions";
+import { listYeoboPhotoSessions } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { InvestorDashboardView } from "@/components/investor/InvestorDashboardView";
 import { Sparkles, ShieldCheck } from "lucide-react";
 
@@ -111,7 +112,7 @@ export default async function InvestorHomePage({
   const isYeobo = activeBu === "Yeobo Space";
   // Yeobo Space → per-cabang dashboard (1 block per cabang terkoneksi).
   // BU lain (Haengbocake) → path lama, tidak berubah.
-  const [data, yeoboData, commentCounts] = await Promise.all([
+  const [data, yeoboData, commentCounts, photoSessions] = await Promise.all([
     isYeobo
       ? Promise.resolve(null)
       : fetchInvestorDashboardData({
@@ -130,6 +131,7 @@ export default async function InvestorHomePage({
         })
       : Promise.resolve(null),
     countCommentsForBu(activeBu),
+    isYeobo ? listYeoboPhotoSessions() : Promise.resolve([]),
   ]);
 
   return (
@@ -140,6 +142,7 @@ export default async function InvestorHomePage({
       businessUnits={businessUnits}
       data={data}
       yeoboData={yeoboData}
+      photoSessions={photoSessions}
       initialPeriod={
         period.initial as {
           id: "3m" | "6m" | "12m" | "ytd" | "all" | "custom";

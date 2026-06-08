@@ -19,6 +19,8 @@ import {
 } from "./InvestorCharts";
 import { PayoutsTable } from "./PayoutsTable";
 import { MetricCommentSheet } from "./MetricCommentSheet";
+import { InvestorPhotoSessionsCard } from "./InvestorPhotoSessionsCard";
+import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { METRIC_IDS } from "@/lib/investor/metric-ids";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import type {
@@ -36,6 +38,8 @@ interface Props {
   data: InvestorDashboardData | null;
   /** Yeobo Space per-branch payload. Null for non-Yeobo BUs. */
   yeoboData?: InvestorYeoboDashboardData | null;
+  /** Yeobo photo-session counts (all the investor's branches). */
+  photoSessions?: PhotoSessionRow[];
   initialPeriod: Period;
   commentCounts: Record<
     string,
@@ -51,6 +55,7 @@ export function InvestorDashboardView({
   businessUnits,
   data,
   yeoboData = null,
+  photoSessions = [],
   initialPeriod,
   commentCounts,
   isAdmin = false,
@@ -181,6 +186,12 @@ export function InvestorDashboardView({
                   hideOwnerDividen
                   singleBranchChart
                   headingEyebrow={`Performa keuangan · Cabang ${activeBlock.branch}`}
+                />
+              )}
+              {activeBlock && (
+                <InvestorPhotoSessionsCard
+                  branch={activeBlock.branch}
+                  sessions={photoSessions}
                 />
               )}
             </div>
