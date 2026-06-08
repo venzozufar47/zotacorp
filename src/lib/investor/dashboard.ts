@@ -3,6 +3,7 @@ import { fetchPnL, type PnLReport } from "@/lib/cashflow/pnl";
 import {
   fetchYeoboPnL,
   type YeoboBranchPnL,
+  type YeoboPnLReport,
 } from "@/lib/cashflow/pnl-yeobo";
 import { getBuMetrics, type BuMonthlyMetric } from "@/lib/actions/investor-metrics.actions";
 import {
@@ -535,6 +536,11 @@ export interface InvestorYeoboDashboardData {
   /** Satu block per cabang yang terkoneksi (punya kontrak). Kosong =
    *  investor belum dihubungkan ke cabang manapun. */
   blocks: InvestorBranchDashboardBlock[];
+  /** Laporan PnL spreadsheet (slice periode terpilih) yang sudah
+   *  di-scope SERVER-SIDE hanya ke cabang investor — supaya dashboard
+   *  bisa menampilkan spreadsheet detail ala admin tanpa membocorkan
+   *  data cabang lain. branches & byBranch sudah difilter. */
+  report: YeoboPnLReport;
 }
 
 const ZERO_BRANCH_PNL: YeoboBranchPnL = {
@@ -675,7 +681,18 @@ export async function fetchYeoboInvestorDashboard(input: {
   ).filter((c) => !!c.branch);
 
   if (contracts.length === 0) {
-    return { kind: "yeobo-per-branch", businessUnit: "Yeobo Space", blocks: [] };
+    return {
+      kind: "yeobo-per-branch",
+      businessUnit: "Yeobo Space",
+      blocks: [],
+      report: {
+        businessUnit: "Yeobo Space",
+        from: input.from,
+        to: input.to,
+        branches: [],
+        months: [],
+      },
+    };
   }
 
   const nowD = new Date();
@@ -782,5 +799,23 @@ export async function fetchYeoboInvestorDashboard(input: {
   // Urutkan cabang biar stabil (alfabet).
   blocks.sort((a, z) => a.branch.localeCompare(z.branch));
 
-  return { kind: "yeobo-per-branch", businessUnit: "Yeobo Space", blocks };
+  // Report spreadsheet di-scope ke cabang investor saja (privasi): hanya
+  // bulan periode terpilih, dan tiap bulan byBranch difilter ke cabang
+  // yang dimiliki investor. Mirror branch-filter di PnLYeoboClient.
+  const myBranches = new Set(contracts.map((c) => c.branch as string));
+  const report: YeoboPnLReport = {
+    businessUnit: "Yeobo Space",
+    from: input.from,
+    to: input.to,
+    branches: bigReport.branches.filter((b) => myBranches.has(b)),
+    months: selectedMonths.map((m) => {
+      const byBranch: Record<string, YeoboBranchPnL> = {};
+      for (const [name, pnl] of Object.entries(m.byBranch)) {
+        if (myBranches.has(name)) byBranch[name] = pnl;
+      }
+      return { ...m, byBranch };
+    }),
+  };
+
+  return { kind: "yeobo-per-branch", businessUnit: "Yeobo Space", blocks, report };
 }

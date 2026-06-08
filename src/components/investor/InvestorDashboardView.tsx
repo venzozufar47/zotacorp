@@ -19,7 +19,7 @@ import {
 } from "./InvestorCharts";
 import { PayoutsTable } from "./PayoutsTable";
 import { MetricCommentSheet } from "./MetricCommentSheet";
-import { InvestorPhotoSessionsCard } from "./InvestorPhotoSessionsCard";
+import { PnLYeoboSpreadsheet } from "@/components/admin/finance/PnLYeoboSpreadsheet";
 import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { METRIC_IDS } from "@/lib/investor/metric-ids";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
@@ -189,12 +189,34 @@ export function InvestorDashboardView({
                   headingEyebrow={`Performa keuangan · Cabang ${activeBlock.branch}`}
                 />
               )}
-              {activeBlock && (
-                <InvestorPhotoSessionsCard
-                  branch={activeBlock.branch}
-                  sessions={photoSessions}
-                  periodRows={activeBlock.rows}
-                />
+              {activeBlock && yeoboData?.report && (
+                <section className="space-y-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Laporan bulanan detail · Cabang {activeBlock.branch}
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-foreground">
+                      Profit &amp; Loss spreadsheet
+                    </h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground max-w-2xl">
+                      Sama persis dengan format audit admin: bulan = kolom,
+                      pos = baris. Klik kategori untuk melihat rincian
+                      transaksinya. Bagian Sesi Foto menampilkan jumlah sesi
+                      per studio per bulan.
+                    </p>
+                  </div>
+                  <PnLYeoboSpreadsheet
+                    embedded
+                    businessUnit="Yeobo Space"
+                    from={yeoboData.report.from}
+                    to={yeoboData.report.to}
+                    report={yeoboData.report}
+                    allowedBranches={[activeBlock.branch]}
+                    initialBranch={activeBlock.branch}
+                    photoSessions={photoSessions}
+                    key={activeBlock.branch}
+                  />
+                </section>
               )}
             </div>
           </>

@@ -10,6 +10,7 @@ import {
 } from "@/lib/investor/access";
 import { fetchPnL } from "@/lib/cashflow/pnl";
 import { fetchYeoboPnL } from "@/lib/cashflow/pnl-yeobo";
+import { listYeoboPhotoSessions } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { getNonOperatingCategories } from "@/lib/cashflow/categories";
 import { InvestorPnLClient } from "@/components/investor/InvestorPnLClient";
 import { PnLYeoboClient } from "@/components/admin/finance/PnLYeoboClient";
@@ -85,6 +86,7 @@ export default async function InvestorPnLPage({
   // Yeobo investor: scope ke cabang yang terhubung (kontrak per-cabang).
   // Kosong = belum terhubung ke cabang manapun → JANGAN tampilkan semua.
   const allowedBranches = isYeobo ? await getMyConnectedYeoboBranches() : null;
+  const photoSessions = isYeobo ? await listYeoboPhotoSessions() : [];
   const nonOp = getNonOperatingCategories(businessUnit);
 
   return (
@@ -125,6 +127,7 @@ export default async function InvestorPnLPage({
             report={yeoboReport}
             allowedBranches={allowedBranches ?? undefined}
             hideBuTotal
+            photoSessions={photoSessions}
           />
         )
       ) : (

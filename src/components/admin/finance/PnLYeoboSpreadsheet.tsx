@@ -37,6 +37,7 @@ import {
   YEOBO_SPACE_BRANCHES,
 } from "@/lib/cashflow/categories";
 import { updateCashflowTransactions } from "@/lib/actions/cashflow.actions";
+import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { DividendAllocationPopover } from "./DividendAllocationPopover";
 import type {
   YeoboPnLReport,
@@ -60,6 +61,14 @@ interface Props {
   /** Izinkan edit kategori & cabang transaksi dari drill-down (admin
    *  saja). Default false → aman (investor tak bisa edit). */
   editable?: boolean;
+  /** Jumlah sesi foto per studio/bulan. Bila ada, ditampilkan sebagai
+   *  bagian "Sesi Foto" sejajar kolom bulan (per studio + Total Sesi +
+   *  Revenue/sesi). */
+  photoSessions?: PhotoSessionRow[];
+  /** Mode tertanam (mis. di dashboard investor): sembunyikan toolbar
+   *  sendiri (periode, pill cabang, layar penuh) — periode & cabang
+   *  dikendalikan oleh halaman induk. */
+  embedded?: boolean;
 }
 
 
@@ -145,6 +154,8 @@ export function PnLYeoboSpreadsheet({
   initialBranch,
   fullscreen = false,
   editable = false,
+  photoSessions,
+  embedded = false,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -323,9 +334,39 @@ export function PnLYeoboSpreadsheet({
 
   const hasData = monthCells.length > 0;
 
+  // Sesi foto per studio × bulan, sejajar dengan monthCells. Difilter ke
+  // cabang yang sedang dilihat (atau dijumlah lintas cabang saat "Semua
+  // cabang"), dan hanya bulan yang ada di rentang. studios diurut sortOrder.
+  const sessionData = useMemo(() => {
+    if (!photoSessions || photoSessions.length === 0) return null;
+    const branchSet = new Set(
+      branchView === ALL_BRANCHES ? branchOptions : [branchView]
+    );
+    const monthSet = new Set(
+      monthCells.map(({ month }) => ymString(month))
+    );
+    const studioOrder = new Map<string, number>();
+    const cell = new Map<string, number>();
+    for (const s of photoSessions) {
+      if (!branchSet.has(s.branch)) continue;
+      const ym = ymString({ year: s.periodYear, month: s.periodMonth });
+      if (!monthSet.has(ym)) continue;
+      if (!studioOrder.has(s.studio)) studioOrder.set(s.studio, s.sortOrder);
+      const k = `${s.studio}|${ym}`;
+      cell.set(k, (cell.get(k) ?? 0) + s.sessions);
+    }
+    const studios = [...studioOrder.entries()]
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+      .map(([s]) => s);
+    if (studios.length === 0) return null;
+    return { studios, cell };
+  }, [photoSessions, branchView, branchOptions, monthCells]);
+
   return (
     <div className="space-y-3">
-      {/* Toolbar: period + branch selector + fullscreen */}
+      {/* Toolbar: period + branch selector + fullscreen.
+          Disembunyikan di mode embedded (induk yang mengatur periode/cabang). */}
+      {!embedded && (
       <div className="flex items-center gap-3 flex-wrap rounded-2xl border border-border bg-card p-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Periode:
@@ -401,6 +442,7 @@ export function PnLYeoboSpreadsheet({
           )}
         </div>
       </div>
+      )}
 
       {!hasData ? (
         <div className="rounded-xl border border-border bg-card p-8 text-center">
@@ -523,6 +565,16 @@ export function PnLYeoboSpreadsheet({
                 allocatable={editable && branchView !== ALL_BRANCHES}
                 onAllocate={(y, m) => setDivEditing({ year: y, month: m })}
               />
+
+              {/* ===== SESI FOTO ===== */}
+              {sessionData && (
+                <PhotoSessionsSection
+                  monthCells={monthCells}
+                  studios={sessionData.studios}
+                  cell={sessionData.cell}
+                  colCount={colCount}
+                />
+              )}
             </tbody>
           </table>
         </div>
@@ -670,6 +722,110 @@ function SectionRow({ label, colSpan }: { label: string; colSpan: number }) {
         {label}
       </td>
     </tr>
+  );
+}
+
+/** Plain integer (count) cell — dipakai untuk baris Sesi Foto. */
+function SessionCountCell({
+  value,
+  strong,
+}: {
+  value: number;
+  strong?: boolean;
+}) {
+  return (
+    <td
+      className={
+        "border-t border-border/60 px-3 py-1.5 text-right font-mono tabular-nums whitespace-nowrap " +
+        (strong ? "font-semibold text-foreground" : "text-muted-foreground")
+      }
+    >
+      {value === 0 ? (
+        <span className="text-muted-foreground/40">—</span>
+      ) : (
+        value.toLocaleString("id-ID")
+      )}
+    </td>
+  );
+}
+
+/**
+ * Bagian "Sesi Foto": jumlah sesi per studio per bulan (kolom sejajar
+ * monthCells), Total Sesi per bulan, dan Revenue/sesi (operatingRevenue
+ * bulan ÷ total sesi bulan). Kolom Total = total rentang.
+ */
+function PhotoSessionsSection({
+  monthCells,
+  studios,
+  cell,
+  colCount,
+}: {
+  monthCells: MonthCell[];
+  studios: string[];
+  cell: Map<string, number>;
+  colCount: number;
+}) {
+  const ymOf = (m: { year: number; month: number }) =>
+    `${m.year}-${String(m.month).padStart(2, "0")}`;
+  const studioMonth = (studio: string, m: { year: number; month: number }) =>
+    cell.get(`${studio}|${ymOf(m)}`) ?? 0;
+  const monthTotal = (m: { year: number; month: number }) =>
+    studios.reduce((s, st) => s + studioMonth(st, m), 0);
+  const grandTotal = monthCells.reduce(
+    (s, { month }) => s + monthTotal(month),
+    0
+  );
+  const totalRevenue = monthCells.reduce(
+    (s, { data }) => s + data.operatingRevenue,
+    0
+  );
+  return (
+    <>
+      <SectionRow label="Sesi Foto" colSpan={colCount} />
+      {studios.map((studio) => {
+        const stTotal = monthCells.reduce(
+          (s, { month }) => s + studioMonth(studio, month),
+          0
+        );
+        return (
+          <tr key={`sesi-${studio}`}>
+            <StickyLabel indent>{studio}</StickyLabel>
+            {monthCells.map(({ month }) => (
+              <SessionCountCell
+                key={ymOf(month)}
+                value={studioMonth(studio, month)}
+              />
+            ))}
+            <SessionCountCell value={stTotal} strong />
+          </tr>
+        );
+      })}
+      <tr className="bg-muted/20">
+        <StickyLabel strong>Total Sesi</StickyLabel>
+        {monthCells.map(({ month }) => (
+          <SessionCountCell key={ymOf(month)} value={monthTotal(month)} strong />
+        ))}
+        <SessionCountCell value={grandTotal} strong />
+      </tr>
+      <tr>
+        <StickyLabel indent>Revenue / sesi</StickyLabel>
+        {monthCells.map(({ month, data }) => {
+          const sess = monthTotal(month);
+          return (
+            <NumCell
+              key={ymOf(month)}
+              value={sess > 0 ? data.operatingRevenue / sess : 0}
+              tone="muted"
+            />
+          );
+        })}
+        <NumCell
+          value={grandTotal > 0 ? totalRevenue / grandTotal : 0}
+          tone="muted"
+          strong
+        />
+      </tr>
+    </>
   );
 }
 

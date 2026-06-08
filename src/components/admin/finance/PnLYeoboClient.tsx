@@ -18,6 +18,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import type { YeoboPnLReport, YeoboBranchPnL } from "@/lib/cashflow/pnl-yeobo";
+import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import { PnLChartsYeobo } from "./PnLChartsYeobo";
@@ -45,6 +46,9 @@ interface Props {
   /** Sembunyikan angka "Operating profit total" lintas cabang (investor
    *  per-cabang tidak boleh lihat agregat antar cabang). */
   hideBuTotal?: boolean;
+  /** Jumlah sesi foto (per studio/bulan) → diteruskan ke spreadsheet
+   *  untuk bagian "Sesi Foto". */
+  photoSessions?: PhotoSessionRow[];
 }
 
 function ymString(x: { year: number; month: number }): string {
@@ -58,6 +62,7 @@ export function PnLYeoboClient({
   report: rawReport,
   allowedBranches,
   hideBuTotal = false,
+  photoSessions,
 }: Props) {
   // Scope report ke cabang yang diizinkan (sekali) → otomatis men-scope
   // chart + tiap MonthSection. Undefined = semua cabang (admin).
@@ -134,6 +139,7 @@ export function PnLYeoboClient({
           report={report}
           allowedBranches={allowedBranches}
           editable={!allowedBranches}
+          photoSessions={photoSessions}
         />
       </div>
     );
