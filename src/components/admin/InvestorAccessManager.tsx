@@ -9,6 +9,7 @@ import {
   revokeInvestorAssignment,
   type InvestorSummary,
 } from "@/lib/actions/investor.actions";
+import { formatDateID } from "@/lib/utils/date-formats";
 
 interface Props {
   investors: InvestorSummary[];
@@ -118,7 +119,7 @@ function InvestorRow({
           )}
         </div>
         <div className="text-[11px] text-muted-foreground tabular-nums">
-          Daftar {new Date(investor.createdAt).toLocaleDateString("id-ID")}
+          Daftar {formatDateID(investor.createdAt)}
         </div>
       </div>
 

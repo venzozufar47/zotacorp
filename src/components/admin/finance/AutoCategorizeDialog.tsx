@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Wand2 } from "lucide-react";
+import { formatDateID } from "@/lib/utils/date-formats";
 import {
   Dialog,
   DialogContent,
@@ -297,7 +298,7 @@ export function AutoCategorizeDialog({
                           />
                         </td>
                         <td className="px-3 py-2 font-mono tabular-nums text-muted-foreground whitespace-nowrap border-t border-border/60">
-                          {s.date}
+                          {formatDateID(s.date)}
                         </td>
                         <td className="px-3 py-2 border-t border-border/60">
                           <div className="text-foreground">

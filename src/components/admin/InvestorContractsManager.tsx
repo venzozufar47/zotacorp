@@ -20,6 +20,7 @@ import {
 } from "@/lib/actions/investor.actions";
 import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { formatRp } from "@/lib/cashflow/format";
+import { formatDateID } from "@/lib/utils/date-formats";
 
 const YEOBO_BU = "Yeobo Space";
 const YEOBO_BRANCH_RANK: Record<string, number> = {
@@ -209,7 +210,9 @@ export function InvestorContractsManager({
                   <td className="px-3 py-2 text-right tabular-nums">
                     {c.durasiBulan === null ? "Permanen" : `${c.durasiBulan} bln`}
                   </td>
-                  <td className="px-3 py-2">{c.startDate}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {formatDateID(c.startDate)}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {formatRp(c.bepTargetIdr)}
                   </td>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { formatIDR } from "@/lib/cashflow/format";
+import { formatDateID } from "@/lib/utils/date-formats";
 
 export interface InvestorLedgerRow {
   id: string;
@@ -131,7 +132,7 @@ export function InvestorLedgerTable({
               {pageRows.map((r) => (
                 <tr key={r.id} className="border-t border-border/60 align-top">
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums">
-                    {r.date}
+                    {formatDateID(r.date)}
                     {r.time && (
                       <span className="block text-[10px] text-muted-foreground">
                         {r.time.slice(0, 5)}

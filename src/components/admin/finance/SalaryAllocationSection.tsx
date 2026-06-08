@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, ChevronDown, ChevronRight, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatDateID } from "@/lib/utils/date-formats";
 import {
   upsertSalaryAllocations,
   type SalaryTxSummary,
@@ -181,7 +182,7 @@ function SalaryRow({
             {summary.description}
           </div>
           <div className="text-[10px] text-muted-foreground">
-            {summary.date} · {summary.bankAccountName}
+            {formatDateID(summary.date)} · {summary.bankAccountName}
             {summary.effectivePeriodMonth && summary.effectivePeriodYear ? (
               <> · eff {summary.effectivePeriodMonth}/{summary.effectivePeriodYear}</>
             ) : null}

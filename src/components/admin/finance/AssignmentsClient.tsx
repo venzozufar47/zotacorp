@@ -11,6 +11,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { UserPlus } from "lucide-react";
+import { formatDateID } from "@/lib/utils/date-formats";
 import { Button } from "@/components/ui/button";
 import {
   resolveAssignment,
@@ -152,7 +153,7 @@ export function AssignmentsClient({ rows, mode }: Props) {
                 return (
                   <tr key={r.id} className="border-t border-border/60">
                     <td className="px-3 py-2 align-top font-mono tabular-nums whitespace-nowrap">
-                      {r.date}
+                      {formatDateID(r.date)}
                     </td>
                     <td className="px-3 py-2 align-top">
                       <div className="font-medium">{r.bankAccountName}</div>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Cake, Building2, ChevronDown, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
+import { formatDateID } from "@/lib/utils/date-formats";
 import type { InvestorContract } from "@/lib/actions/investor.actions";
 import type {
   InvestorHeroPerformance,
@@ -166,11 +167,7 @@ export function HeroContract({
                   ·
                 </span>
                 disetor sejak{" "}
-                {new Date(contract.startDate).toLocaleDateString("id-ID", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}
+                {formatDateID(contract.startDate)}
                 <span aria-hidden className="opacity-50 mx-1.5">
                   ·
                 </span>

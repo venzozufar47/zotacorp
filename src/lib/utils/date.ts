@@ -1,11 +1,13 @@
 import { format, formatDuration, intervalToDuration } from "date-fns";
 import { toZonedTime, format as formatTz } from "date-fns-tz";
+import { formatDateID } from "./date-formats";
 
 /** Default timezone — used when no settings are available */
 const DEFAULT_TZ = "Asia/Jakarta";
 
+/** Date-only "01 Des 2025" (Indonesian short month). */
 export function formatLocalDate(dateStr: string): string {
-  return format(new Date(dateStr), "dd MMM yyyy");
+  return formatDateID(dateStr);
 }
 
 /**
@@ -21,7 +23,10 @@ export function formatTime(dateStr: string, timezone?: string): string {
 export function formatDateTime(dateStr: string, timezone?: string): string {
   const tz = timezone || DEFAULT_TZ;
   const zonedDate = toZonedTime(new Date(dateStr), tz);
-  return formatTz(zonedDate, "dd MMM yyyy, HH:mm", { timeZone: tz });
+  // Indonesian month for the date part; keep tz-correct HH:mm.
+  const datePart = formatDateID(formatTz(zonedDate, "yyyy-MM-dd", { timeZone: tz }));
+  const timePart = formatTz(zonedDate, "HH:mm", { timeZone: tz });
+  return `${datePart}, ${timePart}`;
 }
 
 export function getTodayDateString(): string {

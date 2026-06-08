@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pencil, Save, X, Trash2, Wand2, ChevronLeft, ChevronRight, Search, Plus, CheckSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDateID } from "@/lib/utils/date-formats";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -1083,7 +1084,7 @@ export function CashflowTable({
                         </div>
                       ) : (
                         <div className="whitespace-nowrap font-mono tabular-nums">
-                          <div>{r.date}</div>
+                          <div>{formatDateID(r.date)}</div>
                           {r.time && (
                             <div className="text-muted-foreground text-[10px]">
                               {r.time}

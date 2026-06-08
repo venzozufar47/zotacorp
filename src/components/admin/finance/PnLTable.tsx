@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PnLReport, PnLMonth, BranchPnL } from "@/lib/cashflow/pnl";
 import { formatIDR as sharedFormatIDR } from "@/lib/cashflow/format";
+import { formatDateID } from "@/lib/utils/date-formats";
 
 interface Props {
   report: PnLReport;
@@ -520,7 +521,7 @@ function CategoryList({
                         >
                           <span className="flex-1 min-w-0 truncate">
                             <span className="font-mono tabular-nums text-[9px] text-muted-foreground/70">
-                              {d.date}
+                              {formatDateID(d.date)}
                             </span>
                             {" · "}
                             <span

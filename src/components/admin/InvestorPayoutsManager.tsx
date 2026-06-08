@@ -14,7 +14,7 @@ import {
 } from "@/lib/actions/investor-payouts.actions";
 import type { InvestorContract } from "@/lib/actions/investor.actions";
 import { formatRp } from "@/lib/cashflow/format";
-import { MONTH_NAMES } from "@/lib/utils/date-formats";
+import { MONTH_NAMES, formatDateID } from "@/lib/utils/date-formats";
 
 interface Investor {
   userId: string;
@@ -151,13 +151,7 @@ export function InvestorPayoutsManager({
                     {formatRp(p.amountIdr)}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {p.paidAt
-                      ? new Date(p.paidAt).toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "—"}
+                    {p.paidAt ? formatDateID(p.paidAt) : "—"}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                     {p.ref ?? "—"}

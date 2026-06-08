@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   AlertTriangle,
 } from "lucide-react";
+import { formatDateID } from "@/lib/utils/date-formats";
 import {
   Dialog,
   DialogContent,
@@ -1341,7 +1342,7 @@ function PreviewStep({
                   >
                     <td className="px-3 py-2 text-foreground whitespace-nowrap font-mono tabular-nums border-t border-border/60">
                       <div className="flex items-baseline gap-1.5">
-                        <span>{t.date}</span>
+                        <span>{formatDateID(t.date)}</span>
                         {t.duplicate && (
                           <span className="text-[9px] font-sans font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-muted text-muted-foreground">
                             Dup
@@ -1638,7 +1639,7 @@ function MergedPreview({
                       {period}
                     </td>
                     <td className="px-3 py-2 text-foreground whitespace-nowrap font-mono tabular-nums border-t border-border/60">
-                      {tx.date}
+                      {formatDateID(tx.date)}
                       {tx.duplicate && (
                         <span className="ml-1 text-[9px] font-sans font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-muted text-muted-foreground">
                           Dup

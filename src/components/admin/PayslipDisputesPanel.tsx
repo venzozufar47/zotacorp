@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDateID } from "@/lib/utils/date-formats";
 import {
   resolvePayslipDispute,
   type DisputeRow,
@@ -83,11 +84,7 @@ function DisputeItem({ dispute }: { dispute: DisputeWithUser }) {
           </p>
         </div>
         <span className="text-[10px] text-muted-foreground shrink-0">
-          {new Date(dispute.createdAt).toLocaleDateString("id-ID", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}
+          {formatDateID(dispute.createdAt)}
         </span>
       </div>
       <p className="text-sm italic bg-muted/40 rounded-lg p-2 break-words">

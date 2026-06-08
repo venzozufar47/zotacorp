@@ -2,6 +2,7 @@
 
 import { CheckCircle2 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
+import { formatDateID } from "@/lib/utils/date-formats";
 import type { InvestorPayout } from "@/lib/actions/investor-payouts.actions";
 
 const MONTH_NAMES = [
@@ -96,13 +97,7 @@ export function PayoutsTable({
                     {formatRp(p.amountIdr)}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">
-                    {p.paidAt
-                      ? new Date(p.paidAt).toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "—"}
+                    {p.paidAt ? formatDateID(p.paidAt) : "—"}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">
                     {p.ref ?? "—"}

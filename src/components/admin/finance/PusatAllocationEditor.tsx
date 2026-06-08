@@ -12,6 +12,7 @@ import {
   Unlock,
 } from "lucide-react";
 import type { PnLReport, PusatBreakdownRow } from "@/lib/cashflow/pnl";
+import { formatDateID } from "@/lib/utils/date-formats";
 import {
   savePusatAllocation,
   setPusatAllocationLock,
@@ -844,7 +845,7 @@ function CategoryGroup({
                     >
                       <span className="truncate">
                         <span className="font-mono tabular-nums text-[9px] text-muted-foreground/70">
-                          {d.date}
+                          {formatDateID(d.date)}
                         </span>
                         {" · "}
                         <span className="text-foreground/80">{d.description}</span>
