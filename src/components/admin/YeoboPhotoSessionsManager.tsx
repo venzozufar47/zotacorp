@@ -194,7 +194,7 @@ export function YeoboPhotoSessionsManager({
           <table className="text-sm border-collapse">
             <thead className="bg-muted/50">
               <tr>
-                <th className="sticky left-0 z-10 bg-muted/50 px-3 py-2 text-left text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                <th className="bg-muted/50 px-3 py-2 text-left text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
                   Studio / Paket
                 </th>
                 {months.map((ym) => (
@@ -220,14 +220,14 @@ export function YeoboPhotoSessionsManager({
                     <tr className="border-t border-border bg-muted/30">
                       <td
                         colSpan={months.length + 1}
-                        className="sticky left-0 bg-muted/30 px-3 py-1.5 text-xs font-semibold text-foreground"
+                        className="bg-muted/30 px-3 py-1.5 text-xs font-semibold text-foreground"
                       >
                         {studio}
                       </td>
                     </tr>
                     {pkgRows.map((r) => (
                       <tr key={`${studio}|${r.packageLabel}`} className="border-t border-border/60">
-                        <td className="sticky left-0 z-10 bg-card px-3 py-1 text-xs text-muted-foreground whitespace-nowrap">
+                        <td className="bg-card px-3 py-1 text-xs text-muted-foreground whitespace-nowrap">
                           {r.packageLabel}
                         </td>
                         {months.map((ym) => (
@@ -246,7 +246,7 @@ export function YeoboPhotoSessionsManager({
                     ))}
                     {leafRow && (
                       <tr key={`${studio}|leaf`} className="border-t border-border/60">
-                        <td className="sticky left-0 z-10 bg-card px-3 py-1 text-xs text-muted-foreground whitespace-nowrap">
+                        <td className="bg-card px-3 py-1 text-xs text-muted-foreground whitespace-nowrap">
                           (total)
                         </td>
                         {months.map((ym) => (
@@ -265,7 +265,7 @@ export function YeoboPhotoSessionsManager({
                     )}
                     {pkgRows.length > 0 && (
                       <tr key={`sub-${studio}`} className="border-t border-border/60 bg-muted/20">
-                        <td className="sticky left-0 z-10 bg-muted/20 px-3 py-1 text-xs font-semibold whitespace-nowrap">
+                        <td className="bg-muted/20 px-3 py-1 text-xs font-semibold whitespace-nowrap">
                           Total {studio}
                         </td>
                         {months.map((ym) => (
@@ -279,7 +279,7 @@ export function YeoboPhotoSessionsManager({
                 );
               })}
               <tr className="border-t-2 border-border bg-muted/40">
-                <td className="sticky left-0 z-10 bg-muted/40 px-3 py-2 text-xs font-bold whitespace-nowrap">
+                <td className="bg-muted/40 px-3 py-2 text-xs font-bold whitespace-nowrap">
                   Total Sesi
                 </td>
                 {months.map((ym) => (
