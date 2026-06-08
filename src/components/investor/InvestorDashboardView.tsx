@@ -185,6 +185,7 @@ export function InvestorDashboardView({
                   }
                   hideOwnerDividen
                   singleBranchChart
+                  hideOperationalMetrics
                   headingEyebrow={`Performa keuangan · Cabang ${activeBlock.branch}`}
                 />
               )}
@@ -192,6 +193,7 @@ export function InvestorDashboardView({
                 <InvestorPhotoSessionsCard
                   branch={activeBlock.branch}
                   sessions={photoSessions}
+                  periodRows={activeBlock.rows}
                 />
               )}
             </div>
@@ -326,6 +328,8 @@ interface PerformanceBodyProps {
   hideOwnerDividen?: boolean;
   /** Yeobo per-cabang: chart finansial tanpa toggle cabang. */
   singleBranchChart?: boolean;
+  /** Yeobo: sembunyikan kartu "Metrik penopang" (diganti laporan Sesi Foto). */
+  hideOperationalMetrics?: boolean;
   headingEyebrow: string;
 }
 
@@ -339,6 +343,7 @@ function PerformanceBody({
   onOpenComment,
   hideOwnerDividen = false,
   singleBranchChart = false,
+  hideOperationalMetrics = false,
   headingEyebrow,
 }: PerformanceBodyProps) {
   const setCommentOpen = (v: { metricId: string; label: string }) =>
@@ -538,18 +543,25 @@ function PerformanceBody({
         )}
       </section>
 
-      {/* P&L breakdown table + Operational metrics */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
+      {/* P&L breakdown table (+ Operational metrics, hidden for Yeobo —
+          replaced by the Sesi Foto report rendered by the parent). */}
+      {hideOperationalMetrics ? (
+        <section>
           <PnLBreakdownTable agg={agg} />
-        </div>
-        <OperationalMetricsCard
-          rows={data.rows}
-          agg={agg}
-          commentCounts={commentCounts}
-          onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
-        />
-      </section>
+        </section>
+      ) : (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <PnLBreakdownTable agg={agg} />
+          </div>
+          <OperationalMetricsCard
+            rows={data.rows}
+            agg={agg}
+            commentCounts={commentCounts}
+            onOpenComment={(id, label) => setCommentOpen({ metricId: id, label })}
+          />
+        </section>
+      )}
 
       {/* Cashback + Net Dividen owner-level untuk konteks. Net Dividen
           owner disembunyikan di mode per-cabang Yeobo. */}
