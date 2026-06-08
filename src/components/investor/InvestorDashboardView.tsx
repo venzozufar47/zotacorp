@@ -369,7 +369,6 @@ function PerformanceBody({
       avgUtil,
       orders: sum("ordersCount"),
       customers: sum("uniqueCustomers"),
-      tax: Math.max(0, op * 0.005),
       avgRev: avg("revenue"),
       netDividenInPeriod,
       netDividenPerMonth,
@@ -697,7 +696,6 @@ function PnLBreakdownTable({
     opex: number;
     gp: number;
     op: number;
-    tax: number;
     np: number;
     gpMargin: number;
     opMargin: number;
@@ -729,12 +727,6 @@ function PnLBreakdownTable({
       value: agg.op,
       kind: "sub" as const,
       margin: agg.opMargin,
-    },
-    {
-      label: "  – Pajak final UMKM (estimasi)",
-      value: -agg.tax,
-      kind: "row" as const,
-      margin: null,
     },
     {
       label: "Net Profit",
