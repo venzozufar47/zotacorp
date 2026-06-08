@@ -28,6 +28,29 @@ const YEOBO_BRANCH_RANK: Record<string, number> = {
   Jebres: 2,
 };
 
+/**
+ * Parse a bagi-hasil input into a percentage number. Accepts either a
+ * plain decimal ("25", "13.5") or a fraction ("50/360", "1/36") which is
+ * read as a proportion and converted to percent: a/b × 100. Returns null
+ * for empty/invalid input.
+ *   "1/36"   → 2.77778
+ *   "50/360" → 13.88889
+ *   "25"     → 25
+ */
+function parseBagiHasil(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const frac = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+  if (frac) {
+    const num = Number(frac[1]);
+    const den = Number(frac[2]);
+    if (!den || !Number.isFinite(num)) return null;
+    return (num / den) * 100;
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Group contracts by business unit; Yeobo Space split further per branch. */
 function buildContractGroups(contracts: InvestorContract[]) {
   const buNames = [...new Set(contracts.map((c) => c.businessUnit))].sort((a, b) =>
@@ -119,9 +142,6 @@ export function InvestorContractsManager({
                 Investor
               </th>
               <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                BU
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Cabang
               </th>
               <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
@@ -149,7 +169,7 @@ export function InvestorContractsManager({
             {contracts.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={9}
                   className="px-3 py-8 text-center text-muted-foreground"
                 >
                   Belum ada kontrak.
@@ -159,7 +179,7 @@ export function InvestorContractsManager({
               groups.map((g) => (
                 <Fragment key={g.key}>
                   <tr className="bg-muted/60 border-t border-border">
-                    <td colSpan={10} className="px-3 py-1.5">
+                    <td colSpan={9} className="px-3 py-1.5">
                       <span className="text-xs font-semibold text-foreground">
                         {g.label}
                       </span>
@@ -177,7 +197,6 @@ export function InvestorContractsManager({
                   <td className="px-3 py-2 font-medium">
                     {investorNameById.get(c.userId) ?? c.userId.slice(0, 8)}
                   </td>
-                  <td className="px-3 py-2">{c.businessUnit}</td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {c.branch ?? "—"}
                   </td>
@@ -353,6 +372,11 @@ function BatchContractForm({
         toast.error(`${label}: isi start date`);
         return;
       }
+      const pct = parseBagiHasil(r.bagiHasil);
+      if (pct == null || pct < 0 || pct > 100) {
+        toast.error(`${label}: bagi hasil tidak valid (0–100%, boleh pecahan)`);
+        return;
+      }
     }
     if (validRows.length === 0) {
       toast.error("Isi minimal satu kontrak (investor + investasi)");
@@ -364,7 +388,7 @@ function BatchContractForm({
           userId: r.userId,
           businessUnit: r.businessUnit,
           branch: r.businessUnit === YEOBO_BU ? r.branch : null,
-          bagiHasilPct: Number(r.bagiHasil),
+          bagiHasilPct: parseBagiHasil(r.bagiHasil) ?? 0,
           durasiBulan: r.permanent ? null : Number(r.durasi),
           startDate: r.startDate,
           totalInvestIdr: Number(r.invest),
@@ -518,12 +542,20 @@ function BatchContractForm({
                   <label className="text-xs">
                     <span className="text-muted-foreground">Bagi hasil (%)</span>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
+                      inputMode="text"
                       value={r.bagiHasil}
                       onChange={(e) => setRow(r.id, { bagiHasil: e.target.value })}
+                      placeholder="25 atau 50/360"
+                      title="Boleh angka (25) atau pecahan (50/360, 1/36)"
                       className={`${fieldCls} tabular-nums`}
                     />
+                    {parseBagiHasil(r.bagiHasil) != null &&
+                      /\//.test(r.bagiHasil) && (
+                        <span className="mt-0.5 block text-[10px] text-muted-foreground tabular-nums">
+                          = {Number(parseBagiHasil(r.bagiHasil)!.toFixed(5))}%
+                        </span>
+                      )}
                   </label>
                   <label className="text-xs">
                     <span className="text-muted-foreground flex items-center justify-between gap-2">
@@ -692,6 +724,11 @@ function ContractForm({
       toast.error("Pilih cabang untuk kontrak Yeobo Space");
       return;
     }
+    const pct = parseBagiHasil(bagiHasil);
+    if (pct == null || pct < 0 || pct > 100) {
+      toast.error("Bagi hasil tidak valid (0–100%, boleh pecahan spt 50/360)");
+      return;
+    }
     startTransition(async () => {
       const res = await upsertInvestorContract({
         id: isNew ? undefined : contract?.id,
@@ -699,7 +736,7 @@ function ContractForm({
         businessUnit,
         branch: isYeobo ? branch : null,
         totalInvestIdr: Number(totalInvest),
-        bagiHasilPct: Number(bagiHasil),
+        bagiHasilPct: pct,
         durasiBulan: isPermanent ? null : Number(durasiBulan),
         startDate,
         bepTargetIdr: Number(bepTarget),
@@ -835,12 +872,18 @@ function ContractForm({
           <label className="text-xs">
             <span className="text-muted-foreground">Bagi hasil (%)</span>
             <input
-              type="number"
-              step="0.01"
+              type="text"
               value={bagiHasil}
               onChange={(e) => setBagiHasil(e.target.value)}
+              placeholder="25 atau 50/360"
+              title="Boleh angka (25) atau pecahan (50/360, 1/36)"
               className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
             />
+            {parseBagiHasil(bagiHasil) != null && /\//.test(bagiHasil) && (
+              <span className="mt-0.5 block text-[10px] text-muted-foreground tabular-nums">
+                = {Number(parseBagiHasil(bagiHasil)!.toFixed(5))}%
+              </span>
+            )}
           </label>
           <label className="text-xs">
             <span className="text-muted-foreground flex items-center justify-between gap-2">
