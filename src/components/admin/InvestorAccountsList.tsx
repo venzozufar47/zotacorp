@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil, Mail, Building2, FileText } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Pencil, Mail, Building2, FileText, UserPlus, Loader2 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { InvestorEditPanel } from "./InvestorEditPanel";
-import type { InvestorSummary, InvestorContract } from "@/lib/actions/investor.actions";
+import {
+  inviteInvestor,
+  type InvestorSummary,
+  type InvestorContract,
+} from "@/lib/actions/investor.actions";
 
 interface Props {
   investors: InvestorSummary[];
@@ -21,15 +28,7 @@ interface Props {
  */
 export function InvestorAccountsList({ investors, contracts }: Props) {
   const [editing, setEditing] = useState<InvestorSummary | null>(null);
-
-  if (investors.length === 0) {
-    return (
-      <EmptyState
-        title="Belum ada investor"
-        description="Akun dengan role investor akan muncul di sini. Tambah investor lewat portal pendaftaran investor."
-      />
-    );
-  }
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   // Count contracts per investor for the badge.
   const contractCount = new Map<string, number>();
@@ -44,12 +43,39 @@ export function InvestorAccountsList({ investors, contracts }: Props) {
     ? "grid grid-cols-1 lg:grid-cols-2 gap-3"
     : "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3";
 
-  return (
-    <div className="flex gap-4 items-start">
-      <div className="flex-1 min-w-0 space-y-2">
+  const header = (
+    <div className="flex items-center justify-between gap-2 flex-wrap">
       <p className="text-xs text-muted-foreground">
         {investors.length} akun investor terdaftar.
       </p>
+      <button
+        type="button"
+        onClick={() => setInviteOpen(true)}
+        className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
+      >
+        <UserPlus size={14} /> Undang Investor
+      </button>
+    </div>
+  );
+
+  if (investors.length === 0) {
+    return (
+      <div className="space-y-3">
+        {header}
+        <EmptyState
+          title="Belum ada investor"
+          description="Undang investor lewat tombol di atas — mereka akan menerima email untuk membuat password sendiri."
+        />
+        {inviteOpen && <InviteInvestorModal onClose={() => setInviteOpen(false)} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {header}
+      <div className="flex gap-4 items-start">
+      <div className="flex-1 min-w-0 space-y-2">
       <ul className={gridCols}>
         {investors.map((inv) => {
           const nContracts = contractCount.get(inv.userId) ?? 0;
@@ -153,6 +179,106 @@ export function InvestorAccountsList({ investors, contracts }: Props) {
           />
         </div>
       )}
+      </div>
+
+      {inviteOpen && <InviteInvestorModal onClose={() => setInviteOpen(false)} />}
     </div>
   );
+}
+
+/** Invite-by-email modal: admin enters email + name → inviteInvestor →
+ *  the invitee gets an email to set their password. */
+function InviteInvestorModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [pending, startTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
+  function submit() {
+    if (!email.trim() || !fullName.trim()) {
+      toast.error("Email dan nama wajib diisi");
+      return;
+    }
+    startTransition(async () => {
+      const res = await inviteInvestor({ email, fullName });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal mengirim undangan");
+        return;
+      }
+      toast.success(`Undangan terkirim ke ${res.data?.email ?? email}`);
+      onClose();
+      router.refresh();
+    });
+  }
+
+  const modal = (
+    <div
+      className="fixed inset-0 z-50 bg-foreground/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-card border border-border p-5 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-foreground">
+            Undang investor
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Investor akan menerima email berisi link untuk membuat password
+            sendiri. Setelah login, assign unit bisnis & kontraknya lewat tab
+            Akun / Kontrak.
+          </p>
+        </div>
+        <label className="text-xs block">
+          <span className="text-muted-foreground">Nama lengkap</span>
+          <input
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Nama investor"
+            className="block mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="text-xs block">
+          <span className="text-muted-foreground">Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="investor@email.com"
+            inputMode="email"
+            autoComplete="off"
+            className="block mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+        </label>
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="h-9 px-3 rounded-lg border border-border text-sm font-semibold"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending}
+            className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-60"
+          >
+            {pending && <Loader2 size={14} className="animate-spin" />}
+            Kirim undangan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!mounted) return null;
+  return createPortal(modal, document.body);
 }

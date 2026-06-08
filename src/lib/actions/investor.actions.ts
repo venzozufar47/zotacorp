@@ -1,11 +1,21 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Resend } from "resend";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
+import { renderInviteInvestorEmail } from "@/lib/email/invite-investor-template";
 import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
 import { isValidMoney, isValidPct, isValidYmd } from "./_validate";
+
+/** `jane.doe@x.com` → `j***e@x.com` — avoid echoing full addresses. */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return email;
+  if (local.length <= 2) return `${local[0]}*@${domain}`;
+  return `${local[0]}${"*".repeat(Math.max(1, local.length - 2))}${local.slice(-1)}@${domain}`;
+}
 
 export interface InvestorSummary {
   userId: string;
@@ -144,6 +154,130 @@ export async function revokeInvestorAssignment(
   revalidatePath("/admin/investors");
   revalidatePath("/investor", "layout");
   return { ok: true };
+}
+
+/**
+ * Undang investor via email: admin masukkan email + nama → buat akun
+ * investor (status "invited"), kirim email berisi link untuk membuat
+ * password sendiri. Akun masuk dashboard dalam state "pending" sampai
+ * admin assign unit bisnis/kontrak. Reuse pola reset-password (Resend +
+ * generateLink). Email duplikat ditolak.
+ */
+export async function inviteInvestor(input: {
+  email: string;
+  fullName: string;
+}): Promise<ActionResult<{ email: string }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const email = input.email.trim().toLowerCase();
+  const fullName = input.fullName.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Email tidak valid" };
+  }
+  if (!fullName) return { ok: false, error: "Nama wajib diisi" };
+
+  const resendKey = process.env.RESEND_API_KEY;
+  const resendFrom = process.env.RESEND_FROM;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!resendKey || !resendFrom || !appUrl) {
+    return { ok: false, error: "Layanan email belum dikonfigurasi." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = adminClient() as any;
+
+  // 0) Reject duplicates up-front. generateLink(invite) silently
+  //    re-invites an already-pending user (no error), so we can't rely on
+  //    it to detect dupes. Every auth user has a profiles row (trigger
+  //    handle_new_user), so a case-insensitive profiles.email match is the
+  //    reliable existence check across all roles.
+  const { data: existing } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle();
+  if (existing) {
+    return { ok: false, error: "Email sudah terdaftar" };
+  }
+
+  // 1) Generate invite link — creates the invited auth user (no password
+  //    yet) AND returns a ~24h action link. We send it ourselves via
+  //    Resend (generateLink does not send an email).
+  const { data: linkData, error: linkError } =
+    await supabase.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: {
+        redirectTo: `${appUrl}/set-password`,
+        data: { full_name: fullName, role: "investor" },
+      },
+    });
+  if (
+    linkError ||
+    !linkData?.properties?.action_link ||
+    !linkData?.user?.id
+  ) {
+    const msg = linkError?.message ?? "";
+    if (/already|registered|exist/i.test(msg)) {
+      return { ok: false, error: "Email sudah terdaftar" };
+    }
+    return { ok: false, error: msg || "Gagal membuat undangan" };
+  }
+  const userId = linkData.user.id as string;
+  const actionLink = linkData.properties.action_link as string;
+
+  // 2) Create the investor profile row (role=investor, active).
+  const { error: profileErr } = await supabase.from("profiles").upsert({
+    id: userId,
+    email,
+    full_name: fullName,
+    department: "",
+    position: "",
+    role: "investor",
+    is_active: true,
+  });
+  if (profileErr) {
+    // Rollback the orphan auth user so a retry is clean.
+    await supabase.auth.admin.deleteUser(userId);
+    return { ok: false, error: profileErr.message };
+  }
+
+  // 3) Send the branded invite email via Resend.
+  const { subject, html, text } = renderInviteInvestorEmail({
+    fullName,
+    actionLink,
+    expiresIn: "24 jam",
+  });
+  const resend = new Resend(resendKey);
+  const { error: sendError } = await resend.emails.send({
+    from: resendFrom,
+    to: email,
+    subject,
+    html,
+    text,
+    headers: { "X-Entity-Ref-ID": `investor-invite-${userId}-${Date.now()}` },
+  });
+  if (sendError) {
+    const msg = sendError.message ?? "";
+    if (
+      sendError.name === "validation_error" &&
+      /only send testing emails/i.test(msg)
+    ) {
+      return {
+        ok: false,
+        error:
+          "Domain pengirim email belum diverifikasi di Resend. Verifikasi domain Zota Corp di resend.com/domains.",
+      };
+    }
+    return {
+      ok: false,
+      error: msg || "Akun dibuat tapi email gagal terkirim. Coba kirim ulang.",
+    };
+  }
+
+  revalidatePath("/admin/investors");
+  return { ok: true, data: { email: maskEmail(email) } };
 }
 
 // ─────────────────────────────────────────────────────────────────────
