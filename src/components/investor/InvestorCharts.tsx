@@ -18,6 +18,12 @@ import type {
   InvestorMonthlyRow,
 } from "@/lib/investor/dashboard";
 import { formatRp } from "@/lib/cashflow/format";
+import {
+  YEOBO_SPACE_CREDIT_CATEGORIES,
+  YEOBO_SPACE_DEBIT_CATEGORIES,
+} from "@/lib/cashflow/categories";
+import type { YeoboBranchPnL, YeoboPnLReport } from "@/lib/cashflow/pnl-yeobo";
+import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
 
 const MONTH_NAMES = [
   "Jan",
@@ -177,14 +183,67 @@ const ZERO_SLICE: InvestorMonthlyBranchSlice = {
   operatingProfit: 0,
 };
 
+const EMPTY_BRANCH_PNL: YeoboBranchPnL = {
+  operatingRevenue: 0,
+  operatingExpense: 0,
+  operatingProfit: 0,
+  nonOpRevenue: 0,
+  nonOpExpense: 0,
+  byCategory: [],
+};
+
+/**
+ * Satu baris di tabel metrik gabungan. Model bersama antara kolom label
+ * (sticky-left) dan kolom nilai per bulan supaya tinggi baris selalu
+ * sejajar. `num` = nominal Rp, `count` = jumlah sesi, `pct` = persen,
+ * `section` = header sub-bagian (Pendapatan / Beban / dst).
+ */
+type FinRow =
+  | { kind: "section"; key: string; label: string }
+  | {
+      kind: "num";
+      key: string;
+      label: string;
+      values: number[];
+      accent?: boolean;
+      strong?: boolean;
+      indent?: boolean;
+    }
+  | {
+      kind: "count";
+      key: string;
+      label: string;
+      values: number[];
+      strong?: boolean;
+      indent?: boolean;
+    }
+  | {
+      kind: "pct";
+      key: string;
+      label: string;
+      values: (number | null)[];
+      isGrowth: boolean;
+    };
+
 export function FinancialOverviewChart({
   rows,
   singleBranch = false,
+  report,
+  photoSessions,
+  branchName,
 }: {
   rows: InvestorMonthlyRow[];
   /** Yeobo per-cabang: tiap block sudah satu cabang → sembunyikan toggle
    *  Semua/Semarang/Pare dan selalu pakai angka block (aggregate). */
   singleBranch?: boolean;
+  /** Yeobo per-cabang: laporan P&L per kategori (untuk rincian P&L yang
+   *  bisa di-expand di bawah baris ringkasan). */
+  report?: YeoboPnLReport;
+  /** Yeobo per-cabang: data sesi foto (untuk baris "Jumlah sesi foto" +
+   *  rincian per studio). Difilter ke `branchName`. */
+  photoSessions?: PhotoSessionRow[];
+  /** Cabang aktif — kunci ke report.byBranch & filter sesi foto. */
+  branchName?: string;
 }) {
   // Toggle visibility per series. Click pada legend chip → series
   // di-skip dari render → Recharts otomatis re-stack bar yang tersisa
@@ -200,10 +259,14 @@ export function FinancialOverviewChart({
   // Saat singleBranch (Yeobo per-cabang) dikunci ke "all" → angka block.
   const [branch, setBranch] = useState<BranchKey>("all");
   const effectiveBranch: BranchKey = singleBranch ? "all" : branch;
-  // Toggle baris % di tabel. Di-lift ke parent karena MetricNameColumn
-  // (sticky-left) dan MonthColumnsTable (scrollable) harus rendering
-  // jumlah baris yang sama supaya tinggi-nya sejajar.
+  // Toggle baris % di tabel. Di-lift ke parent karena kolom label
+  // (sticky-left) dan kolom nilai (scrollable) harus rendering jumlah
+  // baris yang sama supaya tinggi-nya sejajar.
   const [showPct, setShowPct] = useState(false);
+  // Toggle rincian P&L per kategori (Yeobo): expand baris ringkasan jadi
+  // spreadsheet penuh — Pendapatan/Beban per kategori, Laba, Non-op,
+  // Sesi Foto per studio. Kolom bulan tetap sejajar chart.
+  const [showDetail, setShowDetail] = useState(false);
 
   const data = rows.map((r) => {
     // Pilih sumber: BU-level aggregate atau per-branch slice.
@@ -270,6 +333,180 @@ export function FinancialOverviewChart({
   const dashedYPositions = dashedTicks.map(
     (t) => PLOT_TOP + (1 - t / yMaxNice) * PLOT_HEIGHT
   );
+
+  // ── Model tabel metrik gabungan (ringkasan + rincian P&L + sesi) ──
+  // Bulan = kolom (sejajar chart). Sumber ringkasan = slice yang sama
+  // dgn chart; rincian per kategori + non-op = `report`; sesi = `photoSessions`.
+  const hasPnl = !!(report && branchName);
+  const monthLabels = rows.map((r) => fmtMonth(r));
+  const monthKeys = rows.map((r) => `${r.year}-${r.month}`);
+  const slices: InvestorMonthlyBranchSlice[] = rows.map((r) =>
+    effectiveBranch === "all"
+      ? {
+          revenue: r.revenue,
+          cogs: r.cogs,
+          opex: r.opex,
+          grossProfit: r.grossProfit,
+          operatingProfit: r.operatingProfit,
+        }
+      : r.byBranch?.[effectiveBranch] ?? ZERO_SLICE
+  );
+
+  // P&L per kategori per bulan untuk cabang aktif (kalau ada report).
+  const branchData: YeoboBranchPnL[] = rows.map((r) => {
+    if (!report || !branchName) return EMPTY_BRANCH_PNL;
+    const m = report.months.find(
+      (x) => x.year === r.year && x.month === r.month
+    );
+    return m?.byBranch[branchName] ?? EMPTY_BRANCH_PNL;
+  });
+  // Kategori revenue/expense yang muncul di rentang — urut preset, lalu
+  // kategori tak dikenal diklasifikasi by sisi (sama persis dgn admin
+  // PnLYeoboSpreadsheet supaya angkanya identik).
+  const seenRev = new Set<string>();
+  const seenExp = new Set<string>();
+  for (const d of branchData) {
+    for (const c of d.byCategory) {
+      if (c.kind !== "operating") continue;
+      if ((YEOBO_SPACE_CREDIT_CATEGORIES as readonly string[]).includes(c.category)) {
+        seenRev.add(c.category);
+      } else if ((YEOBO_SPACE_DEBIT_CATEGORIES as readonly string[]).includes(c.category)) {
+        seenExp.add(c.category);
+      } else if (c.credit >= c.debit) {
+        seenRev.add(c.category);
+      } else {
+        seenExp.add(c.category);
+      }
+    }
+  }
+  const orderCats = (preset: readonly string[], seen: Set<string>) => [
+    ...preset.filter((c) => seen.has(c)),
+    ...[...seen].filter((c) => !preset.includes(c)).sort(),
+  ];
+  const revenueCats = orderCats(YEOBO_SPACE_CREDIT_CATEGORIES, seenRev);
+  const expenseCats = orderCats(YEOBO_SPACE_DEBIT_CATEGORIES, seenExp);
+  const catNet = (d: YeoboBranchPnL, cat: string): number => {
+    const c = d.byCategory.find((x) => x.category === cat);
+    if (!c) return 0;
+    return c.credit !== 0 ? c.credit : c.debit;
+  };
+
+  // Sesi foto per studio × bulan (cabang aktif).
+  let sessions: {
+    studios: string[];
+    studioMonth: (s: string, i: number) => number;
+    monthTotal: number[];
+  } | null = null;
+  if (photoSessions && branchName && photoSessions.length > 0) {
+    const monthSet = new Set(monthKeys);
+    const studioOrder = new Map<string, number>();
+    const cell = new Map<string, number>();
+    for (const s of photoSessions) {
+      if (s.branch !== branchName) continue;
+      const k = `${s.periodYear}-${s.periodMonth}`;
+      if (!monthSet.has(k)) continue;
+      if (!studioOrder.has(s.studio)) studioOrder.set(s.studio, s.sortOrder);
+      const ck = `${s.studio}|${k}`;
+      cell.set(ck, (cell.get(ck) ?? 0) + s.sessions);
+    }
+    const studios = [...studioOrder.entries()]
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+      .map(([s]) => s);
+    if (studios.length > 0) {
+      const studioMonth = (st: string, i: number) =>
+        cell.get(`${st}|${monthKeys[i]}`) ?? 0;
+      const monthTotal = rows.map((_, i) =>
+        studios.reduce((acc, st) => acc + studioMonth(st, i), 0)
+      );
+      sessions = { studios, studioMonth, monthTotal };
+    }
+  }
+
+  const pctDelta = (cur: number, base: number | null): number | null => {
+    if (base == null) return null;
+    if (Math.abs(base) < 1) return null;
+    return ((cur - base) / Math.abs(base)) * 100;
+  };
+
+  // Baris selalu tampak: ringkasan + (kalau ada) Jumlah sesi foto.
+  const tableRows: FinRow[] = [
+    { kind: "num", key: "revenue", label: "Revenue", values: slices.map((s) => s.revenue) },
+    { kind: "num", key: "gross", label: "Gross profit", values: slices.map((s) => s.grossProfit) },
+    {
+      kind: "num",
+      key: "op",
+      label: "Operating profit / loss",
+      values: slices.map((s) => s.operatingProfit),
+      accent: true,
+    },
+  ];
+  if (sessions) {
+    tableRows.push({
+      kind: "count",
+      key: "sesi",
+      label: "Jumlah sesi foto",
+      values: sessions.monthTotal,
+      strong: true,
+    });
+  }
+  if (showPct) {
+    tableRows.push(
+      {
+        kind: "pct",
+        key: "gm",
+        label: "Gross margin",
+        isGrowth: false,
+        values: slices.map((s) => (s.revenue > 0 ? (s.grossProfit / s.revenue) * 100 : null)),
+      },
+      {
+        kind: "pct",
+        key: "om",
+        label: "Operating margin",
+        isGrowth: false,
+        values: slices.map((s) => (s.revenue > 0 ? (s.operatingProfit / s.revenue) * 100 : null)),
+      },
+      {
+        kind: "pct",
+        key: "rg",
+        label: "Revenue growth (MoM)",
+        isGrowth: true,
+        values: slices.map((s, i) => pctDelta(s.revenue, i > 0 ? slices[i - 1].revenue : null)),
+      },
+      {
+        kind: "pct",
+        key: "pg",
+        label: "Profit growth (MoM)",
+        isGrowth: true,
+        values: slices.map((s, i) => pctDelta(s.operatingProfit, i > 0 ? slices[i - 1].operatingProfit : null)),
+      }
+    );
+  }
+  if (showDetail && hasPnl) {
+    tableRows.push({ kind: "section", key: "sec-rev", label: "Pendapatan" });
+    for (const cat of revenueCats) {
+      tableRows.push({ kind: "num", key: `rev-${cat}`, label: cat, indent: true, values: branchData.map((d) => catNet(d, cat)) });
+    }
+    tableRows.push({ kind: "num", key: "tot-rev", label: "Total Pendapatan", strong: true, values: branchData.map((d) => d.operatingRevenue) });
+    tableRows.push({ kind: "section", key: "sec-exp", label: "Beban Operasional" });
+    for (const cat of expenseCats) {
+      tableRows.push({ kind: "num", key: `exp-${cat}`, label: cat, indent: true, values: branchData.map((d) => catNet(d, cat)) });
+    }
+    tableRows.push({ kind: "num", key: "tot-exp", label: "Total Beban", strong: true, values: branchData.map((d) => d.operatingExpense) });
+    tableRows.push({ kind: "num", key: "laba", label: "Laba Operasional", strong: true, accent: true, values: branchData.map((d) => d.operatingProfit) });
+    tableRows.push({ kind: "section", key: "sec-nonop", label: "Non-operasional" });
+    tableRows.push({ kind: "num", key: "nonop-in", label: "Masuk non-op", values: branchData.map((d) => d.nonOpRevenue) });
+    tableRows.push({ kind: "num", key: "nonop-out", label: "Keluar non-op", values: branchData.map((d) => d.nonOpExpense) });
+    tableRows.push({ kind: "num", key: "nonop-net", label: "Net non-op", values: branchData.map((d) => d.nonOpRevenue - d.nonOpExpense) });
+    if (sessions) {
+      const sess = sessions;
+      tableRows.push({ kind: "section", key: "sec-sesi", label: "Sesi Foto" });
+      for (const st of sess.studios) {
+        tableRows.push({ kind: "count", key: `sesi-${st}`, label: st, indent: true, values: rows.map((_, i) => sess.studioMonth(st, i)) });
+      }
+      tableRows.push({ kind: "count", key: "sesi-total", label: "Total Sesi", strong: true, values: sess.monthTotal });
+      tableRows.push({ kind: "num", key: "rev-per-sesi", label: "Revenue / sesi", values: branchData.map((d, i) => (sess.monthTotal[i] > 0 ? d.operatingRevenue / sess.monthTotal[i] : 0)) });
+    }
+  }
 
   return (
     <div>
@@ -385,7 +622,7 @@ export function FinancialOverviewChart({
                 );
               })}
             </div>
-            <MetricNameColumn showPct={showPct} setShowPct={setShowPct} />
+            <MetricLabelColumn rows={tableRows} />
           </div>
           {/* Scrollable: main chart + month-columns table */}
           <div style={{ flexGrow: 1, minWidth: 0 }}>
@@ -456,169 +693,123 @@ export function FinancialOverviewChart({
                 )}
               </ComposedChart>
             </ResponsiveContainer>
-            <MonthColumnsTable rows={rows} branch={effectiveBranch} showPct={showPct} />
+            <MonthValuesTable rows={tableRows} monthLabels={monthLabels} />
           </div>
         </div>
+      </div>
+      {/* Kontrol expand: rincian P&L per kategori (Yeobo) + detail %. */}
+      <div className="flex items-center gap-4 mt-2 px-1 flex-wrap">
+        {hasPnl && (
+          <button
+            type="button"
+            onClick={() => setShowDetail((v) => !v)}
+            aria-expanded={showDetail}
+            className="press-feedback inline-flex items-center gap-1 text-[11px] font-semibold text-foreground hover:text-primary transition-colors"
+          >
+            {showDetail ? "Tutup rincian P&L" : "Rincian P&L per kategori"}
+            <ChevronDown
+              size={13}
+              strokeWidth={2.4}
+              className="transition-transform"
+              style={{ transform: showDetail ? "rotate(180deg)" : "rotate(0deg)" }}
+            />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowPct((v) => !v)}
+          aria-expanded={showPct}
+          className="press-feedback inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showPct ? "Sembunyikan" : "Detail"} %
+          <ChevronDown
+            size={12}
+            strokeWidth={2.4}
+            className="transition-transform"
+            style={{ transform: showPct ? "rotate(180deg)" : "rotate(0deg)" }}
+          />
+        </button>
       </div>
     </div>
   );
 }
 
-// Definisi baris tabel — shared antara MetricNameColumn dan
-// MonthColumnsTable supaya tinggi sejajar saat di-scroll.
-const NOMINAL_TABLE_ROWS: Array<{
-  label: string;
-  key: "revenue" | "grossProfit" | "opProfit";
-  accent?: boolean;
-}> = [
-  { label: "Revenue", key: "revenue" },
-  { label: "Gross profit", key: "grossProfit" },
-  { label: "Operating profit / loss", key: "opProfit", accent: true },
-];
-
-const PCT_TABLE_ROWS: Array<{
-  label: string;
-  key:
-    | "grossMarginPct"
-    | "opMarginPct"
-    | "revenueGrowthPct"
-    | "profitGrowthPct";
-  isGrowth?: boolean;
-}> = [
-  { label: "Gross margin", key: "grossMarginPct" },
-  { label: "Operating margin", key: "opMarginPct" },
-  { label: "Revenue growth (MoM)", key: "revenueGrowthPct", isGrowth: true },
-  { label: "Profit growth (MoM)", key: "profitGrowthPct", isGrowth: true },
-];
-
 /**
- * Kolom Metric (label nama metric) di sticky-left panel. Hanya berisi
- * header "Metrik" + baris label sesuai NOMINAL_TABLE_ROWS dan
- * PCT_TABLE_ROWS. Lebar fixed = ALIGN_METRIC_COL_W untuk sync dengan
- * Y-axis chart di atas-nya.
+ * Kolom label metrik (sticky-left). Render label tiap baris dari model
+ * `rows` yang sama dengan MonthValuesTable supaya tinggi baris sejajar.
+ * Lebar fixed = ALIGN_METRIC_COL_W untuk sync dengan chart di atasnya.
  */
-function MetricNameColumn({
-  showPct,
-  setShowPct,
-}: {
-  showPct: boolean;
-  setShowPct: (next: boolean | ((v: boolean) => boolean)) => void;
-}) {
+function MetricLabelColumn({ rows }: { rows: FinRow[] }) {
   return (
-    <div>
-      <table
-        className="text-[11px] border-separate border-spacing-0"
-        style={{ tableLayout: "fixed", width: ALIGN_METRIC_COL_W }}
-      >
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className="text-left px-3 py-2 font-semibold text-muted-foreground border-b border-border whitespace-nowrap"
-            >
-              Metrik
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {NOMINAL_TABLE_ROWS.map((row) => (
-            <tr key={row.key}>
-              <th
-                scope="row"
-                className="text-left px-3 py-1.5 font-medium text-foreground border-b border-border/50 whitespace-nowrap"
-              >
-                {row.label}
-              </th>
-            </tr>
-          ))}
-          {showPct &&
-            PCT_TABLE_ROWS.map((row) => (
+    <table
+      className="text-[11px] border-separate border-spacing-0"
+      style={{ tableLayout: "fixed", width: ALIGN_METRIC_COL_W }}
+    >
+      <thead>
+        <tr>
+          <th
+            scope="col"
+            className="text-left px-3 py-2 font-semibold text-muted-foreground border-b border-border whitespace-nowrap"
+          >
+            Metrik
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => {
+          if (row.kind === "section") {
+            return (
               <tr key={row.key}>
                 <th
                   scope="row"
-                  className="text-left px-3 py-1.5 font-medium text-muted-foreground bg-muted/30 border-b border-border/50 whitespace-nowrap"
+                  style={{ height: 26 }}
+                  className="text-left px-3 align-middle font-semibold text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 border-b border-border whitespace-nowrap"
                 >
                   {row.label}
                 </th>
               </tr>
-            ))}
-        </tbody>
-      </table>
-      <button
-        type="button"
-        onClick={() => setShowPct((v) => !v)}
-        aria-expanded={showPct}
-        className="press-feedback mt-2 ml-3 inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {showPct ? "Sembunyikan" : "Detail"} %
-        <ChevronDown
-          size={12}
-          strokeWidth={2.4}
-          className="transition-transform"
-          style={{
-            transform: showPct ? "rotate(180deg)" : "rotate(0deg)",
-          }}
-        />
-      </button>
-    </div>
+            );
+          }
+          const isPct = row.kind === "pct";
+          const strong = "strong" in row && row.strong;
+          return (
+            <tr key={row.key}>
+              <th
+                scope="row"
+                title={row.label}
+                className={
+                  "text-left px-3 py-1.5 border-b border-border/50 whitespace-nowrap overflow-hidden text-ellipsis " +
+                  ("indent" in row && row.indent ? "pl-6 " : "") +
+                  (isPct
+                    ? "bg-muted/30 text-muted-foreground "
+                    : "text-foreground ") +
+                  (strong ? "font-semibold " : "font-medium ")
+                }
+              >
+                {row.label}
+              </th>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
 /**
- * Tabel kolom per bulan di scrollable panel. Sinkron dengan
- * MetricNameColumn di kiri via NOMINAL_TABLE_ROWS / PCT_TABLE_ROWS
- * yang sama → tinggi row tiap metric match. `showPct` di-lift ke
- * parent untuk koordinasi.
+ * Kolom nilai per bulan (scrollable). Render dari model `rows` yang sama
+ * dengan MetricLabelColumn → tinggi tiap baris match. Lebar kolom fixed
+ * ALIGN_MONTH_COL_W supaya sejajar dengan bar chart di atasnya.
  */
-function MonthColumnsTable({
+function MonthValuesTable({
   rows,
-  branch,
-  showPct,
+  monthLabels,
 }: {
-  rows: InvestorMonthlyRow[];
-  branch: BranchKey;
-  showPct: boolean;
+  rows: FinRow[];
+  monthLabels: string[];
 }) {
-  // Precompute per-month slice + derived values.
-  const slices: InvestorMonthlyBranchSlice[] = rows.map((r) =>
-    branch === "all"
-      ? {
-          revenue: r.revenue,
-          cogs: r.cogs,
-          opex: r.opex,
-          grossProfit: r.grossProfit,
-          operatingProfit: r.operatingProfit,
-        }
-      : r.byBranch?.[branch] ?? ZERO_SLICE
-  );
-  const pctDelta = (cur: number, base: number | null): number | null => {
-    if (base == null) return null;
-    // Hindari false "+∞%" untuk basis dekat nol.
-    if (Math.abs(base) < 1) return null;
-    return ((cur - base) / Math.abs(base)) * 100;
-  };
-  const cells = rows.map((r, i) => {
-    const s = slices[i];
-    const prev = i > 0 ? slices[i - 1] : null;
-    return {
-      label: fmtMonth(r),
-      revenue: s.revenue,
-      grossProfit: s.grossProfit,
-      opProfit: s.operatingProfit,
-      grossMarginPct: s.revenue > 0 ? (s.grossProfit / s.revenue) * 100 : null,
-      opMarginPct: s.revenue > 0 ? (s.operatingProfit / s.revenue) * 100 : null,
-      revenueGrowthPct: pctDelta(s.revenue, prev?.revenue ?? null),
-      profitGrowthPct: pctDelta(
-        s.operatingProfit,
-        prev?.operatingProfit ?? null
-      ),
-    };
-  });
-
-  const renderNominalCell = (
-    val: number,
-    accent: boolean | undefined
-  ): React.ReactNode => {
+  const n = monthLabels.length;
+  const renderNum = (val: number, accent?: boolean): React.ReactNode => {
     const negative = val < 0;
     const color = negative
       ? "var(--destructive, #b42234)"
@@ -626,22 +817,20 @@ function MonthColumnsTable({
         ? "#1d6b3a"
         : "inherit";
     return (
-      <span style={{ color }} className={accent ? "font-semibold" : ""}>
+      <span style={{ color }}>
         {negative ? "−" : ""}
         {formatRp(Math.abs(val))}
       </span>
     );
   };
-  const renderPctCell = (
+  const renderPct = (
     val: number | null,
     isGrowth: boolean
   ): React.ReactNode => {
-    if (val == null) {
-      return <span className="text-muted-foreground">—</span>;
-    }
-    let color = "inherit";
-    let prefix = "";
+    if (val == null) return <span className="text-muted-foreground">—</span>;
     if (isGrowth) {
+      let color = "inherit";
+      let prefix = "";
       if (val > 0.5) {
         color = "#1d6b3a";
         prefix = "+";
@@ -649,15 +838,13 @@ function MonthColumnsTable({
         color = "#b42234";
         prefix = "−";
       }
-      const abs = Math.abs(val);
       return (
         <span style={{ color }} className="tabular-nums font-semibold">
           {prefix}
-          {abs.toFixed(1)}%
+          {Math.abs(val).toFixed(1)}%
         </span>
       );
     }
-    // Plain margin %.
     return (
       <span className="tabular-nums">
         {val < 0 ? "−" : ""}
@@ -665,59 +852,68 @@ function MonthColumnsTable({
       </span>
     );
   };
-
+  const fmtCount = (v: number) =>
+    new Intl.NumberFormat("id-ID").format(Math.round(v));
   return (
     <table
       className="text-[11px] border-separate border-spacing-0"
-      style={{
-        tableLayout: "fixed",
-        width: cells.length * ALIGN_MONTH_COL_W,
-      }}
+      style={{ tableLayout: "fixed", width: n * ALIGN_MONTH_COL_W }}
     >
       <colgroup>
-        {cells.map((_, i) => (
+        {monthLabels.map((_, i) => (
           <col key={i} style={{ width: ALIGN_MONTH_COL_W }} />
         ))}
       </colgroup>
       <thead>
         <tr>
-          {cells.map((c) => (
+          {monthLabels.map((l, i) => (
             <th
-              key={c.label}
+              key={i}
               scope="col"
               className="text-right px-2 py-2 font-semibold text-muted-foreground border-b border-border whitespace-nowrap overflow-hidden"
             >
-              {c.label}
+              {l}
             </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {NOMINAL_TABLE_ROWS.map((row) => (
-          <tr key={row.key}>
-            {cells.map((c) => (
-              <td
-                key={c.label}
-                className="text-right px-2 py-1.5 tabular-nums border-b border-border/50 whitespace-nowrap overflow-hidden text-ellipsis"
-              >
-                {renderNominalCell(c[row.key], row.accent)}
-              </td>
-            ))}
-          </tr>
-        ))}
-        {showPct &&
-          PCT_TABLE_ROWS.map((row) => (
+        {rows.map((row) => {
+          if (row.kind === "section") {
+            return (
+              <tr key={row.key}>
+                {Array.from({ length: n }).map((_, i) => (
+                  <td
+                    key={i}
+                    style={{ height: 26 }}
+                    className="bg-muted/40 border-b border-border"
+                  />
+                ))}
+              </tr>
+            );
+          }
+          const strong = "strong" in row && row.strong ? "font-semibold " : "";
+          return (
             <tr key={row.key}>
-              {cells.map((c) => (
+              {row.values.map((v, i) => (
                 <td
-                  key={c.label}
-                  className="text-right px-2 py-1.5 bg-muted/30 border-b border-border/50 whitespace-nowrap overflow-hidden text-ellipsis"
+                  key={i}
+                  className={
+                    "text-right px-2 py-1.5 border-b border-border/50 whitespace-nowrap overflow-hidden text-ellipsis " +
+                    (row.kind === "pct" ? "bg-muted/30 " : "tabular-nums ") +
+                    strong
+                  }
                 >
-                  {renderPctCell(c[row.key], row.isGrowth ?? false)}
+                  {row.kind === "pct"
+                    ? renderPct(v, row.isGrowth)
+                    : row.kind === "count"
+                      ? fmtCount(v as number)
+                      : renderNum(v as number, row.accent)}
                 </td>
               ))}
             </tr>
-          ))}
+          );
+        })}
       </tbody>
     </table>
   );

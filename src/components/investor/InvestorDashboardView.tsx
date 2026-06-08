@@ -19,8 +19,8 @@ import {
 } from "./InvestorCharts";
 import { PayoutsTable } from "./PayoutsTable";
 import { MetricCommentSheet } from "./MetricCommentSheet";
-import { PnLYeoboSpreadsheet } from "@/components/admin/finance/PnLYeoboSpreadsheet";
 import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
+import type { YeoboPnLReport } from "@/lib/cashflow/pnl-yeobo";
 import { METRIC_IDS } from "@/lib/investor/metric-ids";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import type {
@@ -186,37 +186,11 @@ export function InvestorDashboardView({
                   hideOwnerDividen
                   singleBranchChart
                   hideOperationalMetrics
+                  report={yeoboData?.report}
+                  photoSessions={photoSessions}
+                  branchName={activeBlock.branch}
                   headingEyebrow={`Performa keuangan · Cabang ${activeBlock.branch}`}
                 />
-              )}
-              {activeBlock && yeoboData?.report && (
-                <section className="space-y-3">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Laporan bulanan detail · Cabang {activeBlock.branch}
-                    </p>
-                    <h2 className="mt-1 text-xl font-semibold text-foreground">
-                      Profit &amp; Loss spreadsheet
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground max-w-2xl">
-                      Sama persis dengan format audit admin: bulan = kolom,
-                      pos = baris. Klik kategori untuk melihat rincian
-                      transaksinya. Bagian Sesi Foto menampilkan jumlah sesi
-                      per studio per bulan.
-                    </p>
-                  </div>
-                  <PnLYeoboSpreadsheet
-                    embedded
-                    businessUnit="Yeobo Space"
-                    from={yeoboData.report.from}
-                    to={yeoboData.report.to}
-                    report={yeoboData.report}
-                    allowedBranches={[activeBlock.branch]}
-                    initialBranch={activeBlock.branch}
-                    photoSessions={photoSessions}
-                    key={activeBlock.branch}
-                  />
-                </section>
               )}
             </div>
           </>
@@ -352,6 +326,13 @@ interface PerformanceBodyProps {
   singleBranchChart?: boolean;
   /** Yeobo: sembunyikan kartu "Metrik penopang" (diganti laporan Sesi Foto). */
   hideOperationalMetrics?: boolean;
+  /** Yeobo per-cabang: laporan P&L per kategori — tabel metrik di bawah
+   *  chart bisa di-expand jadi rincian P&L penuh. */
+  report?: YeoboPnLReport;
+  /** Yeobo per-cabang: data sesi foto (baris "Jumlah sesi foto"). */
+  photoSessions?: PhotoSessionRow[];
+  /** Yeobo per-cabang: cabang aktif (kunci report & filter sesi). */
+  branchName?: string;
   headingEyebrow: string;
 }
 
@@ -366,6 +347,9 @@ function PerformanceBody({
   hideOwnerDividen = false,
   singleBranchChart = false,
   hideOperationalMetrics = false,
+  report,
+  photoSessions,
+  branchName,
   headingEyebrow,
 }: PerformanceBodyProps) {
   const setCommentOpen = (v: { metricId: string; label: string }) =>
@@ -551,6 +535,9 @@ function PerformanceBody({
             <FinancialOverviewChart
               rows={data.rows}
               singleBranch={singleBranchChart}
+              report={report}
+              photoSessions={photoSessions}
+              branchName={branchName}
             />
           </ChartCard>
         </div>
