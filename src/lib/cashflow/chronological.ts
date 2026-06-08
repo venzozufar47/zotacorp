@@ -22,6 +22,17 @@ export interface ChronoRow {
   debit: number;
   credit: number;
   runningBalance?: number | null;
+  /**
+   * Stored DB ordinal within a statement (assigned at commit, in the
+   * order the source prints). When present it is AUTHORITATIVE for
+   * ordering rows that tie on (date, time) — far more reliable than the
+   * balance-chain heuristic, which is fragile when running_balance
+   * repeats (e.g. cash that returns to 0 each month) or when every row
+   * has a null time (whole-day ties). Absent only pre-commit (the parser
+   * runs before sort_order exists), where the chain heuristic still
+   * applies.
+   */
+  sortOrder?: number | null;
 }
 
 /**
@@ -95,10 +106,20 @@ export function sortChronologicalAsc<T extends ChronoRow>(rows: T[]): T[] {
     const at = a.time ?? "";
     const bt = b.time ?? "";
     if (at !== bt) return at < bt ? -1 : 1;
+    // Same (date, time): the stored sort_order is authoritative when
+    // present on both rows. This anchors whole-day / null-time ties to
+    // the order the source actually printed, instead of guessing from
+    // the (sometimes ambiguous) balance chain below.
+    const ao = a.sortOrder;
+    const bo = b.sortOrder;
+    if (ao != null && bo != null && ao !== bo) return ao - bo;
     return 0;
   });
-  // Walk the sorted list, collect runs of identical (date, time),
-  // and fix their ordering via the balance chain.
+  // Walk the sorted list, collect runs of identical (date, time), and
+  // fix their ordering via the balance chain — UNLESS every row in the
+  // run already carries a sort_order, in which case the sort above has
+  // ordered them correctly and the chain heuristic (which can mis-order
+  // or bail to input order when balances repeat) must not override it.
   const out: T[] = [];
   let i = 0;
   while (i < sorted.length) {
@@ -111,7 +132,10 @@ export function sortChronologicalAsc<T extends ChronoRow>(rows: T[]): T[] {
       j++;
     }
     const group = sorted.slice(i, j);
-    out.push(...sortTiedGroup(group));
+    const allHaveSortOrder = group.every(
+      (r) => r.sortOrder != null && Number.isFinite(r.sortOrder)
+    );
+    out.push(...(allHaveSortOrder ? group : sortTiedGroup(group)));
     i = j;
   }
   return out;

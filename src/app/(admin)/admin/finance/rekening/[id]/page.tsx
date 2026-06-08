@@ -174,6 +174,7 @@ export default async function RekeningDetailPage({
     debit: Number(t.debit),
     credit: Number(t.credit),
     runningBalance: t.running_balance !== null ? Number(t.running_balance) : null,
+    sortOrder: t.sort_order,
     category: t.category,
     branch: t.branch,
     notes: t.notes,

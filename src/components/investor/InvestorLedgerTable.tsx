@@ -15,6 +15,8 @@ export interface InvestorLedgerRow {
   debit: number;
   credit: number;
   runningBalance: number | null;
+  /** DB ordinal — authoritative chronological tiebreaker (see ChronoRow). */
+  sortOrder?: number | null;
   category: string | null;
   branch: string | null;
   notes: string | null;

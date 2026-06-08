@@ -33,7 +33,7 @@ export async function getBankAccountBalance(accId: string): Promise<number> {
     const { data, error } = await supabase
       .from("cashflow_transactions")
       .select(
-        "transaction_date, transaction_time, debit, credit, running_balance"
+        "transaction_date, transaction_time, debit, credit, running_balance, sort_order"
       )
       .in("statement_id", stmtIds)
       .range(offset, offset + PAGE - 1);
@@ -46,6 +46,7 @@ export async function getBankAccountBalance(accId: string): Promise<number> {
         credit: Number(t.credit),
         runningBalance:
           t.running_balance !== null ? Number(t.running_balance) : null,
+        sortOrder: t.sort_order,
       });
     }
     if (data.length < PAGE) break;
@@ -78,7 +79,7 @@ export async function getCashAccountBalance(
     const { data, error } = await supabase
       .from("cashflow_transactions")
       .select(
-        "transaction_date, transaction_time, debit, credit, running_balance, category"
+        "transaction_date, transaction_time, debit, credit, running_balance, category, sort_order"
       )
       .in("statement_id", stmtIds)
       .range(offset, offset + PAGE - 1);
@@ -92,6 +93,7 @@ export async function getCashAccountBalance(
         credit: Number(t.credit),
         runningBalance:
           t.running_balance !== null ? Number(t.running_balance) : null,
+        sortOrder: t.sort_order,
       });
     }
     if (data.length < PAGE) break;
@@ -275,7 +277,7 @@ export async function getStatementSummaryForInvestor(
       const { data: priorRows } = await supabase
         .from("cashflow_transactions")
         .select(
-          "transaction_date, transaction_time, debit, credit, running_balance, category, cashflow_statements!inner(bank_account_id)"
+          "transaction_date, transaction_time, debit, credit, running_balance, category, sort_order, cashflow_statements!inner(bank_account_id)"
         )
         .eq("cashflow_statements.bank_account_id", stmt.bank_account_id)
         .lt("transaction_date", periodStart)
@@ -290,6 +292,7 @@ export async function getStatementSummaryForInvestor(
           credit: Number(r.credit),
           runningBalance:
             r.running_balance !== null ? Number(r.running_balance) : null,
+          sortOrder: r.sort_order,
         });
       }
       if (priorRows.length < PAGE_PRIOR) break;

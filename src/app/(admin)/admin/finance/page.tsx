@@ -47,7 +47,7 @@ async function computeAccountSummary(
   for (let offset = 0; ; offset += PAGE) {
     const { data } = await supabase
       .from("cashflow_transactions")
-      .select("transaction_date, transaction_time, debit, credit, running_balance, category")
+      .select("transaction_date, transaction_time, debit, credit, running_balance, category, sort_order")
       .in("statement_id", stmtIds)
       .range(offset, offset + PAGE - 1);
     if (!data || data.length === 0) break;
@@ -63,6 +63,7 @@ async function computeAccountSummary(
         debit: Number(t.debit),
         credit: Number(t.credit),
         runningBalance: t.running_balance !== null ? Number(t.running_balance) : null,
+        sortOrder: t.sort_order,
       });
       if (minDate === null || t.transaction_date < minDate) minDate = t.transaction_date;
       if (maxDate === null || t.transaction_date > maxDate) maxDate = t.transaction_date;
