@@ -400,20 +400,20 @@ export async function upsertInvestorContract(input: {
 }
 
 /**
- * Batch-create contracts for MANY investors at once with SHARED terms
- * (BU, branch, bagi hasil %, durasi, start) and per-investor amount +
- * BEP target. Speeds up onboarding a whole branch/cohort. Rows whose
- * (investor × BU × branch) already exists are skipped (unique), the rest
- * are created. Each also gets a BU assignment (idempotent).
+ * Batch-create MANY fully-independent contracts at once. Each row carries
+ * its OWN terms (BU, branch, bagi hasil %, durasi, start, investasi, BEP
+ * target, ref) — nothing is shared. Speeds up onboarding mixed cohorts.
+ * Rows whose (investor × BU × branch) already exists are skipped (unique);
+ * each created contract also gets a BU assignment (idempotent).
  */
 export async function bulkCreateInvestorContracts(input: {
-  businessUnit: string;
-  branch?: string | null;
-  bagiHasilPct: number;
-  durasiBulan: number | null;
-  startDate: string;
   rows: Array<{
     userId: string;
+    businessUnit: string;
+    branch?: string | null;
+    bagiHasilPct: number;
+    durasiBulan: number | null;
+    startDate: string;
     totalInvestIdr: number;
     bepTargetIdr: number;
     contractRef?: string | null;
@@ -421,56 +421,78 @@ export async function bulkCreateInvestorContracts(input: {
 }): Promise<ActionResult<{ count: number; skipped: number }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  const businessUnit = input.businessUnit.trim();
-  if (!businessUnit) return { ok: false, error: "businessUnit wajib" };
-  if (!isValidYmd(input.startDate))
-    return { ok: false, error: "Start date harus format YYYY-MM-DD" };
-  if (!isValidPct(input.bagiHasilPct))
-    return { ok: false, error: "Bagi hasil harus 0–100%" };
-  if (
-    input.durasiBulan != null &&
-    (!Number.isInteger(input.durasiBulan) || input.durasiBulan <= 0)
-  )
-    return { ok: false, error: "Durasi bulan tidak valid" };
 
-  let branch: string | null = null;
-  if (businessUnit === "Yeobo Space") {
-    const physical = getAutoSplitBranches(businessUnit) ?? [];
-    branch = input.branch?.trim() || null;
-    if (!branch || !physical.includes(branch)) {
-      return {
-        ok: false,
-        error: "Kontrak Yeobo Space wajib pilih cabang",
-      };
+  // Keep only "filled" rows (investor + a positive investasi); validate
+  // each independently and normalise its branch. Reject the whole batch
+  // on the first hard validation error so the admin can fix it.
+  type NormalizedRow = {
+    userId: string;
+    businessUnit: string;
+    branch: string | null;
+    bagiHasilPct: number;
+    durasiBulan: number | null;
+    startDate: string;
+    totalInvestIdr: number;
+    bepTargetIdr: number;
+    contractRef: string | null;
+  };
+  const normalized: NormalizedRow[] = [];
+  for (let i = 0; i < input.rows.length; i++) {
+    const r = input.rows[i];
+    if (!r.userId || !(Number(r.totalInvestIdr) > 0)) continue; // unfilled row
+    const label = `Baris ${i + 1}`;
+    const businessUnit = r.businessUnit?.trim();
+    if (!businessUnit) return { ok: false, error: `${label}: unit bisnis wajib` };
+    if (!isValidMoney(r.totalInvestIdr))
+      return { ok: false, error: `${label}: investasi tidak valid` };
+    if (!isValidMoney(r.bepTargetIdr))
+      return { ok: false, error: `${label}: target BEP tidak valid` };
+    if (!isValidPct(r.bagiHasilPct))
+      return { ok: false, error: `${label}: bagi hasil harus 0–100%` };
+    if (!isValidYmd(r.startDate))
+      return { ok: false, error: `${label}: start date harus YYYY-MM-DD` };
+    if (
+      r.durasiBulan != null &&
+      (!Number.isInteger(r.durasiBulan) || r.durasiBulan <= 0)
+    )
+      return { ok: false, error: `${label}: durasi bulan tidak valid` };
+    let branch: string | null = null;
+    if (businessUnit === "Yeobo Space") {
+      const physical = getAutoSplitBranches(businessUnit) ?? [];
+      branch = r.branch?.trim() || null;
+      if (!branch || !physical.includes(branch))
+        return { ok: false, error: `${label}: kontrak Yeobo wajib pilih cabang` };
     }
+    normalized.push({
+      userId: r.userId,
+      businessUnit,
+      branch,
+      bagiHasilPct: r.bagiHasilPct,
+      durasiBulan: r.durasiBulan,
+      startDate: r.startDate,
+      totalInvestIdr: r.totalInvestIdr,
+      bepTargetIdr: r.bepTargetIdr,
+      contractRef: r.contractRef?.trim() || null,
+    });
   }
-
-  // Drop rows with an invalid investasi or BEP target (finite, in-range).
-  const rows = input.rows.filter(
-    (r) =>
-      r.userId &&
-      isValidMoney(r.totalInvestIdr) &&
-      r.totalInvestIdr > 0 &&
-      isValidMoney(r.bepTargetIdr)
-  );
-  if (rows.length === 0)
-    return { ok: false, error: "Tidak ada investor/nominal untuk disimpan" };
+  if (normalized.length === 0)
+    return { ok: false, error: "Tidak ada kontrak terisi untuk disimpan" };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
   let count = 0;
   let skipped = 0;
-  for (const r of rows) {
+  for (const r of normalized) {
     const payload = {
       user_id: r.userId,
-      business_unit: businessUnit,
-      branch,
+      business_unit: r.businessUnit,
+      branch: r.branch,
       total_invest_idr: r.totalInvestIdr,
-      bagi_hasil_pct: input.bagiHasilPct,
-      durasi_bulan: input.durasiBulan,
-      start_date: input.startDate,
+      bagi_hasil_pct: r.bagiHasilPct,
+      durasi_bulan: r.durasiBulan,
+      start_date: r.startDate,
       bep_target_idr: r.bepTargetIdr,
-      contract_ref: r.contractRef ?? null,
+      contract_ref: r.contractRef,
       created_by: gate.userId,
     };
     const { error } = await supabase.from("investor_contracts").insert(payload);
@@ -486,7 +508,7 @@ export async function bulkCreateInvestorContracts(input: {
       .from("investor_business_unit_assignments")
       .insert({
         user_id: r.userId,
-        business_unit: businessUnit,
+        business_unit: r.businessUnit,
         assigned_by: gate.userId,
       });
     if (assignErr && !/duplicate/i.test(assignErr.message)) {

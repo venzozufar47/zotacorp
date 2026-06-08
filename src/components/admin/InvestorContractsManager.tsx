@@ -264,16 +264,24 @@ export function InvestorContractsManager({
 interface BatchRow {
   id: number;
   userId: string;
+  businessUnit: string;
+  branch: string;
+  bagiHasil: string;
+  durasi: string;
+  permanent: boolean;
+  startDate: string;
   invest: string;
   bep: string;
   ref: string;
 }
 
 /**
- * Batch add contracts: shared terms (BU, branch, bagi hasil %, durasi,
- * start) + one row per investor (amount + optional BEP override + ref).
- * Investors already holding a contract for the chosen BU+branch, or
- * already picked in another row, are filtered out of the dropdowns.
+ * Batch add contracts: each row is a FULLY independent contract — unit
+ * bisnis, cabang, bagi hasil %, durasi, start, investasi, BEP target and
+ * ref are all editable per row. Adding a new row prefills the term fields
+ * from the previous one (fast entry when terms repeat). Investors already
+ * contracted for a row's BU+branch, or already picked in another row with
+ * the same BU+branch, are filtered out of that row's dropdown.
  */
 function BatchContractForm({
   investors,
@@ -289,40 +297,22 @@ function BatchContractForm({
   onSaved: () => void;
 }) {
   const idRef = useRef(0);
-  const mkRow = (): BatchRow => ({
+  const yeoboBranches = getAutoSplitBranches(YEOBO_BU) ?? [];
+  const mkRow = (prefill?: Partial<BatchRow>): BatchRow => ({
     id: ++idRef.current,
     userId: "",
+    businessUnit: prefill?.businessUnit ?? businessUnits[0] ?? "",
+    branch: prefill?.branch ?? "",
+    bagiHasil: prefill?.bagiHasil ?? "25",
+    durasi: prefill?.durasi ?? "36",
+    permanent: prefill?.permanent ?? false,
+    startDate: prefill?.startDate ?? "",
     invest: "",
     bep: "",
     ref: "",
   });
-  const [businessUnit, setBusinessUnit] = useState(businessUnits[0] ?? "");
-  const [branch, setBranch] = useState("");
-  const isYeobo = businessUnit === YEOBO_BU;
-  const yeoboBranches = getAutoSplitBranches(YEOBO_BU) ?? [];
-  const [bagiHasil, setBagiHasil] = useState("25");
-  const [isPermanent, setIsPermanent] = useState(false);
-  const [durasiBulan, setDurasiBulan] = useState("36");
-  const [startDate, setStartDate] = useState("");
-  const [rows, setRows] = useState<BatchRow[]>(() => [mkRow(), mkRow(), mkRow()]);
+  const [rows, setRows] = useState<BatchRow[]>(() => [mkRow()]);
   const [pending, startTransition] = useTransition();
-
-  // Investors already contracted for this BU+branch → not selectable.
-  const existing = useMemo(
-    () =>
-      new Set(
-        contracts
-          .filter(
-            (c) =>
-              c.businessUnit === businessUnit &&
-              (c.branch ?? "") === (isYeobo ? branch : "")
-          )
-          .map((c) => c.userId)
-      ),
-    [contracts, businessUnit, branch, isYeobo]
-  );
-  const pickedElsewhere = (rowId: number) =>
-    new Set(rows.filter((r) => r.id !== rowId && r.userId).map((r) => r.userId));
 
   const setRow = (id: number, patch: Partial<BatchRow>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -330,28 +320,53 @@ function BatchContractForm({
   const validRows = rows.filter((r) => r.userId && Number(r.invest) > 0);
   const totalInvest = validRows.reduce((s, r) => s + Number(r.invest), 0);
 
+  const addRow = () =>
+    setRows((rs) => {
+      const last = rs[rs.length - 1];
+      return [
+        ...rs,
+        mkRow(
+          last && {
+            businessUnit: last.businessUnit,
+            branch: last.branch,
+            bagiHasil: last.bagiHasil,
+            durasi: last.durasi,
+            permanent: last.permanent,
+            startDate: last.startDate,
+          }
+        ),
+      ];
+    });
+
   function submit() {
-    if (isYeobo && !branch) {
-      toast.error("Pilih cabang untuk kontrak Yeobo Space");
-      return;
-    }
-    if (!startDate) {
-      toast.error("Isi start date");
-      return;
+    // Client-side checks mirror the server so the admin gets immediate,
+    // row-specific feedback before the round-trip.
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.userId || !(Number(r.invest) > 0)) continue;
+      const label = `Kontrak ${i + 1}`;
+      if (r.businessUnit === YEOBO_BU && !r.branch) {
+        toast.error(`${label}: pilih cabang Yeobo`);
+        return;
+      }
+      if (!r.startDate) {
+        toast.error(`${label}: isi start date`);
+        return;
+      }
     }
     if (validRows.length === 0) {
-      toast.error("Isi minimal satu investor + nominal investasi");
+      toast.error("Isi minimal satu kontrak (investor + investasi)");
       return;
     }
     startTransition(async () => {
       const res = await bulkCreateInvestorContracts({
-        businessUnit,
-        branch: isYeobo ? branch : null,
-        bagiHasilPct: Number(bagiHasil),
-        durasiBulan: isPermanent ? null : Number(durasiBulan),
-        startDate,
         rows: validRows.map((r) => ({
           userId: r.userId,
+          businessUnit: r.businessUnit,
+          branch: r.businessUnit === YEOBO_BU ? r.branch : null,
+          bagiHasilPct: Number(r.bagiHasil),
+          durasiBulan: r.permanent ? null : Number(r.durasi),
+          startDate: r.startDate,
           totalInvestIdr: Number(r.invest),
           bepTargetIdr: Number(r.bep) > 0 ? Number(r.bep) : Number(r.invest),
           contractRef: r.ref || null,
@@ -375,6 +390,9 @@ function BatchContractForm({
     setMounted(true);
   }, []);
 
+  const fieldCls =
+    "block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm";
+
   const modal = (
     <div
       className="fixed inset-0 z-50 bg-foreground/40 flex items-center justify-center p-4"
@@ -386,190 +404,209 @@ function BatchContractForm({
       >
         <h3 className="text-lg font-semibold">Batch tambah kontrak</h3>
         <p className="text-xs text-muted-foreground -mt-1">
-          Term yang sama (unit bisnis, cabang, bagi hasil, durasi, start) untuk
-          banyak investor sekaligus. Nominal investasi diisi per investor.
+          Tiap kontrak bisa beda — unit bisnis, cabang, bagi hasil, durasi,
+          start, investasi, semuanya per baris. Baris baru mewarisi term dari
+          baris sebelumnya supaya cepat kalau termnya sama.
         </p>
 
-        {/* Shared terms */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <label className="text-xs">
-            <span className="text-muted-foreground">Unit bisnis</span>
-            <select
-              value={businessUnit}
-              onChange={(e) => {
-                setBusinessUnit(e.target.value);
-                if (e.target.value !== YEOBO_BU) setBranch("");
-              }}
-              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
-            >
-              {businessUnits.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </label>
-          {isYeobo && (
-            <label className="text-xs">
-              <span className="text-muted-foreground">Cabang</span>
-              <select
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
+        <div className="space-y-3">
+          {rows.map((r, idx) => {
+            const isYeobo = r.businessUnit === YEOBO_BU;
+            // Investors already contracted for this row's BU+branch, or
+            // picked in another row with the SAME BU+branch.
+            const sameScope = (cBu: string, cBranch: string) =>
+              cBu === r.businessUnit &&
+              cBranch === (isYeobo ? r.branch : "");
+            const taken = new Set<string>([
+              ...contracts
+                .filter((c) => sameScope(c.businessUnit, c.branch ?? ""))
+                .map((c) => c.userId),
+              ...rows
+                .filter(
+                  (x) =>
+                    x.id !== r.id &&
+                    x.userId &&
+                    sameScope(x.businessUnit, x.businessUnit === YEOBO_BU ? x.branch : "")
+                )
+                .map((x) => x.userId),
+            ]);
+            const opts = investors.filter(
+              (i) => i.userId === r.userId || !taken.has(i.userId)
+            );
+            return (
+              <div
+                key={r.id}
+                className="rounded-xl border border-border p-3 space-y-2.5"
               >
-                <option value="">— pilih cabang —</option>
-                {yeoboBranches.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="text-xs">
-            <span className="text-muted-foreground">Start date</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm"
-            />
-          </label>
-          <label className="text-xs">
-            <span className="text-muted-foreground">Bagi hasil (%)</span>
-            <input
-              type="number"
-              step="0.01"
-              value={bagiHasil}
-              onChange={(e) => setBagiHasil(e.target.value)}
-              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums"
-            />
-          </label>
-          <label className="text-xs">
-            <span className="text-muted-foreground flex items-center justify-between gap-2">
-              <span>Durasi (bulan)</span>
-              <span className="inline-flex items-center gap-1 normal-case">
-                <input
-                  type="checkbox"
-                  checked={isPermanent}
-                  onChange={(e) => setIsPermanent(e.target.checked)}
-                  className="size-3 accent-primary"
-                />
-                <span className="text-[10.5px]">Permanen</span>
-              </span>
-            </span>
-            <input
-              type="number"
-              value={isPermanent ? "" : durasiBulan}
-              onChange={(e) => setDurasiBulan(e.target.value)}
-              disabled={isPermanent}
-              placeholder={isPermanent ? "∞" : ""}
-              className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm tabular-nums disabled:opacity-50"
-            />
-          </label>
-        </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Kontrak {idx + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRows((rs) =>
+                        rs.length > 1 ? rs.filter((x) => x.id !== r.id) : rs
+                      )
+                    }
+                    disabled={rows.length === 1}
+                    className="text-muted-foreground hover:text-destructive p-1 disabled:opacity-30"
+                    aria-label="Hapus kontrak"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
 
-        {/* Per-investor rows */}
-        <div className="rounded-xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40">
-              <tr className="text-left">
-                <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Investor
-                </th>
-                <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                  Investasi (Rp)
-                </th>
-                <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                  BEP target
-                </th>
-                <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Ref
-                </th>
-                <th className="w-8" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const taken = pickedElsewhere(r.id);
-                const opts = investors.filter(
-                  (i) =>
-                    i.userId === r.userId ||
-                    (!existing.has(i.userId) && !taken.has(i.userId))
-                );
-                return (
-                  <tr key={r.id} className="border-t border-border/60">
-                    <td className="px-2 py-1">
+                {/* Investor + unit bisnis + cabang */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <label className="text-xs">
+                    <span className="text-muted-foreground">Investor</span>
+                    <select
+                      value={r.userId}
+                      onChange={(e) => setRow(r.id, { userId: e.target.value })}
+                      className={fieldCls}
+                    >
+                      <option value="">— pilih —</option>
+                      {opts.map((i) => (
+                        <option key={i.userId} value={i.userId}>
+                          {i.fullName ?? i.email ?? i.userId.slice(0, 8)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs">
+                    <span className="text-muted-foreground">Unit bisnis</span>
+                    <select
+                      value={r.businessUnit}
+                      onChange={(e) =>
+                        setRow(r.id, {
+                          businessUnit: e.target.value,
+                          branch:
+                            e.target.value === YEOBO_BU ? r.branch : "",
+                        })
+                      }
+                      className={fieldCls}
+                    >
+                      {businessUnits.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {isYeobo && (
+                    <label className="text-xs">
+                      <span className="text-muted-foreground">Cabang</span>
                       <select
-                        value={r.userId}
-                        onChange={(e) => setRow(r.id, { userId: e.target.value })}
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                        value={r.branch}
+                        onChange={(e) => setRow(r.id, { branch: e.target.value })}
+                        className={fieldCls}
                       >
-                        <option value="">— pilih —</option>
-                        {opts.map((i) => (
-                          <option key={i.userId} value={i.userId}>
-                            {i.fullName ?? i.email ?? i.userId.slice(0, 8)}
+                        <option value="">— pilih cabang —</option>
+                        {yeoboBranches.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
                           </option>
                         ))}
                       </select>
-                    </td>
-                    <td className="px-2 py-1">
-                      <input
-                        type="number"
-                        value={r.invest}
-                        onChange={(e) => setRow(r.id, { invest: e.target.value })}
-                        placeholder="0"
-                        className="w-32 rounded-lg border border-border bg-background px-2 py-1.5 text-right text-sm tabular-nums"
-                      />
-                    </td>
-                    <td className="px-2 py-1">
-                      <input
-                        type="number"
-                        value={r.bep}
-                        onChange={(e) => setRow(r.id, { bep: e.target.value })}
-                        placeholder={r.invest || "= investasi"}
-                        className="w-32 rounded-lg border border-border bg-background px-2 py-1.5 text-right text-sm tabular-nums"
-                      />
-                    </td>
-                    <td className="px-2 py-1">
-                      <input
-                        value={r.ref}
-                        onChange={(e) => setRow(r.id, { ref: e.target.value })}
-                        placeholder="opsional"
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm font-mono"
-                      />
-                    </td>
-                    <td className="px-1 text-center">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setRows((rs) =>
-                            rs.length > 1 ? rs.filter((x) => x.id !== r.id) : rs
-                          )
-                        }
-                        className="text-muted-foreground hover:text-destructive p-1"
-                        aria-label="Hapus baris"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </label>
+                  )}
+                </div>
+
+                {/* Bagi hasil + durasi + start */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <label className="text-xs">
+                    <span className="text-muted-foreground">Bagi hasil (%)</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={r.bagiHasil}
+                      onChange={(e) => setRow(r.id, { bagiHasil: e.target.value })}
+                      className={`${fieldCls} tabular-nums`}
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="text-muted-foreground flex items-center justify-between gap-2">
+                      <span>Durasi (bln)</span>
+                      <span className="inline-flex items-center gap-1 normal-case">
+                        <input
+                          type="checkbox"
+                          checked={r.permanent}
+                          onChange={(e) =>
+                            setRow(r.id, { permanent: e.target.checked })
+                          }
+                          className="size-3 accent-primary"
+                        />
+                        <span className="text-[10.5px]">Permanen</span>
+                      </span>
+                    </span>
+                    <input
+                      type="number"
+                      value={r.permanent ? "" : r.durasi}
+                      onChange={(e) => setRow(r.id, { durasi: e.target.value })}
+                      disabled={r.permanent}
+                      placeholder={r.permanent ? "∞" : ""}
+                      className={`${fieldCls} tabular-nums disabled:opacity-50`}
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="text-muted-foreground">Start date</span>
+                    <input
+                      type="date"
+                      value={r.startDate}
+                      onChange={(e) => setRow(r.id, { startDate: e.target.value })}
+                      className={fieldCls}
+                    />
+                  </label>
+                </div>
+
+                {/* Investasi + BEP target + ref */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <label className="text-xs">
+                    <span className="text-muted-foreground">Investasi (Rp)</span>
+                    <input
+                      type="number"
+                      value={r.invest}
+                      onChange={(e) => setRow(r.id, { invest: e.target.value })}
+                      placeholder="0"
+                      className={`${fieldCls} tabular-nums`}
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="text-muted-foreground">BEP target</span>
+                    <input
+                      type="number"
+                      value={r.bep}
+                      onChange={(e) => setRow(r.id, { bep: e.target.value })}
+                      placeholder={r.invest || "= investasi"}
+                      className={`${fieldCls} tabular-nums`}
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="text-muted-foreground">Ref</span>
+                    <input
+                      value={r.ref}
+                      onChange={(e) => setRow(r.id, { ref: e.target.value })}
+                      placeholder="opsional"
+                      className={`${fieldCls} font-mono`}
+                    />
+                  </label>
+                </div>
+              </div>
+            );
+          })}
           <button
             type="button"
-            onClick={() => setRows((rs) => [...rs, mkRow()])}
-            className="w-full px-3 py-2 text-xs font-semibold text-primary hover:bg-muted/40 border-t border-border"
+            onClick={addRow}
+            className="w-full px-3 py-2 text-xs font-semibold text-primary hover:bg-muted/40 rounded-lg border border-dashed border-border"
           >
-            + Tambah baris
+            + Tambah kontrak
           </button>
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-1">
           <span className="text-xs text-muted-foreground">
-            {validRows.length} investor · total investasi{" "}
+            {validRows.length} kontrak · total investasi{" "}
             <span className="font-semibold text-foreground tabular-nums">
               {formatRp(totalInvest)}
             </span>
