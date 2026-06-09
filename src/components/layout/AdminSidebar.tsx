@@ -20,6 +20,7 @@ import {
   Factory,
   Database,
   TrendingUp,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -83,6 +84,7 @@ export function AdminSidebar({
           label: t.nav.payslips,
           badge: disputesCount || undefined,
         },
+        { href: "/admin/cleaning", icon: Sparkles, label: "Kebersihan" },
       ],
     },
     {
