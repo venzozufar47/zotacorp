@@ -270,7 +270,9 @@ function sampleValuesFor(
     case "yeobo_booth_reminder_h7":
     case "yeobo_booth_reminder_h3":
     case "yeobo_booth_reminder_h1":
+    case "yeobo_booth_reminder_generic":
       return {
+        hari: 3,
         namaKlien: "Putri Wedding",
         tanggal: "Sab, 6 Jun 2026",
         jamMulai: "16:00",

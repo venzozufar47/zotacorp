@@ -1,9 +1,10 @@
 /**
  * Daily cron: WhatsApp reminders untuk sesi Yeobo Booth.
  *
- * Dispatched oleh Vercel Cron (lihat vercel.json) tiap jam 11:00 WIB
- * (= 04:00 UTC). Mengirim reminder ke admin/operator Yeobo Booth pada
- * 3 checkpoint: H-7, H-3, H-1 dari tanggal sesi.
+ * Dispatched oleh Vercel Cron (lihat vercel.json) tiap jam (`0 * * * *`).
+ * Checkpoint, jam kirim, dan penerima dikonfigurasi admin di
+ * `/admin/yeobo-booth/settings`; engine hanya memproses checkpoint yang
+ * jam-kirimnya == jam WIB sekarang (lihat runYeoboBoothReminders).
  *
  * Authentication: Vercel cron mengirim `Authorization: Bearer
  * <CRON_SECRET>` saat env var ter-set. Tolak request tanpa header

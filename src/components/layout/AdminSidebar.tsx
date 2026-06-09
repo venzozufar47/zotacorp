@@ -17,6 +17,7 @@ import {
   Radio,
   Cake,
   Camera,
+  BellRing,
   Factory,
   Database,
   TrendingUp,
@@ -123,6 +124,11 @@ export function AdminSidebar({
       label: "Yeobo Booth",
       items: [
         { href: "/admin/yeobo-booth", icon: Camera, label: "Scheduling" },
+        {
+          href: "/admin/yeobo-booth/settings",
+          icon: BellRing,
+          label: "Reminder",
+        },
       ],
     },
     {

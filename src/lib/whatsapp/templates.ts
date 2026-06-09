@@ -24,7 +24,8 @@ export type TemplateKey =
   | "attendance_check_out_alert"
   | "yeobo_booth_reminder_h7"
   | "yeobo_booth_reminder_h3"
-  | "yeobo_booth_reminder_h1";
+  | "yeobo_booth_reminder_h1"
+  | "yeobo_booth_reminder_generic";
 
 export interface PlaceholderInfo {
   key: string;
@@ -210,6 +211,24 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "📸 Reminder H-1 Yeobo Booth\n\nBesok: {namaKlien}\n{tanggal}\nJam {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nSisa tagihan: {sisaTagihan}\n\nFinal check & briefing tim hari ini. Semangat!",
+  },
+  yeobo_booth_reminder_generic: {
+    label: "Yeobo Booth — Reminder (generik)",
+    description:
+      "Template default untuk semua checkpoint reminder Yeobo Booth yang TIDAK punya pesan custom sendiri. Placeholder {hari} = offset H-berapa. Checkpoint & jam kirim diatur di /admin/yeobo-booth/settings.",
+    recipient: "Nomor WA di daftar penerima Yeobo Booth",
+    placeholders: [
+      { key: "hari", description: "Offset hari (angka di belakang 'H-')" },
+      { key: "namaKlien", description: "Nama klien" },
+      { key: "tanggal", description: "Tanggal sesi (mis. Sen, 1 Jun 2026)" },
+      { key: "jamMulai", description: "Jam mulai (HH:mm)" },
+      { key: "jamSelesai", description: "Jam selesai (HH:mm)" },
+      { key: "lokasi", description: "Lokasi event (kosong kalau tidak diisi)" },
+      { key: "freelance", description: "Nama-nama freelance yang ditugaskan" },
+      { key: "sisaTagihan", description: "Sisa tagihan dalam IDR formatted" },
+    ],
+    defaultBody:
+      "📸 Reminder H-{hari} Yeobo Booth\n\nKlien: {namaKlien}\nTanggal: {tanggal}\nJam: {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nSisa tagihan: {sisaTagihan}\n\nMohon disiapkan ya. 🙏",
   },
 };
 

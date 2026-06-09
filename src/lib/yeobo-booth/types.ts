@@ -76,6 +76,33 @@ export interface YeoboBoothReminderLog {
   recipient_count: number;
 }
 
+/**
+ * Checkpoint reminder yang dapat dikonfigurasi. `days_before` = N pada
+ * "H-N" (offset hari sebelum tanggal sesi), `send_hour` = jam kirim WIB
+ * (0–23). `message_template` null → pakai template generik. Disimpan di
+ * tabel `yeobo_booth_reminder_checkpoints` (migrasi 091).
+ */
+export interface YeoboBoothReminderCheckpoint {
+  id: string;
+  days_before: number;
+  send_hour: number;
+  enabled: boolean;
+  label: string | null;
+  message_template: string | null;
+}
+
+/**
+ * Nomor WA penerima reminder Yeobo Booth — daftar custom yang dikelola
+ * admin (tabel `yeobo_booth_reminder_recipients`). `phone_e164` = E.164
+ * tanpa '+'.
+ */
+export interface YeoboBoothReminderRecipient {
+  id: string;
+  label: string;
+  phone_e164: string;
+  enabled: boolean;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Input DTOs
 // ─────────────────────────────────────────────────────────────────────

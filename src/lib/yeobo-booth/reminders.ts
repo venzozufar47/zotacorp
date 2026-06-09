@@ -1,14 +1,23 @@
 /**
  * Reminder dispatch logic untuk Yeobo Booth.
  *
- * Dipanggil dari cron endpoint `/api/cron/yeobo-booth-reminders` setiap
- * hari jam 11:00 WIB. Untuk tiap checkpoint (H-7, H-3, H-1):
- *   1. Hitung target_date = today + N hari.
- *   2. Query semua booking status='scheduled' di target_date.
- *   3. Skip booking yang sudah ada row di yeobo_booth_reminder_logs
- *      (idempotency via UNIQUE (booking_id, checkpoint)).
- *   4. Render template + kirim ke recipients via Fonnte.
- *   5. Insert row log (status='sent' atau 'failed').
+ * Dipanggil dari cron endpoint `/api/cron/yeobo-booth-reminders` (Vercel,
+ * tiap jam). Checkpoint, jam kirim, isi pesan, dan penerima semuanya
+ * DIBACA DARI DB (dapat diatur admin/admin-booth di
+ * `/admin/yeobo-booth/settings`), bukan hardcoded:
+ *   - `yeobo_booth_reminder_checkpoints` (enabled, days_before, send_hour,
+ *     message_template). Hanya checkpoint yang `send_hour == jam WIB
+ *     sekarang` yang diproses pada run ini.
+ *   - `yeobo_booth_reminder_recipients` (enabled) → daftar nomor penerima.
+ *
+ * Untuk tiap checkpoint aktif pada jam ini:
+ *   1. target_date = today + days_before.
+ *   2. Query booking status='scheduled' di target_date.
+ *   3. Skip booking yang sudah ada row di `yeobo_booth_reminder_logs`
+ *      (idempotency via UNIQUE (booking_id, checkpoint='H-{days_before}')).
+ *   4. Render pesan (template custom checkpoint, kalau ada; selain itu
+ *      template generik) lalu kirim ke recipients via Fonnte.
+ *   5. Update row log (status='sent'/'failed'/'skipped').
  *
  * Fire-and-forget: error WA / DB tidak boleh crash request — kembalikan
  * summary supaya cron log Vercel bisa diagnose.
@@ -16,30 +25,19 @@
 
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
+import { renderWaTemplate, interpolate } from "@/lib/whatsapp/templates";
 import {
-  getAdminWhatsAppRecipients,
-  sendWhatsApp,
-} from "@/lib/whatsapp/fonnte";
-import { renderWaTemplate, type TemplateKey } from "@/lib/whatsapp/templates";
-import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
+  jakartaDateMinusDays,
+  jakartaDateString,
+  jakartaHour,
+} from "@/lib/utils/jakarta";
 import { formatIDR } from "@/lib/cashflow/format";
 import type {
-  ReminderCheckpoint,
   YeoboBoothBooking,
   YeoboBoothFreelance,
+  YeoboBoothReminderCheckpoint,
 } from "./types";
-
-const CHECKPOINT_TO_TEMPLATE: Record<ReminderCheckpoint, TemplateKey> = {
-  "H-7": "yeobo_booth_reminder_h7",
-  "H-3": "yeobo_booth_reminder_h3",
-  "H-1": "yeobo_booth_reminder_h1",
-};
-
-const CHECKPOINT_TO_DAYS: Record<ReminderCheckpoint, number> = {
-  "H-7": 7,
-  "H-3": 3,
-  "H-1": 1,
-};
 
 function admin() {
   return createAdminClient<Database>(
@@ -47,6 +45,7 @@ function admin() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 }
+type Db = ReturnType<typeof admin>;
 
 function formatTanggalID(ymd: string): string {
   return new Date(ymd + "T00:00:00").toLocaleDateString("id-ID", {
@@ -57,11 +56,25 @@ function formatTanggalID(ymd: string): string {
   });
 }
 
+/** Penerima reminder = daftar nomor WA custom (enabled) yang dikelola admin. */
+async function getReminderRecipients(db: Db): Promise<string[]> {
+  const { data } = await db
+    .from("yeobo_booth_reminder_recipients" as never)
+    .select("phone_e164, enabled");
+  return (
+    (data ?? []) as unknown as { phone_e164: string; enabled: boolean }[]
+  )
+    .filter((r) => r.enabled)
+    .map((r) => r.phone_e164.trim())
+    .filter(Boolean);
+}
+
 export interface ReminderRunResult {
   ranAt: string;
   todayWib: string;
+  hourWib: number;
   checkpoints: Array<{
-    checkpoint: ReminderCheckpoint;
+    checkpoint: string; // "H-{days_before}"
     targetDate: string;
     candidates: number;
     sent: number;
@@ -71,28 +84,39 @@ export interface ReminderRunResult {
 }
 
 /**
- * Dispatch semua reminder untuk hari ini (3 checkpoints). Aman dipanggil
- * berulang kali — duplikat dicegah lewat UNIQUE constraint.
+ * Dispatch reminder untuk checkpoint yang jam kirimnya == jam sekarang.
+ * Aman dipanggil berulang kali — duplikat dicegah lewat UNIQUE constraint.
  */
 export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
   const db = admin();
   const now = new Date();
   const todayWib = jakartaDateString(now);
-
-  // Resolve recipients sekali — sama untuk semua checkpoint.
-  const recipients = await getAdminWhatsAppRecipients();
+  const hourWib = jakartaHour(now);
 
   const summary: ReminderRunResult = {
     ranAt: now.toISOString(),
     todayWib,
+    hourWib,
     checkpoints: [],
   };
 
-  for (const checkpoint of ["H-7", "H-3", "H-1"] as ReminderCheckpoint[]) {
-    const days = CHECKPOINT_TO_DAYS[checkpoint];
+  // Checkpoint aktif yang jam kirimnya == jam WIB sekarang.
+  const { data: cpRaw } = await db
+    .from("yeobo_booth_reminder_checkpoints" as never)
+    .select("*")
+    .eq("enabled", true)
+    .eq("send_hour", hourWib);
+  const checkpoints = (cpRaw ?? []) as unknown as YeoboBoothReminderCheckpoint[];
+  if (checkpoints.length === 0) return summary;
+
+  // Resolve recipients sekali — sama untuk semua checkpoint run ini.
+  const recipients = await getReminderRecipients(db);
+
+  for (const cp of checkpoints) {
+    const label = `H-${cp.days_before}`;
     // Sesi yang harus diingatkan = sesi yang berlangsung pada
-    // today + N hari.
-    const targetDate = jakartaDateMinusDays(todayWib, -days);
+    // today + days_before hari.
+    const targetDate = jakartaDateMinusDays(todayWib, -cp.days_before);
 
     const { data: bookingsRaw } = await db
       .from("yeobo_booth_bookings" as never)
@@ -102,7 +126,7 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
     const bookings = (bookingsRaw ?? []) as unknown as YeoboBoothBooking[];
 
     const bucket = {
-      checkpoint,
+      checkpoint: label,
       targetDate,
       candidates: bookings.length,
       sent: 0,
@@ -150,7 +174,8 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
           .filter(Boolean)
           .join(", ") || "—";
 
-      const body = await renderWaTemplate(CHECKPOINT_TO_TEMPLATE[checkpoint], {
+      const vars = {
+        hari: cp.days_before,
         namaKlien: b.nama_klien,
         tanggal: formatTanggalID(b.tanggal),
         jamMulai: b.jam_mulai.slice(0, 5),
@@ -158,16 +183,19 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
         lokasi: b.lokasi_event ?? "—",
         freelance: freelanceNames,
         sisaTagihan: sisa > 0 ? formatIDR(sisa) : "Lunas",
-      });
+      };
+      // Pesan custom per checkpoint kalau diisi; selain itu template generik.
+      const body = cp.message_template
+        ? interpolate(cp.message_template, vars)
+        : await renderWaTemplate("yeobo_booth_reminder_generic", vars);
 
       // Insert log dulu untuk early-claim slot — UNIQUE constraint
-      // mencegah race kalau cron ter-trigger 2x (insert kedua gagal
-      // dengan 23505, kita skip).
+      // (booking_id, checkpoint) mencegah duplikat kalau cron jalan 2x.
       const { error: claimErr } = await db
         .from("yeobo_booth_reminder_logs" as never)
         .insert({
           booking_id: b.id,
-          checkpoint,
+          checkpoint: label,
           status: "sent",
           recipient_count: recipients.length,
         } as never);
@@ -182,7 +210,6 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
       }
 
       if (recipients.length === 0) {
-        // Tidak ada recipients — tandai skipped, update status di log.
         await db
           .from("yeobo_booth_reminder_logs" as never)
           .update({
@@ -190,7 +217,7 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
             error_message: "no recipients configured",
           } as never)
           .eq("booking_id", b.id)
-          .eq("checkpoint", checkpoint);
+          .eq("checkpoint", label);
         bucket.skipped += 1;
         continue;
       }
@@ -204,7 +231,7 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
             error_message: "Fonnte send returned false",
           } as never)
           .eq("booking_id", b.id)
-          .eq("checkpoint", checkpoint);
+          .eq("checkpoint", label);
         bucket.failed += 1;
         continue;
       }
