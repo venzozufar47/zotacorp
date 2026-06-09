@@ -165,7 +165,11 @@ export async function updateChecklist(input: {
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const patch: {
+    name?: string;
+    description?: string | null;
+    updated_at?: string;
+  } = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) {
     const name = input.name.trim();
     if (!name) return { error: "Nama checklist tidak boleh kosong." };
@@ -258,7 +262,11 @@ export async function updateChecklistItem(input: {
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
-  const patch: Record<string, unknown> = {};
+  const patch: {
+    title?: string;
+    note?: string | null;
+    requires_photo?: boolean;
+  } = {};
   if (input.title !== undefined) {
     const title = input.title.trim();
     if (!title) return { error: "Judul item tidak boleh kosong." };
@@ -375,7 +383,12 @@ export async function updateAssignment(input: {
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const patch: {
+    weekdays?: number;
+    block_checkout?: boolean;
+    is_active?: boolean;
+    updated_at?: string;
+  } = { updated_at: new Date().toISOString() };
   if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
   if (input.block_checkout !== undefined) patch.block_checkout = input.block_checkout;
   if (input.is_active !== undefined) patch.is_active = input.is_active;
