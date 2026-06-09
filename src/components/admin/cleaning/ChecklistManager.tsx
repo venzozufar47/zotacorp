@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   createChecklist,
+  updateChecklist,
   deleteChecklist,
   setChecklistActive,
   addChecklistItem,
@@ -136,6 +137,29 @@ function ChecklistCard({
   const [itemNote, setItemNote] = useState("");
   const [itemPhoto, setItemPhoto] = useState(true);
 
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [headerName, setHeaderName] = useState(cl.name);
+  const [headerDesc, setHeaderDesc] = useState(cl.description ?? "");
+
+  function startEditHeader() {
+    setHeaderName(cl.name);
+    setHeaderDesc(cl.description ?? "");
+    setEditingHeader(true);
+  }
+
+  function saveHeader() {
+    const n = headerName.trim();
+    if (!n) {
+      toast.error("Nama checklist wajib diisi");
+      return;
+    }
+    run(
+      () => updateChecklist({ id: cl.id, name: n, description: headerDesc.trim() || null }),
+      "Checklist diperbarui"
+    );
+    setEditingHeader(false);
+  }
+
   function onAddItem() {
     const t = itemTitle.trim();
     if (!t) {
@@ -172,48 +196,90 @@ function ChecklistCard({
         cl.is_active ? "border-border" : "border-border/60 opacity-70"
       )}
     >
-      <div className="px-4 py-3 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onToggleOpen}
-          className="flex items-center gap-2 flex-1 min-w-0 text-left"
-        >
-          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          <span className="font-display font-semibold text-sm truncate">
-            {cl.name}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            {cl.items.length} item
-          </span>
-          {!cl.is_active && (
-            <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
-              nonaktif
+      {editingHeader ? (
+        <div className="px-4 py-3 space-y-2">
+          <Input
+            value={headerName}
+            onChange={(e) => setHeaderName(e.target.value)}
+            placeholder="Nama checklist (mis. Closing Cleaning)"
+          />
+          <Textarea
+            value={headerDesc}
+            onChange={(e) => setHeaderDesc(e.target.value)}
+            placeholder="Deskripsi / catatan checklist (opsional)"
+            rows={2}
+          />
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={saveHeader} disabled={pending} className="gap-1.5">
+              <Check size={14} />
+              Simpan
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setEditingHeader(false)}
+              disabled={pending}
+              className="gap-1.5"
+            >
+              <X size={14} />
+              Batal
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 py-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleOpen}
+            className="flex items-center gap-2 flex-1 min-w-0 text-left"
+          >
+            {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <span className="font-display font-semibold text-sm truncate">
+              {cl.name}
             </span>
-          )}
-        </button>
-        <button
-          type="button"
-          title={cl.is_active ? "Nonaktifkan" : "Aktifkan"}
-          onClick={() => run(() => setChecklistActive({ id: cl.id, is_active: !cl.is_active }))}
-          disabled={pending}
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-        >
-          <Power size={15} />
-        </button>
-        <button
-          type="button"
-          title="Hapus checklist"
-          onClick={() => {
-            if (confirm(`Hapus checklist "${cl.name}" beserta semua item & assignment-nya?`)) {
-              run(() => deleteChecklist({ id: cl.id }), "Checklist dihapus");
-            }
-          }}
-          disabled={pending}
-          className="text-muted-foreground hover:text-destructive disabled:opacity-50"
-        >
-          <Trash2 size={15} />
-        </button>
-      </div>
+            <span className="text-[11px] text-muted-foreground">
+              {cl.items.length} item
+            </span>
+            {!cl.is_active && (
+              <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
+                nonaktif
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            title="Edit nama & deskripsi"
+            onClick={startEditHeader}
+            disabled={pending}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            type="button"
+            title={cl.is_active ? "Nonaktifkan" : "Aktifkan"}
+            onClick={() => run(() => setChecklistActive({ id: cl.id, is_active: !cl.is_active }))}
+            disabled={pending}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            <Power size={15} />
+          </button>
+          <button
+            type="button"
+            title="Hapus checklist"
+            onClick={() => {
+              if (confirm(`Hapus checklist "${cl.name}" beserta semua item & assignment-nya?`)) {
+                run(() => deleteChecklist({ id: cl.id }), "Checklist dihapus");
+              }
+            }}
+            disabled={pending}
+            className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      )}
 
       {open && (
         <div className="border-t border-border">
