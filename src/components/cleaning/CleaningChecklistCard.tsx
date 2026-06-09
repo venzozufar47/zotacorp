@@ -20,14 +20,22 @@ import {
   uncompleteCleaningItem,
   getTodayCleaningTasks,
   type TodayCleaningTasks,
-  type TodayTaskItem,
+  type TodayUnit,
 } from "@/lib/actions/cleaning.actions";
 
 interface Props {
   initial: TodayCleaningTasks;
 }
 
-/** Lazy signed-URL thumbnail for a completed item's evidence photo. */
+const unitKey = (itemId: string, photoReqId: string | null) =>
+  `${itemId}|${photoReqId ?? ""}`;
+
+/** Public URL for a reference photo (cleaning-refs is a public bucket). */
+function refPublicUrl(path: string): string {
+  return createSupabaseClient().storage.from("cleaning-refs").getPublicUrl(path).data.publicUrl;
+}
+
+/** Lazy signed-URL thumbnail for an uploaded evidence photo. */
 function EvidenceThumb({ completionId }: { completionId: string }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -74,112 +82,99 @@ export function CleaningChecklistCard({ initial }: Props) {
   const [tasks, setTasks] = useState(initial.tasks);
   const [checkedIn] = useState(initial.checked_in);
   const [isPending, startTransition] = useTransition();
-  const [busyItem, setBusyItem] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [selfieOpen, setSelfieOpen] = useState(false);
   const [referenceUrl, setReferenceUrl] = useState<string | undefined>(undefined);
-  // Which (assignment, item) the in-flight photo capture is for.
-  const pendingRef = useRef<{ assignmentId: string; itemId: string } | null>(null);
+  // Which (assignment, item, slot) the in-flight photo capture is for.
+  const pendingRef = useRef<{
+    assignmentId: string;
+    itemId: string;
+    photoReqId: string | null;
+  } | null>(null);
 
   if (!tasks.length) return null;
 
-  function patchItem(
-    assignmentId: string,
-    itemId: string,
-    completion: TodayTaskItem["completion"]
-  ) {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.assignment_id !== assignmentId
-          ? t
-          : {
-              ...t,
-              items: t.items.map((it) =>
-                it.id === itemId ? { ...it, completion } : it
-              ),
-            }
-      )
-    );
+  async function refreshTasks() {
+    try {
+      const fresh = await getTodayCleaningTasks();
+      setTasks(fresh.tasks);
+    } catch {
+      // non-fatal
+    }
   }
 
   function startPhoto(
     assignmentId: string,
     itemId: string,
-    referencePath: string | null
+    photoReqId: string | null,
+    referencePath: string | null,
+    windowOpen: boolean
   ) {
     if (!checkedIn) {
       toast.error("Check in dulu untuk mengisi checklist.");
       return;
     }
-    pendingRef.current = { assignmentId, itemId };
-    if (referencePath) {
-      const supabase = createSupabaseClient();
-      const { data } = supabase.storage
-        .from("cleaning-refs")
-        .getPublicUrl(referencePath);
-      setReferenceUrl(data.publicUrl);
-    } else {
-      setReferenceUrl(undefined);
-    }
+    if (!windowOpen) return;
+    pendingRef.current = { assignmentId, itemId, photoReqId };
+    setReferenceUrl(referencePath ? refPublicUrl(referencePath) : undefined);
     setSelfieOpen(true);
   }
 
   async function handleSelfieConfirmed(blob: Blob) {
     const target = pendingRef.current;
     if (!target) return;
+    const key = unitKey(target.itemId, target.photoReqId);
     startTransition(async () => {
-      setBusyItem(target.itemId);
+      setBusyKey(key);
       const supabase = createSupabaseClient();
       const { data: authData } = await supabase.auth.getUser();
       const uid = authData.user?.id;
       if (!uid) {
         toast.error("Sesi tidak valid.");
-        setBusyItem(null);
+        setBusyKey(null);
         return;
       }
       const today = new Date().toISOString().slice(0, 10);
-      const path = `${uid}/${today}/${target.itemId}-${crypto.randomUUID()}.jpg`;
+      const slot = target.photoReqId ?? "main";
+      const path = `${uid}/${today}/${target.itemId}-${slot}-${crypto.randomUUID()}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("cleaning-photos")
         .upload(path, blob, { contentType: "image/jpeg", upsert: false });
       if (upErr) {
         toast.error("Gagal mengunggah foto.");
-        setBusyItem(null);
+        setBusyKey(null);
         return;
       }
       const coords = await getCoords();
       const res = await completeCleaningItem({
         assignment_id: target.assignmentId,
         item_id: target.itemId,
+        photo_req_id: target.photoReqId,
         photo_path: path,
         latitude: coords.lat,
         longitude: coords.lng,
       });
       if ("error" in res) {
         toast.error(res.error);
-        setBusyItem(null);
+        setBusyKey(null);
         return;
       }
-      patchItem(target.assignmentId, target.itemId, {
-        id: crypto.randomUUID(), // placeholder; signed URL fetch uses real id after refresh
-        photo_path: path,
-        completed_at: new Date().toISOString(),
-        note: null,
-      });
       setSelfieOpen(false);
-      setBusyItem(null);
-      toast.success("Item selesai ✓");
-      // Pull the real completion id so the thumbnail can sign its URL.
+      setBusyKey(null);
+      toast.success("Foto tersimpan ✓");
       void refreshTasks();
     });
   }
 
-  async function markDoneNoPhoto(assignmentId: string, itemId: string) {
+  function markDoneNoPhoto(assignmentId: string, itemId: string, windowOpen: boolean) {
     if (!checkedIn) {
       toast.error("Check in dulu untuk mengisi checklist.");
       return;
     }
+    if (!windowOpen) return;
+    const key = unitKey(itemId, null);
     startTransition(async () => {
-      setBusyItem(itemId);
+      setBusyKey(key);
       const coords = await getCoords();
       const res = await completeCleaningItem({
         assignment_id: assignmentId,
@@ -189,38 +184,94 @@ export function CleaningChecklistCard({ initial }: Props) {
       });
       if ("error" in res) {
         toast.error(res.error);
-        setBusyItem(null);
+        setBusyKey(null);
         return;
       }
       toast.success("Item selesai ✓");
-      setBusyItem(null);
+      setBusyKey(null);
       void refreshTasks();
     });
   }
 
-  async function undo(itemId: string) {
+  function undo(itemId: string, photoReqId: string | null) {
+    const key = unitKey(itemId, photoReqId);
     startTransition(async () => {
-      setBusyItem(itemId);
-      const res = await uncompleteCleaningItem({ item_id: itemId });
+      setBusyKey(key);
+      const res = await uncompleteCleaningItem({ item_id: itemId, photo_req_id: photoReqId });
       if ("error" in res) {
         toast.error(res.error);
-        setBusyItem(null);
+        setBusyKey(null);
         return;
       }
-      setBusyItem(null);
+      setBusyKey(null);
       void refreshTasks();
     });
   }
 
-  // Re-fetch tasks from the server (revalidatePath also refreshes the page,
-  // but we want fresh completion ids for thumbnails without a full reload).
-  async function refreshTasks() {
-    try {
-      const fresh = await getTodayCleaningTasks();
-      setTasks(fresh.tasks);
-    } catch {
-      // non-fatal
-    }
+  /** Action control for a single unit (photo button / checkbox / undo). */
+  function UnitControls({
+    assignmentId,
+    itemId,
+    unit,
+    windowOpen,
+  }: {
+    assignmentId: string;
+    itemId: string;
+    unit: TodayUnit;
+    windowOpen: boolean;
+  }) {
+    const busy = busyKey === unitKey(itemId, unit.photo_req_id) && isPending;
+    const done = !!unit.completion;
+    return (
+      <div className="flex items-center gap-2 shrink-0">
+        {done && unit.completion?.photo_path && unit.completion.id && (
+          <EvidenceThumb completionId={unit.completion.id} />
+        )}
+        {done ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() => undo(itemId, unit.photo_req_id)}
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : "Batal"}
+          </Button>
+        ) : unit.requires_photo ? (
+          <Button
+            size="sm"
+            disabled={busy || !checkedIn || !windowOpen}
+            onClick={() =>
+              startPhoto(assignmentId, itemId, unit.photo_req_id, unit.reference_photo_path, windowOpen)
+            }
+          >
+            {busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <>
+                <Camera className="size-4 mr-1.5" />
+                Foto
+              </>
+            )}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || !checkedIn || !windowOpen}
+            onClick={() => markDoneNoPhoto(assignmentId, itemId, windowOpen)}
+          >
+            {busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <>
+                <Check className="size-4 mr-1.5" />
+                Selesai
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -244,7 +295,7 @@ export function CleaningChecklistCard({ initial }: Props) {
         )}
 
         {tasks.map((task) => {
-          const done = task.items.filter((i) => i.completion).length;
+          const done = task.items.filter((i) => i.done).length;
           const total = task.items.length;
           const allDone = done === total;
           return (
@@ -285,93 +336,92 @@ export function CleaningChecklistCard({ initial }: Props) {
 
               <ul className="space-y-2">
                 {task.items.map((item) => {
-                  const completed = !!item.completion;
-                  const busy = busyItem === item.id && isPending;
+                  const multi = item.units.length > 1;
                   return (
                     <li
                       key={item.id}
-                      className={`flex items-start gap-3 rounded-xl border-2 p-3 ${
-                        completed
+                      className={`rounded-xl border-2 p-3 ${
+                        item.done
                           ? "border-foreground/15 bg-accent/30"
                           : "border-foreground/15 bg-card"
                       }`}
                     >
-                      <span className="mt-0.5 shrink-0">
-                        {completed ? (
-                          <CheckCircle2 className="size-5 text-accent-foreground" />
-                        ) : (
-                          <Circle className="size-5 text-muted-foreground" />
-                        )}
-                      </span>
-
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className={`text-sm font-medium ${
-                            completed ? "line-through text-muted-foreground" : ""
-                          }`}
-                        >
-                          {item.title}
-                        </p>
-                        {item.note && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {item.note}
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 shrink-0">
+                          {item.done ? (
+                            <CheckCircle2 className="size-5 text-accent-foreground" />
+                          ) : (
+                            <Circle className="size-5 text-muted-foreground" />
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={`text-sm font-medium ${
+                              item.done ? "line-through text-muted-foreground" : ""
+                            }`}
+                          >
+                            {item.title}
+                            {multi && (
+                              <span className="ml-2 text-[0.6875rem] font-bold text-muted-foreground">
+                                {item.units.filter((u) => u.completion).length}/
+                                {item.units.length} foto
+                              </span>
+                            )}
                           </p>
+                          {item.note && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {item.note}
+                            </p>
+                          )}
+                        </div>
+                        {/* Single-unit item: action lives on the header row. */}
+                        {!multi && (
+                          <UnitControls
+                            assignmentId={task.assignment_id}
+                            itemId={item.id}
+                            unit={item.units[0]}
+                            windowOpen={task.window_open}
+                          />
                         )}
                       </div>
 
-                      {completed && item.completion?.photo_path && item.completion.id && (
-                        <EvidenceThumb completionId={item.completion.id} />
+                      {/* Multi-photo item: one row per requested photo. */}
+                      {multi && (
+                        <ul className="mt-2 space-y-1.5 pl-8">
+                          {item.units.map((unit, i) => (
+                            <li
+                              key={unit.photo_req_id ?? `u${i}`}
+                              className="flex items-center gap-3"
+                            >
+                              <span className="shrink-0">
+                                {unit.completion ? (
+                                  <CheckCircle2 className="size-4 text-accent-foreground" />
+                                ) : (
+                                  <Circle className="size-4 text-muted-foreground" />
+                                )}
+                              </span>
+                              {unit.reference_photo_path && !unit.completion && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={refPublicUrl(unit.reference_photo_path)}
+                                  alt="Contoh"
+                                  title="Contoh"
+                                  className="size-9 rounded-md border border-border object-cover shrink-0"
+                                />
+                              )}
+                              <span className="min-w-0 flex-1 text-xs text-foreground">
+                                {unit.label || `Foto ${i + 1}`}
+                              </span>
+                              <UnitControls
+                                assignmentId={task.assignment_id}
+                                itemId={item.id}
+                                unit={unit}
+                                windowOpen={task.window_open}
+                              />
+                            </li>
+                          ))}
+                        </ul>
                       )}
-
-                      <div className="shrink-0">
-                        {completed ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => undo(item.id)}
-                          >
-                            {busy ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              "Batal"
-                            )}
-                          </Button>
-                        ) : item.requires_photo ? (
-                          <Button
-                            size="sm"
-                            disabled={busy || !checkedIn || !task.window_open}
-                            onClick={() =>
-                              startPhoto(task.assignment_id, item.id, item.reference_photo_path)
-                            }
-                          >
-                            {busy ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <>
-                                <Camera className="size-4 mr-1.5" />
-                                Foto
-                              </>
-                            )}
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy || !checkedIn || !task.window_open}
-                            onClick={() => markDoneNoPhoto(task.assignment_id, item.id)}
-                          >
-                            {busy ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <>
-                                <Check className="size-4 mr-1.5" />
-                                Selesai
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
                     </li>
                   );
                 })}

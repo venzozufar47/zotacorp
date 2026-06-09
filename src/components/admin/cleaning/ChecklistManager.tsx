@@ -58,8 +58,12 @@ import {
   updateChecklistItem,
   deleteChecklistItem,
   reorderItems,
+  addItemPhoto,
+  updateItemPhoto,
+  deleteItemPhoto,
   type CleaningChecklist,
   type CleaningItem,
+  type ItemPhoto,
 } from "@/lib/actions/cleaning.actions";
 
 export function ChecklistManager({ initial }: { initial: CleaningChecklist[] }) {
@@ -165,8 +169,6 @@ function ChecklistCard({
   const [itemTitle, setItemTitle] = useState("");
   const [itemNote, setItemNote] = useState("");
   const [itemPhoto, setItemPhoto] = useState(true);
-  const [itemRefPath, setItemRefPath] = useState<string | null>(null);
-  const [refUploading, setRefUploading] = useState(false);
 
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerName, setHeaderName] = useState(cl.name);
@@ -204,22 +206,12 @@ function ChecklistCard({
           title: t,
           note: itemNote.trim() || undefined,
           requires_photo: itemPhoto,
-          reference_photo_path: itemRefPath,
         }),
-      "Item ditambahkan"
+      "Item ditambahkan — buka untuk atur foto"
     );
     setItemTitle("");
     setItemNote("");
     setItemPhoto(true);
-    setItemRefPath(null);
-  }
-
-  async function onPickRef(file: File | undefined) {
-    if (!file) return;
-    setRefUploading(true);
-    const path = await uploadReferencePhoto(cl.id, file);
-    setRefUploading(false);
-    if (path) setItemRefPath(path);
   }
 
   function moveItem(index: number, dir: -1 | 1) {
@@ -359,39 +351,10 @@ function ChecklistCard({
               placeholder="Catatan detail: sisi mana yang dibersihkan & difoto (opsional)"
               rows={2}
             />
-            {/* Reference photo (shown to employee inside the camera) */}
-            <div className="flex items-center gap-2">
-              {itemRefPath ? (
-                <span className="relative shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={refPublicUrl(itemRefPath)}
-                    alt="Contoh"
-                    className="size-12 rounded-lg border-2 border-foreground object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setItemRefPath(null)}
-                    className="absolute -top-1.5 -right-1.5 bg-card border border-border rounded-full p-0.5 text-muted-foreground hover:text-destructive"
-                    aria-label="Hapus foto contoh"
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              ) : (
-                <label className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border border-border bg-card cursor-pointer hover:bg-muted">
-                  {refUploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
-                  Foto contoh (opsional)
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={refUploading}
-                    onChange={(e) => onPickRef(e.target.files?.[0])}
-                  />
-                </label>
-              )}
-            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Setelah dibuat, buka item untuk mengatur foto yang diminta &
+              referensinya (bisa lebih dari satu).
+            </p>
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button
                 type="button"
@@ -439,20 +402,11 @@ function ItemRow({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(it.title);
   const [note, setNote] = useState(it.note ?? "");
-  const [refUploading, setRefUploading] = useState(false);
 
   function startEdit() {
     setTitle(it.title);
     setNote(it.note ?? "");
     setEditing(true);
-  }
-
-  async function onPickRef(file: File | undefined) {
-    if (!file) return;
-    setRefUploading(true);
-    const path = await uploadReferencePhoto(it.id, file);
-    setRefUploading(false);
-    if (path) run(() => updateChecklistItem({ id: it.id, reference_photo_path: path }), "Foto contoh disimpan");
   }
 
   function save() {
@@ -518,45 +472,6 @@ function ItemRow({
               placeholder="Catatan detail (opsional)"
               rows={2}
             />
-            {/* Reference photo */}
-            <div className="flex items-center gap-2">
-              {it.reference_photo_path ? (
-                <span className="relative shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={refPublicUrl(it.reference_photo_path)}
-                    alt="Contoh"
-                    className="size-12 rounded-lg border-2 border-foreground object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      run(
-                        () => updateChecklistItem({ id: it.id, reference_photo_path: null }),
-                        "Foto contoh dihapus"
-                      )
-                    }
-                    disabled={pending}
-                    className="absolute -top-1.5 -right-1.5 bg-card border border-border rounded-full p-0.5 text-muted-foreground hover:text-destructive"
-                    aria-label="Hapus foto contoh"
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              ) : (
-                <label className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border border-border bg-card cursor-pointer hover:bg-muted">
-                  {refUploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
-                  Foto contoh
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={refUploading || pending}
-                    onChange={(e) => onPickRef(e.target.files?.[0])}
-                  />
-                </label>
-              )}
-            </div>
             <div className="flex gap-2">
               <Button type="button" size="sm" onClick={save} disabled={pending} className="gap-1.5">
                 <Check size={14} />
@@ -583,14 +498,10 @@ function ItemRow({
                 <p className="text-xs text-muted-foreground mt-0.5">{it.note}</p>
               )}
             </div>
-            {it.reference_photo_path && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={refPublicUrl(it.reference_photo_path)}
-                alt="Contoh"
-                title="Foto contoh"
-                className="size-9 rounded-md border border-border object-cover shrink-0"
-              />
+            {it.requires_photo && (
+              <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-muted text-muted-foreground shrink-0">
+                {it.photos.length > 0 ? `${it.photos.length} foto` : "1 foto"}
+              </span>
             )}
             <button
               type="button"
@@ -613,6 +524,171 @@ function ItemRow({
           </>
         )}
       </div>
+
+      {/* Requested photos (slots), each with its own reference */}
+      {it.requires_photo && <PhotoSlots item={it} pending={pending} run={run} />}
     </li>
+  );
+}
+
+function PhotoSlots({
+  item,
+  pending,
+  run,
+}: {
+  item: CleaningItem;
+  pending: boolean;
+  run: (
+    fn: () => Promise<{ ok: true } | { error: string } | { ok: true; id: string }>,
+    ok?: string
+  ) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+
+  async function addWithRef(file: File | undefined) {
+    setAdding(true);
+    const path = file ? await uploadReferencePhoto(item.id, file) : null;
+    setAdding(false);
+    run(
+      () => addItemPhoto({ item_id: item.id, reference_photo_path: path }),
+      "Foto ditambahkan"
+    );
+  }
+
+  return (
+    <div className="mt-2 ml-8 rounded-lg border border-border bg-muted/20 p-2.5 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Foto yang diminta
+      </p>
+      {item.photos.length === 0 && (
+        <p className="text-[11px] text-muted-foreground italic">
+          Default 1 foto (tanpa contoh). Tambah untuk minta beberapa foto, masing-masing
+          dengan contoh & nama berbeda.
+        </p>
+      )}
+      {item.photos.map((slot, i) => (
+        <SlotRow key={slot.id} slot={slot} itemId={item.id} index={i} pending={pending} run={run} />
+      ))}
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() => run(() => addItemPhoto({ item_id: item.id }), "Foto ditambahkan")}
+          className="gap-1.5"
+        >
+          <Plus size={13} />
+          Tambah foto
+        </Button>
+        <label
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-border bg-card cursor-pointer hover:bg-muted",
+            (adding || pending) && "opacity-50 pointer-events-none"
+          )}
+        >
+          {adding ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+          Tambah + contoh
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={adding || pending}
+            onChange={(e) => addWithRef(e.target.files?.[0])}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function SlotRow({
+  slot,
+  itemId,
+  index,
+  pending,
+  run,
+}: {
+  slot: ItemPhoto;
+  itemId: string;
+  index: number;
+  pending: boolean;
+  run: (
+    fn: () => Promise<{ ok: true } | { error: string } | { ok: true; id: string }>,
+    ok?: string
+  ) => void;
+}) {
+  const [label, setLabel] = useState(slot.label ?? "");
+  const [uploading, setUploading] = useState(false);
+
+  async function pickRef(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    const path = await uploadReferencePhoto(itemId, file);
+    setUploading(false);
+    if (path) run(() => updateItemPhoto({ id: slot.id, reference_photo_path: path }), "Contoh disimpan");
+  }
+
+  function saveLabel() {
+    if (label.trim() !== (slot.label ?? "")) {
+      run(() => updateItemPhoto({ id: slot.id, label: label.trim() || null }));
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Reference thumb / upload (click to set or replace) */}
+      <label className="relative shrink-0 cursor-pointer" title="Klik untuk set/ganti contoh">
+        {slot.reference_photo_path ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={refPublicUrl(slot.reference_photo_path)}
+            alt="Contoh"
+            className="size-11 rounded-lg border-2 border-foreground object-cover"
+          />
+        ) : (
+          <span className="grid place-items-center size-11 rounded-lg border-2 border-dashed border-border text-muted-foreground">
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
+          </span>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          disabled={uploading || pending}
+          onChange={(e) => pickRef(e.target.files?.[0])}
+        />
+      </label>
+      <Input
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        onBlur={saveLabel}
+        placeholder={`Nama foto ${index + 1} (mis. sisi depan)`}
+        className="h-8 flex-1"
+        disabled={pending}
+      />
+      {slot.reference_photo_path && (
+        <button
+          type="button"
+          title="Hapus contoh"
+          onClick={() =>
+            run(() => updateItemPhoto({ id: slot.id, reference_photo_path: null }), "Contoh dihapus")
+          }
+          disabled={pending}
+          className="text-muted-foreground hover:text-destructive disabled:opacity-50 shrink-0 text-[11px]"
+        >
+          contoh ✕
+        </button>
+      )}
+      <button
+        type="button"
+        title="Hapus foto ini"
+        onClick={() => run(() => deleteItemPhoto({ id: slot.id }), "Foto dihapus")}
+        disabled={pending}
+        className="text-muted-foreground hover:text-destructive disabled:opacity-50 shrink-0"
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
   );
 }

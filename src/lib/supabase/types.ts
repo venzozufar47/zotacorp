@@ -1797,6 +1797,41 @@ export type Database = {
         }
         Relationships: []
       }
+      cleaning_item_photos: {
+        Row: {
+          created_at: string
+          id: string
+          item_id: string
+          label: string | null
+          reference_photo_path: string | null
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          item_id: string
+          label?: string | null
+          reference_photo_path?: string | null
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          item_id?: string
+          label?: string | null
+          reference_photo_path?: string | null
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_item_photos_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_checklist_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cleaning_task_completions: {
         Row: {
           assignment_id: string
@@ -1809,6 +1844,7 @@ export type Database = {
           longitude: number | null
           note: string | null
           photo_path: string | null
+          photo_req_id: string | null
           user_id: string
         }
         Insert: {
@@ -1822,6 +1858,7 @@ export type Database = {
           longitude?: number | null
           note?: string | null
           photo_path?: string | null
+          photo_req_id?: string | null
           user_id: string
         }
         Update: {
@@ -1835,6 +1872,7 @@ export type Database = {
           longitude?: number | null
           note?: string | null
           photo_path?: string | null
+          photo_req_id?: string | null
           user_id?: string
         }
         Relationships: [

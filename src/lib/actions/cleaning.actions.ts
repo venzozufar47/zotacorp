@@ -19,6 +19,14 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
+/** One requested photo ("slot") within an item, with its own reference. */
+export interface ItemPhoto {
+  id: string;
+  label: string | null;
+  reference_photo_path: string | null;
+  sort_order: number;
+}
+
 export interface CleaningItem {
   id: string;
   title: string;
@@ -26,6 +34,8 @@ export interface CleaningItem {
   requires_photo: boolean;
   sort_order: number;
   reference_photo_path: string | null;
+  /** Requested photo slots. Empty + requires_photo → one generic photo. */
+  photos: ItemPhoto[];
 }
 
 export interface CleaningChecklist {
@@ -51,13 +61,27 @@ export interface CleaningAssignmentRow {
   window_end: string | null;
 }
 
-export interface TodayTaskItem extends CleaningItem {
+/** One thing the employee must complete: a checkbox, a generic photo, or a
+ *  named photo slot. photo_req_id null = checkbox/generic. */
+export interface TodayUnit {
+  photo_req_id: string | null;
+  label: string | null;
+  requires_photo: boolean;
+  reference_photo_path: string | null;
   completion: {
     id: string;
     photo_path: string | null;
     completed_at: string;
-    note: string | null;
   } | null;
+}
+
+export interface TodayTaskItem {
+  id: string;
+  title: string;
+  note: string | null;
+  sort_order: number;
+  units: TodayUnit[];
+  done: boolean;
 }
 
 export interface TodayTask {
@@ -84,14 +108,21 @@ export interface BlockingChecklist {
   remaining: string[];
 }
 
-export interface MonitorItem {
-  id: string;
-  title: string;
+export interface MonitorUnit {
+  photo_req_id: string | null;
+  label: string | null;
   requires_photo: boolean;
   completed: boolean;
   photo_path: string | null;
   completion_id: string | null;
-  completed_at: string | null;
+}
+
+export interface MonitorItem {
+  id: string;
+  title: string;
+  completed: boolean;
+  photo_missing: number;
+  units: MonitorUnit[];
 }
 
 export interface MonitorRow {
@@ -121,6 +152,44 @@ async function getTimezone(): Promise<string> {
   return settings?.timezone ?? "Asia/Jakarta";
 }
 
+interface UnitSpec {
+  photo_req_id: string | null;
+  label: string | null;
+  requires_photo: boolean;
+  reference_photo_path: string | null;
+}
+
+/** The required completion units for an item:
+ *   - requires_photo false → one checkbox (null id, no photo)
+ *   - requires_photo true + slots → one photo per slot
+ *   - requires_photo true + no slots → one generic photo (null id) */
+function requiredUnits(item: {
+  requires_photo: boolean;
+  reference_photo_path: string | null;
+  photos: ItemPhoto[];
+}): UnitSpec[] {
+  if (!item.requires_photo) {
+    return [{ photo_req_id: null, label: null, requires_photo: false, reference_photo_path: null }];
+  }
+  const slots = (item.photos ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
+  if (slots.length === 0) {
+    return [
+      {
+        photo_req_id: null,
+        label: null,
+        requires_photo: true,
+        reference_photo_path: item.reference_photo_path,
+      },
+    ];
+  }
+  return slots.map((s) => ({
+    photo_req_id: s.id,
+    label: s.label,
+    requires_photo: true,
+    reference_photo_path: s.reference_photo_path,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Admin: checklist templates + items
 // ---------------------------------------------------------------------------
@@ -130,7 +199,7 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
   const { data, error } = await supabase
     .from("cleaning_checklists")
     .select(
-      "id, name, description, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path)"
+      "id, name, description, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))"
     )
     .order("created_at", { ascending: true });
   if (error || !data) return [];
@@ -149,6 +218,15 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
         requires_photo: it.requires_photo,
         sort_order: it.sort_order,
         reference_photo_path: it.reference_photo_path,
+        photos: (it.photos ?? [])
+          .slice()
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((p) => ({
+            id: p.id,
+            label: p.label,
+            reference_photo_path: p.reference_photo_path,
+            sort_order: p.sort_order,
+          })),
       })),
   }));
 }
@@ -339,6 +417,77 @@ export async function reorderItems(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Admin: item photo slots (multiple requested photos per item)
+// ---------------------------------------------------------------------------
+
+export async function addItemPhoto(input: {
+  item_id: string;
+  label?: string | null;
+  reference_photo_path?: string | null;
+}): Promise<{ ok: true; id: string } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("cleaning_item_photos")
+    .select("sort_order")
+    .eq("item_id", input.item_id)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  const nextOrder = (existing?.[0]?.sort_order ?? -1) + 1;
+  const { data, error } = await supabase
+    .from("cleaning_item_photos")
+    .insert({
+      item_id: input.item_id,
+      label: input.label?.trim() || null,
+      reference_photo_path: input.reference_photo_path ?? null,
+      sort_order: nextOrder,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { error: error?.message ?? "Gagal menambah foto." };
+  revalidatePath("/admin/cleaning");
+  return { ok: true, id: data.id };
+}
+
+export async function updateItemPhoto(input: {
+  id: string;
+  label?: string | null;
+  reference_photo_path?: string | null;
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const patch: { label?: string | null; reference_photo_path?: string | null } = {};
+  if (input.label !== undefined) patch.label = input.label?.trim() || null;
+  if (input.reference_photo_path !== undefined)
+    patch.reference_photo_path = input.reference_photo_path;
+  if (Object.keys(patch).length === 0) return { ok: true };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("cleaning_item_photos")
+    .update(patch)
+    .eq("id", input.id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/cleaning");
+  return { ok: true };
+}
+
+export async function deleteItemPhoto(input: {
+  id: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("cleaning_item_photos")
+    .delete()
+    .eq("id", input.id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/cleaning");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Admin: assignments
 // ---------------------------------------------------------------------------
 
@@ -491,7 +640,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
       supabase
         .from("cleaning_assignments")
         .select(
-          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path))"
+          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
         )
         .eq("user_id", user.id)
         .eq("is_active", true),
@@ -503,14 +652,15 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
         .maybeSingle(),
       supabase
         .from("cleaning_task_completions")
-        .select("id, item_id, photo_path, completed_at, note")
+        .select("id, item_id, photo_req_id, photo_path, completed_at")
         .eq("user_id", user.id)
         .eq("date", today),
     ]);
 
   const checkedIn = !!log?.checked_in_at && !log?.checked_out_at;
-  const compByItem = new Map(
-    (completions ?? []).map((c) => [c.item_id, c])
+  // Key completions by item + photo slot (null slot → "").
+  const compByKey = new Map(
+    (completions ?? []).map((c) => [`${c.item_id}|${c.photo_req_id ?? ""}`, c])
   );
 
   const nowHhmm = localHhmm(now, tz);
@@ -542,22 +692,29 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
         .slice()
         .sort((x, y) => x.sort_order - y.sort_order)
         .map((it) => {
-          const comp = compByItem.get(it.id);
+          const units: TodayUnit[] = requiredUnits(it).map((u) => {
+            const comp = compByKey.get(`${it.id}|${u.photo_req_id ?? ""}`);
+            return {
+              photo_req_id: u.photo_req_id,
+              label: u.label,
+              requires_photo: u.requires_photo,
+              reference_photo_path: u.reference_photo_path,
+              completion: comp
+                ? {
+                    id: comp.id,
+                    photo_path: comp.photo_path,
+                    completed_at: comp.completed_at,
+                  }
+                : null,
+            };
+          });
           return {
             id: it.id,
             title: it.title,
             note: it.note,
-            requires_photo: it.requires_photo,
             sort_order: it.sort_order,
-            reference_photo_path: it.reference_photo_path,
-            completion: comp
-              ? {
-                  id: comp.id,
-                  photo_path: comp.photo_path,
-                  completed_at: comp.completed_at,
-                  note: comp.note,
-                }
-              : null,
+            units,
+            done: units.every((u) => u.completion),
           };
         }),
     }));
@@ -568,6 +725,8 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
 export async function completeCleaningItem(input: {
   assignment_id: string;
   item_id: string;
+  /** Which photo slot this completion is for; null = checkbox/generic photo. */
+  photo_req_id?: string | null;
   photo_path?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -616,6 +775,19 @@ export async function completeCleaningItem(input: {
     return { error: "Item tidak termasuk dalam checklist ini." };
   }
 
+  // If a photo slot is given, it must belong to this item.
+  const photoReqId = input.photo_req_id ?? null;
+  if (photoReqId) {
+    const { data: slot } = await supabase
+      .from("cleaning_item_photos")
+      .select("id, item_id")
+      .eq("id", photoReqId)
+      .maybeSingle();
+    if (!slot || slot.item_id !== item.id) {
+      return { error: "Slot foto tidak valid." };
+    }
+  }
+
   // Time-of-day window: reject submissions outside the configured window.
   if (
     !cleaningWindowOpen(
@@ -646,6 +818,7 @@ export async function completeCleaningItem(input: {
       user_id: user.id,
       assignment_id: input.assignment_id,
       item_id: input.item_id,
+      photo_req_id: photoReqId,
       date: today,
       photo_path: input.photo_path ?? null,
       latitude: input.latitude ?? null,
@@ -653,7 +826,7 @@ export async function completeCleaningItem(input: {
       note: input.note?.trim() || null,
       completed_at: new Date().toISOString(),
     },
-    { onConflict: "user_id,item_id,date" }
+    { onConflict: "user_id,item_id,date,photo_req_id" }
   );
   if (error) return { error: error.message };
   revalidatePath("/dashboard");
@@ -662,6 +835,8 @@ export async function completeCleaningItem(input: {
 
 export async function uncompleteCleaningItem(input: {
   item_id: string;
+  /** Slot to clear; null = the checkbox/generic completion. */
+  photo_req_id?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const user = await getCurrentUser();
   if (!user) return { error: "Tidak terautentikasi." };
@@ -676,12 +851,16 @@ export async function uncompleteCleaningItem(input: {
   if (log?.checked_out_at) {
     return { error: "Anda sudah check out hari ini." };
   }
-  const { error } = await supabase
+  let q = supabase
     .from("cleaning_task_completions")
     .delete()
     .eq("user_id", user.id)
     .eq("item_id", input.item_id)
     .eq("date", today);
+  q = input.photo_req_id
+    ? q.eq("photo_req_id", input.photo_req_id)
+    : q.is("photo_req_id", null);
+  const { error } = await q;
   if (error) return { error: error.message };
   revalidatePath("/dashboard");
   return { ok: true };
@@ -706,19 +885,22 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, weekdays, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, sort_order))"
+        "id, weekdays, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
       )
       .eq("user_id", user.id)
       .eq("is_active", true)
       .eq("block_checkout", true),
     supabase
       .from("cleaning_task_completions")
-      .select("item_id")
+      .select("item_id, photo_req_id")
       .eq("user_id", user.id)
       .eq("date", today),
   ]);
 
-  const doneItems = new Set((completions ?? []).map((c) => c.item_id));
+  // Done units keyed by item + slot (null slot → "").
+  const doneUnits = new Set(
+    (completions ?? []).map((c) => `${c.item_id}|${c.photo_req_id ?? ""}`)
+  );
   const blocking: BlockingChecklist[] = [];
 
   for (const a of assignments ?? []) {
@@ -726,14 +908,21 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
     const checklist = a.checklist as {
       name: string;
       is_active: boolean;
-      items: { id: string; title: string; sort_order: number }[];
+      items: (CleaningItem & { title: string })[];
     };
     if (!checklist?.is_active) continue;
     const items = (checklist.items ?? [])
       .slice()
       .sort((x, y) => x.sort_order - y.sort_order);
     if (items.length === 0) continue;
-    const remaining = items.filter((it) => !doneItems.has(it.id)).map((it) => it.title);
+    // An item is incomplete if any of its required units is missing.
+    const remaining = items
+      .filter((it) =>
+        requiredUnits(it).some(
+          (u) => !doneUnits.has(`${it.id}|${u.photo_req_id ?? ""}`)
+        )
+      )
+      .map((it) => it.title);
     if (remaining.length > 0) {
       blocking.push({ checklist_name: checklist.name, remaining });
     }
@@ -764,18 +953,21 @@ export async function getCleaningMonitor(input?: {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, user_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order)), profile:profiles!inner(full_name, business_unit, is_active)"
+        "id, user_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
       )
       .eq("is_active", true),
     supabase
       .from("cleaning_task_completions")
-      .select("item_id, user_id, photo_path, completed_at, id")
+      .select("item_id, user_id, photo_req_id, photo_path, id")
       .eq("date", date),
   ]);
 
-  // Index completions by `${user_id}|${item_id}`.
+  // Index completions by `${user_id}|${item_id}|${photo_req_id ?? ""}`.
   const compMap = new Map(
-    (completions ?? []).map((c) => [`${c.user_id}|${c.item_id}`, c])
+    (completions ?? []).map((c) => [
+      `${c.user_id}|${c.item_id}|${c.photo_req_id ?? ""}`,
+      c,
+    ])
   );
 
   const rows: MonitorRow[] = [];
@@ -784,7 +976,7 @@ export async function getCleaningMonitor(input?: {
     const checklist = a.checklist as {
       name: string;
       is_active: boolean;
-      items: { id: string; title: string; requires_photo: boolean; sort_order: number }[];
+      items: (CleaningItem & { title: string })[];
     };
     const profile = a.profile as {
       full_name?: string;
@@ -801,18 +993,27 @@ export async function getCleaningMonitor(input?: {
     let completedCount = 0;
     let photoMissing = 0;
     const monitorItems: MonitorItem[] = items.map((it) => {
-      const comp = compMap.get(`${a.user_id}|${it.id}`);
-      const completed = !!comp;
-      if (completed) completedCount++;
-      if (it.requires_photo && (!comp || !comp.photo_path)) photoMissing++;
+      const units: MonitorUnit[] = requiredUnits(it).map((u) => {
+        const comp = compMap.get(`${a.user_id}|${it.id}|${u.photo_req_id ?? ""}`);
+        const completed = !!comp;
+        if (u.requires_photo && (!comp || !comp.photo_path)) photoMissing++;
+        return {
+          photo_req_id: u.photo_req_id,
+          label: u.label,
+          requires_photo: u.requires_photo,
+          completed,
+          photo_path: comp?.photo_path ?? null,
+          completion_id: comp?.id ?? null,
+        };
+      });
+      const itemDone = units.every((u) => u.completed);
+      if (itemDone) completedCount++;
       return {
         id: it.id,
         title: it.title,
-        requires_photo: it.requires_photo,
-        completed,
-        photo_path: comp?.photo_path ?? null,
-        completion_id: comp?.id ?? null,
-        completed_at: comp?.completed_at ?? null,
+        completed: itemDone,
+        photo_missing: units.filter((u) => u.requires_photo && !u.photo_path).length,
+        units,
       };
     });
 

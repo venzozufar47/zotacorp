@@ -146,41 +146,61 @@ export function CleaningMonitor({
               {isOpen && (
                 <ul className="border-t border-border divide-y divide-border">
                   {r.items.map((it) => (
-                    <li key={it.id} className="px-4 py-2.5 flex items-center gap-3">
-                      <span className="shrink-0">
-                        {it.completed ? (
-                          <CheckCircle2 size={16} className="text-accent-foreground" />
-                        ) : (
-                          <Circle size={16} className="text-muted-foreground" />
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1 text-sm">{it.title}</span>
-                      <span
-                        className="shrink-0 text-muted-foreground"
-                        title={it.requires_photo ? "Wajib foto" : "Tanpa foto"}
-                      >
-                        {it.requires_photo ? (
-                          <Camera size={14} />
-                        ) : (
-                          <CameraOff size={14} />
-                        )}
-                      </span>
-                      {it.completed && it.photo_path && it.completion_id ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPhoto({ id: it.completion_id!, title: `${r.user_name} — ${it.title}` })
-                          }
-                          className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                        >
-                          <Eye size={13} />
-                          Foto
-                        </button>
-                      ) : it.requires_photo && it.completed ? (
-                        <span className="shrink-0 text-[11px] text-destructive font-medium">
-                          foto hilang
+                    <li key={it.id} className="px-4 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <span className="shrink-0">
+                          {it.completed ? (
+                            <CheckCircle2 size={16} className="text-accent-foreground" />
+                          ) : (
+                            <Circle size={16} className="text-muted-foreground" />
+                          )}
                         </span>
-                      ) : null}
+                        <span className="min-w-0 flex-1 text-sm">{it.title}</span>
+                        {it.units.length > 1 && (
+                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                            {it.units.filter((u) => u.completed).length}/{it.units.length} foto
+                          </span>
+                        )}
+                      </div>
+                      {/* Per-photo units */}
+                      <ul className="mt-1 pl-7 space-y-1">
+                        {it.units.map((u, i) => (
+                          <li
+                            key={u.photo_req_id ?? `u${i}`}
+                            className="flex items-center gap-2"
+                          >
+                            <span className="shrink-0 text-muted-foreground">
+                              {u.requires_photo ? <Camera size={13} /> : <CameraOff size={13} />}
+                            </span>
+                            <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+                              {u.label || (u.requires_photo ? `Foto ${i + 1}` : "Centang")}
+                            </span>
+                            {u.completed && u.photo_path && u.completion_id ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPhoto({
+                                    id: u.completion_id!,
+                                    title: `${r.user_name} — ${it.title}${u.label ? ` (${u.label})` : ""}`,
+                                  })
+                                }
+                                className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                              >
+                                <Eye size={13} />
+                                Lihat
+                              </button>
+                            ) : u.requires_photo ? (
+                              <span className="shrink-0 text-[11px] text-destructive font-medium">
+                                {u.completed ? "foto hilang" : "belum"}
+                              </span>
+                            ) : (
+                              <span className="shrink-0 text-[11px] text-muted-foreground">
+                                {u.completed ? "selesai" : "belum"}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
                     </li>
                   ))}
                 </ul>
