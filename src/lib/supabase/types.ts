@@ -1726,6 +1726,7 @@ export type Database = {
           created_at: string
           id: string
           note: string | null
+          reference_photo_path: string | null
           requires_photo: boolean
           sort_order: number
           title: string
@@ -1735,6 +1736,7 @@ export type Database = {
           created_at?: string
           id?: string
           note?: string | null
+          reference_photo_path?: string | null
           requires_photo?: boolean
           sort_order?: number
           title: string
@@ -1744,6 +1746,7 @@ export type Database = {
           created_at?: string
           id?: string
           note?: string | null
+          reference_photo_path?: string | null
           requires_photo?: boolean
           sort_order?: number
           title?: string

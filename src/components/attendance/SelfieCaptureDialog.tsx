@@ -21,6 +21,9 @@ interface Props {
   title?: string;
   /** Override the dialog subtitle (defaults to the check-in selfie copy). */
   description?: string;
+  /** Optional reference image shown as an overlay so the user can match the
+   *  intended angle/framing (used by the cleaning checklist). */
+  referenceUrl?: string;
 }
 
 type CameraState = "requesting" | "ready" | "denied" | "unavailable";
@@ -44,6 +47,7 @@ export function SelfieCaptureDialog({
   onConfirm,
   title,
   description,
+  referenceUrl,
 }: Props) {
   const { t } = useTranslation();
   const tc = t.checkIn;
@@ -51,6 +55,7 @@ export function SelfieCaptureDialog({
   const streamRef = useRef<MediaStream | null>(null);
   const [state, setState] = useState<CameraState>("requesting");
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null);
+  const [refExpanded, setRefExpanded] = useState(false);
 
   function stopStream() {
     streamRef.current?.getTracks().forEach((tr) => tr.stop());
@@ -95,6 +100,7 @@ export function SelfieCaptureDialog({
     if (!open) {
       stopStream();
       setPreview(null);
+      setRefExpanded(false);
       return;
     }
     startStream();
@@ -211,6 +217,37 @@ export function SelfieCaptureDialog({
                 {state === "unavailable" ? tc.selfieUnavailable : tc.selfieDenied}
               </span>
             </div>
+          )}
+
+          {/* Reference overlay — tap to expand/shrink so the user can match
+              the intended framing while shooting. */}
+          {referenceUrl && (
+            <button
+              type="button"
+              onClick={() => setRefExpanded((v) => !v)}
+              className={
+                refExpanded
+                  ? "absolute inset-0 z-10 bg-black/70 flex items-center justify-center p-2"
+                  : "absolute top-2 right-2 z-10 w-20 rounded-lg overflow-hidden border-2 border-white/90 shadow-lg"
+              }
+              title={refExpanded ? "Tutup contoh" : "Lihat contoh"}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={referenceUrl}
+                alt="Contoh foto"
+                className={
+                  refExpanded
+                    ? "max-h-full max-w-full object-contain"
+                    : "w-full aspect-[3/4] object-cover"
+                }
+              />
+              {!refExpanded && (
+                <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] font-bold text-center py-0.5">
+                  CONTOH
+                </span>
+              )}
+            </button>
           )}
         </div>
 

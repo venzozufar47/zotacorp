@@ -75,6 +75,7 @@ export function CleaningChecklistCard({ initial }: Props) {
   const [isPending, startTransition] = useTransition();
   const [busyItem, setBusyItem] = useState<string | null>(null);
   const [selfieOpen, setSelfieOpen] = useState(false);
+  const [referenceUrl, setReferenceUrl] = useState<string | undefined>(undefined);
   // Which (assignment, item) the in-flight photo capture is for.
   const pendingRef = useRef<{ assignmentId: string; itemId: string } | null>(null);
 
@@ -99,12 +100,25 @@ export function CleaningChecklistCard({ initial }: Props) {
     );
   }
 
-  function startPhoto(assignmentId: string, itemId: string) {
+  function startPhoto(
+    assignmentId: string,
+    itemId: string,
+    referencePath: string | null
+  ) {
     if (!checkedIn) {
       toast.error("Check in dulu untuk mengisi checklist.");
       return;
     }
     pendingRef.current = { assignmentId, itemId };
+    if (referencePath) {
+      const supabase = createSupabaseClient();
+      const { data } = supabase.storage
+        .from("cleaning-refs")
+        .getPublicUrl(referencePath);
+      setReferenceUrl(data.publicUrl);
+    } else {
+      setReferenceUrl(undefined);
+    }
     setSelfieOpen(true);
   }
 
@@ -314,7 +328,9 @@ export function CleaningChecklistCard({ initial }: Props) {
                           <Button
                             size="sm"
                             disabled={busy || !checkedIn}
-                            onClick={() => startPhoto(task.assignment_id, item.id)}
+                            onClick={() =>
+                              startPhoto(task.assignment_id, item.id, item.reference_photo_path)
+                            }
                           >
                             {busy ? (
                               <Loader2 className="size-4 animate-spin" />
@@ -358,6 +374,7 @@ export function CleaningChecklistCard({ initial }: Props) {
         onConfirm={handleSelfieConfirmed}
         title="Foto bukti kebersihan"
         description="Ambil foto langsung sebagai bukti item ini sudah dikerjakan."
+        referenceUrl={referenceUrl}
       />
     </section>
   );

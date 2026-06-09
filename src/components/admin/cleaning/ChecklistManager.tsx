@@ -15,11 +15,39 @@ import {
   Pencil,
   Check,
   X,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+
+const REF_BUCKET = "cleaning-refs";
+
+/** Public URL for a reference photo path (bucket is public — sync, no fetch). */
+function refPublicUrl(path: string): string {
+  return createSupabaseClient().storage.from(REF_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/** Upload an admin reference image; returns the storage path or null on error. */
+async function uploadReferencePhoto(
+  checklistId: string,
+  file: File
+): Promise<string | null> {
+  const supabase = createSupabaseClient();
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `${checklistId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from(REF_BUCKET)
+    .upload(path, file, { upsert: false, contentType: file.type || "image/jpeg" });
+  if (error) {
+    toast.error("Gagal mengunggah foto contoh.");
+    return null;
+  }
+  return path;
+}
 import {
   createChecklist,
   updateChecklist,
@@ -136,6 +164,8 @@ function ChecklistCard({
   const [itemTitle, setItemTitle] = useState("");
   const [itemNote, setItemNote] = useState("");
   const [itemPhoto, setItemPhoto] = useState(true);
+  const [itemRefPath, setItemRefPath] = useState<string | null>(null);
+  const [refUploading, setRefUploading] = useState(false);
 
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerName, setHeaderName] = useState(cl.name);
@@ -173,12 +203,22 @@ function ChecklistCard({
           title: t,
           note: itemNote.trim() || undefined,
           requires_photo: itemPhoto,
+          reference_photo_path: itemRefPath,
         }),
       "Item ditambahkan"
     );
     setItemTitle("");
     setItemNote("");
     setItemPhoto(true);
+    setItemRefPath(null);
+  }
+
+  async function onPickRef(file: File | undefined) {
+    if (!file) return;
+    setRefUploading(true);
+    const path = await uploadReferencePhoto(cl.id, file);
+    setRefUploading(false);
+    if (path) setItemRefPath(path);
   }
 
   function moveItem(index: number, dir: -1 | 1) {
@@ -318,6 +358,39 @@ function ChecklistCard({
               placeholder="Catatan detail: sisi mana yang dibersihkan & difoto (opsional)"
               rows={2}
             />
+            {/* Reference photo (shown to employee inside the camera) */}
+            <div className="flex items-center gap-2">
+              {itemRefPath ? (
+                <span className="relative shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={refPublicUrl(itemRefPath)}
+                    alt="Contoh"
+                    className="size-12 rounded-lg border-2 border-foreground object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setItemRefPath(null)}
+                    className="absolute -top-1.5 -right-1.5 bg-card border border-border rounded-full p-0.5 text-muted-foreground hover:text-destructive"
+                    aria-label="Hapus foto contoh"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ) : (
+                <label className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border border-border bg-card cursor-pointer hover:bg-muted">
+                  {refUploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                  Foto contoh (opsional)
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={refUploading}
+                    onChange={(e) => onPickRef(e.target.files?.[0])}
+                  />
+                </label>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button
                 type="button"
@@ -365,11 +438,20 @@ function ItemRow({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(it.title);
   const [note, setNote] = useState(it.note ?? "");
+  const [refUploading, setRefUploading] = useState(false);
 
   function startEdit() {
     setTitle(it.title);
     setNote(it.note ?? "");
     setEditing(true);
+  }
+
+  async function onPickRef(file: File | undefined) {
+    if (!file) return;
+    setRefUploading(true);
+    const path = await uploadReferencePhoto(it.id, file);
+    setRefUploading(false);
+    if (path) run(() => updateChecklistItem({ id: it.id, reference_photo_path: path }), "Foto contoh disimpan");
   }
 
   function save() {
@@ -435,6 +517,45 @@ function ItemRow({
               placeholder="Catatan detail (opsional)"
               rows={2}
             />
+            {/* Reference photo */}
+            <div className="flex items-center gap-2">
+              {it.reference_photo_path ? (
+                <span className="relative shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={refPublicUrl(it.reference_photo_path)}
+                    alt="Contoh"
+                    className="size-12 rounded-lg border-2 border-foreground object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      run(
+                        () => updateChecklistItem({ id: it.id, reference_photo_path: null }),
+                        "Foto contoh dihapus"
+                      )
+                    }
+                    disabled={pending}
+                    className="absolute -top-1.5 -right-1.5 bg-card border border-border rounded-full p-0.5 text-muted-foreground hover:text-destructive"
+                    aria-label="Hapus foto contoh"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ) : (
+                <label className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border border-border bg-card cursor-pointer hover:bg-muted">
+                  {refUploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                  Foto contoh
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={refUploading || pending}
+                    onChange={(e) => onPickRef(e.target.files?.[0])}
+                  />
+                </label>
+              )}
+            </div>
             <div className="flex gap-2">
               <Button type="button" size="sm" onClick={save} disabled={pending} className="gap-1.5">
                 <Check size={14} />
@@ -461,6 +582,15 @@ function ItemRow({
                 <p className="text-xs text-muted-foreground mt-0.5">{it.note}</p>
               )}
             </div>
+            {it.reference_photo_path && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={refPublicUrl(it.reference_photo_path)}
+                alt="Contoh"
+                title="Foto contoh"
+                className="size-9 rounded-md border border-border object-cover shrink-0"
+              />
+            )}
             <button
               type="button"
               title="Edit item"

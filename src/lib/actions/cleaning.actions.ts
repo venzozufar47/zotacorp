@@ -20,6 +20,7 @@ export interface CleaningItem {
   note: string | null;
   requires_photo: boolean;
   sort_order: number;
+  reference_photo_path: string | null;
 }
 
 export interface CleaningChecklist {
@@ -117,7 +118,7 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
   const { data, error } = await supabase
     .from("cleaning_checklists")
     .select(
-      "id, name, description, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order)"
+      "id, name, description, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path)"
     )
     .order("created_at", { ascending: true });
   if (error || !data) return [];
@@ -135,6 +136,7 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
         note: it.note,
         requires_photo: it.requires_photo,
         sort_order: it.sort_order,
+        reference_photo_path: it.reference_photo_path,
       })),
   }));
 }
@@ -224,6 +226,7 @@ export async function addChecklistItem(input: {
   title: string;
   note?: string;
   requires_photo?: boolean;
+  reference_photo_path?: string | null;
 }): Promise<{ ok: true; id: string } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -245,6 +248,7 @@ export async function addChecklistItem(input: {
       title,
       note: input.note?.trim() || null,
       requires_photo: input.requires_photo ?? true,
+      reference_photo_path: input.reference_photo_path ?? null,
       sort_order: nextOrder,
     })
     .select("id")
@@ -259,6 +263,7 @@ export async function updateChecklistItem(input: {
   title?: string;
   note?: string | null;
   requires_photo?: boolean;
+  reference_photo_path?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -266,6 +271,7 @@ export async function updateChecklistItem(input: {
     title?: string;
     note?: string | null;
     requires_photo?: boolean;
+    reference_photo_path?: string | null;
   } = {};
   if (input.title !== undefined) {
     const title = input.title.trim();
@@ -274,6 +280,8 @@ export async function updateChecklistItem(input: {
   }
   if (input.note !== undefined) patch.note = input.note?.trim() || null;
   if (input.requires_photo !== undefined) patch.requires_photo = input.requires_photo;
+  if (input.reference_photo_path !== undefined)
+    patch.reference_photo_path = input.reference_photo_path;
   if (Object.keys(patch).length === 0) return { ok: true };
   const supabase = await createClient();
   const { error } = await supabase
@@ -436,7 +444,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
       supabase
         .from("cleaning_assignments")
         .select(
-          "id, checklist_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order))"
+          "id, checklist_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path))"
         )
         .eq("user_id", user.id)
         .eq("is_active", true),
@@ -486,6 +494,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
             note: it.note,
             requires_photo: it.requires_photo,
             sort_order: it.sort_order,
+            reference_photo_path: it.reference_photo_path,
             completion: comp
               ? {
                   id: comp.id,
