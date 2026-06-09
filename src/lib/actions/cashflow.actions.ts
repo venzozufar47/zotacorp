@@ -38,9 +38,9 @@ async function requireAdmin(): Promise<
 
 /**
  * Allow both admin and explicit assignees of `bankAccountId`. Used for
- * transaction CRUD on per-rekening ACL'd accounts (currently cash
- * rekening). Delete paths still call `requireAdmin` since assignees
- * have read+input+edit permission only, not delete.
+ * transaction CRUD on per-rekening ACL'd accounts (cash rekening +
+ * dashboard kas cabang). Assignee punya hak penuh input/edit/hapus atas
+ * rekening yang di-assign (sejalan dgn RLS FOR ALL di migration 031).
  */
 async function requireAdminOrAssignee(
   bankAccountId: string
@@ -557,14 +557,32 @@ export async function updateCashflowTransactions(
 }
 
 /**
- * Delete a single transaction row. Used from the rekening detail edit
- * mode when admin wants to nuke a specific parsed row (e.g. duplicate
- * that slipped past dedupe).
+ * Delete a single transaction row. Dipakai dari rekening detail edit
+ * mode (admin) DAN dashboard kas cabang (assignee). Gate admin-or-assignee
+ * atas rekening pemilik tx — RLS (`cashflow_transactions_admin_or_assignee_write`
+ * FOR ALL) juga menegakkan hal yang sama.
  */
 export async function deleteCashflowTransaction(id: string): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
   const supabase = await createClient();
+  // Resolve owning bank_account_id (tx → statement) untuk gate eksplisit;
+  // pesan error bersih ketimbang 0-row delete diam-diam dari RLS.
+  const { data: tx } = await supabase
+    .from("cashflow_transactions")
+    .select("statement_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!tx) return { ok: false, error: "Transaksi tidak ditemukan" };
+  const { data: stmt } = await supabase
+    .from("cashflow_statements")
+    .select("bank_account_id")
+    .eq("id", tx.statement_id)
+    .maybeSingle();
+  if (!stmt) return { ok: false, error: "Statement tidak ditemukan" };
+  const gate = await requireAdminOrAssignee(stmt.bank_account_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
   const { error } = await supabase
     .from("cashflow_transactions")
     .delete()

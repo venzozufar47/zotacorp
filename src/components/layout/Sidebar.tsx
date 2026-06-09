@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -50,6 +50,12 @@ export function Sidebar({
       : []),
     ...(hasFinance
       ? [
+          {
+            href: "/cash",
+            icon: Coins,
+            label: "Kas",
+            color: "bg-pop-emerald",
+          },
           {
             href: "/admin/finance",
             icon: Wallet,

@@ -21,6 +21,7 @@ import {
   Database,
   TrendingUp,
   Sparkles,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -98,6 +99,7 @@ export function AdminSidebar({
       label: "Money & Care",
       items: [
         { href: "/admin/finance", icon: Wallet, label: t.nav.finance },
+        { href: "/cash", icon: Coins, label: "Kas Cabang" },
         {
           href: "/admin/celebrations",
           icon: PartyPopper,
