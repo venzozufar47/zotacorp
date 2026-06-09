@@ -28,6 +28,8 @@ import { id as idLocale } from "date-fns/locale";
 import { getDictionary } from "@/lib/i18n/server";
 import { parseBreakWindows } from "@/lib/utils/break-windows";
 import type { AttendanceBreakLog } from "@/lib/supabase/types";
+import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
+import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -89,6 +91,7 @@ export default async function DashboardPage() {
     celebrationsFeed,
     floorToday,
     breakLogsRes,
+    cleaningTasks,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -115,6 +118,7 @@ export default async function DashboardPage() {
       .eq("user_id", user.id)
       .eq("date", todayDate)
       .order("break_out_at", { ascending: true }),
+    getTodayCleaningTasks(),
   ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -215,6 +219,8 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      <CleaningChecklistCard initial={cleaningTasks} />
 
       <FloorTodayCard people={floorToday} />
     </div>
