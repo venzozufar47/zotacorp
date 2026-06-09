@@ -27,6 +27,7 @@ import {
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
+import { getBlockingCleaning } from "@/lib/actions/cleaning.actions";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -782,6 +783,18 @@ export async function checkOut(payload?: CheckOutPayload) {
 
   if (existing.checked_out_at) {
     return { error: "You have already checked out today." };
+  }
+
+  // SOP Kebersihan gate: if the employee has any block_checkout cleaning
+  // checklist scheduled today that isn't fully done, hard-block checkout
+  // (mirrors the break_enabled guard). getBlockingCleaning resolves the
+  // current session user itself.
+  const cleaningBlocking = await getBlockingCleaning();
+  if (cleaningBlocking.length > 0) {
+    return {
+      error: "Selesaikan checklist kebersihan dulu sebelum check out.",
+      cleaningIncomplete: cleaningBlocking,
+    };
   }
 
   const checkoutLat = payload?.latitude ?? null;
