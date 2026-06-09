@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SelfieCaptureDialog } from "@/components/attendance/SelfieCaptureDialog";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { cleaningRefUrl } from "@/lib/utils/cleaning-refs";
 import {
   completeCleaningItem,
   uncompleteCleaningItem,
@@ -29,11 +30,6 @@ interface Props {
 
 const unitKey = (itemId: string, photoReqId: string | null) =>
   `${itemId}|${photoReqId ?? ""}`;
-
-/** Public URL for a reference photo (cleaning-refs is a public bucket). */
-function refPublicUrl(path: string): string {
-  return createSupabaseClient().storage.from("cleaning-refs").getPublicUrl(path).data.publicUrl;
-}
 
 /** Lazy signed-URL thumbnail for an uploaded evidence photo. */
 function EvidenceThumb({ completionId }: { completionId: string }) {
@@ -116,7 +112,7 @@ export function CleaningChecklistCard({ initial }: Props) {
     }
     if (!windowOpen) return;
     pendingRef.current = { assignmentId, itemId, photoReqId };
-    setReferenceUrl(referencePath ? refPublicUrl(referencePath) : undefined);
+    setReferenceUrl(referencePath ? cleaningRefUrl(referencePath) : undefined);
     setSelfieOpen(true);
   }
 
@@ -403,7 +399,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                               {unit.reference_photo_path && !unit.completion && (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
-                                  src={refPublicUrl(unit.reference_photo_path)}
+                                  src={cleaningRefUrl(unit.reference_photo_path)}
                                   alt="Contoh"
                                   title="Contoh"
                                   className="size-9 rounded-md border border-border object-cover shrink-0"

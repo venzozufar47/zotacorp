@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   Plus,
@@ -22,33 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import { compressImage } from "@/lib/utils/compress-image";
-
-const REF_BUCKET = "cleaning-refs";
-
-/** Public URL for a reference photo path (bucket is public — sync, no fetch). */
-function refPublicUrl(path: string): string {
-  return createSupabaseClient().storage.from(REF_BUCKET).getPublicUrl(path).data.publicUrl;
-}
-
-/** Upload an admin reference image (compressed); returns the storage path or null. */
-async function uploadReferencePhoto(
-  checklistId: string,
-  file: File
-): Promise<string | null> {
-  const { blob, contentType, ext } = await compressImage(file);
-  const supabase = createSupabaseClient();
-  const path = `${checklistId}/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage
-    .from(REF_BUCKET)
-    .upload(path, blob, { upsert: false, contentType });
-  if (error) {
-    toast.error("Gagal mengunggah foto contoh.");
-    return null;
-  }
-  return path;
-}
+import { cleaningRefUrl, uploadCleaningRef } from "@/lib/utils/cleaning-refs";
+import { useRunAction } from "./useRunAction";
 import {
   createChecklist,
   updateChecklist,
@@ -67,23 +41,10 @@ import {
 } from "@/lib/actions/cleaning.actions";
 
 export function ChecklistManager({ initial }: { initial: CleaningChecklist[] }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { run, pending, startTransition, router } = useRunAction();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
-
-  function run(fn: () => Promise<{ ok: true } | { error: string } | { ok: true; id: string }>, ok?: string) {
-    startTransition(async () => {
-      const res = await fn();
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
-      }
-      if (ok) toast.success(ok);
-      router.refresh();
-    });
-  }
 
   function onCreate() {
     const n = name.trim();
@@ -547,7 +508,7 @@ function PhotoSlots({
 
   async function addWithRef(file: File | undefined) {
     setAdding(true);
-    const path = file ? await uploadReferencePhoto(item.id, file) : null;
+    const path = file ? await uploadCleaningRef(item.id, file) : null;
     setAdding(false);
     run(
       () => addItemPhoto({ item_id: item.id, reference_photo_path: path }),
@@ -624,7 +585,7 @@ function SlotRow({
   async function pickRef(file: File | undefined) {
     if (!file) return;
     setUploading(true);
-    const path = await uploadReferencePhoto(itemId, file);
+    const path = await uploadCleaningRef(itemId, file);
     setUploading(false);
     if (path) run(() => updateItemPhoto({ id: slot.id, reference_photo_path: path }), "Contoh disimpan");
   }
@@ -642,7 +603,7 @@ function SlotRow({
         {slot.reference_photo_path ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={refPublicUrl(slot.reference_photo_path)}
+            src={cleaningRefUrl(slot.reference_photo_path)}
             alt="Contoh"
             className="size-11 rounded-lg border-2 border-foreground object-cover"
           />

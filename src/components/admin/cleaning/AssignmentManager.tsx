@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2, Lock, Power, Pencil, Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +21,7 @@ import {
   type CleaningAssignmentRow,
 } from "@/lib/actions/cleaning.actions";
 import type { CleaningEmployee } from "./CleaningAdmin";
+import { useRunAction } from "./useRunAction";
 
 const DAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0]; // Mon..Sat, Sun last
 
@@ -184,8 +184,7 @@ export function AssignmentManager({
   checklists: CleaningChecklist[];
   employees: CleaningEmployee[];
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { run, pending, startTransition, router } = useRunAction();
   const [checklistId, setChecklistId] = useState("");
   const [userId, setUserId] = useState("");
   const [weekdays, setWeekdays] = useState(WORKDAYS_DEFAULT);
@@ -194,18 +193,6 @@ export function AssignmentManager({
   const [winStart, setWinStart] = useState("");
   const [winEnd, setWinEnd] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
-
-  function run(fn: () => Promise<{ ok: true } | { error: string }>, ok?: string) {
-    startTransition(async () => {
-      const res = await fn();
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
-      }
-      if (ok) toast.success(ok);
-      router.refresh();
-    });
-  }
 
   function onAssign() {
     if (!checklistId || !userId) {

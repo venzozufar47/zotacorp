@@ -33,7 +33,6 @@ export interface CleaningItem {
   note: string | null;
   requires_photo: boolean;
   sort_order: number;
-  reference_photo_path: string | null;
   /** Requested photo slots. Empty + requires_photo → one generic photo. */
   photos: ItemPhoto[];
 }
@@ -165,7 +164,6 @@ interface UnitSpec {
  *   - requires_photo true + no slots → one generic photo (null id) */
 function requiredUnits(item: {
   requires_photo: boolean;
-  reference_photo_path: string | null;
   photos: ItemPhoto[];
 }): UnitSpec[] {
   if (!item.requires_photo) {
@@ -178,7 +176,7 @@ function requiredUnits(item: {
         photo_req_id: null,
         label: null,
         requires_photo: true,
-        reference_photo_path: item.reference_photo_path,
+        reference_photo_path: null,
       },
     ];
   }
@@ -199,7 +197,7 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
   const { data, error } = await supabase
     .from("cleaning_checklists")
     .select(
-      "id, name, description, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))"
+      "id, name, description, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))"
     )
     .order("created_at", { ascending: true });
   if (error || !data) return [];
@@ -217,7 +215,6 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
         note: it.note,
         requires_photo: it.requires_photo,
         sort_order: it.sort_order,
-        reference_photo_path: it.reference_photo_path,
         photos: (it.photos ?? [])
           .slice()
           .sort((a, b) => a.sort_order - b.sort_order)
@@ -316,7 +313,6 @@ export async function addChecklistItem(input: {
   title: string;
   note?: string;
   requires_photo?: boolean;
-  reference_photo_path?: string | null;
 }): Promise<{ ok: true; id: string } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -338,7 +334,6 @@ export async function addChecklistItem(input: {
       title,
       note: input.note?.trim() || null,
       requires_photo: input.requires_photo ?? true,
-      reference_photo_path: input.reference_photo_path ?? null,
       sort_order: nextOrder,
     })
     .select("id")
@@ -353,7 +348,6 @@ export async function updateChecklistItem(input: {
   title?: string;
   note?: string | null;
   requires_photo?: boolean;
-  reference_photo_path?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -361,7 +355,6 @@ export async function updateChecklistItem(input: {
     title?: string;
     note?: string | null;
     requires_photo?: boolean;
-    reference_photo_path?: string | null;
   } = {};
   if (input.title !== undefined) {
     const title = input.title.trim();
@@ -370,8 +363,6 @@ export async function updateChecklistItem(input: {
   }
   if (input.note !== undefined) patch.note = input.note?.trim() || null;
   if (input.requires_photo !== undefined) patch.requires_photo = input.requires_photo;
-  if (input.reference_photo_path !== undefined)
-    patch.reference_photo_path = input.reference_photo_path;
   if (Object.keys(patch).length === 0) return { ok: true };
   const supabase = await createClient();
   const { error } = await supabase
@@ -404,14 +395,13 @@ export async function reorderItems(input: {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
   const supabase = await createClient();
-  // Sequential lightweight updates — item lists are short.
-  for (let i = 0; i < input.ordered_ids.length; i++) {
-    const { error } = await supabase
-      .from("cleaning_checklist_items")
-      .update({ sort_order: i })
-      .eq("id", input.ordered_ids[i]);
-    if (error) return { error: error.message };
-  }
+  const results = await Promise.all(
+    input.ordered_ids.map((id, i) =>
+      supabase.from("cleaning_checklist_items").update({ sort_order: i }).eq("id", id)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { error: failed.error.message };
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -640,7 +630,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
       supabase
         .from("cleaning_assignments")
         .select(
-          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
+          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
         )
         .eq("user_id", user.id)
         .eq("is_active", true),
@@ -664,19 +654,21 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
   );
 
   const nowHhmm = localHhmm(now, tz);
+  type AssignmentChecklist = {
+    id: string;
+    name: string;
+    is_active: boolean;
+    items: CleaningItem[];
+  };
   const tasks: TodayTask[] = (assignments ?? [])
-    .filter((a) => isWorkdayFor(a.weekdays, dow))
+    .filter(
+      (a) =>
+        isWorkdayFor(a.weekdays, dow) &&
+        (a.checklist as AssignmentChecklist)?.is_active
+    )
     .map((a) => {
-      const checklist = a.checklist as {
-        id: string;
-        name: string;
-        is_active: boolean;
-        items: CleaningItem[];
-      };
-      return { a, checklist };
-    })
-    .filter((x) => x.checklist?.is_active)
-    .map(({ a, checklist }) => ({
+      const checklist = a.checklist as AssignmentChecklist;
+      return {
       assignment_id: a.id,
       checklist_id: checklist.id,
       checklist_name: checklist.name,
@@ -717,7 +709,8 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
             done: units.every((u) => u.completion),
           };
         }),
-    }));
+      };
+    });
 
   return { date: today, checked_in: checkedIn, tasks };
 }
@@ -739,14 +732,29 @@ export async function completeCleaningItem(input: {
   const today = jakartaDateString(now);
   const supabase = await createClient();
 
+  // Independent reads in parallel: today's attendance log, the item, and the
+  // assignment. Guards run after, in order.
+  const [{ data: log }, { data: item }, { data: assignment }] = await Promise.all([
+    supabase
+      .from("attendance_logs")
+      .select("checked_in_at, checked_out_at")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle(),
+    supabase
+      .from("cleaning_checklist_items")
+      .select("id, requires_photo, checklist_id")
+      .eq("id", input.item_id)
+      .maybeSingle(),
+    supabase
+      .from("cleaning_assignments")
+      .select("id, checklist_id, user_id, window_mode, window_start, window_end")
+      .eq("id", input.assignment_id)
+      .maybeSingle(),
+  ]);
+
   // Must have an open check-in today — evidence is only meaningful during the
   // shift (mirrors the breakOut guard).
-  const { data: log } = await supabase
-    .from("attendance_logs")
-    .select("checked_in_at, checked_out_at")
-    .eq("user_id", user.id)
-    .eq("date", today)
-    .maybeSingle();
   if (!log?.checked_in_at) {
     return { error: "Anda harus check in dulu sebelum mengisi checklist." };
   }
@@ -754,20 +762,9 @@ export async function completeCleaningItem(input: {
     return { error: "Anda sudah check out hari ini." };
   }
 
-  // Verify the item is part of the assignment (and the assignment is the
-  // employee's own) and read requires_photo for the evidence guard.
-  const { data: item } = await supabase
-    .from("cleaning_checklist_items")
-    .select("id, requires_photo, checklist_id")
-    .eq("id", input.item_id)
-    .maybeSingle();
+  // Verify the item is part of the assignment, and the assignment is the
+  // employee's own.
   if (!item) return { error: "Item checklist tidak ditemukan." };
-
-  const { data: assignment } = await supabase
-    .from("cleaning_assignments")
-    .select("id, checklist_id, user_id, window_mode, window_start, window_end")
-    .eq("id", input.assignment_id)
-    .maybeSingle();
   if (!assignment || assignment.user_id !== user.id) {
     return { error: "Assignment tidak valid." };
   }
@@ -885,7 +882,7 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, weekdays, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
+        "id, weekdays, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
       )
       .eq("user_id", user.id)
       .eq("is_active", true)
@@ -953,7 +950,7 @@ export async function getCleaningMonitor(input?: {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, user_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, reference_photo_path, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
+        "id, user_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
       )
       .eq("is_active", true),
     supabase
