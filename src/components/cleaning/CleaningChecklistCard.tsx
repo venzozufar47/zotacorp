@@ -356,6 +356,8 @@ export function CleaningChecklistCard({ initial }: Props) {
         open={selfieOpen}
         onOpenChange={setSelfieOpen}
         onConfirm={handleSelfieConfirmed}
+        title="Foto bukti kebersihan"
+        description="Ambil foto langsung sebagai bukti item ini sudah dikerjakan."
       />
     </section>
   );

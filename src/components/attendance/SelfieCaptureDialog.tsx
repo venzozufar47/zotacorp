@@ -17,6 +17,10 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** Called when the user confirms their photo. Parent uploads + submits. */
   onConfirm: (blob: Blob) => void;
+  /** Override the dialog heading (defaults to the check-in selfie copy). */
+  title?: string;
+  /** Override the dialog subtitle (defaults to the check-in selfie copy). */
+  description?: string;
 }
 
 type CameraState = "requesting" | "ready" | "denied" | "unavailable";
@@ -34,7 +38,13 @@ type CameraState = "requesting" | "ready" | "denied" | "unavailable";
  * stream never reached the element — black screen. We now always render
  * the video and overlay loading / error states on top.
  */
-export function SelfieCaptureDialog({ open, onOpenChange, onConfirm }: Props) {
+export function SelfieCaptureDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  title,
+  description,
+}: Props) {
   const { t } = useTranslation();
   const tc = t.checkIn;
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -155,8 +165,8 @@ export function SelfieCaptureDialog({ open, onOpenChange, onConfirm }: Props) {
     >
       <DialogContent className="sm:max-w-[380px] max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{tc.selfieTitle}</DialogTitle>
-          <DialogDescription>{tc.selfieSubtitle}</DialogDescription>
+          <DialogTitle>{title ?? tc.selfieTitle}</DialogTitle>
+          <DialogDescription>{description ?? tc.selfieSubtitle}</DialogDescription>
         </DialogHeader>
 
         {/* Cap the preview by viewport height so the dialog always fits
