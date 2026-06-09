@@ -10,7 +10,11 @@ import {
   CameraOff,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Power,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +27,9 @@ import {
   addChecklistItem,
   updateChecklistItem,
   deleteChecklistItem,
+  reorderItems,
   type CleaningChecklist,
+  type CleaningItem,
 } from "@/lib/actions/cleaning.actions";
 
 export function ChecklistManager({ initial }: { initial: CleaningChecklist[] }) {
@@ -151,6 +157,14 @@ function ChecklistCard({
     setItemPhoto(true);
   }
 
+  function moveItem(index: number, dir: -1 | 1) {
+    const ids = cl.items.map((i) => i.id);
+    const j = index + dir;
+    if (j < 0 || j >= ids.length) return;
+    [ids[index], ids[j]] = [ids[j], ids[index]];
+    run(() => reorderItems({ ordered_ids: ids }));
+  }
+
   return (
     <section
       className={cn(
@@ -207,40 +221,16 @@ function ChecklistCard({
             <p className="px-4 pt-2 text-xs text-muted-foreground">{cl.description}</p>
           )}
           <ul className="divide-y divide-border">
-            {cl.items.map((it) => (
-              <li key={it.id} className="px-4 py-2.5 flex items-start gap-3">
-                <button
-                  type="button"
-                  title={it.requires_photo ? "Wajib foto — klik untuk ubah" : "Tanpa foto — klik untuk ubah"}
-                  onClick={() =>
-                    run(() =>
-                      updateChecklistItem({ id: it.id, requires_photo: !it.requires_photo })
-                    )
-                  }
-                  disabled={pending}
-                  className={cn(
-                    "mt-0.5 shrink-0",
-                    it.requires_photo ? "text-accent-foreground" : "text-muted-foreground"
-                  )}
-                >
-                  {it.requires_photo ? <Camera size={16} /> : <CameraOff size={16} />}
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{it.title}</p>
-                  {it.note && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{it.note}</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => run(() => deleteChecklistItem({ id: it.id }), "Item dihapus")}
-                  disabled={pending}
-                  className="text-muted-foreground hover:text-destructive disabled:opacity-50 shrink-0"
-                  aria-label="Hapus item"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
+            {cl.items.map((it, idx) => (
+              <ItemRow
+                key={it.id}
+                item={it}
+                index={idx}
+                total={cl.items.length}
+                pending={pending}
+                run={run}
+                onMove={(dir) => moveItem(idx, dir)}
+              />
             ))}
             {cl.items.length === 0 && (
               <li className="px-4 py-3 text-xs text-muted-foreground italic">
@@ -285,5 +275,147 @@ function ChecklistCard({
         </div>
       )}
     </section>
+  );
+}
+
+function ItemRow({
+  item: it,
+  index,
+  total,
+  pending,
+  run,
+  onMove,
+}: {
+  item: CleaningItem;
+  index: number;
+  total: number;
+  pending: boolean;
+  run: (
+    fn: () => Promise<{ ok: true } | { error: string } | { ok: true; id: string }>,
+    ok?: string
+  ) => void;
+  onMove: (dir: -1 | 1) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(it.title);
+  const [note, setNote] = useState(it.note ?? "");
+
+  function startEdit() {
+    setTitle(it.title);
+    setNote(it.note ?? "");
+    setEditing(true);
+  }
+
+  function save() {
+    const t = title.trim();
+    if (!t) {
+      toast.error("Judul item wajib diisi");
+      return;
+    }
+    run(
+      () => updateChecklistItem({ id: it.id, title: t, note: note.trim() || null }),
+      "Item diperbarui"
+    );
+    setEditing(false);
+  }
+
+  return (
+    <li className="px-4 py-2.5">
+      <div className="flex items-start gap-2">
+        {/* Reorder */}
+        <div className="flex flex-col -my-0.5 shrink-0">
+          <button
+            type="button"
+            title="Naik"
+            onClick={() => onMove(-1)}
+            disabled={pending || index === 0}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            type="button"
+            title="Turun"
+            onClick={() => onMove(1)}
+            disabled={pending || index === total - 1}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+          >
+            <ChevronDown size={14} />
+          </button>
+        </div>
+
+        {/* Camera-required toggle */}
+        <button
+          type="button"
+          title={it.requires_photo ? "Wajib foto — klik untuk ubah" : "Tanpa foto — klik untuk ubah"}
+          onClick={() =>
+            run(() => updateChecklistItem({ id: it.id, requires_photo: !it.requires_photo }))
+          }
+          disabled={pending || editing}
+          className={cn(
+            "mt-0.5 shrink-0 disabled:opacity-50",
+            it.requires_photo ? "text-accent-foreground" : "text-muted-foreground"
+          )}
+        >
+          {it.requires_photo ? <Camera size={16} /> : <CameraOff size={16} />}
+        </button>
+
+        {editing ? (
+          <div className="min-w-0 flex-1 space-y-2">
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Judul item" />
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Catatan detail (opsional)"
+              rows={2}
+            />
+            <div className="flex gap-2">
+              <Button type="button" size="sm" onClick={save} disabled={pending} className="gap-1.5">
+                <Check size={14} />
+                Simpan
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(false)}
+                disabled={pending}
+                className="gap-1.5"
+              >
+                <X size={14} />
+                Batal
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{it.title}</p>
+              {it.note && (
+                <p className="text-xs text-muted-foreground mt-0.5">{it.note}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              title="Edit item"
+              onClick={startEdit}
+              disabled={pending}
+              className="text-muted-foreground hover:text-foreground disabled:opacity-50 shrink-0"
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => run(() => deleteChecklistItem({ id: it.id }), "Item dihapus")}
+              disabled={pending}
+              className="text-muted-foreground hover:text-destructive disabled:opacity-50 shrink-0"
+              aria-label="Hapus item"
+            >
+              <Trash2 size={14} />
+            </button>
+          </>
+        )}
+      </div>
+    </li>
   );
 }
