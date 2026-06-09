@@ -1672,6 +1672,183 @@ export type Database = {
           },
         ]
       }
+      cleaning_assignments: {
+        Row: {
+          block_checkout: boolean
+          checklist_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          updated_at: string
+          user_id: string
+          weekdays: number
+        }
+        Insert: {
+          block_checkout?: boolean
+          checklist_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id: string
+          weekdays?: number
+        }
+        Update: {
+          block_checkout?: boolean
+          checklist_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id?: string
+          weekdays?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_assignments_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_checklists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cleaning_checklist_items: {
+        Row: {
+          checklist_id: string
+          created_at: string
+          id: string
+          note: string | null
+          requires_photo: boolean
+          sort_order: number
+          title: string
+        }
+        Insert: {
+          checklist_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          requires_photo?: boolean
+          sort_order?: number
+          title: string
+        }
+        Update: {
+          checklist_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          requires_photo?: boolean
+          sort_order?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_checklist_items_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_checklists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cleaning_checklists: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cleaning_task_completions: {
+        Row: {
+          assignment_id: string
+          completed_at: string
+          created_at: string
+          date: string
+          id: string
+          item_id: string
+          latitude: number | null
+          longitude: number | null
+          note: string | null
+          photo_path: string | null
+          user_id: string
+        }
+        Insert: {
+          assignment_id: string
+          completed_at?: string
+          created_at?: string
+          date: string
+          id?: string
+          item_id: string
+          latitude?: number | null
+          longitude?: number | null
+          note?: string | null
+          photo_path?: string | null
+          user_id: string
+        }
+        Update: {
+          assignment_id?: string
+          completed_at?: string
+          created_at?: string
+          date?: string
+          id?: string
+          item_id?: string
+          latitude?: number | null
+          longitude?: number | null
+          note?: string | null
+          photo_path?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_task_completions_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_task_completions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_task_completions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_branch_map: {
         Row: {
           branch: string
