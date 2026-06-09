@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { compressImage } from "@/lib/utils/compress-image";
 
 const REF_BUCKET = "cleaning-refs";
 
@@ -31,17 +32,17 @@ function refPublicUrl(path: string): string {
   return createSupabaseClient().storage.from(REF_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
-/** Upload an admin reference image; returns the storage path or null on error. */
+/** Upload an admin reference image (compressed); returns the storage path or null. */
 async function uploadReferencePhoto(
   checklistId: string,
   file: File
 ): Promise<string | null> {
+  const { blob, contentType, ext } = await compressImage(file);
   const supabase = createSupabaseClient();
-  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
   const path = `${checklistId}/${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage
     .from(REF_BUCKET)
-    .upload(path, file, { upsert: false, contentType: file.type || "image/jpeg" });
+    .upload(path, blob, { upsert: false, contentType });
   if (error) {
     toast.error("Gagal mengunggah foto contoh.");
     return null;
