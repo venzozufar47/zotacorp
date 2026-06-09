@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Circle,
   Lock,
+  Clock,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -270,6 +271,18 @@ export function CleaningChecklistCard({ initial }: Props) {
                 )}
               </div>
 
+              {task.window_label && (
+                <p
+                  className={`flex items-center gap-1.5 text-xs ${
+                    task.window_open ? "text-muted-foreground" : "text-destructive font-medium"
+                  }`}
+                >
+                  <Clock className="size-3.5" />
+                  {task.window_label}
+                  {!task.window_open && " — di luar jam, belum bisa diisi"}
+                </p>
+              )}
+
               <ul className="space-y-2">
                 {task.items.map((item) => {
                   const completed = !!item.completion;
@@ -327,7 +340,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                         ) : item.requires_photo ? (
                           <Button
                             size="sm"
-                            disabled={busy || !checkedIn}
+                            disabled={busy || !checkedIn || !task.window_open}
                             onClick={() =>
                               startPhoto(task.assignment_id, item.id, item.reference_photo_path)
                             }
@@ -345,7 +358,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={busy || !checkedIn}
+                            disabled={busy || !checkedIn || !task.window_open}
                             onClick={() => markDoneNoPhoto(task.assignment_id, item.id)}
                           >
                             {busy ? (

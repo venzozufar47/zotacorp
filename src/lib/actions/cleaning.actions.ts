@@ -9,6 +9,47 @@ import {
 } from "@/lib/supabase/cached";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { isWorkdayFor, jakartaDayOfWeek } from "@/lib/utils/workdays";
+import { localHhmm } from "@/lib/utils/break-windows";
+
+// --- Time-of-day window helpers (when an assignment may be performed) -------
+
+export type CleaningWindowMode = "anytime" | "before" | "after" | "between";
+
+function hhmmToMin(s: string | null): number | null {
+  if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
+  const [h, m] = s.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Is `nowHhmm` within the configured window? Open/anytime → true. */
+export function cleaningWindowOpen(
+  mode: string,
+  start: string | null,
+  end: string | null,
+  nowHhmm: string
+): boolean {
+  const n = hhmmToMin(nowHhmm);
+  if (n == null) return true;
+  const s = hhmmToMin(start);
+  const e = hhmmToMin(end);
+  if (mode === "before") return e == null || n <= e;
+  if (mode === "after") return s == null || n >= s;
+  if (mode === "between") return s == null || e == null || (n >= s && n <= e);
+  return true; // anytime / unknown
+}
+
+/** Human label for the window (null = no restriction). */
+export function cleaningWindowLabel(
+  mode: string,
+  start: string | null,
+  end: string | null
+): string | null {
+  if (mode === "before" && end) return `Bisa dikerjakan sebelum ${end}`;
+  if (mode === "after" && start) return `Bisa dikerjakan setelah ${start}`;
+  if (mode === "between" && start && end)
+    return `Bisa dikerjakan ${start}–${end}`;
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +82,9 @@ export interface CleaningAssignmentRow {
   weekdays: number;
   block_checkout: boolean;
   is_active: boolean;
+  window_mode: string;
+  window_start: string | null;
+  window_end: string | null;
 }
 
 export interface TodayTaskItem extends CleaningItem {
@@ -57,6 +101,10 @@ export interface TodayTask {
   checklist_id: string;
   checklist_name: string;
   block_checkout: boolean;
+  /** Whether the time-of-day window is currently open (true if no window). */
+  window_open: boolean;
+  /** Human label of the window, or null if unrestricted. */
+  window_label: string | null;
   items: TodayTaskItem[];
 }
 
@@ -335,7 +383,7 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
   const { data, error } = await supabase
     .from("cleaning_assignments")
     .select(
-      "id, checklist_id, user_id, weekdays, block_checkout, is_active, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
+      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
     )
     .order("created_at", { ascending: true });
   if (error || !data) return [];
@@ -352,8 +400,26 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
       weekdays: a.weekdays,
       block_checkout: a.block_checkout,
       is_active: a.is_active,
+      window_mode: a.window_mode,
+      window_start: a.window_start,
+      window_end: a.window_end,
     };
   });
+}
+
+/** Normalize window fields: keep only the times the mode uses. */
+function normalizeWindow(
+  mode: string | undefined,
+  start: string | null | undefined,
+  end: string | null | undefined
+): { window_mode: string; window_start: string | null; window_end: string | null } {
+  const m = mode === "before" || mode === "after" || mode === "between" ? mode : "anytime";
+  const s = start?.trim() || null;
+  const e = end?.trim() || null;
+  if (m === "before") return { window_mode: m, window_start: null, window_end: e };
+  if (m === "after") return { window_mode: m, window_start: s, window_end: null };
+  if (m === "between") return { window_mode: m, window_start: s, window_end: e };
+  return { window_mode: "anytime", window_start: null, window_end: null };
 }
 
 export async function assignChecklist(input: {
@@ -361,18 +427,23 @@ export async function assignChecklist(input: {
   user_id: string;
   weekdays: number;
   block_checkout: boolean;
+  window_mode?: string;
+  window_start?: string | null;
+  window_end?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
   if (!input.checklist_id || !input.user_id) {
     return { error: "Checklist dan karyawan wajib dipilih." };
   }
+  const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
   const supabase = await createClient();
   const { error } = await supabase.from("cleaning_assignments").insert({
     checklist_id: input.checklist_id,
     user_id: input.user_id,
     weekdays: input.weekdays,
     block_checkout: input.block_checkout,
+    ...win,
   });
   if (error) {
     if (error.code === "23505")
@@ -388,6 +459,9 @@ export async function updateAssignment(input: {
   weekdays?: number;
   block_checkout?: boolean;
   is_active?: boolean;
+  window_mode?: string;
+  window_start?: string | null;
+  window_end?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -395,11 +469,20 @@ export async function updateAssignment(input: {
     weekdays?: number;
     block_checkout?: boolean;
     is_active?: boolean;
+    window_mode?: string;
+    window_start?: string | null;
+    window_end?: string | null;
     updated_at?: string;
   } = { updated_at: new Date().toISOString() };
   if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
   if (input.block_checkout !== undefined) patch.block_checkout = input.block_checkout;
   if (input.is_active !== undefined) patch.is_active = input.is_active;
+  if (input.window_mode !== undefined) {
+    const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
+    patch.window_mode = win.window_mode;
+    patch.window_start = win.window_start;
+    patch.window_end = win.window_end;
+  }
   const supabase = await createClient();
   const { error } = await supabase
     .from("cleaning_assignments")
@@ -444,7 +527,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
       supabase
         .from("cleaning_assignments")
         .select(
-          "id, checklist_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path))"
+          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, reference_photo_path))"
         )
         .eq("user_id", user.id)
         .eq("is_active", true),
@@ -466,6 +549,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
     (completions ?? []).map((c) => [c.item_id, c])
   );
 
+  const nowHhmm = localHhmm(now, tz);
   const tasks: TodayTask[] = (assignments ?? [])
     .filter((a) => isWorkdayFor(a.weekdays, dow))
     .map((a) => {
@@ -483,6 +567,13 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
       checklist_id: checklist.id,
       checklist_name: checklist.name,
       block_checkout: a.block_checkout,
+      window_open: cleaningWindowOpen(
+        a.window_mode,
+        a.window_start,
+        a.window_end,
+        nowHhmm
+      ),
+      window_label: cleaningWindowLabel(a.window_mode, a.window_start, a.window_end),
       items: (checklist.items ?? [])
         .slice()
         .sort((x, y) => x.sort_order - y.sort_order)
@@ -520,7 +611,9 @@ export async function completeCleaningItem(input: {
 }): Promise<{ ok: true } | { error: string }> {
   const user = await getCurrentUser();
   if (!user) return { error: "Tidak terautentikasi." };
-  const today = jakartaDateString(new Date());
+  const tz = await getTimezone();
+  const now = new Date();
+  const today = jakartaDateString(now);
   const supabase = await createClient();
 
   // Must have an open check-in today — evidence is only meaningful during the
@@ -549,7 +642,7 @@ export async function completeCleaningItem(input: {
 
   const { data: assignment } = await supabase
     .from("cleaning_assignments")
-    .select("id, checklist_id, user_id")
+    .select("id, checklist_id, user_id, window_mode, window_start, window_end")
     .eq("id", input.assignment_id)
     .maybeSingle();
   if (!assignment || assignment.user_id !== user.id) {
@@ -557,6 +650,27 @@ export async function completeCleaningItem(input: {
   }
   if (assignment.checklist_id !== item.checklist_id) {
     return { error: "Item tidak termasuk dalam checklist ini." };
+  }
+
+  // Time-of-day window: reject submissions outside the configured window.
+  if (
+    !cleaningWindowOpen(
+      assignment.window_mode,
+      assignment.window_start,
+      assignment.window_end,
+      localHhmm(now, tz)
+    )
+  ) {
+    const label = cleaningWindowLabel(
+      assignment.window_mode,
+      assignment.window_start,
+      assignment.window_end
+    );
+    return {
+      error: label
+        ? `Di luar jam pengerjaan. ${label}.`
+        : "Di luar jam pengerjaan checklist ini.",
+    };
   }
 
   if (item.requires_photo && !input.photo_path) {

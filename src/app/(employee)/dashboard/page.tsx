@@ -180,6 +180,8 @@ export default async function DashboardPage() {
 
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 
+      <CleaningChecklistCard initial={cleaningTasks} />
+
       {/* Attendance — magazine-style section with an eyebrow label and a soft
           white panel that floats above the page background. The section
           label sits *outside* the card so the card's content gets the full
@@ -219,8 +221,6 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
-
-      <CleaningChecklistCard initial={cleaningTasks} />
 
       <FloorTodayCard people={floorToday} />
     </div>

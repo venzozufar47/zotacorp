@@ -1682,6 +1682,9 @@ export type Database = {
           updated_at: string
           user_id: string
           weekdays: number
+          window_mode: string
+          window_start: string | null
+          window_end: string | null
         }
         Insert: {
           block_checkout?: boolean
@@ -1692,6 +1695,9 @@ export type Database = {
           updated_at?: string
           user_id: string
           weekdays?: number
+          window_mode?: string
+          window_start?: string | null
+          window_end?: string | null
         }
         Update: {
           block_checkout?: boolean
@@ -1702,6 +1708,9 @@ export type Database = {
           updated_at?: string
           user_id?: string
           weekdays?: number
+          window_mode?: string
+          window_start?: string | null
+          window_end?: string | null
         }
         Relationships: [
           {

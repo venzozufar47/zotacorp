@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Lock, Power, Pencil } from "lucide-react";
+import { Plus, Trash2, Lock, Power, Pencil, Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   WEEKDAY_LABELS_ID,
@@ -64,6 +65,116 @@ function weekdaySummary(weekdays: number): string {
     .join(", ");
 }
 
+const WINDOW_MODES: { value: string; label: string }[] = [
+  { value: "anytime", label: "Kapan saja" },
+  { value: "before", label: "Sebelum jam" },
+  { value: "after", label: "Setelah jam" },
+  { value: "between", label: "Antara jam" },
+];
+
+function windowSummary(mode: string, start: string | null, end: string | null): string {
+  if (mode === "before" && end) return `Sebelum ${end}`;
+  if (mode === "after" && start) return `Setelah ${start}`;
+  if (mode === "between" && start && end) return `${start}–${end}`;
+  return "Kapan saja";
+}
+
+/** Mode selector + conditional time inputs for the assignment time window. */
+function WindowFields({
+  mode,
+  start,
+  end,
+  onChange,
+  disabled,
+}: {
+  mode: string;
+  start: string;
+  end: string;
+  onChange: (mode: string, start: string, end: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Clock size={14} className="text-muted-foreground shrink-0" />
+      <select
+        value={mode}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value, start, end)}
+        className="h-9 rounded-lg border border-border bg-card px-2 text-sm"
+      >
+        {WINDOW_MODES.map((m) => (
+          <option key={m.value} value={m.value}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+      {(mode === "after" || mode === "between") && (
+        <Input
+          type="time"
+          value={start}
+          disabled={disabled}
+          onChange={(e) => onChange(mode, e.target.value, end)}
+          className="w-32"
+        />
+      )}
+      {mode === "between" && <span className="text-muted-foreground text-sm">–</span>}
+      {(mode === "before" || mode === "between") && (
+        <Input
+          type="time"
+          value={end}
+          disabled={disabled}
+          onChange={(e) => onChange(mode, start, e.target.value)}
+          className="w-32"
+        />
+      )}
+    </div>
+  );
+}
+
+/** Per-assignment window editor with local state + explicit save. */
+function WindowEditor({
+  assignment: a,
+  disabled,
+  onSave,
+}: {
+  assignment: CleaningAssignmentRow;
+  disabled?: boolean;
+  onSave: (mode: string, start: string, end: string) => void;
+}) {
+  const [mode, setMode] = useState(a.window_mode);
+  const [start, setStart] = useState(a.window_start ?? "");
+  const [end, setEnd] = useState(a.window_end ?? "");
+  return (
+    <div className="space-y-2">
+      <span className="text-xs font-medium text-muted-foreground">Jam pengerjaan</span>
+      <div className="flex items-center gap-2 flex-wrap">
+        <WindowFields
+          mode={mode}
+          start={start}
+          end={end}
+          disabled={disabled}
+          onChange={(m, s, e) => {
+            setMode(m);
+            setStart(s);
+            setEnd(e);
+          }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={disabled}
+          onClick={() => onSave(mode, start, end)}
+          className="gap-1.5"
+        >
+          <Check size={14} />
+          Simpan jam
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AssignmentManager({
   initial,
   checklists,
@@ -79,6 +190,9 @@ export function AssignmentManager({
   const [userId, setUserId] = useState("");
   const [weekdays, setWeekdays] = useState(WORKDAYS_DEFAULT);
   const [blockCheckout, setBlockCheckout] = useState(false);
+  const [winMode, setWinMode] = useState("anytime");
+  const [winStart, setWinStart] = useState("");
+  const [winEnd, setWinEnd] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
 
   function run(fn: () => Promise<{ ok: true } | { error: string }>, ok?: string) {
@@ -104,6 +218,9 @@ export function AssignmentManager({
         user_id: userId,
         weekdays,
         block_checkout: blockCheckout,
+        window_mode: winMode,
+        window_start: winStart || null,
+        window_end: winEnd || null,
       });
       if ("error" in res) {
         toast.error(res.error);
@@ -114,6 +231,9 @@ export function AssignmentManager({
       setUserId("");
       setWeekdays(WORKDAYS_DEFAULT);
       setBlockCheckout(false);
+      setWinMode("anytime");
+      setWinStart("");
+      setWinEnd("");
       router.refresh();
     });
   }
@@ -162,6 +282,20 @@ export function AssignmentManager({
           <span className="text-xs font-medium text-muted-foreground">Hari wajib dikerjakan</span>
           <WeekdayPicker value={weekdays} onChange={setWeekdays} disabled={pending} />
         </div>
+        <div className="space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">Jam pengerjaan</span>
+          <WindowFields
+            mode={winMode}
+            start={winStart}
+            end={winEnd}
+            disabled={pending}
+            onChange={(m, s, e) => {
+              setWinMode(m);
+              setWinStart(s);
+              setWinEnd(e);
+            }}
+          />
+        </div>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <button
             type="button"
@@ -208,6 +342,8 @@ export function AssignmentManager({
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {weekdaySummary(a.weekdays) || "Tidak ada hari"}
+                  {" · "}
+                  {windowSummary(a.window_mode, a.window_start, a.window_end)}
                   {a.business_unit ? ` · ${a.business_unit}` : ""}
                 </p>
               </div>
@@ -260,6 +396,22 @@ export function AssignmentManager({
                     disabled={pending}
                   />
                 </div>
+                <WindowEditor
+                  assignment={a}
+                  disabled={pending}
+                  onSave={(mode, start, end) =>
+                    run(
+                      () =>
+                        updateAssignment({
+                          id: a.id,
+                          window_mode: mode,
+                          window_start: start || null,
+                          window_end: end || null,
+                        }),
+                      "Jam pengerjaan disimpan"
+                    )
+                  }
+                />
                 <button
                   type="button"
                   onClick={() =>
