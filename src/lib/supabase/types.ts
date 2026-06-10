@@ -1679,6 +1679,11 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          rotation_anchor: string | null
+          rotation_group_id: string | null
+          rotation_member_count: number
+          rotation_mode: string
+          rotation_order: number
           updated_at: string
           user_id: string
           weekdays: number
@@ -1692,6 +1697,11 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          rotation_anchor?: string | null
+          rotation_group_id?: string | null
+          rotation_member_count?: number
+          rotation_mode?: string
+          rotation_order?: number
           updated_at?: string
           user_id: string
           weekdays?: number
@@ -1705,6 +1715,11 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          rotation_anchor?: string | null
+          rotation_group_id?: string | null
+          rotation_member_count?: number
+          rotation_mode?: string
+          rotation_order?: number
           updated_at?: string
           user_id?: string
           weekdays?: number
