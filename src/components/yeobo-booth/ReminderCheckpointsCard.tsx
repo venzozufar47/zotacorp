@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2, BellRing } from "lucide-react";
@@ -19,8 +19,17 @@ interface Row {
   message_template: string;
 }
 
-const PLACEHOLDER_HINT =
-  "Kosongkan untuk pakai template default. Placeholder: {hari} {namaKlien} {tanggal} {jamMulai} {jamSelesai} {lokasi} {freelance} {sisaTagihan}";
+/** Placeholder yang tersedia di pesan reminder (lihat engine reminders.ts). */
+const PLACEHOLDERS = [
+  "hari",
+  "namaKlien",
+  "tanggal",
+  "jamMulai",
+  "jamSelesai",
+  "lokasi",
+  "freelance",
+  "sisaTagihan",
+] as const;
 
 function toRow(c: YeoboBoothReminderCheckpoint): Row {
   return {
@@ -116,85 +125,13 @@ export function ReminderCheckpointsCard({
       ) : (
         <ul className="space-y-3">
           {rows.map((r, i) => (
-            <li
+            <CheckpointRow
               key={r.id ?? `new-${i}`}
-              className="rounded-xl border border-border bg-muted/20 p-3 space-y-3"
-            >
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex items-center gap-2 cursor-pointer select-none pb-2">
-                  <input
-                    type="checkbox"
-                    checked={r.enabled}
-                    onChange={(e) => update(i, { enabled: e.target.checked })}
-                    className="size-4 accent-primary"
-                  />
-                  <span className="text-xs font-medium">Aktif</span>
-                </label>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Kirim H-</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={r.days_before}
-                    onChange={(e) =>
-                      update(i, { days_before: Number(e.target.value) })
-                    }
-                    className="w-20 tabular-nums"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Jam kirim (WIB)</Label>
-                  <select
-                    value={r.send_hour}
-                    onChange={(e) =>
-                      update(i, { send_hour: Number(e.target.value) })
-                    }
-                    className="h-9 w-28 rounded-md border border-input bg-background px-2 text-sm tabular-nums"
-                  >
-                    {Array.from({ length: 24 }).map((_, h) => (
-                      <option key={h} value={h}>
-                        {String(h).padStart(2, "0")}:00
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5 flex-1 min-w-[140px]">
-                  <Label className="text-xs">Label (opsional)</Label>
-                  <Input
-                    value={r.label}
-                    onChange={(e) => update(i, { label: e.target.value })}
-                    placeholder="mis. Koordinasi awal"
-                  />
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => removeRow(i)}
-                  disabled={pending}
-                  className="hover:text-destructive mb-1"
-                  aria-label="Hapus checkpoint"
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs">Pesan custom (opsional)</Label>
-                <textarea
-                  value={r.message_template}
-                  onChange={(e) =>
-                    update(i, { message_template: e.target.value })
-                  }
-                  rows={3}
-                  placeholder={PLACEHOLDER_HINT}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-y"
-                />
-              </div>
-            </li>
+              row={r}
+              pending={pending}
+              onChange={(patch) => update(i, patch)}
+              onRemove={() => removeRow(i)}
+            />
           ))}
         </ul>
       )}
@@ -214,5 +151,132 @@ export function ReminderCheckpointsCard({
         </Button>
       </div>
     </section>
+  );
+}
+
+function CheckpointRow({
+  row,
+  pending,
+  onChange,
+  onRemove,
+}: {
+  row: Row;
+  pending: boolean;
+  onChange: (patch: Partial<Row>) => void;
+  onRemove: () => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /** Sisipkan {token} di posisi kursor textarea (atau di akhir). */
+  function insertPlaceholder(token: string) {
+    const insert = `{${token}}`;
+    const cur = row.message_template;
+    const ta = textareaRef.current;
+    if (!ta) {
+      onChange({ message_template: cur + insert });
+      return;
+    }
+    const start = ta.selectionStart ?? cur.length;
+    const end = ta.selectionEnd ?? cur.length;
+    const next = cur.slice(0, start) + insert + cur.slice(end);
+    onChange({ message_template: next });
+    const caret = start + insert.length;
+    // Kembalikan fokus + kursor setelah token tersisip (post re-render).
+    requestAnimationFrame(() => {
+      ta.focus();
+      try {
+        ta.setSelectionRange(caret, caret);
+      } catch {
+        /* noop */
+      }
+    });
+  }
+
+  return (
+    <li className="rounded-xl border border-border bg-muted/20 p-3 space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex items-center gap-2 cursor-pointer select-none pb-2">
+          <input
+            type="checkbox"
+            checked={row.enabled}
+            onChange={(e) => onChange({ enabled: e.target.checked })}
+            className="size-4 accent-primary"
+          />
+          <span className="text-xs font-medium">Aktif</span>
+        </label>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Kirim H-</Label>
+          <Input
+            type="number"
+            min={0}
+            value={row.days_before}
+            onChange={(e) => onChange({ days_before: Number(e.target.value) })}
+            className="w-20 tabular-nums"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Jam kirim (WIB)</Label>
+          <select
+            value={row.send_hour}
+            onChange={(e) => onChange({ send_hour: Number(e.target.value) })}
+            className="h-9 w-28 rounded-md border border-input bg-background px-2 text-sm tabular-nums"
+          >
+            {Array.from({ length: 24 }).map((_, h) => (
+              <option key={h} value={h}>
+                {String(h).padStart(2, "0")}:00
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5 flex-1 min-w-[140px]">
+          <Label className="text-xs">Label (opsional)</Label>
+          <Input
+            value={row.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+            placeholder="mis. Koordinasi awal"
+          />
+        </div>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onRemove}
+          disabled={pending}
+          className="hover:text-destructive mb-1"
+          aria-label="Hapus checkpoint"
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">Pesan custom (opsional)</Label>
+        {/* Chip placeholder — klik untuk menyisipkan ke posisi kursor. */}
+        <div className="flex flex-wrap gap-1.5">
+          {PLACEHOLDERS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => insertPlaceholder(p)}
+              title={`Sisipkan {${p}}`}
+              className="press-feedback inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-primary/60 hover:text-foreground transition-colors"
+            >
+              {`{${p}}`}
+            </button>
+          ))}
+        </div>
+        <textarea
+          ref={textareaRef}
+          value={row.message_template}
+          onChange={(e) => onChange({ message_template: e.target.value })}
+          rows={3}
+          placeholder="Kosongkan untuk pakai template default. Klik chip di atas untuk menyisipkan placeholder."
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-y"
+        />
+      </div>
+    </li>
   );
 }
