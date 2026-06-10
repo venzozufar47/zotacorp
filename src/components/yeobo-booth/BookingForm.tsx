@@ -107,6 +107,8 @@ export function BookingForm({
   const srRevenue = num(hargaPerSesi) * num(jumlahSesi);
   const srCosts = num(biayaSewa) + num(bagiHasil) * num(jumlahSesi);
   const srProfit = srRevenue - srCosts;
+  // Jumlah sesi baru diketahui setelah event → pendapatan/profit "—" dulu.
+  const sessionsKnown = num(jumlahSesi) > 0;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -131,21 +133,17 @@ export function BookingForm({
       payload = { ...common, harga_total: harga };
     } else {
       const hps = num(hargaPerSesi);
-      const js = num(jumlahSesi);
       if (hps <= 0) {
         toast.error("Harga per sesi wajib diisi");
         return;
       }
-      if (js < 1) {
-        toast.error("Jumlah sesi minimal 1");
-        return;
-      }
+      // jumlah_sesi opsional — boleh kosong saat create, diisi pasca-event.
       payload = {
         ...common,
         biaya_sewa_space: biayaSewa ? num(biayaSewa) : null,
         harga_per_sesi: hps,
         bagi_hasil_per_sesi: bagiHasil ? num(bagiHasil) : null,
-        jumlah_sesi: js,
+        jumlah_sesi: jumlahSesi ? num(jumlahSesi) : null,
       };
     }
     start(async () => {
@@ -314,7 +312,7 @@ export function BookingForm({
                 />
               </div>
               <div>
-                <label className={LABEL}>Jumlah Sesi *</label>
+                <label className={LABEL}>Jumlah Sesi</label>
                 <input
                   inputMode="numeric"
                   className={FIELD}
@@ -322,8 +320,12 @@ export function BookingForm({
                   onChange={(e) =>
                     setJumlahSesi(e.target.value.replace(/[^\d]/g, ""))
                   }
-                  placeholder="Mis. 100"
+                  placeholder="Diisi setelah sesi selesai"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Baru diketahui setelah event — boleh dikosongkan dulu, isi
+                  belakangan lewat Edit Booking.
+                </p>
               </div>
               <div>
                 <label className={LABEL}>Biaya Sewa Space (IDR)</label>
@@ -356,7 +358,7 @@ export function BookingForm({
                   Pendapatan
                 </div>
                 <div className="font-semibold text-foreground tabular-nums">
-                  {formatIDR(srRevenue)}
+                  {sessionsKnown ? formatIDR(srRevenue) : "—"}
                 </div>
               </div>
               <div>
@@ -364,7 +366,7 @@ export function BookingForm({
                   Biaya
                 </div>
                 <div className="font-semibold text-foreground tabular-nums">
-                  {formatIDR(srCosts)}
+                  {sessionsKnown ? formatIDR(srCosts) : "—"}
                 </div>
               </div>
               <div>
@@ -374,16 +376,21 @@ export function BookingForm({
                 <div
                   className={
                     "font-semibold tabular-nums " +
-                    (srProfit >= 0 ? "text-emerald-600" : "text-destructive")
+                    (!sessionsKnown
+                      ? "text-foreground"
+                      : srProfit >= 0
+                        ? "text-emerald-600"
+                        : "text-destructive")
                   }
                 >
-                  {formatIDR(srProfit)}
+                  {sessionsKnown ? formatIDR(srProfit) : "—"}
                 </div>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Pendapatan = harga/sesi × jumlah sesi. Biaya = biaya sewa + (bagi
-              hasil/sesi × jumlah sesi).
+              {sessionsKnown
+                ? "Pendapatan = harga/sesi × jumlah sesi. Biaya = biaya sewa + (bagi hasil/sesi × jumlah sesi)."
+                : "Pendapatan & profit dihitung otomatis setelah Jumlah Sesi diisi (pasca-event)."}
             </p>
           </>
         )}

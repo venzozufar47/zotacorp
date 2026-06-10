@@ -69,13 +69,9 @@ function refineBooking(
         path: ["harga_per_sesi"],
       });
     }
-    if (v.jumlah_sesi == null || v.jumlah_sesi < 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Jumlah sesi minimal 1",
-        path: ["jumlah_sesi"],
-      });
-    }
+    // jumlah_sesi OPSIONAL saat create — baru diketahui setelah sesi
+    // selesai (diisi belakangan via edit). Kalau diisi, base schema sudah
+    // memvalidasi int positif.
   }
 }
 

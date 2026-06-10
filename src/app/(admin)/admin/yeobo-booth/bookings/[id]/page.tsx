@@ -68,6 +68,14 @@ export default async function BookingDetailPage({ params }: PageProps) {
             <PaymentStatusBadge status={booking.payment_status} />
           )}
         </div>
+        {booking.booking_type === "space_rent" &&
+          booking.jumlah_sesi == null && (
+            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+              Jumlah sesi belum diisi — pendapatan &amp; profit dihitung setelah
+              kamu mengisi <strong>Jumlah Sesi</strong> (lewat Edit Booking di
+              bawah) usai event.
+            </div>
+          )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <Field icon={<CalendarDays size={14} />} label="Tanggal">
             {new Date(booking.tanggal + "T00:00:00").toLocaleDateString(
