@@ -6,7 +6,6 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { Database } from "@/lib/supabase/types";
 import { makeDedupeKey } from "@/lib/cashflow/dedupe";
-import { cashSlugForAccount } from "@/lib/cashflow/cash-branches";
 
 type BankAccountUpdate = Database["public"]["Tables"]["bank_accounts"]["Update"];
 type CashflowStatementUpdate = Database["public"]["Tables"]["cashflow_statements"]["Update"];
@@ -1657,47 +1656,9 @@ export async function setBankAccountCustomCategories(
   return { ok: true };
 }
 
-export async function listMyAssignedBankAccountIds(): Promise<string[]> {
-  const user = await getCurrentUser();
-  if (!user) return [];
-  const supabase = await createClient();
-  // Cashflow landing cuma relevan untuk scope='full' — pos_only user
-  // tidak perlu lihat rekening di /admin/finance.
-  const { data } = await supabase
-    .from("bank_account_assignees")
-    .select("bank_account_id")
-    .eq("user_id", user.id)
-    .eq("scope", "full");
-  return (data ?? []).map((r) => r.bank_account_id);
-}
-
-/**
- * True kalau user di-assign ke minimal satu rekening cash yang PUNYA
- * dashboard kas cabang (registry CASH_DASHBOARDS: 3 cabang Yeobo +
- * Haengbocake Semarang). Dipakai untuk menampilkan tab "Kas" hanya ke
- * kasir cabang ber-dashboard — bukan ke assignee finance lain (mis.
- * cash Pare yang dikelola via POS) yang tetap pakai tab Keuangan biasa.
- */
-export async function hasAssignedCashDashboard(): Promise<boolean> {
-  const user = await getCurrentUser();
-  if (!user) return false;
-  const supabase = await createClient();
-  const { data: assignments } = await supabase
-    .from("bank_account_assignees")
-    .select("bank_account_id")
-    .eq("user_id", user.id)
-    .eq("scope", "full");
-  const ids = (assignments ?? []).map((r) => r.bank_account_id);
-  if (ids.length === 0) return false;
-  const { data } = await supabase
-    .from("bank_accounts")
-    .select("business_unit, default_branch")
-    .in("id", ids)
-    .eq("bank", "cash");
-  return (data ?? []).some(
-    (a) => cashSlugForAccount(a.business_unit, a.default_branch) !== null
-  );
-}
+// listMyAssignedBankAccountIds + hasAssignedCashDashboard pindah ke
+// src/lib/cashflow/access.ts (React cache() — tidak boleh di-export dari
+// file "use server").
 
 /**
  * Richer lookup for the employee dashboard card: returns the assignee's

@@ -4,9 +4,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
   listBankAccounts,
-  listMyAssignedBankAccountIds,
   listStatements,
 } from "@/lib/actions/cashflow.actions";
+import { listMyAssignedBankAccountIds } from "@/lib/cashflow/access";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";

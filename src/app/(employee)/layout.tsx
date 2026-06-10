@@ -1,7 +1,7 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
-import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/actions/cashflow.actions";
+import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/cashflow/access";
 import { countMyAssignments } from "@/lib/actions/cashflow-assignments.actions";
 import { getCurrentProfile } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
