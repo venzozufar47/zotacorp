@@ -6,6 +6,7 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { Database } from "@/lib/supabase/types";
 import { makeDedupeKey } from "@/lib/cashflow/dedupe";
+import { cashSlugForAccount } from "@/lib/cashflow/cash-branches";
 
 type BankAccountUpdate = Database["public"]["Tables"]["bank_accounts"]["Update"];
 type CashflowStatementUpdate = Database["public"]["Tables"]["cashflow_statements"]["Update"];
@@ -1671,12 +1672,13 @@ export async function listMyAssignedBankAccountIds(): Promise<string[]> {
 }
 
 /**
- * True kalau user di-assign ke minimal satu rekening CASH Yeobo Space.
- * Dipakai untuk menampilkan tab "Kas" (dashboard kas cabang Yeobo) HANYA
- * ke kasir cabang Yeobo — bukan ke assignee finance lain (mis. cash
- * Haengbocake) yang tetap pakai tab Keuangan biasa.
+ * True kalau user di-assign ke minimal satu rekening cash yang PUNYA
+ * dashboard kas cabang (registry CASH_DASHBOARDS: 3 cabang Yeobo +
+ * Haengbocake Semarang). Dipakai untuk menampilkan tab "Kas" hanya ke
+ * kasir cabang ber-dashboard — bukan ke assignee finance lain (mis.
+ * cash Pare yang dikelola via POS) yang tetap pakai tab Keuangan biasa.
  */
-export async function hasAssignedYeoboCash(): Promise<boolean> {
+export async function hasAssignedCashDashboard(): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
   const supabase = await createClient();
@@ -1689,12 +1691,12 @@ export async function hasAssignedYeoboCash(): Promise<boolean> {
   if (ids.length === 0) return false;
   const { data } = await supabase
     .from("bank_accounts")
-    .select("id")
+    .select("business_unit, default_branch")
     .in("id", ids)
-    .eq("bank", "cash")
-    .eq("business_unit", "Yeobo Space")
-    .limit(1);
-  return (data ?? []).length > 0;
+    .eq("bank", "cash");
+  return (data ?? []).some(
+    (a) => cashSlugForAccount(a.business_unit, a.default_branch) !== null
+  );
 }
 
 /**

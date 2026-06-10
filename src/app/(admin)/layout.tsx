@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
 import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
-import { listMyAssignedBankAccountIds, hasAssignedYeoboCash } from "@/lib/actions/cashflow.actions";
+import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/actions/cashflow.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
@@ -51,7 +51,7 @@ export default async function AdminLayout({
 
     const [assignedIds, hasCash] = await Promise.all([
       listMyAssignedBankAccountIds(),
-      hasAssignedYeoboCash(),
+      hasAssignedCashDashboard(),
     ]);
     const hasFinance = assignedIds.length > 0;
     return (

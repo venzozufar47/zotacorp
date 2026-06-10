@@ -3,23 +3,29 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAdminOrAssignee } from "@/lib/actions/_gates";
 import { getCashAccountBalance } from "@/lib/actions/investor-finance.actions";
 import { MONTH_FULL_NAMES } from "@/lib/utils/date-formats";
+import {
+  CASH_DASHBOARDS,
+  type CashBranchSlug,
+} from "@/lib/cashflow/cash-branches";
 import { CashDashboardClient, type CashTxRow } from "./CashDashboardClient";
 
 /**
- * Halaman cash per-cabang Yeobo Space (server). Resolve rekening
- * `Cash Yeobo {branch}`, gate ke admin / assignee, lalu render dashboard.
- * Akses ditegakkan dua lapis: RLS (`bank_accounts` + `cashflow_*`) DAN
- * `requireAdminOrAssignee`. Write/edit/hapus di-gate lagi di action-nya.
+ * Halaman cash per-cabang (server). Resolve rekening cash dari registry
+ * CASH_DASHBOARDS (BU + cabang), gate ke admin / assignee, lalu render
+ * dashboard. Akses ditegakkan dua lapis: RLS (`bank_accounts` +
+ * `cashflow_*`) DAN `requireAdminOrAssignee`. Write/edit/hapus di-gate
+ * lagi di action-nya.
  */
-export async function CashBranchPage({ branch }: { branch: string }) {
+export async function CashBranchPage({ slug }: { slug: CashBranchSlug }) {
+  const def = CASH_DASHBOARDS[slug];
   const supabase = await createClient();
 
   const { data: acct } = await supabase
     .from("bank_accounts")
     .select("id, account_name, business_unit")
-    .eq("business_unit", "Yeobo Space")
+    .eq("business_unit", def.businessUnit)
     .eq("bank", "cash")
-    .eq("default_branch", branch)
+    .eq("default_branch", def.branch)
     .maybeSingle();
   if (!acct) redirect("/");
 
@@ -68,11 +74,13 @@ export async function CashBranchPage({ branch }: { branch: string }) {
   return (
     <CashDashboardClient
       accountId={acct.id}
-      branch={branch}
+      businessUnit={def.businessUnit}
+      branch={def.branch}
       accountName={acct.account_name}
       balance={balance}
       transactions={transactions}
       monthLabel={monthLabel}
+      requireExpenseProof={def.requireExpenseProof}
     />
   );
 }

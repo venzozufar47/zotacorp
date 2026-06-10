@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { CashBranchPage } from "@/components/cash/CashBranchPage";
 
-// Yeosol = Jebres
+// Yeosol = Yeobo Space Jebres
 export default function CashYeosolPage() {
-  return <CashBranchPage branch="Jebres" />;
+  return <CashBranchPage slug="cash_yeosol" />;
 }

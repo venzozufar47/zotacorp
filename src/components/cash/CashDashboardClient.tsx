@@ -19,8 +19,8 @@ import {
 import { formatRp } from "@/lib/cashflow/format";
 import { formatDateLongID } from "@/lib/utils/date-formats";
 import {
-  CASH_INCOME_CATEGORIES,
-  CASH_EXPENSE_CATEGORIES,
+  cashIncomeCategories,
+  cashExpenseCategories,
   categoryGuide,
 } from "@/lib/cashflow/cash-branches";
 import {
@@ -57,18 +57,23 @@ function todayISO(): string {
 
 export function CashDashboardClient({
   accountId,
+  businessUnit,
   branch,
   accountName,
   balance,
   transactions,
   monthLabel,
+  requireExpenseProof,
 }: {
   accountId: string;
+  businessUnit: string;
   branch: string;
   accountName: string;
   balance: number;
   transactions: CashTxRow[];
   monthLabel: string;
+  /** Pengeluaran wajib lampir foto bukti (per dashboard, dari registry). */
+  requireExpenseProof: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -84,7 +89,9 @@ export function CashDashboardClient({
   const [guideOpen, setGuideOpen] = useState(false);
 
   const cats = (k: Kind) =>
-    k === "income" ? CASH_INCOME_CATEGORIES : CASH_EXPENSE_CATEGORIES;
+    k === "income"
+      ? cashIncomeCategories(businessUnit)
+      : cashExpenseCategories(businessUnit);
 
   function openNew(kind: Kind) {
     setAmount("");
@@ -128,9 +135,10 @@ export function CashDashboardClient({
       return;
     }
     const isIncome = modal.kind === "income";
-    // Setiap pengeluaran WAJIB ada bukti foto. Saat edit, boleh tetap
+    // Pengeluaran WAJIB ada bukti foto bila dashboard ini mensyaratkannya
+    // (flag registry; Yeobo ya, Semarang tidak). Saat edit, boleh tetap
     // pakai bukti lama (selama tidak dihapus tanpa pengganti).
-    if (!isIncome) {
+    if (!isIncome && requireExpenseProof) {
       const willHavePhoto =
         !!file || (!!modal.edit?.hasAttachment && !dropAttachment);
       if (!willHavePhoto) {
@@ -225,7 +233,7 @@ export function CashDashboardClient({
         {/* Header */}
         <header>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Kas Cabang · Yeobo Space
+            Kas Cabang · {businessUnit}
           </p>
           <h1 className="mt-0.5 text-2xl font-bold text-foreground">{branch}</h1>
           <p className="text-xs text-muted-foreground">{accountName}</p>
@@ -388,9 +396,9 @@ export function CashDashboardClient({
                   </option>
                 ))}
               </select>
-              {categoryGuide(category) && (
+              {categoryGuide(businessUnit, category) && (
                 <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                  {categoryGuide(category)}
+                  {categoryGuide(businessUnit, category)}
                 </p>
               )}
               <button
@@ -407,7 +415,7 @@ export function CashDashboardClient({
                     <div key={c} className="text-[11px]">
                       <p className="font-semibold text-foreground">{c}</p>
                       <p className="leading-snug text-muted-foreground">
-                        {categoryGuide(c)}
+                        {categoryGuide(businessUnit, c)}
                       </p>
                     </div>
                   ))}
@@ -442,7 +450,7 @@ export function CashDashboardClient({
             <div>
               <label className="text-xs font-semibold text-muted-foreground">
                 Bukti foto{" "}
-                {modal.kind === "expense" ? (
+                {modal.kind === "expense" && requireExpenseProof ? (
                   <span className="text-destructive">(wajib)</span>
                 ) : (
                   "(opsional)"
@@ -483,7 +491,7 @@ export function CashDashboardClient({
                   </button>
                 </div>
               ) : modal.edit?.hasAttachment ? (
-                modal.kind === "expense" ? (
+                modal.kind === "expense" && requireExpenseProof ? (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Bukti lama tetap dipakai (pengeluaran wajib ada bukti).
                   </p>
