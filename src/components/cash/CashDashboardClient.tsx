@@ -14,7 +14,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
-import { formatDateID } from "@/lib/utils/date-formats";
+import { formatDateLongID } from "@/lib/utils/date-formats";
 import {
   CASH_INCOME_CATEGORIES,
   CASH_EXPENSE_CATEGORIES,
@@ -57,12 +57,14 @@ export function CashDashboardClient({
   accountName,
   balance,
   transactions,
+  monthLabel,
 }: {
   accountId: string;
   branch: string;
   accountName: string;
   balance: number;
   transactions: CashTxRow[];
+  monthLabel: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -243,11 +245,13 @@ export function CashDashboardClient({
         <section className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center gap-2">
             <Receipt size={15} className="text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Transaksi terbaru</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              Transaksi · {monthLabel}
+            </h2>
           </div>
           {transactions.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              Belum ada transaksi.
+              Belum ada transaksi bulan ini.
             </p>
           ) : (
             <ul className="divide-y divide-border/60">
@@ -261,7 +265,7 @@ export function CashDashboardClient({
                         {t.category ?? "—"}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
-                        {formatDateID(t.date)}
+                        {formatDateLongID(t.date)}
                         {t.notes ? ` · ${t.notes}` : ""}
                       </p>
                       <div className="mt-1 flex items-center gap-3 text-[11px]">
