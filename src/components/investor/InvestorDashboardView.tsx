@@ -13,10 +13,21 @@ import {
 } from "./InvestorPeriodSelector";
 import { HeroContract } from "./HeroContract";
 import { KpiTile } from "./KpiTile";
-import {
-  FinancialOverviewChart,
-  NetDividenChart,
-} from "./InvestorCharts";
+import dynamic from "next/dynamic";
+
+// recharts (~102KB gz) hanya dimuat saat chart benar-benar dirender —
+// bukan bagian dari initial bundle halaman investor.
+const chartFallback = (
+  <div className="h-64 animate-pulse rounded-2xl bg-muted/50" />
+);
+const FinancialOverviewChart = dynamic(
+  () => import("./InvestorCharts").then((m) => m.FinancialOverviewChart),
+  { ssr: false, loading: () => chartFallback }
+);
+const NetDividenChart = dynamic(
+  () => import("./InvestorCharts").then((m) => m.NetDividenChart),
+  { ssr: false, loading: () => chartFallback }
+);
 import { PayoutsTable } from "./PayoutsTable";
 import { MetricCommentSheet } from "./MetricCommentSheet";
 import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";

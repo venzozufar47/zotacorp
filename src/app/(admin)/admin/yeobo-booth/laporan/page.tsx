@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
 import { listBookings } from "@/lib/actions/yeobo-booth.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { LaporanCharts } from "@/components/yeobo-booth/LaporanCharts";
+import { LaporanChartsLazy as LaporanCharts } from "@/components/yeobo-booth/LaporanChartsLazy";
 import { formatIDR } from "@/lib/cashflow/format";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { spaceRentRevenue, spaceRentProfit } from "@/lib/yeobo-booth/types";

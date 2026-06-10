@@ -21,8 +21,19 @@ import type { YeoboPnLReport, YeoboBranchPnL } from "@/lib/cashflow/pnl-yeobo";
 import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
-import { PnLChartsYeobo } from "./PnLChartsYeobo";
+import dynamic from "next/dynamic";
 import { PnLYeoboSpreadsheet } from "./PnLYeoboSpreadsheet";
+
+// recharts (~102KB gz) keluar dari initial bundle — dimuat saat render.
+const PnLChartsYeobo = dynamic(
+  () => import("./PnLChartsYeobo").then((m) => m.PnLChartsYeobo),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl bg-muted/50" />
+    ),
+  }
+);
 import {
   MonthRangePicker,
   parseYM,

@@ -10,9 +10,21 @@ import {
   parseYM,
   ymLabelShort,
 } from "@/components/shared/MonthRangePicker";
+import dynamic from "next/dynamic";
 import { PnLSankey } from "@/components/admin/finance/PnLSankey";
-import { PnLCharts } from "@/components/admin/finance/PnLCharts";
 import { PnLTable } from "@/components/admin/finance/PnLTable";
+
+// recharts (~102KB gz) keluar dari initial bundle — dimuat saat render.
+const PnLCharts = dynamic(
+  () =>
+    import("@/components/admin/finance/PnLCharts").then((m) => m.PnLCharts),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl bg-muted/50" />
+    ),
+  }
+);
 
 function ymString(x: { year: number; month: number }): string {
   return `${x.year}-${String(x.month).padStart(2, "0")}`;

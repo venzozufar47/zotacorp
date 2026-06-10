@@ -10,10 +10,21 @@ import {
   parseYM,
   ymLabelShort,
 } from "@/components/shared/MonthRangePicker";
+import dynamic from "next/dynamic";
 import { PusatAllocationEditor } from "./PusatAllocationEditor";
 import { PnLTable } from "./PnLTable";
-import { PnLCharts } from "./PnLCharts";
 import { PnLSankey } from "./PnLSankey";
+
+// recharts (~102KB gz) keluar dari initial bundle — dimuat saat render.
+const PnLCharts = dynamic(
+  () => import("./PnLCharts").then((m) => m.PnLCharts),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 animate-pulse rounded-2xl bg-muted/50" />
+    ),
+  }
+);
 
 interface Props {
   businessUnit: string;
