@@ -92,6 +92,7 @@ export default async function DashboardPage() {
     floorToday,
     breakLogsRes,
     cleaningTasks,
+    extraWorkKinds,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -119,6 +120,7 @@ export default async function DashboardPage() {
       .eq("date", todayDate)
       .order("break_out_at", { ascending: true }),
     getTodayCleaningTasks(),
+    listExtraWorkKindsForUser(user.id),
   ]);
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -132,9 +134,7 @@ export default async function DashboardPage() {
   // Feature gating sekarang lewat assignment kind ke user (admin atur
   // di /admin/settings → Kerjaan tambahan). Karyawan tanpa assignment
   // = dropdown kosong = tombol tidak muncul.
-  const extraWorkKindNames = (await listExtraWorkKindsForUser(user.id)).map(
-    (k) => k.name
-  );
+  const extraWorkKindNames = extraWorkKinds.map((k) => k.name);
   const extraWorkToday =
     extraWorkKindNames.length > 0 ? (extraWorkRes.data ?? []) : [];
 

@@ -51,27 +51,47 @@ export default async function PayslipVariablesPage({
         : "variables";
 
   const supabase = await createClient();
-  // Investors never receive payslips — exclude them from the payroll
-  // editor so an admin can't accidentally create/finalize payslip
-  // settings for an investor account. (No NULL roles exist in profiles.)
-  const { data: employees } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, business_unit")
-    .eq("payslip_excluded", false)
-    .eq("is_active", true)
-    .neq("role", "investor")
-    .order("business_unit", { ascending: true, nullsFirst: false })
-    .order("full_name");
+  // Extra-work logs date range: bulan target (1st → end of month).
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd =
+    month === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
-  const { data: settings } = await supabase
-    .from("payslip_settings")
-    .select("*");
-
-  const { data: payslips } = await supabase
-    .from("payslips")
-    .select("*")
-    .eq("month", month)
-    .eq("year", year);
+  // Lima query independen — jalankan paralel. (Deliverables menyusul
+  // karena butuh payslip ids.) Investors never receive payslips —
+  // exclude them from the payroll editor so an admin can't accidentally
+  // create/finalize payslip settings for an investor account. (No NULL
+  // roles exist in profiles.)
+  const [
+    { data: employees },
+    { data: settings },
+    { data: payslips },
+    { data: extraWorkLogs },
+    { data: kinds },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, email, business_unit")
+      .eq("payslip_excluded", false)
+      .eq("is_active", true)
+      .neq("role", "investor")
+      .order("business_unit", { ascending: true, nullsFirst: false })
+      .order("full_name"),
+    supabase.from("payslip_settings").select("*"),
+    supabase.from("payslips").select("*").eq("month", month).eq("year", year),
+    supabase
+      .from("extra_work_logs")
+      .select(
+        "id, user_id, date, kind, notes, formula_override, custom_rate_idr, multiplier_override"
+      )
+      .gte("date", monthStart)
+      .lt("date", monthEnd)
+      .order("date", { ascending: true }),
+    supabase
+      .from("extra_work_kinds")
+      .select("name, formula_kind, fixed_rate_idr, daily_multiplier"),
+  ]);
 
   // Deliverables fetch: hanya untuk payslips yang ada di bulan ini.
   // Group ke Map<payslip_id, rows[]> di client untuk lookup O(1).
@@ -85,25 +105,6 @@ export default async function PayslipVariablesPage({
           .order("sort_order", { ascending: true })
       : { data: [] };
 
-  // Extra-work logs for the period — admin pakai untuk per-entry editor
-  // di monthly expand. Date range: bulan target (1st → end of month).
-  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
-  const monthEnd =
-    month === 12
-      ? `${year + 1}-01-01`
-      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
-  const { data: extraWorkLogs } = await supabase
-    .from("extra_work_logs")
-    .select(
-      "id, user_id, date, kind, notes, formula_override, custom_rate_idr, multiplier_override"
-    )
-    .gte("date", monthStart)
-    .lt("date", monthEnd)
-    .order("date", { ascending: true });
-
-  const { data: kinds } = await supabase
-    .from("extra_work_kinds")
-    .select("name, formula_kind, fixed_rate_idr, daily_multiplier");
   const kindsByName: Record<
     string,
     { formulaKind: string; fixedRateIdr: number; dailyMultiplier: number }
