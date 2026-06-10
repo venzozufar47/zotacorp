@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,8 @@ import {
   Trash2,
   X,
   Receipt,
+  Camera,
+  Image as ImageIcon,
 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatDateLongID } from "@/lib/utils/date-formats";
@@ -102,6 +104,12 @@ export function CashDashboardClient({
     setModal({ kind, edit: row });
   }
 
+  function onPickFile(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setFile(f);
+    if (f) setDropAttachment(false);
+  }
+
   const amountNum = parseInt(amount.replace(/\D/g, ""), 10) || 0;
 
   function submit() {
@@ -115,6 +123,16 @@ export function CashDashboardClient({
       return;
     }
     const isIncome = modal.kind === "income";
+    // Setiap pengeluaran WAJIB ada bukti foto. Saat edit, boleh tetap
+    // pakai bukti lama (selama tidak dihapus tanpa pengganti).
+    if (!isIncome) {
+      const willHavePhoto =
+        !!file || (!!modal.edit?.hasAttachment && !dropAttachment);
+      if (!willHavePhoto) {
+        toast.error("Pengeluaran wajib melampirkan foto bukti");
+        return;
+      }
+    }
     const debit = isIncome ? 0 : amountNum;
     const credit = isIncome ? amountNum : 0;
     const editId = modal.edit?.id;
@@ -392,26 +410,64 @@ export function CashDashboardClient({
 
             {/* Bukti foto */}
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">Bukti foto (opsional)</label>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => {
-                  setFile(e.target.files?.[0] ?? null);
-                  if (e.target.files?.[0]) setDropAttachment(false);
-                }}
-                className="mt-1 w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-semibold"
-              />
-              {modal.edit?.hasAttachment && !file && (
-                <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Bukti foto{" "}
+                {modal.kind === "expense" ? (
+                  <span className="text-destructive">(wajib)</span>
+                ) : (
+                  "(opsional)"
+                )}
+              </label>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <label className="press-feedback flex h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-input bg-background text-xs font-semibold hover:border-primary/50 transition">
+                  <Camera size={15} /> Ambil Foto
                   <input
-                    type="checkbox"
-                    checked={dropAttachment}
-                    onChange={(e) => setDropAttachment(e.target.checked)}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={onPickFile}
                   />
-                  Hapus bukti yang sekarang
                 </label>
-              )}
+                <label className="press-feedback flex h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-input bg-background text-xs font-semibold hover:border-primary/50 transition">
+                  <ImageIcon size={15} /> Dari Galeri
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={onPickFile}
+                  />
+                </label>
+              </div>
+              {file ? (
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  <Paperclip size={12} className="shrink-0 text-emerald-600" />
+                  <span className="truncate text-foreground">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFile(null)}
+                    className="ml-auto text-muted-foreground hover:text-destructive"
+                    aria-label="Hapus pilihan foto"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : modal.edit?.hasAttachment ? (
+                modal.kind === "expense" ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Bukti lama tetap dipakai (pengeluaran wajib ada bukti).
+                  </p>
+                ) : (
+                  <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={dropAttachment}
+                      onChange={(e) => setDropAttachment(e.target.checked)}
+                    />
+                    Hapus bukti yang sekarang
+                  </label>
+                )
+              ) : null}
             </div>
 
             <button
