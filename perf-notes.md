@@ -33,3 +33,20 @@ Commit base: d2fe11a. Method notes inline so the "after" run is identical.
 1. Region icn1: every server-side Supabase RTT ~200ms → ~2ms; authed TTFB −0.6–1.5s.
 2. recharts dynamic: −~102KB gz initial JS on 4 routes.
 3. Theme sweep: 15 font preloads → ~6; −1 RPC (`get_ui_theme`) on EVERY request incl. login.
+
+## AFTER (local build at de72306, same method)
+| Route | before gz KB | after gz KB | Δ |
+|---|---|---|---|
+| /admin/finance/pnl | 306 | **194** | −112 |
+| /investor | 216 | **108** | −108 |
+| /investor/finance/pnl | 165 | **45** | −120 |
+| others | — | unchanged | — |
+- Shared baseline unchanged (131 KB gz). recharts now an on-demand async chunk.
+- CSS bundle after sweep: 163 KB raw / 26 KB gz. globals.css 2113 → ~1280 lines.
+- Fonts shipped: Jakarta 400/500/600/700 + Poppins 600/700 (was 15 woff2 across 4 families).
+- Visual smoke (local preview, logged-in admin): /admin (oceanic hero/cards/fonts OK),
+  /admin/cake-orders (Haengbocake theme INTACT), /pos (pink palette INTACT),
+  /admin/finance/pnl (5 recharts surfaces render via lazy chunk, skeleton → charts).
+  Zero console errors. tsc + build clean.
+- Region/TTFB after-numbers: measure AFTER deploy (x-vercel-id must show icn1) +
+  Speed Insights p75 over the following week vs baseline above.
