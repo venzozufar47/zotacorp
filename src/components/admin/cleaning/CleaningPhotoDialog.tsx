@@ -55,10 +55,15 @@ export function CleaningPhotoDialog({
           <DialogTitle>Bukti foto</DialogTitle>
           <DialogDescription>{title}</DialogDescription>
         </DialogHeader>
-        <div className="relative aspect-[3/4] max-h-[60vh] mx-auto bg-black rounded-xl overflow-hidden">
+        <div className="relative w-full h-[60vh] bg-black rounded-xl overflow-hidden">
           {url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt="Bukti" className="absolute inset-0 w-full h-full object-cover" />
+            <img
+              src={url}
+              alt="Bukti"
+              onError={() => setError(true)}
+              className="absolute inset-0 w-full h-full object-contain"
+            />
           ) : error ? (
             <div className="absolute inset-0 grid place-items-center text-white/70 text-sm">
               Gagal memuat foto.
