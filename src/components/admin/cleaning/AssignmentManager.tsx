@@ -43,6 +43,7 @@ import {
   type CleaningAssignmentRow,
 } from "@/lib/actions/cleaning.actions";
 import type { CleaningEmployee } from "./CleaningAdmin";
+import type { HolidayRow } from "@/lib/actions/holidays.actions";
 import { useRunAction } from "./useRunAction";
 
 const DAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0]; // Mon..Sat, Sun last
@@ -300,17 +301,21 @@ function MemberPicker({
   );
 }
 
-/** Preview the next ~14 scheduled days → who is on duty. */
+/** Preview the next ~14 scheduled days → who is on duty (holidays marked). */
 function RotationPreview({
   memberNames,
   weekdays,
   mode,
   anchorYmd,
+  holidays,
+  skipHolidays,
 }: {
   memberNames: string[];
   weekdays: number;
   mode: RotationMode;
   anchorYmd: string;
+  holidays: ReadonlyMap<string, string>;
+  skipHolidays: boolean;
 }) {
   if (memberNames.length < 2 || weekdays === 0) return null;
   const fromYmd = jakartaDateString(new Date());
@@ -321,6 +326,8 @@ function RotationPreview({
     anchorYmd,
     memberCount: memberNames.length,
     count: 14,
+    holidays,
+    skipHolidays,
   });
   if (days.length === 0) return null;
   return (
@@ -331,16 +338,28 @@ function RotationPreview({
       <div className="flex flex-wrap gap-1.5">
         {days.map((d) => {
           const [, m, dd] = d.ymd.split("-");
-          const name = d.ownerIndex >= 0 ? memberNames[d.ownerIndex] : "—";
+          const label = `${WEEKDAY_LABELS_ID[d.dow as Weekday]} ${+dd}/${+m}`;
+          if (d.holiday) {
+            return (
+              <span
+                key={d.ymd}
+                title={d.holiday}
+                className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+              >
+                {label}
+                <span className="font-semibold">Libur</span>
+              </span>
+            );
+          }
           return (
             <span
               key={d.ymd}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px]"
             >
-              <span className="text-muted-foreground">
-                {WEEKDAY_LABELS_ID[d.dow as Weekday]} {+dd}/{+m}
+              <span className="text-muted-foreground">{label}</span>
+              <span className="font-semibold">
+                {shortName(d.ownerIndex >= 0 ? memberNames[d.ownerIndex] : "—")}
               </span>
-              <span className="font-semibold">{shortName(name)}</span>
             </span>
           );
         })}
@@ -358,12 +377,15 @@ export function AssignmentManager({
   initial,
   checklists,
   employees,
+  holidays,
 }: {
   initial: CleaningAssignmentRow[];
   checklists: CleaningChecklist[];
   employees: CleaningEmployee[];
+  holidays: HolidayRow[];
 }) {
   const { run, pending, startTransition, router } = useRunAction();
+  const holidayMap = new Map(holidays.map((h) => [h.date, h.name]));
   const [assignMode, setAssignMode] = useState<"single" | "rotation">("single");
   const [checklistId, setChecklistId] = useState("");
   const [userId, setUserId] = useState("");
@@ -576,6 +598,8 @@ export function AssignmentManager({
             weekdays={weekdays}
             mode={rotationMode}
             anchorYmd={jakartaDateString(new Date())}
+            holidays={holidayMap}
+            skipHolidays={skipHolidays}
           />
         )}
 
@@ -638,6 +662,7 @@ export function AssignmentManager({
               groupId={entry.groupId}
               rows={entry.rows}
               employees={employees}
+              holidays={holidayMap}
               pending={pending}
               run={run}
               editing={editing === entry.groupId}
@@ -802,6 +827,7 @@ function RotationCard({
   groupId,
   rows,
   employees,
+  holidays,
   pending,
   run,
   editing,
@@ -810,6 +836,7 @@ function RotationCard({
   groupId: string;
   rows: CleaningAssignmentRow[];
   employees: CleaningEmployee[];
+  holidays: ReadonlyMap<string, string>;
   pending: boolean;
   run: RunFn;
   editing: boolean;
@@ -898,6 +925,8 @@ function RotationCard({
           weekdays={head.weekdays}
           mode={(head.rotation_mode as RotationMode) ?? "daily"}
           anchorYmd={head.rotation_anchor ?? jakartaDateString(new Date())}
+          holidays={holidays}
+          skipHolidays={head.skip_holidays}
         />
       </div>
 

@@ -10,6 +10,7 @@ import {
   listAssignments,
   getCleaningMonitor,
 } from "@/lib/actions/cleaning.actions";
+import { listHolidays } from "@/lib/actions/holidays.actions";
 
 export default async function AdminCleaningPage() {
   const user = await getCurrentUser();
@@ -18,7 +19,7 @@ export default async function AdminCleaningPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [checklists, assignments, monitor, employeesRes] = await Promise.all([
+  const [checklists, assignments, monitor, employeesRes, holidays] = await Promise.all([
     listChecklists(),
     listAssignments(),
     getCleaningMonitor(),
@@ -28,6 +29,7 @@ export default async function AdminCleaningPage() {
       .eq("is_active", true)
       .neq("role", "investor")
       .order("full_name"),
+    listHolidays(),
   ]);
 
   const employees = (employeesRes.data ?? []).map((e) => ({
@@ -47,6 +49,7 @@ export default async function AdminCleaningPage() {
         assignments={assignments}
         monitor={monitor}
         employees={employees}
+        holidays={holidays}
       />
     </div>
   );

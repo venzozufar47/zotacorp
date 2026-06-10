@@ -11,6 +11,7 @@ import type {
   CleaningAssignmentRow,
   MonitorRow,
 } from "@/lib/actions/cleaning.actions";
+import type { HolidayRow } from "@/lib/actions/holidays.actions";
 
 export interface CleaningEmployee {
   id: string;
@@ -31,11 +32,13 @@ export function CleaningAdmin({
   assignments,
   monitor,
   employees,
+  holidays,
 }: {
   checklists: CleaningChecklist[];
   assignments: CleaningAssignmentRow[];
   monitor: { date: string; holiday: string | null; rows: MonitorRow[] };
   employees: CleaningEmployee[];
+  holidays: HolidayRow[];
 }) {
   const [tab, setTab] = useState<Tab>("monitor");
 
@@ -67,6 +70,7 @@ export function CleaningAdmin({
           initial={assignments}
           checklists={checklists}
           employees={employees}
+          holidays={holidays}
         />
       )}
     </div>

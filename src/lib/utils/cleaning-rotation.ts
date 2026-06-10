@@ -112,10 +112,16 @@ export interface PreviewDay {
   ymd: string;
   dow: number;
   ownerIndex: number;
+  /** When skip_holidays is on and this date is a national holiday: the holiday
+   *  name (ownerIndex is -1 — nobody is on duty, the day is skipped). */
+  holiday: string | null;
 }
 
 /** The next `count` scheduled days from `fromYmd` with their on-duty owner
- *  index — for the admin preview. Pure; safe to call client-side. */
+ *  index — for the admin preview. Pure; safe to call client-side. When
+ *  skipHolidays is on, dates in `holidays` (ymd → name) are marked as skipped
+ *  (ownerIndex -1) — matching the server gate, which drops them for everyone
+ *  while leaving the calendar owner sequence unchanged. */
 export function buildRotationPreview(o: {
   fromYmd: string;
   weekdays: number;
@@ -123,6 +129,8 @@ export function buildRotationPreview(o: {
   anchorYmd: string;
   memberCount: number;
   count?: number;
+  holidays?: ReadonlyMap<string, string>;
+  skipHolidays?: boolean;
 }): PreviewDay[] {
   const want = o.count ?? 14;
   const out: PreviewDay[] = [];
@@ -134,17 +142,22 @@ export function buildRotationPreview(o: {
     const ymd = date.toISOString().slice(0, 10);
     const dow = date.getUTCDay();
     if (isWorkdayFor(o.weekdays, dow)) {
+      const holiday =
+        o.skipHolidays && o.holidays?.has(ymd) ? o.holidays.get(ymd) ?? "Libur" : null;
       out.push({
         ymd,
         dow,
-        ownerIndex: dutyOwnerIndex({
-          dateYmd: ymd,
-          anchorYmd: o.anchorYmd,
-          dow,
-          weekdays: o.weekdays,
-          mode: o.mode,
-          memberCount: o.memberCount,
-        }),
+        holiday,
+        ownerIndex: holiday
+          ? -1
+          : dutyOwnerIndex({
+              dateYmd: ymd,
+              anchorYmd: o.anchorYmd,
+              dow,
+              weekdays: o.weekdays,
+              mode: o.mode,
+              memberCount: o.memberCount,
+            }),
       });
     }
     cursor += DAY_MS;
