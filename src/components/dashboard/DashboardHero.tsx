@@ -147,20 +147,12 @@ export function DashboardHero({ firstName, dateLabel, timezone, motto }: Dashboa
         </div>
       </div>
 
-      {/* Brand watermark — white logo rides over the violet/teal gradient;
-          Minimal theme's hero override flips to flat white, so the tosca
-          variant is toggled in via CSS (see globals.css `.brand-hero-*` rules). */}
+      {/* Brand watermark — white logo over the teal gradient hero. */}
       <img
         src="/zota-corp-logo-white.png"
         alt=""
         aria-hidden
         className="brand-hero-white absolute bottom-4 right-5 md:bottom-6 md:right-6 h-5 md:h-6 w-auto opacity-70 select-none pointer-events-none"
-      />
-      <img
-        src="/zota-corp-logo-tosca.png"
-        alt=""
-        aria-hidden
-        className="brand-hero-tosca absolute bottom-4 right-5 md:bottom-6 md:right-6 h-5 md:h-6 w-auto opacity-60 select-none pointer-events-none"
       />
     </section>
   );

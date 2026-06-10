@@ -1,61 +1,34 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Inter, Outfit, Plus_Jakarta_Sans, Poppins } from "next/font/google";
+import { Plus_Jakarta_Sans, Poppins } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
 import { dictionary, type Language } from "@/lib/i18n/dictionary";
 import { LazyToaster } from "@/components/ui/LazyToaster";
-import { getCachedTheme } from "@/lib/supabase/cached";
-import { DEFAULT_THEME } from "@/lib/themes";
 import "./globals.css";
 
 /**
- * Fonts — only ship what the Playful Geometric design system needs.
- *  - Plus Jakarta Sans is the body font: highly legible, modern,
- *    geometric-but-humanist. We load 400 (regular) and 500 (medium).
- *  - Outfit is the display/heading font: a geometric sans with
- *    rounded letter terminals that read as friendly. We load 700
- *    (bold) and 800 (extra-bold) — the only two weights the design
- *    system actually renders for headings and the .clock-display.
+ * Fonts — only ship what the Oceanic Editorial theme needs (Playful &
+ * Minimal themes were deleted; Inter + Outfit went with them).
+ *  - Plus Jakarta Sans is the body font: 400/500 body, 600/700 for
+ *    Tailwind semibold/bold call-sites.
+ *  - Poppins is the display font (headings, .clock-display, .eyebrow) —
+ *    CSS only references weights 600/700.
  *  - `display: "swap"` makes the browser paint fallback text
  *    immediately instead of holding back FCP while the WOFF streams.
  */
 const jakarta = Plus_Jakarta_Sans({
   variable: "--font-jakarta",
   subsets: ["latin"],
-  // 400/500 for body, 600/700 used by legacy call-sites.
   weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
-const outfit = Outfit({
-  variable: "--font-outfit",
-  subsets: ["latin"],
-  weight: ["700", "800"],
-  display: "swap",
-});
-
-// Inter is the Minimal theme's primary font. It's the industry default for
-// modern SaaS UIs (Slack, Linear, Notion, Vercel) because its open
-// apertures and tight metrics keep information-dense screens legible at
-// small sizes. We load 400/500/600/700 to cover body / UI / emphasis /
-// headings without pulling the full variable file.
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-// Poppins is the Oceanic theme's display font — the geometric, slightly
-// condensed sans used in the original Zota editorial aesthetic. 400 for
-// occasional body use, 600/700 for headings and the `.clock-display`
-// utility that originated with this theme.
 const poppins = Poppins({
   variable: "--font-poppins",
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: ["600", "700"],
   display: "swap",
 });
 
@@ -99,22 +72,15 @@ export default async function RootLayout({
     // fallback to default
   }
 
-  // Org-wide UI theme — admin picks this in Settings → Theme. Applied
-  // via data-theme so every CSS custom property cascades from the theme
-  // block in globals.css. Falls back to DEFAULT_THEME if the settings
-  // row is missing (first boot) or the fetch fails for any reason.
-  let theme = DEFAULT_THEME;
-  try {
-    theme = await getCachedTheme();
-  } catch {
-    // keep default
-  }
-
+  // Tema org = Oceanic Editorial, hardcoded — tema lain sudah dihapus
+  // sehingga tidak perlu RPC `get_ui_theme` per request lagi. Atribut
+  // data-theme dipertahankan karena override komponen di globals.css
+  // ter-scope ke [data-theme="oceanic"].
   return (
     <html
       lang={lang}
-      data-theme={theme}
-      className={`${jakarta.variable} ${outfit.variable} ${inter.variable} ${poppins.variable} h-full antialiased`}
+      data-theme="oceanic"
+      className={`${jakarta.variable} ${poppins.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col overflow-x-hidden">
         <LanguageProvider initialLang={lang} initialDictionary={dictionary[lang]}>

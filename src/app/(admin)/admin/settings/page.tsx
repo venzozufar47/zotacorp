@@ -12,7 +12,6 @@ import { LanguageCard } from "@/components/settings/LanguageCard";
 import { PosPinCard } from "@/components/profile/PosPinCard";
 import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCard";
 import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
-import { ThemeSettingsCard } from "@/components/admin/ThemeSettingsCard";
 import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
 import { ExtraWorkKindsCard } from "@/components/admin/ExtraWorkKindsCard";
 import { HolidayCalendarCard } from "@/components/admin/HolidayCalendarCard";
@@ -22,7 +21,6 @@ import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { listExtraWorkKinds } from "@/lib/actions/extra-work-kinds.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
 import { listWaTemplates } from "@/lib/whatsapp/templates";
-import { getTheme } from "@/lib/themes";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AdminSettingsPage() {
@@ -64,13 +62,6 @@ export default async function AdminSettingsPage() {
     );
   }
 
-  // `ui_theme` is a recent column — cast to read it until the generated
-  // Supabase types are regenerated. Falls back to DEFAULT_THEME via
-  // getTheme() if the value is missing or unrecognized.
-  const currentTheme = getTheme(
-    (settings as unknown as { ui_theme?: string }).ui_theme
-  );
-
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
@@ -81,7 +72,6 @@ export default async function AdminSettingsPage() {
       <BusinessUnitsCard initial={businessUnits} />
       <ExtraWorkKindsCard initial={extraWorkKinds} employees={employees} />
       <HolidayCalendarCard initial={holidays} />
-      <ThemeSettingsCard current={currentTheme} />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard
         initialTemplates={waTemplates.map((t) => ({
