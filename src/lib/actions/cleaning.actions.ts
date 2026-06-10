@@ -524,17 +524,16 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
   });
 }
 
-/** National-holiday name for a date (YYYY-MM-DD), or null if not a holiday. */
-async function holidayName(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  ymd: string
-): Promise<string | null> {
+/** All national holidays as a Map (YYYY-MM-DD → name). The table is tiny
+ *  (~17 dates/year); fetched whole so the rotation index can exclude holidays
+ *  from the duty sequence (skip a holiday without advancing the turn). */
+async function fetchHolidays(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<Map<string, string>> {
   const { data } = await supabase
     .from("national_holidays")
-    .select("name")
-    .eq("holiday_date", ymd)
-    .maybeSingle();
-  return data?.name ?? null;
+    .select("holiday_date, name");
+  return new Map((data ?? []).map((h) => [h.holiday_date, h.name]));
 }
 
 /** Normalize window fields: keep only the times the mode uses. */
@@ -850,7 +849,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
   if (!user) return empty;
 
   const supabase = await createClient();
-  const [{ data: assignments }, { data: log }, { data: completions }, holiday] =
+  const [{ data: assignments }, { data: log }, { data: completions }, holidays] =
     await Promise.all([
       supabase
         .from("cleaning_assignments")
@@ -870,9 +869,10 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
         .select("id, item_id, photo_req_id, photo_path, completed_at")
         .eq("user_id", user.id)
         .eq("date", today),
-      holidayName(supabase, today),
+      fetchHolidays(supabase),
     ]);
-  const isHoliday = !!holiday;
+  const holidaySet = new Set(holidays.keys());
+  const isHoliday = holidays.has(today);
 
   const checkedIn = !!log?.checked_in_at && !log?.checked_out_at;
   // Key completions by item + photo slot (null slot → "").
@@ -901,6 +901,8 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
           mode: (a.rotation_mode as RotationMode) ?? "daily",
           memberOrder: a.rotation_order,
           memberCount: a.rotation_member_count,
+          holidays: holidaySet,
+          skipHolidays: a.skip_holidays,
         })
     )
     .map((a) => {
@@ -970,8 +972,8 @@ export async function completeCleaningItem(input: {
   const supabase = await createClient();
 
   // Independent reads in parallel: today's attendance log, the item, the
-  // assignment, and whether today is a national holiday. Guards run after.
-  const [{ data: log }, { data: item }, { data: assignment }, holiday] =
+  // assignment, and the national-holiday calendar. Guards run after.
+  const [{ data: log }, { data: item }, { data: assignment }, holidays] =
     await Promise.all([
       supabase
         .from("attendance_logs")
@@ -991,8 +993,10 @@ export async function completeCleaningItem(input: {
         )
         .eq("id", input.assignment_id)
         .maybeSingle(),
-      holidayName(supabase, today),
+      fetchHolidays(supabase),
     ]);
+  const holidaySet = new Set(holidays.keys());
+  const todayHoliday = holidays.get(today) ?? null;
 
   // Must have an open check-in today — evidence is only meaningful during the
   // shift (mirrors the breakOut guard).
@@ -1014,11 +1018,11 @@ export async function completeCleaningItem(input: {
   }
 
   // Holiday skip: nobody works this checklist on a national holiday.
-  if (assignment.skip_holidays && holiday) {
-    return { error: `Hari ini libur nasional (${holiday}) — checklist dilompati.` };
+  if (assignment.skip_holidays && todayHoliday) {
+    return { error: `Hari ini libur nasional (${todayHoliday}) — checklist dilompati.` };
   }
 
-  // Rotation: only the on-duty member may submit today.
+  // Rotation: only the on-duty member may submit today (holiday-aware).
   if (
     !isOnDutyToday({
       dateYmd: today,
@@ -1028,6 +1032,8 @@ export async function completeCleaningItem(input: {
       mode: (assignment.rotation_mode as RotationMode) ?? "daily",
       memberOrder: assignment.rotation_order,
       memberCount: assignment.rotation_member_count,
+      holidays: holidaySet,
+      skipHolidays: assignment.skip_holidays,
     })
   ) {
     return { error: "Bukan giliran Anda hari ini." };
@@ -1139,7 +1145,7 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
   const dow = jakartaDayOfWeek(now, tz);
   const supabase = await createClient();
 
-  const [{ data: assignments }, { data: completions }, holiday] = await Promise.all([
+  const [{ data: assignments }, { data: completions }, holidays] = await Promise.all([
     supabase
       .from("cleaning_assignments")
       .select(
@@ -1153,9 +1159,10 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
       .select("item_id, photo_req_id")
       .eq("user_id", user.id)
       .eq("date", today),
-    holidayName(supabase, today),
+    fetchHolidays(supabase),
   ]);
-  const isHoliday = !!holiday;
+  const holidaySet = new Set(holidays.keys());
+  const isHoliday = holidays.has(today);
 
   // Done units keyed by item + slot (null slot → "").
   const doneUnits = new Set(
@@ -1176,6 +1183,8 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
         mode: (a.rotation_mode as RotationMode) ?? "daily",
         memberOrder: a.rotation_order,
         memberCount: a.rotation_member_count,
+        holidays: holidaySet,
+        skipHolidays: a.skip_holidays,
       })
     )
       continue;
@@ -1223,7 +1232,7 @@ export async function getCleaningMonitor(input?: {
   const dow = jakartaDayOfWeek(new Date(`${date}T12:00:00`), tz);
   const supabase = await createClient();
 
-  const [{ data: assignments }, { data: completions }, holiday] = await Promise.all([
+  const [{ data: assignments }, { data: completions }, holidays] = await Promise.all([
     supabase
       .from("cleaning_assignments")
       .select(
@@ -1234,9 +1243,11 @@ export async function getCleaningMonitor(input?: {
       .from("cleaning_task_completions")
       .select("item_id, user_id, photo_req_id, photo_path, id")
       .eq("date", date),
-    holidayName(supabase, date),
+    fetchHolidays(supabase),
   ]);
-  const isHoliday = !!holiday;
+  const holidaySet = new Set(holidays.keys());
+  const holidayNm = holidays.get(date) ?? null;
+  const isHoliday = !!holidayNm;
 
   // Index completions by `${user_id}|${item_id}|${photo_req_id ?? ""}`.
   const compMap = new Map(
@@ -1262,6 +1273,8 @@ export async function getCleaningMonitor(input?: {
         mode: (a.rotation_mode as RotationMode) ?? "daily",
         memberOrder: a.rotation_order,
         memberCount: a.rotation_member_count,
+        holidays: holidaySet,
+        skipHolidays: a.skip_holidays,
       })
     )
       continue;
@@ -1330,5 +1343,5 @@ export async function getCleaningMonitor(input?: {
     return x.user_name.localeCompare(y.user_name);
   });
 
-  return { date, holiday, rows };
+  return { date, holiday: holidayNm, rows };
 }

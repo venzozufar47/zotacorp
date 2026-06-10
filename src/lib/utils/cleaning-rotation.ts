@@ -42,8 +42,19 @@ function popcountWeekdays(weekdays: number): number {
  * anchor (inclusive). Closed-form O(1): full weeks × scheduled-per-week + the
  * scheduled days in the leftover partial week starting at the anchor weekday.
  * (`dateYmd` is assumed to be a scheduled day — the caller checks isWorkdayFor.)
+ *
+ * When skipHolidays is on, national-holiday dates are REMOVED from the sequence
+ * entirely: the index counts only non-holiday scheduled days, so the member who
+ * would have worked a holiday simply takes the next working day (the turn is not
+ * lost). e.g. Mon=A, Tue(holiday), Wed=B (not A).
  */
-function dailyIndex(anchorYmd: string, dateYmd: string, weekdays: number): number {
+function dailyIndex(
+  anchorYmd: string,
+  dateYmd: string,
+  weekdays: number,
+  holidays?: ReadonlySet<string>,
+  skipHolidays?: boolean
+): number {
   const per = popcountWeekdays(weekdays);
   if (per === 0) return 0;
   const totalDays = dayDiff(anchorYmd, dateYmd) + 1; // inclusive day count, >= 1 in normal use
@@ -54,7 +65,17 @@ function dailyIndex(anchorYmd: string, dateYmd: string, weekdays: number): numbe
   for (let k = 0; k < rem; k++) {
     if (isWorkdayFor(weekdays, (anchorDow + k) % 7)) partial++;
   }
-  return fullWeeks * per + partial - 1;
+  let matching = fullWeeks * per + partial;
+  // Exclude scheduled holidays in [anchor, date] from the count so they don't
+  // advance the rotation (YYYY-MM-DD compares chronologically as strings).
+  if (skipHolidays && holidays) {
+    for (const h of holidays) {
+      if (h >= anchorYmd && h <= dateYmd && isWorkdayFor(weekdays, utcDow(h))) {
+        matching--;
+      }
+    }
+  }
+  return matching - 1;
 }
 
 /**
@@ -79,20 +100,25 @@ export function dutyOwnerIndex(o: {
   weekdays: number;
   mode: RotationMode;
   memberCount: number;
+  holidays?: ReadonlySet<string>;
+  skipHolidays?: boolean;
 }): number {
   if (o.memberCount <= 1) return 0;
   if (!isWorkdayFor(o.weekdays, o.dow)) return -1;
+  // The holiday itself is skipped for everyone (nobody on duty).
+  if (o.skipHolidays && o.holidays?.has(o.dateYmd)) return -1;
   if (dayDiff(o.anchorYmd, o.dateYmd) < 0) return -1;
   const idx =
     o.mode === "weekly"
       ? weeklyIndex(o.anchorYmd, o.dateYmd)
-      : dailyIndex(o.anchorYmd, o.dateYmd, o.weekdays);
+      : dailyIndex(o.anchorYmd, o.dateYmd, o.weekdays, o.holidays, o.skipHolidays);
   return ((idx % o.memberCount) + o.memberCount) % o.memberCount;
 }
 
 /**
  * Is this member on duty on `dateYmd`? memberCount <= 1 (standalone / null
  * group) → always true, so existing single-user assignments behave identically.
+ * (Standalone holiday-skipping is handled by the caller's explicit filter.)
  */
 export function isOnDutyToday(o: {
   dateYmd: string;
@@ -102,6 +128,8 @@ export function isOnDutyToday(o: {
   mode: RotationMode;
   memberOrder: number;
   memberCount: number;
+  holidays?: ReadonlySet<string>;
+  skipHolidays?: boolean;
 }): boolean {
   if (o.memberCount <= 1) return true;
   const owner = dutyOwnerIndex(o);
@@ -135,6 +163,7 @@ export function buildRotationPreview(o: {
   const want = o.count ?? 14;
   const out: PreviewDay[] = [];
   if (popcountWeekdays(o.weekdays) === 0) return out;
+  const holiSet = o.holidays ? new Set(o.holidays.keys()) : undefined;
   let cursor = ymdToUtc(o.fromYmd);
   let guard = 0;
   while (out.length < want && guard < 400) {
@@ -157,6 +186,8 @@ export function buildRotationPreview(o: {
               weekdays: o.weekdays,
               mode: o.mode,
               memberCount: o.memberCount,
+              holidays: holiSet,
+              skipHolidays: o.skipHolidays,
             }),
       });
     }
