@@ -10,6 +10,7 @@ import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
 export function Sidebar({
   className,
   hasFinance = false,
+  hasCash = false,
   hasCakeOrders = false,
   hasCakeProduction = false,
   hasYeoboBooth = false,
@@ -19,6 +20,8 @@ export function Sidebar({
   className?: string;
   /** Show the "Keuangan" tab for users with at least one rekening assignment. */
   hasFinance?: boolean;
+  /** Show the "Kas" tab only for users assigned to a Yeobo Space cash rekening. */
+  hasCash?: boolean;
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
   /** Show the "Yeobo Booth" tab for users in the yeobo_booth_admins allowlist. */
@@ -48,7 +51,7 @@ export function Sidebar({
           },
         ]
       : []),
-    ...(hasFinance
+    ...(hasCash
       ? [
           {
             href: "/cash",
@@ -56,6 +59,10 @@ export function Sidebar({
             label: "Kas",
             color: "bg-pop-emerald",
           },
+        ]
+      : []),
+    ...(hasFinance
+      ? [
           {
             href: "/admin/finance",
             icon: Wallet,

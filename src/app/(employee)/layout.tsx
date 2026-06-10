@@ -1,7 +1,7 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
-import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
+import { listMyAssignedBankAccountIds, hasAssignedYeoboCash } from "@/lib/actions/cashflow.actions";
 import { countMyAssignments } from "@/lib/actions/cashflow-assignments.actions";
 import { getCurrentProfile } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
@@ -16,13 +16,14 @@ export default async function EmployeeLayout({
   // Yeobo Booth) only when the user actually has access. All queries run
   // in parallel — each is a cheap indexed lookup scoped to the current
   // user via RLS.
-  const [assignedIds, profile, cakeAccess, assignmentCount, hasYeoboBooth] =
+  const [assignedIds, profile, cakeAccess, assignmentCount, hasYeoboBooth, hasCash] =
     await Promise.all([
       listMyAssignedBankAccountIds(),
       getCurrentProfile(),
       getMyCakeAccess(),
       countMyAssignments(),
       isYeoboBoothAdmin(),
+      hasAssignedYeoboCash(),
     ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -40,6 +41,7 @@ export default async function EmployeeLayout({
       <Sidebar
         className="hidden md:flex"
         hasFinance={hasFinance}
+        hasCash={hasCash}
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
         hasYeoboBooth={hasYeoboBooth}
@@ -53,6 +55,7 @@ export default async function EmployeeLayout({
       </main>
       <BottomNav
         hasFinance={hasFinance}
+        hasCash={hasCash}
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
         hasYeoboBooth={hasYeoboBooth}

@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
 import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
-import { listMyAssignedBankAccountIds } from "@/lib/actions/cashflow.actions";
+import { listMyAssignedBankAccountIds, hasAssignedYeoboCash } from "@/lib/actions/cashflow.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
@@ -49,18 +49,21 @@ export default async function AdminLayout({
       );
     }
 
-    const assignedIds = await listMyAssignedBankAccountIds();
+    const [assignedIds, hasCash] = await Promise.all([
+      listMyAssignedBankAccountIds(),
+      hasAssignedYeoboCash(),
+    ]);
     const hasFinance = assignedIds.length > 0;
     return (
       <div className="flex min-h-screen bg-background">
         <RouteProgressBar />
-        <Sidebar className="hidden md:flex" hasFinance={hasFinance} />
+        <Sidebar className="hidden md:flex" hasFinance={hasFinance} hasCash={hasCash} />
         <main className="flex-1 min-w-0">
           <div className="max-w-[1700px] mx-auto px-4 py-6 pb-24 md:px-6 md:pb-8">
             {children}
           </div>
         </main>
-        <BottomNav hasFinance={hasFinance} />
+        <BottomNav hasFinance={hasFinance} hasCash={hasCash} />
       </div>
     );
   }

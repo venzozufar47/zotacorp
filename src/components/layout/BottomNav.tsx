@@ -9,6 +9,7 @@ import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
 
 export function BottomNav({
   hasFinance = false,
+  hasCash = false,
   hasCakeOrders = false,
   hasCakeProduction = false,
   hasYeoboBooth = false,
@@ -16,6 +17,7 @@ export function BottomNav({
   me = null,
 }: {
   hasFinance?: boolean;
+  hasCash?: boolean;
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
   hasYeoboBooth?: boolean;
@@ -42,7 +44,7 @@ export function BottomNav({
           },
         ]
       : []),
-    ...(hasFinance
+    ...(hasCash
       ? [
           {
             href: "/cash",
@@ -50,6 +52,10 @@ export function BottomNav({
             label: "Kas",
             color: "bg-pop-emerald",
           },
+        ]
+      : []),
+    ...(hasFinance
+      ? [
           {
             href: "/admin/finance",
             icon: Wallet,

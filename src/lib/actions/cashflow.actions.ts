@@ -1671,6 +1671,33 @@ export async function listMyAssignedBankAccountIds(): Promise<string[]> {
 }
 
 /**
+ * True kalau user di-assign ke minimal satu rekening CASH Yeobo Space.
+ * Dipakai untuk menampilkan tab "Kas" (dashboard kas cabang Yeobo) HANYA
+ * ke kasir cabang Yeobo — bukan ke assignee finance lain (mis. cash
+ * Haengbocake) yang tetap pakai tab Keuangan biasa.
+ */
+export async function hasAssignedYeoboCash(): Promise<boolean> {
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const supabase = await createClient();
+  const { data: assignments } = await supabase
+    .from("bank_account_assignees")
+    .select("bank_account_id")
+    .eq("user_id", user.id)
+    .eq("scope", "full");
+  const ids = (assignments ?? []).map((r) => r.bank_account_id);
+  if (ids.length === 0) return false;
+  const { data } = await supabase
+    .from("bank_accounts")
+    .select("id")
+    .in("id", ids)
+    .eq("bank", "cash")
+    .eq("business_unit", "Yeobo Space")
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
+/**
  * Richer lookup for the employee dashboard card: returns the assignee's
  * rekening with human-readable fields so we can render a link without a
  * second round-trip. RLS scopes this to rows the user can SELECT.
