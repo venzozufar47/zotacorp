@@ -14,6 +14,7 @@ import {
   cleaningWindowOpen,
   cleaningWindowLabel,
 } from "@/lib/utils/cleaning-window";
+import { isOnDutyToday, type RotationMode } from "@/lib/utils/cleaning-rotation";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +59,10 @@ export interface CleaningAssignmentRow {
   window_mode: string;
   window_start: string | null;
   window_end: string | null;
+  rotation_group_id: string | null;
+  rotation_order: number;
+  rotation_mode: string;
+  rotation_member_count: number;
 }
 
 /** One thing the employee must complete: a checkbox, a generic photo, or a
@@ -486,8 +491,9 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
   const { data, error } = await supabase
     .from("cleaning_assignments")
     .select(
-      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
+      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
     )
+    .order("rotation_order", { ascending: true })
     .order("created_at", { ascending: true });
   if (error || !data) return [];
   return data.map((a) => {
@@ -506,6 +512,10 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
       window_mode: a.window_mode,
       window_start: a.window_start,
       window_end: a.window_end,
+      rotation_group_id: a.rotation_group_id,
+      rotation_order: a.rotation_order,
+      rotation_mode: a.rotation_mode,
+      rotation_member_count: a.rotation_member_count,
     };
   });
 }
@@ -612,6 +622,194 @@ export async function deleteAssignment(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Admin: duty rotations (one checklist shared by 2+ employees, alternating)
+// ---------------------------------------------------------------------------
+
+/** Create a rotation: N assignment rows sharing one rotation_group_id, ordered
+ *  by member_user_ids. Absorbs any pre-existing assignment of this checklist for
+ *  the chosen members so the unique(checklist_id,user_id) constraint won't fire. */
+export async function assignRotation(input: {
+  checklist_id: string;
+  member_user_ids: string[];
+  weekdays: number;
+  block_checkout: boolean;
+  rotation_mode: RotationMode;
+  window_mode?: string;
+  window_start?: string | null;
+  window_end?: string | null;
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const members = Array.from(new Set((input.member_user_ids ?? []).filter(Boolean)));
+  if (!input.checklist_id) return { error: "Checklist wajib dipilih." };
+  if (members.length < 2) return { error: "Rotasi butuh minimal 2 karyawan." };
+  const mode: RotationMode = input.rotation_mode === "weekly" ? "weekly" : "daily";
+  const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
+  const supabase = await createClient();
+
+  // Absorb existing assignments of this checklist for the chosen members.
+  const { error: delErr } = await supabase
+    .from("cleaning_assignments")
+    .delete()
+    .eq("checklist_id", input.checklist_id)
+    .in("user_id", members);
+  if (delErr) return { error: delErr.message };
+
+  const groupId = crypto.randomUUID();
+  const anchor = jakartaDateString(new Date());
+  const rows = members.map((uid, i) => ({
+    checklist_id: input.checklist_id,
+    user_id: uid,
+    weekdays: input.weekdays,
+    block_checkout: input.block_checkout,
+    ...win,
+    rotation_group_id: groupId,
+    rotation_order: i,
+    rotation_mode: mode,
+    rotation_anchor: anchor,
+    rotation_member_count: members.length,
+  }));
+  const { error } = await supabase.from("cleaning_assignments").insert(rows);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/cleaning");
+  return { ok: true };
+}
+
+/** Patch shared schedule/window/active across ALL rows of a rotation group. */
+export async function updateRotation(input: {
+  rotation_group_id: string;
+  weekdays?: number;
+  block_checkout?: boolean;
+  is_active?: boolean;
+  window_mode?: string;
+  window_start?: string | null;
+  window_end?: string | null;
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const patch: {
+    weekdays?: number;
+    block_checkout?: boolean;
+    is_active?: boolean;
+    window_mode?: string;
+    window_start?: string | null;
+    window_end?: string | null;
+    updated_at?: string;
+  } = { updated_at: new Date().toISOString() };
+  if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
+  if (input.block_checkout !== undefined) patch.block_checkout = input.block_checkout;
+  if (input.is_active !== undefined) patch.is_active = input.is_active;
+  if (input.window_mode !== undefined) {
+    const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
+    patch.window_mode = win.window_mode;
+    patch.window_start = win.window_start;
+    patch.window_end = win.window_end;
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("cleaning_assignments")
+    .update(patch)
+    .eq("rotation_group_id", input.rotation_group_id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/cleaning");
+  return { ok: true };
+}
+
+/** Replace a rotation's members (ordered): add/remove/reorder rows, keeping the
+ *  shared schedule. Min 2 members (dissolve via deleteRotation instead). */
+export async function setRotationMembers(input: {
+  rotation_group_id: string;
+  member_user_ids: string[];
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const members = Array.from(new Set((input.member_user_ids ?? []).filter(Boolean)));
+  if (members.length < 2) {
+    return { error: "Rotasi minimal 2 karyawan. Hapus rotasi untuk membubarkan." };
+  }
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("cleaning_assignments")
+    .select(
+      "user_id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, rotation_mode, rotation_anchor"
+    )
+    .eq("rotation_group_id", input.rotation_group_id);
+  if (!existing || existing.length === 0) return { error: "Rotasi tidak ditemukan." };
+  const tmpl = existing[0];
+  const existingUsers = new Set(existing.map((e) => e.user_id));
+  const newSet = new Set(members);
+
+  // Remove members no longer in the rotation (cascades their completions).
+  const removed = existing.filter((e) => !newSet.has(e.user_id)).map((e) => e.user_id);
+  if (removed.length) {
+    const { error } = await supabase
+      .from("cleaning_assignments")
+      .delete()
+      .eq("rotation_group_id", input.rotation_group_id)
+      .in("user_id", removed);
+    if (error) return { error: error.message };
+  }
+
+  // Add new members (absorb any standalone of this checklist they may hold first).
+  const added = members.filter((u) => !existingUsers.has(u));
+  if (added.length) {
+    const { error: delErr } = await supabase
+      .from("cleaning_assignments")
+      .delete()
+      .eq("checklist_id", tmpl.checklist_id)
+      .in("user_id", added);
+    if (delErr) return { error: delErr.message };
+    const rows = added.map((uid) => ({
+      checklist_id: tmpl.checklist_id,
+      user_id: uid,
+      weekdays: tmpl.weekdays,
+      block_checkout: tmpl.block_checkout,
+      window_mode: tmpl.window_mode,
+      window_start: tmpl.window_start,
+      window_end: tmpl.window_end,
+      rotation_group_id: input.rotation_group_id,
+      rotation_order: 0,
+      rotation_mode: tmpl.rotation_mode,
+      rotation_anchor: tmpl.rotation_anchor,
+      rotation_member_count: members.length,
+    }));
+    const { error } = await supabase.from("cleaning_assignments").insert(rows);
+    if (error) return { error: error.message };
+  }
+
+  // Re-number rotation_order by the new order + sync member_count on every row.
+  const results = await Promise.all(
+    members.map((uid, i) =>
+      supabase
+        .from("cleaning_assignments")
+        .update({ rotation_order: i, rotation_member_count: members.length })
+        .eq("rotation_group_id", input.rotation_group_id)
+        .eq("user_id", uid)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { error: failed.error.message };
+  revalidatePath("/admin/cleaning");
+  return { ok: true };
+}
+
+/** Dissolve a rotation: delete all its assignment rows. */
+export async function deleteRotation(input: {
+  rotation_group_id: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("cleaning_assignments")
+    .delete()
+    .eq("rotation_group_id", input.rotation_group_id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/cleaning");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Employee: today's tasks + completion
 // ---------------------------------------------------------------------------
 
@@ -630,7 +828,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
       supabase
         .from("cleaning_assignments")
         .select(
-          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
+          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_anchor, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
         )
         .eq("user_id", user.id)
         .eq("is_active", true),
@@ -664,7 +862,16 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
     .filter(
       (a) =>
         isWorkdayFor(a.weekdays, dow) &&
-        (a.checklist as AssignmentChecklist)?.is_active
+        (a.checklist as AssignmentChecklist)?.is_active &&
+        isOnDutyToday({
+          dateYmd: today,
+          anchorYmd: a.rotation_anchor ?? today,
+          dow,
+          weekdays: a.weekdays,
+          mode: (a.rotation_mode as RotationMode) ?? "daily",
+          memberOrder: a.rotation_order,
+          memberCount: a.rotation_member_count,
+        })
     )
     .map((a) => {
       const checklist = a.checklist as AssignmentChecklist;
@@ -748,7 +955,9 @@ export async function completeCleaningItem(input: {
       .maybeSingle(),
     supabase
       .from("cleaning_assignments")
-      .select("id, checklist_id, user_id, window_mode, window_start, window_end")
+      .select(
+        "id, checklist_id, user_id, weekdays, window_mode, window_start, window_end, rotation_anchor, rotation_mode, rotation_order, rotation_member_count"
+      )
       .eq("id", input.assignment_id)
       .maybeSingle(),
   ]);
@@ -770,6 +979,21 @@ export async function completeCleaningItem(input: {
   }
   if (assignment.checklist_id !== item.checklist_id) {
     return { error: "Item tidak termasuk dalam checklist ini." };
+  }
+
+  // Rotation: only the on-duty member may submit today.
+  if (
+    !isOnDutyToday({
+      dateYmd: today,
+      anchorYmd: assignment.rotation_anchor ?? today,
+      dow: jakartaDayOfWeek(now, tz),
+      weekdays: assignment.weekdays,
+      mode: (assignment.rotation_mode as RotationMode) ?? "daily",
+      memberOrder: assignment.rotation_order,
+      memberCount: assignment.rotation_member_count,
+    })
+  ) {
+    return { error: "Bukan giliran Anda hari ini." };
   }
 
   // If a photo slot is given, it must belong to this item.
@@ -882,7 +1106,7 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, weekdays, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
+        "id, weekdays, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
       )
       .eq("user_id", user.id)
       .eq("is_active", true)
@@ -902,6 +1126,19 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
 
   for (const a of assignments ?? []) {
     if (!isWorkdayFor(a.weekdays, dow)) continue;
+    // Off-duty rotation members are NOT blocked by someone else's turn.
+    if (
+      !isOnDutyToday({
+        dateYmd: today,
+        anchorYmd: a.rotation_anchor ?? today,
+        dow,
+        weekdays: a.weekdays,
+        mode: (a.rotation_mode as RotationMode) ?? "daily",
+        memberOrder: a.rotation_order,
+        memberCount: a.rotation_member_count,
+      })
+    )
+      continue;
     const checklist = a.checklist as {
       name: string;
       is_active: boolean;
@@ -950,7 +1187,7 @@ export async function getCleaningMonitor(input?: {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, user_id, weekdays, block_checkout, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
+        "id, user_id, weekdays, block_checkout, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
       )
       .eq("is_active", true),
     supabase
@@ -970,6 +1207,21 @@ export async function getCleaningMonitor(input?: {
   const rows: MonitorRow[] = [];
   for (const a of assignments ?? []) {
     if (!isWorkdayFor(a.weekdays, dow)) continue;
+    // For a rotation, attribute the day to ONLY the on-duty member; off-duty
+    // members are skipped (not flagged as misses). Standalone rows pass through.
+    if (
+      a.rotation_group_id &&
+      !isOnDutyToday({
+        dateYmd: date,
+        anchorYmd: a.rotation_anchor ?? date,
+        dow,
+        weekdays: a.weekdays,
+        mode: (a.rotation_mode as RotationMode) ?? "daily",
+        memberOrder: a.rotation_order,
+        memberCount: a.rotation_member_count,
+      })
+    )
+      continue;
     const checklist = a.checklist as {
       name: string;
       is_active: boolean;
