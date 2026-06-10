@@ -49,6 +49,9 @@ async function computeAccountSummary(
       .from("cashflow_transactions")
       .select("transaction_date, transaction_time, debit, credit, running_balance, category, sort_order")
       .in("statement_id", stmtIds)
+      // .range() tanpa ORDER BY tidak deterministik di Postgres — halaman
+      // bisa overlap/skip baris begitu rekening >1000 transaksi.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (!data || data.length === 0) break;
     for (const t of data) {
