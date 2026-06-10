@@ -1684,6 +1684,7 @@ export type Database = {
           rotation_member_count: number
           rotation_mode: string
           rotation_order: number
+          skip_holidays: boolean
           updated_at: string
           user_id: string
           weekdays: number
@@ -1702,6 +1703,7 @@ export type Database = {
           rotation_member_count?: number
           rotation_mode?: string
           rotation_order?: number
+          skip_holidays?: boolean
           updated_at?: string
           user_id: string
           weekdays?: number
@@ -1720,6 +1722,7 @@ export type Database = {
           rotation_member_count?: number
           rotation_mode?: string
           rotation_order?: number
+          skip_holidays?: boolean
           updated_at?: string
           user_id?: string
           weekdays?: number

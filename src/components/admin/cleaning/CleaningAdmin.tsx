@@ -34,7 +34,7 @@ export function CleaningAdmin({
 }: {
   checklists: CleaningChecklist[];
   assignments: CleaningAssignmentRow[];
-  monitor: { date: string; rows: MonitorRow[] };
+  monitor: { date: string; holiday: string | null; rows: MonitorRow[] };
   employees: CleaningEmployee[];
 }) {
   const [tab, setTab] = useState<Tab>("monitor");

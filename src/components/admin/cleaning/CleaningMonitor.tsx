@@ -19,10 +19,11 @@ import { CleaningPhotoDialog } from "./CleaningPhotoDialog";
 export function CleaningMonitor({
   initial,
 }: {
-  initial: { date: string; rows: MonitorRow[] };
+  initial: { date: string; holiday: string | null; rows: MonitorRow[] };
 }) {
   const [date, setDate] = useState(initial.date);
   const [rows, setRows] = useState(initial.rows);
+  const [holiday, setHoliday] = useState(initial.holiday);
   const [showAll, setShowAll] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [photo, setPhoto] = useState<{ id: string; title: string } | null>(null);
@@ -34,6 +35,7 @@ export function CleaningMonitor({
     startTransition(async () => {
       const res = await getCleaningMonitor({ date: d });
       setRows(res.rows);
+      setHoliday(res.holiday);
     });
   }
 
@@ -72,6 +74,15 @@ export function CleaningMonitor({
           {showAll ? "Tampilkan exception saja" : "Tampilkan semua"}
         </button>
       </section>
+
+      {holiday && (
+        <div className="rounded-xl border border-border bg-muted/40 px-4 py-2.5 text-sm">
+          <span className="font-semibold">🇮🇩 Libur nasional: {holiday}.</span>{" "}
+          <span className="text-muted-foreground">
+            Checklist dengan opsi &ldquo;lewati tanggal merah&rdquo; dilompati hari ini.
+          </span>
+        </div>
+      )}
 
       {pending && (
         <p className="text-xs text-muted-foreground px-1">Memuat…</p>

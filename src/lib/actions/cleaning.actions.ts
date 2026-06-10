@@ -64,6 +64,7 @@ export interface CleaningAssignmentRow {
   rotation_mode: string;
   rotation_member_count: number;
   rotation_anchor: string | null;
+  skip_holidays: boolean;
 }
 
 /** One thing the employee must complete: a checkbox, a generic photo, or a
@@ -492,7 +493,7 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
   const { data, error } = await supabase
     .from("cleaning_assignments")
     .select(
-      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, rotation_anchor, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
+      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, rotation_anchor, skip_holidays, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
     )
     .order("rotation_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -518,8 +519,22 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
       rotation_mode: a.rotation_mode,
       rotation_member_count: a.rotation_member_count,
       rotation_anchor: a.rotation_anchor,
+      skip_holidays: a.skip_holidays,
     };
   });
+}
+
+/** National-holiday name for a date (YYYY-MM-DD), or null if not a holiday. */
+async function holidayName(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ymd: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("national_holidays")
+    .select("name")
+    .eq("holiday_date", ymd)
+    .maybeSingle();
+  return data?.name ?? null;
 }
 
 /** Normalize window fields: keep only the times the mode uses. */
@@ -542,6 +557,7 @@ export async function assignChecklist(input: {
   user_id: string;
   weekdays: number;
   block_checkout: boolean;
+  skip_holidays?: boolean;
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
@@ -558,6 +574,7 @@ export async function assignChecklist(input: {
     user_id: input.user_id,
     weekdays: input.weekdays,
     block_checkout: input.block_checkout,
+    skip_holidays: input.skip_holidays ?? false,
     ...win,
   });
   if (error) {
@@ -574,6 +591,7 @@ export async function updateAssignment(input: {
   weekdays?: number;
   block_checkout?: boolean;
   is_active?: boolean;
+  skip_holidays?: boolean;
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
@@ -584,6 +602,7 @@ export async function updateAssignment(input: {
     weekdays?: number;
     block_checkout?: boolean;
     is_active?: boolean;
+    skip_holidays?: boolean;
     window_mode?: string;
     window_start?: string | null;
     window_end?: string | null;
@@ -592,6 +611,7 @@ export async function updateAssignment(input: {
   if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
   if (input.block_checkout !== undefined) patch.block_checkout = input.block_checkout;
   if (input.is_active !== undefined) patch.is_active = input.is_active;
+  if (input.skip_holidays !== undefined) patch.skip_holidays = input.skip_holidays;
   if (input.window_mode !== undefined) {
     const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
     patch.window_mode = win.window_mode;
@@ -636,6 +656,7 @@ export async function assignRotation(input: {
   weekdays: number;
   block_checkout: boolean;
   rotation_mode: RotationMode;
+  skip_holidays?: boolean;
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
@@ -664,6 +685,7 @@ export async function assignRotation(input: {
     user_id: uid,
     weekdays: input.weekdays,
     block_checkout: input.block_checkout,
+    skip_holidays: input.skip_holidays ?? false,
     ...win,
     rotation_group_id: groupId,
     rotation_order: i,
@@ -683,6 +705,7 @@ export async function updateRotation(input: {
   weekdays?: number;
   block_checkout?: boolean;
   is_active?: boolean;
+  skip_holidays?: boolean;
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
@@ -693,6 +716,7 @@ export async function updateRotation(input: {
     weekdays?: number;
     block_checkout?: boolean;
     is_active?: boolean;
+    skip_holidays?: boolean;
     window_mode?: string;
     window_start?: string | null;
     window_end?: string | null;
@@ -701,6 +725,7 @@ export async function updateRotation(input: {
   if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
   if (input.block_checkout !== undefined) patch.block_checkout = input.block_checkout;
   if (input.is_active !== undefined) patch.is_active = input.is_active;
+  if (input.skip_holidays !== undefined) patch.skip_holidays = input.skip_holidays;
   if (input.window_mode !== undefined) {
     const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
     patch.window_mode = win.window_mode;
@@ -825,12 +850,12 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
   if (!user) return empty;
 
   const supabase = await createClient();
-  const [{ data: assignments }, { data: log }, { data: completions }] =
+  const [{ data: assignments }, { data: log }, { data: completions }, holiday] =
     await Promise.all([
       supabase
         .from("cleaning_assignments")
         .select(
-          "id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_anchor, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
+          "id, checklist_id, weekdays, block_checkout, skip_holidays, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_anchor, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
         )
         .eq("user_id", user.id)
         .eq("is_active", true),
@@ -845,7 +870,9 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
         .select("id, item_id, photo_req_id, photo_path, completed_at")
         .eq("user_id", user.id)
         .eq("date", today),
+      holidayName(supabase, today),
     ]);
+  const isHoliday = !!holiday;
 
   const checkedIn = !!log?.checked_in_at && !log?.checked_out_at;
   // Key completions by item + photo slot (null slot → "").
@@ -864,6 +891,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
     .filter(
       (a) =>
         isWorkdayFor(a.weekdays, dow) &&
+        !(a.skip_holidays && isHoliday) &&
         (a.checklist as AssignmentChecklist)?.is_active &&
         isOnDutyToday({
           dateYmd: today,
@@ -941,28 +969,30 @@ export async function completeCleaningItem(input: {
   const today = jakartaDateString(now);
   const supabase = await createClient();
 
-  // Independent reads in parallel: today's attendance log, the item, and the
-  // assignment. Guards run after, in order.
-  const [{ data: log }, { data: item }, { data: assignment }] = await Promise.all([
-    supabase
-      .from("attendance_logs")
-      .select("checked_in_at, checked_out_at")
-      .eq("user_id", user.id)
-      .eq("date", today)
-      .maybeSingle(),
-    supabase
-      .from("cleaning_checklist_items")
-      .select("id, requires_photo, checklist_id")
-      .eq("id", input.item_id)
-      .maybeSingle(),
-    supabase
-      .from("cleaning_assignments")
-      .select(
-        "id, checklist_id, user_id, weekdays, window_mode, window_start, window_end, rotation_anchor, rotation_mode, rotation_order, rotation_member_count"
-      )
-      .eq("id", input.assignment_id)
-      .maybeSingle(),
-  ]);
+  // Independent reads in parallel: today's attendance log, the item, the
+  // assignment, and whether today is a national holiday. Guards run after.
+  const [{ data: log }, { data: item }, { data: assignment }, holiday] =
+    await Promise.all([
+      supabase
+        .from("attendance_logs")
+        .select("checked_in_at, checked_out_at")
+        .eq("user_id", user.id)
+        .eq("date", today)
+        .maybeSingle(),
+      supabase
+        .from("cleaning_checklist_items")
+        .select("id, requires_photo, checklist_id")
+        .eq("id", input.item_id)
+        .maybeSingle(),
+      supabase
+        .from("cleaning_assignments")
+        .select(
+          "id, checklist_id, user_id, weekdays, skip_holidays, window_mode, window_start, window_end, rotation_anchor, rotation_mode, rotation_order, rotation_member_count"
+        )
+        .eq("id", input.assignment_id)
+        .maybeSingle(),
+      holidayName(supabase, today),
+    ]);
 
   // Must have an open check-in today — evidence is only meaningful during the
   // shift (mirrors the breakOut guard).
@@ -981,6 +1011,11 @@ export async function completeCleaningItem(input: {
   }
   if (assignment.checklist_id !== item.checklist_id) {
     return { error: "Item tidak termasuk dalam checklist ini." };
+  }
+
+  // Holiday skip: nobody works this checklist on a national holiday.
+  if (assignment.skip_holidays && holiday) {
+    return { error: `Hari ini libur nasional (${holiday}) — checklist dilompati.` };
   }
 
   // Rotation: only the on-duty member may submit today.
@@ -1104,11 +1139,11 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
   const dow = jakartaDayOfWeek(now, tz);
   const supabase = await createClient();
 
-  const [{ data: assignments }, { data: completions }] = await Promise.all([
+  const [{ data: assignments }, { data: completions }, holiday] = await Promise.all([
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, weekdays, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
+        "id, weekdays, skip_holidays, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
       )
       .eq("user_id", user.id)
       .eq("is_active", true)
@@ -1118,7 +1153,9 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
       .select("item_id, photo_req_id")
       .eq("user_id", user.id)
       .eq("date", today),
+    holidayName(supabase, today),
   ]);
+  const isHoliday = !!holiday;
 
   // Done units keyed by item + slot (null slot → "").
   const doneUnits = new Set(
@@ -1128,6 +1165,7 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
 
   for (const a of assignments ?? []) {
     if (!isWorkdayFor(a.weekdays, dow)) continue;
+    if (a.skip_holidays && isHoliday) continue; // holiday → not blocking
     // Off-duty rotation members are NOT blocked by someone else's turn.
     if (
       !isOnDutyToday({
@@ -1172,31 +1210,33 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
 
 export async function getCleaningMonitor(input?: {
   date?: string;
-}): Promise<{ date: string; rows: MonitorRow[] }> {
+}): Promise<{ date: string; holiday: string | null; rows: MonitorRow[] }> {
   const gate = await requireAdmin();
   const tz = await getTimezone();
   const now = new Date();
   const date = input?.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date)
     ? input.date
     : jakartaDateString(now);
-  if (!gate.ok) return { date, rows: [] };
+  if (!gate.ok) return { date, holiday: null, rows: [] };
 
   // Weekday of the selected date (midday avoids any DST/edge in tz mapping).
   const dow = jakartaDayOfWeek(new Date(`${date}T12:00:00`), tz);
   const supabase = await createClient();
 
-  const [{ data: assignments }, { data: completions }] = await Promise.all([
+  const [{ data: assignments }, { data: completions }, holiday] = await Promise.all([
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, user_id, weekdays, block_checkout, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
+        "id, user_id, weekdays, block_checkout, skip_holidays, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
       )
       .eq("is_active", true),
     supabase
       .from("cleaning_task_completions")
       .select("item_id, user_id, photo_req_id, photo_path, id")
       .eq("date", date),
+    holidayName(supabase, date),
   ]);
+  const isHoliday = !!holiday;
 
   // Index completions by `${user_id}|${item_id}|${photo_req_id ?? ""}`.
   const compMap = new Map(
@@ -1209,6 +1249,7 @@ export async function getCleaningMonitor(input?: {
   const rows: MonitorRow[] = [];
   for (const a of assignments ?? []) {
     if (!isWorkdayFor(a.weekdays, dow)) continue;
+    if (a.skip_holidays && isHoliday) continue; // holiday → checklist skipped
     // For a rotation, attribute the day to ONLY the on-duty member; off-duty
     // members are skipped (not flagged as misses). Standalone rows pass through.
     if (
@@ -1289,5 +1330,5 @@ export async function getCleaningMonitor(input?: {
     return x.user_name.localeCompare(y.user_name);
   });
 
-  return { date, rows };
+  return { date, holiday, rows };
 }

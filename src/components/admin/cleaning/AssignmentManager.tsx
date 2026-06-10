@@ -14,6 +14,7 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  CalendarOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -370,6 +371,7 @@ export function AssignmentManager({
   const [rotationMode, setRotationMode] = useState<RotationMode>("daily");
   const [weekdays, setWeekdays] = useState(WORKDAYS_DEFAULT);
   const [blockCheckout, setBlockCheckout] = useState(false);
+  const [skipHolidays, setSkipHolidays] = useState(false);
   const [winMode, setWinMode] = useState("anytime");
   const [winStart, setWinStart] = useState("");
   const [winEnd, setWinEnd] = useState("");
@@ -382,6 +384,7 @@ export function AssignmentManager({
     setRotationMode("daily");
     setWeekdays(WORKDAYS_DEFAULT);
     setBlockCheckout(false);
+    setSkipHolidays(false);
     setWinMode("anytime");
     setWinStart("");
     setWinEnd("");
@@ -400,6 +403,7 @@ export function AssignmentManager({
               member_user_ids: members,
               weekdays,
               block_checkout: blockCheckout,
+              skip_holidays: skipHolidays,
               rotation_mode: rotationMode,
               window_mode: winMode,
               window_start: winStart || null,
@@ -410,6 +414,7 @@ export function AssignmentManager({
               user_id: userId,
               weekdays,
               block_checkout: blockCheckout,
+              skip_holidays: skipHolidays,
               window_mode: winMode,
               window_start: winStart || null,
               window_end: winEnd || null,
@@ -575,19 +580,34 @@ export function AssignmentManager({
         )}
 
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setBlockCheckout((b) => !b)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
-              blockCheckout
-                ? "bg-primary text-primary-foreground border-foreground"
-                : "bg-card text-muted-foreground border-border"
-            )}
-          >
-            <Lock size={13} />
-            Wajib selesai sebelum check out
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setBlockCheckout((b) => !b)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
+                blockCheckout
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : "bg-card text-muted-foreground border-border"
+              )}
+            >
+              <Lock size={13} />
+              Wajib selesai sebelum check out
+            </button>
+            <button
+              type="button"
+              onClick={() => setSkipHolidays((s) => !s)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
+                skipHolidays
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : "bg-card text-muted-foreground border-border"
+              )}
+            >
+              <CalendarOff size={13} />
+              Lewati tanggal merah
+            </button>
+          </div>
           <Button type="button" onClick={onAssign} disabled={pending} className="gap-1.5">
             <Plus size={14} />
             {assignMode === "rotation" ? "Buat rotasi" : "Assign"}
@@ -667,6 +687,7 @@ function SingleAssignmentCard({
             {weekdaySummary(a.weekdays) || "Tidak ada hari"}
             {" · "}
             {windowSummary(a.window_mode, a.window_start, a.window_end)}
+            {a.skip_holidays ? " · lewati libur" : ""}
             {a.business_unit ? ` · ${a.business_unit}` : ""}
           </p>
         </div>
@@ -737,22 +758,40 @@ function SingleAssignmentCard({
               )
             }
           />
-          <button
-            type="button"
-            onClick={() =>
-              run(() => updateAssignment({ id: a.id, block_checkout: !a.block_checkout }))
-            }
-            disabled={pending}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
-              a.block_checkout
-                ? "bg-primary text-primary-foreground border-foreground"
-                : "bg-card text-muted-foreground border-border"
-            )}
-          >
-            <Lock size={13} />
-            Wajib selesai sebelum check out
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() =>
+                run(() => updateAssignment({ id: a.id, block_checkout: !a.block_checkout }))
+              }
+              disabled={pending}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
+                a.block_checkout
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : "bg-card text-muted-foreground border-border"
+              )}
+            >
+              <Lock size={13} />
+              Wajib selesai sebelum check out
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                run(() => updateAssignment({ id: a.id, skip_holidays: !a.skip_holidays }))
+              }
+              disabled={pending}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
+                a.skip_holidays
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : "bg-card text-muted-foreground border-border"
+              )}
+            >
+              <CalendarOff size={13} />
+              Lewati tanggal merah
+            </button>
+          </div>
         </div>
       )}
     </section>
@@ -808,6 +847,7 @@ function RotationCard({
             {weekdaySummary(head.weekdays) || "Tidak ada hari"}
             {" · "}
             {windowSummary(head.window_mode, head.window_start, head.window_end)}
+            {head.skip_holidays ? " · lewati libur" : ""}
             {head.business_unit ? ` · ${head.business_unit}` : ""}
           </p>
         </div>
@@ -918,24 +958,44 @@ function RotationCard({
               )
             }
           />
-          <button
-            type="button"
-            onClick={() =>
-              run(() =>
-                updateRotation({ rotation_group_id: groupId, block_checkout: !head.block_checkout })
-              )
-            }
-            disabled={pending}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
-              head.block_checkout
-                ? "bg-primary text-primary-foreground border-foreground"
-                : "bg-card text-muted-foreground border-border"
-            )}
-          >
-            <Lock size={13} />
-            Wajib selesai sebelum check out
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() =>
+                run(() =>
+                  updateRotation({ rotation_group_id: groupId, block_checkout: !head.block_checkout })
+                )
+              }
+              disabled={pending}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
+                head.block_checkout
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : "bg-card text-muted-foreground border-border"
+              )}
+            >
+              <Lock size={13} />
+              Wajib selesai sebelum check out
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                run(() =>
+                  updateRotation({ rotation_group_id: groupId, skip_holidays: !head.skip_holidays })
+                )
+              }
+              disabled={pending}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition",
+                head.skip_holidays
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : "bg-card text-muted-foreground border-border"
+              )}
+            >
+              <CalendarOff size={13} />
+              Lewati tanggal merah
+            </button>
+          </div>
         </div>
       )}
     </section>
