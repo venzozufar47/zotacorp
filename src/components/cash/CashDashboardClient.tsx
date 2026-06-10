@@ -14,12 +14,14 @@ import {
   Receipt,
   Camera,
   Image as ImageIcon,
+  Info,
 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatDateLongID } from "@/lib/utils/date-formats";
 import {
   CASH_INCOME_CATEGORIES,
   CASH_EXPENSE_CATEGORIES,
+  categoryGuide,
 } from "@/lib/cashflow/cash-branches";
 import {
   createManualTransaction,
@@ -79,6 +81,7 @@ export function CashDashboardClient({
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [dropAttachment, setDropAttachment] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const cats = (k: Kind) =>
     k === "income" ? CASH_INCOME_CATEGORIES : CASH_EXPENSE_CATEGORIES;
@@ -90,6 +93,7 @@ export function CashDashboardClient({
     setNotes("");
     setFile(null);
     setDropAttachment(false);
+    setGuideOpen(false);
     setModal({ kind });
   }
 
@@ -101,6 +105,7 @@ export function CashDashboardClient({
     setNotes(row.notes ?? "");
     setFile(null);
     setDropAttachment(false);
+    setGuideOpen(false);
     setModal({ kind, edit: row });
   }
 
@@ -383,6 +388,31 @@ export function CashDashboardClient({
                   </option>
                 ))}
               </select>
+              {categoryGuide(category) && (
+                <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                  {categoryGuide(category)}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => setGuideOpen((v) => !v)}
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-primary"
+              >
+                <Info size={12} />
+                {guideOpen ? "Tutup panduan" : "Panduan semua kategori"}
+              </button>
+              {guideOpen && (
+                <div className="mt-2 max-h-52 space-y-2.5 overflow-auto rounded-lg border border-border bg-muted/30 p-3">
+                  {cats(modal.kind).map((c) => (
+                    <div key={c} className="text-[11px]">
+                      <p className="font-semibold text-foreground">{c}</p>
+                      <p className="leading-snug text-muted-foreground">
+                        {categoryGuide(c)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Tanggal */}

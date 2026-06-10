@@ -41,3 +41,46 @@ export const CASH_INCOME_CATEGORIES: readonly string[] =
 
 export const CASH_EXPENSE_CATEGORIES: readonly string[] =
   YEOBO_SPACE_DEBIT_CATEGORIES.filter((c) => c !== "Needs Assignment");
+
+/**
+ * Panduan singkat tiap kategori untuk tim kasir cabang — biar mereka tahu
+ * sebuah pemasukan/pengeluaran masuk ke kategori mana. Contoh disesuaikan
+ * konteks studio foto Yeobo (dari pola transaksi cash yang sudah ada).
+ */
+export const CATEGORY_GUIDE: Record<string, string> = {
+  // Pemasukan (credit)
+  Revenue:
+    "Pemasukan utama dari sesi foto / penjualan — setoran uang cash hasil jualan.",
+  "Other Revenue":
+    "Pemasukan lain di luar jualan utama (mis. jual barang bekas, komisi, refund dari vendor).",
+  Investment: "Setoran modal masuk — non-operasional, biasanya diisi admin.",
+  "Owner's Debt Repayment":
+    "Owner mengembalikan pinjaman ke kas — non-operasional, biasanya admin.",
+  // Pengeluaran (debit)
+  "Cost of Goods Sold":
+    "Bahan habis pakai operasional: galon/air, tisu, baterai, kabel kecil, sabun & pembersih (super pell, glade), selotip, plastik sampah, uang makan operasional.",
+  "Shipping Cost":
+    "Ongkos kirim / transport barang: kurir, ongkir belanja online, antar-jemput alat.",
+  Advertising: "Biaya promosi/iklan: ads medsos, cetak brosur, endorse.",
+  "Bank Administration":
+    "Biaya admin/transfer bank: admin bulanan, biaya transfer/BI-FAST, biaya QRIS.",
+  Utilities:
+    "Tagihan & layanan rutin tempat: listrik (PLN), air, wifi/internet, pulsa/kuota HP studio, parkir, keamanan, sampah.",
+  Maintenance:
+    "Perbaikan & perawatan alat/tempat: servis AC, ganti SD card/baterai alat, perbaikan toilet, sparepart kecil, jasa tukang.",
+  "Asset Investment":
+    "Beli alat/aset pakai jangka panjang (BUKAN habis pakai): kamera, lensa, kabel HDMI, lampu, printer, properti booth, furnitur.",
+  "Salaries & Wages": "Gaji / upah / fee karyawan & freelancer.",
+  Rent: "Sewa tempat / ruang / alat.",
+  "Sales Refund": "Pengembalian uang ke customer (refund) karena batal/komplain.",
+  Dividend: "Penarikan bagi hasil ke owner — non-operasional, biasanya admin.",
+  "Owner's Debt":
+    "Owner meminjam uang dari kas — non-operasional, biasanya admin.",
+  "Wealth Transfer":
+    "Pindah uang antar rekening sendiri — terutama SETOR uang cash ke bank (mis. ke Mandiri). Bukan biaya jualan.",
+};
+
+export function categoryGuide(category: string | null | undefined): string {
+  if (!category) return "";
+  return CATEGORY_GUIDE[category] ?? "";
+}
