@@ -63,6 +63,7 @@ export interface CleaningAssignmentRow {
   rotation_order: number;
   rotation_mode: string;
   rotation_member_count: number;
+  rotation_anchor: string | null;
 }
 
 /** One thing the employee must complete: a checkbox, a generic photo, or a
@@ -491,7 +492,7 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
   const { data, error } = await supabase
     .from("cleaning_assignments")
     .select(
-      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
+      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, rotation_anchor, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
     )
     .order("rotation_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -516,6 +517,7 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
       rotation_order: a.rotation_order,
       rotation_mode: a.rotation_mode,
       rotation_member_count: a.rotation_member_count,
+      rotation_anchor: a.rotation_anchor,
     };
   });
 }
