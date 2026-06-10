@@ -693,6 +693,8 @@ function SlipReferenceImages({ orderId }: { orderId: string }) {
                     <img
                       src={img.url}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                   </button>

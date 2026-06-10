@@ -605,6 +605,8 @@ function SlotRow({
           <img
             src={cleaningRefUrl(slot.reference_photo_path)}
             alt="Contoh"
+            loading="lazy"
+            decoding="async"
             className="size-11 rounded-lg border-2 border-foreground object-cover"
           />
         ) : (

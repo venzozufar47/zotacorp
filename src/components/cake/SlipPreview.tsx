@@ -1101,7 +1101,7 @@ function SlipThumb({
       aria-label="Lihat foto referensi"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="" className="w-full h-full object-cover" />
+      <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
     </button>
   );
 }

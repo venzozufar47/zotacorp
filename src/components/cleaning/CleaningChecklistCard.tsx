@@ -56,6 +56,8 @@ function EvidenceThumb({ completionId }: { completionId: string }) {
       <img
         src={url}
         alt="Bukti"
+        loading="lazy"
+        decoding="async"
         className="size-11 rounded-lg border-2 border-foreground object-cover"
       />
     </a>
@@ -402,6 +404,8 @@ export function CleaningChecklistCard({ initial }: Props) {
                                   src={cleaningRefUrl(unit.reference_photo_path)}
                                   alt="Contoh"
                                   title="Contoh"
+                                  loading="lazy"
+                                  decoding="async"
                                   className="size-9 rounded-md border border-border object-cover shrink-0"
                                 />
                               )}

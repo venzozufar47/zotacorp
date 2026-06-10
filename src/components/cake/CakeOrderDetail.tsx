@@ -1036,7 +1036,7 @@ function SignedThumb({
         aria-label="Lihat foto"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt="" className="w-full h-full object-cover" />
+        <img src={url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
       </button>
       {open && (
         <ImagePopup
