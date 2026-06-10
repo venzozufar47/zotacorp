@@ -157,9 +157,11 @@ export function BookingCalendar({ bookings, initialMonth }: Props) {
                           "block rounded-xl border p-2.5",
                           b.status === "cancelled"
                             ? "border-border bg-muted/40 opacity-60"
-                            : b.payment_status === "lunas"
-                              ? "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/40"
-                              : "border-primary/30 bg-primary/5"
+                            : b.booking_type === "space_rent"
+                              ? "border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/40"
+                              : b.payment_status === "lunas"
+                                ? "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/40"
+                                : "border-primary/30 bg-primary/5"
                         )}
                       >
                         <div className="flex items-baseline justify-between gap-2">
@@ -248,9 +250,11 @@ export function BookingCalendar({ bookings, initialMonth }: Props) {
                         "text-[10px] font-medium truncate rounded px-1 py-0.5",
                         b.status === "cancelled"
                           ? "bg-muted text-muted-foreground line-through"
-                          : b.payment_status === "lunas"
-                            ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-200"
-                            : "bg-primary/15 text-primary hover:bg-primary/25"
+                          : b.booking_type === "space_rent"
+                            ? "bg-violet-100 text-violet-800 hover:bg-violet-200 dark:bg-violet-950 dark:text-violet-200"
+                            : b.payment_status === "lunas"
+                              ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-200"
+                              : "bg-primary/15 text-primary hover:bg-primary/25"
                       )}
                     >
                       {b.jam_mulai.slice(0, 5)} {b.nama_klien}

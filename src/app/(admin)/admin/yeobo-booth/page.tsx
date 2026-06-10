@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingTable } from "@/components/yeobo-booth/BookingTable";
 import { formatIDR } from "@/lib/cashflow/format";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { spaceRentRevenue, spaceRentProfit } from "@/lib/yeobo-booth/types";
 
 /**
  * Overview Yeobo Booth — sesi mendatang + metrik bulan berjalan.
@@ -39,16 +40,20 @@ export default async function YeoboBoothOverviewPage() {
   const sesiBulanIni = thisMonth.filter(
     (b) => b.status !== "cancelled"
   ).length;
-  const pendapatanBulanIni = thisMonth.reduce(
-    (sum, b) =>
-      sum +
-      (b.status === "cancelled"
-        ? 0
-        : (b.dp_nominal ?? 0) + (b.pelunasan_nominal ?? 0)),
-    0
-  );
-  const outstanding = thisMonth.reduce((sum, b) => {
+  // Pendapatan: event_hire = DP+pelunasan (cash); space_rent = revenue
+  // (harga/sesi × jumlah sesi, basis sesi).
+  const pendapatanBulanIni = thisMonth.reduce((sum, b) => {
     if (b.status === "cancelled") return sum;
+    return (
+      sum +
+      (b.booking_type === "space_rent"
+        ? spaceRentRevenue(b)
+        : (b.dp_nominal ?? 0) + (b.pelunasan_nominal ?? 0))
+    );
+  }, 0);
+  // Outstanding & "belum lunas" hanya relevan untuk event_hire.
+  const outstanding = thisMonth.reduce((sum, b) => {
+    if (b.status === "cancelled" || b.booking_type !== "event_hire") return sum;
     return (
       sum +
       Math.max(
@@ -58,8 +63,21 @@ export default async function YeoboBoothOverviewPage() {
     );
   }, 0);
   const upcomingUnpaid = upcoming.filter(
-    (b) => b.status !== "cancelled" && b.payment_status !== "lunas"
+    (b) =>
+      b.booking_type === "event_hire" &&
+      b.status !== "cancelled" &&
+      b.payment_status !== "lunas"
   ).length;
+  const profitSewaSpace = thisMonth.reduce(
+    (s, b) =>
+      b.status !== "cancelled" && b.booking_type === "space_rent"
+        ? s + spaceRentProfit(b)
+        : s,
+    0
+  );
+  const hasSpaceRent = thisMonth.some(
+    (b) => b.booking_type === "space_rent" && b.status !== "cancelled"
+  );
 
   return (
     // NOTE: tidak pakai `animate-fade-up` — animation memakai
@@ -114,6 +132,13 @@ export default async function YeoboBoothOverviewPage() {
           label="Upcoming Belum Lunas"
           value={String(upcomingUnpaid)}
         />
+        {hasSpaceRent && (
+          <MetricCard
+            icon={<Wallet size={16} />}
+            label="Profit Sewa Space (bln ini)"
+            value={formatIDR(profitSewaSpace)}
+          />
+        )}
       </section>
 
       <section>

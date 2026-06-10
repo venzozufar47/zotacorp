@@ -4,6 +4,7 @@ import { formatIDR } from "@/lib/cashflow/format";
 import type { YeoboBoothBookingWithFreelance } from "@/lib/yeobo-booth/types";
 import {
   BookingStatusBadge,
+  BookingTypeBadge,
   CancellationKindBadge,
   PaymentStatusBadge,
 } from "./StatusBadges";
@@ -52,21 +53,26 @@ export function BookingTable({ bookings, emptyHint }: Props) {
                 <div className="font-display font-bold text-base sm:text-lg text-foreground leading-tight">
                   {formatIDR(b.harga_total)}
                 </div>
-                {sisa > 0 && b.status !== "cancelled" && (
-                  <div className="text-[11px] text-destructive font-medium mt-0.5">
-                    Sisa {formatIDR(sisa)}
-                  </div>
-                )}
+                {b.booking_type === "event_hire" &&
+                  sisa > 0 &&
+                  b.status !== "cancelled" && (
+                    <div className="text-[11px] text-destructive font-medium mt-0.5">
+                      Sisa {formatIDR(sisa)}
+                    </div>
+                  )}
               </div>
             </div>
 
             {/* Status badges */}
             <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <BookingTypeBadge type={b.booking_type} />
               <BookingStatusBadge status={b.status} />
               {b.status === "cancelled" && b.cancellation_kind && (
                 <CancellationKindBadge kind={b.cancellation_kind} />
               )}
-              <PaymentStatusBadge status={b.payment_status} />
+              {b.booking_type === "event_hire" && (
+                <PaymentStatusBadge status={b.payment_status} />
+              )}
             </div>
 
             {/* Meta rows */}

@@ -174,6 +174,7 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
           .filter(Boolean)
           .join(", ") || "—";
 
+      const isSpace = b.booking_type === "space_rent";
       const vars = {
         hari: cp.days_before,
         namaKlien: b.nama_klien,
@@ -182,12 +183,18 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
         jamSelesai: b.jam_selesai.slice(0, 5),
         lokasi: b.lokasi_event ?? "—",
         freelance: freelanceNames,
-        sisaTagihan: sisa > 0 ? formatIDR(sisa) : "Lunas",
+        // sisaTagihan hanya relevan event_hire; space_rent pakai jumlahSesi.
+        sisaTagihan: isSpace ? "" : sisa > 0 ? formatIDR(sisa) : "Lunas",
+        jumlahSesi: isSpace ? String(b.jumlah_sesi ?? "—") : "",
       };
-      // Pesan custom per checkpoint kalau diisi; selain itu template generik.
+      // Pesan custom per checkpoint kalau diisi; selain itu template generik
+      // sesuai tipe booking.
+      const defaultKey = isSpace
+        ? "yeobo_booth_reminder_generic_space_rent"
+        : "yeobo_booth_reminder_generic";
       const body = cp.message_template
         ? interpolate(cp.message_template, vars)
-        : await renderWaTemplate("yeobo_booth_reminder_generic", vars);
+        : await renderWaTemplate(defaultKey, vars);
 
       // Insert log dulu untuk early-claim slot — UNIQUE constraint
       // (booking_id, checkpoint) mencegah duplikat kalau cron jalan 2x.

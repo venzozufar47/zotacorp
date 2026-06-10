@@ -1,9 +1,11 @@
 import { cn } from "@/lib/utils";
 import {
   BOOKING_STATUS_LABEL,
+  BOOKING_TYPE_LABEL,
   CANCELLATION_KIND_LABEL,
   PAYMENT_STATUS_LABEL,
   type BookingStatus,
+  type BookingType,
   type CancellationKind,
   type PaymentStatus,
 } from "@/lib/yeobo-booth/types";
@@ -69,6 +71,25 @@ export function CancellationKindBadge({
       )}
     >
       {CANCELLATION_KIND_LABEL[kind]}
+    </span>
+  );
+}
+
+const BOOKING_TYPE_TONE: Record<BookingType, string> = {
+  event_hire: "bg-primary/10 text-primary border-primary/30",
+  space_rent:
+    "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950 dark:text-violet-200 dark:border-violet-700",
+};
+
+export function BookingTypeBadge({ type }: { type: BookingType }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded-full border",
+        BOOKING_TYPE_TONE[type]
+      )}
+    >
+      {BOOKING_TYPE_LABEL[type]}
     </span>
   );
 }

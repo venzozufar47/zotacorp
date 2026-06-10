@@ -7,11 +7,20 @@ import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
 import { listBookings } from "@/lib/actions/yeobo-booth.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingTable } from "@/components/yeobo-booth/BookingTable";
+import { BookingTypeFilter } from "@/components/yeobo-booth/BookingTypeFilter";
+import type { BookingType } from "@/lib/yeobo-booth/types";
 
-export default async function BookingsListPage() {
+export default async function BookingsListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>;
+}) {
   if (!(await canAccessYeoboBooth())) redirect("/dashboard");
 
-  const bookings = await listBookings();
+  const sp = await searchParams;
+  const type: BookingType | undefined =
+    sp.type === "event_hire" || sp.type === "space_rent" ? sp.type : undefined;
+  const bookings = await listBookings({ bookingType: type });
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -37,6 +46,7 @@ export default async function BookingsListPage() {
           </div>
         }
       />
+      <BookingTypeFilter current={type} basePath="/admin/yeobo-booth/bookings" />
       <BookingTable bookings={bookings} />
     </div>
   );

@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { formatIDR } from "@/lib/cashflow/format";
 import type { YeoboBoothBookingWithFreelance } from "@/lib/yeobo-booth/types";
+import { spaceRentRevenue } from "@/lib/yeobo-booth/types";
 
 interface Props {
   /** Bookings dalam window 12 bulan terakhir (sudah di-filter di server). */
@@ -54,6 +55,11 @@ function buildMonthlyAgg(
     }
     if (b.status !== "cancelled" && b.pelunasan_tanggal && b.pelunasan_nominal) {
       ensure(b.pelunasan_tanggal.slice(0, 7)).pendapatan += b.pelunasan_nominal;
+    }
+    // Sewa Space: tak ada tanggal pembayaran — revenue (harga/sesi ×
+    // jumlah sesi) di-attribute ke bulan sesi (tanggal).
+    if (b.status !== "cancelled" && b.booking_type === "space_rent") {
+      ensure(b.tanggal.slice(0, 7)).pendapatan += spaceRentRevenue(b);
     }
   }
   return Array.from(map.values()).sort((a, b) => a.ym.localeCompare(b.ym));

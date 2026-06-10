@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { LaporanCharts } from "@/components/yeobo-booth/LaporanCharts";
 import { formatIDR } from "@/lib/cashflow/format";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { spaceRentRevenue, spaceRentProfit } from "@/lib/yeobo-booth/types";
 
 /**
  * Laporan Yeobo Booth — chart pendapatan & jumlah sesi, plus tabel
@@ -27,17 +28,19 @@ export default async function LaporanPage() {
   const bookings = await listBookings({ fromDate });
 
   // Aggregat ringkasan total (lifetime window).
-  const totalPendapatan = bookings.reduce(
-    (s, b) =>
-      s +
-      (b.status === "cancelled"
-        ? 0
-        : (b.dp_nominal ?? 0) + (b.pelunasan_nominal ?? 0)),
-    0
-  );
-  const totalSesi = bookings.filter((b) => b.status === "completed").length;
-  const totalOutstanding = bookings.reduce((s, b) => {
+  const totalPendapatan = bookings.reduce((s, b) => {
     if (b.status === "cancelled") return s;
+    return (
+      s +
+      (b.booking_type === "space_rent"
+        ? spaceRentRevenue(b)
+        : (b.dp_nominal ?? 0) + (b.pelunasan_nominal ?? 0))
+    );
+  }, 0);
+  const totalSesi = bookings.filter((b) => b.status === "completed").length;
+  // Outstanding hanya untuk event_hire (Sewa Space tak punya piutang).
+  const totalOutstanding = bookings.reduce((s, b) => {
+    if (b.status === "cancelled" || b.booking_type !== "event_hire") return s;
     return (
       s +
       Math.max(
@@ -46,6 +49,16 @@ export default async function LaporanPage() {
       )
     );
   }, 0);
+  const profitSewaSpace = bookings.reduce(
+    (s, b) =>
+      b.status !== "cancelled" && b.booking_type === "space_rent"
+        ? s + spaceRentProfit(b)
+        : s,
+    0
+  );
+  const hasSpaceRent = bookings.some(
+    (b) => b.booking_type === "space_rent" && b.status !== "cancelled"
+  );
 
   // Breakdown DP vs Lunas (count + nominal)
   const dpCount = bookings.filter(
@@ -80,13 +93,20 @@ export default async function LaporanPage() {
           tone="warn"
         />
         <Metric label="DP / Lunas" value={`${dpCount} / ${lunasCount}`} />
+        {hasSpaceRent && (
+          <Metric
+            label="Profit Sewa Space"
+            value={formatIDR(profitSewaSpace)}
+          />
+        )}
       </section>
 
       <LaporanCharts bookings={bookings} />
 
       <p className="text-xs text-muted-foreground">
-        Catatan: pendapatan dihitung dari DP + pelunasan yang sudah masuk
-        (cash basis). Booking yang dibatalkan dikeluarkan dari semua angka.
+        Catatan: Event Hire pendapatan = DP + pelunasan yang sudah masuk
+        (cash basis); Sewa Space = harga/sesi × jumlah sesi (basis sesi).
+        Booking yang dibatalkan dikeluarkan dari semua angka.
         Data <em>net</em> setelah alokasi Pusat tersedia di laporan finance
         utama (<Link
           href="/admin/finance"

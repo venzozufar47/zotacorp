@@ -271,6 +271,7 @@ function sampleValuesFor(
     case "yeobo_booth_reminder_h3":
     case "yeobo_booth_reminder_h1":
     case "yeobo_booth_reminder_generic":
+    case "yeobo_booth_reminder_generic_space_rent":
       return {
         hari: 3,
         namaKlien: "Putri Wedding",
@@ -280,6 +281,7 @@ function sampleValuesFor(
         lokasi: "Gedung Serbaguna, Jl. Mawar No. 5",
         freelance: "Dimas, Rara",
         sisaTagihan: "Rp 500.000",
+        jumlahSesi: 100,
       };
   }
 }

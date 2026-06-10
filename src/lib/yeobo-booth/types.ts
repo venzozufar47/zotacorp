@@ -15,6 +15,14 @@ export type BookingStatus =
 
 export type PaymentStatus = "belum_bayar" | "dp" | "lunas";
 
+/**
+ * Tipe booking Yeobo Booth:
+ *  - "event_hire": sewa untuk acara (wedding, dll) — harga_total + alur DP/pelunasan.
+ *  - "space_rent": sewa space (operator) — TANPA DP/pelunasan; revenue =
+ *    harga_per_sesi × jumlah_sesi, biaya = biaya_sewa_space + (bagi_hasil_per_sesi ?? 0) × jumlah_sesi.
+ */
+export type BookingType = "event_hire" | "space_rent";
+
 export type CancellationKind = "forfeit" | "refund";
 
 export type ReminderCheckpoint = "H-7" | "H-3" | "H-1";
@@ -44,7 +52,15 @@ export interface YeoboBoothBooking {
   jam_mulai: string;
   jam_selesai: string;
   lokasi_event: string | null;
+  /** Untuk event_hire: harga klien. Untuk space_rent: revenue (di-derive
+   *  server = harga_per_sesi × jumlah_sesi) sehingga read existing tetap benar. */
   harga_total: number;
+  booking_type: BookingType;
+  // ── space_rent only (null untuk event_hire) ──
+  biaya_sewa_space: number | null;
+  harga_per_sesi: number | null;
+  bagi_hasil_per_sesi: number | null;
+  jumlah_sesi: number | null;
   payment_status: PaymentStatus;
   dp_nominal: number | null;
   dp_tanggal: string | null;
@@ -120,13 +136,20 @@ export interface UpdateFreelanceInput extends CreateFreelanceInput {
 }
 
 export interface CreateBookingInput {
+  booking_type: BookingType;
   nama_klien: string;
   no_hp_klien?: string | null;
   tanggal: string; // YYYY-MM-DD
   jam_mulai: string; // HH:mm
   jam_selesai: string; // HH:mm
   lokasi_event?: string | null;
-  harga_total: number;
+  /** event_hire: wajib. space_rent: diabaikan (server derive dari per-sesi). */
+  harga_total?: number;
+  // space_rent only:
+  biaya_sewa_space?: number | null;
+  harga_per_sesi?: number | null;
+  bagi_hasil_per_sesi?: number | null;
+  jumlah_sesi?: number | null;
   catatan?: string | null;
   freelance_ids: string[];
 }
@@ -157,6 +180,35 @@ export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
   completed: "Selesai",
   cancelled: "Dibatalkan",
 };
+
+export const BOOKING_TYPE_LABEL: Record<BookingType, string> = {
+  event_hire: "Event Hire",
+  space_rent: "Sewa Space",
+};
+
+// ── Helper ekonomi space_rent (operator) — dipakai form/detail/laporan ──
+type SpaceRentFields = {
+  biaya_sewa_space: number | null;
+  harga_per_sesi: number | null;
+  bagi_hasil_per_sesi: number | null;
+  jumlah_sesi: number | null;
+};
+
+/** Pendapatan space_rent = harga_per_sesi × jumlah_sesi. */
+export function spaceRentRevenue(b: SpaceRentFields): number {
+  return (b.harga_per_sesi ?? 0) * (b.jumlah_sesi ?? 0);
+}
+/** Biaya space_rent = biaya_sewa_space + (bagi_hasil_per_sesi ?? 0) × jumlah_sesi. */
+export function spaceRentCosts(b: SpaceRentFields): number {
+  return (
+    (b.biaya_sewa_space ?? 0) +
+    (b.bagi_hasil_per_sesi ?? 0) * (b.jumlah_sesi ?? 0)
+  );
+}
+/** Profit space_rent = revenue − costs. */
+export function spaceRentProfit(b: SpaceRentFields): number {
+  return spaceRentRevenue(b) - spaceRentCosts(b);
+}
 
 /** Business unit constant — dipakai di filter cashflow_transactions,
  *  bank_accounts dropdown, dan investor_business_unit_assignments. */

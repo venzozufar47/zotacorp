@@ -41,6 +41,10 @@ export function PaymentPanel({ booking }: Props) {
   const pelunasanLocked = Boolean(booking.pelunasan_tanggal);
   const fullyPaid = sisa <= 0;
 
+  // Sewa Space tidak punya alur pembayaran DP/pelunasan. Parent sudah
+  // meng-gate, ini guard ekstra (setelah semua hooks dipanggil).
+  if (booking.booking_type === "space_rent") return null;
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const nom = Number(nominal.replace(/[^\d]/g, ""));

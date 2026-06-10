@@ -11,10 +11,16 @@ import {
 } from "@/lib/actions/yeobo-booth.actions";
 import type {
   BookingStatus,
+  BookingType,
+  CreateBookingInput,
   YeoboBoothBookingWithFreelance,
   YeoboBoothFreelance,
 } from "@/lib/yeobo-booth/types";
-import { BOOKING_STATUS_LABEL } from "@/lib/yeobo-booth/types";
+import {
+  BOOKING_STATUS_LABEL,
+  BOOKING_TYPE_LABEL,
+} from "@/lib/yeobo-booth/types";
+import { formatIDR } from "@/lib/cashflow/format";
 
 interface Props {
   freelance: YeoboBoothFreelance[];
@@ -56,8 +62,28 @@ export function BookingForm({
     editing?.jam_selesai?.slice(0, 5) ?? "12:00"
   );
   const [lokasi, setLokasi] = useState(editing?.lokasi_event ?? "");
+  const [bookingType, setBookingType] = useState<BookingType>(
+    editing?.booking_type ?? "event_hire"
+  );
   const [hargaTotal, setHargaTotal] = useState<string>(
-    editing ? String(editing.harga_total) : ""
+    editing && editing.booking_type === "event_hire"
+      ? String(editing.harga_total)
+      : ""
+  );
+  // Field ekonomi space_rent (string input, di-parse saat submit).
+  const [biayaSewa, setBiayaSewa] = useState<string>(
+    editing?.biaya_sewa_space != null ? String(editing.biaya_sewa_space) : ""
+  );
+  const [hargaPerSesi, setHargaPerSesi] = useState<string>(
+    editing?.harga_per_sesi != null ? String(editing.harga_per_sesi) : ""
+  );
+  const [bagiHasil, setBagiHasil] = useState<string>(
+    editing?.bagi_hasil_per_sesi != null
+      ? String(editing.bagi_hasil_per_sesi)
+      : ""
+  );
+  const [jumlahSesi, setJumlahSesi] = useState<string>(
+    editing?.jumlah_sesi != null ? String(editing.jumlah_sesi) : ""
   );
   const [catatan, setCatatan] = useState(editing?.catatan ?? "");
   const [status, setStatus] = useState<BookingStatus>(
@@ -76,24 +102,52 @@ export function BookingForm({
     });
   }
 
+  const num = (s: string) => Number(s.replace(/[^\d]/g, "")) || 0;
+  // Ringkasan ekonomi space_rent (live).
+  const srRevenue = num(hargaPerSesi) * num(jumlahSesi);
+  const srCosts = num(biayaSewa) + num(bagiHasil) * num(jumlahSesi);
+  const srProfit = srRevenue - srCosts;
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const harga = Number(hargaTotal.replace(/[^\d]/g, ""));
-    if (!Number.isFinite(harga) || harga <= 0) {
-      toast.error("Harga total wajib diisi");
-      return;
-    }
-    const payload = {
+    const common = {
+      booking_type: bookingType,
       nama_klien: namaKlien.trim(),
       no_hp_klien: noHpKlien.trim() || null,
       tanggal,
       jam_mulai: jamMulai,
       jam_selesai: jamSelesai,
       lokasi_event: lokasi.trim() || null,
-      harga_total: harga,
       catatan: catatan.trim() || null,
       freelance_ids: Array.from(selectedFreelance),
     };
+    let payload: CreateBookingInput;
+    if (bookingType === "event_hire") {
+      const harga = num(hargaTotal);
+      if (harga <= 0) {
+        toast.error("Harga total wajib diisi");
+        return;
+      }
+      payload = { ...common, harga_total: harga };
+    } else {
+      const hps = num(hargaPerSesi);
+      const js = num(jumlahSesi);
+      if (hps <= 0) {
+        toast.error("Harga per sesi wajib diisi");
+        return;
+      }
+      if (js < 1) {
+        toast.error("Jumlah sesi minimal 1");
+        return;
+      }
+      payload = {
+        ...common,
+        biaya_sewa_space: biayaSewa ? num(biayaSewa) : null,
+        harga_per_sesi: hps,
+        bagi_hasil_per_sesi: bagiHasil ? num(bagiHasil) : null,
+        jumlah_sesi: js,
+      };
+    }
     start(async () => {
       const res = editing
         ? await updateBooking({ ...payload, id: editing.id, status })
@@ -123,6 +177,36 @@ export function BookingForm({
           <ArrowLeft size={14} /> Kembali
         </Link>
       </div>
+
+      <section className="space-y-3 rounded-2xl border border-border bg-card p-5">
+        <h2 className="font-display text-lg font-bold text-foreground">
+          Tipe Booking
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          {(["event_hire", "space_rent"] as BookingType[]).map((t) => {
+            const active = bookingType === t;
+            return (
+              <button
+                type="button"
+                key={t}
+                onClick={() => setBookingType(t)}
+                className={
+                  active
+                    ? "px-4 py-1.5 rounded-full text-sm font-semibold bg-primary text-primary-foreground border-2 border-primary"
+                    : "px-4 py-1.5 rounded-full text-sm font-semibold bg-card text-foreground border-2 border-border hover:border-foreground/40"
+                }
+              >
+                {BOOKING_TYPE_LABEL[t]}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {bookingType === "event_hire"
+            ? "Sewa untuk acara (wedding, dll). Pakai harga total + alur DP/pelunasan."
+            : "Sewa space (operator). Tanpa DP/pelunasan — isi biaya sewa, harga/sesi, jumlah sesi, dan opsional bagi hasil/sesi."}
+        </p>
+      </section>
 
       <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
         <h2 className="font-display text-lg font-bold text-foreground">
@@ -193,25 +277,116 @@ export function BookingForm({
 
       <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
         <h2 className="font-display text-lg font-bold text-foreground">
-          Harga & Pembayaran
+          {bookingType === "event_hire"
+            ? "Harga & Pembayaran"
+            : "Biaya & Pendapatan"}
         </h2>
-        <div>
-          <label className={LABEL}>Harga Total (IDR) *</label>
-          <input
-            inputMode="numeric"
-            className={FIELD}
-            value={hargaTotal}
-            onChange={(e) =>
-              setHargaTotal(e.target.value.replace(/[^\d]/g, ""))
-            }
-            placeholder="Mis. 1500000"
-            required
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            DP & pelunasan dicatat terpisah lewat panel pembayaran setelah
-            booking dibuat.
-          </p>
-        </div>
+        {bookingType === "event_hire" ? (
+          <div>
+            <label className={LABEL}>Harga Total (IDR) *</label>
+            <input
+              inputMode="numeric"
+              className={FIELD}
+              value={hargaTotal}
+              onChange={(e) =>
+                setHargaTotal(e.target.value.replace(/[^\d]/g, ""))
+              }
+              placeholder="Mis. 1500000"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              DP & pelunasan dicatat terpisah lewat panel pembayaran setelah
+              booking dibuat.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={LABEL}>Harga per Sesi (IDR) *</label>
+                <input
+                  inputMode="numeric"
+                  className={FIELD}
+                  value={hargaPerSesi}
+                  onChange={(e) =>
+                    setHargaPerSesi(e.target.value.replace(/[^\d]/g, ""))
+                  }
+                  placeholder="Mis. 50000"
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Jumlah Sesi *</label>
+                <input
+                  inputMode="numeric"
+                  className={FIELD}
+                  value={jumlahSesi}
+                  onChange={(e) =>
+                    setJumlahSesi(e.target.value.replace(/[^\d]/g, ""))
+                  }
+                  placeholder="Mis. 100"
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Biaya Sewa Space (IDR)</label>
+                <input
+                  inputMode="numeric"
+                  className={FIELD}
+                  value={biayaSewa}
+                  onChange={(e) =>
+                    setBiayaSewa(e.target.value.replace(/[^\d]/g, ""))
+                  }
+                  placeholder="Opsional, mis. 2000000"
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Bagi Hasil per Sesi (IDR)</label>
+                <input
+                  inputMode="numeric"
+                  className={FIELD}
+                  value={bagiHasil}
+                  onChange={(e) =>
+                    setBagiHasil(e.target.value.replace(/[^\d]/g, ""))
+                  }
+                  placeholder="Opsional, mis. 10000"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3 rounded-xl border border-border bg-muted/30 p-3 text-center">
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Pendapatan
+                </div>
+                <div className="font-semibold text-foreground tabular-nums">
+                  {formatIDR(srRevenue)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Biaya
+                </div>
+                <div className="font-semibold text-foreground tabular-nums">
+                  {formatIDR(srCosts)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Profit
+                </div>
+                <div
+                  className={
+                    "font-semibold tabular-nums " +
+                    (srProfit >= 0 ? "text-emerald-600" : "text-destructive")
+                  }
+                >
+                  {formatIDR(srProfit)}
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pendapatan = harga/sesi × jumlah sesi. Biaya = biaya sewa + (bagi
+              hasil/sesi × jumlah sesi).
+            </p>
+          </>
+        )}
       </section>
 
       <section className="space-y-4 rounded-2xl border border-border bg-card p-5">

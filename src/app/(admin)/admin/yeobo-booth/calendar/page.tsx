@@ -7,9 +7,18 @@ import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
 import { listBookings } from "@/lib/actions/yeobo-booth.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingCalendar } from "@/components/yeobo-booth/BookingCalendar";
+import { BookingTypeFilter } from "@/components/yeobo-booth/BookingTypeFilter";
+import type { BookingType } from "@/lib/yeobo-booth/types";
 
-export default async function CalendarPage() {
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>;
+}) {
   if (!(await canAccessYeoboBooth())) redirect("/dashboard");
+  const sp = await searchParams;
+  const type: BookingType | undefined =
+    sp.type === "event_hire" || sp.type === "space_rent" ? sp.type : undefined;
 
   // Window lebar — calendar component support navigasi ke bulan apa
   // saja, jadi fetch 6 bulan ke belakang + 12 bulan ke depan biar user
@@ -22,7 +31,7 @@ export default async function CalendarPage() {
   const toDate = new Date(today.getFullYear(), today.getMonth() + 13, 0)
     .toISOString()
     .slice(0, 10);
-  const bookings = await listBookings({ fromDate, toDate });
+  const bookings = await listBookings({ fromDate, toDate, bookingType: type });
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -48,6 +57,7 @@ export default async function CalendarPage() {
           </div>
         }
       />
+      <BookingTypeFilter current={type} basePath="/admin/yeobo-booth/calendar" />
       <BookingCalendar bookings={bookings} />
     </div>
   );

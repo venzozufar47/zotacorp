@@ -25,7 +25,8 @@ export type TemplateKey =
   | "yeobo_booth_reminder_h7"
   | "yeobo_booth_reminder_h3"
   | "yeobo_booth_reminder_h1"
-  | "yeobo_booth_reminder_generic";
+  | "yeobo_booth_reminder_generic"
+  | "yeobo_booth_reminder_generic_space_rent";
 
 export interface PlaceholderInfo {
   key: string;
@@ -229,6 +230,24 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "📸 Reminder H-{hari} Yeobo Booth\n\nKlien: {namaKlien}\nTanggal: {tanggal}\nJam: {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nSisa tagihan: {sisaTagihan}\n\nMohon disiapkan ya. 🙏",
+  },
+  yeobo_booth_reminder_generic_space_rent: {
+    label: "Yeobo Booth — Reminder Sewa Space (generik)",
+    description:
+      "Template default reminder untuk booking tipe Sewa Space (tanpa sisa tagihan). {hari} = offset H-berapa, {jumlahSesi} = jumlah sesi.",
+    recipient: "Nomor WA di daftar penerima Yeobo Booth",
+    placeholders: [
+      { key: "hari", description: "Offset hari (angka di belakang 'H-')" },
+      { key: "namaKlien", description: "Nama penyewa" },
+      { key: "tanggal", description: "Tanggal sesi" },
+      { key: "jamMulai", description: "Jam mulai (HH:mm)" },
+      { key: "jamSelesai", description: "Jam selesai (HH:mm)" },
+      { key: "lokasi", description: "Lokasi (kosong kalau tidak diisi)" },
+      { key: "freelance", description: "Nama-nama freelance yang ditugaskan" },
+      { key: "jumlahSesi", description: "Jumlah sesi yang dijadwalkan" },
+    ],
+    defaultBody:
+      "📸 Reminder H-{hari} Sewa Space Yeobo Booth\n\nPenyewa: {namaKlien}\nTanggal: {tanggal}\nJam: {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nJumlah sesi: {jumlahSesi}\n\nSiapkan space & tim ya. 🙏",
   },
 };
 

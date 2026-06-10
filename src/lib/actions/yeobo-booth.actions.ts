@@ -16,43 +16,78 @@ import {
 const timeRegex = /^[0-2][0-9]:[0-5][0-9]$/;
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-const createBookingSchema = z
-  .object({
-    nama_klien: z.string().trim().min(1, "Nama klien wajib"),
-    no_hp_klien: z.string().trim().optional().nullable(),
-    tanggal: z.string().regex(dateRegex, "Tanggal harus YYYY-MM-DD"),
-    jam_mulai: z.string().regex(timeRegex, "Jam mulai harus HH:mm"),
-    jam_selesai: z.string().regex(timeRegex, "Jam selesai harus HH:mm"),
-    lokasi_event: z.string().trim().optional().nullable(),
-    harga_total: z
-      .number()
-      .nonnegative("Harga tidak boleh negatif"),
-    catatan: z.string().trim().optional().nullable(),
-    freelance_ids: z.array(z.string().uuid()),
-  })
-  .refine((v) => v.jam_selesai > v.jam_mulai, {
-    message: "Jam selesai harus lebih besar dari jam mulai",
-    path: ["jam_selesai"],
-  });
+// Field bersama dua tipe booking. Field harga/space-rent opsional di skema;
+// kewajibannya divalidasi per-tipe lewat `refineBooking`.
+const baseBookingShape = {
+  booking_type: z.enum(["event_hire", "space_rent"]),
+  nama_klien: z.string().trim().min(1, "Nama klien wajib"),
+  no_hp_klien: z.string().trim().optional().nullable(),
+  tanggal: z.string().regex(dateRegex, "Tanggal harus YYYY-MM-DD"),
+  jam_mulai: z.string().regex(timeRegex, "Jam mulai harus HH:mm"),
+  jam_selesai: z.string().regex(timeRegex, "Jam selesai harus HH:mm"),
+  lokasi_event: z.string().trim().optional().nullable(),
+  harga_total: z.number().nonnegative("Harga tidak boleh negatif").optional(),
+  biaya_sewa_space: z.number().nonnegative().optional().nullable(),
+  harga_per_sesi: z.number().nonnegative().optional().nullable(),
+  bagi_hasil_per_sesi: z.number().nonnegative().optional().nullable(),
+  jumlah_sesi: z.number().int().positive().optional().nullable(),
+  catatan: z.string().trim().optional().nullable(),
+  freelance_ids: z.array(z.string().uuid()),
+};
+
+function refineBooking(
+  v: {
+    booking_type: "event_hire" | "space_rent";
+    jam_mulai: string;
+    jam_selesai: string;
+    harga_total?: number;
+    harga_per_sesi?: number | null;
+    jumlah_sesi?: number | null;
+  },
+  ctx: z.RefinementCtx
+) {
+  if (v.jam_selesai <= v.jam_mulai) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Jam selesai harus lebih besar dari jam mulai",
+      path: ["jam_selesai"],
+    });
+  }
+  if (v.booking_type === "event_hire") {
+    if (v.harga_total == null || v.harga_total <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Harga total wajib diisi",
+        path: ["harga_total"],
+      });
+    }
+  } else {
+    if (v.harga_per_sesi == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Harga per sesi wajib diisi",
+        path: ["harga_per_sesi"],
+      });
+    }
+    if (v.jumlah_sesi == null || v.jumlah_sesi < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Jumlah sesi minimal 1",
+        path: ["jumlah_sesi"],
+      });
+    }
+  }
+}
+
+const createBookingSchema = z.object(baseBookingShape).superRefine(refineBooking);
 
 const updateBookingSchema = z
   .object({
+    ...baseBookingShape,
     id: z.string().uuid(),
-    nama_klien: z.string().trim().min(1),
-    no_hp_klien: z.string().trim().optional().nullable(),
-    tanggal: z.string().regex(dateRegex),
-    jam_mulai: z.string().regex(timeRegex),
-    jam_selesai: z.string().regex(timeRegex),
-    lokasi_event: z.string().trim().optional().nullable(),
-    harga_total: z.number().nonnegative(),
-    catatan: z.string().trim().optional().nullable(),
-    freelance_ids: z.array(z.string().uuid()),
     status: z.enum(["scheduled", "ongoing", "completed", "cancelled"]),
   })
-  .refine((v) => v.jam_selesai > v.jam_mulai, {
-    message: "Jam selesai harus lebih besar dari jam mulai",
-    path: ["jam_selesai"],
-  });
+  .superRefine(refineBooking);
 
 const recordPaymentSchema = z.object({
   booking_id: z.string().uuid(),
@@ -70,6 +105,7 @@ export interface ListBookingsFilters {
   toDate?: string;
   status?: YeoboBoothBooking["status"];
   paymentStatus?: YeoboBoothBooking["payment_status"];
+  bookingType?: YeoboBoothBooking["booking_type"];
   freelanceId?: string;
   search?: string;
 }
@@ -90,6 +126,7 @@ export async function listBookings(
   if (filters.toDate) q = q.lte("tanggal", filters.toDate);
   if (filters.status) q = q.eq("status", filters.status);
   if (filters.paymentStatus) q = q.eq("payment_status", filters.paymentStatus);
+  if (filters.bookingType) q = q.eq("booking_type", filters.bookingType);
   if (filters.search) q = q.ilike("nama_klien", `%${filters.search}%`);
 
   const { data: bookings } = await q;
@@ -191,18 +228,30 @@ export async function createBooking(
       error: parsed.error.issues[0]?.message ?? "Input invalid",
     };
   }
+  const d = parsed.data;
+  const isSpace = d.booking_type === "space_rent";
+  // space_rent: harga_total = revenue (harga_per_sesi × jumlah_sesi).
+  const hargaTotal = isSpace
+    ? (d.harga_per_sesi ?? 0) * (d.jumlah_sesi ?? 0)
+    : d.harga_total ?? 0;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("yeobo_booth_bookings" as never)
     .insert({
-      nama_klien: parsed.data.nama_klien,
-      no_hp_klien: parsed.data.no_hp_klien ?? null,
-      tanggal: parsed.data.tanggal,
-      jam_mulai: parsed.data.jam_mulai,
-      jam_selesai: parsed.data.jam_selesai,
-      lokasi_event: parsed.data.lokasi_event ?? null,
-      harga_total: parsed.data.harga_total,
-      catatan: parsed.data.catatan ?? null,
+      booking_type: d.booking_type,
+      nama_klien: d.nama_klien,
+      no_hp_klien: d.no_hp_klien ?? null,
+      tanggal: d.tanggal,
+      jam_mulai: d.jam_mulai,
+      jam_selesai: d.jam_selesai,
+      lokasi_event: d.lokasi_event ?? null,
+      harga_total: hargaTotal,
+      biaya_sewa_space: isSpace ? d.biaya_sewa_space ?? null : null,
+      harga_per_sesi: isSpace ? d.harga_per_sesi ?? null : null,
+      bagi_hasil_per_sesi: isSpace ? d.bagi_hasil_per_sesi ?? null : null,
+      jumlah_sesi: isSpace ? d.jumlah_sesi ?? null : null,
+      catatan: d.catatan ?? null,
       created_by: gate.userId,
     } as never)
     .select("id")
@@ -246,21 +295,65 @@ export async function updateBooking(
       error: parsed.error.issues[0]?.message ?? "Input invalid",
     };
   }
+  const d = parsed.data;
+  const isSpace = d.booking_type === "space_rent";
   const supabase = await createClient();
+
+  // Guard: jangan ubah event_hire → space_rent kalau sudah ada pembayaran.
+  const { data: existRow } = await supabase
+    .from("yeobo_booth_bookings" as never)
+    .select("booking_type, dp_tanggal, pelunasan_tanggal")
+    .eq("id", d.id)
+    .maybeSingle();
+  const exist = existRow as unknown as {
+    booking_type: string;
+    dp_tanggal: string | null;
+    pelunasan_tanggal: string | null;
+  } | null;
+  if (
+    exist &&
+    exist.booking_type === "event_hire" &&
+    isSpace &&
+    (exist.dp_tanggal || exist.pelunasan_tanggal)
+  ) {
+    return {
+      ok: false,
+      error:
+        "Tidak bisa ubah ke Sewa Space: booking sudah ada pembayaran. Hapus pembayaran dulu.",
+    };
+  }
+
+  const hargaTotal = isSpace
+    ? (d.harga_per_sesi ?? 0) * (d.jumlah_sesi ?? 0)
+    : d.harga_total ?? 0;
+  const patch: Record<string, unknown> = {
+    booking_type: d.booking_type,
+    nama_klien: d.nama_klien,
+    no_hp_klien: d.no_hp_klien ?? null,
+    tanggal: d.tanggal,
+    jam_mulai: d.jam_mulai,
+    jam_selesai: d.jam_selesai,
+    lokasi_event: d.lokasi_event ?? null,
+    harga_total: hargaTotal,
+    biaya_sewa_space: isSpace ? d.biaya_sewa_space ?? null : null,
+    harga_per_sesi: isSpace ? d.harga_per_sesi ?? null : null,
+    bagi_hasil_per_sesi: isSpace ? d.bagi_hasil_per_sesi ?? null : null,
+    jumlah_sesi: isSpace ? d.jumlah_sesi ?? null : null,
+    catatan: d.catatan ?? null,
+    status: d.status,
+  };
+  if (isSpace) {
+    // Sewa Space tak punya pembayaran — pastikan field DP/pelunasan bersih.
+    patch.dp_nominal = null;
+    patch.dp_tanggal = null;
+    patch.pelunasan_nominal = null;
+    patch.pelunasan_tanggal = null;
+    patch.payment_status = "belum_bayar";
+  }
   const { error } = await supabase
     .from("yeobo_booth_bookings" as never)
-    .update({
-      nama_klien: parsed.data.nama_klien,
-      no_hp_klien: parsed.data.no_hp_klien ?? null,
-      tanggal: parsed.data.tanggal,
-      jam_mulai: parsed.data.jam_mulai,
-      jam_selesai: parsed.data.jam_selesai,
-      lokasi_event: parsed.data.lokasi_event ?? null,
-      harga_total: parsed.data.harga_total,
-      catatan: parsed.data.catatan ?? null,
-      status: parsed.data.status,
-    } as never)
-    .eq("id", parsed.data.id);
+    .update(patch as never)
+    .eq("id", d.id);
   if (error) return { ok: false, error: error.message };
 
   // Replace m2m assignments — delete-then-insert (simpler than diff).
@@ -378,6 +471,12 @@ export async function recordPayment(
   if (booking.status === "cancelled") {
     return { ok: false, error: "Booking sudah dibatalkan" };
   }
+  if (booking.booking_type === "space_rent") {
+    return {
+      ok: false,
+      error: "Booking tipe Sewa Space tidak mencatat pembayaran DP/pelunasan.",
+    };
+  }
 
   // 2. Validasi: pembayaran tidak boleh melebihi sisa tagihan.
   const sudahDP = booking.dp_nominal ?? 0;
@@ -455,14 +554,18 @@ export async function reversePayment(
   const supabase = await createClient();
   const { data: row } = await supabase
     .from("yeobo_booth_bookings" as never)
-    .select("dp_tanggal, pelunasan_tanggal")
+    .select("booking_type, dp_tanggal, pelunasan_tanggal")
     .eq("id", bookingId)
     .maybeSingle();
   if (!row) return { ok: false, error: "Booking tidak ditemukan" };
   const r = row as unknown as {
+    booking_type: string;
     dp_tanggal: string | null;
     pelunasan_tanggal: string | null;
   };
+  if (r.booking_type === "space_rent") {
+    return { ok: false, error: "Booking tipe Sewa Space tidak punya pembayaran." };
+  }
 
   const target = kind === "dp" ? r.dp_tanggal : r.pelunasan_tanggal;
   if (!target) return { ok: false, error: "Pembayaran tidak ditemukan" };

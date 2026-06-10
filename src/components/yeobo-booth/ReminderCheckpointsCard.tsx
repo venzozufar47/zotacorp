@@ -29,6 +29,7 @@ const PLACEHOLDERS = [
   "lokasi",
   "freelance",
   "sisaTagihan",
+  "jumlahSesi",
 ] as const;
 
 function toRow(c: YeoboBoothReminderCheckpoint): Row {

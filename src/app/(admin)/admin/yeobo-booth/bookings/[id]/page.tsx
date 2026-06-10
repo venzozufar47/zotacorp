@@ -12,10 +12,16 @@ import { CancelBookingButton } from "@/components/yeobo-booth/CancelBookingButto
 import { PaymentPanel } from "@/components/yeobo-booth/PaymentPanel";
 import {
   BookingStatusBadge,
+  BookingTypeBadge,
   CancellationKindBadge,
   PaymentStatusBadge,
 } from "@/components/yeobo-booth/StatusBadges";
 import { formatIDR } from "@/lib/cashflow/format";
+import {
+  spaceRentRevenue,
+  spaceRentCosts,
+  spaceRentProfit,
+} from "@/lib/yeobo-booth/types";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -53,11 +59,14 @@ export default async function BookingDetailPage({ params }: PageProps) {
       {/* Summary card */}
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-center gap-2 mb-3">
+          <BookingTypeBadge type={booking.booking_type} />
           <BookingStatusBadge status={booking.status} />
           {booking.status === "cancelled" && booking.cancellation_kind && (
             <CancellationKindBadge kind={booking.cancellation_kind} />
           )}
-          <PaymentStatusBadge status={booking.payment_status} />
+          {booking.booking_type === "event_hire" && (
+            <PaymentStatusBadge status={booking.payment_status} />
+          )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <Field icon={<CalendarDays size={14} />} label="Tanggal">
@@ -95,11 +104,46 @@ export default async function BookingDetailPage({ params }: PageProps) {
               {booking.freelance.map((f) => f.nama).join(", ")}
             </Field>
           )}
-          <Field label="Harga Total" className="md:col-span-2">
-            <span className="font-display font-bold text-lg text-foreground">
-              {formatIDR(booking.harga_total)}
-            </span>
-          </Field>
+          {booking.booking_type === "event_hire" ? (
+            <Field label="Harga Total" className="md:col-span-2">
+              <span className="font-display font-bold text-lg text-foreground">
+                {formatIDR(booking.harga_total)}
+              </span>
+            </Field>
+          ) : (
+            <div className="md:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2">
+              <Field label="Harga / Sesi">
+                {formatIDR(booking.harga_per_sesi ?? 0)}
+              </Field>
+              <Field label="Jumlah Sesi">{booking.jumlah_sesi ?? 0}×</Field>
+              <Field label="Pendapatan">
+                <span className="font-semibold text-foreground">
+                  {formatIDR(spaceRentRevenue(booking))}
+                </span>
+              </Field>
+              <Field label="Biaya Sewa Space">
+                {formatIDR(booking.biaya_sewa_space ?? 0)}
+              </Field>
+              <Field label="Bagi Hasil / Sesi">
+                {formatIDR(booking.bagi_hasil_per_sesi ?? 0)}
+              </Field>
+              <Field label="Total Biaya">
+                {formatIDR(spaceRentCosts(booking))}
+              </Field>
+              <Field label="Profit" className="col-span-2 sm:col-span-3">
+                <span
+                  className={
+                    "font-display font-bold text-lg " +
+                    (spaceRentProfit(booking) >= 0
+                      ? "text-emerald-600"
+                      : "text-destructive")
+                  }
+                >
+                  {formatIDR(spaceRentProfit(booking))}
+                </span>
+              </Field>
+            </div>
+          )}
           {booking.catatan && (
             <Field label="Catatan" className="md:col-span-2">
               <p className="whitespace-pre-wrap">{booking.catatan}</p>
@@ -108,8 +152,8 @@ export default async function BookingDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      {/* Pembayaran */}
-      <PaymentPanel booking={booking} />
+      {/* Pembayaran — hanya Event Hire (Sewa Space tanpa DP/pelunasan) */}
+      {booking.booking_type === "event_hire" && <PaymentPanel booking={booking} />}
 
       {/* Edit form */}
       <section>
@@ -130,9 +174,9 @@ export default async function BookingDetailPage({ params }: PageProps) {
             Batalkan Booking
           </h2>
           <p className="text-[12.5px] text-muted-foreground mb-3">
-            Sesi tidak jadi dilaksanakan. Kalau sudah ada pembayaran, kamu
-            bisa pilih uang hangus (revenue tetap) atau dikembalikan ke
-            klien (refund di cashflow).
+            {booking.booking_type === "event_hire"
+              ? "Sesi tidak jadi dilaksanakan. Kalau sudah ada pembayaran, kamu bisa pilih uang hangus (revenue tetap) atau dikembalikan ke klien (refund di cashflow)."
+              : "Sesi sewa space tidak jadi dilaksanakan. Booking akan ditandai dibatalkan."}
           </p>
           <CancelBookingButton booking={booking} />
         </section>
