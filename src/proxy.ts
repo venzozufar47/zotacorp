@@ -7,6 +7,8 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|fonts|images|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // manifest.webmanifest & sw.js must stay reachable without a session —
+    // browsers fetch them outside the page context for PWA install/push.
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest|sw.js|fonts|images|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

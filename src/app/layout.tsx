@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Plus_Jakarta_Sans, Poppins } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
@@ -6,6 +6,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
 import { dictionary, type Language } from "@/lib/i18n/dictionary";
 import { LazyToaster } from "@/components/ui/LazyToaster";
+import { PwaRegister } from "@/components/shared/PwaRegister";
 import "./globals.css";
 
 /**
@@ -38,6 +39,13 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "Zota Corp",
   description: "Zota Corp — employee operations",
+  // PWA / home-screen install (manifest: src/app/manifest.ts, apple icon:
+  // src/app/apple-icon.png file convention)
+  appleWebApp: {
+    capable: true,
+    title: "Zota Corp",
+    statusBarStyle: "default",
+  },
   openGraph: {
     title: "Zota Corp",
     description: "Selamat datang orang baik!",
@@ -49,6 +57,13 @@ export const metadata: Metadata = {
     title: "Zota Corp",
     description: "Selamat datang orang baik!",
   },
+};
+
+// `viewportFit: "cover"` lets the app paint behind the iPhone notch when
+// installed to the home screen; theme color matches the app icon teal.
+export const viewport: Viewport = {
+  themeColor: "#005a66",
+  viewportFit: "cover",
 };
 
 const COOKIE_KEY = "zota_lang_v2";
@@ -86,6 +101,7 @@ export default async function RootLayout({
         <LanguageProvider initialLang={lang} initialDictionary={dictionary[lang]}>
           {children}
           <LazyToaster />
+          <PwaRegister />
           <Analytics />
           <SpeedInsights />
         </LanguageProvider>

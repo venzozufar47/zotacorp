@@ -57,6 +57,17 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // The service worker must never be served from cache — a stale
+        // worker would keep controlling clients long after a deploy.
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+        ],
+      },
     ];
   },
 };
