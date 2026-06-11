@@ -13,7 +13,6 @@ import type { YeoboBoothReminderCheckpoint } from "@/lib/yeobo-booth/types";
 interface Row {
   id?: string;
   days_before: number;
-  send_hour: number;
   enabled: boolean;
   label: string;
   message_template: string;
@@ -36,7 +35,6 @@ function toRow(c: YeoboBoothReminderCheckpoint): Row {
   return {
     id: c.id,
     days_before: c.days_before,
-    send_hour: c.send_hour,
     enabled: c.enabled,
     label: c.label ?? "",
     message_template: c.message_template ?? "",
@@ -45,9 +43,10 @@ function toRow(c: YeoboBoothReminderCheckpoint): Row {
 
 /**
  * Kartu pengaturan checkpoint reminder. Tiap baris = 1 checkpoint
- * (H-{days_before} dikirim jam {send_hour} WIB). Admin bisa tambah/hapus
- * baris, set jam, on/off, dan pesan custom. Simpan sekali (reconcile di
- * server).
+ * (H-{days_before}). Semua reminder aktif dikirim sekali sehari oleh cron
+ * (~11:00 WIB; batas Vercel Hobby = cron harian, bukan per-jam). Admin bisa
+ * tambah/hapus baris, on/off, label, dan pesan custom. Simpan sekali
+ * (reconcile di server).
  */
 export function ReminderCheckpointsCard({
   initialCheckpoints,
@@ -64,7 +63,7 @@ export function ReminderCheckpointsCard({
   function addRow() {
     setRows((rs) => [
       ...rs,
-      { days_before: 1, send_hour: 11, enabled: true, label: "", message_template: "" },
+      { days_before: 1, enabled: true, label: "", message_template: "" },
     ]);
   }
   function removeRow(i: number) {
@@ -88,7 +87,9 @@ export function ReminderCheckpointsCard({
       const payload = rows.map((r) => ({
         id: r.id,
         days_before: r.days_before,
-        send_hour: r.send_hour,
+        // Cron Vercel Hobby = harian (~11:00 WIB). Tidak ada jam per-checkpoint;
+        // normalkan ke jam cron. Engine mengirim semua checkpoint aktif.
+        send_hour: 11,
         enabled: r.enabled,
         label: r.label.trim() || null,
         message_template: r.message_template.trim() || null,
@@ -113,7 +114,8 @@ export function ReminderCheckpointsCard({
           <h3 className="font-display font-bold text-lg">Checkpoint reminder</h3>
           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed font-medium">
             Tiap baris satu reminder: dikirim <strong>H-(offset)</strong> hari
-            sebelum sesi, pada jam yang dipilih (WIB). Nonaktifkan tanpa hapus
+            sebelum sesi. Semua reminder aktif dikirim{" "}
+            <strong>sekali sehari</strong> (~11:00 WIB). Nonaktifkan tanpa hapus
             lewat centang.
           </p>
         </div>
@@ -215,21 +217,6 @@ function CheckpointRow({
             onChange={(e) => onChange({ days_before: Number(e.target.value) })}
             className="w-20 tabular-nums"
           />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label className="text-xs">Jam kirim (WIB)</Label>
-          <select
-            value={row.send_hour}
-            onChange={(e) => onChange({ send_hour: Number(e.target.value) })}
-            className="h-9 w-28 rounded-md border border-input bg-background px-2 text-sm tabular-nums"
-          >
-            {Array.from({ length: 24 }).map((_, h) => (
-              <option key={h} value={h}>
-                {String(h).padStart(2, "0")}:00
-              </option>
-            ))}
-          </select>
         </div>
 
         <div className="space-y-1.5 flex-1 min-w-[140px]">

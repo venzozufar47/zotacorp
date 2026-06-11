@@ -5,9 +5,9 @@
  * tiap jam). Checkpoint, jam kirim, isi pesan, dan penerima semuanya
  * DIBACA DARI DB (dapat diatur admin/admin-booth di
  * `/admin/yeobo-booth/settings`), bukan hardcoded:
- *   - `yeobo_booth_reminder_checkpoints` (enabled, days_before, send_hour,
- *     message_template). Hanya checkpoint yang `send_hour == jam WIB
- *     sekarang` yang diproses pada run ini.
+ *   - `yeobo_booth_reminder_checkpoints` (enabled, days_before,
+ *     message_template). SEMUA checkpoint aktif diproses pada run cron
+ *     harian (Vercel Hobby = cron sekali/hari ~11:00 WIB; tak ada per-jam).
  *   - `yeobo_booth_reminder_recipients` (enabled) → daftar nomor penerima.
  *
  * Untuk tiap checkpoint aktif pada jam ini:
@@ -100,12 +100,13 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
     checkpoints: [],
   };
 
-  // Checkpoint aktif yang jam kirimnya == jam WIB sekarang.
+  // SEMUA checkpoint aktif diproses pada run cron harian. Cron Vercel
+  // Hobby hanya bisa sekali/hari (~11:00 WIB) → tidak ada gating per-jam.
+  // Idempotensi dijaga log (UNIQUE booking_id+checkpoint) bila cron jalan 2x.
   const { data: cpRaw } = await db
     .from("yeobo_booth_reminder_checkpoints" as never)
     .select("*")
-    .eq("enabled", true)
-    .eq("send_hour", hourWib);
+    .eq("enabled", true);
   const checkpoints = (cpRaw ?? []) as unknown as YeoboBoothReminderCheckpoint[];
   if (checkpoints.length === 0) return summary;
 

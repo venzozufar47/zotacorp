@@ -11,7 +11,7 @@ import type {
 } from "@/lib/yeobo-booth/types";
 
 /**
- * CRUD pengaturan reminder Yeobo Booth — checkpoint (H-N + jam) & daftar
+ * CRUD pengaturan reminder Yeobo Booth — checkpoint (H-N) & daftar
  * nomor penerima. Boleh diakses admin global ATAU admin Yeobo Booth
  * (`requireYeoboBoothAccess`); RLS `can_manage_yeobo_booth()` jadi lapis
  * kedua. Engine cron (`reminders.ts`) yang membaca tabel ini saat kirim.
