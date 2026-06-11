@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, RotateCcw, Check, X, Loader2 } from "lucide-react";
+import { Camera, RotateCcw, Check, X, Loader2, SwitchCamera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,9 +24,13 @@ interface Props {
   /** Optional reference image shown as an overlay so the user can match the
    *  intended angle/framing (used by the cleaning checklist). */
   referenceUrl?: string;
+  /** Which camera to open first: "user" (front, default — for selfies) or
+   *  "environment" (back — for cleaning evidence). The user can still flip. */
+  defaultFacingMode?: FacingMode;
 }
 
 type CameraState = "requesting" | "ready" | "denied" | "unavailable";
+type FacingMode = "user" | "environment";
 
 /**
  * Live selfie capture — uses getUserMedia so gallery uploads are impossible
@@ -48,6 +52,7 @@ export function SelfieCaptureDialog({
   title,
   description,
   referenceUrl,
+  defaultFacingMode = "user",
 }: Props) {
   const { t } = useTranslation();
   const tc = t.checkIn;
@@ -56,6 +61,7 @@ export function SelfieCaptureDialog({
   const [state, setState] = useState<CameraState>("requesting");
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null);
   const [refExpanded, setRefExpanded] = useState(false);
+  const [facingMode, setFacingMode] = useState<FacingMode>(defaultFacingMode);
 
   function stopStream() {
     streamRef.current?.getTracks().forEach((tr) => tr.stop());
@@ -63,7 +69,7 @@ export function SelfieCaptureDialog({
     if (videoRef.current) videoRef.current.srcObject = null;
   }
 
-  async function startStream() {
+  async function startStream(mode: FacingMode = facingMode) {
     if (!navigator.mediaDevices?.getUserMedia) {
       setState("unavailable");
       return;
@@ -71,7 +77,7 @@ export function SelfieCaptureDialog({
     setState("requesting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
       streamRef.current = stream;
@@ -103,7 +109,8 @@ export function SelfieCaptureDialog({
       setRefExpanded(false);
       return;
     }
-    startStream();
+    setFacingMode(defaultFacingMode);
+    startStream(defaultFacingMode);
     return () => {
       stopStream();
     };
@@ -151,7 +158,16 @@ export function SelfieCaptureDialog({
       URL.revokeObjectURL(preview.url);
       setPreview(null);
     }
-    await startStream();
+    await startStream(facingMode);
+  }
+
+  // Flip between front (user) and back (environment) camera. facingMode is a
+  // preference, not `exact`, so single-camera devices just keep their camera.
+  async function flipCamera() {
+    const next: FacingMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(next);
+    stopStream();
+    await startStream(next);
   }
 
   function confirm() {
@@ -191,10 +207,23 @@ export function SelfieCaptureDialog({
             playsInline
             muted
             autoPlay
-            className={`w-full h-full object-cover scale-x-[-1] ${
-              state === "ready" && !preview ? "" : "invisible"
-            }`}
+            className={`w-full h-full object-cover ${
+              facingMode === "user" ? "scale-x-[-1]" : ""
+            } ${state === "ready" && !preview ? "" : "invisible"}`}
           />
+
+          {/* Flip front/back camera — only while the live feed is up. */}
+          {!preview && state === "ready" && (
+            <button
+              type="button"
+              onClick={flipCamera}
+              title="Putar kamera (depan/belakang)"
+              aria-label="Putar kamera"
+              className="absolute top-2 left-2 z-10 grid place-items-center size-9 rounded-full bg-black/55 text-white hover:bg-black/75 transition"
+            >
+              <SwitchCamera size={18} />
+            </button>
+          )}
 
           {preview && (
             <img

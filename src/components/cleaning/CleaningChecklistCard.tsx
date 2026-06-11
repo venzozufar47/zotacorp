@@ -441,6 +441,7 @@ export function CleaningChecklistCard({ initial }: Props) {
         title="Foto bukti kebersihan"
         description="Ambil foto langsung sebagai bukti item ini sudah dikerjakan."
         referenceUrl={referenceUrl}
+        defaultFacingMode="environment"
       />
     </section>
   );
