@@ -154,6 +154,9 @@ export function CleaningChecklistCard({ initial }: Props) {
       });
       if ("error" in res) {
         toast.error(res.error);
+        // Foto sudah ter-upload tapi penyimpanan checklist gagal → hapus
+        // lagi supaya tidak jadi file yatim di storage (best-effort).
+        void supabase.storage.from("cleaning-photos").remove([path]);
         setBusyKey(null);
         return;
       }

@@ -24,8 +24,11 @@ function cadenceHours(c: BackupCadence): number {
   return 168;
 }
 
+// Disimpan ter-gzip (~85–90% lebih kecil dari JSON mentah) — storage Free
+// plan cuma 1GB. Restore picker di BackupsAdmin bisa baca .json maupun
+// .json.gz (DecompressionStream).
 function safeName(date = new Date()): string {
-  return `zota-backup-${date.toISOString().replace(/[:.]/g, "-")}.json`;
+  return `zota-backup-${date.toISOString().replace(/[:.]/g, "-")}.json.gz`;
 }
 
 // ---------- Settings ---------------------------------------------------
@@ -162,12 +165,14 @@ export async function runBackupNow(): Promise<
 
   try {
     const { bundle, json } = await buildBundle("manual");
-    const sizeBytes = new TextEncoder().encode(json).length;
+    const { gzipSync } = await import("node:zlib");
+    const gz = gzipSync(Buffer.from(json));
+    const sizeBytes = gz.byteLength;
 
     const { error: upErr } = await supabase.storage
       .from(BUCKET)
-      .upload(fileName, json, {
-        contentType: "application/json",
+      .upload(fileName, gz, {
+        contentType: "application/gzip",
         upsert: true,
       });
     if (upErr) throw new Error(upErr.message);
@@ -236,10 +241,12 @@ export async function runBackupCron(): Promise<
 
   try {
     const { bundle, json } = await buildBundle("cron");
+    const { gzipSync } = await import("node:zlib");
+    const gz = gzipSync(Buffer.from(json));
     const { error: upErr } = await supabase.storage
       .from(BUCKET)
-      .upload(fileName, json, {
-        contentType: "application/json",
+      .upload(fileName, gz, {
+        contentType: "application/gzip",
         upsert: true,
       });
     if (upErr) throw new Error(upErr.message);

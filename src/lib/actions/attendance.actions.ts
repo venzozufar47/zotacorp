@@ -1029,11 +1029,73 @@ export async function checkOut(payload?: CheckOutPayload) {
 // Admin: Delete attendance record
 // ---------------------------------------------------------------------------
 
+/**
+ * Kumpulkan path media storage milik log absensi (selfie check-in, bukti
+ * telat, selfie break) lalu hapus dari bucket — dipanggil SETELAH baris DB
+ * terhapus supaya tidak menyisakan file yatim. Best-effort via service
+ * role (RLS bucket tidak memberi admin delete).
+ */
+async function collectAttendanceMediaPaths(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  logIds: string[]
+): Promise<{ selfies: string[]; proofs: string[] }> {
+  const selfies: string[] = [];
+  const proofs: string[] = [];
+  const { data: logs } = await supabase
+    .from("attendance_logs")
+    .select("selfie_path, late_proof_url")
+    .in("id", logIds);
+  for (const l of logs ?? []) {
+    if (l.selfie_path) selfies.push(l.selfie_path);
+    if (l.late_proof_url) proofs.push(l.late_proof_url);
+  }
+  const { data: breaks } = await supabase
+    .from("attendance_break_logs" as never)
+    .select("break_in_selfie_path, break_out_selfie_path")
+    .in("attendance_log_id", logIds);
+  for (const b of (breaks ?? []) as unknown as {
+    break_in_selfie_path: string | null;
+    break_out_selfie_path: string | null;
+  }[]) {
+    if (b.break_in_selfie_path) selfies.push(b.break_in_selfie_path);
+    if (b.break_out_selfie_path) selfies.push(b.break_out_selfie_path);
+  }
+  return { selfies, proofs };
+}
+
+async function removeAttendanceMedia(paths: {
+  selfies: string[];
+  proofs: string[];
+}): Promise<void> {
+  try {
+    const { createClient: createServiceClient } = await import(
+      "@supabase/supabase-js"
+    );
+    const admin = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    for (let i = 0; i < paths.selfies.length; i += 100) {
+      await admin.storage
+        .from("attendance-selfies")
+        .remove(paths.selfies.slice(i, i + 100));
+    }
+    if (paths.proofs.length > 0) {
+      await admin.storage.from("late-proofs").remove(paths.proofs);
+    }
+  } catch (err) {
+    console.error("[attendance] gagal hapus media storage", err);
+  }
+}
+
 export async function deleteAttendanceLog(logId: string) {
   const role = await getCurrentRole();
   if (role !== "admin") return { error: "Forbidden" };
 
   const supabase = await createClient();
+
+  // Kumpulkan path media SEBELUM delete (sesudahnya baris hilang).
+  const media = await collectAttendanceMediaPaths(supabase, [logId]);
 
   // Delete related overtime requests first
   await supabase.from("overtime_requests").delete().eq("attendance_log_id", logId);
@@ -1044,6 +1106,8 @@ export async function deleteAttendanceLog(logId: string) {
     .eq("id", logId);
 
   if (error) return { error: error.message };
+
+  await removeAttendanceMedia(media);
 
   revalidatePath("/admin/attendance");
   return {};
@@ -1065,6 +1129,9 @@ export async function deleteAttendanceLogsBulk(logIds: string[]) {
 
   const supabase = await createClient();
 
+  // Kumpulkan path media SEBELUM delete (break logs ikut CASCADE).
+  const media = await collectAttendanceMediaPaths(supabase, ids);
+
   // Clean dependents first — FK isn't set to ON DELETE CASCADE on
   // overtime_requests, so we drop them by id rather than rely on the DB.
   await supabase.from("overtime_requests").delete().in("attendance_log_id", ids);
@@ -1075,6 +1142,8 @@ export async function deleteAttendanceLogsBulk(logIds: string[]) {
     .in("id", ids);
 
   if (error) return { error: error.message, deleted: 0 };
+
+  await removeAttendanceMedia(media);
 
   revalidatePath("/admin/attendance");
   return { deleted: count ?? ids.length };

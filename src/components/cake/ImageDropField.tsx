@@ -46,8 +46,12 @@ export function ImageDropField({ field, files, onUploaded, onRemove }: Props) {
 
     for (const file of fileArr) {
       try {
+        // Kompres di client (1600px/q0.7) — foto HP 1–4MB jadi ~150–250KB.
+        // Non-gambar / gagal decode (mis. HEIC) lolos apa adanya.
+        const { compressImageFile } = await import("@/lib/images/compress-image");
+        const toUpload = await compressImageFile(file);
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append("file", toUpload);
         fd.append("field", field);
         const res = await fetch("/api/cake-orders/upload", {
           method: "POST",

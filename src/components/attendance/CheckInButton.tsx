@@ -267,11 +267,19 @@ export function CheckInButton({
       };
       const action = pendingActionRef.current;
 
+      // Kalau aksi server gagal (geofence/validasi), selfie yang sudah
+      // ter-upload jadi yatim → hapus lagi (best-effort; GC harian di
+      // cron backup jadi lapis kedua). Sumber kebocoran storage terbesar.
+      const removeOrphanSelfie = () => {
+        void supabase.storage.from("attendance-selfies").remove([path]);
+      };
+
       // ── Break-out: start a break session ──
       if (action === "break-out") {
         const result = await breakOut(payload);
         if (result?.error) {
           toast.error(result.error);
+          removeOrphanSelfie();
           return;
         }
         if (result?.data) {
@@ -288,6 +296,7 @@ export function CheckInButton({
         const result = await breakIn(payload);
         if (result?.error) {
           toast.error(result.error);
+          removeOrphanSelfie();
           return;
         }
         if (result?.data) {
@@ -313,8 +322,7 @@ export function CheckInButton({
 
       if (result?.error) {
         toast.error(result.error);
-        // Orphaned upload isn't worth a cleanup round-trip — bucket is
-        // private and path contains employee's uid; cost is negligible.
+        removeOrphanSelfie();
         return;
       }
 

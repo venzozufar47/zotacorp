@@ -43,8 +43,11 @@ export function LateProofUploadDialog({
     setUploading(true);
 
     try {
+      // Kompres gambar di client (PDF lolos apa adanya).
+      const { compressImageFile } = await import("@/lib/images/compress-image");
+      const toUpload = await compressImageFile(file);
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", toUpload);
       formData.append("attendanceLogId", attendanceLogId);
       formData.append("reason", reason.trim());
 

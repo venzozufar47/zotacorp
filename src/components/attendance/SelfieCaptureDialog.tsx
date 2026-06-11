@@ -133,8 +133,9 @@ export function SelfieCaptureDialog({
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, w, h);
 
+    // q0.72: ~30% lebih kecil dari 0.8, masih jelas untuk verifikasi wajah.
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.8)
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.72)
     );
     if (!blob) return;
 

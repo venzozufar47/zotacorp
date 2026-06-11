@@ -91,14 +91,15 @@ export function BackupsAdmin({ settings, runs }: Props) {
         toast.error(res.error);
         return;
       }
-      // Trigger browser download.
+      // Trigger browser download. Isi blob = JSON mentah (bukan gzip yang
+      // disimpan di bucket) → buang suffix .gz dari nama file unduhan.
       const blob = new Blob([res.data!.bundleJson], {
         type: "application/json",
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = res.data!.fileName;
+      a.download = res.data!.fileName.replace(/\.gz$/, "");
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -141,7 +142,16 @@ export function BackupsAdmin({ settings, runs }: Props) {
 
   const onPickRestoreFile = async (file: File) => {
     try {
-      const text = await file.text();
+      // Backup di storage kini ter-gzip (.json.gz) — decompress di browser.
+      // File .json lama tetap didukung.
+      let text: string;
+      if (file.name.endsWith(".gz")) {
+        const ds = new DecompressionStream("gzip");
+        const stream = file.stream().pipeThrough(ds);
+        text = await new Response(stream).text();
+      } else {
+        text = await file.text();
+      }
       const parsed = JSON.parse(text) as FullBackupBundle;
       if (parsed.version !== 1 || !parsed.categories) {
         toast.error("Format file backup tidak dikenali");
@@ -279,7 +289,7 @@ export function BackupsAdmin({ settings, runs }: Props) {
           Pilih file backup…
           <input
             type="file"
-            accept="application/json,.json"
+            accept="application/json,.json,.gz,application/gzip"
             disabled={pending}
             onChange={(e) => {
               const f = e.target.files?.[0];
