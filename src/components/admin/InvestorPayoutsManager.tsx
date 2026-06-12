@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Edit2, Layers, Loader2, Plus, Trash2 } from "lucide-react";
+import { Edit2, HandCoins, Layers, Loader2, Plus, Trash2 } from "lucide-react";
 import {
   upsertPayout,
   bulkUpsertPayouts,
@@ -84,6 +84,12 @@ export function InvestorPayoutsManager({
           </select>
         </label>
         <div className="flex items-center gap-2">
+          <a
+            href="/admin/finance/dividen"
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-primary/40 bg-primary/5 text-sm font-semibold text-primary hover:bg-primary/10"
+          >
+            <HandCoins size={14} /> Buka Dividen Console
+          </a>
           <button
             type="button"
             onClick={() => setBulkOpen(true)}

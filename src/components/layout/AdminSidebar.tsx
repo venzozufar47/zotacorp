@@ -23,6 +23,7 @@ import {
   TrendingUp,
   Sparkles,
   Coins,
+  HandCoins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -100,6 +101,7 @@ export function AdminSidebar({
       label: "Money & Care",
       items: [
         { href: "/admin/finance", icon: Wallet, label: t.nav.finance },
+        { href: "/admin/finance/dividen", icon: HandCoins, label: "Dividen" },
         { href: "/cash", icon: Coins, label: "Kas Cabang" },
         {
           href: "/admin/celebrations",
