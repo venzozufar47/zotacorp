@@ -441,3 +441,38 @@ export const YEOBO_PNL_HARDCODE: YeoboHardcodeRow[] = [
 
 /** Tahun-bulan terakhir yang dicakup hardcode (eksklusif batas atas). */
 export const YEOBO_HARDCODE_BEFORE = { year: 2026, month: 1 };
+
+/**
+ * Override KHUSUS baris Dividend untuk Jan–Apr 2026 (per cabang per bulan).
+ *
+ * Berbeda dari YEOBO_PNL_HARDCODE di atas (yang mengganti SELURUH bulan
+ * sebelum 2026): di periode ini SEMUA kategori lain (Revenue, Rent, dll)
+ * tetap live dari rekening koran agar P&L tetap balance — HANYA baris
+ * Dividend yang diganti dengan angka kesepakatan di bawah. Mei 2026 dst
+ * TIDAK disentuh: Dividend kembali mengikuti rekening koran.
+ *
+ * Nilai NEGATIF = bulan rugi (investor ikut menanggung / chip in). Nilai 0
+ * tetap disertakan (override berlaku meski 0 → menekan baris Dividend bank
+ * agar tidak dobel; sekaligus menandai bahwa bulan itu memang 0, bukan
+ * sekadar belum terisi).
+ */
+export const YEOBO_DIVIDEND_OVERRIDE_FROM = { year: 2026, month: 1 } as const;
+export const YEOBO_DIVIDEND_OVERRIDE_TO = { year: 2026, month: 4 } as const; // inklusif
+
+export const YEOBO_DIVIDEND_OVERRIDE: YeoboHardcodeRow[] = [
+  // ── Tlogosari ──
+  { b: "Tlogosari", y: 2026, m: 1, c: "Dividend", a: 8551216 },
+  { b: "Tlogosari", y: 2026, m: 2, c: "Dividend", a: 0 },
+  { b: "Tlogosari", y: 2026, m: 3, c: "Dividend", a: -4952243 }, // rugi → chip in
+  { b: "Tlogosari", y: 2026, m: 4, c: "Dividend", a: 7438230 },
+  // ── Tembalang ──
+  { b: "Tembalang", y: 2026, m: 1, c: "Dividend", a: 6292331 },
+  { b: "Tembalang", y: 2026, m: 2, c: "Dividend", a: 0 },
+  { b: "Tembalang", y: 2026, m: 3, c: "Dividend", a: 5857044 },
+  { b: "Tembalang", y: 2026, m: 4, c: "Dividend", a: 10473860 },
+  // ── Jebres (Solo) ── semua 0
+  { b: "Jebres", y: 2026, m: 1, c: "Dividend", a: 0 },
+  { b: "Jebres", y: 2026, m: 2, c: "Dividend", a: 0 },
+  { b: "Jebres", y: 2026, m: 3, c: "Dividend", a: 0 },
+  { b: "Jebres", y: 2026, m: 4, c: "Dividend", a: 0 },
+];

@@ -32,6 +32,9 @@ import {
 import {
   YEOBO_PNL_HARDCODE,
   YEOBO_HARDCODE_BEFORE,
+  YEOBO_DIVIDEND_OVERRIDE,
+  YEOBO_DIVIDEND_OVERRIDE_FROM,
+  YEOBO_DIVIDEND_OVERRIDE_TO,
 } from "./pnl-yeobo-hardcode";
 
 export type PnLSide = "credit" | "debit";
@@ -174,6 +177,35 @@ const HC_INDEX: Map<string, Map<string, Map<string, number>>> = (() => {
   }
   return idx;
 })();
+
+/**
+ * Index override Dividend-only Jan–Apr 2026: `${y}-${MM}` → branch → amount.
+ * Berbeda dari HC_INDEX (full-month, pra-2026): override ini hanya menyentuh
+ * baris Dividend dan dipasang SETELAH report dibangun dari transaksi live.
+ */
+const DIV_OVERRIDE_INDEX: Map<string, Map<string, number>> = (() => {
+  const idx = new Map<string, Map<string, number>>();
+  for (const r of YEOBO_DIVIDEND_OVERRIDE) {
+    const k = `${r.y}-${String(r.m).padStart(2, "0")}`;
+    let bm = idx.get(k);
+    if (!bm) {
+      bm = new Map();
+      idx.set(k, bm);
+    }
+    bm.set(r.b, (bm.get(r.b) ?? 0) + r.a);
+  }
+  return idx;
+})();
+
+function inDividendOverrideRange(year: number, month: number): boolean {
+  const k = year * 100 + month;
+  return (
+    k >=
+      YEOBO_DIVIDEND_OVERRIDE_FROM.year * 100 +
+        YEOBO_DIVIDEND_OVERRIDE_FROM.month &&
+    k <= YEOBO_DIVIDEND_OVERRIDE_TO.year * 100 + YEOBO_DIVIDEND_OVERRIDE_TO.month
+  );
+}
 
 export async function fetchYeoboPnL(
   supabase: SupabaseClient<Database>,
@@ -752,6 +784,63 @@ export async function fetchYeoboPnL(
         nonOpExpense: Math.round(nopExp),
         byCategory: hcCategory,
       };
+    }
+  }
+
+  // ── Overlay 2: override KHUSUS baris Dividend Jan–Apr 2026. Kategori
+  //    lain tetap live dari rekening koran (P&L tetap balance). Disjoint
+  //    dengan overlay full-month di atas (itu hanya year < 2026; ini hanya
+  //    2026-01..04) dan tidak menyentuh Mei 2026 dst. Operating profit tak
+  //    berubah karena Dividend = non-operasional. ──
+  for (const mo of months) {
+    if (!inDividendOverrideRange(mo.year, mo.month)) continue;
+    const bm = DIV_OVERRIDE_INDEX.get(ym(mo.year, mo.month));
+    for (const branch of PHYSICAL_BRANCHES) {
+      const data = mo.byBranch[branch];
+      if (!data) continue;
+      const amt = Math.round(bm?.get(branch) ?? 0);
+
+      // 1) Cabut baris Dividend live (apa pun isinya) + koreksi total non-op.
+      const existing = data.byCategory.find((c) => c.category === "Dividend");
+      if (existing) {
+        data.nonOpRevenue -= existing.credit;
+        data.nonOpExpense -= existing.debit;
+        data.byCategory = data.byCategory.filter((c) => c !== existing);
+      }
+
+      // 2) Sisip baris override (selalu, termasuk 0 → menandai overridden
+      //    & menekan baris bank). Negatif diizinkan (chip in), konsisten
+      //    dengan overlay hardcode lama.
+      data.byCategory.push({
+        category: "Dividend",
+        credit: 0,
+        debit: amt,
+        kind: "nonop",
+        directCredit: 0,
+        directDebit: amt,
+        allSplitCredit: 0,
+        allSplitDebit: 0,
+        allocationCredit: 0,
+        allocationDebit: 0,
+        details: [
+          {
+            txId: `divhc-${branch}-${mo.year}-${mo.month}`,
+            date: `${mo.year}-${String(mo.month).padStart(2, "0")}-01`,
+            description:
+              "Override dividen (input langsung, Jan–Apr 2026) — menggantikan rekening koran",
+            branch,
+            amount: -amt,
+            fullAmount: -amt,
+          },
+        ],
+      });
+      data.nonOpExpense += amt;
+
+      // Pertahankan urutan byCategory (operating dulu, lalu magnitude desc).
+      data.byCategory.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "operating" ? -1 : 1;
+        return Math.max(b.credit, b.debit) - Math.max(a.credit, a.debit);
+      });
     }
   }
 
