@@ -17,13 +17,16 @@ import {
   Trash2,
   Pencil,
   Lock,
+  Gift,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   addCakeOrderPayment,
   deleteCakeOrderAttachment,
   deleteCakeOrderPayment,
+  discardCakeOrder,
   getCakeAttachmentSignedUrl,
+  setCakeOrderFreeClaim,
   setCakeOrderStatus,
 } from "@/lib/actions/cake-orders.actions";
 import { formatIDR } from "@/lib/cashflow/format";
@@ -32,6 +35,7 @@ import { ImagePopup } from "./ImagePopup";
 import { ImageDropField } from "./ImageDropField";
 import { NotesText } from "./NotesText";
 import { NewCakeOrderForm } from "./NewCakeOrderForm";
+import { CakeBillingEditor } from "./CakeBillingEditor";
 import type {
   CakeAttachmentField,
   CakeBaseDiameterPrice,
@@ -106,6 +110,9 @@ export function CakeOrderDetail({
   const [addingPaymentKind, setAddingPaymentKind] =
     useState<CakePaymentKind | null>(null);
   const [editing, setEditing] = useState(false);
+  // Editor sempit untuk 3 field administratif (nama / add-ons / ongkir)
+  // yang tetap boleh diubah meski cake sudah diproduksi/dikirim.
+  const [editingBilling, setEditingBilling] = useState(false);
 
   // Once production has finished baking the cake, freeze the spec.
   // Editing the form post-bake is meaningless — the customer's order
@@ -126,6 +133,23 @@ export function CakeOrderDetail({
   const editable = canEdit && !lockedFromEdit && !lockedBySlip;
 
   const labelFor = makeLabelFor(optionsByKind);
+  // Pickup → ongkir dipaksa 0 (tidak ditampilkan di billing editor).
+  const isPickup = labelFor("delivery", order.delivery_option_id)
+    .toLowerCase()
+    .includes("pickup");
+
+  // Billing edit (3 field) selalu boleh selama order belum void — bahkan
+  // saat spesifikasi sudah terkunci pasca-produksi. Free-claim ikut aturan
+  // yang sama. Discard hanya untuk cake yang sudah masuk produksi.
+  const isVoid =
+    order.status === "cancelled" || order.status === "discarded";
+  const canEditBilling = canEdit && !isVoid;
+  const canFreeClaim = canEdit && !isVoid;
+  const canDiscard =
+    canEdit &&
+    (order.status === "in_progress" ||
+      order.status === "ready" ||
+      order.status === "delivering");
   const attByField = useMemo(() => {
     const m: Record<CakeAttachmentField, CakeOrderAttachment[]> = {
       color: [],
@@ -163,6 +187,41 @@ export function CakeOrderDetail({
         return;
       }
       toast.success("Order dibatalkan");
+      afterMutation();
+    });
+
+  const onDiscard = () =>
+    startTransition(async () => {
+      if (
+        !confirm(
+          "Cake sudah diproduksi tapi dibuang? Pesanan ditandai DIBUANG (tidak masuk pendapatan & bonus). Tindakan ini tidak bisa dibatalkan."
+        )
+      )
+        return;
+      const res = await discardCakeOrder(order.id);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Cake ditandai dibuang");
+      afterMutation();
+    });
+
+  const onToggleFreeClaim = (on: boolean) =>
+    startTransition(async () => {
+      if (
+        on &&
+        !confirm(
+          "Tandai sebagai klaim gratis karyawan? Harga jadi Rp 0 dan otomatis lunas."
+        )
+      )
+        return;
+      const res = await setCakeOrderFreeClaim(order.id, on);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(on ? "Ditandai gratis karyawan" : "Klaim gratis dibatalkan");
       afterMutation();
     });
 
@@ -264,6 +323,19 @@ export function CakeOrderDetail({
             Edit
           </button>
         )}
+        {/* Saat edit penuh terkunci (pasca-produksi / slip frozen), staf
+            cake tetap bisa membetulkan nama & harga lewat editor sempit. */}
+        {!editable && canEditBilling && !editingBilling && (
+          <button
+            type="button"
+            onClick={() => setEditingBilling(true)}
+            className="flex items-center gap-1 rounded-lg border border-foreground bg-card px-2 py-1 text-xs font-medium hover:bg-muted shrink-0"
+            aria-label="Edit nama & harga"
+          >
+            <Pencil size={11} strokeWidth={2.5} />
+            Edit nama &amp; harga
+          </button>
+        )}
         {lockedFromEdit && (
           <span
             className="inline-flex items-center gap-1 rounded-full border-2 border-foreground bg-pop-emerald/30 px-2 py-0.5 text-[11px] font-medium text-foreground shrink-0"
@@ -302,6 +374,18 @@ export function CakeOrderDetail({
             Buka slip produksi →
           </Link>
         </div>
+      )}
+
+      {editingBilling && canEditBilling && (
+        <CakeBillingEditor
+          order={order}
+          showOngkir={!isPickup}
+          onDone={() => {
+            setEditingBilling(false);
+            afterMutation();
+          }}
+          onCancel={() => setEditingBilling(false)}
+        />
       )}
 
       {/* CSS-multicolumn so sections fill both halves with no dead
@@ -444,48 +528,83 @@ export function CakeOrderDetail({
                 ))}
               </ul>
             )}
-            {canEdit && (
-              <>
-                {addingPayment ? (
-                  <AddPaymentForm
-                    orderId={order.id}
-                    methods={optionsByKind?.payment_method ?? []}
-                    remaining={totals.remaining}
-                    refundable={totals.net}
-                    defaultKind={addingPaymentKind}
-                    onDone={() => {
-                      setAddingPayment(false);
-                      setAddingPaymentKind(null);
-                      afterMutation();
-                    }}
-                    onCancel={() => {
-                      setAddingPayment(false);
-                      setAddingPaymentKind(null);
-                    }}
-                  />
-                ) : (
+            {order.free_claim ? (
+              // Klaim gratis karyawan: harga Rp 0 & lunas tanpa payment leg.
+              // Pembayaran disembunyikan; tampilkan badge + undo.
+              <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-foreground bg-pop-emerald/15 px-2.5 py-1.5">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <Gift size={12} strokeWidth={2.5} />
+                  Gratis karyawan · Lunas
+                </span>
+                {canFreeClaim && (
                   <button
                     type="button"
-                    onClick={() => setAddingPayment(true)}
-                    className="flex items-center gap-1 rounded-lg border border-dashed border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:border-foreground hover:text-foreground transition-colors mt-1"
+                    onClick={() => onToggleFreeClaim(false)}
+                    disabled={pending}
+                    className="rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
                   >
-                    <Plus size={12} strokeWidth={2.5} />
-                    Tambah pembayaran
+                    Batalkan klaim
                   </button>
                 )}
-              </>
+              </div>
+            ) : (
+              canEdit && (
+                <>
+                  {addingPayment ? (
+                    <AddPaymentForm
+                      orderId={order.id}
+                      methods={optionsByKind?.payment_method ?? []}
+                      remaining={totals.remaining}
+                      refundable={totals.net}
+                      defaultKind={addingPaymentKind}
+                      onDone={() => {
+                        setAddingPayment(false);
+                        setAddingPaymentKind(null);
+                        afterMutation();
+                      }}
+                      onCancel={() => {
+                        setAddingPayment(false);
+                        setAddingPaymentKind(null);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setAddingPayment(true)}
+                        className="flex items-center gap-1 rounded-lg border border-dashed border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
+                      >
+                        <Plus size={12} strokeWidth={2.5} />
+                        Tambah pembayaran
+                      </button>
+                      {canFreeClaim && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleFreeClaim(true)}
+                          disabled={pending}
+                          className="flex items-center gap-1 rounded-lg border border-foreground bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                        >
+                          <Gift size={12} strokeWidth={2.5} />
+                          Klaim gratis karyawan
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )
             )}
           </Section>
 
           {canEdit &&
             order.status !== "cancelled" &&
+            order.status !== "discarded" &&
             order.status !== "done" && (
             <Section emoji="⚙" label="Aksi">
               <div className="flex flex-wrap gap-1.5">
                 {/* Refund opens the payment ledger form with kind
                     pre-set to "refund" — saves the admin from
                     scrolling up + picking the kind manually. */}
-                {totals.net > 0 && (
+                {totals.net > 0 && !order.free_claim && (
                   <button
                     type="button"
                     onClick={() => {
@@ -496,6 +615,20 @@ export function CakeOrderDetail({
                     className="rounded-lg bg-card border border-foreground px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
                   >
                     Refund
+                  </button>
+                )}
+                {/* Buang cake: cake sudah diproduksi lalu dibuang (waste).
+                    Beda dari Batalkan — hanya untuk pesanan yang sudah
+                    masuk produksi (dikerjakan / siap / dikirim). */}
+                {canDiscard && (
+                  <button
+                    type="button"
+                    onClick={onDiscard}
+                    disabled={pending}
+                    className="inline-flex items-center gap-1 rounded-lg bg-pop-amber/30 text-foreground border border-foreground px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
+                  >
+                    <Trash2 size={11} strokeWidth={2.5} />
+                    Buang cake
                   </button>
                 )}
                 <button

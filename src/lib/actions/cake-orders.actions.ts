@@ -599,7 +599,8 @@ export async function updateCakeOrderFull(
     existing.status === "ready" ||
     existing.status === "delivering" ||
     existing.status === "done" ||
-    existing.status === "cancelled"
+    existing.status === "cancelled" ||
+    existing.status === "discarded"
   ) {
     return {
       ok: false,
@@ -757,6 +758,272 @@ export async function updateCakeOrderFull(
   return { ok: true };
 }
 
+/**
+ * Narrow billing edit yang DIIZINKAN kapan pun — bahkan setelah cake
+ * diproduksi / digambar / siap / dikirim. HANYA 3 field administratif:
+ * nama pemesan, harga add-ons, dan ongkir. Spesifikasi kue (base / bentuk /
+ * diameter / filling / warna / dekorasi / dll.) sengaja TIDAK diterima di
+ * sini sehingga tetap terkunci by design (edit penuh pakai
+ * updateCakeOrderFull yang dikunci pasca-produksi).
+ *
+ * Total dihitung ulang server-side dengan rumus yang sama; kalau add-ons
+ * berubah & diskon `percent`, nominal diskon ikut menyesuaikan. Saat
+ * free_claim aktif, total tetap 0. Ditolak hanya bila order sudah terminal
+ * void (cancelled / discarded).
+ */
+export interface CakeOrderBillingPatch {
+  customerName?: string;
+  addOns?: CakeAddOnLine[];
+  deliveryFeeIdr?: number;
+}
+
+export async function updateCakeOrderBilling(
+  id: string,
+  patch: CakeOrderBillingPatch
+): Promise<ActionResult> {
+  const gate = await requireCakeOrderAccess();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const supabase = adminClient();
+  const { data: existingRaw } = await supabase
+    .from("cake_orders" as never)
+    .select(
+      "status, free_claim, base_price_idr, add_ons_idr, add_ons_breakdown, discount_kind, discount_value, delivery_option_id, delivery_fee_idr"
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (!existingRaw) return { ok: false, error: "Order tidak ditemukan" };
+  const existing = existingRaw as unknown as {
+    status: CakeOrder["status"];
+    free_claim: boolean;
+    base_price_idr: number;
+    add_ons_idr: number;
+    add_ons_breakdown: CakeAddOnLine[] | null;
+    discount_kind: "none" | "percent" | "nominal";
+    discount_value: number;
+    delivery_option_id: string;
+    delivery_fee_idr: number;
+  };
+  if (existing.status === "cancelled" || existing.status === "discarded") {
+    return {
+      ok: false,
+      error: "Order sudah dibatalkan/dibuang — tidak bisa diedit",
+    };
+  }
+
+  const update: Record<string, unknown> = {};
+
+  if (patch.customerName !== undefined) {
+    const name = patch.customerName.trim();
+    if (!name) return { ok: false, error: "Atas nama pemesan wajib" };
+    update.customer_name = name;
+  }
+
+  // Add-ons → breakdown + sum (normalisasi sama seperti create).
+  let addOnsEff = existing.add_ons_idr;
+  if (patch.addOns !== undefined) {
+    const breakdown: CakeAddOnLine[] = patch.addOns
+      .map((a) => ({
+        label: a.label.trim(),
+        price_idr: Math.max(0, Math.round(a.price_idr)),
+      }))
+      .filter((a) => a.label.length > 0 || a.price_idr > 0);
+    addOnsEff = breakdown.reduce((s, a) => s + a.price_idr, 0);
+    update.add_ons_idr = addOnsEff;
+    update.add_ons_breakdown = breakdown.length > 0 ? breakdown : null;
+  }
+
+  // Ongkir — pickup (delivery option needs_address=false) selalu 0.
+  let ongkirEff = existing.delivery_fee_idr;
+  if (patch.deliveryFeeIdr !== undefined) {
+    const { data: optRaw } = await supabase
+      .from("cake_options" as never)
+      .select("needs_address")
+      .eq("id", existing.delivery_option_id)
+      .maybeSingle();
+    const needsAddress =
+      (optRaw as unknown as { needs_address?: boolean } | null)
+        ?.needs_address ?? false;
+    ongkirEff = needsAddress
+      ? Math.max(0, Math.round(patch.deliveryFeeIdr))
+      : 0;
+    update.delivery_fee_idr = ongkirEff;
+  }
+
+  const discountIdr = computeDiscountIdr(
+    existing.base_price_idr + addOnsEff,
+    existing.discount_kind,
+    existing.discount_value
+  );
+  update.discount_idr = discountIdr;
+  update.total_idr = existing.free_claim
+    ? 0
+    : Math.max(0, existing.base_price_idr + addOnsEff - discountIdr) +
+      ongkirEff;
+
+  if (Object.keys(update).length === 0) return { ok: true };
+
+  const { error } = await supabase
+    .from("cake_orders" as never)
+    .update(update as never)
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/cake-orders");
+  revalidatePath("/cake-orders/archive");
+  revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
+  return { ok: true };
+}
+
+/**
+ * Klaim gratis karyawan (perk / giveaway). on=true → cake gratis: total_idr
+ * 0, payment_status 'paid', paid_idr 0 TANPA payment leg. Aman menulis
+ * payment_status langsung di cake_orders karena trigger
+ * `cake_orders_refresh_payment_status` hanya fire dari perubahan
+ * cake_order_payments. on=false (undo) → total dihitung ulang dari
+ * base/add-ons/diskon/ongkir & payment_status di-derive dari ledger.
+ */
+export async function setCakeOrderFreeClaim(
+  id: string,
+  on: boolean
+): Promise<ActionResult> {
+  const gate = await requireCakeOrderAccess();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+
+  const { data: existingRaw } = await supabase
+    .from("cake_orders" as never)
+    .select(
+      "status, base_price_idr, add_ons_idr, discount_kind, discount_value, delivery_fee_idr"
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (!existingRaw) return { ok: false, error: "Order tidak ditemukan" };
+  const existing = existingRaw as unknown as {
+    status: CakeOrder["status"];
+    base_price_idr: number;
+    add_ons_idr: number;
+    discount_kind: "none" | "percent" | "nominal";
+    discount_value: number;
+    delivery_fee_idr: number;
+  };
+  if (existing.status === "cancelled" || existing.status === "discarded") {
+    return {
+      ok: false,
+      error: "Order sudah dibatalkan/dibuang — tidak bisa klaim gratis",
+    };
+  }
+
+  const now = new Date().toISOString();
+  if (on) {
+    const { error } = await supabase
+      .from("cake_orders" as never)
+      .update({
+        free_claim: true,
+        free_claim_at: now,
+        free_claim_by: gate.userId,
+        total_idr: 0,
+        payment_status: "paid",
+        paid_idr: 0,
+        paid_at: now,
+      } as never)
+      .eq("id", id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const discountIdr = computeDiscountIdr(
+      existing.base_price_idr + existing.add_ons_idr,
+      existing.discount_kind,
+      existing.discount_value
+    );
+    const totalIdr =
+      Math.max(
+        0,
+        existing.base_price_idr + existing.add_ons_idr - discountIdr
+      ) + existing.delivery_fee_idr;
+    // Net paid dari ledger (sum dp+pelunasan − refund) untuk re-derive
+    // snapshot — free-claim biasanya tanpa leg sehingga net = 0 → unpaid.
+    const { data: payRaw } = await supabase
+      .from("cake_order_payments" as never)
+      .select("kind, amount_idr")
+      .eq("cake_order_id", id);
+    type P = { kind: string; amount_idr: number };
+    const legs = (payRaw ?? []) as unknown as P[];
+    const paid = legs
+      .filter((p) => p.kind !== "refund")
+      .reduce((s, p) => s + p.amount_idr, 0);
+    const refunded = legs
+      .filter((p) => p.kind === "refund")
+      .reduce((s, p) => s + p.amount_idr, 0);
+    const net = paid - refunded;
+    const paymentStatus =
+      refunded > 0 && net <= 0
+        ? "refunded"
+        : net >= totalIdr && totalIdr > 0
+          ? "paid"
+          : "unpaid";
+    const { error } = await supabase
+      .from("cake_orders" as never)
+      .update({
+        free_claim: false,
+        free_claim_at: null,
+        free_claim_by: null,
+        discount_idr: discountIdr,
+        total_idr: totalIdr,
+        payment_status: paymentStatus,
+        paid_idr: net,
+        paid_at: net > 0 ? now : null,
+      } as never)
+      .eq("id", id);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/cake-orders");
+  revalidatePath("/cake-orders/archive");
+  revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
+  return { ok: true };
+}
+
+/**
+ * Buang cake — cake yang sudah/sedang diproduksi lalu dibuang (waste).
+ * Berbeda dari Batalkan: hanya boleh saat order sudah masuk produksi
+ * (in_progress / ready / delivering). Status → 'discarded' (terminal,
+ * dikecualikan dari pendapatan & bonus dekorator).
+ */
+export async function discardCakeOrder(id: string): Promise<ActionResult> {
+  const gate = await requireCakeOrderAccess();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { data: row } = await supabase
+    .from("cake_orders" as never)
+    .select("status")
+    .eq("id", id)
+    .maybeSingle();
+  const current = (row as unknown as { status?: string } | null)?.status;
+  if (!current) return { ok: false, error: "Order tidak ditemukan" };
+  if (
+    current !== "in_progress" &&
+    current !== "ready" &&
+    current !== "delivering"
+  ) {
+    return {
+      ok: false,
+      error:
+        "Buang cake hanya untuk pesanan yang sudah diproduksi. Untuk pesanan baru, gunakan Batalkan.",
+    };
+  }
+  const { error } = await supabase
+    .from("cake_orders" as never)
+    .update({ status: "discarded" } as never)
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/cake-orders");
+  revalidatePath("/cake-orders/archive");
+  revalidatePath("/admin/cake-orders");
+  revalidatePath("/cake-orders/slip");
+  return { ok: true };
+}
+
 export async function setCakeOrderStatus(
   id: string,
   status:
@@ -882,7 +1149,8 @@ export async function setOrderProductionStatus(
     r.archived_at != null ||
     r.status === "delivering" ||
     r.status === "done" ||
-    r.status === "cancelled";
+    r.status === "cancelled" ||
+    r.status === "discarded";
   if (adminLocked) {
     return {
       ok: false,

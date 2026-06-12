@@ -940,7 +940,7 @@ function Select({
   );
 }
 
-function AddOnsTable({
+export function AddOnsTable({
   rows,
   onChange,
 }: {

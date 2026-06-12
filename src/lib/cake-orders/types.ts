@@ -98,7 +98,11 @@ export type CakeOrderStatus =
   | "ready"
   | "delivering"
   | "done"
-  | "cancelled";
+  | "cancelled"
+  /** Cake sudah diproduksi lalu dibuang (waste). Terminal — beda dari
+   *  'cancelled' (dibatalkan sebelum jadi). Dikecualikan dari laporan
+   *  keuangan & bonus dekorator, tapi distinct untuk pelacakan kerugian. */
+  | "discarded";
 
 export interface CakeOrder {
   id: string;
@@ -161,6 +165,12 @@ export interface CakeOrder {
 
   status: CakeOrderStatus;
   archived_at: string | null;
+
+  /** Klaim gratis karyawan (perk / giveaway). Saat true: total_idr = 0 &
+   *  payment_status 'paid' tanpa payment leg. Lihat setCakeOrderFreeClaim. */
+  free_claim: boolean;
+  free_claim_at: string | null;
+  free_claim_by: string | null;
 
   created_by: string;
   created_at: string;

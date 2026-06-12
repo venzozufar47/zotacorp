@@ -168,6 +168,7 @@ export function CakeOrdersBoard({
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [showCancelled, setShowCancelled] = useState(false);
+  const [showDiscarded, setShowDiscarded] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] =
     useState<CakeOrderStatus | null>(null);
@@ -248,6 +249,7 @@ export function CakeOrdersBoard({
     const map = new Map<CakeOrderStatus, CakeOrder[]>();
     for (const c of COLUMNS) map.set(c.status, []);
     map.set("cancelled", []);
+    map.set("discarded", []);
     for (const o of visibleOrders) {
       const list = map.get(o.status) ?? [];
       list.push(o);
@@ -268,10 +270,15 @@ export function CakeOrdersBoard({
   }, [visibleOrders]);
 
   const cancelled = grouped.get("cancelled") ?? [];
+  const discarded = grouped.get("discarded") ?? [];
 
   const moveTo = (orderId: string, target: CakeOrderStatus) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order || order.status === target) return;
+    // 'discarded' bukan kolom workflow — hanya di-set lewat aksi "Buang
+    // cake" di detail. Drop ke status ini diabaikan (juga menyempitkan
+    // tipe agar cocok dengan setCakeOrderStatus).
+    if (target === "discarded") return;
     // Kolom "Baru" & "Dikerjakan" sepenuhnya auto-only — admin tidak
     // boleh drag card ke sana (atau ke arah sebaliknya). Reverting
     // hanya bisa dari "Siap"/"Pengiriman" mundur ke "Selesai" atau
@@ -562,6 +569,52 @@ export function CakeOrdersBoard({
                   }
                 >
                   {cancelled.map((o) => (
+                    <Card
+                      key={o.id}
+                      order={o}
+                      labelFor={labelFor}
+                      dimmed
+                      canMove={canMove}
+                      onMoveTo={moveTo}
+                      onSelect={setSelectedOrderId}
+                      isMatch={matchedIds?.has(o.id) ?? false}
+                      hasSearch={matchedIds != null}
+                      draggable={
+                        canMove &&
+                        o.status !== "submitted" &&
+                        o.status !== "in_progress"
+                      }
+                      onDragStart={() => setDraggingId(o.id)}
+                      onDragEnd={() => setDraggingId(null)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Cake dibuang (sudah diproduksi lalu dibuang — waste). Terpisah
+            dari Dibatalkan: terminal, dikecualikan dari pendapatan & bonus. */}
+        {discarded.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowDiscarded((v) => !v)}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              {showDiscarded ? "▾" : "▸"} 🗑️ Dibuang ({discarded.length})
+            </button>
+            {showDiscarded && (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-2">
+                <ul
+                  className={
+                    panelOpen
+                      ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-1.5"
+                      : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1.5"
+                  }
+                >
+                  {discarded.map((o) => (
                     <Card
                       key={o.id}
                       order={o}

@@ -107,9 +107,10 @@ export async function getCakeFinanceRecapMonth(
   // dropping/duplicating rows.
   //
   // Archived orders ARE counted — archiving just closes the books on a
-  // completed order, the money was still received. Only CANCELLED
-  // orders are excluded: those are voided, and any forfeited DP isn't
-  // treated as recognized revenue here.
+  // completed order, the money was still received. CANCELLED orders are
+  // excluded (voided; forfeited DP isn't recognized revenue here), and so
+  // are DISCARDED orders (cake diproduksi lalu dibuang — waste, bukan
+  // penjualan, jadi tidak diakui sebagai pendapatan).
   const orders: RawOrder[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
@@ -121,6 +122,7 @@ export async function getCakeFinanceRecapMonth(
       .gte("scheduled_at", monthStart)
       .lt("scheduled_at", monthEnd)
       .neq("status", "cancelled")
+      .neq("status", "discarded")
       .order("scheduled_at")
       .order("id")
       .range(offset, offset + PAGE - 1);

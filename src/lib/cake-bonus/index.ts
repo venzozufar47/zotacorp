@@ -40,9 +40,10 @@ function monthBounds(month: number, year: number) {
  * where 1 row = 1 cake with its own `dimension_cm` + `branch`).
  *
  * Counting rule (per user): every order whose `scheduled_at` falls in
- * the month and whose `status <> 'cancelled'`. Archived orders
- * (`archived_at` set) STILL count — archiving is the normal end-state,
- * not an exclusion.
+ * the month and whose status is neither 'cancelled' nor 'discarded'.
+ * Discarded cakes (diproduksi lalu dibuang) earn NO decorator bonus.
+ * Archived orders (`archived_at` set) STILL count — archiving is the
+ * normal end-state, not an exclusion.
  */
 export async function getDecoratorBonuses(
   month: number,
@@ -62,6 +63,7 @@ export async function getDecoratorBonuses(
     .from("cake_orders")
     .select("branch, dimension_cm, total_idr, status, scheduled_at")
     .neq("status", "cancelled")
+    .neq("status", "discarded")
     .gte("scheduled_at", monthStart)
     .lt("scheduled_at", monthEnd);
 
