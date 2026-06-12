@@ -305,12 +305,20 @@ export async function settlePesanan(input: {
 }
 
 /**
- * Batalkan pesanan pending. Set `voided_at` di pos_sales — stock
- * otomatis pulih karena `computeExpectedCounts` filter `voided_at IS
- * NULL`. Tidak ada cashflow event untuk dibatalkan (pesanan belum
- * pernah insert tx). Hanya boleh dibatalkan kalau masih
- * payment_status='pending' — sale yang sudah paid harus lewat flow
- * void admin (delete cashflow tx → trigger void sale).
+ * Batalkan pesanan pending. Set `voided_at` di pos_sales — penjualan
+ * keluar dari semua agregat (Saldo, Insights) yang filter `voided_at IS
+ * NULL`. Tidak ada cashflow event untuk dibatalkan (pesanan belum pernah
+ * insert tx). Hanya boleh dibatalkan kalau masih payment_status='pending'.
+ *
+ * STOK: `computeExpectedCounts` mengurangi stok dari penjualan
+ * non-voided. Setelah void, penjualan ini tidak lagi mengurangi stok —
+ * TAPI hanya untuk penjualan yang dibuat SETELAH opname terakhir. Stok
+ * di-anchor ke physical_count opname terakhir; penjualan yang dibuat
+ * SEBELUM opname itu sudah "terserap" ke baseline fisik, jadi void tidak
+ * mengembalikan stok apa pun. Untuk kasus itu kita masukkan gerakan
+ * `production` kompensasi sebesar qty item supaya stok benar-benar pulih.
+ * (Kalau pesanan dibuat setelah opname terakhir, void sudah cukup — tidak
+ * ada kompensasi supaya tak dobel.)
  */
 export async function cancelPesanan(input: {
   saleId: string;
@@ -322,7 +330,9 @@ export async function cancelPesanan(input: {
   const sb = supabase as any;
   const { data: saleRaw } = await sb
     .from("pos_sales")
-    .select("id, bank_account_id, payment_status, voided_at")
+    .select(
+      "id, bank_account_id, payment_status, voided_at, created_at, customer_name"
+    )
     .eq("id", input.saleId)
     .maybeSingle();
   const sale = saleRaw as {
@@ -330,6 +340,8 @@ export async function cancelPesanan(input: {
     bank_account_id: string;
     payment_status: "paid" | "pending";
     voided_at: string | null;
+    created_at: string;
+    customer_name: string | null;
   } | null;
   if (!sale) return { ok: false, error: "Pesanan tidak ditemukan" };
   if (sale.voided_at) return { ok: false, error: "Pesanan sudah dibatalkan" };
@@ -352,10 +364,106 @@ export async function cancelPesanan(input: {
     .eq("id", sale.id);
   if (error) return { ok: false, error: error.message };
 
+  // Pulihkan stok bila opname terakhir terjadi SETELAH pesanan dibuat —
+  // dalam kasus itu void saja tidak cukup (deduksi sudah terserap baseline
+  // opname). Best-effort: kegagalan di sini tidak membatalkan void.
+  await restoreStockIfAbsorbedByOpname(adminDb, sale, gate.userId);
+
   revalidatePath("/pos", "layout");
   revalidatePath("/pos/pesanan", "layout");
   revalidatePath("/pos/riwayat", "layout");
   return { ok: true, data: { saleId: sale.id } };
+}
+
+/**
+ * Saat pesanan dibatalkan tapi sudah "terserap" opname (opname terakhir
+ * dibuat setelah pesanan), masukkan gerakan `production` kompensasi
+ * sebesar qty tiap item ber-track_stock supaya stok kembali. Aggregate-
+ * variant di-collapse ke level produk. Item non-track / custom dilewati.
+ */
+async function restoreStockIfAbsorbedByOpname(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminDb: any,
+  sale: { id: string; bank_account_id: string; created_at: string; customer_name: string | null },
+  userId: string
+): Promise<void> {
+  try {
+    const { data: lastOpname } = await adminDb
+      .from("pos_stock_opnames")
+      .select("created_at")
+      .eq("bank_account_id", sale.bank_account_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    // Tidak ada opname, atau opname terakhir <= waktu pesanan dibuat →
+    // void sudah cukup memulihkan stok. Jangan kompensasi (cegah dobel).
+    if (!lastOpname || (lastOpname.created_at as string) <= sale.created_at) {
+      return;
+    }
+
+    const { data: itemsRaw } = await adminDb
+      .from("pos_sale_items")
+      .select("product_id, variant_id, qty")
+      .eq("sale_id", sale.id);
+    const items = (itemsRaw ?? []) as Array<{
+      product_id: string | null;
+      variant_id: string | null;
+      qty: number;
+    }>;
+    const productIds = Array.from(
+      new Set(items.map((i) => i.product_id).filter((v): v is string => !!v))
+    );
+    if (productIds.length === 0) return;
+
+    const { data: productsRaw } = await adminDb
+      .from("pos_products")
+      .select("id, track_stock, stock_aggregate_variants")
+      .in("id", productIds);
+    const products = new Map(
+      (
+        (productsRaw ?? []) as Array<{
+          id: string;
+          track_stock: boolean;
+          stock_aggregate_variants: boolean;
+        }>
+      ).map((p) => [p.id, p])
+    );
+
+    // Group qty per SKU (collapse aggregate-variant ke null).
+    const bySku = new Map<
+      string,
+      { productId: string; variantId: string | null; qty: number }
+    >();
+    for (const it of items) {
+      if (!it.product_id) continue; // item custom — tidak ada stok
+      const p = products.get(it.product_id);
+      if (!p || !p.track_stock) continue; // produk tidak dihitung di stok
+      const variantId = p.stock_aggregate_variants ? null : it.variant_id;
+      const key = `${it.product_id}|${variantId ?? "-"}`;
+      const prev = bySku.get(key);
+      if (prev) prev.qty += it.qty;
+      else bySku.set(key, { productId: it.product_id, variantId, qty: it.qty });
+    }
+    if (bySku.size === 0) return;
+
+    const now = new Date();
+    const cust = sale.customer_name?.trim();
+    const note = `Auto: stok kembali — pembatalan pesanan${cust ? ` ${cust}` : ""}`;
+    const rows = Array.from(bySku.values()).map((s) => ({
+      bank_account_id: sale.bank_account_id,
+      product_id: s.productId,
+      variant_id: s.variantId,
+      type: "production" as const,
+      qty: s.qty,
+      notes: note,
+      movement_date: jakartaDateString(now),
+      movement_time: jakartaHHMM(now),
+      created_by: userId,
+    }));
+    await adminDb.from("pos_stock_movements").insert(rows);
+  } catch {
+    // Best-effort — void sudah sukses. Gap stok bisa dikoreksi manual.
+  }
 }
 
 /** Count pesanan pending — dipakai badge nav di PosShell. */
