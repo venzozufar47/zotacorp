@@ -4,14 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { fetchYeoboPnL } from "@/lib/cashflow/pnl-yeobo";
-import {
-  getYeoboDividendPool,
-  cumulativeDividendPool,
-  isBranchAfterBep,
-  computeRecipientAmounts,
-  investorPoolFracBeforeBep,
-  type DivRecipient,
-} from "@/lib/investor/dividend-allocation";
+import { buildBranchMonthContext } from "@/lib/investor/dividend-month-context";
 
 // ── DTOs ──────────────────────────────────────────────────────────────
 export interface DividendRecipient {
@@ -280,64 +273,24 @@ export async function linkDividendRecipient(input: {
 }
 
 // ── Allocation: read (pool + BEP + computed/saved per recipient) ──────
+// Fetch report + recipients + config, lalu delegasi ke buildBranchMonthContext
+// (pure). Konsol dividen memakai buildBranchMonthContext langsung dengan
+// report yang di-share 3 cabang — di sini cukup untuk 1 cabang (popover).
 async function loadMonthContext(branch: string, year: number, month: number) {
   const client = adminClient();
-  const report = await fetchYeoboPnL(
-    client as never,
-    { year: 2023, month: 1 },
-    { year, month }
-  );
-  const pool = getYeoboDividendPool(report, branch, year, month);
-  const cumThrough = cumulativeDividendPool(report, branch, year, month);
-  const cumBefore = cumThrough - pool;
-  const recipientsRaw = await listDividendRecipients(branch);
-  const recipients = recipientsRaw.filter((r) => r.active);
-  const config = await getDividendBranchConfig(branch);
-  const afterBep = isBranchAfterBep({
-    config,
-    cumulativeDividendBeforeMonth: cumBefore,
+  const [report, recipients, config] = await Promise.all([
+    fetchYeoboPnL(client as never, { year: 2023, month: 1 }, { year, month }),
+    listDividendRecipients(branch),
+    getDividendBranchConfig(branch),
+  ]);
+  return buildBranchMonthContext({
+    report,
+    branch,
     year,
     month,
-  });
-  // Estimasi total bagi hasil yang sudah diterima investor s/d bulan ini
-  // (porsi investor sebelum BEP × akumulasi dividen).
-  const investorRecouped = Math.round(
-    investorPoolFracBeforeBep(config) * cumThrough
-  );
-  const divRecipients: DivRecipient[] = recipients.map((r) => ({
-    id: r.id,
-    label: r.label,
-    kind: r.kind,
-    poolPct: r.poolPct,
-    investIdr: r.investIdr,
-    sortOrder: r.sortOrder,
-    userId: r.userId,
-    contractId: r.contractId,
-  }));
-  const computed = computeRecipientAmounts({
-    pool,
-    afterBep,
-    config,
-    recipients: divRecipients,
-  });
-  // Effective management % (residual). For Σ poolPct = 100 this equals the
-  // nominal 35/50; for Jebres (Σ = 110%) it drops (mgmt dikorbankan).
-  const mgmtRow = computed.find((c) => c.kind === "management");
-  const mgmtPct =
-    pool > 0 && mgmtRow
-      ? Math.round((mgmtRow.amount / pool) * 1000) / 10
-      : afterBep
-        ? config.mgmtPctAfterBep
-        : config.mgmtPctBeforeBep;
-  return {
     recipients,
     config,
-    pool,
-    investorRecouped,
-    afterBep,
-    computed,
-    mgmtPct,
-  };
+  });
 }
 
 export async function getDividendAllocationForMonth(input: {
@@ -399,6 +352,12 @@ export async function saveDividendAllocationForMonth(input: {
   year: number;
   month: number;
   rows: Array<{ recipientId: string; amount: number }>;
+  /** Tanggal transfer (YYYY-MM-DD). Bila diberikan → tulis ke
+   *  investor_payouts.paid_at. Bila TIDAK diberikan, paid_at lama
+   *  dipertahankan (key dihilangkan dari payload upsert). */
+  paidAt?: string | null;
+  /** Override ref payout (default "yeobo-dividend"). */
+  ref?: string | null;
 }): Promise<ActionResult<{ synced: number }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -466,24 +425,32 @@ export async function saveDividendAllocationForMonth(input: {
     // Sync linked recipients into investor_payouts (dashboard projection).
     const rec = recById.get(r.recipientId)!;
     if (rec.contractId) {
-      const { error: pErr } = await supabase.from("investor_payouts").upsert(
-        {
-          contract_id: rec.contractId,
-          period_year: year,
-          period_month: month,
-          amount_idr: amount,
-          ref: "yeobo-dividend",
-          notes: `Bagi hasil dividen ${branch}`,
-          created_by: gate.userId,
-        },
-        { onConflict: "contract_id,period_year,period_month" }
-      );
+      // paid_at hanya disertakan bila pemanggil memberi `paidAt` (konsol
+      // "tandai tertransfer"). Tanpa itu, key dihilangkan → paid_at lama
+      // selamat saat popover re-save (upsert hanya menimpa kolom payload).
+      const payoutPayload: Record<string, unknown> = {
+        contract_id: rec.contractId,
+        period_year: year,
+        period_month: month,
+        amount_idr: amount,
+        ref: input.ref?.trim() || "yeobo-dividend",
+        notes: `Bagi hasil dividen ${branch}`,
+        created_by: gate.userId,
+      };
+      if (input.paidAt) payoutPayload.paid_at = input.paidAt;
+      const { error: pErr } = await supabase
+        .from("investor_payouts")
+        .upsert(payoutPayload, {
+          onConflict: "contract_id,period_year,period_month",
+        });
       if (pErr) return { ok: false, error: pErr.message };
       synced++;
     }
   }
 
   revalidatePath("/admin/finance/pnl");
+  revalidatePath("/admin/finance/dividen");
+  revalidatePath("/admin/investors");
   revalidatePath("/investor", "layout");
   return { ok: true, data: { synced } };
 }
