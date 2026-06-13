@@ -46,6 +46,23 @@ function parseAmount(s: string): number {
   const digits = s.replace(/[^\d]/g, "");
   return digits ? parseInt(digits, 10) : 0;
 }
+function fmtPct(n: number): string {
+  return (Math.round(n * 10) / 10).toLocaleString("id-ID", {
+    maximumFractionDigits: 1,
+  });
+}
+/** Porsi investor terhadap POOL INVESTOR (basis rumus): nominal investasi
+ *  / total modal, atau pool_pct bila tanpa nominal. */
+function investorPoolSharePct(
+  investIdr: number | null,
+  poolPct: number | null,
+  totalInvest: number | null
+): number | null {
+  if (investIdr != null && totalInvest && totalInvest > 0)
+    return (investIdr / totalInvest) * 100;
+  if (poolPct != null) return poolPct;
+  return null;
+}
 
 /** Hitung split rumus untuk satu cabang dengan basis tertentu. */
 function splitForBranch(branch: ConsoleBranch, basis: number): Record<string, number> {
@@ -424,10 +441,20 @@ function BranchAllocationTable({
         </div>
       </div>
 
+      {/* Rumus pembagian cabang ini */}
+      <div className="px-4 py-2 border-b border-border/60 text-[11.5px] text-muted-foreground">
+        Rumus {branch.afterBep ? "setelah" : "sebelum"} BEP: Manajemen{" "}
+        <strong className="text-foreground">{branch.mgmtPct}%</strong> · Investor{" "}
+        <strong className="text-foreground">{100 - branch.mgmtPct}%</strong>{" "}
+        (dibagi per porsi modal)
+      </div>
+
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
             <th className="px-4 py-2 text-left font-semibold">Penerima</th>
+            <th className="px-4 py-2 text-right font-semibold">Porsi rumus</th>
+            <th className="px-4 py-2 text-right font-semibold">% dari pool</th>
             <th className="px-4 py-2 text-right font-semibold">Nominal transfer</th>
             <th className="px-4 py-2 text-right font-semibold">Status</th>
           </tr>
@@ -435,6 +462,15 @@ function BranchAllocationTable({
         <tbody>
           {branch.rows.map((r) => {
             const val = amounts[r.recipientId] ?? 0;
+            const ofPool = sum > 0 ? (val / sum) * 100 : null;
+            const invShare =
+              r.kind === "investor"
+                ? investorPoolSharePct(
+                    r.investIdr,
+                    r.poolPct,
+                    branch.totalInvestmentIdr
+                  )
+                : null;
             return (
               <tr key={r.recipientId} className="border-t border-border/60">
                 <td className="px-4 py-2.5">
@@ -455,6 +491,16 @@ function BranchAllocationTable({
                       </span>
                     )}
                   </div>
+                </td>
+                <td className="px-4 py-2.5 text-right text-[12px] text-muted-foreground whitespace-nowrap">
+                  {r.kind === "management"
+                    ? `${branch.mgmtPct}% pool`
+                    : invShare != null
+                      ? `${fmtPct(invShare)}% pool investor`
+                      : "—"}
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-[12px] text-muted-foreground">
+                  {ofPool == null ? "—" : `${fmtPct(ofPool)}%`}
                 </td>
                 <td className="px-4 py-2.5 text-right">
                   <input
@@ -484,6 +530,10 @@ function BranchAllocationTable({
         <tfoot>
           <tr className="border-t border-border bg-muted/30 font-semibold">
             <td className="px-4 py-2.5">Pool dividen (transfer)</td>
+            <td className="px-4 py-2.5" />
+            <td className="px-4 py-2.5 text-right font-mono tabular-nums text-muted-foreground">
+              {sum > 0 ? "100%" : "—"}
+            </td>
             <td className="px-4 py-2.5 text-right font-mono tabular-nums">
               {formatRp(sum)}
             </td>
