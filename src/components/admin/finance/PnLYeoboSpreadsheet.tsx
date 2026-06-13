@@ -541,25 +541,10 @@ export function PnLYeoboSpreadsheet({
               />
 
               {/* ===== NON-OPERASIONAL ===== */}
+              {/* Baris agregat Masuk/Keluar/Net non-op dihapus (tidak
+                  insightful per cabang); section ini fokus ke alokasi
+                  dividen. */}
               <SectionRow label="Non-operasional" colSpan={colCount} />
-              <TotalRow
-                label="Masuk non-op"
-                monthCells={monthCells}
-                value={(d) => d.nonOpRevenue}
-                tone="revenue"
-              />
-              <TotalRow
-                label="Keluar non-op"
-                monthCells={monthCells}
-                value={(d) => d.nonOpExpense}
-                tone="expense"
-              />
-              <TotalRow
-                label="Net non-op"
-                monthCells={monthCells}
-                value={(d) => d.nonOpRevenue - d.nonOpExpense}
-                tone="profit"
-              />
               <DividendAllocRow
                 monthCells={monthCells}
                 allocatable={editable && branchView !== ALL_BRANCHES}

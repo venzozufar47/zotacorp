@@ -493,10 +493,8 @@ export function FinancialOverviewChart({
     }
     tableRows.push({ kind: "num", key: "tot-exp", label: "Total Beban", strong: true, values: branchData.map((d) => d.operatingExpense) });
     tableRows.push({ kind: "num", key: "laba", label: "Laba Operasional", strong: true, accent: true, values: branchData.map((d) => d.operatingProfit) });
-    tableRows.push({ kind: "section", key: "sec-nonop", label: "Non-operasional" });
-    tableRows.push({ kind: "num", key: "nonop-in", label: "Masuk non-op", values: branchData.map((d) => d.nonOpRevenue) });
-    tableRows.push({ kind: "num", key: "nonop-out", label: "Keluar non-op", values: branchData.map((d) => d.nonOpExpense) });
-    tableRows.push({ kind: "num", key: "nonop-net", label: "Net non-op", values: branchData.map((d) => d.nonOpRevenue - d.nonOpExpense) });
+    // Baris non-operasional (Masuk/Keluar/Net non-op) dihapus — tidak
+    // insightful per cabang.
     if (sessions) {
       const sess = sessions;
       tableRows.push({ kind: "section", key: "sec-sesi", label: "Sesi Foto" });
