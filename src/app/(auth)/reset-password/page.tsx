@@ -40,23 +40,50 @@ export default function ResetPasswordPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    // Recovery link pakai implicit flow (#access_token=...&refresh_token=...).
+    // Browser client default PKCE (cari ?code=), jadi set sesi manual dari
+    // hash. Tangkap hash sinkron dulu sebelum di-strip.
+    const rawHash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : "";
     const supabase = createClient();
-    // On recovery links Supabase emits a PASSWORD_RECOVERY event once the
-    // hash fragment has been consumed. We listen once and also probe the
-    // current session so both "already landed" and "just landed" work.
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-        setAuthorized(true);
+    let active = true;
+
+    (async () => {
+      const params = new URLSearchParams(rawHash);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      const errDesc = params.get("error_description");
+
+      if (errDesc) {
+        if (active) {
+          setAuthorized(false);
+          setChecking(false);
+        }
+        return;
+      }
+      if (accessToken && refreshToken) {
+        const { error: sessErr } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        window.history.replaceState(null, "", window.location.pathname);
+        if (active) {
+          setAuthorized(!sessErr);
+          setChecking(false);
+        }
+        return;
+      }
+      const { data } = await supabase.auth.getSession();
+      if (active) {
+        setAuthorized(!!data.session);
         setChecking(false);
       }
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setAuthorized(true);
-      }
-      setChecking(false);
-    });
-    return () => sub.subscription.unsubscribe();
+    })();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {

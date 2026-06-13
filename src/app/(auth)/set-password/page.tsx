@@ -41,21 +41,53 @@ export default function SetPasswordPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    // Tangkap token dari hash SECARA SINKRON dulu (invite/recovery pakai
+    // implicit flow: #access_token=...&refresh_token=...). Browser client
+    // default-nya PKCE (cari ?code= di query), jadi TIDAK otomatis
+    // mengonsumsi hash → kita set sesi manual via setSession.
+    const rawHash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : "";
     const supabase = createClient();
-    // Invite links emit SIGNED_IN (or PASSWORD_RECOVERY) once the hash
-    // fragment is consumed. Listen once and also probe the session so
-    // both "just landed" and "already landed" work.
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") {
-        setAuthorized(true);
+    let active = true;
+
+    (async () => {
+      const params = new URLSearchParams(rawHash);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      const errDesc = params.get("error_description");
+
+      if (errDesc) {
+        if (active) {
+          setAuthorized(false);
+          setChecking(false);
+        }
+        return;
+      }
+      if (accessToken && refreshToken) {
+        const { error: sessErr } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        // Buang token dari URL supaya tidak nyangkut / ter-share.
+        window.history.replaceState(null, "", window.location.pathname);
+        if (active) {
+          setAuthorized(!sessErr);
+          setChecking(false);
+        }
+        return;
+      }
+      // Tanpa token di hash → cek sesi yang sudah ada (mis. reload).
+      const { data } = await supabase.auth.getSession();
+      if (active) {
+        setAuthorized(!!data.session);
         setChecking(false);
       }
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setAuthorized(true);
-      setChecking(false);
-    });
-    return () => sub.subscription.unsubscribe();
+    })();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
