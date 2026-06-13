@@ -38,7 +38,6 @@ import {
 } from "@/lib/cashflow/categories";
 import { updateCashflowTransactions } from "@/lib/actions/cashflow.actions";
 import type { PhotoSessionRow } from "@/lib/actions/yeobo-photo-sessions.actions";
-import { DividendAllocationPopover } from "./DividendAllocationPopover";
 import type {
   YeoboPnLReport,
   YeoboPnLMonth,
@@ -178,11 +177,6 @@ export function PnLYeoboSpreadsheet({
   );
   // Expanded category keys (category name → show drill-down across range).
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  // Dividend allocation modal target (single-branch view only).
-  const [divEditing, setDivEditing] = useState<{
-    year: number;
-    month: number;
-  } | null>(null);
 
   const fromStr = ymString(from);
   const toStr = ymString(to);
@@ -542,14 +536,11 @@ export function PnLYeoboSpreadsheet({
 
               {/* ===== NON-OPERASIONAL ===== */}
               {/* Baris agregat Masuk/Keluar/Net non-op dihapus (tidak
-                  insightful per cabang); section ini fokus ke alokasi
-                  dividen. */}
+                  insightful per cabang). Dividend ditampilkan read-only dari
+                  rekening koran — alokasi bagi hasil ke investor dipindah ke
+                  konsol /admin/finance/dividen. */}
               <SectionRow label="Non-operasional" colSpan={colCount} />
-              <DividendAllocRow
-                monthCells={monthCells}
-                allocatable={editable && branchView !== ALL_BRANCHES}
-                onAllocate={(y, m) => setDivEditing({ year: y, month: m })}
-              />
+              <DividendRow monthCells={monthCells} />
 
               {/* ===== SESI FOTO ===== */}
               {sessionData && (
@@ -565,16 +556,6 @@ export function PnLYeoboSpreadsheet({
         </div>
       )}
 
-      {divEditing && branchView !== ALL_BRANCHES && (
-        <DividendAllocationPopover
-          branch={branchView}
-          year={divEditing.year}
-          month={divEditing.month}
-          monthLabel={monthLabel(divEditing)}
-          onClose={() => setDivEditing(null)}
-          onSaved={() => router.refresh()}
-        />
-      )}
     </div>
   );
 }
@@ -584,20 +565,11 @@ export function PnLYeoboSpreadsheet({
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * Dividend (bagi hasil) row in the Non-operasional section. Shows the
- * per-month Dividend pool for the selected branch. When allocatable
- * (admin + single branch), each non-zero month cell is a button that
- * opens the per-investor allocation modal.
+ * Dividend row (read-only) in the Non-operasional section. Shows the
+ * per-month Dividend value from rekening koran. Alokasi bagi hasil ke
+ * investor dipindah ke konsol /admin/finance/dividen.
  */
-function DividendAllocRow({
-  monthCells,
-  allocatable,
-  onAllocate,
-}: {
-  monthCells: MonthCell[];
-  allocatable: boolean;
-  onAllocate: (year: number, month: number) => void;
-}) {
+function DividendRow({ monthCells }: { monthCells: MonthCell[] }) {
   const divOf = (d: YeoboBranchPnL) => {
     const c = d.byCategory.find((x) => x.category === "Dividend");
     return c ? (c.debit !== 0 ? c.debit : c.credit) : 0;
@@ -605,29 +577,14 @@ function DividendAllocRow({
   const total = monthCells.reduce((s, { data }) => s + divOf(data), 0);
   return (
     <tr>
-      <StickyLabel indent>Dividend — alokasi bagi hasil</StickyLabel>
-      {monthCells.map(({ month, data }) => {
-        const v = divOf(data);
-        const key = `${month.year}-${month.month}`;
-        if (allocatable && v > 0) {
-          return (
-            <td
-              key={key}
-              className="border-t border-border/60 px-3 py-1.5 text-right font-mono tabular-nums whitespace-nowrap"
-            >
-              <button
-                type="button"
-                onClick={() => onAllocate(month.year, month.month)}
-                title="Klik untuk alokasikan dividen ke investor"
-                className="text-primary underline decoration-dotted underline-offset-2 hover:opacity-80"
-              >
-                {formatIDR(v)}
-              </button>
-            </td>
-          );
-        }
-        return <NumCell key={key} value={v} tone="muted" />;
-      })}
+      <StickyLabel indent>Dividend (rekening koran)</StickyLabel>
+      {monthCells.map(({ month, data }) => (
+        <NumCell
+          key={`${month.year}-${month.month}`}
+          value={divOf(data)}
+          tone="muted"
+        />
+      ))}
       <NumCell value={total} tone="muted" strong />
     </tr>
   );

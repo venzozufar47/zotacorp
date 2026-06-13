@@ -6,13 +6,18 @@ import { toast } from "sonner";
 import {
   ChevronLeft,
   ChevronRight,
-  AlertTriangle,
-  Check,
+  Calculator,
+  Eraser,
   Link2Off,
+  Check,
   Send,
 } from "lucide-react";
 import { formatRp, formatIDR } from "@/lib/cashflow/format";
 import { MONTH_FULL_NAMES, formatDateID } from "@/lib/utils/date-formats";
+import {
+  computeRecipientAmounts,
+  type DivRecipient,
+} from "@/lib/investor/dividend-allocation";
 import {
   saveDividendConsoleMonth,
   type DividendConsoleData,
@@ -42,6 +47,35 @@ function parseAmount(s: string): number {
   return digits ? parseInt(digits, 10) : 0;
 }
 
+/** Hitung split rumus untuk satu cabang dengan basis tertentu. */
+function splitForBranch(branch: ConsoleBranch, basis: number): Record<string, number> {
+  const recips: DivRecipient[] = branch.rows.map((r) => ({
+    id: r.recipientId,
+    label: r.label,
+    kind: r.kind,
+    poolPct: r.poolPct,
+    investIdr: r.investIdr,
+    sortOrder: r.sortOrder,
+    userId: r.userId,
+    contractId: r.contractId,
+  }));
+  const res = computeRecipientAmounts({
+    pool: Math.max(0, Math.round(basis)),
+    afterBep: branch.afterBep,
+    config: {
+      branch: branch.branch,
+      mgmtPctBeforeBep: branch.mgmtPctBeforeBep,
+      mgmtPctAfterBep: branch.mgmtPctAfterBep,
+      totalInvestmentIdr: branch.totalInvestmentIdr,
+      bepReachedYm: null,
+    },
+    recipients: recips,
+  });
+  const out: Record<string, number> = {};
+  for (const x of res) out[x.recipientId] = x.amount;
+  return out;
+}
+
 export function DividendConsoleClient({
   data,
   minYm,
@@ -54,11 +88,12 @@ export function DividendConsoleClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  // Nominal transfer per recipient (init: allocation tersimpan ?? computed).
+  // Nominal transfer per recipient (init: allocation tersimpan ?? 0 — tanpa
+  // auto-prefill; admin pakai tombol hitung per cabang).
   const [amounts, setAmounts] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
     for (const b of data.branches)
-      for (const r of b.rows) init[r.recipientId] = r.savedAllocation ?? r.computed;
+      for (const r of b.rows) init[r.recipientId] = r.savedAllocation ?? 0;
     return init;
   });
   const [paidAt, setPaidAt] = useState<string>(() =>
@@ -68,6 +103,8 @@ export function DividendConsoleClient({
 
   const setAmount = (id: string, v: number) =>
     setAmounts((prev) => ({ ...prev, [id]: v }));
+  const applyValues = (values: Record<string, number>) =>
+    setAmounts((prev) => ({ ...prev, ...values }));
 
   const curR = ymRank(ymStr(data.year, data.month));
   const canPrev = curR > ymRank(minYm);
@@ -76,42 +113,38 @@ export function DividendConsoleClient({
   const go = (y: number, m: number) =>
     router.push(`/admin/finance/dividen?month=${ymStr(y, m)}`);
 
-  // Per-branch balance + includable.
-  const branchState = useMemo(() => {
-    return data.branches.map((b) => {
-      const sum = b.rows.reduce((s, r) => s + (amounts[r.recipientId] ?? 0), 0);
-      const includable = b.pool > 0;
-      const balanced = Math.abs(sum - Math.round(b.pool)) <= 1;
-      return { branch: b.branch, sum, includable, balanced };
-    });
+  // Σ transfer per cabang (live).
+  const branchSum = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const b of data.branches)
+      m[b.branch] = b.rows.reduce((s, r) => s + (amounts[r.recipientId] ?? 0), 0);
+    return m;
   }, [data.branches, amounts]);
 
-  const includable = branchState.filter((s) => s.includable);
-  const allBalanced =
-    includable.length > 0 && includable.every((s) => s.balanced);
+  // Cabang yang akan disimpan: ada nominal > 0 ATAU sudah pernah tersimpan
+  // (agar bisa di-nol-kan / dikoreksi).
+  const submittable = data.branches.filter(
+    (b) => branchSum[b.branch] > 0 || b.savedExists
+  );
+  const canSave = submittable.length > 0;
 
-  // Total nominal yang akan ditransfer ke investor (cabang includable saja).
   const totalToInvestors = useMemo(() => {
     let t = 0;
-    for (const b of data.branches) {
-      if (b.pool <= 0) continue;
+    for (const b of data.branches)
       for (const r of b.rows)
         if (r.kind === "investor") t += amounts[r.recipientId] ?? 0;
-    }
     return t;
   }, [data.branches, amounts]);
 
   function handleSave() {
-    if (!allBalanced) return;
-    const branches = data.branches
-      .filter((b) => b.pool > 0)
-      .map((b) => ({
-        branch: b.branch,
-        rows: b.rows.map((r) => ({
-          recipientId: r.recipientId,
-          amount: amounts[r.recipientId] ?? 0,
-        })),
-      }));
+    if (!canSave) return;
+    const branches = submittable.map((b) => ({
+      branch: b.branch,
+      rows: b.rows.map((r) => ({
+        recipientId: r.recipientId,
+        amount: amounts[r.recipientId] ?? 0,
+      })),
+    }));
     startTransition(async () => {
       const res = await saveDividendConsoleMonth({
         year: data.year,
@@ -166,69 +199,84 @@ export function DividendConsoleClient({
 
       {/* 2. Branch summary cards */}
       <div className="grid gap-3 sm:grid-cols-3">
-        {data.branches.map((b) => (
-          <div
-            key={b.branch}
-            className="rounded-2xl border border-border bg-card p-4"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-foreground">
-                {b.branch}
-              </span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-                  b.afterBep
-                    ? "bg-primary/10 text-primary"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {b.afterBep ? "Setelah BEP" : "Sebelum BEP"} · Mgmt {b.mgmtPct}%
-              </span>
+        {data.branches.map((b) => {
+          const pool = branchSum[b.branch] ?? 0;
+          const kasIni =
+            b.kasLastMonth == null ? null : b.kasLastMonth + b.operatingProfit - pool;
+          return (
+            <div
+              key={b.branch}
+              className="rounded-2xl border border-border bg-card p-4"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-foreground">
+                  {b.branch}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                    b.afterBep
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {b.afterBep ? "Setelah BEP" : "Sebelum BEP"} · Mgmt {b.mgmtPct}%
+                </span>
+              </div>
+              <dl className="mt-3 space-y-1.5 text-[12.5px]">
+                <Stat
+                  label="Kas bulan lalu"
+                  value={b.kasLastMonth == null ? "—" : formatRp(b.kasLastMonth)}
+                  tone={b.kasLastMonth != null && b.kasLastMonth < 0 ? "neg" : "muted"}
+                />
+                <Stat
+                  label="Operating profit"
+                  value={formatRp(b.operatingProfit)}
+                  tone={b.operatingProfit < 0 ? "neg" : "fg"}
+                />
+                <Stat label="Pool dividen" value={formatRp(pool)} tone="fg" strong />
+                <Stat
+                  label="Kas bulan ini"
+                  value={kasIni == null ? "—" : formatRp(kasIni)}
+                  tone={kasIni != null && kasIni < 0 ? "neg" : "fg"}
+                  strong
+                />
+                {b.totalInvestmentIdr != null && (
+                  <Stat
+                    label="Modal terbalik"
+                    value={`${formatIDR(b.investorRecouped)} / ${formatIDR(
+                      b.totalInvestmentIdr
+                    )}`}
+                    tone="muted"
+                  />
+                )}
+              </dl>
             </div>
-            <dl className="mt-3 space-y-1.5 text-[12.5px]">
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Operating profit</dt>
-                <dd
-                  className={`font-mono tabular-nums ${
-                    b.operatingProfit < 0 ? "text-destructive" : "text-foreground"
-                  }`}
-                >
-                  {formatRp(b.operatingProfit)}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Pool dividen</dt>
-                <dd
-                  className={`font-mono tabular-nums font-semibold ${
-                    b.pool < 0 ? "text-destructive" : "text-foreground"
-                  }`}
-                >
-                  {formatRp(b.pool)}
-                </dd>
-              </div>
-              {b.totalInvestmentIdr != null && (
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Modal terbalik</dt>
-                  <dd className="font-mono tabular-nums text-muted-foreground">
-                    {formatIDR(b.investorRecouped)} /{" "}
-                    {formatIDR(b.totalInvestmentIdr)}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 3. Per-branch allocation tables */}
       <div className="space-y-4">
-        {data.branches.map((b, i) => (
+        {data.branches.map((b) => (
           <BranchAllocationTable
             key={b.branch}
             branch={b}
-            sum={branchState[i].sum}
+            sum={branchSum[b.branch] ?? 0}
             amounts={amounts}
             setAmount={setAmount}
+            onFillOpProfit={() =>
+              applyValues(splitForBranch(b, b.operatingProfit))
+            }
+            onFillOpProfitPlusKas={() =>
+              applyValues(
+                splitForBranch(b, b.operatingProfit + (b.kasLastMonth ?? 0))
+              )
+            }
+            onClear={() =>
+              applyValues(
+                Object.fromEntries(b.rows.map((r) => [r.recipientId, 0]))
+              )
+            }
           />
         ))}
       </div>
@@ -239,7 +287,7 @@ export function DividendConsoleClient({
       {/* 5. Transfer panel */}
       <div className="rounded-2xl border border-border bg-card p-5">
         <h3 className="text-sm font-bold text-foreground">
-          Tandai transfer bulan {monthLabel}
+          Tandai bagi hasil tertransfer — {monthLabel}
         </h3>
         <div className="mt-3 flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1">
@@ -267,7 +315,7 @@ export function DividendConsoleClient({
           </label>
           <div className="ml-auto flex flex-col items-end gap-1.5">
             <span className="text-[12px] text-muted-foreground">
-              {includable.length} cabang siap ·{" "}
+              {submittable.length} cabang ·{" "}
               <span className="font-mono tabular-nums font-semibold text-foreground">
                 {formatRp(totalToInvestors)}
               </span>{" "}
@@ -276,7 +324,7 @@ export function DividendConsoleClient({
             <button
               type="button"
               onClick={handleSave}
-              disabled={!allBalanced || pending}
+              disabled={!canSave || pending}
               className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition"
             >
               <Send size={15} />
@@ -285,13 +333,42 @@ export function DividendConsoleClient({
           </div>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Menyimpan ulang menimpa nominal & tanggal transfer bulan ini. Cabang
-          dengan pool ≤ 0 tidak ikut disimpan.
+          Nilai ini jadi bagi hasil riil yang memengaruhi BEP investor.{" "}
+          <strong>Tidak masuk ke ledger</strong> — Dividend di P&L tetap dari
+          rekening koran. Menyimpan ulang menimpa nominal & tanggal transfer
+          bulan ini.
         </p>
       </div>
 
       {/* 6. Payout history */}
       {data.history.length > 0 && <PayoutHistory data={data} />}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone = "fg",
+  strong,
+}: {
+  label: string;
+  value: string;
+  tone?: "fg" | "muted" | "neg";
+  strong?: boolean;
+}) {
+  const toneCls =
+    tone === "neg"
+      ? "text-destructive"
+      : tone === "muted"
+        ? "text-muted-foreground"
+        : "text-foreground";
+  return (
+    <div className="flex justify-between">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={`font-mono tabular-nums ${toneCls} ${strong ? "font-semibold" : ""}`}>
+        {value}
+      </dd>
     </div>
   );
 }
@@ -302,142 +379,118 @@ function BranchAllocationTable({
   sum,
   amounts,
   setAmount,
+  onFillOpProfit,
+  onFillOpProfitPlusKas,
+  onClear,
 }: {
   branch: ConsoleBranch;
   sum: number;
   amounts: Record<string, number>;
   setAmount: (id: string, v: number) => void;
+  onFillOpProfit: () => void;
+  onFillOpProfitPlusKas: () => void;
+  onClear: () => void;
 }) {
-  const negative = branch.pool < 0;
-  const zero = branch.pool === 0;
-  const readOnly = negative || zero;
-  const balanced = Math.abs(sum - Math.round(branch.pool)) <= 1;
-
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-border">
         <span className="text-sm font-bold text-foreground">{branch.branch}</span>
-        <span className="font-mono tabular-nums text-sm text-muted-foreground">
-          Pool {formatRp(branch.pool)}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onFillOpProfit}
+            className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+            title={`Bagi ${formatRp(Math.max(0, branch.operatingProfit))} sesuai rumus`}
+          >
+            <Calculator size={12} /> Op profit
+          </button>
+          <button
+            type="button"
+            onClick={onFillOpProfitPlusKas}
+            className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+            title={`Bagi ${formatRp(
+              Math.max(0, branch.operatingProfit + (branch.kasLastMonth ?? 0))
+            )} (op profit + sisa Kas lalu)`}
+          >
+            <Calculator size={12} /> Op profit + Kas
+          </button>
+          <button
+            type="button"
+            onClick={onClear}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted"
+          >
+            <Eraser size={12} /> Kosongkan
+          </button>
+        </div>
       </div>
 
-      {negative && (
-        <div className="flex items-center gap-2 bg-amber-500/10 px-4 py-2.5 text-[12.5px] text-amber-700 dark:text-amber-400">
-          <AlertTriangle size={15} />
-          Bulan rugi — investor ikut menanggung; tidak ada dividen yang
-          ditransfer.
-        </div>
-      )}
-      {zero && (
-        <div className="px-4 py-2.5 text-[12.5px] text-muted-foreground">
-          Belum ada nominal Dividend untuk bulan ini — cabang dikecualikan dari
-          transfer.
-        </div>
-      )}
-
-      {!readOnly && (
-        <>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-2 text-left font-semibold">Penerima</th>
-                <th className="px-4 py-2 text-right font-semibold">Dihitung</th>
-                <th className="px-4 py-2 text-right font-semibold">
-                  Nominal transfer
-                </th>
-                <th className="px-4 py-2 text-right font-semibold">Status</th>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+            <th className="px-4 py-2 text-left font-semibold">Penerima</th>
+            <th className="px-4 py-2 text-right font-semibold">Nominal transfer</th>
+            <th className="px-4 py-2 text-right font-semibold">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {branch.rows.map((r) => {
+            const val = amounts[r.recipientId] ?? 0;
+            return (
+              <tr key={r.recipientId} className="border-t border-border/60">
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">{r.label}</span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase ${
+                        r.kind === "management"
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-primary/10 text-primary"
+                      }`}
+                    >
+                      {r.kind === "management" ? "Mgmt" : "Investor"}
+                    </span>
+                    {r.kind === "investor" && !r.contractId && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                        <Link2Off size={11} /> belum tersambung
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formatIDR(val)}
+                    onChange={(e) =>
+                      setAmount(r.recipientId, parseAmount(e.target.value))
+                    }
+                    className="w-32 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground"
+                  />
+                </td>
+                <td className="px-4 py-2.5 text-right text-[11.5px]">
+                  {r.payout ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-600">
+                      <Check size={13} />
+                      {r.payout.paidAt ? formatDateID(r.payout.paidAt) : "tersinkron"}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/60">—</span>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {branch.rows.map((r) => {
-                const val = amounts[r.recipientId] ?? 0;
-                const edited = val !== r.computed;
-                return (
-                  <tr
-                    key={r.recipientId}
-                    className="border-t border-border/60"
-                  >
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground">
-                          {r.label}
-                        </span>
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase ${
-                            r.kind === "management"
-                              ? "bg-muted text-muted-foreground"
-                              : "bg-primary/10 text-primary"
-                          }`}
-                        >
-                          {r.kind === "management" ? "Mgmt" : "Investor"}
-                        </span>
-                        {r.kind === "investor" && !r.contractId && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                            <Link2Off size={11} /> belum tersambung
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular-nums text-muted-foreground">
-                      {formatIDR(r.computed)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatIDR(val)}
-                        onChange={(e) =>
-                          setAmount(r.recipientId, parseAmount(e.target.value))
-                        }
-                        className={`w-32 rounded-lg border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground ${
-                          edited ? "border-primary/60" : "border-border"
-                        }`}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-[11.5px]">
-                      {r.payout ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600">
-                          <Check size={13} />
-                          {r.payout.paidAt
-                            ? formatDateID(r.payout.paidAt)
-                            : "tersinkron"}
-                        </span>
-                      ) : edited ? (
-                        <span className="text-primary">diubah manual</span>
-                      ) : (
-                        <span className="text-muted-foreground/60">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div
-            className={`flex items-center justify-between px-4 py-2.5 text-[12.5px] border-t ${
-              balanced
-                ? "border-emerald-500/30 bg-emerald-500/5"
-                : "border-destructive/30 bg-destructive/5"
-            }`}
-          >
-            <span className="font-medium">
-              {balanced ? (
-                <span className="inline-flex items-center gap-1 text-emerald-600">
-                  <Check size={14} /> Total cocok dengan pool
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-destructive">
-                  <AlertTriangle size={14} /> Total belum sama dengan pool
-                </span>
-              )}
-            </span>
-            <span className="font-mono tabular-nums">
-              {formatRp(sum)} / {formatRp(branch.pool)}
-            </span>
-          </div>
-        </>
-      )}
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-border bg-muted/30 font-semibold">
+            <td className="px-4 py-2.5">Pool dividen (transfer)</td>
+            <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+              {formatRp(sum)}
+            </td>
+            <td className="px-4 py-2.5" />
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }
