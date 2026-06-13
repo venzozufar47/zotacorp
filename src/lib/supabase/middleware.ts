@@ -32,6 +32,16 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // Auth-action pages (invite "buat password" + recovery "reset password")
+  // menerima token lewat URL hash dan membangun sesi di sisi CLIENT. Saat
+  // user mengklik link undangan, sesi BELUM ada di cookie — kalau di-gate
+  // seperti rute biasa, middleware menendang ke "/", browser mempertahankan
+  // fragment, lalu LoginForm meneruskan lagi ke sini → loop tak henti.
+  // Maka: SELALU loloskan, apa pun status sesi (halaman urus token sendiri).
+  if (pathname === "/set-password" || pathname === "/reset-password") {
+    return supabaseResponse;
+  }
+
   // `/` is the new auth landing (login form when anon, role redirect
   // when authed — see app/(auth)/page.tsx). `/login` stays as a 308
   // alias so external bookmarks survive.
