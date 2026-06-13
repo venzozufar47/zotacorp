@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -20,6 +20,22 @@ export function LoginForm() {
   const tl = t.login;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Investor invite / password-recovery links dari Supabase mendarat di "/"
+  // dengan token di URL hash (mis. #access_token=...&type=invite) karena
+  // Site URL = root. Teruskan ke halaman yang benar (buat password / reset)
+  // dengan hash dipertahankan, alih-alih membiarkan investor terdampar di
+  // form login.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("access_token")) return;
+    const type = new URLSearchParams(hash.slice(1)).get("type");
+    if (type === "invite" || type === "signup") {
+      window.location.replace("/set-password" + hash);
+    } else if (type === "recovery") {
+      window.location.replace("/reset-password" + hash);
+    }
+  }, []);
   // Banner notice dari middleware (mis. force-logout karena akun
   // dinonaktifkan/resign). Tampil di atas form sampai user submit.
   const searchParams = useSearchParams();

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ export default function SetPasswordPage() {
   const [authorized, setAuthorized] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -77,8 +79,10 @@ export default function SetPasswordPage() {
         return;
       }
       setDone(true);
-      // Keep the session and go straight to the investor dashboard.
-      setTimeout(() => router.replace("/investor"), 1400);
+      // Sign out lalu arahkan ke halaman login supaya investor masuk dengan
+      // password baru yang baru saja dibuat.
+      await supabase.auth.signOut();
+      setTimeout(() => router.replace("/"), 1600);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Terjadi kesalahan. Coba lagi."
@@ -125,7 +129,8 @@ export default function SetPasswordPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-xl">Password berhasil dibuat 🎉</CardTitle>
           <CardDescription>
-            Mengarahkan Anda ke dashboard investor…
+            Mengarahkan ke halaman login — silakan masuk dengan password baru
+            Anda.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -144,29 +149,53 @@ export default function SetPasswordPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="password">Password baru</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              minLength={8}
-              required
-              autoComplete="new-password"
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPw ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                minLength={8}
+                required
+                autoComplete="new-password"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
+                aria-label={showPw ? "Sembunyikan password" : "Lihat password"}
+                tabIndex={-1}
+              >
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="confirm">Konfirmasi password</Label>
-            <Input
-              id="confirm"
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="••••••••"
-              minLength={8}
-              required
-              autoComplete="new-password"
-            />
+            <div className="relative">
+              <Input
+                id="confirm"
+                type={showPw ? "text" : "password"}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="••••••••"
+                minLength={8}
+                required
+                autoComplete="new-password"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
+                aria-label={showPw ? "Sembunyikan password" : "Lihat password"}
+                tabIndex={-1}
+              >
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -176,7 +205,7 @@ export default function SetPasswordPage() {
           )}
 
           <Button type="submit" size="lg" className="w-full" disabled={loading}>
-            {loading ? "Menyimpan…" : "Buat password & masuk"}
+            {loading ? "Menyimpan…" : "Buat password"}
           </Button>
         </form>
       </CardContent>
