@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BellRing,
   Cake,
   Camera,
   ClipboardList,
+  Coins,
+  Database,
+  HandCoins,
+  Home as HomeIcon,
   LogOut,
   MapPin,
-  Menu,
   PartyPopper,
   Radio,
   Receipt,
@@ -18,7 +21,6 @@ import {
   TrendingUp,
   Users,
   Wallet,
-  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -27,21 +29,18 @@ import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 
 /**
- * Admin mobile chrome.
+ * Admin mobile chrome — selaras dengan AdminSidebar (desktop).
  *  - Top bar tipis (logo + badge admin + bell pending) untuk konteks.
- *  - Bottom-nav: HANYA beberapa menu utama (tidak meniru seluruh sidebar
- *    seperti versi sebelumnya yang scrollable 12 item). Sisanya masuk ke
- *    bottom-sheet "Lainnya" — selaras dengan HamburgerMenu di BottomNav
- *    karyawan.
+ *  - Bottom-nav scrollable horizontal: MIRROR penuh menu AdminSidebar
+ *    (urutan & item sama) supaya navigasi mobile selengkap desktop. Pakai
+ *    overflow-x-auto + snap supaya semua menu muat tanpa men-compress
+ *    label.
+ *  - Sign-out di-anchor di kanan (di luar area scroll) supaya selalu
+ *    accessible.
+ *
+ * CATATAN: daftar di bawah harus disinkronkan dengan AdminSidebar
+ * (`allGroups`). Saat menambah menu admin baru, tambahkan di KEDUA tempat.
  */
-
-type NavItem = {
-  href: string;
-  icon: typeof Wallet;
-  label: string;
-  color: string;
-};
-
 export function AdminMobileNav({
   pendingConfirmations = [],
 }: {
@@ -49,49 +48,45 @@ export function AdminMobileNav({
 }) {
   const pathname = usePathname();
   const { t } = useTranslation();
-  const [moreOpen, setMoreOpen] = useState(false);
 
-  // Tutup sheet saat pindah route.
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [pathname]);
-
-  // Tutup sheet dengan Escape.
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMoreOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [moreOpen]);
-
-  // 4 menu utama di bar; sisanya di sheet "Lainnya".
-  const primaryItems: NavItem[] = [
+  // Mirror AdminSidebar.allGroups (urutan sama, di-flatten).
+  const navItems = [
+    // Operations
+    { href: "/admin", icon: HomeIcon, label: t.nav.home, color: "bg-primary" },
     { href: "/admin/attendance", icon: ClipboardList, label: t.nav.attendance, color: "bg-primary" },
     { href: "/admin/payslips/variables", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
-    { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },
-    { href: "/admin/users", icon: Users, label: t.nav.users, color: "bg-pop-pink" },
-  ];
-
-  const moreItems: NavItem[] = [
     { href: "/admin/cleaning", icon: Sparkles, label: "Kebersihan", color: "bg-quaternary" },
+    // Org
+    { href: "/admin/users", icon: Users, label: t.nav.users, color: "bg-pop-pink" },
     { href: "/admin/locations", icon: MapPin, label: t.nav.locations, color: "bg-quaternary" },
+    // Money & Care
+    { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },
+    { href: "/admin/finance/dividen", icon: HandCoins, label: "Dividen", color: "bg-pop-emerald" },
+    { href: "/cash", icon: Coins, label: "Kas Cabang", color: "bg-pop-emerald" },
     { href: "/admin/celebrations", icon: PartyPopper, label: "Celebrations", color: "bg-pop-pink" },
+    // Comms
     { href: "/admin/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
-    { href: "/admin/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" },
-    { href: "/admin/yeobo-booth", icon: Camera, label: "Booth", color: "bg-pop-emerald" },
+    // Cake
+    { href: "/admin/cake-orders", icon: Cake, label: "Pesanan Cake", color: "bg-pop-pink" },
+    // Yeobo Booth
+    { href: "/admin/yeobo-booth", icon: Camera, label: "Scheduling", color: "bg-pop-emerald" },
+    { href: "/admin/yeobo-booth/settings", icon: BellRing, label: "Reminder", color: "bg-pop-emerald" },
+    // Stakeholders
     { href: "/admin/investors", icon: TrendingUp, label: "Investor", color: "bg-quaternary" },
+    // System
     { href: "/admin/settings", icon: Settings, label: t.nav.settings, color: "bg-card" },
+    { href: "/admin/backups", icon: Database, label: "Backups", color: "bg-card" },
   ];
 
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(href + "/");
-  const anyMoreActive = moreItems.some((i) => isActive(i.href));
+  // Untuk highlight: pilih match terpanjang supaya /admin/finance/dividen
+  // tidak ikut menyalakan /admin/finance, dan /admin tidak menyalakan semua.
+  const activeHref = navItems
+    .filter((i) => pathname === i.href || pathname.startsWith(i.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
     <>
-      {/* Top bar — logo + admin badge + bell. */}
+      {/* Top bar — logo + admin badge + bell. Tinggal context strip. */}
       <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between h-14 px-4 bg-background border-b-2 border-foreground md:hidden">
         <div className="flex items-center gap-2 min-w-0">
           <img
@@ -106,133 +101,66 @@ export function AdminMobileNav({
         <PendingConfirmationsBell items={pendingConfirmations} variant="compact" />
       </div>
 
-      {/* Bottom-nav — 4 menu utama + tombol "Lainnya". */}
+      {/* Bottom-nav scrollable — mirror penuh AdminSidebar. */}
       <nav
         className="fixed bottom-0 left-0 right-0 bg-background border-t-2 border-foreground z-50 md:hidden"
         style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
       >
-        <div className="flex items-stretch px-1 sm:px-2 max-w-lg mx-auto">
-          {primaryItems.map(({ href, icon: Icon, label, color }) => {
-            const active = isActive(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex flex-col items-center gap-1 flex-1 py-1 text-[11px] transition-colors"
-              >
-                <span
-                  className={cn(
-                    "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
-                    active ? color + " text-foreground" : "bg-card text-muted-foreground"
-                  )}
-                >
-                  <Icon size={18} strokeWidth={2.5} />
-                </span>
-                <span
-                  className={cn(
-                    "font-display font-bold uppercase tracking-wide text-[0.625rem] truncate max-w-full",
-                    active ? "text-foreground" : "text-muted-foreground"
-                  )}
-                >
-                  {label}
-                </span>
-              </Link>
-            );
-          })}
-
-          {/* Tombol "Lainnya" → bottom-sheet menu admin sisanya + keluar. */}
-          <button
-            type="button"
-            onClick={() => setMoreOpen(true)}
-            className="flex flex-col items-center gap-1 flex-1 py-1 text-[11px] transition-colors"
-            aria-expanded={moreOpen}
-            aria-haspopup="menu"
-          >
-            <span
-              className={cn(
-                "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
-                anyMoreActive ? "bg-pop-pink text-foreground" : "bg-card text-muted-foreground"
-              )}
-            >
-              <Menu size={18} strokeWidth={2.5} />
-            </span>
-            <span
-              className={cn(
-                "font-display font-bold uppercase tracking-wide text-[0.625rem]",
-                anyMoreActive ? "text-foreground" : "text-muted-foreground"
-              )}
-            >
-              Lainnya
-            </span>
-          </button>
-        </div>
-      </nav>
-
-      {/* Bottom-sheet "Lainnya". */}
-      {moreOpen && (
-        <>
+        <div className="flex items-stretch gap-1 px-1 sm:px-2">
           <div
-            className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-40 md:hidden"
-            onClick={() => setMoreOpen(false)}
-            aria-hidden
-          />
-          <div
-            role="menu"
-            className="fixed bottom-0 left-0 right-0 z-50 bg-background rounded-t-3xl border-t-2 border-foreground shadow-hard pb-[env(safe-area-inset-bottom,0px)] md:hidden animate-pop-in origin-bottom"
+            className="flex items-center gap-1 flex-1 overflow-x-auto py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x"
+            aria-label="Admin navigation"
           >
-            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b-2 border-foreground/10">
-              <span className="font-display text-base font-bold">{t.nav.menu}</span>
-              <button
-                type="button"
-                onClick={() => setMoreOpen(false)}
-                className="size-8 flex items-center justify-center rounded-full border-2 border-foreground bg-card hover:rotate-90 transition-transform"
-                aria-label="Close"
-              >
-                <X size={14} strokeWidth={2.5} />
-              </button>
-            </div>
-            <div className="py-2 px-2 max-h-[60vh] overflow-y-auto">
-              {moreItems.map(({ href, icon: Icon, label, color }) => {
-                const active = isActive(href);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    role="menuitem"
+            {navItems.map(({ href, icon: Icon, label, color }) => {
+              const active = href === activeHref;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className="snap-start shrink-0 flex flex-col items-center gap-1 w-[64px] py-1 text-[11px] transition-colors"
+                >
+                  <span
                     className={cn(
-                      "flex items-center gap-3 px-3 py-3 my-0.5 rounded-full text-sm transition-colors",
-                      active ? "bg-foreground text-background font-bold" : "text-foreground hover:bg-muted"
+                      "flex items-center justify-center size-9 rounded-full border-2 border-foreground transition-transform duration-200",
+                      active
+                        ? color + " text-foreground"
+                        : "bg-card text-muted-foreground"
                     )}
                   >
-                    <span
-                      className={cn(
-                        "flex items-center justify-center size-8 rounded-full border-2 border-foreground",
-                        active ? color + " text-foreground" : "bg-card text-muted-foreground"
-                      )}
-                    >
-                      <Icon size={16} strokeWidth={2.5} />
-                    </span>
-                    {label}
-                  </Link>
-                );
-              })}
-              <div className="my-1.5 border-t-2 border-foreground/10" />
-              <form action={signOut}>
-                <button
-                  type="submit"
-                  role="menuitem"
-                  className="group/out flex items-center gap-3 px-3 py-3 my-0.5 rounded-full text-sm w-full text-left text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  <span className="flex items-center justify-center size-8 rounded-full border-2 border-foreground bg-card group-hover/out:bg-destructive group-hover/out:text-white">
-                    <LogOut size={16} strokeWidth={2.5} />
+                    <Icon size={18} strokeWidth={2.5} />
                   </span>
-                  {t.nav.signOut}
-                </button>
-              </form>
-            </div>
+                  <span
+                    className={cn(
+                      "font-display font-bold uppercase tracking-wide text-[0.625rem] truncate max-w-full",
+                      active ? "text-foreground" : "text-muted-foreground"
+                    )}
+                  >
+                    {label}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
-        </>
-      )}
+
+          {/* Sign-out anchor — di luar area scroll supaya selalu terlihat. */}
+          <div className="shrink-0 flex items-center pl-1 border-l border-border/60">
+            <form action={signOut}>
+              <button
+                type="submit"
+                className="flex flex-col items-center gap-1 w-[56px] py-1 text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+                aria-label={t.nav.signOut}
+              >
+                <span className="flex items-center justify-center size-9 rounded-full border-2 border-foreground bg-card">
+                  <LogOut size={16} strokeWidth={2.5} />
+                </span>
+                <span className="font-display font-bold uppercase tracking-wide text-[0.625rem]">
+                  Keluar
+                </span>
+              </button>
+            </form>
+          </div>
+        </div>
+      </nav>
     </>
   );
 }
