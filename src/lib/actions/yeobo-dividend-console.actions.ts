@@ -6,6 +6,10 @@ import { requireAdmin, type ActionResult } from "./_gates";
 import { isValidYmd } from "./_validate";
 import { fetchYeoboPnL } from "@/lib/cashflow/pnl-yeobo";
 import {
+  cumulativeDividendPool,
+  investorPoolFracBeforeBep,
+} from "@/lib/investor/dividend-allocation";
+import {
   listDividendRecipients,
   getDividendBranchConfig,
 } from "./yeobo-dividend.actions";
@@ -45,6 +49,8 @@ const KAS_START_RANK = 2026 * 100 + 5; // Mei 2026
 export interface ConsoleRecipientRow {
   recipientId: string;
   label: string;
+  /** Nama investor terdaftar (profil), bila slot sudah ter-link. */
+  investorName: string | null;
   kind: "management" | "investor";
   poolPct: number | null;
   investIdr: number | null;
@@ -262,48 +268,90 @@ export async function getDividendConsoleData(input: {
       );
   }
 
-  // Payout bulan ini per kontrak + kumulatif (≤ bulan terpilih) per kontrak.
+  // Payout bulan ini per kontrak.
   const thisMonthPayoutByContract = new Map<string, PayoutRow>();
-  const cumByContract = new Map<string, number>();
-  for (const p of payouts) {
-    const r = ymRank(p.period_year, p.period_month);
+  for (const p of payouts)
     if (p.period_year === year && p.period_month === month)
       thisMonthPayoutByContract.set(p.contract_id, p);
+
+  // ── BEP HYBRID (modal terbalik) ──
+  // ≤ Apr 2026: metode lama (porsi investor × akumulasi dividen PnL).
+  // Mei 2026+: payout REAL (investor_payouts) ditumpuk di atas baseline akhir
+  // Apr 2026. (April ke belakang seperti sebelumnya; Mei dst pakai nilai
+  // transfer real.)
+  const APR_2026_RANK = 2026 * 100 + 4;
+  const branchOfContract = new Map(contracts.map((c) => [c.id, c.branch]));
+
+  // Payout real per cabang & per kontrak, HANYA periode Mei 2026+.
+  const realBranchBefore = new Map<string, number>();
+  const realBranchThrough = new Map<string, number>();
+  const realContractThrough = new Map<string, number>();
+  for (const p of payouts) {
+    const r = ymRank(p.period_year, p.period_month);
+    if (r < KAS_START_RANK) continue; // ≤ Apr 2026 ditangani estimasi lama
+    const amt = Number(p.amount_idr);
+    const branch = branchOfContract.get(p.contract_id);
+    if (branch) {
+      if (r < selRank)
+        realBranchBefore.set(branch, (realBranchBefore.get(branch) ?? 0) + amt);
+      if (r <= selRank)
+        realBranchThrough.set(branch, (realBranchThrough.get(branch) ?? 0) + amt);
+    }
     if (r <= selRank)
-      cumByContract.set(
+      realContractThrough.set(
         p.contract_id,
-        (cumByContract.get(p.contract_id) ?? 0) + Number(p.amount_idr)
+        (realContractThrough.get(p.contract_id) ?? 0) + amt
       );
   }
 
-  // Kumulatif payout investor PER CABANG (utk BEP & modal terbalik cabang).
-  const branchOfContract = new Map(contracts.map((c) => [c.id, c.branch]));
-  const cumPayoutBranchBefore = new Map<string, number>();
-  const cumPayoutBranchThrough = new Map<string, number>();
-  for (const p of payouts) {
-    const branch = branchOfContract.get(p.contract_id);
-    if (!branch) continue;
-    const r = ymRank(p.period_year, p.period_month);
-    const amt = Number(p.amount_idr);
-    if (r < selRank)
-      cumPayoutBranchBefore.set(
-        branch,
-        (cumPayoutBranchBefore.get(branch) ?? 0) + amt
+  // Baseline estimasi lama s/d Apr 2026 per cabang (porsi investor × Σ dividen PnL).
+  const oldFrac = new Map<string, number>();
+  const oldBaselineThruApr = new Map<string, number>();
+  const totalInvestByBranch = new Map<string, number | null>();
+  PHYSICAL_BRANCHES.forEach((branch, i) => {
+    const frac = investorPoolFracBeforeBep(configs[i]);
+    oldFrac.set(branch, frac);
+    oldBaselineThruApr.set(
+      branch,
+      Math.round(frac * cumulativeDividendPool(report, branch, 2026, 4))
+    );
+    totalInvestByBranch.set(branch, configs[i].totalInvestmentIdr);
+  });
+  const prevRankOf = (r: number) => {
+    const y = Math.floor(r / 100);
+    const m = r % 100;
+    return m === 1 ? (y - 1) * 100 + 12 : y * 100 + (m - 1);
+  };
+  const branchRecoupThrough = (branch: string): number => {
+    if (selRank <= APR_2026_RANK)
+      return Math.round(
+        (oldFrac.get(branch) ?? 0) *
+          cumulativeDividendPool(report, branch, year, month)
       );
-    if (r <= selRank)
-      cumPayoutBranchThrough.set(
-        branch,
-        (cumPayoutBranchThrough.get(branch) ?? 0) + amt
+    return (
+      (oldBaselineThruApr.get(branch) ?? 0) + (realBranchThrough.get(branch) ?? 0)
+    );
+  };
+  const branchRecoupBefore = (branch: string): number => {
+    if (selRank <= APR_2026_RANK) {
+      const pr = prevRankOf(selRank);
+      return Math.round(
+        (oldFrac.get(branch) ?? 0) *
+          cumulativeDividendPool(report, branch, Math.floor(pr / 100), pr % 100)
       );
-  }
+    }
+    return (
+      (oldBaselineThruApr.get(branch) ?? 0) + (realBranchBefore.get(branch) ?? 0)
+    );
+  };
 
   // ── Build branch DTOs ──
   const branches: ConsoleBranch[] = PHYSICAL_BRANCHES.map((branch, i) => {
     const config = configs[i];
     const recips = recipientLists[i].filter((r) => r.active);
     const operatingProfit = opProfitOf(branch, year, month);
-    const cumBefore = cumPayoutBranchBefore.get(branch) ?? 0;
-    const cumThrough = cumPayoutBranchThrough.get(branch) ?? 0;
+    const cumBefore = branchRecoupBefore(branch);
+    const cumThrough = branchRecoupThrough(branch);
 
     // afterBep dari dividen tertransfer (investor_payouts): override manual
     // menang; selain itu kumulatif payout investor SEBELUM bulan ini ≥ modal.
@@ -323,6 +371,7 @@ export async function getDividendConsoleData(input: {
       return {
         recipientId: r.id,
         label: r.label,
+        investorName: r.userId ? nameByUser.get(r.userId) ?? null : null,
         kind: r.kind,
         poolPct: r.poolPct,
         investIdr: r.investIdr,
@@ -363,6 +412,37 @@ export async function getDividendConsoleData(input: {
     for (const r of b.rows)
       if (r.kind === "investor" && r.contractId)
         recipientByContract.set(r.contractId, r);
+
+  // Kumulatif payout per kontrak (tabel per-investor) — hybrid: estimasi lama
+  // porsi investor s/d Apr 2026 + payout real Mei 2026+.
+  const cumByContract = new Map<string, number>();
+  for (const c of contracts) {
+    const branch = c.branch;
+    const rec = recipientByContract.get(c.id);
+    let cum: number;
+    if (branch && rec) {
+      const total = totalInvestByBranch.get(branch) ?? null;
+      const ifrac =
+        rec.investIdr != null && total && total > 0
+          ? rec.investIdr / total
+          : (rec.poolPct ?? 0) / 100;
+      if (selRank <= APR_2026_RANK) {
+        cum = Math.round(
+          ifrac *
+            (oldFrac.get(branch) ?? 0) *
+            cumulativeDividendPool(report, branch, year, month)
+        );
+      } else {
+        cum =
+          Math.round(ifrac * (oldBaselineThruApr.get(branch) ?? 0)) +
+          (realContractThrough.get(c.id) ?? 0);
+      }
+    } else {
+      // tanpa cabang/slot dividen → hanya payout real Mei 2026+.
+      cum = selRank <= APR_2026_RANK ? 0 : realContractThrough.get(c.id) ?? 0;
+    }
+    cumByContract.set(c.id, cum);
+  }
 
   // ── Investor groups (per user, lintas cabang) ──
   const investorMap = new Map<string, ConsoleInvestor>();

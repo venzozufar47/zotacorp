@@ -475,7 +475,14 @@ function BranchAllocationTable({
               <tr key={r.recipientId} className="border-t border-border/60">
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">{r.label}</span>
+                    <span className="font-medium text-foreground">
+                      {r.investorName ?? r.label}
+                    </span>
+                    {r.investorName && r.investorName !== r.label && (
+                      <span className="text-[10.5px] text-muted-foreground">
+                        ({r.label})
+                      </span>
+                    )}
                     <span
                       className={`rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase ${
                         r.kind === "management"
