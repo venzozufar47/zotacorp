@@ -156,10 +156,19 @@ export function AdminSidebar({
       ? allGroups.filter((g) => g.label === "Yeobo Booth")
       : allGroups;
 
-  const isActive = (href: string) => {
-    if (href === "/admin") return pathname === "/admin";
-    return pathname === href || pathname.startsWith(href + "/");
-  };
+  // Pilih SATU item aktif via match terpanjang supaya rute bertingkat
+  // (mis. /admin/finance/dividen) tidak ikut menyalakan parent-nya
+  // (/admin/finance). /admin (Home) hanya cocok persis.
+  const activeHref = groups
+    .flatMap((g) => g.items)
+    .filter((it) =>
+      it.href === "/admin"
+        ? pathname === "/admin"
+        : pathname === it.href || pathname.startsWith(it.href + "/")
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
+  const isActive = (href: string) => href === activeHref;
 
   const displayName =
     profile?.full_name?.trim() || profile?.email?.split("@")[0] || "Admin";
