@@ -575,6 +575,9 @@ function InvestorCrossBranchTable({
     },
     { due: 0, cum: 0 }
   );
+  // Slot investor yang belum tersambung kontrak ikut masuk grand total due.
+  for (const u of data.unlinkedRecipients)
+    grand.due += amounts[u.recipientId] ?? u.due;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -624,6 +627,36 @@ function InvestorCrossBranchTable({
               />
             );
           })}
+          {data.unlinkedRecipients.map((u) => {
+            const due = amounts[u.recipientId] ?? u.due;
+            return (
+              <tr
+                key={u.recipientId}
+                className="border-t border-border bg-muted/20"
+              >
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">{u.label}</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                      <Link2Off size={11} /> belum tersambung
+                    </span>
+                  </div>
+                </td>
+                <td className="px-4 py-2.5 text-[12px] text-muted-foreground">
+                  {u.branch}
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
+                  {formatRp(due)}
+                </td>
+                <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
+                  —
+                </td>
+                <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
+                  belum ada BEP
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-border bg-muted/40 font-semibold">
@@ -642,14 +675,10 @@ function InvestorCrossBranchTable({
       </table>
 
       {data.unlinkedRecipients.length > 0 && (
-        <div className="border-t border-border px-4 py-3 text-[12px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1 font-medium">
-            <Link2Off size={12} /> Belum tersambung ke kontrak
-          </span>{" "}
-          (link di tab Dividen Yeobo):{" "}
-          {data.unlinkedRecipients
-            .map((u) => `${u.label} (${u.branch}, ${formatIDR(u.due)})`)
-            .join(" · ")}
+        <div className="border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground">
+          <Link2Off size={11} className="inline mr-1" />
+          Slot &quot;belum tersambung&quot; akan otomatis masuk riwayat bagi
+          hasil investor begitu di-link ke kontraknya (tab Dividen Yeobo).
         </div>
       )}
     </div>
