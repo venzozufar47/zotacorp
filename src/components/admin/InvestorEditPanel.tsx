@@ -4,15 +4,16 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { X, Mail, Building2, FileText, Wallet, ArrowRight } from "lucide-react";
+import { X, Mail, Building2, FileText, Wallet, ArrowRight, Trash2 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { formatIDR } from "@/lib/cashflow/format";
-import type {
-  InvestorSummary,
-  InvestorContract,
+import {
+  deleteInvestorAccount,
+  type InvestorSummary,
+  type InvestorContract,
 } from "@/lib/actions/investor.actions";
 
 interface Props {
@@ -42,6 +43,25 @@ export function InvestorEditPanel({ investor, contracts, onClose }: Props) {
 
   const myContracts = contracts.filter((c) => c.userId === investor.userId);
   const totalInvest = myContracts.reduce((s, c) => s + c.totalInvestIdr, 0);
+
+  // Hapus akun permanen — danger zone.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const confirmTarget = investor.email || investor.fullName || "HAPUS";
+
+  function handleDelete() {
+    if (confirmText.trim() !== confirmTarget) return;
+    startTransition(async () => {
+      const res = await deleteInvestorAccount(investor.userId);
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal menghapus akun");
+        return;
+      }
+      toast.success("Akun investor dihapus permanen");
+      onClose();
+      router.refresh();
+    });
+  }
 
   function save() {
     if (!fullName.trim()) {
@@ -229,6 +249,63 @@ export function InvestorEditPanel({ investor, contracts, onClose }: Props) {
             className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           />
         </Field>
+      </section>
+
+      {/* Danger zone — hapus akun permanen */}
+      <section className="space-y-3 pt-4 mt-2 border-t-2 border-destructive/30">
+        <h3 className="text-[11px] font-bold uppercase tracking-wider text-destructive">
+          Zona berbahaya
+        </h3>
+        {!confirmOpen ? (
+          <Button
+            variant="outline"
+            onClick={() => setConfirmOpen(true)}
+            disabled={pending}
+            className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 size={14} className="mr-1.5" /> Hapus akun permanen
+          </Button>
+        ) : (
+          <div className="rounded-2xl border border-destructive/40 bg-destructive/5 p-3 space-y-2.5">
+            <p className="text-[12px] leading-snug text-foreground">
+              Menghapus{" "}
+              <strong>{investor.fullName || investor.email || "investor ini"}</strong>{" "}
+              bersifat <strong>permanen &amp; tidak bisa di-undo</strong>: akun
+              login, {myContracts.length} kontrak, dan seluruh riwayat
+              payout/assignment ikut terhapus. Slot dividen yang ter-link akan
+              jadi &quot;belum tersambung&quot; (alokasi historis tetap ada).
+            </p>
+            <Field label={`Ketik "${confirmTarget}" untuk konfirmasi`}>
+              <Input
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder={confirmTarget}
+                disabled={pending}
+                autoComplete="off"
+              />
+            </Field>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setConfirmText("");
+                }}
+                disabled={pending}
+              >
+                Batal
+              </Button>
+              <Button
+                onClick={handleDelete}
+                disabled={pending || confirmText.trim() !== confirmTarget}
+                loading={pending}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              >
+                <Trash2 size={14} className="mr-1.5" /> Hapus permanen
+              </Button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

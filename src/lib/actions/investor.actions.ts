@@ -671,3 +671,50 @@ export async function deleteInvestorContract(
   revalidatePath("/investor", "layout");
   return { ok: true };
 }
+
+/**
+ * Hapus PERMANEN akun investor. Menghapus auth user → cascade ke profiles +
+ * investor_business_unit_assignments + investor_contracts + investor_payouts +
+ * bu_metric_comments (FK ON DELETE CASCADE). Slot yeobo_dividend_recipients
+ * yang ter-link ke investor/kontrak ini di-SET NULL (slot tetap ada, jadi
+ * status "belum tersambung") — alokasi historisnya tidak hilang.
+ *
+ * SAFETY: hanya boleh menghapus akun ber-role investor lewat aksi ini, dan
+ * tidak boleh menghapus akun sendiri. Irreversible — tanpa soft-delete.
+ */
+export async function deleteInvestorAccount(
+  userId: string
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (gate.userId === userId)
+    return { ok: false, error: "Tidak bisa menghapus akun sendiri." };
+
+  const admin = adminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = admin as any;
+
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!prof) return { ok: false, error: "Investor tidak ditemukan." };
+  if (prof.role !== "investor")
+    return { ok: false, error: "Akun ini bukan investor." };
+
+  // Hapus auth user (cascade ke profiles + data investor).
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  if (error) {
+    // Fallback: tidak ada auth user (profil tanpa akun login) → hapus profil
+    // langsung (cascade FK yang sama).
+    const { error: pErr } = await supabase
+      .from("profiles")
+      .delete()
+      .eq("id", userId);
+    if (pErr) return { ok: false, error: error.message };
+  }
+  revalidatePath("/admin/investors");
+  revalidatePath("/investor", "layout");
+  return { ok: true };
+}
