@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { formatIDR } from "@/lib/cashflow/format";
 import {
   deleteInvestorAccount,
+  resendInvestorInvite,
   type InvestorSummary,
   type InvestorContract,
 } from "@/lib/actions/investor.actions";
@@ -48,6 +49,19 @@ export function InvestorEditPanel({ investor, contracts, onClose }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const confirmTarget = investor.email || investor.fullName || "HAPUS";
+
+  function resendInvite() {
+    startTransition(async () => {
+      const res = await resendInvestorInvite(investor.userId);
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal mengirim ulang undangan");
+        return;
+      }
+      toast.success(
+        `Undangan dikirim ulang ke ${res.data?.email ?? "email investor"}`
+      );
+    });
+  }
 
   function handleDelete() {
     if (confirmText.trim() !== confirmTarget) return;
@@ -174,6 +188,26 @@ export function InvestorEditPanel({ investor, contracts, onClose }: Props) {
           Kelola kontrak & payout <ArrowRight size={12} />
         </Link>
       </div>
+
+      {/* Belum aktivasi → kirim ulang undangan (link mungkin kedaluwarsa). */}
+      {investor.pendingInvite && (
+        <div className="rounded-2xl border border-amber-400/60 bg-amber-50/70 dark:bg-amber-500/10 p-3 space-y-2">
+          <p className="text-[11.5px] leading-snug text-amber-800 dark:text-amber-300">
+            <strong>Belum mengaktifkan akun.</strong> Undangan mungkin belum
+            dibuka atau linknya sudah kedaluwarsa (berlaku 24 jam). Kirim ulang
+            untuk membuat link baru.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resendInvite}
+            disabled={pending}
+            className="border-amber-500/60 text-amber-700 hover:bg-amber-100/70 hover:text-amber-800 dark:text-amber-300"
+          >
+            <Mail size={13} className="mr-1.5" /> Kirim ulang undangan
+          </Button>
+        </div>
+      )}
 
       {/* Editable fields — investor-appropriate only */}
       <section className="space-y-3">

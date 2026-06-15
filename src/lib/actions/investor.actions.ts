@@ -32,6 +32,9 @@ export interface InvestorSummary {
   domisiliAlamat: string | null;
   avatarUrl: string | null;
   avatarSeed: string | null;
+  /** Investor belum pernah login = undangan belum diaktivasi (mungkin link
+   *  kedaluwarsa / belum dibuka). Dipakai untuk tombol "kirim ulang undangan". */
+  pendingInvite: boolean;
 }
 
 /**
@@ -84,6 +87,20 @@ export async function listInvestorsForAdmin(): Promise<
       byUser.set(a.user_id, arr);
     }
   }
+  // Status aktivasi per investor (belum pernah login = undangan belum
+  // diaktivasi). Auth state hanya ada di auth.users → cek per user (jumlah
+  // investor kecil). Gagal/誤 → anggap tidak pending (aman).
+  const pendingByUser = new Map<string, boolean>();
+  await Promise.all(
+    userIds.map(async (id) => {
+      try {
+        const { data: au } = await supabase.auth.admin.getUserById(id);
+        pendingByUser.set(id, !!au?.user && !au.user.last_sign_in_at);
+      } catch {
+        pendingByUser.set(id, false);
+      }
+    })
+  );
   return {
     ok: true,
     data: profs.map((p) => ({
@@ -99,6 +116,7 @@ export async function listInvestorsForAdmin(): Promise<
       domisiliAlamat: p.domisili_alamat,
       avatarUrl: p.avatar_url,
       avatarSeed: p.avatar_seed,
+      pendingInvite: pendingByUser.get(p.id) ?? false,
     })),
   };
 }
@@ -274,6 +292,100 @@ export async function inviteInvestor(input: {
       ok: false,
       error: msg || "Akun dibuat tapi email gagal terkirim. Coba kirim ulang.",
     };
+  }
+
+  revalidatePath("/admin/investors");
+  return { ok: true, data: { email: maskEmail(email) } };
+}
+
+/**
+ * Kirim ULANG undangan ke investor yang sudah di-invite tapi belum
+ * mengaktifkan akun (link kedaluwarsa / belum dibuka). Membuat link invite
+ * BARU (re-invite user yang masih pending) lalu mengirim email lewat Resend.
+ * Ditolak bila akun sudah aktif (pernah login) atau bukan investor.
+ */
+export async function resendInvestorInvite(
+  userId: string
+): Promise<ActionResult<{ email: string }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const resendKey = process.env.RESEND_API_KEY;
+  const resendFrom = process.env.RESEND_FROM;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!resendKey || !resendFrom || !appUrl) {
+    return { ok: false, error: "Layanan email belum dikonfigurasi." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = adminClient() as any;
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("email, full_name, role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!prof) return { ok: false, error: "Investor tidak ditemukan." };
+  if (prof.role !== "investor")
+    return { ok: false, error: "Akun ini bukan investor." };
+
+  // Jangan re-invite akun yang sudah aktif (pernah login).
+  const { data: au } = await supabase.auth.admin.getUserById(userId);
+  if (au?.user?.last_sign_in_at) {
+    return {
+      ok: false,
+      error: "Investor sudah mengaktifkan akun — tidak perlu undangan ulang.",
+    };
+  }
+
+  const email = (prof.email ?? "").toLowerCase();
+  const fullName = (prof.full_name ?? "").trim() || "Investor";
+  if (!email) return { ok: false, error: "Email investor kosong." };
+
+  // generateLink(invite) re-invite user yang masih pending → link 24 jam baru.
+  const { data: linkData, error: linkError } =
+    await supabase.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: {
+        redirectTo: `${appUrl}/set-password`,
+        data: { full_name: fullName, role: "investor" },
+      },
+    });
+  if (linkError || !linkData?.properties?.action_link) {
+    return {
+      ok: false,
+      error: linkError?.message || "Gagal membuat undangan baru.",
+    };
+  }
+  const actionLink = linkData.properties.action_link as string;
+
+  const { subject, html, text } = renderInviteInvestorEmail({
+    fullName,
+    actionLink,
+    expiresIn: "24 jam",
+  });
+  const resend = new Resend(resendKey);
+  const { error: sendError } = await resend.emails.send({
+    from: resendFrom,
+    to: email,
+    subject,
+    html,
+    text,
+    headers: { "X-Entity-Ref-ID": `investor-reinvite-${userId}-${Date.now()}` },
+  });
+  if (sendError) {
+    const msg = sendError.message ?? "";
+    if (
+      sendError.name === "validation_error" &&
+      /only send testing emails/i.test(msg)
+    ) {
+      return {
+        ok: false,
+        error:
+          "Domain pengirim email belum diverifikasi di Resend. Verifikasi domain Zota Corp di resend.com/domains.",
+      };
+    }
+    return { ok: false, error: msg || "Gagal mengirim email undangan." };
   }
 
   revalidatePath("/admin/investors");
