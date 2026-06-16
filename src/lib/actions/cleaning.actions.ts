@@ -315,6 +315,68 @@ export async function deleteChecklist(input: {
   return { ok: true };
 }
 
+/** Duplicate a checklist with all its items + photo slots (labels + references).
+ *  Assignments are NOT copied — a duplicate is a fresh template to assign. */
+export async function duplicateChecklist(input: {
+  id: string;
+}): Promise<{ ok: true; id: string } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const supabase = await createClient();
+
+  const { data: src } = await supabase
+    .from("cleaning_checklists")
+    .select(
+      "name, description, is_active, items:cleaning_checklist_items(title, note, requires_photo, sort_order, photos:cleaning_item_photos(label, reference_photo_path, sort_order))"
+    )
+    .eq("id", input.id)
+    .maybeSingle();
+  if (!src) return { error: "Checklist tidak ditemukan." };
+
+  const { data: newCl, error: clErr } = await supabase
+    .from("cleaning_checklists")
+    .insert({
+      name: `${src.name} (salinan)`,
+      description: src.description,
+      is_active: src.is_active,
+    })
+    .select("id")
+    .single();
+  if (clErr || !newCl) return { error: clErr?.message ?? "Gagal menduplikat checklist." };
+
+  const items = (src.items ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
+  for (const it of items) {
+    const { data: newItem, error: itErr } = await supabase
+      .from("cleaning_checklist_items")
+      .insert({
+        checklist_id: newCl.id,
+        title: it.title,
+        note: it.note,
+        requires_photo: it.requires_photo,
+        sort_order: it.sort_order,
+      })
+      .select("id")
+      .single();
+    if (itErr || !newItem) return { error: itErr?.message ?? "Gagal menyalin item." };
+
+    const photos = it.photos ?? [];
+    if (photos.length > 0) {
+      const { error: phErr } = await supabase.from("cleaning_item_photos").insert(
+        photos.map((p) => ({
+          item_id: newItem.id,
+          label: p.label,
+          reference_photo_path: p.reference_photo_path,
+          sort_order: p.sort_order,
+        }))
+      );
+      if (phErr) return { error: phErr.message };
+    }
+  }
+
+  revalidatePath("/admin/cleaning");
+  return { ok: true, id: newCl.id };
+}
+
 export async function addChecklistItem(input: {
   checklist_id: string;
   title: string;

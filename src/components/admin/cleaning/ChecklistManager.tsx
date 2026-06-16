@@ -16,6 +16,7 @@ import {
   X,
   ImagePlus,
   Loader2,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ import {
   createChecklist,
   updateChecklist,
   deleteChecklist,
+  duplicateChecklist,
   setChecklistActive,
   addChecklistItem,
   updateChecklistItem,
@@ -249,6 +251,15 @@ function ChecklistCard({
             className="text-muted-foreground hover:text-foreground disabled:opacity-50"
           >
             <Pencil size={15} />
+          </button>
+          <button
+            type="button"
+            title="Duplikat checklist"
+            onClick={() => run(() => duplicateChecklist({ id: cl.id }), "Checklist diduplikat")}
+            disabled={pending}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            <Copy size={15} />
           </button>
           <button
             type="button"
