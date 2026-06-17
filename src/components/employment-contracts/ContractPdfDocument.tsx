@@ -105,12 +105,16 @@ const s = StyleSheet.create({
   sigCell: { width: "45%", alignItems: "center" },
   sigCaption: { fontFamily: "Times-Bold", letterSpacing: 0.5 },
   sigSub: { color: C.muted, fontSize: 9.5, marginBottom: 6 },
-  sigArea: { height: 104, width: "100%", position: "relative", alignItems: "center", justifyContent: "center" },
+  sigBand: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 96,
+    width: "100%",
+  },
   meteraiBox: {
-    position: "absolute",
-    top: 6,
-    width: 96,
-    height: 82,
+    width: 58,
+    height: 80,
     borderWidth: 1,
     borderColor: C.border,
     borderStyle: "dashed",
@@ -118,9 +122,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: C.box,
+    marginRight: 10,
   },
-  meteraiText: { fontSize: 7.5, color: C.faint, textAlign: "center" },
-  sigImg: { position: "absolute", top: 12, width: 150, height: 78, objectFit: "contain" },
+  meteraiText: { fontSize: 7, color: C.faint, textAlign: "center" },
+  sigSlot: { flex: 1, height: 96, alignItems: "center", justifyContent: "center" },
+  sigImg: { width: 132, height: 74, objectFit: "contain" },
   sigNameWrap: {
     width: "92%",
     borderTopWidth: 1,
@@ -240,8 +246,10 @@ function SignatureBlock({
       <View style={s.sigCell}>
         <Text style={s.sigCaption}>PIHAK PERTAMA</Text>
         <Text style={s.sigSub}>{firstRole}</Text>
-        <View style={s.sigArea}>
-          {employerSig ? <Image style={s.sigImg} src={employerSig} /> : null}
+        <View style={s.sigBand}>
+          <View style={s.sigSlot}>
+            {employerSig ? <Image style={s.sigImg} src={employerSig} /> : null}
+          </View>
         </View>
         <View style={s.sigNameWrap}>
           <Text style={s.sigName}>{firstName || "( ........................ )"}</Text>
@@ -250,13 +258,17 @@ function SignatureBlock({
       <View style={s.sigCell}>
         <Text style={s.sigCaption}>PIHAK KEDUA</Text>
         <Text style={s.sigSub}>{secondRole}</Text>
-        <View style={s.sigArea}>
+        {/* Meterai = kotak kosong terpisah di samping tanda tangan (tidak
+            menimpa); e-meterai dibubuhkan owner di sini via Peruri. */}
+        <View style={s.sigBand}>
           {withMeterai ? (
             <View style={s.meteraiBox}>
               <Text style={s.meteraiText}>Meterai{"\n"}Rp10.000</Text>
             </View>
           ) : null}
-          {employeeSig ? <Image style={s.sigImg} src={employeeSig} /> : null}
+          <View style={s.sigSlot}>
+            {employeeSig ? <Image style={s.sigImg} src={employeeSig} /> : null}
+          </View>
         </View>
         <View style={s.sigNameWrap}>
           <Text style={s.sigName}>{secondName || "( ........................ )"}</Text>
