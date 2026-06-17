@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -482,7 +483,8 @@ function ContractFormModal({
     return Array.from(m.entries());
   }, []);
 
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4">
       <div className="w-full max-w-3xl rounded-2xl border-2 border-foreground bg-card shadow-hard my-8">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -606,7 +608,8 @@ function ContractFormModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
