@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import { Download, Lock, CheckCircle2 } from "lucide-react";
 import {
   signEmploymentContract,
-  getContractSignedUrl,
+  getContractRenderData,
 } from "@/lib/actions/employment-contracts.actions";
+import { downloadContractPdf } from "@/lib/employment-contracts/downloadContractPdf";
 import {
   fillAndParse,
   type ContractBlock,
@@ -65,11 +66,13 @@ export function ContractSignClient({
   };
 
   const download = async () => {
+    // Render fresh dari data — tanda tangan Pemberi Kerja + format terbaru
+    // selalu ikut, tidak tergantung PDF beku lama.
     setDownloading(true);
-    const res = await getContractSignedUrl(contract.id, "pdf");
+    const res = await getContractRenderData(contract.id);
     setDownloading(false);
-    if (!res.ok || !res.data) return void toast.error(res.ok ? "PDF belum siap" : res.error);
-    window.open(res.data.url, "_blank");
+    if (!res.ok || !res.data) return void toast.error(res.ok ? "Gagal" : res.error);
+    await downloadContractPdf(res.data);
   };
 
   return (

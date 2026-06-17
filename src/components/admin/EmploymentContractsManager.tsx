@@ -23,7 +23,6 @@ import {
   updateEmploymentContract,
   deleteEmploymentContract,
   getContractRenderData,
-  getContractSignedUrl,
   type ContractListRow,
 } from "@/lib/actions/employment-contracts.actions";
 import {
@@ -258,14 +257,9 @@ function ContractsTab({
   };
 
   const download = async (row: ContractListRow) => {
+    // Render fresh dari data (tanda tangan Pemberi Kerja + format terbaru
+    // selalu ikut), bukan PDF beku lama.
     setBusy(row.id);
-    if (row.signed_pdf_path) {
-      const res = await getContractSignedUrl(row.id, "pdf");
-      setBusy(null);
-      if (!res.ok || !res.data) return void toast.error(res.ok ? "Gagal" : res.error);
-      window.open(res.data.url, "_blank");
-      return;
-    }
     const res = await getContractRenderData(row.id);
     setBusy(null);
     if (!res.ok || !res.data) return void toast.error(res.ok ? "Gagal" : res.error);
