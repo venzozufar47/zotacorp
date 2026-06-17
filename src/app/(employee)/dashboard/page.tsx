@@ -30,6 +30,9 @@ import { parseBreakWindows } from "@/lib/utils/break-windows";
 import type { AttendanceBreakLog } from "@/lib/supabase/types";
 import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
+import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
+import Link from "next/link";
+import { FileSignature } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -93,6 +96,7 @@ export default async function DashboardPage() {
     breakLogsRes,
     cleaningTasks,
     extraWorkKinds,
+    myPendingContract,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -121,7 +125,9 @@ export default async function DashboardPage() {
       .order("break_out_at", { ascending: true }),
     getTodayCleaningTasks(),
     listExtraWorkKindsForUser(user.id),
+    getMyPendingContract(),
   ]);
+  const pendingContract = myPendingContract;
 
   if (profile?.role === "admin") redirect("/admin/attendance");
 
@@ -177,6 +183,26 @@ export default async function DashboardPage() {
       )}
 
       <ProfileCompletionCard missingSections={missingSections} />
+
+      {pendingContract && (
+        <Link
+          href="/kontrak"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+            <FileSignature size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">
+              Kontrak kerja menunggu tanda tangan
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Tandatangani kontrakmu untuk membuka slip gaji. Ketuk untuk membuka.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
 
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 

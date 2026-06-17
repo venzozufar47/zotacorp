@@ -24,6 +24,7 @@ import {
   Sparkles,
   Coins,
   HandCoins,
+  FileSignature,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -94,6 +95,11 @@ export function AdminSidebar({
       label: "Org",
       items: [
         { href: "/admin/users", icon: Users, label: t.nav.users },
+        {
+          href: "/admin/employment-contracts",
+          icon: FileSignature,
+          label: "Kontrak Kerja",
+        },
         { href: "/admin/locations", icon: MapPin, label: t.nav.locations },
       ],
     },

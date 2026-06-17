@@ -9,6 +9,7 @@ import {
   getPayslipSettings,
 } from "@/lib/actions/payslip.actions";
 import { listMyPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
+import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { EnablePushButton } from "@/components/shared/EnablePushButton";
@@ -44,6 +45,23 @@ const REQUIRED_PROFILE_KEYS = [
 export default async function EmployeePayslipsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+
+  // Gate kontrak: kalau ada kontrak kerja yang masih menunggu tanda tangan,
+  // slip gaji dikunci sampai karyawan menandatanganinya. (Karyawan tanpa
+  // kontrak / sudah signed tidak terkunci di sini.)
+  const pendingContract = await getMyPendingContract();
+  if (pendingContract) {
+    const { t } = await getDictionary();
+    return (
+      <div className="space-y-5 animate-fade-up overflow-x-hidden">
+        <PageHeader
+          title={t.payslipsPage.title}
+          subtitle={t.payslipsPage.subtitle}
+        />
+        <ContractLockedNotice />
+      </div>
+    );
+  }
 
   const profile = await getCurrentProfile();
   const missingFields = REQUIRED_PROFILE_KEYS.filter((k) => {
@@ -104,6 +122,32 @@ export default async function EmployeePayslipsPage() {
         />
       )}
     </div>
+  );
+}
+
+function ContractLockedNotice() {
+  return (
+    <Card>
+      <CardContent className="p-6 text-center space-y-4">
+        <div className="inline-flex items-center justify-center size-16 rounded-full border-2 border-foreground bg-warning shadow-hard-sm">
+          <span className="text-3xl">✍️</span>
+        </div>
+        <h3 className="font-display text-lg font-bold">
+          Tanda tangani kontrak kerja dulu
+        </h3>
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          Slip gaji terkunci sampai kamu menandatangani kontrak kerja yang sudah
+          diterbitkan admin. Buka halaman Kontrak Kerja untuk membaca dan
+          menandatanganinya.
+        </p>
+        <Link
+          href="/kontrak"
+          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-primary text-primary-foreground font-display font-bold text-sm border-2 border-foreground shadow-hard hover:bg-primary/90 transition"
+        >
+          Buka kontrak kerja →
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 
