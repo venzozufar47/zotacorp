@@ -9,6 +9,10 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
 import { emptyLampiran } from "@/lib/employment-contracts/types";
+import {
+  EMPLOYER,
+  TGL_BAYAR_DEFAULT,
+} from "@/lib/employment-contracts/default-templates";
 import type {
   ContractFields,
   ContractLampiran,
@@ -152,19 +156,39 @@ export async function prefillContractFields(
 
   const { data: tpl } = await db
     .from("employment_contract_templates" as never)
-    .select("kota, employer_name, employer_jabatan, employer_alamat")
+    .select("kota")
     .eq("business_unit", bu)
     .maybeSingle();
   const t = tpl as unknown as Record<string, string | null> | null;
 
+  // Tanggal otomatis sesuai saat kontrak dibuat (WIB).
+  const now = new Date();
+  const wib = (opt: Intl.DateTimeFormatOptions) =>
+    now.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", ...opt });
+  const yearNum = Number(
+    now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta", year: "numeric" })
+  );
+
+  // Nomor kontrak otomatis: urut per BU per tahun (lanjutan dari yang sudah ada).
+  const { count } = await db
+    .from("employment_contracts" as never)
+    .select("id", { count: "exact", head: true })
+    .eq("business_unit", bu)
+    .gte("created_at", `${yearNum}-01-01`)
+    .lt("created_at", `${yearNum + 1}-01-01`);
+  const nomor = String((count ?? 0) + 1).padStart(3, "0");
+
   const jabatan = p.position || p.job_role || "";
   const fields: ContractFields = {
-    nomor: "",
-    tahun: String(new Date().getFullYear()),
+    nomor,
+    hari: wib({ weekday: "long" }),
+    tanggal: wib({ day: "numeric" }),
+    bulan: wib({ month: "long" }),
+    tahun: String(yearNum),
     kota: t?.kota ?? "",
-    pemberi_nama: t?.employer_name ?? "",
-    pemberi_jabatan: t?.employer_jabatan ?? "",
-    pemberi_alamat: t?.employer_alamat ?? "",
+    pemberi_nama: EMPLOYER.name,
+    pemberi_jabatan: EMPLOYER.jabatan,
+    pemberi_alamat: EMPLOYER.alamat,
     nama: p.full_name ?? "",
     nik: p.nik ?? "",
     tempat_lahir: p.place_of_birth ?? "",
@@ -178,7 +202,7 @@ export async function prefillContractFields(
     gaji_terbilang: salary > 0 ? terbilang(salary) : "",
     komponen_upah: "gaji pokok",
     periode_bayar: "bulanan",
-    tgl_bayar: "",
+    tgl_bayar: TGL_BAYAR_DEFAULT,
     cara_bayar: "transfer ke rekening Karyawan",
   };
   const lampiran = emptyLampiran();
@@ -276,9 +300,9 @@ export async function issueEmploymentContract(
       status: "pending_signature",
       body_markdown: tpl.body_markdown,
       kota: tpl.kota,
-      employer_name: tpl.employer_name,
-      employer_jabatan: tpl.employer_jabatan,
-      employer_alamat: tpl.employer_alamat,
+      employer_name: EMPLOYER.name,
+      employer_jabatan: EMPLOYER.jabatan,
+      employer_alamat: EMPLOYER.alamat,
       employer_signature_path: tpl.employer_signature_path,
       fields: input.fields,
       lampiran: input.lampiran,

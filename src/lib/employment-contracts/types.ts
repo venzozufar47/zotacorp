@@ -59,20 +59,20 @@ export type ContractFieldKey =
 export type ContractFields = Partial<Record<ContractFieldKey, string>>;
 
 /** Label + grup untuk form pengisian placeholder di dashboard admin. */
+// Field yang bisa diisi admin di form penerbitan. Data Pemberi Kerja &
+// tanggal bayar (hardcode), serta nomor/hari/tanggal/bulan (auto-isi) tetap
+// disimpan di `fields` tapi tidak perlu ditampilkan sebagai input manual.
 export const CONTRACT_FIELD_DEFS: Array<{
   key: ContractFieldKey;
   label: string;
-  group: "Nomor & Tanggal" | "Pemberi Kerja" | "Karyawan" | "Jabatan" | "Upah";
+  group: "Nomor & Tanggal" | "Karyawan" | "Jabatan" | "Upah";
 }> = [
-  { key: "nomor", label: "Nomor kontrak (xxx)", group: "Nomor & Tanggal" },
-  { key: "hari", label: "Hari penandatanganan", group: "Nomor & Tanggal" },
-  { key: "tanggal", label: "Tanggal", group: "Nomor & Tanggal" },
-  { key: "bulan", label: "Bulan", group: "Nomor & Tanggal" },
-  { key: "tahun", label: "Tahun", group: "Nomor & Tanggal" },
+  { key: "nomor", label: "Nomor kontrak (auto)", group: "Nomor & Tanggal" },
+  { key: "hari", label: "Hari (auto)", group: "Nomor & Tanggal" },
+  { key: "tanggal", label: "Tanggal (auto)", group: "Nomor & Tanggal" },
+  { key: "bulan", label: "Bulan (auto)", group: "Nomor & Tanggal" },
+  { key: "tahun", label: "Tahun (auto)", group: "Nomor & Tanggal" },
   { key: "kota", label: "Kota", group: "Nomor & Tanggal" },
-  { key: "pemberi_nama", label: "Nama penanggung jawab", group: "Pemberi Kerja" },
-  { key: "pemberi_jabatan", label: "Jabatan (Pemilik/Direktur)", group: "Pemberi Kerja" },
-  { key: "pemberi_alamat", label: "Alamat usaha", group: "Pemberi Kerja" },
   { key: "nama", label: "Nama lengkap karyawan", group: "Karyawan" },
   { key: "nik", label: "NIK", group: "Karyawan" },
   { key: "tempat_lahir", label: "Tempat lahir", group: "Karyawan" },
@@ -86,7 +86,6 @@ export const CONTRACT_FIELD_DEFS: Array<{
   { key: "gaji_terbilang", label: "Terbilang", group: "Upah" },
   { key: "komponen_upah", label: "Komponen upah", group: "Upah" },
   { key: "periode_bayar", label: "Periode bayar (bulanan/mingguan)", group: "Upah" },
-  { key: "tgl_bayar", label: "Tanggal bayar", group: "Upah" },
   { key: "cara_bayar", label: "Cara bayar", group: "Upah" },
 ];
 
@@ -95,7 +94,6 @@ export interface ContractLampiran {
   nama?: string;
   posisi?: string;
   cabang?: string;
-  atasan?: string;
   tujuan: string[];
   tanggung_jawab: string[];
   sop: string[];
@@ -108,7 +106,6 @@ export function emptyLampiran(): ContractLampiran {
     nama: "",
     posisi: "",
     cabang: "",
-    atasan: "",
     tujuan: [""],
     tanggung_jawab: [""],
     sop: [""],

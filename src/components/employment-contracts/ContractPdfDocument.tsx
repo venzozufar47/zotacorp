@@ -297,7 +297,6 @@ export function ContractPdfDocument({
           Nama Karyawan: {lampiran.nama || fields.nama || "—"}
           {"\n"}Posisi / Jabatan: {lampiran.posisi || fields.jabatan || "—"}
           {"\n"}Cabang Penempatan: {lampiran.cabang || fields.cabang || "—"}
-          {"\n"}Atasan Langsung: {lampiran.atasan || "—"}
         </Text>
 
         <LampiranList title="B. Tujuan Posisi" items={lampiran.tujuan} />

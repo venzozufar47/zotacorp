@@ -35,7 +35,10 @@ import {
   type EmploymentContractTemplate,
   type EmploymentContractStatus,
 } from "@/lib/employment-contracts/types";
-import { YEOBO_SPACE_CONTRACT_BODY } from "@/lib/employment-contracts/default-templates";
+import {
+  YEOBO_SPACE_CONTRACT_BODY,
+  EMPLOYER,
+} from "@/lib/employment-contracts/default-templates";
 import {
   downloadContractPdf,
   previewContractPdf,
@@ -110,9 +113,6 @@ function TemplatesTab({
   );
   const [title, setTitle] = useState("");
   const [kota, setKota] = useState("");
-  const [empName, setEmpName] = useState("");
-  const [empJabatan, setEmpJabatan] = useState("");
-  const [empAlamat, setEmpAlamat] = useState("");
   const [body, setBody] = useState("");
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
@@ -121,9 +121,6 @@ function TemplatesTab({
     setLoadedFor(bu);
     setTitle(existing?.title ?? "Perjanjian Kerja");
     setKota(existing?.kota ?? "");
-    setEmpName(existing?.employer_name ?? "");
-    setEmpJabatan(existing?.employer_jabatan ?? "");
-    setEmpAlamat(existing?.employer_alamat ?? "");
     setBody(existing?.body_markdown ?? "");
   }
 
@@ -134,9 +131,6 @@ function TemplatesTab({
         title,
         bodyMarkdown: body,
         kota,
-        employerName: empName,
-        employerJabatan: empJabatan,
-        employerAlamat: empAlamat,
       });
       if (!res.ok) return void toast.error(res.error);
       toast.success("Template disimpan");
@@ -189,15 +183,11 @@ function TemplatesTab({
         <Field label="Kota">
           <input value={kota} onChange={(e) => setKota(e.target.value)} className={INPUT} placeholder="mis. Semarang" />
         </Field>
-        <Field label="Nama penanggung jawab (Pemberi Kerja)">
-          <input value={empName} onChange={(e) => setEmpName(e.target.value)} className={INPUT} />
-        </Field>
-        <Field label="Jabatan (Pemilik/Direktur)">
-          <input value={empJabatan} onChange={(e) => setEmpJabatan(e.target.value)} className={INPUT} />
-        </Field>
-        <Field label="Alamat usaha" className="sm:col-span-2">
-          <input value={empAlamat} onChange={(e) => setEmpAlamat(e.target.value)} className={INPUT} />
-        </Field>
+      </div>
+
+      <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+        <strong className="text-foreground">Pemberi Kerja (otomatis):</strong>{" "}
+        {EMPLOYER.name} · {EMPLOYER.jabatan} · {EMPLOYER.alamat}
       </div>
 
       <Field label="Badan kontrak (markdown, placeholder {token})">
@@ -549,17 +539,6 @@ function ContractFormModal({
                 <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                   Lampiran 1 — Deskripsi Pekerjaan (jobdesc)
                 </h4>
-                <div className="grid sm:grid-cols-2 gap-2">
-                  <Field label="Atasan langsung">
-                    <input
-                      value={lampiran.atasan ?? ""}
-                      onChange={(e) =>
-                        setLampiran((l) => ({ ...l, atasan: e.target.value }))
-                      }
-                      className={INPUT}
-                    />
-                  </Field>
-                </div>
                 <ListEditor
                   label="B. Tujuan Posisi"
                   items={lampiran.tujuan}

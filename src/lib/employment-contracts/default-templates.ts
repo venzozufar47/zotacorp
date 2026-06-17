@@ -4,6 +4,16 @@
  * di sini — keduanya dirender terstruktur oleh ContractPdfDocument.
  */
 
+/** Data PIHAK PERTAMA (Pemberi Kerja) — hardcode, dipakai di semua kontrak. */
+export const EMPLOYER = {
+  name: "Avenzoar Zufar Qisthauzan",
+  jabatan: "Pemilik & Direktur",
+  alamat: "Jl. Nogososro Baru 87L, Tlogosari, Pedurungan, Kota Semarang",
+} as const;
+
+/** Tanggal bayar gaji baku untuk seluruh karyawan. */
+export const TGL_BAYAR_DEFAULT = "5 (lima)";
+
 export const YEOBO_SPACE_CONTRACT_BODY = `# PERJANJIAN KERJA
 
 **Nomor: {nomor}/PK/YS/{tahun}**
@@ -88,7 +98,7 @@ Berdasarkan hal-hal tersebut di atas, Para Pihak sepakat untuk mengikatkan diri 
 
 (3) Komponen upah sebagaimana dimaksud pada ayat (1) terdiri atas {komponen_upah}, dengan rincian sebagaimana disepakati Para Pihak.
 
-(4) Upah dibayarkan secara {periode_bayar} paling lambat pada tanggal {tgl_bayar} setiap bulan, melalui {cara_bayar}.
+(4) Upah dibayarkan secara {periode_bayar} paling lambat tanggal {tgl_bayar} bulan berikutnya, melalui {cara_bayar}.
 
 (5) Pemotongan atas upah hanya dapat dilakukan atas persetujuan Karyawan.
 

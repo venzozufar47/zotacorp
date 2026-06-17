@@ -112,8 +112,6 @@ export function ContractSignClient({
           </p>
           <p className="mb-3">
             <strong>Cabang:</strong> {lampiran?.cabang || contract.fields?.cabang || "—"}
-            {" · "}
-            <strong>Atasan:</strong> {lampiran?.atasan || "—"}
           </p>
           <LampiranList title="B. Tujuan Posisi" items={lampiran?.tujuan} />
           <LampiranList title="C. Tanggung Jawab Utama" items={lampiran?.tanggung_jawab} />
