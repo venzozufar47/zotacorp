@@ -11,6 +11,7 @@ import {
 import { listMyPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { EnablePushButton } from "@/components/shared/EnablePushButton";
 import { PayslipDetailView } from "@/components/payslip/PayslipDetailView";
 import { getDictionary } from "@/lib/i18n/server";
 
@@ -82,6 +83,10 @@ export default async function EmployeePayslipsPage() {
         title={t.payslipsPage.title}
         subtitle={t.payslipsPage.subtitle}
       />
+
+      {/* Opt-in to push once the profile is complete — works even before the
+          first payslip exists, so they're notified the moment it lands. */}
+      {profileComplete && <EnablePushButton />}
 
       {showLocked ? (
         <LockedNotice

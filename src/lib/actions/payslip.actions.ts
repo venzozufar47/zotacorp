@@ -15,6 +15,7 @@ import type {
 import { parseBreakWindows, effectiveStandardHours } from "@/lib/utils/break-windows";
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
+import { sendPushToUser } from "@/lib/push/web-push";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -22,6 +23,33 @@ import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 
 function adminGuard(role: string | null) {
   if (role !== "admin") throw new Error("Forbidden");
+}
+
+const ID_MONTHS = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+
+/**
+ * Push a "slip gaji terbit" notification to the employee. Best-effort:
+ * any failure is swallowed so finalizing a payslip never fails just
+ * because push delivery hiccuped (or VAPID isn't configured).
+ */
+async function notifyPayslipFinalized(
+  userId: string,
+  month: number,
+  year: number
+): Promise<void> {
+  try {
+    const monthName = ID_MONTHS[month - 1] ?? String(month);
+    await sendPushToUser(userId, {
+      title: "Slip gaji terbit 💰",
+      body: `Slip gaji ${monthName} ${year} sudah tersedia. Ketuk untuk melihat.`,
+      url: "/payslips",
+    });
+  } catch (err) {
+    console.error("[payslip] push notify failed:", err);
+  }
 }
 
 /** Count calendar days in (month, year) whose weekday (0=Sun..6=Sat) is in `weekdays`. */
@@ -1473,8 +1501,16 @@ export async function bulkFinalizePayslipsForMonth(
     .eq("month", month)
     .eq("year", year)
     .eq("status", "draft")
-    .select("id");
+    .select("id, user_id");
   if (error) return { finalizedCount: 0, error: error.message };
+
+  // Notify every employee whose payslip just went from draft → finalized.
+  await Promise.all(
+    (data ?? []).map((row) =>
+      notifyPayslipFinalized(row.user_id, month, year)
+    )
+  );
+
   revalidatePath("/admin/payslips");
   revalidatePath("/admin/payslips/variables");
   return { finalizedCount: (data ?? []).length };
@@ -1864,7 +1900,7 @@ export async function finalizePayslip(payslipId: string) {
   // Re-finalize: reset employee_response to 'pending' so admin gets a
   // fresh ack signal on every cycle. Payment status is intentionally
   // NOT reset — real money already moved.
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("payslips")
     .update({
       status: "finalized",
@@ -1873,9 +1909,15 @@ export async function finalizePayslip(payslipId: string) {
       employee_response_at: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", payslipId);
+    .eq("id", payslipId)
+    .select("user_id, month, year")
+    .maybeSingle();
 
   if (error) return { error: error.message };
+
+  if (updated) {
+    await notifyPayslipFinalized(updated.user_id, updated.month, updated.year);
+  }
 
   revalidatePath("/admin/payslips");
   return {};

@@ -38,7 +38,7 @@ const nextConfig: NextConfig = {
    * Mark it external so Next traces it from node_modules instead of
    * trying to bundle via turbopack, which previously broke the worker.
    */
-  serverExternalPackages: ["unpdf", "pdfjs-dist"],
+  serverExternalPackages: ["unpdf", "pdfjs-dist", "web-push"],
   /**
    * HSTS preload — paired with the Lighthouse "Avoid multiple page
    * redirects" fix that moved login UI to `/`. Once the domain is
