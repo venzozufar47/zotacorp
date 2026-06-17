@@ -42,6 +42,14 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Privacy policy must be public for Google Play / App Store review (the
+  // reviewer is anonymous). Let it through ahead of the auth gate so it's
+  // reachable whether signed-in or not — a logged-in user must NOT be
+  // bounced to their role home like other public routes are.
+  if (pathname === "/privacy") {
+    return supabaseResponse;
+  }
+
   // `/` is the new auth landing (login form when anon, role redirect
   // when authed — see app/(auth)/page.tsx). `/login` stays as a 308
   // alias so external bookmarks survive.
