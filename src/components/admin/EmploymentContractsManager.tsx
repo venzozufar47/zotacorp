@@ -14,16 +14,19 @@ import {
   X,
   Send,
   Ban,
+  Users,
 } from "lucide-react";
 import {
   upsertContractTemplate,
   setTemplateEmployerSignature,
   prefillContractFields,
   issueEmploymentContract,
+  bulkIssueEmploymentContracts,
   updateEmploymentContract,
   deleteEmploymentContract,
   getContractRenderData,
   type ContractListRow,
+  type BulkContractRow,
 } from "@/lib/actions/employment-contracts.actions";
 import {
   CONTRACT_FIELD_DEFS,
@@ -38,6 +41,7 @@ import {
   YEOBO_SPACE_CONTRACT_BODY,
   EMPLOYER,
 } from "@/lib/employment-contracts/default-templates";
+import { terbilang } from "@/lib/employment-contracts/terbilang";
 import {
   downloadContractPdf,
   previewContractPdf,
@@ -88,7 +92,11 @@ export function EmploymentContractsManager({
       {tab === "templates" ? (
         <TemplatesTab templates={templates} businessUnits={businessUnits} />
       ) : (
-        <ContractsTab contracts={contracts} employees={employees} />
+        <ContractsTab
+          contracts={contracts}
+          employees={employees}
+          businessUnits={businessUnits}
+        />
       )}
     </div>
   );
@@ -238,13 +246,16 @@ function TemplatesTab({
 function ContractsTab({
   contracts,
   employees,
+  businessUnits,
 }: {
   contracts: ContractListRow[];
   employees: ContractEmployee[];
+  businessUnits: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [issuing, setIssuing] = useState(false);
+  const [batching, setBatching] = useState(false);
   const [editing, setEditing] = useState<ContractListRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -286,7 +297,10 @@ function ContractsTab({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button onClick={() => setBatching(true)} className={BTN_OUTLINE}>
+          <Users size={15} /> Terbitkan massal
+        </button>
         <button onClick={() => setIssuing(true)} className={BTN_PRIMARY}>
           <Plus size={15} /> Terbitkan kontrak
         </button>
@@ -368,6 +382,13 @@ function ContractsTab({
           mode="edit"
           contract={editing}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {batching && (
+        <BatchIssueModal
+          employees={employees}
+          businessUnits={businessUnits}
+          onClose={() => setBatching(false)}
         />
       )}
     </div>
@@ -578,6 +599,256 @@ function ContractFormModal({
             ) : (
               "Simpan"
             )}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── Batch issue modal ─────────────────────────────────────────────────
+
+interface BatchCommon {
+  jabatan: string;
+  tgl_mulai: string;
+  kota: string;
+  komponen_upah: string;
+  periode_bayar: string;
+  cara_bayar: string;
+}
+
+function BatchIssueModal({
+  employees,
+  businessUnits,
+  onClose,
+}: {
+  employees: ContractEmployee[];
+  businessUnits: string[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [bu, setBu] = useState(
+    businessUnits.find((b) => b === "Yeobo Space") ?? businessUnits[0] ?? ""
+  );
+  const [common, setCommon] = useState<BatchCommon>({
+    jabatan: "",
+    tgl_mulai: "",
+    kota: "",
+    komponen_upah: "gaji pokok",
+    periode_bayar: "bulanan",
+    cara_bayar: "transfer ke rekening Karyawan",
+  });
+  const [rows, setRows] = useState<BulkContractRow[]>([
+    { userId: "", cabang: "", gaji: "", tglBerakhir: "" },
+  ]);
+
+  const setRow = (i: number, patch: Partial<BulkContractRow>) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  const onPickEmployee = (i: number, userId: string) => {
+    setRow(i, { userId });
+    if (!userId) return;
+    startTransition(async () => {
+      const res = await prefillContractFields(userId);
+      if (res.ok && res.data) {
+        setRow(i, {
+          cabang: res.data.fields.cabang ?? "",
+          gaji: (res.data.fields.gaji_nominal ?? "").replace(/[^\d]/g, ""),
+        });
+      }
+    });
+  };
+
+  const submit = () => {
+    const valid = rows.filter((r) => r.userId);
+    if (valid.length === 0) return void toast.error("Pilih minimal satu karyawan");
+    for (const r of valid) {
+      if (!r.cabang.trim() || !r.gaji.trim() || !r.tglBerakhir.trim())
+        return void toast.error(
+          "Lengkapi cabang, gaji, dan tanggal berakhir untuk setiap baris"
+        );
+    }
+    startTransition(async () => {
+      const res = await bulkIssueEmploymentContracts({
+        businessUnit: bu,
+        common,
+        rows: valid,
+        notifyWhatsApp: true,
+      });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`${res.data?.issued ?? valid.length} kontrak diterbitkan`);
+      router.refresh();
+      onClose();
+    });
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4">
+      <div className="w-full max-w-4xl rounded-2xl border-2 border-foreground bg-card shadow-hard my-8">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="font-display font-bold">Terbitkan kontrak massal</h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-4 space-y-4 max-h-[72vh] overflow-y-auto">
+          <p className="text-xs text-muted-foreground">
+            Nomor kontrak otomatis berurutan. Yang berbeda tiap karyawan: cabang,
+            gaji (terbilang otomatis), tanggal berakhir. Sisanya di bawah ini
+            berlaku untuk semua. Identitas pribadi tetap diisi karyawan saat
+            menandatangani.
+          </p>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Business Unit:</label>
+            <select
+              value={bu}
+              onChange={(e) => setBu(e.target.value)}
+              className={`${INPUT} w-auto`}
+            >
+              {businessUnits.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
+              Data umum (sama untuk semua)
+            </h4>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <Field label="Jabatan/posisi">
+                <input
+                  value={common.jabatan}
+                  onChange={(e) => setCommon((c) => ({ ...c, jabatan: e.target.value }))}
+                  className={INPUT}
+                />
+              </Field>
+              <Field label="Tanggal mulai">
+                <input
+                  value={common.tgl_mulai}
+                  onChange={(e) => setCommon((c) => ({ ...c, tgl_mulai: e.target.value }))}
+                  className={INPUT}
+                  placeholder="mis. 1 Juli 2026"
+                />
+              </Field>
+              <Field label="Kota (kosong = ikut template)">
+                <input
+                  value={common.kota}
+                  onChange={(e) => setCommon((c) => ({ ...c, kota: e.target.value }))}
+                  className={INPUT}
+                />
+              </Field>
+              <Field label="Komponen upah">
+                <input
+                  value={common.komponen_upah}
+                  onChange={(e) => setCommon((c) => ({ ...c, komponen_upah: e.target.value }))}
+                  className={INPUT}
+                />
+              </Field>
+              <Field label="Periode bayar">
+                <input
+                  value={common.periode_bayar}
+                  onChange={(e) => setCommon((c) => ({ ...c, periode_bayar: e.target.value }))}
+                  className={INPUT}
+                />
+              </Field>
+              <Field label="Cara bayar">
+                <input
+                  value={common.cara_bayar}
+                  onChange={(e) => setCommon((c) => ({ ...c, cara_bayar: e.target.value }))}
+                  className={INPUT}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
+              Karyawan (berbeda tiap baris)
+            </h4>
+            <div className="space-y-2">
+              {rows.map((r, i) => {
+                const tb = terbilang((r.gaji || "").replace(/[^\d]/g, ""));
+                return (
+                  <div
+                    key={i}
+                    className="grid grid-cols-[1.4fr_1fr_1fr_1fr_28px] gap-1.5 items-start"
+                  >
+                    <select
+                      value={r.userId}
+                      onChange={(e) => onPickEmployee(i, e.target.value)}
+                      className={INPUT}
+                    >
+                      <option value="">— karyawan —</option>
+                      {employees.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.full_name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={r.cabang}
+                      onChange={(e) => setRow(i, { cabang: e.target.value })}
+                      className={INPUT}
+                      placeholder="Cabang"
+                    />
+                    <div>
+                      <input
+                        value={r.gaji}
+                        onChange={(e) =>
+                          setRow(i, { gaji: e.target.value.replace(/[^\d]/g, "") })
+                        }
+                        className={`${INPUT} tabular-nums`}
+                        inputMode="numeric"
+                        placeholder="Gaji (Rp)"
+                      />
+                      {r.gaji && tb && (
+                        <span className="block text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                          {tb} rupiah
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      value={r.tglBerakhir}
+                      onChange={(e) => setRow(i, { tglBerakhir: e.target.value })}
+                      className={INPUT}
+                      placeholder="Tgl berakhir"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))}
+                      disabled={rows.length === 1}
+                      className="size-9 rounded-lg border border-border bg-card text-muted-foreground hover:text-destructive disabled:opacity-30 flex items-center justify-center"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setRows((rs) => [...rs, { userId: "", cabang: "", gaji: "", tglBerakhir: "" }])
+              }
+              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              <Plus size={13} /> Tambah karyawan
+            </button>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+          <button onClick={onClose} className={BTN_OUTLINE}>
+            Batal
+          </button>
+          <button onClick={submit} disabled={pending} className={BTN_PRIMARY}>
+            <Send size={15} /> Terbitkan semua
           </button>
         </div>
       </div>

@@ -330,6 +330,168 @@ export async function issueEmploymentContract(
   return { ok: true, data: { contractId } };
 }
 
+// ── Bulk issue (admin) ────────────────────────────────────────────────
+
+function gajiParts(v: string | number): { nominal: string; terbilang: string } {
+  const n =
+    typeof v === "number"
+      ? Math.floor(v)
+      : parseInt(String(v).replace(/[^\d]/g, ""), 10);
+  if (!Number.isFinite(n) || n <= 0) return { nominal: "", terbilang: "" };
+  return { nominal: n.toLocaleString("id-ID"), terbilang: terbilang(n) };
+}
+
+export interface BulkContractCommon {
+  jabatan?: string;
+  tgl_mulai?: string;
+  kota?: string;
+  komponen_upah?: string;
+  periode_bayar?: string;
+  cara_bayar?: string;
+}
+export interface BulkContractRow {
+  userId: string;
+  cabang: string;
+  gaji: string; // angka (boleh ada pemisah ribuan)
+  tglBerakhir: string;
+}
+
+/**
+ * Terbitkan kontrak untuk BANYAK karyawan sekaligus dengan nomor urut
+ * otomatis (lanjutan dari yang sudah ada, per BU per tahun). Yang berbeda
+ * per karyawan: cabang penempatan, gaji (+terbilang otomatis), tanggal
+ * berakhir. Sisanya (common) sama. Identitas pribadi tetap diisi karyawan
+ * saat tanda tangan.
+ */
+export async function bulkIssueEmploymentContracts(input: {
+  businessUnit: string;
+  common: BulkContractCommon;
+  rows: BulkContractRow[];
+  notifyWhatsApp?: boolean;
+}): Promise<ActionResult<{ issued: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const bu = input.businessUnit.trim();
+  if (!bu) return { ok: false, error: "Business unit wajib" };
+  const rows = input.rows.filter((r) => r.userId);
+  if (rows.length === 0) return { ok: false, error: "Tidak ada karyawan dipilih" };
+
+  const db = adminClient();
+  const { data: tplRaw } = await db
+    .from("employment_contract_templates" as never)
+    .select("*")
+    .eq("business_unit", bu)
+    .maybeSingle();
+  const tpl = tplRaw as unknown as EmploymentContractTemplate | null;
+  if (!tpl)
+    return {
+      ok: false,
+      error: `Belum ada template kontrak untuk "${bu}". Buat dulu di tab Template.`,
+    };
+
+  // Tanggal otomatis + nomor urut (lanjut dari yang sudah ada tahun ini).
+  const now = new Date();
+  const wib = (opt: Intl.DateTimeFormatOptions) =>
+    now.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", ...opt });
+  const yearNum = Number(
+    now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta", year: "numeric" })
+  );
+  const { count } = await db
+    .from("employment_contracts" as never)
+    .select("id", { count: "exact", head: true })
+    .eq("business_unit", bu)
+    .gte("created_at", `${yearNum}-01-01`)
+    .lt("created_at", `${yearNum + 1}-01-01`);
+  let seq = count ?? 0;
+
+  const common = input.common;
+  const dateBase = {
+    hari: wib({ weekday: "long" }),
+    tanggal: wib({ day: "numeric" }),
+    bulan: wib({ month: "long" }),
+    tahun: String(yearNum),
+  };
+
+  // Daftar nomor WA penerima (untuk notifikasi).
+  const ids = rows.map((r) => r.userId);
+  const { data: profsRaw } = await db
+    .from("profiles" as never)
+    .select("id, full_name, whatsapp_number")
+    .in("id", ids);
+  const profById = new Map(
+    ((profsRaw ?? []) as unknown as {
+      id: string;
+      full_name: string | null;
+      whatsapp_number: string | null;
+    }[]).map((p) => [p.id, p])
+  );
+
+  const toInsert = rows.map((r) => {
+    seq += 1;
+    const nomor = String(seq).padStart(3, "0");
+    const g = gajiParts(r.gaji);
+    const fields: ContractFields = {
+      nomor,
+      ...dateBase,
+      kota: common.kota?.trim() || tpl.kota || "",
+      pemberi_nama: EMPLOYER.name,
+      pemberi_jabatan: EMPLOYER.jabatan,
+      pemberi_alamat: EMPLOYER.alamat,
+      nama: "",
+      nik: "",
+      tempat_lahir: "",
+      tgl_lahir: "",
+      alamat: "",
+      jabatan: common.jabatan?.trim() || "",
+      cabang: r.cabang.trim(),
+      tgl_mulai: common.tgl_mulai?.trim() || "",
+      tgl_berakhir: r.tglBerakhir.trim(),
+      gaji_nominal: g.nominal,
+      gaji_terbilang: g.terbilang,
+      komponen_upah: common.komponen_upah?.trim() || "gaji pokok",
+      periode_bayar: common.periode_bayar?.trim() || "bulanan",
+      tgl_bayar: TGL_BAYAR_DEFAULT,
+      cara_bayar: common.cara_bayar?.trim() || "transfer ke rekening Karyawan",
+    };
+    return {
+      user_id: r.userId,
+      template_id: tpl.id,
+      business_unit: bu,
+      contract_number: nomor,
+      status: "pending_signature",
+      body_markdown: tpl.body_markdown,
+      kota: fields.kota,
+      employer_name: EMPLOYER.name,
+      employer_jabatan: EMPLOYER.jabatan,
+      employer_alamat: EMPLOYER.alamat,
+      employer_signature_path: tpl.employer_signature_path,
+      fields,
+      lampiran: emptyLampiran(),
+      created_by: gate.userId,
+    };
+  });
+
+  const { error } = await db
+    .from("employment_contracts" as never)
+    .insert(toInsert as never);
+  if (error) return { ok: false, error: error.message };
+
+  if (input.notifyWhatsApp) {
+    for (const r of rows) {
+      const p = profById.get(r.userId);
+      if (!p?.whatsapp_number) continue;
+      const nama = p.full_name?.split(" ")[0] ?? "Karyawan";
+      void sendWhatsApp(
+        p.whatsapp_number,
+        `Halo ${nama}, kontrak kerja kamu sudah siap untuk ditandatangani. Silakan buka aplikasi → menu Kontrak Kerja untuk membaca & menandatanganinya. Slip gaji akan terbuka setelah kontrak ditandatangani.`
+      ).catch(() => {});
+    }
+  }
+
+  revalidateAll();
+  return { ok: true, data: { issued: toInsert.length } };
+}
+
 export async function updateEmploymentContract(
   id: string,
   patch: {
