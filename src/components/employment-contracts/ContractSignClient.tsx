@@ -14,32 +14,61 @@ import {
   type ContractBlock,
   type InlineSpan,
 } from "@/lib/employment-contracts/markdown";
-import type { EmploymentContract } from "@/lib/employment-contracts/types";
+import type {
+  EmploymentContract,
+  ContractSignerIdentity,
+} from "@/lib/employment-contracts/types";
 import { SignaturePad } from "./SignaturePad";
+
+const IDENTITY_FIELDS: Array<{
+  key: keyof ContractSignerIdentity;
+  label: string;
+  full?: boolean;
+}> = [
+  { key: "nama", label: "Nama lengkap" },
+  { key: "nik", label: "NIK (sesuai KTP)" },
+  { key: "tempat_lahir", label: "Tempat lahir" },
+  { key: "tgl_lahir", label: "Tanggal lahir" },
+  { key: "alamat", label: "Alamat (sesuai domisili)", full: true },
+];
 
 export function ContractSignClient({
   contract,
+  signerPrefill,
 }: {
   contract: EmploymentContract;
+  signerPrefill: ContractSignerIdentity;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [sigBlob, setSigBlob] = useState<Blob | null>(null);
-  const [name, setName] = useState(contract.fields?.nama ?? "");
-  const [nik, setNik] = useState(contract.fields?.nik ?? "");
+  // Identitas pribadi — prefill dari profil (kalau ada), karyawan lengkapi.
+  const [idf, setIdf] = useState<ContractSignerIdentity>(() => ({
+    nama: contract.fields?.nama || signerPrefill.nama,
+    nik: contract.fields?.nik || signerPrefill.nik,
+    tempat_lahir: contract.fields?.tempat_lahir || signerPrefill.tempat_lahir,
+    tgl_lahir: contract.fields?.tgl_lahir || signerPrefill.tgl_lahir,
+    alamat: contract.fields?.alamat || signerPrefill.alamat,
+  }));
   const [consent, setConsent] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  // Preview ikut ter-update saat karyawan mengisi identitas.
   const blocks = useMemo(
-    () => fillAndParse(contract.body_markdown, contract.fields ?? {}),
-    [contract.body_markdown, contract.fields]
+    () =>
+      fillAndParse(contract.body_markdown, {
+        ...(contract.fields ?? {}),
+        ...idf,
+      }),
+    [contract.body_markdown, contract.fields, idf]
   );
   const lampiran = contract.lampiran;
   const signed = contract.status === "signed";
 
   const submit = () => {
+    const missing = IDENTITY_FIELDS.find((f) => !idf[f.key].trim());
+    if (missing) return void toast.error(`${missing.label} wajib diisi`);
     if (!sigBlob) return void toast.error("Bubuhkan tanda tangan dulu");
-    if (!name.trim()) return void toast.error("Isi nama lengkap");
     if (!consent) return void toast.error("Centang persetujuan");
     startTransition(async () => {
       const fd = new FormData();
@@ -55,8 +84,13 @@ export function ContractSignClient({
       const res = await signEmploymentContract({
         contractId: contract.id,
         signaturePath: j.path,
-        signerName: name.trim(),
-        signerNik: nik.trim(),
+        identity: {
+          nama: idf.nama.trim(),
+          nik: idf.nik.trim(),
+          tempat_lahir: idf.tempat_lahir.trim(),
+          tgl_lahir: idf.tgl_lahir.trim(),
+          alamat: idf.alamat.trim(),
+        },
         consent,
       });
       if (!res.ok) return void toast.error(res.error);
@@ -129,26 +163,29 @@ export function ContractSignClient({
         <div className="rounded-2xl border-2 border-foreground bg-card p-5 space-y-4">
           <h3 className="font-display font-bold">Tanda tangani kontrak</h3>
           <p className="text-xs text-muted-foreground">
-            Bubuhkan tanda tanganmu, isi nama lengkap, lalu setujui pernyataan di
-            bawah. Meterai Rp10.000 dibubuhkan terpisah oleh perusahaan.
+            Lengkapi identitas pribadimu (wajib — sebagian terisi otomatis dari
+            profil), bubuhkan tanda tangan, lalu setujui pernyataan di bawah.
+            Meterai Rp10.000 dibubuhkan terpisah oleh perusahaan.
           </p>
           <div className="grid sm:grid-cols-2 gap-3">
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Nama lengkap</span>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">NIK (opsional)</span>
-              <input
-                value={nik}
-                onChange={(e) => setNik(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-              />
-            </label>
+            {IDENTITY_FIELDS.map((f) => (
+              <label
+                key={f.key}
+                className={`block space-y-1 ${f.full ? "sm:col-span-2" : ""}`}
+              >
+                <span className="text-xs font-medium text-muted-foreground">
+                  {f.label} <span className="text-destructive">*</span>
+                </span>
+                <input
+                  value={idf[f.key]}
+                  onChange={(e) =>
+                    setIdf((s) => ({ ...s, [f.key]: e.target.value }))
+                  }
+                  className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
+                  required
+                />
+              </label>
+            ))}
           </div>
           <div>
             <span className="text-xs font-medium text-muted-foreground">Tanda tangan</span>

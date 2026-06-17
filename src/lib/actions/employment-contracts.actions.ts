@@ -18,6 +18,7 @@ import {
 import type {
   ContractFields,
   ContractLampiran,
+  ContractSignerIdentity,
   EmploymentContract,
   EmploymentContractStatus,
   EmploymentContractTemplate,
@@ -191,11 +192,13 @@ export async function prefillContractFields(
     pemberi_nama: EMPLOYER.name,
     pemberi_jabatan: EMPLOYER.jabatan,
     pemberi_alamat: EMPLOYER.alamat,
-    nama: p.full_name ?? "",
-    nik: p.nik ?? "",
-    tempat_lahir: p.place_of_birth ?? "",
-    tgl_lahir: formatTanggalID(p.date_of_birth),
-    alamat: p.domisili_alamat ?? "",
+    // Identitas pribadi dikosongkan — karyawan yang mengisi saat tanda
+    // tangan (auto-prefill dari profil di sisi karyawan).
+    nama: "",
+    nik: "",
+    tempat_lahir: "",
+    tgl_lahir: "",
+    alamat: "",
     jabatan,
     cabang: bu,
     tgl_mulai: formatTanggalID(p.first_day_of_work),
@@ -385,6 +388,38 @@ export async function getMyContract(): Promise<EmploymentContract | null> {
   return (data as unknown as EmploymentContract | null) ?? null;
 }
 
+/**
+ * Auto-prefill identitas pribadi untuk form tanda tangan karyawan — diambil
+ * dari profil sendiri (yang sudah tersedia). Karyawan tetap wajib melengkapi
+ * yang kosong sebelum menandatangani.
+ */
+export async function getContractSignerPrefill(): Promise<ContractSignerIdentity> {
+  const empty: ContractSignerIdentity = {
+    nama: "",
+    nik: "",
+    tempat_lahir: "",
+    tgl_lahir: "",
+    alamat: "",
+  };
+  const user = await getCurrentUser();
+  if (!user) return empty;
+  const db = adminClient();
+  const { data } = await db
+    .from("profiles" as never)
+    .select("full_name, nik, place_of_birth, date_of_birth, domisili_alamat")
+    .eq("id", user.id)
+    .maybeSingle();
+  const p = data as unknown as Record<string, string | null> | null;
+  if (!p) return empty;
+  return {
+    nama: p.full_name ?? "",
+    nik: p.nik ?? "",
+    tempat_lahir: p.place_of_birth ?? "",
+    tgl_lahir: formatTanggalID(p.date_of_birth),
+    alamat: p.domisili_alamat ?? "",
+  };
+}
+
 /** Dipakai gate slip gaji: kontrak yang masih menunggu tanda tangan. */
 export async function getMyPendingContract(): Promise<{
   id: string;
@@ -532,18 +567,34 @@ export async function getContractRenderData(
 export async function signEmploymentContract(input: {
   contractId: string;
   signaturePath: string;
-  signerName: string;
-  signerNik: string;
+  identity: ContractSignerIdentity;
   consent: boolean;
 }): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
   if (!input.consent)
     return { ok: false, error: "Centang persetujuan terlebih dahulu" };
-  if (!input.signerName.trim())
-    return { ok: false, error: "Nama lengkap wajib diisi" };
   if (!input.signaturePath)
     return { ok: false, error: "Tanda tangan wajib" };
+
+  // Identitas pribadi WAJIB lengkap.
+  const id = {
+    nama: input.identity.nama?.trim() ?? "",
+    nik: input.identity.nik?.trim() ?? "",
+    tempat_lahir: input.identity.tempat_lahir?.trim() ?? "",
+    tgl_lahir: input.identity.tgl_lahir?.trim() ?? "",
+    alamat: input.identity.alamat?.trim() ?? "",
+  };
+  const LABELS: Record<keyof typeof id, string> = {
+    nama: "Nama lengkap",
+    nik: "NIK",
+    tempat_lahir: "Tempat lahir",
+    tgl_lahir: "Tanggal lahir",
+    alamat: "Alamat",
+  };
+  for (const k of Object.keys(id) as (keyof typeof id)[]) {
+    if (!id[k]) return { ok: false, error: `${LABELS[k]} wajib diisi` };
+  }
 
   const db = adminClient();
   const { data: cRaw } = await db
@@ -565,14 +616,18 @@ export async function signEmploymentContract(input: {
     null;
   const nowIso = new Date().toISOString();
 
-  // 1. Set tanda tangan + audit → status signed.
+  // Gabungkan identitas yang diisi karyawan ke fields (dipakai badan PDF).
+  const mergedFields: ContractFields = { ...(c.fields ?? {}), ...id };
+
+  // 1. Set identitas + tanda tangan + audit → status signed.
   const { error: updErr } = await db
     .from("employment_contracts" as never)
     .update({
+      fields: mergedFields,
       employee_signature_path: input.signaturePath,
       employee_signed_at: nowIso,
-      employee_signer_name: input.signerName.trim(),
-      employee_signer_nik: input.signerNik.trim() || null,
+      employee_signer_name: id.nama,
+      employee_signer_nik: id.nik,
       consent_ip: ip,
       consent_user_agent: ua,
       status: "signed",
@@ -593,12 +648,12 @@ export async function signEmploymentContract(input: {
     );
     const element = createElement(ContractPdfDocument, {
       bodyMarkdown: c.body_markdown,
-      fields: c.fields ?? {},
+      fields: mergedFields,
       lampiran: c.lampiran ?? emptyLampiran(),
       employerName: c.employer_name ?? c.fields?.pemberi_nama ?? "",
       employerRole: c.employer_jabatan ?? "",
-      employeeName: input.signerName.trim(),
-      employeeNik: input.signerNik.trim() || null,
+      employeeName: id.nama,
+      employeeNik: id.nik || null,
       signedAt: nowIso,
       employerSignatureDataUrl: employerUrl,
       employeeSignatureDataUrl: employeeUrl,

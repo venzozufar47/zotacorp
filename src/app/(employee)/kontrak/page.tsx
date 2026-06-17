@@ -2,7 +2,10 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/supabase/cached";
-import { getMyContract } from "@/lib/actions/employment-contracts.actions";
+import {
+  getMyContract,
+  getContractSignerPrefill,
+} from "@/lib/actions/employment-contracts.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { ContractSignClient } from "@/components/employment-contracts/ContractSignClient";
@@ -10,7 +13,10 @@ import { ContractSignClient } from "@/components/employment-contracts/ContractSi
 export default async function EmployeeContractPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  const contract = await getMyContract();
+  const [contract, signerPrefill] = await Promise.all([
+    getMyContract(),
+    getContractSignerPrefill(),
+  ]);
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -30,7 +36,7 @@ export default async function EmployeeContractPage() {
           </CardContent>
         </Card>
       ) : (
-        <ContractSignClient contract={contract} />
+        <ContractSignClient contract={contract} signerPrefill={signerPrefill} />
       )}
     </div>
   );

@@ -59,13 +59,15 @@ export type ContractFieldKey =
 export type ContractFields = Partial<Record<ContractFieldKey, string>>;
 
 /** Label + grup untuk form pengisian placeholder di dashboard admin. */
-// Field yang bisa diisi admin di form penerbitan. Data Pemberi Kerja &
-// tanggal bayar (hardcode), serta nomor/hari/tanggal/bulan (auto-isi) tetap
-// disimpan di `fields` tapi tidak perlu ditampilkan sebagai input manual.
+// Field yang bisa diisi admin di form penerbitan. IDENTITAS PRIBADI karyawan
+// (nama, NIK, tempat/tanggal lahir, alamat) TIDAK ada di sini — itu diisi
+// sendiri oleh karyawan saat menandatangani. Data Pemberi Kerja & tanggal
+// bayar (hardcode), serta nomor/hari/tanggal/bulan (auto-isi) juga tidak
+// ditampilkan sebagai input manual.
 export const CONTRACT_FIELD_DEFS: Array<{
   key: ContractFieldKey;
   label: string;
-  group: "Nomor & Tanggal" | "Karyawan" | "Jabatan" | "Upah";
+  group: "Nomor & Tanggal" | "Jabatan" | "Upah";
 }> = [
   { key: "nomor", label: "Nomor kontrak (auto)", group: "Nomor & Tanggal" },
   { key: "hari", label: "Hari (auto)", group: "Nomor & Tanggal" },
@@ -73,11 +75,6 @@ export const CONTRACT_FIELD_DEFS: Array<{
   { key: "bulan", label: "Bulan (auto)", group: "Nomor & Tanggal" },
   { key: "tahun", label: "Tahun (auto)", group: "Nomor & Tanggal" },
   { key: "kota", label: "Kota", group: "Nomor & Tanggal" },
-  { key: "nama", label: "Nama lengkap karyawan", group: "Karyawan" },
-  { key: "nik", label: "NIK", group: "Karyawan" },
-  { key: "tempat_lahir", label: "Tempat lahir", group: "Karyawan" },
-  { key: "tgl_lahir", label: "Tanggal lahir", group: "Karyawan" },
-  { key: "alamat", label: "Alamat karyawan", group: "Karyawan" },
   { key: "jabatan", label: "Jabatan/posisi", group: "Jabatan" },
   { key: "cabang", label: "Cabang penempatan", group: "Jabatan" },
   { key: "tgl_mulai", label: "Tanggal mulai", group: "Jabatan" },
@@ -88,6 +85,15 @@ export const CONTRACT_FIELD_DEFS: Array<{
   { key: "periode_bayar", label: "Periode bayar (bulanan/mingguan)", group: "Upah" },
   { key: "cara_bayar", label: "Cara bayar", group: "Upah" },
 ];
+
+/** Identitas pribadi yang WAJIB diisi karyawan saat menandatangani. */
+export interface ContractSignerIdentity {
+  nama: string;
+  nik: string;
+  tempat_lahir: string;
+  tgl_lahir: string;
+  alamat: string;
+}
 
 /** Lampiran 1: Deskripsi Pekerjaan (jobdesc) — beda tiap karyawan. */
 export interface ContractLampiran {
