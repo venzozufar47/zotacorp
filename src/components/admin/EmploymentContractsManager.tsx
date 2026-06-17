@@ -424,20 +424,24 @@ function ContractFormModal({
     contract?.lampiran ?? emptyLampiran()
   );
   const [loaded, setLoaded] = useState(mode === "edit");
+  // Edit mode: kontrak sudah terbit → template pasti ada saat itu.
+  const [hasTemplate, setHasTemplate] = useState(mode === "edit");
+  const [pickedBu, setPickedBu] = useState("");
 
   const onPickEmployee = (id: string) => {
     setUserId(id);
-    if (!id) return;
+    if (!id) {
+      setLoaded(false);
+      return;
+    }
     startTransition(async () => {
       const res = await prefillContractFields(id);
       if (!res.ok || !res.data) return void toast.error(res.ok ? "Gagal" : res.error);
       setFields(res.data.fields);
       setLampiran(res.data.lampiran);
+      setHasTemplate(res.data.hasTemplate);
+      setPickedBu(res.data.businessUnit);
       setLoaded(true);
-      if (!res.data.hasTemplate)
-        toast.error(
-          `Belum ada template untuk BU "${res.data.businessUnit}". Buat dulu di tab Template.`
-        );
     });
   };
 
@@ -506,6 +510,14 @@ function ContractFormModal({
                 ))}
               </select>
             </Field>
+          )}
+
+          {loaded && mode === "issue" && !hasTemplate && (
+            <div className="rounded-xl border-2 border-foreground bg-warning/40 px-3 py-2.5 text-sm">
+              <strong>Belum ada template untuk &quot;{pickedBu || "BU ini"}&quot;.</strong>{" "}
+              Buat dulu di tab <strong>Template per BU</strong> (badan kontrak +
+              data &amp; tanda tangan Pemberi Kerja) sebelum menerbitkan kontrak.
+            </div>
           )}
 
           {loaded && (
@@ -579,7 +591,11 @@ function ContractFormModal({
           <button onClick={onClose} className={BTN_OUTLINE}>
             Batal
           </button>
-          <button onClick={submit} disabled={pending || !loaded} className={BTN_PRIMARY}>
+          <button
+            onClick={submit}
+            disabled={pending || !loaded || (mode === "issue" && !hasTemplate)}
+            className={BTN_PRIMARY}
+          >
             {mode === "issue" ? (
               <>
                 <Send size={15} /> Terbitkan
