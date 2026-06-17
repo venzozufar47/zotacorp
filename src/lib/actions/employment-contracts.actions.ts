@@ -1,6 +1,8 @@
 "use server";
 
 import { createElement } from "react";
+import { readFile } from "fs/promises";
+import { join } from "path";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAdminClient as adminClient } from "./_supabase-admin";
@@ -415,6 +417,29 @@ async function pathToDataUrl(
   return `data:image/png;base64,${buf.toString("base64")}`;
 }
 
+/**
+ * Tanda tangan PIHAK PERTAMA (Pemberi Kerja). Prioritas: file statis di
+ * `public/signatures/Sign_Avenzoar_Transparant.png` (hardcode); kalau tak
+ * ada, fallback ke gambar yang diupload ke storage (template TTD pad).
+ */
+const EMPLOYER_SIG_FILE = join(
+  process.cwd(),
+  "public",
+  "signatures",
+  "Sign_Avenzoar_Transparant.png"
+);
+async function employerSignatureDataUrl(
+  db: ReturnType<typeof adminClient>,
+  storagePath: string | null
+): Promise<string | null> {
+  try {
+    const buf = await readFile(EMPLOYER_SIG_FILE);
+    return `data:image/png;base64,${buf.toString("base64")}`;
+  } catch {
+    return pathToDataUrl(db, storagePath);
+  }
+}
+
 /** Signed URL untuk objek di bucket (PDF / tanda tangan). */
 export async function getContractSignedUrl(
   contractId: string,
@@ -482,7 +507,7 @@ export async function getContractRenderData(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const [employerUrl, employeeUrl] = await Promise.all([
-    pathToDataUrl(db, c.employer_signature_path),
+    employerSignatureDataUrl(db, c.employer_signature_path),
     pathToDataUrl(db, c.employee_signature_path),
   ]);
   return {
@@ -559,7 +584,7 @@ export async function signEmploymentContract(input: {
   //    PDF bisa diregenerasi dari data tersimpan).
   try {
     const [employerUrl, employeeUrl] = await Promise.all([
-      pathToDataUrl(db, c.employer_signature_path),
+      employerSignatureDataUrl(db, c.employer_signature_path),
       pathToDataUrl(db, input.signaturePath),
     ]);
     const { renderToBuffer } = await import("@react-pdf/renderer");
