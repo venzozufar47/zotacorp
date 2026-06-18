@@ -623,17 +623,63 @@ function ContractFormModal({
                     {group}
                   </h4>
                   <div className="grid sm:grid-cols-2 gap-2">
-                    {defs.map((d) => (
-                      <Field key={d.key} label={d.label}>
-                        <input
-                          value={fields[d.key] ?? ""}
-                          onChange={(e) =>
-                            setFields((f) => ({ ...f, [d.key]: e.target.value }))
-                          }
-                          className={INPUT}
-                        />
-                      </Field>
-                    ))}
+                    {defs.map((d) => {
+                      // Nominal gaji: input digit polos (tanpa titik) + terbilang
+                      // ikut otomatis — sama seperti form batch. Pemformatan
+                      // "Rp 3.701.709" dilakukan server saat terbit.
+                      if (d.key === "gaji_nominal") {
+                        const digits = (fields.gaji_nominal ?? "").replace(
+                          /[^\d]/g,
+                          ""
+                        );
+                        return (
+                          <Field key={d.key} label="Nominal gaji (angka, tanpa titik)">
+                            <input
+                              inputMode="numeric"
+                              value={digits}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/[^\d]/g, "");
+                                setFields((f) => ({
+                                  ...f,
+                                  gaji_nominal: v,
+                                  gaji_terbilang: v ? terbilang(v) : "",
+                                }));
+                              }}
+                              className={INPUT}
+                            />
+                            {digits && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Rp {Number(digits).toLocaleString("id-ID")} ·{" "}
+                                {terbilang(digits)} rupiah
+                              </p>
+                            )}
+                          </Field>
+                        );
+                      }
+                      // Terbilang: read-only, selalu sinkron dengan nominal.
+                      if (d.key === "gaji_terbilang") {
+                        return (
+                          <Field key={d.key} label="Terbilang (otomatis)">
+                            <input
+                              value={fields.gaji_terbilang ?? ""}
+                              readOnly
+                              className={`${INPUT} bg-muted/40 text-muted-foreground`}
+                            />
+                          </Field>
+                        );
+                      }
+                      return (
+                        <Field key={d.key} label={d.label}>
+                          <input
+                            value={fields[d.key] ?? ""}
+                            onChange={(e) =>
+                              setFields((f) => ({ ...f, [d.key]: e.target.value }))
+                            }
+                            className={INPUT}
+                          />
+                        </Field>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

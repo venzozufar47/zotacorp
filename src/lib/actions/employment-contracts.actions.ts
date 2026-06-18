@@ -203,7 +203,10 @@ export async function prefillContractFields(
     cabang: bu,
     tgl_mulai: formatTanggalID(p.first_day_of_work),
     tgl_berakhir: "",
-    gaji_nominal: salary > 0 ? salary.toLocaleString("id-ID") : "",
+    // Disimpan sebagai digit polos (tanpa pemisah ribuan) agar konsisten dengan
+    // form batch & mudah diedit. Pemformatan "Rp 3.701.709" dilakukan saat terbit
+    // (normalizeGajiFields) sehingga PDF selalu rapi.
+    gaji_nominal: salary > 0 ? String(salary) : "",
     gaji_terbilang: salary > 0 ? terbilang(salary) : "",
     komponen_upah: "gaji pokok",
     periode_bayar: "bulanan",
@@ -332,7 +335,7 @@ export async function issueEmploymentContract(
     .gte("created_at", `${yearNum}-01-01`)
     .lt("created_at", `${yearNum + 1}-01-01`);
   const nomor = String((count ?? 0) + 1).padStart(3, "0");
-  const fields: ContractFields = { ...input.fields, nomor };
+  const fields: ContractFields = normalizeGajiFields({ ...input.fields, nomor });
 
   const { data, error } = await db
     .from("employment_contracts" as never)
@@ -378,6 +381,20 @@ function gajiParts(v: string | number): { nominal: string; terbilang: string } {
       : parseInt(String(v).replace(/[^\d]/g, ""), 10);
   if (!Number.isFinite(n) || n <= 0) return { nominal: "", terbilang: "" };
   return { nominal: n.toLocaleString("id-ID"), terbilang: terbilang(n) };
+}
+
+/**
+ * Pastikan `gaji_nominal` tersimpan dengan pemisah ribuan ("3.701.709") dan
+ * `gaji_terbilang` selalu sinkron dengan angkanya — apa pun format input admin
+ * (polos / berpemisah). Dipakai saat terbit & update supaya PDF selalu rapi
+ * sesuai kaidah penulisan rupiah, dan konsisten antara terbitkan satuan & batch.
+ */
+function normalizeGajiFields(fields: ContractFields): ContractFields {
+  const raw = (fields.gaji_nominal ?? "").toString().replace(/[^\d]/g, "");
+  if (!raw) return fields;
+  const { nominal, terbilang: tb } = gajiParts(raw);
+  if (!nominal) return fields;
+  return { ...fields, gaji_nominal: nominal, gaji_terbilang: tb };
 }
 
 export interface BulkContractCommon {
@@ -554,7 +571,7 @@ export async function updateEmploymentContract(
   if (!gate.ok) return { ok: false, error: gate.error };
   const db = adminClient();
   const upd: Record<string, unknown> = {};
-  if (patch.fields) upd.fields = patch.fields;
+  if (patch.fields) upd.fields = normalizeGajiFields(patch.fields);
   if (patch.lampiran) upd.lampiran = patch.lampiran;
   if (patch.contractNumber !== undefined)
     upd.contract_number = patch.contractNumber?.trim() || null;
