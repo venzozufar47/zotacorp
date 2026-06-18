@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ import {
   updateEmploymentContract,
   deleteEmploymentContract,
   getContractRenderData,
+  getNextContractNumber,
   type ContractListRow,
   type BulkContractRow,
 } from "@/lib/actions/employment-contracts.actions";
@@ -405,7 +406,8 @@ function ContractsTab({
           employees={employees}
           seed={{
             // Salin isian sumber (nomor + identitas dikosongkan; nomor
-            // di-generate ulang otomatis saat terbit).
+            // di-isi ulang otomatis — preview saat modal terbuka).
+            businessUnit: duplicating.business_unit,
             fields: {
               ...duplicating.fields,
               nomor: "",
@@ -451,7 +453,11 @@ function ContractFormModal({
   employees?: ContractEmployee[];
   contract?: ContractListRow;
   /** Saat duplikat: pra-isi fields + lampiran dari kontrak sumber. */
-  seed?: { fields: ContractFields; lampiran: ContractLampiran };
+  seed?: {
+    businessUnit: string;
+    fields: ContractFields;
+    lampiran: ContractLampiran;
+  };
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -470,6 +476,30 @@ function ContractFormModal({
   const [hasTemplate, setHasTemplate] = useState(mode === "edit" || isDuplicate);
   const [pickedBu, setPickedBu] = useState("");
 
+  // Duplikat: langsung isi nomor urut berikutnya + segarkan tanggal ke hari
+  // ini (kontrak sumber menyalin tanggal/nomor lama).
+  useEffect(() => {
+    if (!isDuplicate || !seed) return;
+    const now = new Date();
+    const wib = (opt: Intl.DateTimeFormatOptions) =>
+      now.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", ...opt });
+    const tahun = now.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Jakarta",
+      year: "numeric",
+    });
+    setFields((prev) => ({
+      ...prev,
+      hari: wib({ weekday: "long" }),
+      tanggal: wib({ day: "numeric" }),
+      bulan: wib({ month: "long" }),
+      tahun,
+    }));
+    getNextContractNumber(seed.businessUnit).then((n) => {
+      if (n) setFields((prev) => ({ ...prev, nomor: n }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onPickEmployee = (id: string) => {
     setUserId(id);
     if (!id) {
@@ -481,9 +511,15 @@ function ContractFormModal({
       if (!res.ok || !res.data) return void toast.error(res.ok ? "Gagal" : res.error);
       if (isDuplicate) {
         // Pertahankan isian yang sudah disalin (jabatan, lampiran, dll.);
-        // hanya segarkan kolom spesifik karyawan dari profil.
+        // segarkan kolom spesifik karyawan + nomor/tanggal dari prefill
+        // (mengikuti BU karyawan yang dipilih).
         setFields((prev) => ({
           ...prev,
+          nomor: res.data!.fields.nomor ?? prev.nomor ?? "",
+          hari: res.data!.fields.hari ?? prev.hari ?? "",
+          tanggal: res.data!.fields.tanggal ?? prev.tanggal ?? "",
+          bulan: res.data!.fields.bulan ?? prev.bulan ?? "",
+          tahun: res.data!.fields.tahun ?? prev.tahun ?? "",
           cabang: res.data!.fields.cabang ?? prev.cabang ?? "",
           gaji_nominal: res.data!.fields.gaji_nominal ?? prev.gaji_nominal ?? "",
           gaji_terbilang:

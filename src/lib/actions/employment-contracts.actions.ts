@@ -221,6 +221,28 @@ export async function prefillContractFields(
   };
 }
 
+/** Nomor kontrak urut berikutnya untuk satu BU (preview di form duplikat). */
+export async function getNextContractNumber(
+  businessUnit: string
+): Promise<string> {
+  const gate = await requireAdmin();
+  if (!gate.ok || !businessUnit.trim()) return "";
+  const db = adminClient();
+  const yearNum = Number(
+    new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Jakarta",
+      year: "numeric",
+    })
+  );
+  const { count } = await db
+    .from("employment_contracts" as never)
+    .select("id", { count: "exact", head: true })
+    .eq("business_unit", businessUnit.trim())
+    .gte("created_at", `${yearNum}-01-01`)
+    .lt("created_at", `${yearNum + 1}-01-01`);
+  return String((count ?? 0) + 1).padStart(3, "0");
+}
+
 // ── Contracts list (admin) ────────────────────────────────────────────
 
 export interface ContractListRow extends EmploymentContract {
