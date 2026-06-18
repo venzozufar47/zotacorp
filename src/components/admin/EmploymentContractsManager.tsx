@@ -15,6 +15,7 @@ import {
   Send,
   Ban,
   Users,
+  Copy,
 } from "lucide-react";
 import {
   upsertContractTemplate,
@@ -257,6 +258,7 @@ function ContractsTab({
   const [issuing, setIssuing] = useState(false);
   const [batching, setBatching] = useState(false);
   const [editing, setEditing] = useState<ContractListRow | null>(null);
+  const [duplicating, setDuplicating] = useState<ContractListRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const preview = async (id: string) => {
@@ -348,6 +350,12 @@ function ContractsTab({
                       <IconBtn title="Unduh PDF" onClick={() => download(c)} disabled={busy === c.id}>
                         <Download size={15} />
                       </IconBtn>
+                      <IconBtn
+                        title="Duplikat ke karyawan lain"
+                        onClick={() => setDuplicating(c)}
+                      >
+                        <Copy size={15} />
+                      </IconBtn>
                       {c.status !== "signed" && (
                         <IconBtn title="Edit isian" onClick={() => setEditing(c)}>
                           <Pencil size={15} />
@@ -391,6 +399,27 @@ function ContractsTab({
           onClose={() => setBatching(false)}
         />
       )}
+      {duplicating && (
+        <ContractFormModal
+          mode="issue"
+          employees={employees}
+          seed={{
+            // Salin isian sumber (nomor + identitas dikosongkan; nomor
+            // di-generate ulang otomatis saat terbit).
+            fields: {
+              ...duplicating.fields,
+              nomor: "",
+              nama: "",
+              nik: "",
+              tempat_lahir: "",
+              tgl_lahir: "",
+              alamat: "",
+            },
+            lampiran: duplicating.lampiran ?? emptyLampiran(),
+          }}
+          onClose={() => setDuplicating(null)}
+        />
+      )}
     </div>
   );
 }
@@ -415,36 +444,55 @@ function ContractFormModal({
   mode,
   employees,
   contract,
+  seed,
   onClose,
 }: {
   mode: "issue" | "edit";
   employees?: ContractEmployee[];
   contract?: ContractListRow;
+  /** Saat duplikat: pra-isi fields + lampiran dari kontrak sumber. */
+  seed?: { fields: ContractFields; lampiran: ContractLampiran };
   onClose: () => void;
 }) {
   const router = useRouter();
+  const isDuplicate = mode === "issue" && !!seed;
   const [pending, startTransition] = useTransition();
   const [userId, setUserId] = useState(contract?.user_id ?? "");
-  const [fields, setFields] = useState<ContractFields>(contract?.fields ?? {});
-  const [lampiran, setLampiran] = useState<ContractLampiran>(
-    contract?.lampiran ?? emptyLampiran()
+  const [fields, setFields] = useState<ContractFields>(
+    contract?.fields ?? seed?.fields ?? {}
   );
-  const [loaded, setLoaded] = useState(mode === "edit");
-  // Edit mode: kontrak sudah terbit → template pasti ada saat itu.
-  const [hasTemplate, setHasTemplate] = useState(mode === "edit");
+  const [lampiran, setLampiran] = useState<ContractLampiran>(
+    contract?.lampiran ?? seed?.lampiran ?? emptyLampiran()
+  );
+  // Edit + duplikat: form langsung tampil (isian sudah ada).
+  const [loaded, setLoaded] = useState(mode === "edit" || isDuplicate);
+  // Edit/duplikat: template pasti ada (kontrak sumber sudah pakai template).
+  const [hasTemplate, setHasTemplate] = useState(mode === "edit" || isDuplicate);
   const [pickedBu, setPickedBu] = useState("");
 
   const onPickEmployee = (id: string) => {
     setUserId(id);
     if (!id) {
-      setLoaded(false);
+      if (!isDuplicate) setLoaded(false);
       return;
     }
     startTransition(async () => {
       const res = await prefillContractFields(id);
       if (!res.ok || !res.data) return void toast.error(res.ok ? "Gagal" : res.error);
-      setFields(res.data.fields);
-      setLampiran(res.data.lampiran);
+      if (isDuplicate) {
+        // Pertahankan isian yang sudah disalin (jabatan, lampiran, dll.);
+        // hanya segarkan kolom spesifik karyawan dari profil.
+        setFields((prev) => ({
+          ...prev,
+          cabang: res.data!.fields.cabang ?? prev.cabang ?? "",
+          gaji_nominal: res.data!.fields.gaji_nominal ?? prev.gaji_nominal ?? "",
+          gaji_terbilang:
+            res.data!.fields.gaji_terbilang ?? prev.gaji_terbilang ?? "",
+        }));
+      } else {
+        setFields(res.data.fields);
+        setLampiran(res.data.lampiran);
+      }
       setHasTemplate(res.data.hasTemplate);
       setPickedBu(res.data.businessUnit);
       setLoaded(true);
@@ -494,7 +542,11 @@ function ContractFormModal({
       <div className="w-full max-w-3xl rounded-2xl border-2 border-foreground bg-card shadow-hard my-8">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h3 className="font-display font-bold">
-            {mode === "issue" ? "Terbitkan kontrak" : `Edit kontrak — ${contract?.employee_name}`}
+            {isDuplicate
+              ? "Duplikat kontrak — pilih karyawan tujuan"
+              : mode === "issue"
+                ? "Terbitkan kontrak"
+                : `Edit kontrak — ${contract?.employee_name}`}
           </h3>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
             <X size={18} />

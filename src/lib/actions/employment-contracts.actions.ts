@@ -295,13 +295,30 @@ export async function issueEmploymentContract(
       error: `Belum ada template kontrak untuk business unit "${bu}". Buat dulu di tab Template.`,
     };
 
+  // Nomor SELALU di-generate otomatis & urut (per BU per tahun) supaya tidak
+  // pernah bentrok — mis. saat menduplikasi kontrak lama.
+  const yearNum = Number(
+    new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Jakarta",
+      year: "numeric",
+    })
+  );
+  const { count } = await db
+    .from("employment_contracts" as never)
+    .select("id", { count: "exact", head: true })
+    .eq("business_unit", bu)
+    .gte("created_at", `${yearNum}-01-01`)
+    .lt("created_at", `${yearNum + 1}-01-01`);
+  const nomor = String((count ?? 0) + 1).padStart(3, "0");
+  const fields: ContractFields = { ...input.fields, nomor };
+
   const { data, error } = await db
     .from("employment_contracts" as never)
     .insert({
       user_id: input.userId,
       template_id: tpl.id,
       business_unit: bu,
-      contract_number: input.contractNumber?.trim() || input.fields.nomor || null,
+      contract_number: nomor,
       status: "pending_signature",
       body_markdown: tpl.body_markdown,
       kota: tpl.kota,
@@ -309,7 +326,7 @@ export async function issueEmploymentContract(
       employer_jabatan: EMPLOYER.jabatan,
       employer_alamat: EMPLOYER.alamat,
       employer_signature_path: tpl.employer_signature_path,
-      fields: input.fields,
+      fields,
       lampiran: input.lampiran,
       created_by: gate.userId,
     } as never)
