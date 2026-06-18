@@ -455,6 +455,7 @@ async function findTodaysBirthdayCelebrants(): Promise<
     .from("profiles")
     .select("id, full_name, nickname, date_of_birth")
     .neq("role", "admin")
+    .neq("role", "investor")
     .eq("is_active", true)
     .eq("is_probation", false)
     .not("date_of_birth", "is", null);
@@ -569,6 +570,7 @@ export async function broadcastBirthdayReminder(): Promise<BroadcastResult> {
     .from("profiles")
     .select("id, full_name, nickname, whatsapp_number")
     .neq("role", "admin")
+    .neq("role", "investor")
     .eq("is_active", true);
 
   // Karyawan yang sudah ngucapin di dashboard untuk SALAH SATU

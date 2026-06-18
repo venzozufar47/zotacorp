@@ -1609,13 +1609,16 @@ export async function getMyAttendanceSummary(month: number, year: number) {
   };
 }
 
-/** Get all employee profiles (id + name) for admin dropdown filters */
+/** Get all employee profiles (id + name) for admin dropdown filters.
+ *  Investors are managed only on /admin/investors and are never part of
+ *  attendance/location assignment — keep them out of every employee picker. */
 export async function getAllEmployees() {
   const supabase = await createClient();
 
   const { data } = await supabase
     .from("profiles")
     .select("id, full_name, email")
+    .neq("role", "investor")
     .order("full_name", { ascending: true });
 
   return data ?? [];
@@ -1770,6 +1773,7 @@ export async function getLiveAttendanceToday(): Promise<LiveAttendanceSnapshot> 
       .select(
         "id, full_name, avatar_url, avatar_seed, position, business_unit, work_start_time, is_flexible_schedule, is_active, payslip_excluded"
       )
+      .neq("role", "investor")
       .eq("is_active", true)
       .eq("payslip_excluded", false)
       .order("full_name"),

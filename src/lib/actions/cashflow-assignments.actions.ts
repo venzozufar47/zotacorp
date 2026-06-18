@@ -305,6 +305,7 @@ export async function listAssignableProfiles(): Promise<
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name, email, role, business_unit, is_active")
+    .neq("role", "investor")
     .eq("is_active", true)
     .order("full_name", { ascending: true });
   if (error) return { ok: false, error: error.message };

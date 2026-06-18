@@ -63,6 +63,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     supabase
       .from("profiles")
       .select("id", { count: "exact", head: true })
+      .neq("role", "investor")
       .eq("payslip_excluded", false)
       .eq("is_active", true),
     supabase

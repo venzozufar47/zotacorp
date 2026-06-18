@@ -41,6 +41,7 @@ export default async function AdminSettingsPage() {
       supabase
         .from("profiles")
         .select("id, full_name, email")
+        .neq("role", "investor")
         .eq("is_active", true)
         .order("full_name"),
       getCurrentProfile(),

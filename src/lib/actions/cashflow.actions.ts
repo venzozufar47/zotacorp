@@ -1489,6 +1489,7 @@ export async function listAssigneeCandidates(
     supabase
       .from("profiles")
       .select("id, full_name, nickname, email, role")
+      .neq("role", "investor")
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
     supabase

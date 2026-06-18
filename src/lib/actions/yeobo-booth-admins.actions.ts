@@ -61,6 +61,7 @@ export async function listEligibleProfiles(): Promise<
   const { data } = await supabase
     .from("profiles")
     .select("id, full_name, email")
+    .neq("role", "investor")
     .eq("is_active", true)
     .order("full_name");
   return (data ?? []) as { id: string; full_name: string; email: string }[];

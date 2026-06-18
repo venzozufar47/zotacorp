@@ -199,8 +199,21 @@ export async function setLocationEmployees(
     .select("employee_id")
     .eq("location_id", locationId);
 
+  // Investors are never assignable to work locations — drop any that slip
+  // through (UI already hides them; this is server-side defense-in-depth).
+  let desiredList = employeeIds;
+  if (employeeIds.length > 0) {
+    const { data: investors } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "investor")
+      .in("id", employeeIds);
+    const investorIds = new Set((investors ?? []).map((r) => r.id));
+    desiredList = employeeIds.filter((id) => !investorIds.has(id));
+  }
+
   const existingIds = new Set((existing ?? []).map((r) => r.employee_id));
-  const desiredIds = new Set(employeeIds);
+  const desiredIds = new Set(desiredList);
 
   const toDelete = [...existingIds].filter((id) => !desiredIds.has(id));
   const toInsert = [...desiredIds].filter((id) => !existingIds.has(id));

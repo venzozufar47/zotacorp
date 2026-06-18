@@ -173,6 +173,7 @@ export default async function AdminAttendancePage({
       supabase
         .from("profiles")
         .select("id, full_name, email, business_unit, avatar_url, avatar_seed, position")
+        .neq("role", "investor")
         .eq("is_active", true)
         .order("full_name"),
       getCachedAttendanceSettings(),

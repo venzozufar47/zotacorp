@@ -515,6 +515,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
       .from("profiles")
       .select("id, full_name, nickname, whatsapp_number, date_of_birth, birthday_last_greeted")
       .not("date_of_birth", "is", null)
+      .neq("role", "investor")
       .eq("is_active", true);
 
     for (const p of bCandidates ?? []) {
@@ -561,6 +562,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
         "id, full_name, nickname, whatsapp_number, first_day_of_work, anniversary_last_greeted"
       )
       .not("first_day_of_work", "is", null)
+      .neq("role", "investor")
       .eq("is_active", true);
 
     for (const p of aCandidates ?? []) {
