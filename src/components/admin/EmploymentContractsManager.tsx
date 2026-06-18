@@ -643,6 +643,8 @@ function BatchIssueModal({
   const [rows, setRows] = useState<BulkContractRow[]>([
     { userId: "", cabang: "", gaji: "", tglBerakhir: "" },
   ]);
+  // Lampiran 1 (jobdesc) bersama untuk semua kontrak di batch ini.
+  const [lampiran, setLampiran] = useState<ContractLampiran>(emptyLampiran());
 
   const setRow = (i: number, patch: Partial<BulkContractRow>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -674,6 +676,7 @@ function BatchIssueModal({
       const res = await bulkIssueEmploymentContracts({
         businessUnit: bu,
         common,
+        lampiran,
         rows: valid,
         notifyWhatsApp: true,
       });
@@ -768,7 +771,38 @@ function BatchIssueModal({
             </div>
           </div>
 
-          <div>
+          <div className="space-y-3 border-t border-border pt-3">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Lampiran 1 — Deskripsi Pekerjaan (sama untuk semua)
+            </h4>
+            <ListEditor
+              label="B. Tujuan Posisi"
+              items={lampiran.tujuan}
+              onChange={(v) => setLampiran((l) => ({ ...l, tujuan: v }))}
+            />
+            <ListEditor
+              label="C. Tanggung Jawab Utama"
+              items={lampiran.tanggung_jawab}
+              onChange={(v) => setLampiran((l) => ({ ...l, tanggung_jawab: v }))}
+            />
+            <ListEditor
+              label="D. SOP yang Relevan"
+              items={lampiran.sop}
+              onChange={(v) => setLampiran((l) => ({ ...l, sop: v }))}
+            />
+            <ListEditor
+              label="E. Indikator Kinerja (KPI)"
+              items={lampiran.kpi}
+              onChange={(v) => setLampiran((l) => ({ ...l, kpi: v }))}
+            />
+            <ListEditor
+              label="F. Waktu Kerja / Shift"
+              items={lampiran.shift}
+              onChange={(v) => setLampiran((l) => ({ ...l, shift: v }))}
+            />
+          </div>
+
+          <div className="border-t border-border pt-3">
             <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
               Karyawan (berbeda tiap baris)
             </h4>

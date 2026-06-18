@@ -366,6 +366,8 @@ export interface BulkContractRow {
 export async function bulkIssueEmploymentContracts(input: {
   businessUnit: string;
   common: BulkContractCommon;
+  /** Lampiran 1 (jobdesc) bersama untuk semua kontrak di batch ini. */
+  lampiran?: ContractLampiran;
   rows: BulkContractRow[];
   notifyWhatsApp?: boolean;
 }): Promise<ActionResult<{ issued: number }>> {
@@ -466,7 +468,7 @@ export async function bulkIssueEmploymentContracts(input: {
       employer_alamat: EMPLOYER.alamat,
       employer_signature_path: tpl.employer_signature_path,
       fields,
-      lampiran: emptyLampiran(),
+      lampiran: input.lampiran ?? emptyLampiran(),
       created_by: gate.userId,
     };
   });
