@@ -641,7 +641,7 @@ function BatchIssueModal({
     cara_bayar: "transfer ke rekening Karyawan",
   });
   const [rows, setRows] = useState<BulkContractRow[]>([
-    { userId: "", cabang: "", gaji: "", tglBerakhir: "" },
+    { userId: "", cabang: "", gaji: "", tglBerakhir: "", shift: "" },
   ]);
   // Lampiran 1 (jobdesc) bersama untuk semua kontrak di batch ini.
   const [lampiran, setLampiran] = useState<ContractLampiran>(emptyLampiran());
@@ -795,11 +795,9 @@ function BatchIssueModal({
               items={lampiran.kpi}
               onChange={(v) => setLampiran((l) => ({ ...l, kpi: v }))}
             />
-            <ListEditor
-              label="F. Waktu Kerja / Shift"
-              items={lampiran.shift}
-              onChange={(v) => setLampiran((l) => ({ ...l, shift: v }))}
-            />
+            <p className="text-[11px] text-muted-foreground">
+              F. Waktu Kerja / Shift diisi per karyawan di tabel bawah.
+            </p>
           </div>
 
           <div className="border-t border-border pt-3">
@@ -812,7 +810,7 @@ function BatchIssueModal({
                 return (
                   <div
                     key={i}
-                    className="grid grid-cols-[1.4fr_1fr_1fr_1fr_28px] gap-1.5 items-start"
+                    className="grid grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_1.1fr_28px] gap-1.5 items-start"
                   >
                     <select
                       value={r.userId}
@@ -854,6 +852,12 @@ function BatchIssueModal({
                       className={INPUT}
                       placeholder="Tgl berakhir"
                     />
+                    <input
+                      value={r.shift ?? ""}
+                      onChange={(e) => setRow(i, { shift: e.target.value })}
+                      className={INPUT}
+                      placeholder="Shift / waktu kerja"
+                    />
                     <button
                       type="button"
                       onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))}
@@ -869,7 +873,7 @@ function BatchIssueModal({
             <button
               type="button"
               onClick={() =>
-                setRows((rs) => [...rs, { userId: "", cabang: "", gaji: "", tglBerakhir: "" }])
+                setRows((rs) => [...rs, { userId: "", cabang: "", gaji: "", tglBerakhir: "", shift: "" }])
               }
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
             >

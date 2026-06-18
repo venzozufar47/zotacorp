@@ -354,6 +354,8 @@ export interface BulkContractRow {
   cabang: string;
   gaji: string; // angka (boleh ada pemisah ribuan)
   tglBerakhir: string;
+  /** Waktu kerja / shift — berbeda tiap karyawan (override lampiran.shift). */
+  shift?: string;
 }
 
 /**
@@ -468,7 +470,13 @@ export async function bulkIssueEmploymentContracts(input: {
       employer_alamat: EMPLOYER.alamat,
       employer_signature_path: tpl.employer_signature_path,
       fields,
-      lampiran: input.lampiran ?? emptyLampiran(),
+      // Lampiran bersama, KECUALI shift yang berbeda tiap karyawan.
+      lampiran: {
+        ...(input.lampiran ?? emptyLampiran()),
+        shift: r.shift?.trim()
+          ? [r.shift.trim()]
+          : input.lampiran?.shift ?? [""],
+      },
       created_by: gate.userId,
     };
   });
