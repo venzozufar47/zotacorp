@@ -61,6 +61,19 @@ function hhmmToMinutes(t: string): number {
 }
 
 /**
+ * Total durasi jendela istirahat terjadwal (menit). Dipakai untuk hitung
+ * "istirahat yang tidak diambil" pada lembur: karyawan yang melewatkan
+ * jatah istirahatnya berarti bekerja di waktu itu. Hanya relevan bila
+ * break_enabled — pemanggil kirim `[]` jika tidak aktif.
+ */
+export function scheduledBreakMinutes(windows: BreakWindow[]): number {
+  return windows.reduce(
+    (a, w) => a + Math.max(0, hhmmToMinutes(w.end) - hhmmToMinutes(w.start)),
+    0
+  );
+}
+
+/**
  * Effective standard work hours per day = (work_end − work_start) minus the
  * total break-window duration. Breaks are unpaid, so they don't count toward
  * "jam kerja" — this value is the denominator for hourly pay + overtime rate.

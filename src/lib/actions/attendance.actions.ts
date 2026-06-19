@@ -961,7 +961,9 @@ export async function checkOut(payload?: CheckOutPayload) {
       breakWindows: profile?.break_enabled
         ? parseBreakWindows(profile.break_windows)
         : [],
+      breakEnabled: profile?.break_enabled ?? false,
       isFlexible: false,
+      timezone,
     });
   }
 
@@ -1367,7 +1369,9 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
       breakWindows: profile?.break_enabled
         ? parseBreakWindows(profile.break_windows)
         : [],
+      breakEnabled: profile?.break_enabled ?? false,
       isFlexible: false,
+      timezone,
     });
   }
 
