@@ -17,6 +17,7 @@ import {
   getEffectiveWorkEnd,
   hhmmToInstant,
   resolveCheckoutInstant,
+  computeOvertimeMinutes,
 } from "@/lib/utils/attendance-overtime";
 import { computeStreak, type StreakLogInput } from "@/lib/utils/streak";
 import {
@@ -772,7 +773,9 @@ export async function checkOut(payload?: CheckOutPayload) {
 
   const { data: existing } = await supabase
     .from("attendance_logs")
-    .select("id, checked_out_at, checked_in_at, latitude, longitude")
+    .select(
+      "id, checked_out_at, checked_in_at, latitude, longitude, total_break_minutes"
+    )
     .eq("user_id", user.id)
     .eq("date", today)
     .maybeSingle();
@@ -814,7 +817,9 @@ export async function checkOut(payload?: CheckOutPayload) {
   // (threshold 30-menit) maupun untuk overtime calc di bawah.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, is_flexible_schedule, work_start_time, work_end_time")
+    .select(
+      "full_name, is_flexible_schedule, work_start_time, work_end_time, break_enabled, break_windows"
+    )
     .eq("id", user.id)
     .single();
   const settings = await getCachedAttendanceSettings();
@@ -941,35 +946,23 @@ export async function checkOut(payload?: CheckOutPayload) {
     }
   }
 
+  // Lembur = kerja BERSIH di atas standar bersih harian (lihat
+  // computeOvertimeMinutes). Memperhitungkan istirahat aktual + standar
+  // 12 jam (mis. jadwal 14 jam − 2 jam istirahat terjadwal), bukan sekadar
+  // selisih jam pulang dengan work_end.
   let overtimeMinutes = 0;
-
   if (isOvertime && !profile?.is_flexible_schedule) {
-    try {
-      const checkoutLocal = new Date(
-        checkoutInstant.toLocaleString("en-US", { timeZone: timezone })
-      );
-      // Effective end = work_end_time for normal arrivals, or
-      // check_in_at + standard duration for early arrivals. A single
-      // code path that subsumes both cases.
-      const effectiveEnd =
-        effectiveEndDate ??
-        getEffectiveWorkEnd(
-          new Date(existing.checked_in_at),
-          profile?.work_start_time ?? "09:00",
-          profile?.work_end_time ?? "18:00",
-          timezone,
-          false
-        );
-
-      if (effectiveEnd && checkoutLocal > effectiveEnd) {
-        overtimeMinutes = Math.ceil(
-          (checkoutLocal.getTime() - effectiveEnd.getTime()) / 60_000
-        );
-        overtimeMinutes = Math.min(overtimeMinutes, 480);
-      }
-    } catch {
-      // Fallback: no overtime
-    }
+    overtimeMinutes = computeOvertimeMinutes({
+      checkedInAt: new Date(existing.checked_in_at),
+      checkedOutAt: checkoutInstant,
+      totalBreakMinutes: existing.total_break_minutes ?? 0,
+      workStartTime: profile?.work_start_time ?? "09:00",
+      workEndTime: profile?.work_end_time ?? "18:00",
+      breakWindows: profile?.break_enabled
+        ? parseBreakWindows(profile.break_windows)
+        : [],
+      isFlexible: false,
+    });
   }
 
   const { data, error } = await supabase
@@ -1311,7 +1304,9 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
   // Verify the log belongs to this user and has no checkout
   const { data: log } = await supabase
     .from("attendance_logs")
-    .select("id, user_id, date, checked_in_at, checked_out_at")
+    .select(
+      "id, user_id, date, checked_in_at, checked_out_at, total_break_minutes"
+    )
     .eq("id", payload.attendanceLogId)
     .single();
 
@@ -1353,37 +1348,27 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_flexible_schedule, work_start_time, work_end_time")
+    .select(
+      "is_flexible_schedule, work_start_time, work_end_time, break_enabled, break_windows"
+    )
     .eq("id", user.id)
     .single();
 
+  // Sama dengan `checkOut`: lembur = kerja bersih di atas standar bersih
+  // harian (pure duration, tahan timezone — tak perlu shift wall-clock).
   let overtimeMinutes = 0;
-
   if (isOvertime && !profile?.is_flexible_schedule) {
-    // Use the same shared helper as `checkOut` so retroactive checkouts
-    // honour early-arrival overtime too. We need a TZ-aware checkout
-    // moment to compare against `effectiveEnd`; `checkoutDate` above is
-    // already a UTC instant from the user's HH:mm in the target TZ, so
-    // shift the same way the helper expects.
-    const settings = await getCachedAttendanceSettings();
-    const tz = settings?.timezone ?? "Asia/Jakarta";
-    const checkoutLocal = new Date(
-      checkoutDate.toLocaleString("en-US", { timeZone: tz })
-    );
-    const effectiveEnd = getEffectiveWorkEnd(
-      checkinDate,
-      profile?.work_start_time ?? "09:00",
-      profile?.work_end_time ?? "18:00",
-      tz,
-      false
-    );
-
-    if (effectiveEnd && checkoutLocal > effectiveEnd) {
-      overtimeMinutes = Math.min(
-        Math.ceil((checkoutLocal.getTime() - effectiveEnd.getTime()) / 60_000),
-        480
-      );
-    }
+    overtimeMinutes = computeOvertimeMinutes({
+      checkedInAt: checkinDate,
+      checkedOutAt: checkoutDate,
+      totalBreakMinutes: log.total_break_minutes ?? 0,
+      workStartTime: profile?.work_start_time ?? "09:00",
+      workEndTime: profile?.work_end_time ?? "18:00",
+      breakWindows: profile?.break_enabled
+        ? parseBreakWindows(profile.break_windows)
+        : [],
+      isFlexible: false,
+    });
   }
 
   const { data, error } = await supabase

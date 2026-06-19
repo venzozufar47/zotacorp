@@ -13,7 +13,13 @@
  * way, which is what the attendance actions already do.
  */
 
+import { effectiveStandardHours } from "@/lib/utils/break-windows";
+import type { BreakWindow } from "@/lib/supabase/types";
+
 const EARLY_THRESHOLD_MS = 30 * 60_000;
+
+/** Hard cap per hari supaya salah-input / shift aneh tidak meledak. */
+const MAX_OVERTIME_MIN = 480;
 
 /** Batas atas durasi shift untuk entry checkout manual. Shift yang
  *  ter-roll melebihi ini hampir pasti salah ketik (mis. 08:00 padahal
@@ -172,4 +178,54 @@ export function getEffectiveWorkEnd(
 
   const standardMs = endLocal.getTime() - startLocal.getTime();
   return new Date(checkInLocal.getTime() + standardMs);
+}
+
+/**
+ * Menit lembur = waktu kerja BERSIH di atas standar kerja bersih harian.
+ *
+ *   lembur = (durasi hadir − istirahat aktual) − standar_kerja_bersih
+ *
+ * di mana standar_kerja_bersih = (work_end − work_start) − total jendela
+ * istirahat terjadwal (lihat `effectiveStandardHours`). Contoh Boles:
+ * jadwal 07:00–21:00 (14 jam) dengan istirahat 16:00–18:00 (2 jam) →
+ * standar bersih 12 jam. Hadir 06:48→21:59 (15j11m) tanpa ambil istirahat
+ * → lembur 15j11m − 12j = 3j11m (bukan 1 jam dari rumus lama yang hanya
+ * membandingkan jam pulang dengan `work_end`).
+ *
+ * Konsisten untuk kasus "kadang ambil istirahat, kadang tidak": istirahat
+ * AKTUAL (`totalBreakMinutes`) dikurangi dari kehadiran, sedangkan standar
+ * mengasumsikan istirahat terjadwal. Kalau karyawan tidak ambil istirahat,
+ * jam tersebut otomatis terhitung kerja → menambah lembur.
+ *
+ * Murni berbasis DURASI (tahan timezone — selisih dua instant + menit),
+ * jadi sama persis dipakai di server (checkout) maupun backfill SQL.
+ * Flexible schedule → selalu 0 (tidak punya konsep standar harian).
+ * Hasil dibulatkan ke menit terdekat dan di-clamp ke [0, 480].
+ */
+export function computeOvertimeMinutes(params: {
+  checkedInAt: Date;
+  checkedOutAt: Date;
+  totalBreakMinutes: number;
+  workStartTime: string;
+  workEndTime: string;
+  /** Jendela istirahat terjadwal; kirim `[]` bila break tidak aktif. */
+  breakWindows: BreakWindow[];
+  isFlexible: boolean;
+}): number {
+  if (params.isFlexible) return 0;
+
+  const grossMin =
+    (params.checkedOutAt.getTime() - params.checkedInAt.getTime()) / 60_000;
+  if (!Number.isFinite(grossMin) || grossMin <= 0) return 0;
+
+  const standardMin =
+    effectiveStandardHours(
+      params.workStartTime,
+      params.workEndTime,
+      params.breakWindows
+    ) * 60;
+
+  const breakMin = Math.max(0, params.totalBreakMinutes || 0);
+  const overtime = Math.round(grossMin - breakMin - standardMin);
+  return Math.max(0, Math.min(MAX_OVERTIME_MIN, overtime));
 }
