@@ -112,8 +112,11 @@ export const dictionary = {
       backToLogin: "Back to login",
       successTitle: "Password updated",
       successBody: "Redirecting you to sign in with your new password…",
+      verifying: "Saving & verifying…",
       errTooShort: "Password must be at least 8 characters.",
       errMismatch: "Passwords don't match.",
+      errNotPersisted:
+        "Your new password didn't save correctly. Please try again.",
       errGeneric: "Something went wrong. Please try again.",
     },
     authLayout: {
@@ -814,8 +817,11 @@ export const dictionary = {
       backToLogin: "Balik ke login",
       successTitle: "Password berhasil diganti",
       successBody: "Bentar ya, kita arahin kamu ke login pakai password baru…",
+      verifying: "Menyimpan & memverifikasi…",
       errTooShort: "Password minimal 8 karakter",
       errMismatch: "Password konfirmasinya nggak sama",
+      errNotPersisted:
+        "Password baru gagal tersimpan. Coba ulangi reset sekali lagi ya.",
       errGeneric: "Ada yang salah. Coba lagi ya",
     },
     authLayout: {

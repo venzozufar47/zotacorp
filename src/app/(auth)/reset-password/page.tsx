@@ -108,6 +108,25 @@ export default function ResetPasswordPage() {
         setLoading(false);
         return;
       }
+      // Konfirmasi password BENAR-BENAR tersimpan: autentikasi ulang dengan
+      // password baru. Ini jadi sumber kebenaran "tersimpan" — kalau gagal,
+      // kita surface error eksplisit alih-alih menyatakan sukses palsu.
+      // Sekaligus mencegah karyawan terkunci di check-in (yang juga re-auth
+      // pakai signInWithPassword).
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user?.email) {
+        const { error: verifyErr } = await supabase.auth.signInWithPassword({
+          email: user.email,
+          password,
+        });
+        if (verifyErr) {
+          setError(t.resetPassword.errNotPersisted);
+          setLoading(false);
+          return;
+        }
+      }
       setDone(true);
       // Sign out the recovery session so the next login uses the new password
       // on a clean slate, then bounce to / (auth landing) after a short beat
@@ -202,7 +221,7 @@ export default function ResetPasswordPage() {
           )}
 
           <Button type="submit" size="lg" className="w-full" disabled={loading}>
-            {loading ? t.resetPassword.submitting : t.resetPassword.submit}
+            {loading ? t.resetPassword.verifying : t.resetPassword.submit}
           </Button>
         </form>
       </CardContent>

@@ -110,6 +110,23 @@ export default function SetPasswordPage() {
         setLoading(false);
         return;
       }
+      // Konfirmasi password benar-benar tersimpan dengan autentikasi ulang
+      // memakai password baru — hindari sukses palsu (akun nyangkut tanpa
+      // password yang valid).
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user?.email) {
+        const { error: verifyErr } = await supabase.auth.signInWithPassword({
+          email: user.email,
+          password,
+        });
+        if (verifyErr) {
+          setError("Password gagal tersimpan. Coba ulangi sekali lagi.");
+          setLoading(false);
+          return;
+        }
+      }
       setDone(true);
       // Sign out lalu arahkan ke halaman login supaya investor masuk dengan
       // password baru yang baru saja dibuat.
