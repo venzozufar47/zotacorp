@@ -21,9 +21,25 @@ export interface AdminHomeToday {
   clockedInNow: ClockedInEmployee[];
   lateToday: number;
   posSalesToday: number;
+  /** Rev Hbc Pare = custom cake orders masuk hari ini (cabang Pare) +
+   *  POS Haengbocake Pare hari ini. Rupiah. */
+  revHbcPare: number;
+  /** Rev Hbc Smg = custom cake orders masuk hari ini (cabang Semarang). Rupiah. */
+  revHbcSmg: number;
   hourlyCheckIns: number[]; // 13 buckets covering 07:00 → 19:00
   asOfIso: string; // ISO timestamp the snapshot was taken
   todayIso: string; // yyyy-mm-dd in org tz
+}
+
+/** UTC range [start, end) untuk satu hari kalender di timezone `tz`. */
+function tzDayRangeUtc(dateIso: string, tz: string): { startIso: string; endIso: string } {
+  const assumed = new Date(`${dateIso}T00:00:00Z`);
+  const utcWall = new Date(assumed.toLocaleString("en-US", { timeZone: "UTC" }));
+  const tzWall = new Date(assumed.toLocaleString("en-US", { timeZone: tz }));
+  const offsetMs = tzWall.getTime() - utcWall.getTime();
+  const start = new Date(assumed.getTime() - offsetMs);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
 export interface ClockedInEmployee {
@@ -47,6 +63,8 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     clockedInNow: [],
     lateToday: 0,
     posSalesToday: 0,
+    revHbcPare: 0,
+    revHbcSmg: 0,
     hourlyCheckIns: Array(13).fill(0),
     asOfIso: new Date().toISOString(),
     todayIso: zonedDateString(new Date(), "Asia/Jakarta"),
@@ -59,25 +77,56 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
   const now = new Date();
   const todayIso = zonedDateString(now, tz);
 
-  const [employeesRes, todayLogsRes, posRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .neq("role", "investor")
-      .eq("payslip_excluded", false)
-      .eq("is_active", true),
-    supabase
-      .from("attendance_logs")
-      .select(
-        "id, user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit)"
-      )
-      .eq("date", todayIso),
-    supabase
-      .from("pos_sales")
-      .select("total")
-      .eq("sale_date", todayIso)
-      .is("voided_at", null),
-  ]);
+  const { startIso: dayStartIso, endIso: dayEndIso } = tzDayRangeUtc(todayIso, tz);
+
+  const [employeesRes, todayLogsRes, posRes, cakePareRes, cakeSmgRes, posPareRes] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .neq("role", "investor")
+        .eq("payslip_excluded", false)
+        .eq("is_active", true),
+      supabase
+        .from("attendance_logs")
+        .select(
+          "id, user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit)"
+        )
+        .eq("date", todayIso),
+      supabase
+        .from("pos_sales")
+        .select("total")
+        .eq("sale_date", todayIso)
+        .is("voided_at", null),
+      // Custom cake orders MASUK hari ini per cabang (exclude batal/buang +
+      // klaim gratis — itu tanpa pemasukan). "Masuk" = created_at hari ini.
+      // `cake_orders` belum ada di generated types (free_claim dst.) → cast
+      // `as never` mengikuti konvensi codebase.
+      supabase
+        .from("cake_orders" as never)
+        .select("total_idr")
+        .eq("branch", "pare")
+        .eq("free_claim", false)
+        .not("status", "in", "(cancelled,discarded)")
+        .gte("created_at", dayStartIso)
+        .lt("created_at", dayEndIso),
+      supabase
+        .from("cake_orders" as never)
+        .select("total_idr")
+        .eq("branch", "semarang")
+        .eq("free_claim", false)
+        .not("status", "in", "(cancelled,discarded)")
+        .gte("created_at", dayStartIso)
+        .lt("created_at", dayEndIso),
+      // POS Haengbocake Pare hari ini (non-void).
+      supabase
+        .from("pos_sales")
+        .select("total, bank_accounts!inner(business_unit, default_branch)")
+        .eq("sale_date", todayIso)
+        .is("voided_at", null)
+        .eq("bank_accounts.business_unit", "Haengbocake")
+        .eq("bank_accounts.default_branch", "Pare"),
+    ]);
 
   const totalEmployees = employeesRes.count ?? 0;
   const logs = (todayLogsRes.data ?? []) as Array<{
@@ -130,11 +179,24 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     0
   );
 
+  const sumIdr = (rows: { total_idr: number | null }[] | null) =>
+    (rows ?? []).reduce((s, r) => s + Number(r.total_idr ?? 0), 0);
+  const cakePare = sumIdr(cakePareRes.data as { total_idr: number | null }[] | null);
+  const cakeSmg = sumIdr(cakeSmgRes.data as { total_idr: number | null }[] | null);
+  const posPare = ((posPareRes.data ?? []) as { total: number | null }[]).reduce(
+    (s, r) => s + Number(r.total ?? 0),
+    0
+  );
+  const revHbcPare = cakePare + posPare;
+  const revHbcSmg = cakeSmg;
+
   return {
     totalEmployees,
     clockedInNow,
     lateToday,
     posSalesToday,
+    revHbcPare,
+    revHbcSmg,
     hourlyCheckIns,
     asOfIso: now.toISOString(),
     todayIso,

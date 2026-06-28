@@ -108,8 +108,8 @@ export function AdminHomePage({
         </div>
         <div className="relative z-[1] flex flex-col gap-2 min-w-[220px]">
           <HeroStat label="Employees" value={today.totalEmployees} />
-          <HeroStat label="Late today" value={today.lateToday} tone="warn" />
-          <HeroStat label="POS today" value={formatRp(today.posSalesToday)} />
+          <HeroStat label="Rev Hbc Pare" value={formatRp(today.revHbcPare)} />
+          <HeroStat label="Rev Hbc Smg" value={formatRp(today.revHbcSmg)} />
         </div>
       </section>
 
