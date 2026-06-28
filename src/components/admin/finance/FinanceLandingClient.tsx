@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, Plus, Banknote, ArrowRight, TrendingUp, Smartphone, Inbox, Users } from "lucide-react";
@@ -8,6 +8,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BankAccountFormDialog } from "./BankAccountFormDialog";
 import { formatIDR } from "@/lib/cashflow/format";
+import {
+  getAccountSummaries,
+  type AccountSummary,
+} from "@/lib/actions/cashflow.actions";
 import type { BankCode } from "@/lib/cashflow/types";
 
 interface StatementRow {
@@ -31,15 +35,6 @@ interface AccountRow {
   isActive: boolean;
   posEnabled: boolean;
   statements: StatementRow[];
-  /** Derived from the same credit−debit cumulation the rekening detail
-   *  page renders, so the card stays in sync with the ledger even when
-   *  stored running_balance / statement closing_balance drift (cash
-   *  rekening never writes those columns). */
-  latestBalance: number;
-  /** Earliest + latest tx date across all statements, for the card's
-   *  "Periode" caption. null when the rekening has no transactions. */
-  minDate: string | null;
-  maxDate: string | null;
 }
 
 interface Props {
@@ -92,6 +87,37 @@ export function FinanceLandingClient({
     () => accounts.filter((a) => a.isActive),
     [accounts]
   );
+
+  // Saldo + periode dihitung dari scan full-ledger → berat. Ambil setelah
+  // shell render supaya halaman terasa instan; tampilkan skeleton sebagai
+  // visual cue selama belum selesai.
+  const [summaries, setSummaries] = useState<Record<string, AccountSummary>>({});
+  const [summariesLoading, setSummariesLoading] = useState(true);
+  const idsKey = visibleAccounts.map((a) => a.id).join(",");
+
+  useEffect(() => {
+    let active = true;
+    setSummaries({});
+    setSummariesLoading(true);
+    const items = visibleAccounts.map((a) => ({ id: a.id, bank: a.bank }));
+    if (items.length === 0) {
+      setSummariesLoading(false);
+      return;
+    }
+    getAccountSummaries(items)
+      .then((res) => {
+        if (!active) return;
+        if (res.ok && res.data) setSummaries(res.data);
+      })
+      .finally(() => {
+        if (active) setSummariesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+    // idsKey berubah saat daftar rekening (atau BU aktif) berganti.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
 
   function handleBUChange(bu: string) {
     if (!BU_AVAILABILITY[bu]) return;
@@ -213,22 +239,46 @@ export function FinanceLandingClient({
                   navigation target. Actions (upload / manual / delete)
                   all live inside the detail page, not here. */}
               <div className="rounded-2xl border border-border/70 bg-background/50 p-3">
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Saldo terakhir
-                  </p>
-                  <p className="font-mono tabular-nums text-lg font-semibold text-foreground">
-                    Rp {formatIDR(acc.latestBalance)}
-                  </p>
-                </div>
-                {acc.minDate && acc.maxDate && (
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    Periode:{" "}
-                    <span className="text-foreground">
-                      {formatDateRange(acc.minDate, acc.maxDate)}
-                    </span>
-                  </p>
-                )}
+                {(() => {
+                  const sum = summaries[acc.id];
+                  const pending = !sum && summariesLoading;
+                  return (
+                    <>
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Saldo terakhir
+                        </p>
+                        {sum ? (
+                          <p className="font-mono tabular-nums text-lg font-semibold text-foreground">
+                            Rp {formatIDR(sum.latestBalance)}
+                          </p>
+                        ) : pending ? (
+                          <span
+                            className="mt-1 block h-6 w-32 animate-pulse rounded-md bg-muted"
+                            aria-label="Menghitung saldo…"
+                          />
+                        ) : (
+                          <p className="font-mono tabular-nums text-lg font-semibold text-foreground">
+                            Rp {formatIDR(0)}
+                          </p>
+                        )}
+                      </div>
+                      {sum ? (
+                        sum.minDate &&
+                        sum.maxDate && (
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Periode:{" "}
+                            <span className="text-foreground">
+                              {formatDateRange(sum.minDate, sum.maxDate)}
+                            </span>
+                          </p>
+                        )
+                      ) : pending ? (
+                        <span className="mt-2 block h-3 w-40 animate-pulse rounded bg-muted/70" />
+                      ) : null}
+                    </>
+                  );
+                })()}
                 <p className="mt-3 text-xs font-semibold text-primary inline-flex items-center gap-1 group-hover:gap-2 transition-all">
                   Lihat cashflow
                   <ArrowRight size={12} />

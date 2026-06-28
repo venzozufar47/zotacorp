@@ -6,6 +6,9 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import type { BankCode } from "@/lib/cashflow/types";
 import type { Database } from "@/lib/supabase/types";
 import { makeDedupeKey } from "@/lib/cashflow/dedupe";
+import { computeLatestBalance } from "@/lib/cashflow/balance";
+import type { ChronoRow } from "@/lib/cashflow/chronological";
+import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 
 type BankAccountUpdate = Database["public"]["Tables"]["bank_accounts"]["Update"];
 type CashflowStatementUpdate = Database["public"]["Tables"]["cashflow_statements"]["Update"];
@@ -58,6 +61,79 @@ async function requireAdminOrAssignee(
     .maybeSingle();
   if (!assignment) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Account summaries (latest balance + period) — heavy, fetched
+//  client-side AFTER the finance landing shell renders so the page feels
+//  instant. RLS scopes the rows; admins see all, assignees only theirs.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface AccountSummary {
+  latestBalance: number;
+  minDate: string | null;
+  maxDate: string | null;
+}
+
+export async function getAccountSummaries(
+  items: { id: string; bank: string }[]
+): Promise<ActionResult<Record<string, AccountSummary>>> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const supabase = await createClient();
+
+  const out: Record<string, AccountSummary> = {};
+  await Promise.all(
+    items.map(async ({ id, bank }) => {
+      const { data: stmts } = await supabase
+        .from("cashflow_statements")
+        .select("id")
+        .eq("bank_account_id", id);
+      const stmtIds = (stmts ?? []).map((s) => s.id);
+      if (stmtIds.length === 0) {
+        out[id] = { latestBalance: 0, minDate: null, maxDate: null };
+        return;
+      }
+
+      const rows: ChronoRow[] = [];
+      let minDate: string | null = null;
+      let maxDate: string | null = null;
+      const PAGE = 1000;
+      for (let offset = 0; ; offset += PAGE) {
+        const { data } = await supabase
+          .from("cashflow_transactions")
+          .select(
+            "transaction_date, transaction_time, debit, credit, running_balance, category, sort_order"
+          )
+          .in("statement_id", stmtIds)
+          .order("id", { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (!data || data.length === 0) break;
+        for (const t of data) {
+          // Cash rekening menampung cash + QRIS sale POS dalam satu ledger;
+          // "saldo terakhir" = kas fisik, jadi QRIS non-operasional dibuang.
+          if (bank === "cash" && t.category === POS_QRIS_CATEGORY) continue;
+          rows.push({
+            date: t.transaction_date,
+            time: t.transaction_time,
+            debit: Number(t.debit),
+            credit: Number(t.credit),
+            runningBalance:
+              t.running_balance !== null ? Number(t.running_balance) : null,
+            sortOrder: t.sort_order,
+          });
+          if (minDate === null || t.transaction_date < minDate)
+            minDate = t.transaction_date;
+          if (maxDate === null || t.transaction_date > maxDate)
+            maxDate = t.transaction_date;
+        }
+        if (data.length < PAGE) break;
+      }
+      out[id] = { latestBalance: computeLatestBalance(rows), minDate, maxDate };
+    })
+  );
+
+  return { ok: true, data: out };
 }
 
 // ─────────────────────────────────────────────────────────────────────
