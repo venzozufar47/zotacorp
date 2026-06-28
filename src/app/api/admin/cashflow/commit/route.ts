@@ -19,7 +19,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { verifyBalance } from "@/lib/cashflow/parsers/shared";
-import { makeDedupeKey } from "@/lib/cashflow/dedupe";
+import { makeDedupeKey, makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
 
 interface CommitTransaction {
   date: string;
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: bankAccount } = await supabase
     .from("bank_accounts")
-    .select("id")
+    .select("id, bank, business_unit")
     .eq("id", body.bankAccountId)
     .maybeSingle();
   if (!bankAccount) {
@@ -176,7 +176,7 @@ export async function POST(req: Request) {
     credit: string | number;
     running_balance: string | number | null;
   };
-  const existingKeys = new Set<string>();
+  const existingRows: ExistingRow[] = [];
   {
     const PAGE = 1000;
     for (let offset = 0; ; offset += PAGE) {
@@ -191,25 +191,44 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
       const rows = (data ?? []) as ExistingRow[];
-      for (const t of rows) {
-        existingKeys.add(
-          makeDedupeKey({
-            transaction_date: t.transaction_date,
-            description: t.description,
-            debit: Number(t.debit),
-            credit: Number(t.credit),
-            running_balance:
-              t.running_balance !== null ? Number(t.running_balance) : null,
-          })
-        );
-      }
+      existingRows.push(...rows);
       if (rows.length < PAGE) break;
     }
   }
 
-  const newTransactions = body.transactions.filter(
-    (t) => !existingKeys.has(makeDedupeKey(t))
-  );
+  const toKeyable = (t: ExistingRow) => ({
+    transaction_date: t.transaction_date,
+    description: t.description,
+    debit: Number(t.debit),
+    credit: Number(t.credit),
+    running_balance:
+      t.running_balance !== null ? Number(t.running_balance) : null,
+  });
+
+  // BCA Yeobo Space: dedupe berbasis kemunculan (date+debit+credit+occurrence),
+  // abaikan saldo sintetik + deskripsi (bisa di-anotasi manual). Harus
+  // identik dengan logika di /preview. Bank/rekening lain tidak berubah.
+  const useOccurrenceDedupe =
+    bankAccount.bank === "bca" && bankAccount.business_unit === "Yeobo Space";
+  const OCC_OPTS = { ignoreBalance: true, ignoreDescription: true } as const;
+
+  let newTransactions: CommitTransaction[];
+  if (useOccurrenceDedupe) {
+    const existingKeys = new Set(
+      makeOccurrenceKeys(existingRows.map(toKeyable), OCC_OPTS)
+    );
+    const candKeys = makeOccurrenceKeys(body.transactions, OCC_OPTS);
+    newTransactions = body.transactions.filter(
+      (_, i) => !existingKeys.has(candKeys[i])
+    );
+  } else {
+    const existingKeys = new Set(
+      existingRows.map((t) => makeDedupeKey(toKeyable(t)))
+    );
+    newTransactions = body.transactions.filter(
+      (t) => !existingKeys.has(makeDedupeKey(t))
+    );
+  }
   const skippedCount = body.transactions.length - newTransactions.length;
 
   // Upsert the audit `cashflow_statements` row for this (rekening,

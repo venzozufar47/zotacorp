@@ -31,7 +31,7 @@ import {
   presetsFor,
 } from "@/lib/cashflow/categorize";
 import { sortChronologicalAsc } from "@/lib/cashflow/chronological";
-import { makeDedupeKey } from "@/lib/cashflow/dedupe";
+import { makeDedupeKey, makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
 import type { BankCode } from "@/lib/cashflow/types";
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -299,7 +299,7 @@ export async function POST(req: Request) {
     credit: string | number;
     running_balance: string | number | null;
   };
-  const existingKeys = new Set<string>();
+  const existingRows: ExistingRow[] = [];
   {
     const PAGE = 1000;
     for (let offset = 0; ; offset += PAGE) {
@@ -311,29 +311,46 @@ export async function POST(req: Request) {
         .eq("cashflow_statements.bank_account_id", bankAccountId)
         .range(offset, offset + PAGE - 1);
       const rows = (data ?? []) as ExistingRow[];
-      for (const t of rows) {
-        existingKeys.add(
-          makeDedupeKey({
-            transaction_date: t.transaction_date,
-            description: t.description,
-            debit: Number(t.debit),
-            credit: Number(t.credit),
-            running_balance:
-              t.running_balance !== null ? Number(t.running_balance) : null,
-          })
-        );
-      }
+      existingRows.push(...rows);
       if (rows.length < PAGE) break;
     }
   }
+
+  // BCA Yeobo Space: saldo per-baris sintetik + deskripsi kadang
+  // di-anotasi manual ([PENDING], dll.) → dedupe klasik (yang ikut
+  // menyertakan saldo + deskripsi) gagal mengenali re-upload. Pakai
+  // dedupe berbasis kemunculan: date + debit + credit + occurrence.
+  // Bank/rekening lain tidak berubah.
+  const useOccurrenceDedupe =
+    bankAccount.bank === "bca" && bankAccount.business_unit === "Yeobo Space";
+  const OCC_OPTS = { ignoreBalance: true, ignoreDescription: true } as const;
+
+  const toKeyable = (t: ExistingRow) => ({
+    transaction_date: t.transaction_date,
+    description: t.description,
+    debit: Number(t.debit),
+    credit: Number(t.credit),
+    running_balance:
+      t.running_balance !== null ? Number(t.running_balance) : null,
+  });
 
   // Dedupe flags: tandai tiap tx yang sudah ada di DB, TAPI tetap
   // render semuanya di preview table — supaya sum di panel verifikasi
   // (pakai SEMUA tx) konsisten dengan angka yang user lihat di row
   // table. Commit endpoint filter ulang berdasarkan flag `duplicate`.
-  const dupFlags = parsed.transactions.map((t) =>
-    existingKeys.has(makeDedupeKey(t))
-  );
+  let dupFlags: boolean[];
+  if (useOccurrenceDedupe) {
+    const existingKeys = new Set(
+      makeOccurrenceKeys(existingRows.map(toKeyable), OCC_OPTS)
+    );
+    const candKeys = makeOccurrenceKeys(parsed.transactions, OCC_OPTS);
+    dupFlags = candKeys.map((k) => existingKeys.has(k));
+  } else {
+    const existingKeys = new Set(
+      existingRows.map((t) => makeDedupeKey(toKeyable(t)))
+    );
+    dupFlags = parsed.transactions.map((t) => existingKeys.has(makeDedupeKey(t)));
+  }
   const newTransactions = parsed.transactions.filter((_, i) => !dupFlags[i]);
   const skippedCount = dupFlags.filter(Boolean).length;
 

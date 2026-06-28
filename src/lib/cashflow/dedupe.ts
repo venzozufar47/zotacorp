@@ -52,3 +52,48 @@ export function makeDedupeKey(t: DedupeKeyable): string {
   const rb = t.running_balance ?? t.runningBalance ?? "";
   return `${date}|${desc}|${t.debit}|${t.credit}|${rb}`;
 }
+
+export interface OccurrenceKeyOpts {
+  /** Drop running_balance from the fingerprint (use for banks whose
+   *  balance is synthetic, e.g. BCA CSV). */
+  ignoreBalance?: boolean;
+  /** Drop description from the fingerprint (use when descriptions are
+   *  templated and/or manually annotated post-import, e.g. "[PENDING]"). */
+  ignoreDescription?: boolean;
+}
+
+function dedupeBase(t: DedupeKeyable, opts: OccurrenceKeyOpts): string {
+  const date = t.transaction_date ?? t.date ?? "";
+  const desc = opts.ignoreDescription
+    ? ""
+    : foldConfusables(t.description).trim().toLowerCase();
+  const rb = opts.ignoreBalance ? "" : t.running_balance ?? t.runningBalance ?? "";
+  return `${date}|${desc}|${t.debit}|${t.credit}|${rb}`;
+}
+
+/**
+ * Occurrence-aware dedupe keys for a list of rows. Within the list,
+ * identical base fingerprints get a running occurrence index
+ * (`base#0`, `base#1`, …). Matching two lists by these keys means a
+ * fingerprint appearing N× in DB and M× in the upload yields min(N,M)
+ * duplicates and the rest as new — so genuine same-day same-amount
+ * repeats stay distinct while re-uploads dedupe 1:1.
+ *
+ * Built for balance-less rekening (BCA CSV): running_balance is
+ * synthetic and descriptions may be manually annotated, so the classic
+ * composite key is brittle. With ignoreBalance + ignoreDescription the
+ * fingerprint reduces to date + debit + credit, made unique per row by
+ * the occurrence index. Returns one key per input row, in order.
+ */
+export function makeOccurrenceKeys(
+  rows: DedupeKeyable[],
+  opts: OccurrenceKeyOpts = {}
+): string[] {
+  const counts = new Map<string, number>();
+  return rows.map((t) => {
+    const base = dedupeBase(t, opts);
+    const n = counts.get(base) ?? 0;
+    counts.set(base, n + 1);
+    return `${base}#${n}`;
+  });
+}
