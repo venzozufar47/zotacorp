@@ -190,7 +190,7 @@ export function CakeFinanceView({ month, year, monthLabel, recap }: Props) {
       {recap.orders.length === 0 ? (
         <section className="rounded-2xl border border-border bg-card p-6 text-center">
           <p className="text-sm text-muted-foreground">
-            Tidak ada order yang dijadwalkan ambil pada {monthLabel}.
+            Tidak ada order yang dibuat pada {monthLabel}.
           </p>
         </section>
       ) : (
@@ -202,9 +202,9 @@ export function CakeFinanceView({ month, year, monthLabel, recap }: Props) {
 
 function OrdersTable({ recap }: { recap: CakeFinanceRecap }) {
   const [expanded, setExpanded] = useState(true);
-  // Newest pickup first within the month for quick scanning.
+  // Newest CREATED first within the month — recap dibasiskan tgl dibuat.
   const rows = [...recap.orders].sort((a, b) =>
-    a.scheduledAt < b.scheduledAt ? 1 : a.scheduledAt > b.scheduledAt ? -1 : 0
+    a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
   );
 
   return (
@@ -229,13 +229,13 @@ function OrdersTable({ recap }: { recap: CakeFinanceRecap }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {["Tgl ambil", "Cabang", "Pelanggan", "Nilai", "Dibayar", "Status"].map(
+                {["Tgl dibuat", "Tgl ambil", "Cabang", "Pelanggan", "Nilai", "Dibayar", "Status"].map(
                   (c, i) => (
                     <th
                       key={i}
                       className={
                         "py-1.5 px-2 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground " +
-                        (i >= 3 ? "text-right" : "text-left")
+                        (i >= 4 ? "text-right" : "text-left")
                       }
                     >
                       {c}
@@ -247,7 +247,10 @@ function OrdersTable({ recap }: { recap: CakeFinanceRecap }) {
             <tbody>
               {rows.map((o) => (
                 <tr key={o.id} className="border-b border-border/50">
-                  <td className="px-2 py-1.5 whitespace-nowrap">
+                  <td className="px-2 py-1.5 whitespace-nowrap font-medium">
+                    {formatDate(o.createdAt)}
+                  </td>
+                  <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">
                     {formatDate(o.scheduledAt)}
                   </td>
                   <td className="px-2 py-1.5">

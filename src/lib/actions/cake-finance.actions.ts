@@ -11,12 +11,14 @@ import {
 /**
  * Finance recap for the admin cake-orders page.
  *
- * Revenue is recognized by PICKUP date (`cake_orders.scheduled_at`),
- * NOT by payment date. A DP paid this month for a cake picked up next
- * month belongs to next month's recap. The net-paid figure comes from
- * the `paid_idr` snapshot column (kept in sync by the trigger on
- * `cake_order_payments` = Σ dp+pelunasan − Σ refund), so we never have
- * to join the payment ledger here.
+ * Revenue is recognized by ORDER-CREATION date (`cake_orders.created_at`,
+ * dievaluasi pada zona Asia/Jakarta) — kapan admin Haengbocake MEMBUAT
+ * order, BUKAN kapan kue diambil (`scheduled_at`) atau kapan dibayar.
+ * Order yang dibuat bulan ini masuk recap bulan ini meski pickup-nya
+ * bulan depan. The net-paid figure comes from the `paid_idr` snapshot
+ * column (kept in sync by the trigger on `cake_order_payments` =
+ * Σ dp+pelunasan − Σ refund), so we never have to join the payment
+ * ledger here.
  *
  * Archived orders are still counted (archiving just closes a completed
  * order's books). Only CANCELLED orders are excluded.
@@ -39,6 +41,9 @@ export interface CakeFinanceOrderRow {
   id: string;
   branch: CakeBranch;
   customerName: string;
+  /** Kapan order dibuat admin — basis recap. */
+  createdAt: string;
+  /** Kapan kue dijadwalkan diambil (info, bukan basis recap). */
   scheduledAt: string;
   totalIdr: number;
   paidIdr: number;
@@ -61,12 +66,26 @@ type RawOrder = {
   branch: CakeBranch;
   customer_name: string;
   scheduled_at: string;
+  created_at: string;
   total_idr: number | string;
   paid_idr: number | string;
   delivery_fee_idr: number | string;
   payment_status: CakePaymentStatus;
   status: string;
 };
+
+/**
+ * UTC ISO instant untuk wall-clock `localDateTime` (mis. "2026-06-01T00:00:00")
+ * di timezone `tz`. Dipakai mengubah batas bulan Asia/Jakarta → rentang
+ * UTC untuk memfilter kolom timestamptz `created_at` secara akurat.
+ */
+function localToUtcIso(localDateTime: string, tz: string): string {
+  const assumed = new Date(`${localDateTime}Z`);
+  const utcWall = new Date(assumed.toLocaleString("en-US", { timeZone: "UTC" }));
+  const tzWall = new Date(assumed.toLocaleString("en-US", { timeZone: tz }));
+  const offsetMs = tzWall.getTime() - utcWall.getTime();
+  return new Date(assumed.getTime() - offsetMs).toISOString();
+}
 
 function emptyRecap(month: number, year: number): CakeFinanceRecap {
   return {
@@ -94,13 +113,21 @@ export async function getCakeFinanceRecapMonth(
   if (!gate.ok) return emptyRecap(month, year);
 
   const supabase = await createClient();
-  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
-  const monthEnd =
-    month === 12
-      ? `${year + 1}-01-01`
-      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const TZ = "Asia/Jakarta";
+  const nextY = month === 12 ? year + 1 : year;
+  const nextM = month === 12 ? 1 : month + 1;
+  // Batas bulan dalam zona Jakarta → instant UTC, supaya filter pada
+  // `created_at` (timestamptz UTC) akurat di tepi bulan.
+  const monthStart = localToUtcIso(
+    `${year}-${String(month).padStart(2, "0")}-01T00:00:00`,
+    TZ
+  );
+  const monthEnd = localToUtcIso(
+    `${nextY}-${String(nextM).padStart(2, "0")}-01T00:00:00`,
+    TZ
+  );
 
-  // Pull ALL orders whose pickup (scheduled_at) falls in the month.
+  // Pull ALL orders DIBUAT (created_at) dalam bulan ini (zona Jakarta).
   // PostgREST caps responses at 1000 rows (db-max-rows); paginate with
   // .range() until a partial page so busy months aren't truncated.
   // Stable secondary order by id keeps page boundaries from
@@ -117,13 +144,13 @@ export async function getCakeFinanceRecapMonth(
     const { data, error } = await supabase
       .from("cake_orders" as never)
       .select(
-        "id, branch, customer_name, scheduled_at, total_idr, paid_idr, delivery_fee_idr, payment_status, status"
+        "id, branch, customer_name, scheduled_at, created_at, total_idr, paid_idr, delivery_fee_idr, payment_status, status"
       )
-      .gte("scheduled_at", monthStart)
-      .lt("scheduled_at", monthEnd)
+      .gte("created_at", monthStart)
+      .lt("created_at", monthEnd)
       .neq("status", "cancelled")
       .neq("status", "discarded")
-      .order("scheduled_at")
+      .order("created_at")
       .order("id")
       .range(offset, offset + PAGE - 1);
     if (error) break;
@@ -167,6 +194,7 @@ export async function getCakeFinanceRecapMonth(
       id: o.id,
       branch,
       customerName: o.customer_name,
+      createdAt: o.created_at,
       scheduledAt: o.scheduled_at,
       totalIdr: total,
       paidIdr: paid,
