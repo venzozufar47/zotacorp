@@ -15,22 +15,9 @@ import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmation
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
 
-/** Compact rupiah for tight stat cards: ≥1jt → "Rp 3,62jt", ≥1rb → "Rp 318rb". */
-const formatRpCompact = (n: number) => {
-  const v = Math.round(n);
-  if (v >= 1_000_000)
-    return (
-      "Rp " +
-      new Intl.NumberFormat("id-ID", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(v / 1_000_000) +
-      "jt"
-    );
-  if (v >= 1_000)
-    return "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(v / 1_000)) + "rb";
-  return "Rp " + new Intl.NumberFormat("id-ID").format(v);
-};
+/** Full rupiah, e.g. "Rp 58.470.000". */
+const formatRp = (n: number) =>
+  "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
 
 interface InboxItem {
   id: string;
@@ -148,42 +135,42 @@ export function AdminHomePage({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <Kpi
           label="POS Hbc Pare · Hari ini"
-          value={formatRpCompact(today.posHbcPareToday)}
+          value={formatRp(today.posHbcPareToday)}
           icon={<WalletIcon size={13} />}
           tone="default"
           compact
         />
         <Kpi
           label="POS Hbc Pare · Bulan ini"
-          value={formatRpCompact(today.posHbcPareMonth)}
+          value={formatRp(today.posHbcPareMonth)}
           icon={<WalletIcon size={13} />}
           tone="default"
           compact
         />
         <Kpi
           label="Cake Hbc Pare · Hari ini"
-          value={formatRpCompact(today.cakeHbcPareToday)}
+          value={formatRp(today.cakeHbcPareToday)}
           icon={<CakeSlice size={13} />}
           tone="default"
           compact
         />
         <Kpi
           label="Cake Hbc Pare · Bulan ini"
-          value={formatRpCompact(today.cakeHbcPareMonth)}
+          value={formatRp(today.cakeHbcPareMonth)}
           icon={<CakeSlice size={13} />}
           tone="default"
           compact
         />
         <Kpi
           label="Cake Hbc Smg · Hari ini"
-          value={formatRpCompact(today.cakeHbcSmgToday)}
+          value={formatRp(today.cakeHbcSmgToday)}
           icon={<CakeSlice size={13} />}
           tone="default"
           compact
         />
         <Kpi
           label="Cake Hbc Smg · Bulan ini"
-          value={formatRpCompact(today.cakeHbcSmgMonth)}
+          value={formatRp(today.cakeHbcSmgMonth)}
           icon={<CakeSlice size={13} />}
           tone="default"
           compact
