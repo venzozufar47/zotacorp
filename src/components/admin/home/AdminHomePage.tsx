@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import {
-  Users as UsersIcon,
-  Clock,
-  AlertTriangle,
   Wallet as WalletIcon,
+  CakeSlice,
   CheckCircle2,
   ArrowRight,
 } from "lucide-react";
@@ -16,9 +14,6 @@ import type { AdminHomeToday } from "@/lib/actions/admin-home.actions";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
-
-const formatRp = (n: number) =>
-  "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
 
 /** Compact rupiah for tight stat cards: ≥1jt → "Rp 3,62jt", ≥1rb → "Rp 318rb". */
 const formatRpCompact = (n: number) => {
@@ -126,11 +121,9 @@ export function AdminHomePage({
         <div className="relative z-[1] flex flex-col gap-2 min-w-[220px]">
           <HeroStat label="Employees" value={today.totalEmployees} />
           <HeroStat
-            label="POS Hbc Pare"
-            value={`${formatRp(today.posHbcPareToday)} / ${formatRpCompact(today.posHbcPareMonth)}`}
+            label="Clocked in"
+            value={`${onDutyCount} / ${today.totalEmployees}`}
           />
-          <HeroStat label="Cake Hbc Pare" value={formatRp(today.cakeHbcPareMonth)} />
-          <HeroStat label="Cake Hbc Smg" value={formatRp(today.cakeHbcSmgMonth)} />
         </div>
       </section>
 
@@ -150,31 +143,26 @@ export function AdminHomePage({
         </div>
       </header>
 
-      {/* KPI ROW */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      {/* KPI ROW — hari ini / bulan ini per metrik Haengbocake */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <Kpi
-          label="Clocked in"
-          value={`${onDutyCount}`}
-          frac={`/${today.totalEmployees}`}
-          icon={<UsersIcon size={13} />}
-          tone="default"
-        />
-        <Kpi
-          label="Late today"
-          value={`${today.lateToday}`}
-          icon={<AlertTriangle size={13} />}
-          tone="warn"
-        />
-        <Kpi
-          label="Approvals"
-          value={`${totalPending}`}
-          icon={<Clock size={13} />}
-          tone={totalPending > 0 ? "bad" : "good"}
-        />
-        <Kpi
-          label="POS today"
-          value={formatRp(today.posSalesToday)}
+          label="POS Hbc Pare"
+          value={`${formatRpCompact(today.posHbcPareToday)} / ${formatRpCompact(today.posHbcPareMonth)}`}
           icon={<WalletIcon size={13} />}
+          tone="default"
+          compact
+        />
+        <Kpi
+          label="Custom Cake Hbc Pare"
+          value={`${formatRpCompact(today.cakeHbcPareToday)} / ${formatRpCompact(today.cakeHbcPareMonth)}`}
+          icon={<CakeSlice size={13} />}
+          tone="default"
+          compact
+        />
+        <Kpi
+          label="Custom Cake Hbc Smg"
+          value={`${formatRpCompact(today.cakeHbcSmgToday)} / ${formatRpCompact(today.cakeHbcSmgMonth)}`}
+          icon={<CakeSlice size={13} />}
           tone="default"
           compact
         />

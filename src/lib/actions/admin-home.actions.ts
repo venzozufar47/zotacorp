@@ -24,9 +24,11 @@ export interface AdminHomeToday {
   /** POS Haengbocake Pare — hari ini & akumulasi bulan ini (rupiah). */
   posHbcPareToday: number;
   posHbcPareMonth: number;
-  /** Custom cake masuk BULAN INI per cabang, basis tanggal slip dibuat
-   *  (created_at), bukan tanggal ambil. Rupiah. */
+  /** Custom cake per cabang — hari ini & bulan ini, basis tanggal slip
+   *  dibuat (created_at, zona Jakarta), bukan tanggal ambil. Rupiah. */
+  cakeHbcPareToday: number;
   cakeHbcPareMonth: number;
+  cakeHbcSmgToday: number;
   cakeHbcSmgMonth: number;
   hourlyCheckIns: number[]; // 13 buckets covering 07:00 → 19:00
   asOfIso: string; // ISO timestamp the snapshot was taken
@@ -67,7 +69,9 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     posSalesToday: 0,
     posHbcPareToday: 0,
     posHbcPareMonth: 0,
+    cakeHbcPareToday: 0,
     cakeHbcPareMonth: 0,
+    cakeHbcSmgToday: 0,
     cakeHbcSmgMonth: 0,
     hourlyCheckIns: Array(13).fill(0),
     asOfIso: new Date().toISOString(),
@@ -92,19 +96,20 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
   const nextMonthStartDate = `${ny}-${String(nm).padStart(2, "0")}-01`;
   const monthStartIso = tzDayRangeUtc(monthStartDate, tz).startIso;
   const monthEndIso = tzDayRangeUtc(nextMonthStartDate, tz).startIso;
+  const { startIso: dayStartIso, endIso: dayEndIso } = tzDayRangeUtc(todayIso, tz);
 
-  const cakeMonthQuery = (branch: string) =>
-    // `cake_orders` belum ada di generated types (free_claim dst.) → cast
-    // `as never` mengikuti konvensi codebase. Exclude batal/buang + klaim
-    // gratis (tanpa pemasukan). "Masuk" = slip dibuat (created_at) BULAN INI.
+  // Custom cake masuk (slip dibuat = created_at) dalam rentang, per cabang.
+  // `cake_orders` belum ada di generated types (free_claim dst.) → cast
+  // `as never`. Exclude batal/buang + klaim gratis (tanpa pemasukan).
+  const cakeRangeQuery = (branch: string, fromIso: string, toIso: string) =>
     supabase
       .from("cake_orders" as never)
       .select("total_idr")
       .eq("branch", branch)
       .eq("free_claim", false)
       .not("status", "in", "(cancelled,discarded)")
-      .gte("created_at", monthStartIso)
-      .lt("created_at", monthEndIso);
+      .gte("created_at", fromIso)
+      .lt("created_at", toIso);
 
   // POS Haengbocake Pare bisa >1000 baris/bulan → PostgREST cap default
   // 1000 row akan meng-undercount kalau di-sum langsung. Paginate.
@@ -137,8 +142,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     employeesRes,
     todayLogsRes,
     posRes,
-    cakePareRes,
-    cakeSmgRes,
+    cakePareTodayRes,
+    cakePareMonthRes,
+    cakeSmgTodayRes,
+    cakeSmgMonthRes,
     posHbcPareToday,
     posHbcPareMonth,
   ] = await Promise.all([
@@ -159,8 +166,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       .select("total")
       .eq("sale_date", todayIso)
       .is("voided_at", null),
-    cakeMonthQuery("pare"),
-    cakeMonthQuery("semarang"),
+    cakeRangeQuery("pare", dayStartIso, dayEndIso),
+    cakeRangeQuery("pare", monthStartIso, monthEndIso),
+    cakeRangeQuery("semarang", dayStartIso, dayEndIso),
+    cakeRangeQuery("semarang", monthStartIso, monthEndIso),
     sumPosPareTotal({ eqDate: todayIso }),
     sumPosPareTotal({ gte: monthStartDate, lt: nextMonthStartDate }),
   ]);
@@ -216,14 +225,15 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     0
   );
 
-  const sumIdr = (rows: { total_idr: number | null }[] | null) =>
-    (rows ?? []).reduce((s, r) => s + Number(r.total_idr ?? 0), 0);
-  const cakeHbcPareMonth = sumIdr(
-    cakePareRes.data as { total_idr: number | null }[] | null
-  );
-  const cakeHbcSmgMonth = sumIdr(
-    cakeSmgRes.data as { total_idr: number | null }[] | null
-  );
+  const sumIdr = (rows: unknown) =>
+    ((rows ?? []) as { total_idr: number | null }[]).reduce(
+      (s, r) => s + Number(r.total_idr ?? 0),
+      0
+    );
+  const cakeHbcPareToday = sumIdr(cakePareTodayRes.data);
+  const cakeHbcPareMonth = sumIdr(cakePareMonthRes.data);
+  const cakeHbcSmgToday = sumIdr(cakeSmgTodayRes.data);
+  const cakeHbcSmgMonth = sumIdr(cakeSmgMonthRes.data);
   // posHbcPareToday / posHbcPareMonth sudah dihitung (paginated) di atas.
 
   return {
@@ -233,7 +243,9 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     posSalesToday,
     posHbcPareToday,
     posHbcPareMonth,
+    cakeHbcPareToday,
     cakeHbcPareMonth,
+    cakeHbcSmgToday,
     cakeHbcSmgMonth,
     hourlyCheckIns,
     asOfIso: now.toISOString(),
