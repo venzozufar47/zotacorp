@@ -143,25 +143,47 @@ export function AdminHomePage({
         </div>
       </header>
 
-      {/* KPI ROW — hari ini / bulan ini per metrik Haengbocake */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+      {/* KPI ROW — tiap metrik dipisah jadi 2 kartu: hari ini & bulan ini.
+          Kolom kiri = Hari ini, kolom kanan = Bulan ini (per baris metrik). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <Kpi
-          label="POS Hbc Pare"
-          value={`${formatRpCompact(today.posHbcPareToday)} / ${formatRpCompact(today.posHbcPareMonth)}`}
+          label="POS Hbc Pare · Hari ini"
+          value={formatRpCompact(today.posHbcPareToday)}
           icon={<WalletIcon size={13} />}
           tone="default"
           compact
         />
         <Kpi
-          label="Custom Cake Hbc Pare"
-          value={`${formatRpCompact(today.cakeHbcPareToday)} / ${formatRpCompact(today.cakeHbcPareMonth)}`}
+          label="POS Hbc Pare · Bulan ini"
+          value={formatRpCompact(today.posHbcPareMonth)}
+          icon={<WalletIcon size={13} />}
+          tone="default"
+          compact
+        />
+        <Kpi
+          label="Cake Hbc Pare · Hari ini"
+          value={formatRpCompact(today.cakeHbcPareToday)}
           icon={<CakeSlice size={13} />}
           tone="default"
           compact
         />
         <Kpi
-          label="Custom Cake Hbc Smg"
-          value={`${formatRpCompact(today.cakeHbcSmgToday)} / ${formatRpCompact(today.cakeHbcSmgMonth)}`}
+          label="Cake Hbc Pare · Bulan ini"
+          value={formatRpCompact(today.cakeHbcPareMonth)}
+          icon={<CakeSlice size={13} />}
+          tone="default"
+          compact
+        />
+        <Kpi
+          label="Cake Hbc Smg · Hari ini"
+          value={formatRpCompact(today.cakeHbcSmgToday)}
+          icon={<CakeSlice size={13} />}
+          tone="default"
+          compact
+        />
+        <Kpi
+          label="Cake Hbc Smg · Bulan ini"
+          value={formatRpCompact(today.cakeHbcSmgMonth)}
           icon={<CakeSlice size={13} />}
           tone="default"
           compact
