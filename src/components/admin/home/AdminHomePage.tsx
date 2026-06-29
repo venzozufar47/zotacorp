@@ -456,7 +456,7 @@ function Kpi({
       </div>
       <div
         className={cn(
-          "font-display font-normal leading-none tracking-[-0.025em] text-foreground tabular-nums",
+          "font-normal leading-none tracking-[-0.025em] text-foreground tabular-nums",
           compact
             ? "text-lg sm:text-xl lg:text-[22px] whitespace-nowrap"
             : "text-2xl sm:text-3xl lg:text-[32px]"
