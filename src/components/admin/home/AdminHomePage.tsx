@@ -20,6 +20,23 @@ import type { Celebrant } from "@/lib/utils/celebrations";
 const formatRp = (n: number) =>
   "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
 
+/** Compact rupiah for tight stat cards: ≥1jt → "Rp 3,62jt", ≥1rb → "Rp 318rb". */
+const formatRpCompact = (n: number) => {
+  const v = Math.round(n);
+  if (v >= 1_000_000)
+    return (
+      "Rp " +
+      new Intl.NumberFormat("id-ID", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(v / 1_000_000) +
+      "jt"
+    );
+  if (v >= 1_000)
+    return "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(v / 1_000)) + "rb";
+  return "Rp " + new Intl.NumberFormat("id-ID").format(v);
+};
+
 interface InboxItem {
   id: string;
   tag: string;
@@ -108,8 +125,12 @@ export function AdminHomePage({
         </div>
         <div className="relative z-[1] flex flex-col gap-2 min-w-[220px]">
           <HeroStat label="Employees" value={today.totalEmployees} />
-          <HeroStat label="Rev Hbc Pare" value={formatRp(today.revHbcPare)} />
-          <HeroStat label="Rev Hbc Smg" value={formatRp(today.revHbcSmg)} />
+          <HeroStat
+            label="POS Hbc Pare"
+            value={`${formatRp(today.posHbcPareToday)} / ${formatRpCompact(today.posHbcPareMonth)}`}
+          />
+          <HeroStat label="Cake Hbc Pare" value={formatRp(today.cakeHbcPareMonth)} />
+          <HeroStat label="Cake Hbc Smg" value={formatRp(today.cakeHbcSmgMonth)} />
         </div>
       </section>
 

@@ -21,11 +21,13 @@ export interface AdminHomeToday {
   clockedInNow: ClockedInEmployee[];
   lateToday: number;
   posSalesToday: number;
-  /** Rev Hbc Pare = custom cake orders masuk hari ini (cabang Pare) +
-   *  POS Haengbocake Pare hari ini. Rupiah. */
-  revHbcPare: number;
-  /** Rev Hbc Smg = custom cake orders masuk hari ini (cabang Semarang). Rupiah. */
-  revHbcSmg: number;
+  /** POS Haengbocake Pare — hari ini & akumulasi bulan ini (rupiah). */
+  posHbcPareToday: number;
+  posHbcPareMonth: number;
+  /** Custom cake masuk BULAN INI per cabang, basis tanggal slip dibuat
+   *  (created_at), bukan tanggal ambil. Rupiah. */
+  cakeHbcPareMonth: number;
+  cakeHbcSmgMonth: number;
   hourlyCheckIns: number[]; // 13 buckets covering 07:00 → 19:00
   asOfIso: string; // ISO timestamp the snapshot was taken
   todayIso: string; // yyyy-mm-dd in org tz
@@ -63,8 +65,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     clockedInNow: [],
     lateToday: 0,
     posSalesToday: 0,
-    revHbcPare: 0,
-    revHbcSmg: 0,
+    posHbcPareToday: 0,
+    posHbcPareMonth: 0,
+    cakeHbcPareMonth: 0,
+    cakeHbcSmgMonth: 0,
     hourlyCheckIns: Array(13).fill(0),
     asOfIso: new Date().toISOString(),
     todayIso: zonedDateString(new Date(), "Asia/Jakarta"),
@@ -77,56 +81,70 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
   const now = new Date();
   const todayIso = zonedDateString(now, tz);
 
-  const { startIso: dayStartIso, endIso: dayEndIso } = tzDayRangeUtc(todayIso, tz);
+  // Batas bulan kalender (zona org). POS pakai date string; cake pakai
+  // created_at (timestamptz) → konversi batas bulan Jakarta ke instant UTC.
+  const [yStr, mStr] = todayIso.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const monthStartDate = `${yStr}-${mStr}-01`;
+  const nextMonthStartDate = `${ny}-${String(nm).padStart(2, "0")}-01`;
+  const monthStartIso = tzDayRangeUtc(monthStartDate, tz).startIso;
+  const monthEndIso = tzDayRangeUtc(nextMonthStartDate, tz).startIso;
 
-  const [employeesRes, todayLogsRes, posRes, cakePareRes, cakeSmgRes, posPareRes] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .neq("role", "investor")
-        .eq("payslip_excluded", false)
-        .eq("is_active", true),
-      supabase
-        .from("attendance_logs")
-        .select(
-          "id, user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit)"
-        )
-        .eq("date", todayIso),
-      supabase
-        .from("pos_sales")
-        .select("total")
-        .eq("sale_date", todayIso)
-        .is("voided_at", null),
-      // Custom cake orders MASUK hari ini per cabang (exclude batal/buang +
-      // klaim gratis — itu tanpa pemasukan). "Masuk" = created_at hari ini.
-      // `cake_orders` belum ada di generated types (free_claim dst.) → cast
-      // `as never` mengikuti konvensi codebase.
-      supabase
-        .from("cake_orders" as never)
-        .select("total_idr")
-        .eq("branch", "pare")
-        .eq("free_claim", false)
-        .not("status", "in", "(cancelled,discarded)")
-        .gte("created_at", dayStartIso)
-        .lt("created_at", dayEndIso),
-      supabase
-        .from("cake_orders" as never)
-        .select("total_idr")
-        .eq("branch", "semarang")
-        .eq("free_claim", false)
-        .not("status", "in", "(cancelled,discarded)")
-        .gte("created_at", dayStartIso)
-        .lt("created_at", dayEndIso),
-      // POS Haengbocake Pare hari ini (non-void).
-      supabase
-        .from("pos_sales")
-        .select("total, bank_accounts!inner(business_unit, default_branch)")
-        .eq("sale_date", todayIso)
-        .is("voided_at", null)
-        .eq("bank_accounts.business_unit", "Haengbocake")
-        .eq("bank_accounts.default_branch", "Pare"),
-    ]);
+  const cakeMonthQuery = (branch: string) =>
+    // `cake_orders` belum ada di generated types (free_claim dst.) → cast
+    // `as never` mengikuti konvensi codebase. Exclude batal/buang + klaim
+    // gratis (tanpa pemasukan). "Masuk" = slip dibuat (created_at) BULAN INI.
+    supabase
+      .from("cake_orders" as never)
+      .select("total_idr")
+      .eq("branch", branch)
+      .eq("free_claim", false)
+      .not("status", "in", "(cancelled,discarded)")
+      .gte("created_at", monthStartIso)
+      .lt("created_at", monthEndIso);
+
+  const posPareQuery = () =>
+    supabase
+      .from("pos_sales")
+      .select("total, bank_accounts!inner(business_unit, default_branch)")
+      .is("voided_at", null)
+      .eq("bank_accounts.business_unit", "Haengbocake")
+      .eq("bank_accounts.default_branch", "Pare");
+
+  const [
+    employeesRes,
+    todayLogsRes,
+    posRes,
+    cakePareRes,
+    cakeSmgRes,
+    posPareTodayRes,
+    posPareMonthRes,
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .neq("role", "investor")
+      .eq("payslip_excluded", false)
+      .eq("is_active", true),
+    supabase
+      .from("attendance_logs")
+      .select(
+        "id, user_id, status, checked_in_at, checked_out_at, profiles!inner(full_name, avatar_url, avatar_seed, business_unit)"
+      )
+      .eq("date", todayIso),
+    supabase
+      .from("pos_sales")
+      .select("total")
+      .eq("sale_date", todayIso)
+      .is("voided_at", null),
+    cakeMonthQuery("pare"),
+    cakeMonthQuery("semarang"),
+    posPareQuery().eq("sale_date", todayIso),
+    posPareQuery().gte("sale_date", monthStartDate).lt("sale_date", nextMonthStartDate),
+  ]);
 
   const totalEmployees = employeesRes.count ?? 0;
   const logs = (todayLogsRes.data ?? []) as Array<{
@@ -181,22 +199,29 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
 
   const sumIdr = (rows: { total_idr: number | null }[] | null) =>
     (rows ?? []).reduce((s, r) => s + Number(r.total_idr ?? 0), 0);
-  const cakePare = sumIdr(cakePareRes.data as { total_idr: number | null }[] | null);
-  const cakeSmg = sumIdr(cakeSmgRes.data as { total_idr: number | null }[] | null);
-  const posPare = ((posPareRes.data ?? []) as { total: number | null }[]).reduce(
-    (s, r) => s + Number(r.total ?? 0),
-    0
+  const sumTotal = (rows: unknown) =>
+    ((rows ?? []) as { total: number | null }[]).reduce(
+      (s, r) => s + Number(r.total ?? 0),
+      0
+    );
+  const cakeHbcPareMonth = sumIdr(
+    cakePareRes.data as { total_idr: number | null }[] | null
   );
-  const revHbcPare = cakePare + posPare;
-  const revHbcSmg = cakeSmg;
+  const cakeHbcSmgMonth = sumIdr(
+    cakeSmgRes.data as { total_idr: number | null }[] | null
+  );
+  const posHbcPareToday = sumTotal(posPareTodayRes.data);
+  const posHbcPareMonth = sumTotal(posPareMonthRes.data);
 
   return {
     totalEmployees,
     clockedInNow,
     lateToday,
     posSalesToday,
-    revHbcPare,
-    revHbcSmg,
+    posHbcPareToday,
+    posHbcPareMonth,
+    cakeHbcPareMonth,
+    cakeHbcSmgMonth,
     hourlyCheckIns,
     asOfIso: now.toISOString(),
     todayIso,
