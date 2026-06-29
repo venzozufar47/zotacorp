@@ -119,6 +119,7 @@ export default async function CakeOrdersArchivePage() {
           showArchiveButton={false}
           showUnarchiveButton
           flatLayout
+          enableSearch
         />
       )}
     </div>
