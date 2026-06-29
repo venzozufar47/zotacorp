@@ -106,13 +106,32 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       .gte("created_at", monthStartIso)
       .lt("created_at", monthEndIso);
 
-  const posPareQuery = () =>
-    supabase
-      .from("pos_sales")
-      .select("total, bank_accounts!inner(business_unit, default_branch)")
-      .is("voided_at", null)
-      .eq("bank_accounts.business_unit", "Haengbocake")
-      .eq("bank_accounts.default_branch", "Pare");
+  // POS Haengbocake Pare bisa >1000 baris/bulan → PostgREST cap default
+  // 1000 row akan meng-undercount kalau di-sum langsung. Paginate.
+  const sumPosPareTotal = async (range: {
+    eqDate?: string;
+    gte?: string;
+    lt?: string;
+  }): Promise<number> => {
+    let total = 0;
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      let q = supabase
+        .from("pos_sales")
+        .select("total, bank_accounts!inner(business_unit, default_branch)")
+        .is("voided_at", null)
+        .eq("bank_accounts.business_unit", "Haengbocake")
+        .eq("bank_accounts.default_branch", "Pare");
+      if (range.eqDate) q = q.eq("sale_date", range.eqDate);
+      if (range.gte) q = q.gte("sale_date", range.gte);
+      if (range.lt) q = q.lt("sale_date", range.lt);
+      const { data } = await q.range(offset, offset + PAGE - 1);
+      const rows = (data ?? []) as { total: number | null }[];
+      total += rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
+      if (rows.length < PAGE) break;
+    }
+    return total;
+  };
 
   const [
     employeesRes,
@@ -120,8 +139,8 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     posRes,
     cakePareRes,
     cakeSmgRes,
-    posPareTodayRes,
-    posPareMonthRes,
+    posHbcPareToday,
+    posHbcPareMonth,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -142,8 +161,8 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       .is("voided_at", null),
     cakeMonthQuery("pare"),
     cakeMonthQuery("semarang"),
-    posPareQuery().eq("sale_date", todayIso),
-    posPareQuery().gte("sale_date", monthStartDate).lt("sale_date", nextMonthStartDate),
+    sumPosPareTotal({ eqDate: todayIso }),
+    sumPosPareTotal({ gte: monthStartDate, lt: nextMonthStartDate }),
   ]);
 
   const totalEmployees = employeesRes.count ?? 0;
@@ -199,19 +218,13 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
 
   const sumIdr = (rows: { total_idr: number | null }[] | null) =>
     (rows ?? []).reduce((s, r) => s + Number(r.total_idr ?? 0), 0);
-  const sumTotal = (rows: unknown) =>
-    ((rows ?? []) as { total: number | null }[]).reduce(
-      (s, r) => s + Number(r.total ?? 0),
-      0
-    );
   const cakeHbcPareMonth = sumIdr(
     cakePareRes.data as { total_idr: number | null }[] | null
   );
   const cakeHbcSmgMonth = sumIdr(
     cakeSmgRes.data as { total_idr: number | null }[] | null
   );
-  const posHbcPareToday = sumTotal(posPareTodayRes.data);
-  const posHbcPareMonth = sumTotal(posPareMonthRes.data);
+  // posHbcPareToday / posHbcPareMonth sudah dihitung (paginated) di atas.
 
   return {
     totalEmployees,
