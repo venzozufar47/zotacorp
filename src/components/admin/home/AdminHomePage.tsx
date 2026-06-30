@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Wallet as WalletIcon,
   CakeSlice,
   CheckCircle2,
   ArrowRight,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
@@ -51,6 +53,8 @@ export function AdminHomePage({
   >;
 }) {
   const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
 
   const greeting = greetingByHour();
   const heroTime = new Date(today.asOfIso).toLocaleTimeString("en-US", {
@@ -128,6 +132,24 @@ export function AdminHomePage({
             Live overview · updated {heroTime}
           </p>
         </div>
+        {/* Refresh — re-runs the server component so every nominal
+            (POS / cake, hari ini & bulan ini) re-fetches from DB. */}
+        <button
+          type="button"
+          onClick={() => startRefresh(() => router.refresh())}
+          disabled={refreshing}
+          className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3.5 py-2 text-[13px] font-medium text-foreground transition hover:bg-muted disabled:opacity-60"
+          style={{
+            boxShadow:
+              "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)",
+          }}
+        >
+          <RefreshCw
+            size={14}
+            className={cn(refreshing && "animate-spin")}
+          />
+          {refreshing ? "Memuat…" : "Refresh"}
+        </button>
       </header>
 
       {/* KPI ROW — tiap metrik dipisah jadi 2 kartu: hari ini & bulan ini.
