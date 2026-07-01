@@ -2073,7 +2073,14 @@ function ExpandedDetail({
           logs={row.extraWorkLogs}
           disabled={finalized}
           monthlyFixedAmount={Number(row.settings?.monthly_fixed_amount ?? 0)}
-          expectedWorkDays={Number(row.settings?.expected_work_days ?? 0)}
+          // Gunakan expected_work_days HASIL RESOLVE yang tersimpan di payslip
+          // (untuk pola paired_alternating / weekly_pattern ini = jumlah hari
+          // aktual bulan tsb, mis. Juni = 16), BUKAN angka statis di settings
+          // (mis. 18). Ini yang dipakai server sebagai pembagi gapok harian,
+          // jadi preview "× harian" cocok dengan payslip. Fallback ke settings.
+          expectedWorkDays={Number(
+            payslip.expected_work_days ?? row.settings?.expected_work_days ?? 0
+          )}
         />
       )}
     </div>
