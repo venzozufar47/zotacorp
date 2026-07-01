@@ -151,6 +151,12 @@ export function CashDashboardClient({
 
   const amountNum = parseInt(amount.replace(/\D/g, ""), 10) || 0;
 
+  // Ringkasan arus kas bulan yang sedang ditampilkan (dari transaksi
+  // bulan tsb). Beda dengan "Saldo cash saat ini" yang selalu total.
+  const monthIncome = transactions.reduce((s, t) => s + t.credit, 0);
+  const monthExpense = transactions.reduce((s, t) => s + t.debit, 0);
+  const monthNet = monthIncome - monthExpense;
+
   function submit() {
     if (!modal) return;
     if (amountNum <= 0) {
@@ -279,6 +285,40 @@ export function CashDashboardClient({
           >
             {formatRp(balance)}
           </p>
+
+          {/* Ringkasan arus kas bulan yang dipilih — masuk, keluar, selisih. */}
+          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Masuk · {monthLabel}
+              </p>
+              <p className="mt-0.5 text-sm font-bold tabular-nums text-emerald-600">
+                +{formatRp(monthIncome)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Keluar
+              </p>
+              <p className="mt-0.5 text-sm font-bold tabular-nums text-destructive">
+                −{formatRp(monthExpense)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Selisih
+              </p>
+              <p
+                className={
+                  "mt-0.5 text-sm font-bold tabular-nums " +
+                  (monthNet < 0 ? "text-destructive" : "text-foreground")
+                }
+              >
+                {monthNet < 0 ? "−" : "+"}
+                {formatRp(Math.abs(monthNet))}
+              </p>
+            </div>
+          </div>
         </section>
 
         {/* Tombol input */}
