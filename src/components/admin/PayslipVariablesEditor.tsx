@@ -332,36 +332,38 @@ function ScopeAndPeriod({
           </button>
         ))}
       </div>
-      {scope === "monthly" && (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Periode:</span>
-          <select
-            value={month}
-            onChange={(e) => onChangeMonth(Number(e.target.value), year)}
-            className="h-8 rounded-md border border-border bg-background px-2"
-          >
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {new Date(year, m - 1).toLocaleDateString("id-ID", {
-                  month: "long",
-                })}
-              </option>
-            ))}
-          </select>
-          <select
-            value={year}
-            onChange={(e) => onChangeMonth(month, Number(e.target.value))}
-            className="h-8 rounded-md border border-border bg-background px-2"
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-          <span className="text-muted-foreground tabular-nums">{monthLabel}</span>
-        </div>
-      )}
+      {/* Periode (bulan + tahun) tampil di KEDUA scope. Di scope "Bulanan"
+          ia memilih periode deliverables; di scope "Settings" ia jadi acuan
+          hitung otomatis hari kerja pola "selang-seling berpasangan" — jumlah
+          hari berubah mengikuti bulan & tahun yang dipilih di sini. */}
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-muted-foreground">Periode:</span>
+        <select
+          value={month}
+          onChange={(e) => onChangeMonth(Number(e.target.value), year)}
+          className="h-8 rounded-md border border-border bg-background px-2"
+        >
+          {months.map((m) => (
+            <option key={m} value={m}>
+              {new Date(year, m - 1).toLocaleDateString("id-ID", {
+                month: "long",
+              })}
+            </option>
+          ))}
+        </select>
+        <select
+          value={year}
+          onChange={(e) => onChangeMonth(month, Number(e.target.value))}
+          className="h-8 rounded-md border border-border bg-background px-2"
+        >
+          {years.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+        <span className="text-muted-foreground tabular-nums">{monthLabel}</span>
+      </div>
     </div>
   );
 }
@@ -915,7 +917,13 @@ function ExpectedDaysSection({
   return (
     <SectionCard
       title="Hari kerja"
-      description="expected_days_mode + expected_work_days + expected_weekdays."
+      description={`expected_days_mode + expected_work_days + expected_weekdays. Kolom "auto" pola selang-seling dihitung untuk periode ${new Date(
+        year,
+        month - 1
+      ).toLocaleDateString("id-ID", {
+        month: "long",
+        year: "numeric",
+      })} (ubah lewat Periode di atas).`}
       dirtyCount={dirtyUserIds.length}
       pending={pending}
       onSave={save}
