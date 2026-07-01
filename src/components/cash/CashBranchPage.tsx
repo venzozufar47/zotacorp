@@ -16,7 +16,13 @@ import { CashDashboardClient, type CashTxRow } from "./CashDashboardClient";
  * `cashflow_*`) DAN `requireAdminOrAssignee`. Write/edit/hapus di-gate
  * lagi di action-nya.
  */
-export async function CashBranchPage({ slug }: { slug: CashBranchSlug }) {
+export async function CashBranchPage({
+  slug,
+  searchParams,
+}: {
+  slug: CashBranchSlug;
+  searchParams?: { month?: string; year?: string };
+}) {
   const def = CASH_DASHBOARDS[slug];
   const supabase = await createClient();
 
@@ -32,10 +38,31 @@ export async function CashBranchPage({ slug }: { slug: CashBranchSlug }) {
   const gate = await requireAdminOrAssignee(acct.id);
   if (!gate.ok) redirect("/");
 
-  // Daftar transaksi dibatasi ke BULAN BERJALAN saja.
+  // Bulan yang ditampilkan: default bulan berjalan, atau ?month=&year=
+  // untuk melihat riwayat bulan sebelumnya. Nominal di luar rentang
+  // valid (mis. bulan depan) dikembalikan ke bulan berjalan.
   const now = new Date();
-  const y = now.getFullYear();
-  const mo = now.getMonth(); // 0-based
+  const curY = now.getFullYear();
+  const curMo = now.getMonth(); // 0-based
+  const parsedMonth = Number(searchParams?.month);
+  const parsedYear = Number(searchParams?.year);
+  let y = curY;
+  let mo = curMo;
+  if (
+    Number.isInteger(parsedMonth) &&
+    parsedMonth >= 1 &&
+    parsedMonth <= 12 &&
+    Number.isInteger(parsedYear) &&
+    parsedYear >= 2020 &&
+    parsedYear <= 2100
+  ) {
+    // Jangan izinkan bulan di masa depan.
+    if (parsedYear < curY || (parsedYear === curY && parsedMonth - 1 <= curMo)) {
+      y = parsedYear;
+      mo = parsedMonth - 1;
+    }
+  }
+  const atCurrentMonth = y === curY && mo === curMo;
   const pad = (n: number) => String(n).padStart(2, "0");
   const monthStart = `${y}-${pad(mo + 1)}-01`;
   const nextY = mo === 11 ? y + 1 : y;
@@ -80,6 +107,9 @@ export async function CashBranchPage({ slug }: { slug: CashBranchSlug }) {
       balance={balance}
       transactions={transactions}
       monthLabel={monthLabel}
+      viewMonth={mo + 1}
+      viewYear={y}
+      atCurrentMonth={atCurrentMonth}
       requireExpenseProof={def.requireExpenseProof}
     />
   );

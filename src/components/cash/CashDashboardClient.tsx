@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type ChangeEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
 import {
   Plus,
@@ -15,6 +15,8 @@ import {
   Camera,
   Image as ImageIcon,
   Info,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatDateLongID } from "@/lib/utils/date-formats";
@@ -63,6 +65,9 @@ export function CashDashboardClient({
   balance,
   transactions,
   monthLabel,
+  viewMonth,
+  viewYear,
+  atCurrentMonth,
   requireExpenseProof,
 }: {
   accountId: string;
@@ -72,11 +77,33 @@ export function CashDashboardClient({
   balance: number;
   transactions: CashTxRow[];
   monthLabel: string;
+  /** Bulan yang sedang ditampilkan (1-based) + tahun, untuk navigasi. */
+  viewMonth: number;
+  viewYear: number;
+  /** True bila sedang di bulan berjalan (tombol "bulan berikutnya" mati). */
+  atCurrentMonth: boolean;
   /** Pengeluaran wajib lampir foto bukti (per dashboard, dari registry). */
   requireExpenseProof: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, startTransition] = useTransition();
+  const [navPending, startNav] = useTransition();
+
+  // Navigasi bulan: ubah ?month=&year= → server refetch transaksi bulan itu.
+  // Saldo tetap "saat ini" (tidak ikut bergeser per bulan).
+  function goMonth(delta: number) {
+    let m = viewMonth + delta;
+    let yr = viewYear;
+    if (m < 1) {
+      m = 12;
+      yr -= 1;
+    } else if (m > 12) {
+      m = 1;
+      yr += 1;
+    }
+    startNav(() => router.push(`${pathname}?month=${m}&year=${yr}`));
+  }
   const [modal, setModal] = useState<ModalState>(null);
 
   // Form state
@@ -275,14 +302,39 @@ export function CashDashboardClient({
         {/* Daftar transaksi */}
         <section className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-            <Receipt size={15} className="text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">
+            <Receipt size={15} className="shrink-0 text-muted-foreground" />
+            <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
               Transaksi · {monthLabel}
             </h2>
+            {/* Navigasi bulan — mundur ke riwayat, maju sampai bulan berjalan. */}
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => goMonth(-1)}
+                disabled={navPending}
+                aria-label="Bulan sebelumnya"
+                className="press-feedback inline-flex size-8 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:border-primary/50 disabled:opacity-40 transition"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => goMonth(1)}
+                disabled={navPending || atCurrentMonth}
+                aria-label="Bulan berikutnya"
+                className="press-feedback inline-flex size-8 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:border-primary/50 disabled:opacity-40 transition"
+              >
+                {navPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <ChevronRight size={16} />
+                )}
+              </button>
+            </div>
           </div>
           {transactions.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              Belum ada transaksi bulan ini.
+              Belum ada transaksi di {monthLabel}.
             </p>
           ) : (
             <ul className="divide-y divide-border/60">
