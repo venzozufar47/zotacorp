@@ -143,6 +143,12 @@ export interface EmploymentContract {
   consent_ip: string | null;
   consent_user_agent: string | null;
   signed_pdf_path: string | null;
+  /** Versi isi kontrak saat ini (naik tiap ada revisi). */
+  version: number;
+  /** Versi yang ditandatangani karyawan (null = belum pernah TTD). */
+  signed_version: number | null;
+  /** Ringkasan perubahan versi terbaru — ditampilkan saat karyawan perlu TTD ulang. */
+  update_note: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -154,3 +160,40 @@ export const CONTRACT_STATUS_LABELS: Record<EmploymentContractStatus, string> = 
   signed: "Sudah ditandatangani",
   terminated: "Diakhiri",
 };
+
+/**
+ * State tanda tangan turunan dari (status, version, signed_version):
+ *  - "unsigned"        : belum pernah ditandatangani (pending)
+ *  - "update_required" : sudah TTD tapi versi lama — perlu TTD ulang
+ *  - "signed_current"  : sudah TTD versi terbaru (beres)
+ *  - "inactive"        : draft / terminated (tidak butuh aksi karyawan)
+ */
+export type ContractSignState =
+  | "unsigned"
+  | "update_required"
+  | "signed_current"
+  | "inactive";
+
+export function contractSignState(c: {
+  status: EmploymentContractStatus;
+  version?: number | null;
+  signed_version?: number | null;
+}): ContractSignState {
+  if (c.status === "pending_signature") return "unsigned";
+  if (c.status === "signed") {
+    const v = c.version ?? 1;
+    const sv = c.signed_version ?? 0;
+    return sv < v ? "update_required" : "signed_current";
+  }
+  return "inactive";
+}
+
+/** True bila karyawan perlu (menandatangani / menandatangani ulang) kontrak. */
+export function contractNeedsSignature(c: {
+  status: EmploymentContractStatus;
+  version?: number | null;
+  signed_version?: number | null;
+}): boolean {
+  const s = contractSignState(c);
+  return s === "unsigned" || s === "update_required";
+}

@@ -14,9 +14,10 @@ import {
   type ContractBlock,
   type InlineSpan,
 } from "@/lib/employment-contracts/markdown";
-import type {
-  EmploymentContract,
-  ContractSignerIdentity,
+import {
+  contractSignState,
+  type EmploymentContract,
+  type ContractSignerIdentity,
 } from "@/lib/employment-contracts/types";
 import { SignaturePad } from "./SignaturePad";
 
@@ -63,7 +64,9 @@ export function ContractSignClient({
     [contract.body_markdown, contract.fields, idf]
   );
   const lampiran = contract.lampiran;
-  const signed = contract.status === "signed";
+  const signState = contractSignState(contract);
+  const signed = signState === "signed_current";
+  const updateRequired = signState === "update_required";
 
   const submit = () => {
     const missing = IDENTITY_FIELDS.find((f) => !idf[f.key].trim());
@@ -111,6 +114,24 @@ export function ContractSignClient({
 
   return (
     <div className="space-y-4">
+      {updateRequired && (
+        <div className="rounded-xl border-2 border-foreground bg-warning/40 px-4 py-3 space-y-1">
+          <p className="text-sm font-bold">
+            Kontrak diperbarui — mohon tanda tangani ulang
+          </p>
+          <p className="text-xs text-foreground/80">
+            Ada perubahan pada kontrakmu. Baca ringkasannya di bawah, lalu tanda
+            tangani ulang versi terbaru ini.
+          </p>
+          {contract.update_note && (
+            <p className="text-xs">
+              <span className="font-semibold">Perubahan:</span>{" "}
+              {contract.update_note}
+            </p>
+          )}
+        </div>
+      )}
+
       {signed && (
         <div className="flex items-center gap-2 rounded-xl border-2 border-foreground bg-pop-emerald/20 px-4 py-3">
           <CheckCircle2 size={18} className="text-foreground" />
@@ -161,7 +182,9 @@ export function ContractSignClient({
       {/* Sign panel */}
       {!signed && (
         <div className="rounded-2xl border-2 border-foreground bg-card p-5 space-y-4">
-          <h3 className="font-display font-bold">Tanda tangani kontrak</h3>
+          <h3 className="font-display font-bold">
+            {updateRequired ? "Tanda tangani ulang kontrak" : "Tanda tangani kontrak"}
+          </h3>
           <p className="text-xs text-muted-foreground">
             Lengkapi identitas pribadimu (wajib — sebagian terisi otomatis dari
             profil), bubuhkan tanda tangan, lalu setujui pernyataan di bawah.

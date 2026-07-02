@@ -10,7 +10,10 @@ import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
-import { emptyLampiran } from "@/lib/employment-contracts/types";
+import {
+  emptyLampiran,
+  contractNeedsSignature,
+} from "@/lib/employment-contracts/types";
 import {
   EMPLOYER,
   TGL_BAYAR_DEFAULT,
@@ -648,21 +651,41 @@ export async function getContractSignerPrefill(): Promise<ContractSignerIdentity
   };
 }
 
-/** Dipakai gate slip gaji: kontrak yang masih menunggu tanda tangan. */
+/**
+ * Kontrak yang butuh (tanda tangan / tanda tangan ulang) oleh karyawan —
+ * dipakai kartu dashboard. Mengembalikan `isUpdate` (true = sudah TTD versi
+ * lama, ada revisi baru) + `updateNote` supaya kartu bisa menjelaskan
+ * perubahannya.
+ */
 export async function getMyPendingContract(): Promise<{
   id: string;
+  isUpdate: boolean;
+  updateNote: string | null;
 } | null> {
   const user = await getCurrentUser();
   if (!user) return null;
   const db = adminClient();
   const { data } = await db
     .from("employment_contracts" as never)
-    .select("id")
+    .select("id, status, version, signed_version, update_note")
     .eq("user_id", user.id)
-    .eq("status", "pending_signature")
+    .in("status", ["pending_signature", "signed"])
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return (data as unknown as { id: string } | null) ?? null;
+  const c = data as unknown as {
+    id: string;
+    status: EmploymentContractStatus;
+    version: number | null;
+    signed_version: number | null;
+    update_note: string | null;
+  } | null;
+  if (!c || !contractNeedsSignature(c)) return null;
+  return {
+    id: c.id,
+    isUpdate: c.status === "signed",
+    updateNote: c.update_note,
+  };
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────
@@ -833,8 +856,11 @@ export async function signEmploymentContract(input: {
   const c = cRaw as unknown as EmploymentContract | null;
   if (!c) return { ok: false, error: "Kontrak tidak ditemukan" };
   if (c.user_id !== user.id) return { ok: false, error: "Forbidden" };
-  if (c.status !== "pending_signature")
+  // Boleh tanda tangan bila belum pernah (pending) ATAU sudah TTD versi lama
+  // dan ada versi baru (update). Tolak bila sudah TTD versi terbaru / tidak aktif.
+  if (!contractNeedsSignature(c))
     return { ok: false, error: "Kontrak sudah ditandatangani / tidak aktif" };
+  const currentVersion = c.version ?? 1;
 
   const h = await headers();
   const ua = h.get("user-agent")?.slice(0, 400) ?? null;
@@ -859,6 +885,9 @@ export async function signEmploymentContract(input: {
       consent_ip: ip,
       consent_user_agent: ua,
       status: "signed",
+      // Tandai versi yang ditandatangani = versi isi saat ini. Kalau nanti
+      // isi direvisi (version naik), signed_version < version → perlu TTD ulang.
+      signed_version: currentVersion,
     } as never)
     .eq("id", input.contractId);
   if (updErr) return { ok: false, error: updErr.message };

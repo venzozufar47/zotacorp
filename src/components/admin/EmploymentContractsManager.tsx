@@ -33,6 +33,7 @@ import {
 import {
   CONTRACT_FIELD_DEFS,
   CONTRACT_STATUS_LABELS,
+  contractSignState,
   emptyLampiran,
   type ContractFields,
   type ContractLampiran,
@@ -332,7 +333,7 @@ function ContractsTab({
                   <td className="px-3 py-2 font-medium">{c.employee_name}</td>
                   <td className="px-3 py-2">{c.business_unit}</td>
                   <td className="px-3 py-2">
-                    <StatusBadge status={c.status} />
+                    <StatusBadge contract={c} />
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {c.employee_signed_at
@@ -426,7 +427,24 @@ function ContractsTab({
   );
 }
 
-function StatusBadge({ status }: { status: EmploymentContractStatus }) {
+function StatusBadge({
+  contract,
+}: {
+  contract: {
+    status: EmploymentContractStatus;
+    version?: number | null;
+    signed_version?: number | null;
+  };
+}) {
+  // "Perlu TTD ulang" = sudah TTD versi lama, ada revisi baru (update_required).
+  if (contractSignState(contract) === "update_required") {
+    return (
+      <span className="inline-block rounded-full border border-foreground bg-warning/50 px-2 py-0.5 text-[11px] font-medium text-foreground">
+        Perlu TTD ulang
+      </span>
+    );
+  }
+  const status = contract.status;
   const cls: Record<EmploymentContractStatus, string> = {
     draft: "bg-muted text-muted-foreground",
     pending_signature: "bg-tertiary/40 text-foreground border-foreground",

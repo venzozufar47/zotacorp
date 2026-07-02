@@ -194,10 +194,16 @@ export default async function DashboardPage() {
           </span>
           <span className="flex-1 min-w-0">
             <span className="block font-display font-bold text-sm">
-              Kontrak kerja menunggu tanda tangan
+              {pendingContract.isUpdate
+                ? "Kontrak kerja diperbarui — perlu tanda tangan ulang"
+                : "Kontrak kerja menunggu tanda tangan"}
             </span>
             <span className="block text-xs text-muted-foreground">
-              Tandatangani kontrakmu untuk membuka slip gaji. Ketuk untuk membuka.
+              {pendingContract.isUpdate
+                ? pendingContract.updateNote
+                  ? `Perubahan: ${pendingContract.updateNote} Ketuk untuk baca & tanda tangani ulang.`
+                  : "Ada perubahan pada kontrakmu. Ketuk untuk baca & tanda tangani ulang."
+                : "Tandatangani kontrakmu. Ketuk untuk membuka."}
             </span>
           </span>
           <span className="text-sm font-bold shrink-0">→</span>
