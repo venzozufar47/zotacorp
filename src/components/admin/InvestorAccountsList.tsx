@@ -13,6 +13,7 @@ import {
   type InvestorSummary,
   type InvestorContract,
 } from "@/lib/actions/investor.actions";
+import { setUserResignStatus } from "@/lib/actions/profile-status.actions";
 
 interface Props {
   investors: InvestorSummary[];
@@ -27,8 +28,29 @@ interface Props {
  * the full profile editor (shared `/admin/users/[id]` route).
  */
 export function InvestorAccountsList({ investors, contracts }: Props) {
+  const router = useRouter();
   const [editing, setEditing] = useState<InvestorSummary | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  // Aktif/nonaktifkan akun investor (audit 2026-07: registrasi publik
+  // membuat akun nonaktif — admin mengaktifkan dari sini). Reuse
+  // setUserResignStatus: resigned=false → aktif, true → nonaktif.
+  async function toggleActive(inv: InvestorSummary) {
+    setTogglingId(inv.userId);
+    const res = await setUserResignStatus(inv.userId, inv.isActive);
+    setTogglingId(null);
+    if (!res.ok) {
+      toast.error(res.error ?? "Gagal mengubah status akun");
+      return;
+    }
+    toast.success(
+      inv.isActive
+        ? "Akun investor dinonaktifkan"
+        : "Akun investor diaktifkan — sekarang bisa login"
+    );
+    router.refresh();
+  }
 
   // Count contracts per investor for the badge.
   const contractCount = new Map<string, number>();
@@ -100,6 +122,11 @@ export function InvestorAccountsList({ investors, contracts }: Props) {
                     <span className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border-2 border-foreground bg-primary/15 text-foreground">
                       Investor
                     </span>
+                    {!inv.isActive && (
+                      <span className="text-[10px] font-display font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border-2 border-foreground bg-warning/40 text-foreground">
+                        Menunggu aktivasi
+                      </span>
+                    )}
                   </div>
                   {inv.email && (
                     <div className="flex items-center gap-1 text-[11px] text-muted-foreground truncate mt-0.5">
@@ -146,6 +173,22 @@ export function InvestorAccountsList({ investors, contracts }: Props) {
                     {nContracts} kontrak aktif
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => toggleActive(inv)}
+                  disabled={togglingId === inv.userId}
+                  className={
+                    "ml-auto shrink-0 inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold disabled:opacity-50 " +
+                    (inv.isActive
+                      ? "border-border text-muted-foreground hover:text-destructive hover:border-destructive/50"
+                      : "border-foreground bg-primary text-primary-foreground")
+                  }
+                >
+                  {togglingId === inv.userId && (
+                    <Loader2 size={11} className="animate-spin" />
+                  )}
+                  {inv.isActive ? "Nonaktifkan" : "Aktifkan"}
+                </button>
               </div>
             </li>
           );

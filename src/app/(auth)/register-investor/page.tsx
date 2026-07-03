@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +26,8 @@ export default function RegisterInvestorPage() {
   const tl = t.registerInvestor;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Audit 2026-07: investor baru menunggu aktivasi admin — tanpa auto sign-in.
+  const [pendingActivation, setPendingActivation] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -58,22 +59,38 @@ export default function RegisterInvestorPage() {
         return;
       }
 
-      const supabase = createClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (signInError) {
-        setError(signInError.message);
-        setLoading(false);
-        return;
-      }
-
-      window.location.href = "/investor";
+      // Akun dibuat NONAKTIF sampai admin mengaktifkan dari /admin/investors
+      // — jangan sign-in; tampilkan notice.
+      setPendingActivation(true);
+      setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : tl.errGeneric);
       setLoading(false);
     }
+  }
+
+  if (pendingActivation) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center space-y-3">
+          <div className="text-4xl">⏳</div>
+          <h2 className="font-display text-xl font-bold">
+            Akun investor berhasil dibuat
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Akunmu menunggu <strong>aktivasi oleh admin</strong> sebelum bisa
+            dipakai login. Hubungi admin Zota Corp untuk mengaktifkan, lalu
+            masuk dari halaman login.
+          </p>
+          <Link
+            href="/"
+            className="inline-block font-display font-bold text-primary hover:underline underline-offset-4 text-sm"
+          >
+            Ke halaman login →
+          </Link>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

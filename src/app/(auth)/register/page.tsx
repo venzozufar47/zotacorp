@@ -29,6 +29,8 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<"employee" | "admin">("employee");
   const [adminTaken, setAdminTaken] = useState(false);
+  // Audit 2026-07: akun baru menunggu aktivasi admin — jangan auto sign-in.
+  const [pendingActivation, setPendingActivation] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/exists")
@@ -65,14 +67,22 @@ export default function RegisterPage() {
         }),
       });
 
+      const resBody = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body.error ?? tr.errFailed);
+        setError(resBody.error ?? tr.errFailed);
         setLoading(false);
         return;
       }
 
-      // Step 2: sign in (user is already confirmed, no email verification needed)
+      // Akun non-bootstrap dibuat NONAKTIF (menunggu aktivasi admin) —
+      // jangan sign-in; tampilkan notice. Middleware toh akan menolak.
+      if (resBody.pendingActivation) {
+        setPendingActivation(true);
+        setLoading(false);
+        return;
+      }
+
+      // Step 2 (bootstrap admin pertama saja): sign in langsung.
       const supabase = createClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
@@ -86,6 +96,30 @@ export default function RegisterPage() {
       setError(err instanceof Error ? err.message : tr.errGeneric);
       setLoading(false);
     }
+  }
+
+  if (pendingActivation) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center space-y-3">
+          <div className="text-4xl">⏳</div>
+          <h2 className="font-display text-xl font-bold">
+            Akun berhasil dibuat
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Akunmu menunggu <strong>aktivasi oleh admin</strong> sebelum bisa
+            dipakai login. Hubungi admin untuk mengaktifkan, lalu masuk dari
+            halaman login.
+          </p>
+          <Link
+            href="/"
+            className="inline-block font-display font-bold text-primary hover:underline underline-offset-4 text-sm"
+          >
+            Ke halaman login →
+          </Link>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

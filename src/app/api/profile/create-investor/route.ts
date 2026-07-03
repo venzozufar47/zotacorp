@@ -19,6 +19,16 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    // Validasi minimal (audit 2026-07): endpoint publik.
+    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Email tidak valid" }, { status: 400 });
+    }
+    if (typeof password !== "string" || password.length < 8) {
+      return NextResponse.json(
+        { error: "Password minimal 8 karakter" },
+        { status: 400 }
+      );
+    }
 
     const adminClient = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,6 +50,9 @@ export async function POST(request: Request) {
 
     const userId = authData.user.id;
 
+    // Audit 2026-07: registrasi publik → investor baru TIDAK aktif sampai
+    // admin mengaktifkan dari /admin/investors. Middleware is_active
+    // memblokir login akun nonaktif.
     const { error } = await adminClient.from("profiles").upsert({
       id: userId,
       email,
@@ -47,7 +60,7 @@ export async function POST(request: Request) {
       department: "",
       position: company ?? "",
       role: "investor",
-      is_active: true,
+      is_active: false,
     });
 
     if (error) {
@@ -56,7 +69,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, userId });
+    return NextResponse.json({ ok: true, userId, pendingActivation: true });
   } catch (err) {
     console.error("[create-investor] route error", err);
     return NextResponse.json(

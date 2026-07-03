@@ -10,6 +10,17 @@ export async function POST(request: Request) {
     if (!email || !password) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    // Validasi minimal (audit 2026-07): endpoint publik, jangan terima
+    // input sembarangan.
+    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Email tidak valid" }, { status: 400 });
+    }
+    if (typeof password !== "string" || password.length < 8) {
+      return NextResponse.json(
+        { error: "Password minimal 8 karakter" },
+        { status: 400 }
+      );
+    }
 
     const adminClient = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,14 +58,20 @@ export async function POST(request: Request) {
 
     const userId = authData.user.id;
 
+    // Audit 2026-07: registrasi publik → akun baru TIDAK aktif sampai
+    // admin mengaktifkan dari tab Pengguna (middleware is_active memblokir
+    // login akun nonaktif). Pengecualian: bootstrap admin PERTAMA (sudah
+    // lolos single-admin check di atas) tetap aktif — tanpa ini tidak ada
+    // siapa pun yang bisa mengaktifkan akun.
+    const isBootstrapAdmin = role === "admin";
     const { error } = await adminClient.from("profiles").upsert({
       id: userId,
       email,
       full_name: full_name ?? "",
       department: "",
       position: "",
-      role: role === "admin" ? "admin" : "employee",
-      is_active: true,
+      role: isBootstrapAdmin ? "admin" : "employee",
+      is_active: isBootstrapAdmin,
     });
 
     if (error) {
@@ -64,7 +81,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, userId });
+    // pendingActivation memberi tahu client agar TIDAK auto sign-in dan
+    // menampilkan notice "menunggu aktivasi admin".
+    return NextResponse.json({
+      ok: true,
+      userId,
+      pendingActivation: !isBootstrapAdmin,
+    });
   } catch (err) {
     console.error("Profile create route error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

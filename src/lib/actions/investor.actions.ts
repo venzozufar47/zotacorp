@@ -35,6 +35,9 @@ export interface InvestorSummary {
   /** Investor belum pernah login = undangan belum diaktivasi (mungkin link
    *  kedaluwarsa / belum dibuka). Dipakai untuk tombol "kirim ulang undangan". */
   pendingInvite: boolean;
+  /** Akun aktif? Registrasi publik membuat akun nonaktif (audit 2026-07)
+   *  sampai admin mengaktifkan dari tab ini. */
+  isActive: boolean;
 }
 
 /**
@@ -52,7 +55,7 @@ export async function listInvestorsForAdmin(): Promise<
   const { data: profiles, error } = await supabase
     .from("profiles")
     .select(
-      "id, email, full_name, created_at, nickname, whatsapp_number, npwp, domisili_kota, domisili_alamat, avatar_url, avatar_seed"
+      "id, email, full_name, created_at, nickname, whatsapp_number, npwp, domisili_kota, domisili_alamat, avatar_url, avatar_seed, is_active"
     )
     .eq("role", "investor")
     .order("created_at", { ascending: false });
@@ -69,6 +72,7 @@ export async function listInvestorsForAdmin(): Promise<
     domisili_alamat: string | null;
     avatar_url: string | null;
     avatar_seed: string | null;
+    is_active: boolean | null;
   };
   const profs = (profiles ?? []) as ProfileRow[];
   const userIds = profs.map((p) => p.id);
@@ -117,6 +121,7 @@ export async function listInvestorsForAdmin(): Promise<
       avatarUrl: p.avatar_url,
       avatarSeed: p.avatar_seed,
       pendingInvite: pendingByUser.get(p.id) ?? false,
+      isActive: p.is_active ?? true,
     })),
   };
 }

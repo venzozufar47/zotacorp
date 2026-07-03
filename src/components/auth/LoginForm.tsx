@@ -43,7 +43,9 @@ export function LoginForm() {
   const notice =
     noticeKey === "account-deactivated"
       ? "Akun kamu sudah dinonaktifkan oleh admin. Hubungi admin kalau ini salah."
-      : null;
+      : noticeKey === "pending-activation"
+        ? "Akun kamu belum diaktifkan oleh admin. Hubungi admin untuk aktivasi, lalu coba login lagi."
+        : null;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
