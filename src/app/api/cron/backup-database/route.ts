@@ -19,14 +19,13 @@ export const maxDuration = 300; // 5 menit — backup besar bisa lama
 import { NextResponse } from "next/server";
 import { dueForCron, runBackupCron } from "@/lib/actions/backup.actions";
 import { gcOrphanStorage } from "@/lib/storage/gc-orphans";
+import { checkCronAuth } from "@/lib/utils/cron-auth";
 
 export async function GET(req: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization") ?? "";
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  // Fail-closed + timing-safe (audit 2026-07) — lihat cron-auth.ts.
+  const denied = checkCronAuth(req);
+  if (denied) {
+    return NextResponse.json({ error: denied.error }, { status: denied.status });
   }
 
   // GC storage yatim — best-effort; jangan blokir/ gagalkan backup.

@@ -25,14 +25,13 @@ export const maxDuration = 60;
 
 import { NextResponse } from "next/server";
 import { runYeoboBoothReminders } from "@/lib/yeobo-booth/reminders";
+import { checkCronAuth } from "@/lib/utils/cron-auth";
 
 export async function GET(req: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization") ?? "";
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  // Fail-closed + timing-safe (audit 2026-07) — lihat cron-auth.ts.
+  const denied = checkCronAuth(req);
+  if (denied) {
+    return NextResponse.json({ error: denied.error }, { status: denied.status });
   }
 
   try {
