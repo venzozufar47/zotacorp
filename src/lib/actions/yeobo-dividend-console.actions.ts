@@ -458,7 +458,9 @@ export async function getDividendConsoleData(input: {
       dueThisMonth: due,
       cumulativePayout: cumulative,
       bepTargetIdr: bepTarget,
-      bepPct: bepTarget > 0 ? Math.min(100, (cumulative / bepTarget) * 100) : 0,
+      // Angka apa adanya (boleh > 100% bila kumulatif melampaui target BEP);
+      // pembatasan lebar bar dilakukan terpisah di komponen BepBar.
+      bepPct: bepTarget > 0 ? (cumulative / bepTarget) * 100 : 0,
       bankName: c.payoutBankName,
       rekeningNumber: c.payoutRekeningNumber,
       permanent: c.durasiBulan == null,
@@ -494,7 +496,7 @@ export async function getDividendConsoleData(input: {
       totalBepTarget,
       totalBepPct:
         totalBepTarget > 0
-          ? Math.min(100, (totalCumulative / totalBepTarget) * 100)
+          ? (totalCumulative / totalBepTarget) * 100
           : 0,
       multiBranch: inv.slices.length > 1,
     };
