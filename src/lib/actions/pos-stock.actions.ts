@@ -330,6 +330,10 @@ async function listActiveSkus(
 export async function listStockOnHand(
   bankAccountId: string
 ): Promise<StockOnHand[]> {
+  // Defense-in-depth (audit 2026-07): RLS sudah membatasi baris, tapi
+  // gate eksplisit menolak caller non-assignee sebelum query berjalan.
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return [];
   const supabase = await createClient();
   const [skuResult, baseline] = await Promise.all([
     listActiveSkus(supabase, bankAccountId),
@@ -361,6 +365,9 @@ export async function listStockMovements(
   bankAccountId: string,
   limit = 100
 ): Promise<StockMovementRow[]> {
+  // Defense-in-depth (audit 2026-07) — lihat listStockOnHand.
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return [];
   const supabase = await createClient();
   const { data } = await supabase
     .from("pos_stock_movements")
@@ -402,6 +409,9 @@ export async function listStockOpnames(
   bankAccountId: string,
   limit = 50
 ): Promise<StockOpnameSummary[]> {
+  // Defense-in-depth (audit 2026-07) — lihat listStockOnHand.
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return [];
   const supabase = await createClient();
   const { data: headers } = await supabase
     .from("pos_stock_opnames")

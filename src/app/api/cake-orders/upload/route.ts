@@ -87,7 +87,17 @@ export async function POST(req: Request) {
       { status: 400 }
     );
 
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
+  // Ekstensi dari MIME yang SUDAH tervalidasi, bukan dari file.name
+  // kiriman user (audit 2026-07: nama file tak dipercaya).
+  const MIME_EXT: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+  };
+  const ext = MIME_EXT[file.type] ?? "bin";
   // Random uuid to prevent collisions when the same user uploads two
   // photos for the same field in quick succession (form is unsubmitted
   // so we don't have an order_id yet — we use 'pending/' as the root

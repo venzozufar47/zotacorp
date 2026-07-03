@@ -1051,6 +1051,11 @@ export async function listRecentPosSales(
    *  diabaikan — semua sale di hari itu dikembalikan. */
   saleDate: string | null = null
 ): Promise<PosSaleSummary[]> {
+  // Defense-in-depth (audit 2026-07): RLS sudah membatasi baris pos_sales,
+  // tapi gate eksplisit menolak caller non-assignee sebelum query — juga
+  // melindungi lookup attachment_path via service-role di bawah.
+  const listGate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!listGate.ok) return [];
   const supabase = await createClient();
   // Dua query terpisah — embed `pos_sale_items(...)` tidak visible di
   // generated types (Relationships kosong di hand-written types.ts).

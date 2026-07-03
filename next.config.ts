@@ -55,6 +55,31 @@ const nextConfig: NextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
+          // Security hardening (audit 2026-07). CSP penuh sengaja TIDAK
+          // dipasang dulu — berisiko merusak inline scripts Next +
+          // LiveKit; ditandai sebagai follow-up (report-only dulu).
+          {
+            // Cegah MIME-sniffing pada respons (upload user dsb).
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            // App tidak pernah di-embed dalam iframe pihak lain —
+            // blokir clickjacking.
+            key: "X-Frame-Options",
+            value: "DENY",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            // Kamera + mikrofon dipakai fitur sendiri (selfie absensi,
+            // voice room) — izinkan self saja; geolocation utk absensi.
+            key: "Permissions-Policy",
+            value:
+              "camera=(self), microphone=(self), geolocation=(self), payment=()",
+          },
         ],
       },
       {

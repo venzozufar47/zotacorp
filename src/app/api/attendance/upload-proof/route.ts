@@ -86,8 +86,15 @@ export async function POST(request: Request) {
       await adminClient.storage.from("late-proofs").remove([log.late_proof_url]);
     }
 
-    // Upload new file
-    const ext = file.name.split(".").pop() ?? "bin";
+    // Upload new file — ekstensi dari MIME yang SUDAH tervalidasi, bukan
+    // dari file.name kiriman user (audit 2026-07: nama file tak dipercaya).
+    const MIME_EXT: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/jpg": "jpg",
+      "image/png": "png",
+      "application/pdf": "pdf",
+    };
+    const ext = MIME_EXT[file.type] ?? "bin";
     const filePath = `${user.id}/${log.date}/proof.${ext}`;
 
     const buffer = Buffer.from(await file.arrayBuffer());
