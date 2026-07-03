@@ -96,15 +96,21 @@ export async function sendWhatsApp(
  * Resolve the list of admin WhatsApp recipients.
  *
  * Primary source: `whatsapp_notification_recipients` (admin-editable via
- * /admin/settings). Falls back to the `ADMIN_WA_NUMBERS` env var when the
- * table is empty so the feature doesn't go dark during a migration or if
- * an admin accidentally deletes every row. Env-var entries are the same
+ * /admin/settings). Reads via the SERVICE-ROLE client: notif bisa terpicu
+ * dari scope request karyawan (mis. alert check-in), sementara RLS tabel
+ * ini kini admin-only (migrasi 100) supaya nomor HP admin tidak terbaca
+ * semua user login. File ini server-only, jadi service-role aman di sini.
+ * Falls back to the `ADMIN_WA_NUMBERS` env var when the table is empty so
+ * the feature doesn't go dark during a migration or if an admin
+ * accidentally deletes every row. Env-var entries are the same
  * comma-joined E.164-without-plus format.
  */
 export async function getAdminWhatsAppRecipients(): Promise<string[]> {
   try {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = await createClient();
+    const { createAdminClient } = await import(
+      "@/lib/actions/_supabase-admin"
+    );
+    const supabase = createAdminClient();
     const { data } = await supabase
       .from("whatsapp_notification_recipients")
       .select("phone_e164");
