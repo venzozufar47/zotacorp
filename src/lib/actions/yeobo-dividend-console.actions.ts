@@ -61,6 +61,9 @@ export interface ConsoleRecipientRow {
   savedAllocation: number | null;
   /** Baris investor_payouts bulan ini (bila sudah tersinkron). */
   payout: { amountIdr: number; paidAt: string | null; ref: string | null } | null;
+  /** Placeholder investor (belum tersambung): nama + token (utk grouping). */
+  placeholderName: string | null;
+  claimToken: string | null;
 }
 
 export interface ConsoleBranch {
@@ -109,6 +112,10 @@ export interface ConsoleUnlinkedRecipient {
   label: string;
   branch: string;
   due: number;
+  /** Identitas placeholder (bila di-set) → dipakai menggabungkan slot 1 orang
+   *  lintas cabang jadi satu baris (seperti investor terdaftar). */
+  placeholderName: string | null;
+  claimToken: string | null;
 }
 
 export interface ConsolePeriodHistoryEntry {
@@ -402,6 +409,8 @@ export async function getDividendConsoleData(input: {
               ref: pRow.ref,
             }
           : null,
+        placeholderName: r.placeholderName,
+        claimToken: r.claimToken,
       };
     });
 
@@ -553,6 +562,8 @@ export async function getDividendConsoleData(input: {
           label: r.label,
           branch: b.branch,
           due: r.savedAllocation ?? 0,
+          placeholderName: r.placeholderName,
+          claimToken: r.claimToken,
         });
 
   // ── History: periode < bulan terpilih, desc, ≤12 ──

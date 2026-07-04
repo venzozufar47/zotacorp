@@ -642,36 +642,17 @@ function InvestorCrossBranchTable({
               />
             );
           })}
-          {data.unlinkedRecipients.map((u) => {
-            const due = amounts[u.recipientId] ?? u.due;
-            return (
-              <tr
-                key={u.recipientId}
-                className="border-t border-border bg-muted/20"
-              >
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">{u.label}</span>
-                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                      <Link2Off size={11} /> belum tersambung
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-2.5 text-[12px] text-muted-foreground">
-                  {u.branch}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
-                  {formatRp(due)}
-                </td>
-                <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
-                  —
-                </td>
-                <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
-                  belum ada BEP
-                </td>
-              </tr>
-            );
-          })}
+          {groupUnlinked(data.unlinkedRecipients).map((g) => (
+            <FragmentUnlinked
+              key={g.key}
+              name={g.name}
+              items={g.items.map((u) => ({
+                recipientId: u.recipientId,
+                branch: u.branch,
+                due: amounts[u.recipientId] ?? u.due,
+              }))}
+            />
+          ))}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-border bg-muted/40 font-semibold">
@@ -786,6 +767,88 @@ function FragmentInvestor({
               ) : (
                 <span className="text-[11px] text-muted-foreground/60">—</span>
               )}
+            </td>
+          </tr>
+        ))}
+    </>
+  );
+}
+
+// Gabungkan slot "belum tersambung" milik 1 orang (placeholder lintas cabang)
+// jadi satu grup. Kunci: claim_token → placeholder_name → recipientId (standalone).
+type UnlinkedItem = DividendConsoleData["unlinkedRecipients"][number];
+function groupUnlinked(
+  list: UnlinkedItem[]
+): Array<{ key: string; name: string; items: UnlinkedItem[] }> {
+  const map = new Map<string, { key: string; name: string; items: UnlinkedItem[] }>();
+  for (const u of list) {
+    const key = u.claimToken
+      ? `t:${u.claimToken}`
+      : u.placeholderName
+        ? `n:${u.placeholderName.toLowerCase()}`
+        : `r:${u.recipientId}`;
+    const g =
+      map.get(key) ?? { key, name: u.placeholderName || u.label, items: [] };
+    g.items.push(u);
+    map.set(key, g);
+  }
+  return [...map.values()];
+}
+
+function FragmentUnlinked({
+  name,
+  items,
+}: {
+  name: string;
+  items: Array<{ recipientId: string; branch: string; due: number }>;
+}) {
+  const multi = items.length > 1;
+  const totalDue = items.reduce((s, x) => s + x.due, 0);
+  return (
+    <>
+      <tr className="border-t border-border bg-muted/20">
+        <td className="px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-foreground">{name}</span>
+            {multi && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                {items.length} cabang
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+              <Link2Off size={11} /> belum tersambung
+            </span>
+          </div>
+        </td>
+        <td className="px-4 py-2.5 text-[12px] text-muted-foreground">
+          {multi ? "—" : items[0]?.branch ?? "—"}
+        </td>
+        <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
+          {formatRp(totalDue)}
+        </td>
+        <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
+          —
+        </td>
+        <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
+          belum ada BEP
+        </td>
+      </tr>
+      {multi &&
+        items.map((it) => (
+          <tr
+            key={it.recipientId}
+            className="border-t border-border/40 text-[12.5px]"
+          >
+            <td className="px-4 py-1.5 pl-8 text-muted-foreground">↳</td>
+            <td className="px-4 py-1.5 text-muted-foreground">{it.branch}</td>
+            <td className="px-4 py-1.5 text-right font-mono tabular-nums">
+              {formatRp(it.due)}
+            </td>
+            <td className="px-4 py-1.5 text-right text-[11px] text-muted-foreground/60">
+              —
+            </td>
+            <td className="px-4 py-1.5 text-right text-[11px] text-muted-foreground/60">
+              belum ada BEP
             </td>
           </tr>
         ))}
