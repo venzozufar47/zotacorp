@@ -179,9 +179,12 @@ export function YeoboDividendStructureManager({
       </div>
 
       <p className="text-[11px] text-muted-foreground leading-snug">
-        Penerima boleh dibuat tanpa akun dulu. Hubungkan ke investor terdaftar +
-        kontrak cabang kapan saja — dividen bulan-bulan sebelumnya otomatis
-        di-backfill ke dashboard investor.
+        Punya slot generik (mis. &quot;Investor 1&quot;) untuk orang tertentu?
+        Ganti namanya jadi nama investor → <strong>Simpan</strong> →{" "}
+        <strong>🔗 Salin link</strong>, lalu kirim link itu ke investor. Begitu
+        mereka daftar lewat link, slot ini otomatis tersambung ke akunnya
+        (dividen bulan-bulan sebelumnya ikut ter-backfill). Atau hubungkan
+        manual ke investor terdaftar kapan saja lewat dropdown.
       </p>
     </div>
   );
@@ -472,7 +475,7 @@ function RecipientRow({
             </>
           ) : (
             <>
-              {r.placeholderName && (
+              {(r.placeholderName || r.claimToken) && (
                 <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
                   placeholder
                 </span>

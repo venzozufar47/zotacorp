@@ -319,7 +319,7 @@ export async function ensurePlaceholderClaimToken(
   const supabase = adminClient() as any;
   const { data: rec } = await supabase
     .from("yeobo_dividend_recipients")
-    .select("id, kind, user_id, claim_token")
+    .select("id, kind, user_id, claim_token, label, placeholder_name")
     .eq("id", recipientId)
     .single();
   if (!rec) return { ok: false, error: "Slot tidak ditemukan" };
@@ -329,9 +329,16 @@ export async function ensurePlaceholderClaimToken(
     return { ok: false, error: "Slot sudah tersambung ke akun" };
   if (rec.claim_token) return { ok: true, data: { claimToken: rec.claim_token } };
   const token = newClaimToken();
+  // Sekalian tandai slot ini sebagai placeholder bernama (pakai label saat ini
+  // bila belum ada placeholder_name) → badge "placeholder" muncul, tak perlu
+  // lewat modal "+ Placeholder investor" yang bisa bikin baris ganda.
   const { error } = await supabase
     .from("yeobo_dividend_recipients")
-    .update({ claim_token: token, updated_at: new Date().toISOString() })
+    .update({
+      claim_token: token,
+      placeholder_name: rec.placeholder_name ?? rec.label,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", recipientId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/investors");
