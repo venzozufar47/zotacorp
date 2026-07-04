@@ -246,6 +246,26 @@ export function isCompanyCentralized(category: string | null): boolean {
 }
 
 /**
+ * Kategori Haengbocake yang SELALU di-split rata 50/50 Semarang:Pare
+ * secara otomatis — tanpa alokasi manual. Bank Administration (biaya
+ * bank bersama) dan Wealth Transfer (perpindahan dana antar rekening
+ * bersama) tidak punya "porsi cabang" yang nyata, jadi selalu dibagi
+ * dua. Transaksi Pusat pada kategori ini tidak muncul di editor alokasi.
+ */
+export const HAENGBOCAKE_AUTO_SPLIT_PUSAT_CATEGORIES = new Set([
+  "Bank Administration",
+  "Wealth Transfer",
+]);
+
+export function isAutoSplitPusatCategory(
+  businessUnit: string,
+  category: string
+): boolean {
+  if (businessUnit !== "Haengbocake") return false;
+  return HAENGBOCAKE_AUTO_SPLIT_PUSAT_CATEGORIES.has(category);
+}
+
+/**
  * Map cash-rekening category labels to the unified PnL vocabulary
  * used by bank rekening. Cash ledger uses register-level labels
  * (Haengbo Cust, Slice Haengbo, Diambil mas Venzo, …) while bank

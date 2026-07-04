@@ -23,6 +23,7 @@ import type { Database } from "@/lib/supabase/types";
 import {
   getCategoryPresets,
   getNonOperatingCategories,
+  isAutoSplitPusatCategory,
   isCompanyCentralized,
   normalizePnLCategory,
 } from "./categories";
@@ -669,6 +670,23 @@ export async function fetchPnL(
         PnLSide,
       ];
       if (branch !== "Pusat") continue;
+      // Kategori auto-split 50/50 (Bank Administration, Wealth Transfer):
+      // tidak ada porsi cabang yang nyata → bagi rata otomatis, tanpa
+      // baris alokasi manual di editor (skip pusatBreakdown). Semarang
+      // dapat pembulatan ke atas, Pare sisanya, supaya jumlah tetap pas.
+      if (isAutoSplitPusatCategory(businessUnit, category)) {
+        const total = Math.round(amount);
+        const half = Math.round(total / 2);
+        const rest = total - half;
+        if (side === "credit") {
+          addToBranch("Semarang", "pusat", category, half, 0);
+          addToBranch("Pare", "pusat", category, rest, 0);
+        } else {
+          addToBranch("Semarang", "pusat", category, 0, half);
+          addToBranch("Pare", "pusat", category, 0, rest);
+        }
+        continue;
+      }
       const allocKey = `${monthKey}|${side}|${category}`;
       const alloc = allocMap.get(allocKey);
       const pusatTotal = Math.round(amount);
