@@ -11,7 +11,11 @@ import {
   Lock,
   Unlock,
 } from "lucide-react";
-import type { PnLReport, PusatBreakdownRow } from "@/lib/cashflow/pnl";
+import type {
+  PnLReport,
+  PusatBreakdownRow,
+  SalesAllocationHint,
+} from "@/lib/cashflow/pnl";
 import { formatDateID } from "@/lib/utils/date-formats";
 import {
   savePusatAllocation,
@@ -65,6 +69,12 @@ interface EditableAlloc extends PusatBreakdownRow {
    * through for every row but only rendered for Sales + credit.
    */
   qrisOperasionalPare: number;
+  /**
+   * Referensi custom cake per-cabang bulan ini (Haengbocake). Angka
+   * bantu untuk memandu split Sales — hanya dirender pada baris Sales
+   * credit. undefined kalau tak ada data.
+   */
+  salesHint?: SalesAllocationHint;
 }
 
 function pctOf(value: number, total: number): string {
@@ -237,6 +247,55 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
     );
   }
 
+  /**
+   * Isi split langsung dengan nilai yang disarankan dari referensi cake
+   * lalu simpan. Dipisah dari `persist` supaya tidak baca draft state
+   * yang mungkin belum ter-update (setState async).
+   */
+  async function applyAlloc(key: string, sem: number, par: number) {
+    const row = rows.find((r) => toKey(r) === key);
+    if (!row || row.locked) return;
+    setRows((prev) =>
+      prev.map((r) =>
+        toKey(r) === key
+          ? {
+              ...r,
+              semarangDraft: String(sem),
+              pareDraft: String(par),
+              semPctDraft: pctOf(sem, r.netForAllocation),
+              parePctDraft: pctOf(par, r.netForAllocation),
+              status: "saving",
+            }
+          : r
+      )
+    );
+    const res = await savePusatAllocation({
+      businessUnit,
+      periodYear: row.year,
+      periodMonth: row.month,
+      side: row.side,
+      category: row.category,
+      semarangAmount: sem,
+      pareAmount: par,
+    });
+    if (!res.ok) {
+      setRows((prev) =>
+        prev.map((r) =>
+          toKey(r) === key
+            ? { ...r, status: "error", errorMsg: res.error }
+            : r
+        )
+      );
+      toast.error(res.error);
+      return;
+    }
+    setRows((prev) =>
+      prev.map((r) => (toKey(r) === key ? { ...r, status: "saved" } : r))
+    );
+    toast.success("Split terisi dari referensi cake — cek lalu lock bila sudah pas.");
+    router.refresh();
+  }
+
   async function persist(key: string) {
     const row = rows.find((r) => toKey(r) === key);
     if (!row) return;
@@ -364,6 +423,7 @@ export function PusatAllocationEditor({ businessUnit, report }: Props) {
                 onChange={updateDraft}
                 onBlurRow={persist}
                 onToggleLock={toggleLock}
+                onApplyHint={applyAlloc}
               />
             ))}
           </tbody>
@@ -397,6 +457,7 @@ function buildRows(report: PnLReport): EditableAlloc[] {
         mode: pctKeys.has(key) ? "pct" : "rp",
         status: "idle",
         qrisOperasionalPare: m.qrisOperasionalPare,
+        salesHint: m.salesHint,
       });
     }
   }
@@ -469,6 +530,7 @@ function CategoryGroup({
   onChange,
   onBlurRow,
   onToggleLock,
+  onApplyHint,
 }: {
   groupKey: string;
   collapsed: boolean;
@@ -477,6 +539,7 @@ function CategoryGroup({
   onChange: (key: string, patch: Partial<EditableAlloc>) => void;
   onBlurRow: (key: string) => void;
   onToggleLock: (row: EditableAlloc) => void;
+  onApplyHint: (key: string, sem: number, par: number) => void;
 }) {
   void groupKey;
   const first = rows[0];
@@ -834,6 +897,86 @@ function CategoryGroup({
               </div>
             </td>
           </tr>
+          {(() => {
+            const hint = r.salesHint;
+            const eligible =
+              hint &&
+              r.category === "Sales" &&
+              r.side === "credit" &&
+              (r.year > 2026 || (r.year === 2026 && r.month >= 6));
+            if (!hint || !eligible) return null;
+            const cakeTotal = hint.cakeSemarang + hint.cakePare;
+            let sugSem = 0;
+            let sugPare = 0;
+            if (cakeTotal > 0 && r.netForAllocation > 0) {
+              sugSem = Math.round(
+                (r.netForAllocation * hint.cakeSemarang) / cakeTotal
+              );
+              sugPare = Math.max(0, r.netForAllocation - sugSem);
+            }
+            const canApply = cakeTotal > 0 && r.netForAllocation > 0 && !r.locked;
+            return (
+              <tr className="bg-sky-500/5">
+                <td colSpan={6} className="px-3 pb-2.5 pt-1">
+                  <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.04] px-3 py-2 text-[11px]">
+                    <div className="flex items-center gap-1.5 mb-1.5 text-sky-700 dark:text-sky-300">
+                      <span className="font-semibold uppercase tracking-wider text-[9px]">
+                        Referensi custom cake (di luar ongkir)
+                      </span>
+                      <span className="text-muted-foreground/70 normal-case tracking-normal">
+                        · dari input penjualan cake, bukan angka final
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono tabular-nums">
+                      <span>
+                        Semarang{" "}
+                        <strong className="text-foreground">
+                          Rp {hint.cakeSemarang.toLocaleString("id-ID")}
+                        </strong>
+                      </span>
+                      <span>
+                        Pare{" "}
+                        <strong className="text-foreground">
+                          Rp {hint.cakePare.toLocaleString("id-ID")}
+                        </strong>
+                      </span>
+                      {cakeTotal > 0 && (
+                        <span className="text-muted-foreground">
+                          rasio {Math.round((hint.cakeSemarang / cakeTotal) * 100)}%
+                          {" : "}
+                          {Math.round((hint.cakePare / cakeTotal) * 100)}%
+                        </span>
+                      )}
+                    </div>
+                    {canApply ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-muted-foreground">
+                          Saran split sisa (Rp{" "}
+                          {r.netForAllocation.toLocaleString("id-ID")}) ikut
+                          rasio cake →{" "}
+                          <span className="font-mono tabular-nums text-foreground">
+                            Smg Rp {sugSem.toLocaleString("id-ID")} · Pare Rp{" "}
+                            {sugPare.toLocaleString("id-ID")}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onApplyHint(key, sugSem, sugPare)}
+                          className="inline-flex items-center rounded-md border border-sky-500/50 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-500/20"
+                        >
+                          Terapkan saran
+                        </button>
+                      </div>
+                    ) : r.locked ? (
+                      <p className="mt-1.5 text-[10px] text-muted-foreground/70">
+                        Baris terkunci — unlock dulu untuk memakai saran.
+                      </p>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            );
+          })()}
           {r.details && r.details.length > 0 && expandedKeys.has(key) ? (
             <tr className="bg-background/40">
               <td colSpan={6} className="px-3 pb-2 pt-0">

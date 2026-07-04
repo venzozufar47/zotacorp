@@ -133,6 +133,20 @@ export interface PusatBreakdownRow {
   details?: PusatTxDetail[];
 }
 
+/**
+ * Referensi penjualan custom cake per-cabang — angka BANTU untuk admin
+ * saat mengalokasikan bucket Sales Pusat secara manual. Diambil dari
+ * `cake_orders` (di luar ongkir, akrual: semua order non-cancelled/
+ * discarded/free berdasarkan tanggal jadwal `scheduled_at` WIB, dikurangi
+ * refund). BUKAN bagian dari angka P&L — tidak mengubah revenue/alokasi
+ * apa pun; murni ditampilkan sebagai saran di editor alokasi.
+ * Haengbocake-only (undefined untuk BU lain).
+ */
+export interface SalesAllocationHint {
+  cakeSemarang: number;
+  cakePare: number;
+}
+
 export interface PnLMonth {
   year: number;
   month: number;
@@ -169,6 +183,13 @@ export interface PnLMonth {
    * that QRIS money was physically rung up at Pare's register).
    */
   qrisOperasionalPare: number;
+  /**
+   * Referensi custom cake per-cabang bulan ini (Haengbocake-only, di
+   * luar ongkir). Angka bantu untuk mengalokasikan Sales Pusat — tidak
+   * mempengaruhi P&L. undefined kalau BU bukan Haengbocake / tidak ada
+   * order.
+   */
+  salesHint?: SalesAllocationHint;
 }
 
 export interface PnLReport {
@@ -199,6 +220,18 @@ function monthsBetween(
 
 function ym(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+/**
+ * "YYYY-MM" month key of a timestamptz in WIB (UTC+7). Custom cake
+ * `scheduled_at` is tz-aware; the report buckets by the WIB calendar
+ * month so an order scheduled 30 Jun 23:00 WIB lands in Jun, not Jul.
+ */
+function wibMonthKey(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const wib = new Date(t + 7 * 60 * 60 * 1000);
+  return `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 /**
@@ -293,6 +326,61 @@ export async function fetchPnL(
       lockedPusatTotal:
         a.locked_pusat_total != null ? Number(a.locked_pusat_total) : null,
     });
+  }
+
+  // Custom-cake per-branch reference (Haengbocake-only) — advisory hint
+  // for the manual Sales allocation, NOT part of any P&L figure. Values
+  // per WIB month, excl ongkir, accrual (all non-cancelled/discarded/free
+  // orders by scheduled_at), net of refund. Paginated because a wide date
+  // range can exceed PostgREST's default row cap.
+  const salesHintByMonth = new Map<string, SalesAllocationHint>();
+  if (businessUnit === "Haengbocake") {
+    type CakeRow = {
+      branch: string | null;
+      scheduled_at: string | null;
+      total_idr: number | null;
+      delivery_fee_idr: number | null;
+      refund_idr: number | null;
+      status: string | null;
+      free_claim: boolean | null;
+    };
+    const startIso = `${periodStart}T00:00:00+07:00`;
+    const endIso = `${periodEndExcl}T00:00:00+07:00`;
+    const CAKE_PAGE = 1000;
+    for (let offset = 0; ; offset += CAKE_PAGE) {
+      const { data: page, error } = await supabase
+        .from("cake_orders")
+        .select(
+          "branch, scheduled_at, total_idr, delivery_fee_idr, refund_idr, status, free_claim"
+        )
+        .gte("scheduled_at", startIso)
+        .lt("scheduled_at", endIso)
+        .range(offset, offset + CAKE_PAGE - 1);
+      if (error) break; // advisory only — never fail the report over the hint
+      // `free_claim` (migration 094) belum ada di generated types — cast
+      // lewat unknown supaya select tetap type-check tanpa regen types.
+      const rows = (page ?? []) as unknown as CakeRow[];
+      for (const c of rows) {
+        if (!c.scheduled_at) continue;
+        if (c.status === "cancelled" || c.status === "discarded") continue;
+        if (c.free_claim) continue;
+        const mk = wibMonthKey(c.scheduled_at);
+        if (!mk) continue;
+        const val =
+          (Number(c.total_idr) || 0) -
+          (Number(c.delivery_fee_idr) || 0) -
+          (Number(c.refund_idr) || 0);
+        let hint = salesHintByMonth.get(mk);
+        if (!hint) {
+          hint = { cakeSemarang: 0, cakePare: 0 };
+          salesHintByMonth.set(mk, hint);
+        }
+        const br = (c.branch ?? "").trim().toLowerCase();
+        if (br === "pare") hint.cakePare += val;
+        else if (br === "semarang") hint.cakeSemarang += val;
+      }
+      if (rows.length < CAKE_PAGE) break;
+    }
   }
 
   // Aggregate tx totals, partitioned by monthKey. This way the
@@ -809,6 +897,14 @@ export async function fetchPnL(
       qrisOperasionalPare: Math.round(qrisParePerMonth.get(monthKey) ?? 0),
       companyNetDividen: Math.round(companyDebit - companyCredit),
       companyNetDividenByCategory,
+      salesHint: (() => {
+        const h = salesHintByMonth.get(monthKey);
+        if (!h) return undefined;
+        return {
+          cakeSemarang: Math.round(h.cakeSemarang),
+          cakePare: Math.round(h.cakePare),
+        };
+      })(),
     };
   });
 
