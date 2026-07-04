@@ -251,6 +251,8 @@ function sampleValuesFor(
       };
     case "streak_milestone":
       return { name: "Arifin", days: 10 };
+    case "payslip_paid_notification":
+      return { name: "Arifin", month: "Juni 2026", amount: "Rp 3.053.161" };
     case "attendance_check_in_alert":
       return {
         fullName: "Muhammad Abdul Arifin",

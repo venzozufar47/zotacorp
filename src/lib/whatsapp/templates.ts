@@ -20,6 +20,7 @@ export type TemplateKey =
   | "celebration_greeting_notification"
   | "celebration_birthday_broadcast"
   | "streak_milestone"
+  | "payslip_paid_notification"
   | "attendance_check_in_alert"
   | "attendance_check_out_alert"
   | "yeobo_booth_reminder_h7"
@@ -120,6 +121,19 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "🎉 Selamat {name}! Kamu udah {days} hari on-time berturut-turut. Mantap, lanjutkan!",
+  },
+  payslip_paid_notification: {
+    label: "Notifikasi gaji sudah dibayar",
+    description:
+      "Dikirim ke karyawan saat admin menandai slip gajinya sudah dibayar di tab Pembayaran (satuan maupun massal). Berisi konfirmasi transfer + ucapan terima kasih.",
+    recipient: "Karyawan yang gajinya baru ditandai lunas",
+    placeholders: [
+      { key: "name", description: "Nama karyawan (nickname kalau ada)" },
+      { key: "month", description: "Periode gaji (mis. \"Juni 2026\")" },
+      { key: "amount", description: "Nominal gaji bersih ter-format (mis. Rp 3.053.161)" },
+    ],
+    defaultBody:
+      "Halo {name} 🙏\n\nGaji kamu untuk periode {month} sebesar {amount} sudah kami transfer. Terima kasih banyak atas kerja keras & dedikasimu bulan ini — kontribusimu sangat berarti buat kami. Tetap sehat & semangat ya! 💙\n\n— Tim Zota",
   },
   attendance_check_in_alert: {
     label: "Alert check-in ke admin",

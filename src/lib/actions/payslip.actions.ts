@@ -16,6 +16,9 @@ import { parseBreakWindows, effectiveStandardHours } from "@/lib/utils/break-win
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 import { sendPushToUser } from "@/lib/push/web-push";
+import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
+import { renderWaTemplate } from "@/lib/whatsapp/templates";
+import { formatRp } from "@/lib/cashflow/format";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,6 +52,46 @@ async function notifyPayslipFinalized(
     });
   } catch (err) {
     console.error("[payslip] push notify failed:", err);
+  }
+}
+
+/**
+ * Kirim WA "gaji sudah dibayar" + ucapan terima kasih ke karyawan.
+ * Best-effort: kegagalan (nomor kosong, Fonnte down, dsb) di-swallow
+ * supaya menandai lunas tidak pernah gagal karena WA. Return true bila
+ * WA benar-benar terkirim (untuk toast di UI). Teks memakai template
+ * editable `payslip_paid_notification`.
+ */
+async function notifyPayslipPaid(payslipId: string): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data: ps } = await supabase
+      .from("payslips")
+      .select("user_id, month, year, net_total")
+      .eq("id", payslipId)
+      .maybeSingle();
+    if (!ps) return false;
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("nickname, full_name, whatsapp_number")
+      .eq("id", ps.user_id)
+      .maybeSingle();
+    const wa = prof?.whatsapp_number?.trim();
+    if (!wa) return false;
+    const name =
+      prof?.nickname?.trim() ||
+      prof?.full_name?.trim().split(/\s+/)[0] ||
+      "Kak";
+    const monthName = ID_MONTHS[ps.month - 1] ?? String(ps.month);
+    const message = await renderWaTemplate("payslip_paid_notification", {
+      name,
+      month: `${monthName} ${ps.year}`,
+      amount: formatRp(Number(ps.net_total ?? 0)),
+    });
+    return await sendWhatsApp(wa, message);
+  } catch (err) {
+    console.error("[payslip] WA paid notify failed:", err);
+    return false;
   }
 }
 
@@ -1973,8 +2016,9 @@ export async function submitPayslipResponse(
 export async function markPayslipPaid(
   payslipId: string,
   paid: boolean,
-  note?: string
-): Promise<{ ok: true } | { error: string }> {
+  note?: string,
+  opts?: { notifyWa?: boolean }
+): Promise<{ ok: true; waSent?: boolean } | { error: string }> {
   const role = await getCurrentRole();
   if (role !== "admin") return { error: "Forbidden" };
   const supabase = await createClient();
@@ -1987,14 +2031,18 @@ export async function markPayslipPaid(
     })
     .eq("id", payslipId);
   if (error) return { error: error.message };
+  // Kirim WA hanya saat menandai LUNAS (bukan saat membatalkan) & diminta.
+  let waSent = false;
+  if (paid && opts?.notifyWa) waSent = await notifyPayslipPaid(payslipId);
   revalidatePath("/admin/payslips/variables");
   revalidatePath("/payslips");
-  return { ok: true };
+  return { ok: true, waSent };
 }
 
 export async function bulkMarkPayslipsPaid(
-  payslipIds: string[]
-): Promise<{ paidCount: number; error?: string }> {
+  payslipIds: string[],
+  opts?: { notifyWa?: boolean }
+): Promise<{ paidCount: number; waSent?: number; error?: string }> {
   const role = await getCurrentRole();
   if (role !== "admin") return { paidCount: 0, error: "Forbidden" };
   if (payslipIds.length === 0) return { paidCount: 0 };
@@ -2006,9 +2054,15 @@ export async function bulkMarkPayslipsPaid(
     .eq("payment_status", "unpaid")
     .select("id");
   if (error) return { paidCount: 0, error: error.message };
+  const newlyPaid = (data ?? []).map((r) => r.id);
+  let waSent = 0;
+  if (opts?.notifyWa && newlyPaid.length > 0) {
+    const results = await Promise.all(newlyPaid.map((id) => notifyPayslipPaid(id)));
+    waSent = results.filter(Boolean).length;
+  }
   revalidatePath("/admin/payslips/variables");
   revalidatePath("/payslips");
-  return { paidCount: (data ?? []).length };
+  return { paidCount: newlyPaid.length, waSent };
 }
 
 export async function setPayslipPaymentNote(

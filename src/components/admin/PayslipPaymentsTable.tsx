@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -105,17 +106,19 @@ export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
     if (unpaidIds.length === 0) return;
     if (
       !confirm(
-        `Tandai ${unpaidIds.length} payslip sebagai sudah ditransfer? Aksi ini tidak otomatis kirim uang — admin tetap perlu transfer manual via bank.`
+        `Tandai ${unpaidIds.length} payslip sebagai sudah dibayar DAN kirim ${unpaidIds.length} notifikasi WhatsApp ucapan terima kasih ke karyawan?\n\nAksi ini tidak otomatis kirim uang — admin tetap perlu transfer manual via bank.`
       )
     )
       return;
     startTransition(async () => {
-      const res = await bulkMarkPayslipsPaid(unpaidIds);
+      const res = await bulkMarkPayslipsPaid(unpaidIds, { notifyWa: true });
       if (res.error) {
         toast.error(res.error);
         return;
       }
-      toast.success(`${res.paidCount} payslip ditandai sudah dibayar`);
+      toast.success(
+        `${res.paidCount} payslip ditandai dibayar · ${res.waSent ?? 0} WA terkirim`
+      );
       router.refresh();
     });
   }
@@ -241,7 +244,11 @@ export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
                       <td colSpan={3} />
                     </tr>
                     {g.rows.map((r) => (
-                      <PaymentRowItem key={r.payslipId} row={r} />
+                      <PaymentRowItem
+                        key={r.payslipId}
+                        row={r}
+                        monthLabel={monthLabel}
+                      />
                     ))}
                   </React.Fragment>
                 );
@@ -254,7 +261,13 @@ export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
   );
 }
 
-function PaymentRowItem({ row: r }: { row: PaymentRow }) {
+function PaymentRowItem({
+  row: r,
+  monthLabel,
+}: {
+  row: PaymentRow;
+  monthLabel: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState(
@@ -262,18 +275,50 @@ function PaymentRowItem({ row: r }: { row: PaymentRow }) {
   );
   const [noteDraft, setNoteDraft] = useState(r.paymentNote ?? "");
   const noteDirty = noteDraft !== (r.paymentNote ?? "");
+  // Modal konfirmasi saat menandai LUNAS (belum → sudah). Uncheck memakai
+  // confirm() ringkas tanpa opsi WA.
+  const [confirmPay, setConfirmPay] = useState(false);
+  const [notifyWa, setNotifyWa] = useState(true);
 
   const isPaid = r.paymentStatus === "paid";
   const hasIssue = r.employeeResponse === "issue";
 
-  function togglePaid() {
+  // Checkbox: arah belum→sudah buka modal; arah sudah→belum konfirmasi ringkas.
+  function onToggleCheckbox() {
+    if (!isPaid) {
+      setNotifyWa(true);
+      setConfirmPay(true);
+      return;
+    }
+    if (!confirm(`Batalkan status "sudah dibayar" untuk ${r.fullName}?`)) return;
     startTransition(async () => {
-      const res = await markPayslipPaid(r.payslipId, !isPaid);
+      const res = await markPayslipPaid(r.payslipId, false);
       if ("error" in res) {
         toast.error(res.error);
         return;
       }
-      toast.success(isPaid ? "Tandai belum dibayar" : "Tandai sudah dibayar");
+      toast.success("Status dikembalikan ke belum dibayar");
+      router.refresh();
+    });
+  }
+
+  function confirmMarkPaid() {
+    setConfirmPay(false);
+    startTransition(async () => {
+      const res = await markPayslipPaid(r.payslipId, true, undefined, {
+        notifyWa,
+      });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        notifyWa
+          ? res.waSent
+            ? "Ditandai lunas · WA terkirim ✅"
+            : "Ditandai lunas · WA gagal/tidak ada nomor"
+          : "Ditandai lunas"
+      );
       router.refresh();
     });
   }
@@ -324,7 +369,7 @@ function PaymentRowItem({ row: r }: { row: PaymentRow }) {
             <input
               type="checkbox"
               checked={isPaid}
-              onChange={togglePaid}
+              onChange={onToggleCheckbox}
               disabled={pending}
               className="size-4 accent-primary cursor-pointer"
             />
@@ -390,6 +435,64 @@ function PaymentRowItem({ row: r }: { row: PaymentRow }) {
           </td>
         </tr>
       )}
+      {confirmPay &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setConfirmPay(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 space-y-4 shadow-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div>
+                <h3 className="font-display font-bold text-base">
+                  Tandai gaji sudah dibayar?
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <strong className="text-foreground">{r.fullName}</strong> ·{" "}
+                  {monthLabel}
+                </p>
+                <p className="text-lg font-bold tabular-nums mt-1">
+                  {formatRp(r.netTotal)}
+                </p>
+              </div>
+              <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-border bg-muted/20 p-2.5">
+                <input
+                  type="checkbox"
+                  checked={notifyWa}
+                  onChange={(e) => setNotifyWa(e.target.checked)}
+                  className="mt-0.5 size-4 accent-primary"
+                />
+                <span className="text-xs leading-relaxed">
+                  Kirim notifikasi WhatsApp ucapan terima kasih ke karyawan.
+                  <span className="block text-muted-foreground mt-0.5">
+                    Teks bisa diedit di Settings → WhatsApp.
+                  </span>
+                </span>
+              </label>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmPay(false)}
+                  className="h-9 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmMarkPaid}
+                  disabled={pending}
+                  className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
+                >
+                  Ya, tandai lunas
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 }
