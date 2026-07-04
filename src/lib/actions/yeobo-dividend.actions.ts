@@ -405,28 +405,69 @@ export async function assignSlotToPlaceholder(input: {
   const supabase = adminClient() as any;
   const { data: rec } = await supabase
     .from("yeobo_dividend_recipients")
-    .select("id, kind, user_id, branch")
+    .select("id, kind, user_id, branch, invest_idr, pool_pct")
     .eq("id", input.recipientId)
     .single();
   if (!rec) return { ok: false, error: "Slot tidak ditemukan" };
   if (rec.kind !== "investor" || rec.user_id)
     return { ok: false, error: "Slot tidak bisa dijadikan placeholder" };
-  const { data: existing } = await supabase
+
+  // Placeholder itu mungkin SUDAH punya slot (redundan) di cabang ini — mis.
+  // dibuat via modal padahal sudah ada slot generik. Lipat masuk: hapus slot
+  // redundan yang belum punya riwayat alokasi; kalau ada riwayat, tolak (biar
+  // admin rapikan manual supaya histori tidak hilang).
+  const { data: dupes } = await supabase
     .from("yeobo_dividend_recipients")
     .select("id")
     .eq("claim_token", input.claimToken)
     .eq("branch", rec.branch)
-    .limit(1);
-  if (existing && existing.length > 0)
-    return { ok: false, error: "Placeholder itu sudah punya slot di cabang ini" };
+    .neq("id", input.recipientId);
+  for (const d of (dupes ?? []) as Array<{ id: string }>) {
+    const { count } = await supabase
+      .from("yeobo_dividend_allocations")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", d.id);
+    if ((count ?? 0) > 0)
+      return {
+        ok: false,
+        error:
+          "Placeholder itu sudah punya slot ber-riwayat di cabang ini — rapikan manual dulu.",
+      };
+  }
+  if (dupes && dupes.length > 0)
+    await supabase
+      .from("yeobo_dividend_recipients")
+      .delete()
+      .in(
+        "id",
+        dupes.map((d: { id: string }) => d.id)
+      );
+
+  // Pastikan invest_idr terisi (dipakai saat klaim membuat kontrak). Slot pola
+  // % (invest_idr null) → turunkan dari pool_pct × total investasi cabang.
+  let investIdr: number | null =
+    rec.invest_idr == null ? null : Number(rec.invest_idr);
+  if (investIdr == null && rec.pool_pct != null) {
+    const { data: cfg } = await supabase
+      .from("yeobo_dividend_branch_config")
+      .select("total_investment_idr")
+      .eq("branch", rec.branch)
+      .maybeSingle();
+    const total = cfg?.total_investment_idr;
+    if (total)
+      investIdr = Math.round((Number(rec.pool_pct) / 100) * Number(total));
+  }
+
+  const upd: Record<string, unknown> = {
+    claim_token: input.claimToken,
+    placeholder_name: input.name,
+    label: input.name,
+    updated_at: new Date().toISOString(),
+  };
+  if (investIdr != null) upd.invest_idr = investIdr;
   const { error } = await supabase
     .from("yeobo_dividend_recipients")
-    .update({
-      claim_token: input.claimToken,
-      placeholder_name: input.name,
-      label: input.name,
-      updated_at: new Date().toISOString(),
-    })
+    .update(upd)
     .eq("id", input.recipientId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/investors");

@@ -444,14 +444,12 @@ function RecipientRow({
     [investors, contracts, branch]
   );
 
-  // Placeholder lain (grup) yang belum punya slot di cabang ini → boleh
-  // "adopsi" slot generik ini. Kecualikan grup slot ini sendiri.
+  // Placeholder lain (grup) yang bisa "mengadopsi" slot generik ini. Kecualikan
+  // grup slot ini sendiri. Placeholder yang sudah punya slot redundan di cabang
+  // ini TETAP ditawarkan — server melipatnya (hapus slot kosong redundan).
   const placeholderOptions = useMemo(
-    () =>
-      placeholderGroups.filter(
-        (g) => !g.branches.has(branch) && g.claimToken !== r.claimToken
-      ),
-    [placeholderGroups, branch, r.claimToken]
+    () => placeholderGroups.filter((g) => g.claimToken !== r.claimToken),
+    [placeholderGroups, r.claimToken]
   );
 
   const linkedName =
