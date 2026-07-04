@@ -345,6 +345,95 @@ export async function ensurePlaceholderClaimToken(
   return { ok: true, data: { claimToken: token } };
 }
 
+/**
+ * Edit detail satu placeholder (lintas cabang) sekaligus: nama, kontak, dan
+ * nominal investasi per slot. Diidentifikasi via `claimToken` — hanya slot
+ * yang belum tersambung (user_id NULL) yang disentuh.
+ */
+export async function updatePlaceholderGroup(input: {
+  claimToken: string;
+  name: string;
+  contact?: string | null;
+  amounts: Array<{ recipientId: string; investIdr: number }>;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const name = input.name.trim();
+  if (!input.claimToken) return { ok: false, error: "Token placeholder wajib" };
+  if (!name) return { ok: false, error: "Nama wajib" };
+  const supabase = adminClient() as any;
+  // Nama + kontak berlaku ke semua slot grup.
+  const { error: e1 } = await supabase
+    .from("yeobo_dividend_recipients")
+    .update({
+      label: name,
+      placeholder_name: name,
+      placeholder_contact: input.contact?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("claim_token", input.claimToken)
+    .is("user_id", null);
+  if (e1) return { ok: false, error: e1.message };
+  // Nominal per slot.
+  for (const a of input.amounts) {
+    if (!(Number(a.investIdr) > 0)) continue;
+    await supabase
+      .from("yeobo_dividend_recipients")
+      .update({ invest_idr: Number(a.investIdr), updated_at: new Date().toISOString() })
+      .eq("id", a.recipientId)
+      .eq("claim_token", input.claimToken)
+      .is("user_id", null);
+  }
+  revalidatePath("/admin/investors");
+  revalidatePath("/admin/finance/pnl");
+  return { ok: true };
+}
+
+/**
+ * Jadikan slot generik yang belum tersambung sebagai bagian dari placeholder
+ * yang sudah ada (adopsi nama + claim_token yang sama) — dipakai dropdown.
+ * Ditolak bila placeholder itu sudah punya slot di cabang yang sama (cegah
+ * duplikat / oversubscribe).
+ */
+export async function assignSlotToPlaceholder(input: {
+  recipientId: string;
+  claimToken: string;
+  name: string;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient() as any;
+  const { data: rec } = await supabase
+    .from("yeobo_dividend_recipients")
+    .select("id, kind, user_id, branch")
+    .eq("id", input.recipientId)
+    .single();
+  if (!rec) return { ok: false, error: "Slot tidak ditemukan" };
+  if (rec.kind !== "investor" || rec.user_id)
+    return { ok: false, error: "Slot tidak bisa dijadikan placeholder" };
+  const { data: existing } = await supabase
+    .from("yeobo_dividend_recipients")
+    .select("id")
+    .eq("claim_token", input.claimToken)
+    .eq("branch", rec.branch)
+    .limit(1);
+  if (existing && existing.length > 0)
+    return { ok: false, error: "Placeholder itu sudah punya slot di cabang ini" };
+  const { error } = await supabase
+    .from("yeobo_dividend_recipients")
+    .update({
+      claim_token: input.claimToken,
+      placeholder_name: input.name,
+      label: input.name,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.recipientId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/investors");
+  revalidatePath("/admin/finance/pnl");
+  return { ok: true };
+}
+
 // Alokasi/transfer dividen ke investor + Kas kini dikelola di konsol
 // /admin/finance/dividen (lihat yeobo-dividend-console.actions.ts). Popover
 // per-cabang lama (loadMonthContext / getDividendAllocationForMonth /

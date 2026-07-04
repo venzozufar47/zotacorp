@@ -14,6 +14,8 @@ import {
   linkDividendRecipient,
   createPlaceholderInvestor,
   ensurePlaceholderClaimToken,
+  updatePlaceholderGroup,
+  assignSlotToPlaceholder,
 } from "@/lib/actions/yeobo-dividend.actions";
 import type {
   InvestorSummary,
@@ -37,6 +39,40 @@ export function YeoboDividendStructureManager({
   const [branch, setBranch] = useState<string>("Tlogosari");
   const [busy, setBusy] = useState(false);
   const [placeholderOpen, setPlaceholderOpen] = useState(false);
+  const [editToken, setEditToken] = useState<string | null>(null);
+
+  // Grup placeholder (lintas cabang) — 1 orang = 1 claim_token. Dipakai untuk
+  // dropdown "hubungkan ke placeholder" + modal edit.
+  const placeholderGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { claimToken: string; name: string; branches: Set<string> }
+    >();
+    for (const list of Object.values(recipientsByBranch)) {
+      for (const r of list) {
+        if (r.kind === "investor" && !r.userId && r.claimToken) {
+          const g =
+            map.get(r.claimToken) ?? {
+              claimToken: r.claimToken,
+              name: r.placeholderName || r.label,
+              branches: new Set<string>(),
+            };
+          g.branches.add(r.branch);
+          map.set(r.claimToken, g);
+        }
+      }
+    }
+    return [...map.values()];
+  }, [recipientsByBranch]);
+
+  // Slot-slot milik placeholder yang sedang diedit (lintas cabang).
+  const editSlots = useMemo(() => {
+    if (!editToken) return [];
+    const out: DividendRecipient[] = [];
+    for (const list of Object.values(recipientsByBranch))
+      for (const r of list) if (r.claimToken === editToken) out.push(r);
+    return out;
+  }, [editToken, recipientsByBranch]);
 
   const recipients = recipientsByBranch[branch] ?? [];
   const config = configByBranch[branch];
@@ -110,6 +146,15 @@ export function YeoboDividendStructureManager({
         />
       )}
 
+      {editToken && editSlots.length > 0 && (
+        <EditPlaceholderModal
+          claimToken={editToken}
+          slots={editSlots}
+          onClose={() => setEditToken(null)}
+          onDone={() => router.refresh()}
+        />
+      )}
+
       <ConfigCard
         key={branch}
         branch={branch}
@@ -153,6 +198,13 @@ export function YeoboDividendStructureManager({
               contracts={contracts}
               branch={branch}
               totalInvestment={config?.totalInvestmentIdr ?? null}
+              placeholderGroups={placeholderGroups}
+              onEditPlaceholder={setEditToken}
+              onAssignPlaceholder={(claimToken, name) =>
+                run(() =>
+                  assignSlotToPlaceholder({ recipientId: r.id, claimToken, name })
+                )
+              }
               onSave={(input) => run(() => upsertDividendRecipient(input))}
               onDelete={() =>
                 run(() => deleteDividendRecipient(r.id))
@@ -297,6 +349,9 @@ function RecipientRow({
   contracts,
   branch,
   totalInvestment,
+  placeholderGroups,
+  onEditPlaceholder,
+  onAssignPlaceholder,
   onSave,
   onDelete,
   onLink,
@@ -307,6 +362,13 @@ function RecipientRow({
   contracts: InvestorContract[];
   branch: string;
   totalInvestment: number | null;
+  placeholderGroups: Array<{
+    claimToken: string;
+    name: string;
+    branches: Set<string>;
+  }>;
+  onEditPlaceholder: (claimToken: string) => void;
+  onAssignPlaceholder: (claimToken: string, name: string) => Promise<boolean>;
   onSave: (input: {
     id: string;
     branch: string;
@@ -380,6 +442,16 @@ function RecipientRow({
         }))
         .filter((x) => !!x.contract),
     [investors, contracts, branch]
+  );
+
+  // Placeholder lain (grup) yang belum punya slot di cabang ini → boleh
+  // "adopsi" slot generik ini. Kecualikan grup slot ini sendiri.
+  const placeholderOptions = useMemo(
+    () =>
+      placeholderGroups.filter(
+        (g) => !g.branches.has(branch) && g.claimToken !== r.claimToken
+      ),
+    [placeholderGroups, branch, r.claimToken]
   );
 
   const linkedName =
@@ -480,6 +552,17 @@ function RecipientRow({
                   placeholder
                 </span>
               )}
+              {r.claimToken && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onEditPlaceholder(r.claimToken!)}
+                  className="rounded-md border border-input px-1.5 py-1 text-[10px] font-semibold hover:bg-muted"
+                  title="Edit detail placeholder (nama, kontak, nominal semua cabang)"
+                >
+                  ✏️ Edit
+                </button>
+              )}
               <button
                 type="button"
                 disabled={busy || copying}
@@ -493,19 +576,40 @@ function RecipientRow({
                 disabled={busy}
                 defaultValue=""
                 onChange={(e) => {
-                  const picked = linkable.find(
-                    (x) => x.contract!.id === e.target.value
-                  );
-                  if (picked) onLink(picked.inv.userId, picked.contract!.id);
+                  const v = e.target.value;
+                  if (v.startsWith("c:")) {
+                    const picked = linkable.find(
+                      (x) => x.contract!.id === v.slice(2)
+                    );
+                    if (picked) onLink(picked.inv.userId, picked.contract!.id);
+                  } else if (v.startsWith("p:")) {
+                    const g = placeholderOptions.find(
+                      (x) => x.claimToken === v.slice(2)
+                    );
+                    if (g) onAssignPlaceholder(g.claimToken, g.name);
+                  }
                 }}
                 className="rounded-md border border-input bg-background px-2 py-1 text-[11px]"
               >
                 <option value="">— hubungkan ke investor —</option>
-                {linkable.map((x) => (
-                  <option key={x.contract!.id} value={x.contract!.id}>
-                    {x.inv.fullName || x.inv.email || x.inv.userId.slice(0, 8)}
-                  </option>
-                ))}
+                {linkable.length > 0 && (
+                  <optgroup label="Investor terdaftar">
+                    {linkable.map((x) => (
+                      <option key={x.contract!.id} value={`c:${x.contract!.id}`}>
+                        {x.inv.fullName || x.inv.email || x.inv.userId.slice(0, 8)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {placeholderOptions.length > 0 && (
+                  <optgroup label="Placeholder (belum daftar)">
+                    {placeholderOptions.map((g) => (
+                      <option key={g.claimToken} value={`p:${g.claimToken}`}>
+                        {g.name} — jadikan bagian dari placeholder ini
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </>
           )}
@@ -795,6 +899,125 @@ function PlaceholderModal({
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function EditPlaceholderModal({
+  claimToken,
+  slots,
+  onClose,
+  onDone,
+}: {
+  claimToken: string;
+  slots: DividendRecipient[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const first = slots[0];
+  const [name, setName] = useState(first?.placeholderName || first?.label || "");
+  const [contact, setContact] = useState(first?.placeholderContact ?? "");
+  const [amounts, setAmounts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      slots.map((s) => [s.id, s.investIdr != null ? String(s.investIdr) : ""])
+    )
+  );
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) return void toast.error("Nama wajib");
+    setBusy(true);
+    const res = await updatePlaceholderGroup({
+      claimToken,
+      name: name.trim(),
+      contact: contact.trim() || null,
+      amounts: slots.map((s) => ({
+        recipientId: s.id,
+        investIdr: Number(amounts[s.id] || 0),
+      })),
+    });
+    setBusy(false);
+    if (!res.ok) return void toast.error(res.error);
+    toast.success("Placeholder diperbarui");
+    onDone();
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-5 space-y-4 shadow-lg max-h-[90vh] overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="font-display font-bold text-base">Edit placeholder</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Ubah nama, kontak, dan nominal investasi per cabang. Link
+            pendaftaran tetap sama.
+          </p>
+        </div>
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            Nama investor
+          </span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            Kontak (opsional)
+          </span>
+          <input
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+          />
+        </label>
+        <div className="space-y-2">
+          <span className="text-xs font-medium text-muted-foreground">
+            Nominal investasi per cabang
+          </span>
+          {slots.map((s) => (
+            <div key={s.id} className="flex items-center gap-2">
+              <span className="w-24 text-sm text-muted-foreground">
+                {s.branch}
+              </span>
+              <input
+                type="number"
+                value={amounts[s.id] ?? ""}
+                onChange={(e) =>
+                  setAmounts((a) => ({ ...a, [s.id]: e.target.value }))
+                }
+                placeholder="Modal (Rp)"
+                className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm text-right"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={busy}
+            className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
+          >
+            {busy ? "Menyimpan…" : "Simpan"}
+          </button>
+        </div>
       </div>
     </div>
   );
