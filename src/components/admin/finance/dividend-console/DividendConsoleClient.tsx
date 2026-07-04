@@ -566,9 +566,11 @@ function InvestorCrossBranchTable({
     },
     { due: 0, cum: 0 }
   );
-  // Slot investor yang belum tersambung kontrak ikut masuk grand total due.
-  for (const u of data.unlinkedRecipients)
+  // Slot investor yang belum tersambung kontrak ikut masuk grand total.
+  for (const u of data.unlinkedRecipients) {
     grand.due += amounts[u.recipientId] ?? u.due;
+    grand.cum += u.cumulative;
+  }
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -650,6 +652,7 @@ function InvestorCrossBranchTable({
                 recipientId: u.recipientId,
                 branch: u.branch,
                 due: amounts[u.recipientId] ?? u.due,
+                cumulative: u.cumulative,
               }))}
             />
           ))}
@@ -800,10 +803,16 @@ function FragmentUnlinked({
   items,
 }: {
   name: string;
-  items: Array<{ recipientId: string; branch: string; due: number }>;
+  items: Array<{
+    recipientId: string;
+    branch: string;
+    due: number;
+    cumulative: number;
+  }>;
 }) {
   const multi = items.length > 1;
   const totalDue = items.reduce((s, x) => s + x.due, 0);
+  const totalCum = items.reduce((s, x) => s + x.cumulative, 0);
   return (
     <>
       <tr className="border-t border-border bg-muted/20">
@@ -826,8 +835,8 @@ function FragmentUnlinked({
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
           {formatRp(totalDue)}
         </td>
-        <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
-          —
+        <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
+          {totalCum > 0 ? formatRp(totalCum) : "—"}
         </td>
         <td className="px-4 py-2.5 text-right text-[11px] text-muted-foreground/60">
           belum ada BEP
@@ -844,8 +853,8 @@ function FragmentUnlinked({
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
               {formatRp(it.due)}
             </td>
-            <td className="px-4 py-1.5 text-right text-[11px] text-muted-foreground/60">
-              —
+            <td className="px-4 py-1.5 text-right font-mono tabular-nums">
+              {it.cumulative > 0 ? formatRp(it.cumulative) : "—"}
             </td>
             <td className="px-4 py-1.5 text-right text-[11px] text-muted-foreground/60">
               belum ada BEP

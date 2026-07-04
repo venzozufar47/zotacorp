@@ -112,6 +112,8 @@ export interface ConsoleUnlinkedRecipient {
   label: string;
   branch: string;
   due: number;
+  /** Akumulasi alokasi dividen slot ini s/d bulan terpilih (histori). */
+  cumulative: number;
   /** Identitas placeholder (bila di-set) → dipakai menggabungkan slot 1 orang
    *  lintas cabang jadi satu baris (seperti investor terdaftar). */
   placeholderName: string | null;
@@ -219,6 +221,8 @@ export async function getDividendConsoleData(input: {
   // transferred per (branch, rank) = Σ allocation (pool) cabang itu.
   const transferredByBranchRank = new Map<string, number>();
   const savedAllocMap = new Map<string, number>(); // recipientId → amount (bulan terpilih)
+  // recipientId → Σ alokasi s/d bulan terpilih (histori kumulatif per slot).
+  const cumAllocByRecipient = new Map<string, number>();
   for (const a of allAllocs) {
     const branch = recipientBranch.get(a.recipient_id);
     if (!branch) continue;
@@ -230,6 +234,11 @@ export async function getDividendConsoleData(input: {
     );
     if (a.period_year === year && a.period_month === month)
       savedAllocMap.set(a.recipient_id, amt);
+    if (r <= selRank)
+      cumAllocByRecipient.set(
+        a.recipient_id,
+        (cumAllocByRecipient.get(a.recipient_id) ?? 0) + amt
+      );
   }
 
   const opProfitOf = (branch: string, y: number, m: number): number => {
@@ -562,6 +571,7 @@ export async function getDividendConsoleData(input: {
           label: r.label,
           branch: b.branch,
           due: r.savedAllocation ?? 0,
+          cumulative: cumAllocByRecipient.get(r.recipientId) ?? 0,
           placeholderName: r.placeholderName,
           claimToken: r.claimToken,
         });
