@@ -145,6 +145,13 @@ export interface PusatBreakdownRow {
 export interface SalesAllocationHint {
   cakeSemarang: number;
   cakePare: number;
+  /**
+   * POS Pare bulan ini = cash + QRIS pada rekening Cash Haengbocake
+   * Pare (dari ledger). Ditampilkan sebagai info — porsi ini sudah
+   * otomatis masuk Pare (cash langsung + auto-deduct QRIS), jadi bukan
+   * bagian dari sisa yang perlu di-split manual.
+   */
+  posPare: number;
 }
 
 export interface PnLMonth {
@@ -333,7 +340,10 @@ export async function fetchPnL(
   // per WIB month, excl ongkir, accrual (all non-cancelled/discarded/free
   // orders by scheduled_at), net of refund. Paginated because a wide date
   // range can exceed PostgREST's default row cap.
-  const salesHintByMonth = new Map<string, SalesAllocationHint>();
+  const salesHintByMonth = new Map<
+    string,
+    { cakeSemarang: number; cakePare: number }
+  >();
   if (businessUnit === "Haengbocake") {
     type CakeRow = {
       branch: string | null;
@@ -406,6 +416,11 @@ export async function fetchPnL(
   // monthKey. See PnLMonth.qrisOperasionalPare for why this is
   // aggregated separately from the branch buckets.
   const qrisParePerMonth = new Map<string, number>();
+  // POS cash sales on the Pare cash ledger, keyed by monthKey. Combined
+  // with `qrisParePerMonth` this gives "POS Pare (cash + QRIS)" — an
+  // advisory number shown in the Sales allocation hint. Not part of any
+  // P&L figure.
+  const posCashParePerMonth = new Map<string, number>();
   // Company-wide Investment/Dividend totals (owner-POV), keyed by
   // monthKey → { "Investment"|"Dividend" → { credit, debit } }. These
   // categories are NEVER routed to branch/pusat buckets; branch tag on
@@ -450,6 +465,16 @@ export async function fetchPnL(
       qrisParePerMonth.set(
         monthKey,
         (qrisParePerMonth.get(monthKey) ?? 0) + creditNum
+      );
+    }
+    if (
+      accountName === "Cash Haengbocake Pare" &&
+      rawCategory === "Sales" &&
+      creditNum > 0
+    ) {
+      posCashParePerMonth.set(
+        monthKey,
+        (posCashParePerMonth.get(monthKey) ?? 0) + creditNum
       );
     }
     const branchRaw = (t.branch ?? "").trim();
@@ -898,12 +923,18 @@ export async function fetchPnL(
       companyNetDividen: Math.round(companyDebit - companyCredit),
       companyNetDividenByCategory,
       salesHint: (() => {
+        if (businessUnit !== "Haengbocake") return undefined;
         const h = salesHintByMonth.get(monthKey);
-        if (!h) return undefined;
-        return {
-          cakeSemarang: Math.round(h.cakeSemarang),
-          cakePare: Math.round(h.cakePare),
-        };
+        const cakeSemarang = Math.round(h?.cakeSemarang ?? 0);
+        const cakePare = Math.round(h?.cakePare ?? 0);
+        const posPare = Math.round(
+          (posCashParePerMonth.get(monthKey) ?? 0) +
+            (qrisParePerMonth.get(monthKey) ?? 0)
+        );
+        if (cakeSemarang === 0 && cakePare === 0 && posPare === 0) {
+          return undefined;
+        }
+        return { cakeSemarang, cakePare, posPare };
       })(),
     };
   });

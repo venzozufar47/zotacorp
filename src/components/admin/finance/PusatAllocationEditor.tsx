@@ -921,33 +921,47 @@ function CategoryGroup({
                   <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.04] px-3 py-2 text-[11px]">
                     <div className="flex items-center gap-1.5 mb-1.5 text-sky-700 dark:text-sky-300">
                       <span className="font-semibold uppercase tracking-wider text-[9px]">
-                        Referensi custom cake (di luar ongkir)
+                        Referensi penjualan bulan ini
                       </span>
                       <span className="text-muted-foreground/70 normal-case tracking-normal">
-                        · dari input penjualan cake, bukan angka final
+                        · angka bantu, bukan angka final
                       </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono tabular-nums">
-                      <span>
-                        Semarang{" "}
-                        <strong className="text-foreground">
-                          Rp {hint.cakeSemarang.toLocaleString("id-ID")}
-                        </strong>
-                      </span>
-                      <span>
-                        Pare{" "}
-                        <strong className="text-foreground">
-                          Rp {hint.cakePare.toLocaleString("id-ID")}
-                        </strong>
-                      </span>
-                      {cakeTotal > 0 && (
+                    <ul className="space-y-0.5">
+                      <li className="flex items-baseline justify-between gap-3">
                         <span className="text-muted-foreground">
-                          rasio {Math.round((hint.cakeSemarang / cakeTotal) * 100)}%
-                          {" : "}
-                          {Math.round((hint.cakePare / cakeTotal) * 100)}%
+                          Custom Cake Semarang{" "}
+                          <span className="text-[9px] text-muted-foreground/60">
+                            (di luar ongkir)
+                          </span>
                         </span>
-                      )}
-                    </div>
+                        <span className="font-mono tabular-nums font-semibold text-foreground">
+                          Rp {hint.cakeSemarang.toLocaleString("id-ID")}
+                        </span>
+                      </li>
+                      <li className="flex items-baseline justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          Custom Cake Pare{" "}
+                          <span className="text-[9px] text-muted-foreground/60">
+                            (di luar ongkir)
+                          </span>
+                        </span>
+                        <span className="font-mono tabular-nums font-semibold text-foreground">
+                          Rp {hint.cakePare.toLocaleString("id-ID")}
+                        </span>
+                      </li>
+                      <li className="flex items-baseline justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          POS Pare (Cash + QRIS){" "}
+                          <span className="text-[9px] text-muted-foreground/60">
+                            (sudah otomatis ke Pare)
+                          </span>
+                        </span>
+                        <span className="font-mono tabular-nums font-semibold text-foreground">
+                          Rp {hint.posPare.toLocaleString("id-ID")}
+                        </span>
+                      </li>
+                    </ul>
                     {canApply ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className="text-muted-foreground">
