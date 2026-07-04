@@ -127,11 +127,25 @@ export interface ConsolePeriodHistory {
   total: number;
 }
 
+/** Agregat manajemen lintas cabang (bukan investor; tanpa BEP). */
+export interface ConsoleManagementSlice {
+  branch: string;
+  recipientId: string | null;
+  due: number;
+  cumulative: number;
+}
+export interface ConsoleManagement {
+  slices: ConsoleManagementSlice[];
+  totalDue: number;
+  totalCumulative: number;
+}
+
 export interface DividendConsoleData {
   year: number;
   month: number;
   branches: ConsoleBranch[];
   investors: ConsoleInvestor[];
+  management: ConsoleManagement;
   unlinkedRecipients: ConsoleUnlinkedRecipient[];
   history: ConsolePeriodHistory[];
 }
@@ -503,6 +517,32 @@ export async function getDividendConsoleData(input: {
   });
   investors.sort((a, b) => a.name.localeCompare(b.name));
 
+  // ── Manajemen (lintas cabang) ──
+  // Due bulan ini = alokasi tersimpan slot management (recorded, sama seperti
+  // investor). Kumulatif = porsi pool dividen milik manajemen = total pool −
+  // porsi investor yang sudah recouped (branchRecoupThrough) — basis pool yang
+  // SAMA dengan angka investor, jadi konsisten. Manajemen tidak punya BEP.
+  const mgmtSlices: ConsoleManagementSlice[] = PHYSICAL_BRANCHES.map(
+    (branch, i) => {
+      const mgmtRecs = recipientLists[i].filter((r) => r.kind === "management");
+      const due = mgmtRecs.reduce(
+        (s, r) => s + (savedAllocMap.get(r.id) ?? 0),
+        0
+      );
+      const cumulative = Math.max(
+        0,
+        Math.round(cumulativeDividendPool(report, branch, year, month)) -
+          branchRecoupThrough(branch)
+      );
+      return { branch, recipientId: mgmtRecs[0]?.id ?? null, due, cumulative };
+    }
+  );
+  const management: ConsoleManagement = {
+    slices: mgmtSlices,
+    totalDue: mgmtSlices.reduce((s, x) => s + x.due, 0),
+    totalCumulative: mgmtSlices.reduce((s, x) => s + x.cumulative, 0),
+  };
+
   // Recipient investor TANPA kontrak → belum tersambung.
   const unlinkedRecipients: ConsoleUnlinkedRecipient[] = [];
   for (const b of branches)
@@ -548,7 +588,15 @@ export async function getDividendConsoleData(input: {
 
   return {
     ok: true,
-    data: { year, month, branches, investors, unlinkedRecipients, history },
+    data: {
+      year,
+      month,
+      branches,
+      investors,
+      management,
+      unlinkedRecipients,
+      history,
+    },
   };
 }
 

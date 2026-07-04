@@ -591,6 +591,30 @@ function InvestorCrossBranchTable({
           </tr>
         </thead>
         <tbody>
+          {data.management && (data.management.totalCumulative > 0 ||
+            data.management.totalDue > 0) && (
+            <FragmentInvestor
+              name="Manajemen"
+              multiBranch
+              liveDue={data.management.slices.reduce(
+                (s, sl) => s + liveSliceDue(sl.recipientId, sl.due),
+                0
+              )}
+              totalCumulative={data.management.totalCumulative}
+              totalBepTarget={0}
+              totalBepPct={0}
+              slices={data.management.slices.map((sl) => ({
+                branch: sl.branch,
+                bankName: null,
+                rekeningNumber: null,
+                permanent: false,
+                due: liveSliceDue(sl.recipientId, sl.due),
+                cumulativePayout: sl.cumulative,
+                bepTargetIdr: 0,
+                bepPct: 0,
+              }))}
+            />
+          )}
           {data.investors.map((inv) => {
             const liveDue = inv.slices.reduce(
               (s, sl) => s + liveSliceDue(sl.recipientId, sl.dueThisMonth),
