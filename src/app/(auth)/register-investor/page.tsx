@@ -39,6 +39,12 @@ export default function RegisterInvestorPage() {
     const password = formData.get("password") as string;
     const fullName = formData.get("full_name") as string;
     const company = formData.get("company") as string;
+    // Claim token dari link pendaftaran placeholder (?claim=...) — dibaca
+    // dari URL, diteruskan ke API untuk auto-connect slot dividen.
+    const claim =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("claim")
+        : null;
 
     try {
       const res = await fetch("/api/profile/create-investor", {
@@ -49,6 +55,7 @@ export default function RegisterInvestorPage() {
           password,
           full_name: fullName,
           company,
+          claim,
         }),
       });
 

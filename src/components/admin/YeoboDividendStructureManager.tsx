@@ -12,6 +12,8 @@ import {
   deleteDividendRecipient,
   upsertDividendBranchConfig,
   linkDividendRecipient,
+  createPlaceholderInvestor,
+  ensurePlaceholderClaimToken,
 } from "@/lib/actions/yeobo-dividend.actions";
 import type {
   InvestorSummary,
@@ -34,6 +36,7 @@ export function YeoboDividendStructureManager({
   const router = useRouter();
   const [branch, setBranch] = useState<string>("Tlogosari");
   const [busy, setBusy] = useState(false);
+  const [placeholderOpen, setPlaceholderOpen] = useState(false);
 
   const recipients = recipientsByBranch[branch] ?? [];
   const config = configByBranch[branch];
@@ -71,24 +74,41 @@ export function YeoboDividendStructureManager({
 
   return (
     <div className="space-y-5">
-      {/* Branch selector */}
-      <div className="inline-flex items-center gap-1 rounded-lg border border-input bg-background p-0.5">
-        {BRANCHES.map((b) => (
-          <button
-            key={b}
-            type="button"
-            onClick={() => setBranch(b)}
-            className={
-              "h-8 px-3 rounded-md text-xs font-semibold transition " +
-              (branch === b
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted")
-            }
-          >
-            {b}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* Branch selector */}
+        <div className="inline-flex items-center gap-1 rounded-lg border border-input bg-background p-0.5">
+          {BRANCHES.map((b) => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => setBranch(b)}
+              className={
+                "h-8 px-3 rounded-md text-xs font-semibold transition " +
+                (branch === b
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted")
+              }
+            >
+              {b}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPlaceholderOpen(true)}
+          className="h-8 rounded-md border border-primary bg-primary/5 px-3 text-xs font-semibold text-primary hover:bg-primary/10"
+        >
+          + Placeholder investor
+        </button>
       </div>
+
+      {placeholderOpen && (
+        <PlaceholderModal
+          defaultBranch={branch}
+          onClose={() => setPlaceholderOpen(false)}
+          onDone={() => router.refresh()}
+        />
+      )}
 
       <ConfigCard
         key={branch}
@@ -297,7 +317,33 @@ function RecipientRow({
   onLink: (userId: string | null, contractId: string | null) => Promise<boolean>;
 }) {
   const r = recipient;
+  const router = useRouter();
   const [label, setLabel] = useState(r.label);
+  const [copying, setCopying] = useState(false);
+
+  // Salin claim link pendaftaran untuk slot placeholder (belum tersambung).
+  async function copyClaimLink() {
+    setCopying(true);
+    let token = r.claimToken;
+    if (!token) {
+      const res = await ensurePlaceholderClaimToken(r.id);
+      if (!res.ok || !res.data) {
+        setCopying(false);
+        toast.error(res.ok ? "Gagal membuat link" : res.error);
+        return;
+      }
+      token = res.data.claimToken;
+    }
+    const link = `${window.location.origin}/register-investor?claim=${token}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Link pendaftaran tersalin — kirim ke investor");
+    } catch {
+      toast.message(link);
+    }
+    setCopying(false);
+    router.refresh();
+  }
   const [pct, setPct] = useState<string>(r.poolPct != null ? String(r.poolPct) : "");
   const [invest, setInvest] = useState<string>(
     r.investIdr != null ? String(r.investIdr) : ""
@@ -425,25 +471,40 @@ function RecipientRow({
               </button>
             </>
           ) : (
-            <select
-              disabled={busy}
-              defaultValue=""
-              onChange={(e) => {
-                const picked = linkable.find(
-                  (x) => x.contract!.id === e.target.value
-                );
-                if (picked)
-                  onLink(picked.inv.userId, picked.contract!.id);
-              }}
-              className="rounded-md border border-input bg-background px-2 py-1 text-[11px]"
-            >
-              <option value="">— hubungkan ke investor —</option>
-              {linkable.map((x) => (
-                <option key={x.contract!.id} value={x.contract!.id}>
-                  {x.inv.fullName || x.inv.email || x.inv.userId.slice(0, 8)}
-                </option>
-              ))}
-            </select>
+            <>
+              {r.placeholderName && (
+                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                  placeholder
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={busy || copying}
+                onClick={copyClaimLink}
+                className="rounded-md border border-primary/50 bg-primary/5 px-1.5 py-1 text-[10px] font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                title="Salin link pendaftaran untuk investor (auto-connect saat daftar)"
+              >
+                {copying ? "…" : "🔗 Salin link"}
+              </button>
+              <select
+                disabled={busy}
+                defaultValue=""
+                onChange={(e) => {
+                  const picked = linkable.find(
+                    (x) => x.contract!.id === e.target.value
+                  );
+                  if (picked) onLink(picked.inv.userId, picked.contract!.id);
+                }}
+                className="rounded-md border border-input bg-background px-2 py-1 text-[11px]"
+              >
+                <option value="">— hubungkan ke investor —</option>
+                {linkable.map((x) => (
+                  <option key={x.contract!.id} value={x.contract!.id}>
+                    {x.inv.fullName || x.inv.email || x.inv.userId.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
         </span>
       )}
@@ -531,6 +592,207 @@ function AddRecipient({
       >
         + Tambah
       </button>
+    </div>
+  );
+}
+
+function PlaceholderModal({
+  defaultBranch,
+  onClose,
+  onDone,
+}: {
+  defaultBranch: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [contact, setContact] = useState("");
+  const [rows, setRows] = useState<Array<{ branch: string; invest: string }>>([
+    { branch: defaultBranch, invest: "" },
+  ]);
+  const [busy, setBusy] = useState(false);
+  const [claimLink, setClaimLink] = useState<string | null>(null);
+
+  async function submit() {
+    const branches = rows
+      .filter((r) => r.branch && Number(r.invest) > 0)
+      .map((r) => ({ branch: r.branch, investIdr: Number(r.invest) }));
+    if (!name.trim()) return void toast.error("Nama wajib");
+    if (branches.length === 0)
+      return void toast.error("Isi minimal 1 cabang dengan nominal > 0");
+    setBusy(true);
+    const res = await createPlaceholderInvestor({
+      name: name.trim(),
+      contact: contact.trim() || null,
+      branches,
+    });
+    setBusy(false);
+    if (!res.ok || !res.data)
+      return void toast.error(res.ok ? "Gagal membuat placeholder" : res.error);
+    setClaimLink(
+      `${window.location.origin}/register-investor?claim=${res.data.claimToken}`
+    );
+    onDone();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-5 space-y-4 shadow-lg max-h-[90vh] overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="font-display font-bold text-base">
+            Placeholder investor
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Isi slot investor yang belum punya akun. Bagikan link pendaftaran ke
+            investor — begitu mereka daftar lewat link itu, slot ini otomatis
+            tersambung ke akunnya (tanpa perlu tahu email).
+          </p>
+        </div>
+
+        {claimLink ? (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-emerald-800">
+                ✅ Placeholder dibuat. Kirim link ini ke investor:
+              </p>
+              <p className="break-all text-[11px] font-mono text-emerald-900">
+                {claimLink}
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(claimLink);
+                    toast.success("Link tersalin");
+                  } catch {
+                    toast.message(claimLink);
+                  }
+                }}
+                className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
+              >
+                Salin link
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-9 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted"
+              >
+                Selesai
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                Nama investor
+              </span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nama lengkap calon investor"
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                Kontak (opsional — WA/email, catatan)
+              </span>
+              <input
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                placeholder="mis. 0812… / email"
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+              />
+            </label>
+            <div className="space-y-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Investasi per cabang
+              </span>
+              {rows.map((row, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={row.branch}
+                    onChange={(e) =>
+                      setRows((rs) =>
+                        rs.map((x, j) =>
+                          j === i ? { ...x, branch: e.target.value } : x
+                        )
+                      )
+                    }
+                    className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  >
+                    {BRANCHES.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={row.invest}
+                    onChange={(e) =>
+                      setRows((rs) =>
+                        rs.map((x, j) =>
+                          j === i ? { ...x, invest: e.target.value } : x
+                        )
+                      )
+                    }
+                    placeholder="Modal (Rp)"
+                    className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm text-right"
+                  />
+                  {rows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRows((rs) => rs.filter((_, j) => j !== i))
+                      }
+                      className="text-muted-foreground hover:text-destructive px-1"
+                      aria-label="Hapus cabang"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  setRows((rs) => [...rs, { branch: defaultBranch, invest: "" }])
+                }
+                className="text-[11px] font-semibold text-primary hover:underline"
+              >
+                + Tambah cabang
+              </button>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-9 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={busy}
+                className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
+              >
+                {busy ? "Membuat…" : "Buat + dapatkan link"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

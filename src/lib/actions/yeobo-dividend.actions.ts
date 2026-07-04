@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
@@ -17,6 +18,10 @@ export interface DividendRecipient {
   contractId: string | null;
   active: boolean;
   notes: string | null;
+  /** Placeholder investor (belum punya akun): nama asli + kontak + token klaim. */
+  placeholderName: string | null;
+  placeholderContact: string | null;
+  claimToken: string | null;
 }
 
 export interface DividendBranchConfig {
@@ -42,6 +47,9 @@ function mapRecipient(r: any): DividendRecipient {
     contractId: r.contract_id,
     active: r.active,
     notes: r.notes,
+    placeholderName: r.placeholder_name ?? null,
+    placeholderContact: r.placeholder_contact ?? null,
+    claimToken: r.claim_token ?? null,
   };
 }
 
@@ -242,6 +250,92 @@ export async function linkDividendRecipient(input: {
   revalidatePath("/investor", "layout");
   revalidatePath("/admin/finance/pnl");
   return { ok: true };
+}
+
+// ── Placeholder investor + claim link ─────────────────────────────────
+
+/** Token klaim acak, aman untuk dipakai di URL. */
+function newClaimToken(): string {
+  return randomBytes(18).toString("base64url");
+}
+
+/**
+ * Buat PLACEHOLDER investor: 1 slot penerima per cabang, semuanya berbagi
+ * satu `claim_token`. Admin membagikan link `/register-investor?claim=<token>`
+ * ke calon investor; saat mereka daftar lewat link itu, semua slot ini
+ * otomatis tersambung ke akun barunya (lihat claimPlaceholderInvestor).
+ */
+export async function createPlaceholderInvestor(input: {
+  name: string;
+  contact?: string | null;
+  branches: Array<{ branch: string; investIdr: number; poolPct?: number | null }>;
+}): Promise<ActionResult<{ claimToken: string; count: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Nama placeholder wajib" };
+  const rows = (input.branches ?? []).filter(
+    (b) => b.branch && Number(b.investIdr) > 0
+  );
+  if (rows.length === 0)
+    return { ok: false, error: "Minimal 1 cabang dengan nominal investasi > 0" };
+
+  const token = newClaimToken();
+  const supabase = adminClient() as any;
+  for (const b of rows) {
+    const { count } = await supabase
+      .from("yeobo_dividend_recipients")
+      .select("id", { count: "exact", head: true })
+      .eq("branch", b.branch);
+    const { error } = await supabase.from("yeobo_dividend_recipients").insert({
+      branch: b.branch,
+      label: name,
+      kind: "investor",
+      sort_order: count ?? 0,
+      pool_pct: b.poolPct ?? null,
+      invest_idr: Number(b.investIdr),
+      placeholder_name: name,
+      placeholder_contact: input.contact?.trim() || null,
+      claim_token: token,
+      created_by: gate.userId,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/admin/investors");
+  revalidatePath("/admin/finance/pnl");
+  return { ok: true, data: { claimToken: token, count: rows.length } };
+}
+
+/**
+ * Pastikan sebuah slot investor yang belum tersambung punya `claim_token`
+ * (buat kalau belum ada) sehingga admin bisa menyalin link pendaftaran.
+ * Untuk slot lama yang dibuat lewat "Tambah penerima" biasa.
+ */
+export async function ensurePlaceholderClaimToken(
+  recipientId: string
+): Promise<ActionResult<{ claimToken: string }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient() as any;
+  const { data: rec } = await supabase
+    .from("yeobo_dividend_recipients")
+    .select("id, kind, user_id, claim_token")
+    .eq("id", recipientId)
+    .single();
+  if (!rec) return { ok: false, error: "Slot tidak ditemukan" };
+  if (rec.kind !== "investor")
+    return { ok: false, error: "Hanya slot investor yang punya link" };
+  if (rec.user_id)
+    return { ok: false, error: "Slot sudah tersambung ke akun" };
+  if (rec.claim_token) return { ok: true, data: { claimToken: rec.claim_token } };
+  const token = newClaimToken();
+  const { error } = await supabase
+    .from("yeobo_dividend_recipients")
+    .update({ claim_token: token, updated_at: new Date().toISOString() })
+    .eq("id", recipientId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/investors");
+  return { ok: true, data: { claimToken: token } };
 }
 
 // Alokasi/transfer dividen ke investor + Kas kini dikelola di konsol

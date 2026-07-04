@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { claimPlaceholderInvestor } from "@/lib/investor/claim-placeholder";
 
 /**
  * Self-serve registrasi investor. Buat auth user + profile dengan
@@ -11,7 +12,7 @@ import type { Database } from "@/lib/supabase/types";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, full_name, company } = body;
+    const { email, password, full_name, company, claim } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -69,7 +70,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, userId, pendingActivation: true });
+    // Auto-connect placeholder investor bila daftar lewat claim link.
+    // Best-effort: gagal link tidak menggagalkan registrasi.
+    let linkedSlots = 0;
+    try {
+      linkedSlots = await claimPlaceholderInvestor(userId, claim);
+    } catch (e) {
+      console.error("[create-investor] placeholder claim failed", e);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      userId,
+      pendingActivation: true,
+      linkedSlots,
+    });
   } catch (err) {
     console.error("[create-investor] route error", err);
     return NextResponse.json(
