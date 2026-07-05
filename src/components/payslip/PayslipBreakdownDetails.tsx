@@ -58,7 +58,9 @@ export function PayslipBreakdownDetails({
   const hShort = t.units.hourShort;
   const mShort = t.units.minuteShort;
 
-  const hasOvertime = breakdown.overtime_days.length > 0;
+  const extraDayOt = breakdown.extra_day_overtime;
+  const hasOvertime =
+    breakdown.overtime_days.length > 0 || (extraDayOt?.pay ?? 0) > 0;
   const hasLate = breakdown.late_days.length > 0;
 
   const totalOtMin = breakdown.overtime_days.reduce((a, r) => a + r.minutes, 0);
@@ -94,6 +96,14 @@ export function PayslipBreakdownDetails({
                   </span>
                 </Fragment2>
               ))}
+              {extraDayOt && extraDayOt.pay > 0 && (
+                <Fragment2>
+                  <span>Lembur hari ekstra ({extraDayOt.days} hari)</span>
+                  <span className="text-right tabular-nums text-quaternary font-bold">
+                    + {formatIDR(extraDayOt.pay)}
+                  </span>
+                </Fragment2>
+              )}
               <span className="pt-1 border-t border-border text-muted-foreground font-medium">
                 {bt.totals} ({breakdown.overtime_days.length} hari)
               </span>
@@ -117,6 +127,15 @@ export function PayslipBreakdownDetails({
                   </span>
                 </Fragment3>
               ))}
+              {extraDayOt && extraDayOt.pay > 0 && (
+                <Fragment3>
+                  <span>Lembur hari ekstra ({extraDayOt.days} hari)</span>
+                  <span className="text-right tabular-nums text-muted-foreground">—</span>
+                  <span className="text-right tabular-nums text-quaternary font-bold">
+                    + {formatIDR(extraDayOt.pay)}
+                  </span>
+                </Fragment3>
+              )}
               <span className="pt-1 border-t border-border text-muted-foreground font-medium">
                 {bt.totals}
               </span>
