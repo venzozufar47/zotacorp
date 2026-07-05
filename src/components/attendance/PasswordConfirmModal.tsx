@@ -10,7 +10,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { LockKeyhole } from "lucide-react";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -105,9 +105,8 @@ export function PasswordConfirmModal({
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-1.5">
             <Label htmlFor="confirm-password">{t.passwordConfirm.passwordLabel}</Label>
-            <Input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               placeholder={t.passwordConfirm.passwordPlaceholder}
               value={password}
               onChange={(e) => setPassword(e.target.value)}

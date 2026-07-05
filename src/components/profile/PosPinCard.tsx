@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, ShieldCheck, ShieldOff } from "lucide-react";
+import { Eye, EyeOff, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
 import { setPosPin, clearPosPin } from "@/lib/actions/pos-pin.actions";
 import { isValidPinFormat } from "@/lib/pos-pin-format";
 import { cn } from "@/lib/utils";
@@ -270,21 +270,34 @@ function PinField({
   onChange: (v: string) => void;
   autoFocus?: boolean;
 }) {
+  const [show, setShow] = useState(false);
   return (
     <label className="block">
       <span className="text-[12px] font-medium text-muted-foreground">
         {label}
       </span>
-      <input
-        type="password"
-        inputMode="numeric"
-        autoComplete="off"
-        autoFocus={autoFocus}
-        maxLength={6}
-        value={value}
-        onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
-        className="mt-1 w-full h-10 rounded-lg border border-border/70 bg-card px-3 text-[15px] tracking-[0.5em] tabular-nums"
-      />
+      <div className="relative mt-1">
+        <input
+          type={show ? "text" : "password"}
+          inputMode="numeric"
+          autoComplete="off"
+          autoFocus={autoFocus}
+          maxLength={6}
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
+          className="w-full h-10 rounded-lg border border-border/70 bg-card px-3 pr-10 text-[15px] tracking-[0.5em] tabular-nums"
+        />
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={show ? "Sembunyikan PIN" : "Lihat PIN"}
+          title={show ? "Sembunyikan PIN" : "Lihat PIN"}
+          tabIndex={-1}
+        >
+          {show ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      </div>
     </label>
   );
 }
