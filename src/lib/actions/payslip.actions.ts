@@ -350,6 +350,10 @@ function calculateFromAttendance(
   const completedLogs = logs.filter((l) => l.checked_out_at);
   const expected = settings.expected_work_days;
   const baseSalary = Number(settings.monthly_fixed_amount);
+  // Basis "daily": `monthly_fixed_amount` di-interpretasi sebagai TARIF PER HARI.
+  // Gaji = tarif × hari hadir (tanpa prorata target). Turunan "gaji harian"
+  // untuk rumus overtime memakai tarif ini langsung (bukan base/expected).
+  const isDaily = settings.calculation_basis === "daily";
 
   // Bonus-day hourly mode (opt-in per employee): "bonus" days are paid by
   // actual hours worked (computed below) and EXCLUDED from the full-day
@@ -370,8 +374,9 @@ function calculateFromAttendance(
   // Mode "none": attendance tidak mempengaruhi prorate — full base salary
   // selama karyawan ada di sistem (dipakai untuk freelancer / role yang
   // tidak terikat presence).
-  const proratedSalary =
-    settings.expected_days_mode === "none"
+  const proratedSalary = isDaily
+    ? Math.round(baseSalary * actualWorkDays)
+    : settings.expected_days_mode === "none"
       ? baseSalary
       : expected > 0
         ? Math.round((actualWorkDays / expected) * baseSalary)
@@ -391,8 +396,11 @@ function calculateFromAttendance(
     //   1st hour OT = 1.5 × hourly
     //   next hours  = 2 × hourly
     const stdHours = Number(settings.standard_working_hours ?? 8);
-    const hourlyRate =
-      expected > 0 && stdHours > 0
+    const hourlyRate = isDaily
+      ? stdHours > 0
+        ? baseSalary / stdHours
+        : 0
+      : expected > 0 && stdHours > 0
         ? baseSalary / (expected * stdHours)
         : 0;
     const firstHourRate = hourlyRate * 1.5;
@@ -417,9 +425,12 @@ function calculateFromAttendance(
     // expected = 0 (mode "none"/"fixed" / belum di-set), fallback ke 0
     // — admin perlu set expected_work_days untuk basis kalkulasi ini.
     const expectedDays = expected > 0 ? expected : 0;
-    const dailyHalfPay = expectedDays > 0
-      ? Math.round((baseSalary / expectedDays) * 0.5)
-      : 0;
+    // Basis daily: gaji harian = tarif harian (baseSalary) langsung.
+    const dailyHalfPay = isDaily
+      ? Math.round(baseSalary * 0.5)
+      : expectedDays > 0
+        ? Math.round((baseSalary / expectedDays) * 0.5)
+        : 0;
     for (const log of regularLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
@@ -456,8 +467,13 @@ function calculateFromAttendance(
   const bonusDays: NonNullable<PayslipBreakdown["bonus_days"]> = [];
   if (bonusHourly) {
     const stdHours = Number(settings.standard_working_hours ?? 8);
-    const hourlyRate =
-      expected > 0 && stdHours > 0 ? baseSalary / (expected * stdHours) : 0;
+    const hourlyRate = isDaily
+      ? stdHours > 0
+        ? baseSalary / stdHours
+        : 0
+      : expected > 0 && stdHours > 0
+        ? baseSalary / (expected * stdHours)
+        : 0;
     for (const log of bonusLogs) {
       if (!log.checked_in_at || !log.checked_out_at) continue;
       const grossHours =
@@ -649,7 +665,7 @@ function computeDeliverablesAchievement(
  * applying weights when calculation_basis === 'both'.
  */
 function computeNetTotal(
-  basis: "presence" | "deliverables" | "both" | "fixed",
+  basis: "presence" | "deliverables" | "both" | "fixed" | "daily",
   attW: number,
   delW: number,
   fields: {
@@ -680,7 +696,8 @@ function computeNetTotal(
     // Skip attendance + deliverables sepenuhnya — bayar base salary
     // utuh. Cocok untuk kontrak / freelancer flat fee.
     combined = fields.base_salary;
-  } else if (basis === "presence") {
+  } else if (basis === "presence" || basis === "daily") {
+    // Daily: proratedSalary sudah = tarif × hari hadir, jadi identik presence.
     combined = attendanceBucket;
   } else if (basis === "deliverables") {
     combined = deliverablesBucket;
@@ -915,8 +932,10 @@ function computePayslipFromInputs(inputs: CalcInputs): CalcOutput {
     | "presence"
     | "deliverables"
     | "both"
-    | "fixed";
-  const includesAttendance = basis === "presence" || basis === "both";
+    | "fixed"
+    | "daily";
+  const includesAttendance =
+    basis === "presence" || basis === "both" || basis === "daily";
   const includesDeliverables = basis === "deliverables" || basis === "both";
   const baseSalary = Number(settings.monthly_fixed_amount);
 
@@ -1898,7 +1917,8 @@ export async function updatePayslipManualEntries(
       | "presence"
       | "deliverables"
       | "both"
-      | "fixed",
+      | "fixed"
+      | "daily",
     Number(settings?.attendance_weight_pct ?? 100),
     Number(settings?.deliverables_weight_pct ?? 0),
     {

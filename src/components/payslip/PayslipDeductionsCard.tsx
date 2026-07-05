@@ -40,7 +40,10 @@ function buildDeductions(
 
   // late_penalty only affects net for presence/both basis. For
   // fixed/deliverables it would just be a phantom number — suppress.
-  if ((basis === "presence" || basis === "both") && late > 0) {
+  if (
+    (basis === "presence" || basis === "both" || basis === "daily") &&
+    late > 0
+  ) {
     const lateDays = (breakdown?.late_days ?? []).filter((d) => !d.excused);
     const totalRawMin = lateDays.reduce((a, r) => a + r.raw_minutes, 0);
     rows.push({

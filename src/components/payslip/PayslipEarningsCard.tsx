@@ -51,22 +51,30 @@ function buildEarnings(
   const cakeBonus = Number(p.cake_bonus ?? 0);
   const bonusDayPay = Number(p.bonus_day_pay ?? 0);
 
-  if (basis === "presence" || basis === "both") {
+  if (basis === "presence" || basis === "both" || basis === "daily") {
     if (prorated > 0) {
       const overworked = p.actual_work_days > p.expected_work_days;
+      // Basis "daily": gaji = tarif harian × hari hadir (bukan prorata target).
       rows.push({
         key: "prorata",
-        label: overworked
-          ? detail.earningProrataExtra
-          : detail.earningProrata,
+        label:
+          basis === "daily"
+            ? "Gaji harian"
+            : overworked
+              ? detail.earningProrataExtra
+              : detail.earningProrata,
         amount: prorated,
         note:
-          base > 0
-            ? detail.earningProrataNote
-                .replace("{base}", formatIDR(base))
-                .replace("{actual}", String(p.actual_work_days))
-                .replace("{expected}", String(p.expected_work_days))
-            : undefined,
+          basis === "daily"
+            ? base > 0
+              ? `${p.actual_work_days} hari × ${formatIDR(base)}`
+              : undefined
+            : base > 0
+              ? detail.earningProrataNote
+                  .replace("{base}", formatIDR(base))
+                  .replace("{actual}", String(p.actual_work_days))
+                  .replace("{expected}", String(p.expected_work_days))
+              : undefined,
       });
     }
     if (bonusDayPay > 0) {

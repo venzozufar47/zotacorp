@@ -29,7 +29,8 @@ export function PayslipReconciliation({ payslip: p, settings }: Props) {
     | "presence"
     | "deliverables"
     | "both"
-    | "fixed";
+    | "fixed"
+    | "daily";
 
   const base = Number(p.base_salary);
   const prorated = Number(p.prorated_salary);
@@ -47,9 +48,14 @@ export function PayslipReconciliation({ payslip: p, settings }: Props) {
 
   if (basis === "fixed") {
     rows.push({ kind: "subtotal", label: detail.reconBase, amount: base });
-  } else if (basis === "presence") {
+  } else if (basis === "presence" || basis === "daily") {
     if (prorated > 0)
-      rows.push({ kind: "item", label: detail.reconProrata, amount: prorated, sign: "" });
+      rows.push({
+        kind: "item",
+        label: basis === "daily" ? "Gaji harian" : detail.reconProrata,
+        amount: prorated,
+        sign: "",
+      });
     if (ot > 0)
       rows.push({ kind: "item", label: detail.reconOvertime, amount: ot, sign: "+" });
     if (late > 0)

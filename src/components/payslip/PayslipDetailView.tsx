@@ -72,12 +72,13 @@ export function PayslipDetailView({
 
   const activeDeliverables = deliverablesByPayslip[active.id] ?? [];
   const basis = settings?.calculation_basis ?? "presence";
-  const showAttendanceBar = basis === "presence" || basis === "both";
+  const showAttendanceBar =
+    basis === "presence" || basis === "both" || basis === "daily";
 
   // Compute gross / total-deduction for the hero sub-stats. Mirrors
   // EarningsCard / DeductionsCard logic so the numbers always match.
   const gross =
-    (basis === "presence" || basis === "both"
+    (basis === "presence" || basis === "both" || basis === "daily"
       ? Number(active.prorated_salary) + Number(active.overtime_pay)
       : 0) +
     (basis === "deliverables" || basis === "both"
@@ -88,7 +89,7 @@ export function PayslipDetailView({
     Number(active.monthly_bonus) +
     Number(active.cake_bonus ?? 0);
   const totalDeduction =
-    ((basis === "presence" || basis === "both")
+    (basis === "presence" || basis === "both" || basis === "daily"
       ? Number(active.late_penalty)
       : 0) +
     Number(active.debt_deduction) +

@@ -31,7 +31,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
 
-type Basis = "presence" | "deliverables" | "both" | "fixed";
+type Basis = "presence" | "deliverables" | "both" | "fixed" | "daily";
 type ExpectedDaysMode = "manual" | "weekly_pattern" | "none" | "paired_alternating";
 type OvertimeMode = "hourly_tiered" | "fixed_per_day" | "half_daily";
 type LatePenaltyMode = "per_minutes" | "per_day" | "none";
@@ -251,6 +251,8 @@ function basisSelectClass(basis: Basis): string {
       return "border-amber-300 bg-amber-50 text-amber-900";
     case "fixed":
       return "border-emerald-300 bg-emerald-50 text-emerald-900";
+    case "daily":
+      return "border-rose-300 bg-rose-50 text-rose-900";
   }
 }
 
@@ -523,7 +525,8 @@ function CompensationBasisSection({ rows }: { rows: EmployeeRow[] }) {
     } else if (basis === "deliverables") {
       attendance = "0";
       deliverables = "100";
-    } else if (basis === "fixed") {
+    } else if (basis === "fixed" || basis === "daily") {
+      // Daily: bobot att/del tidak dipakai (gaji = tarif × hari hadir).
       attendance = "0";
       deliverables = "0";
     } else {
@@ -622,19 +625,29 @@ function CompensationBasisSection({ rows }: { rows: EmployeeRow[] }) {
                 <RowShell key={r.userId} locked={false}>
                   <NameCell row={r} />
                   <td className="px-2 py-1.5 w-36">
-                    <input
-                      type="number"
-                      min={0}
-                      step={50000}
-                      value={eff.salary}
-                      onChange={(e) =>
-                        setDrafts((d) => ({
-                          ...d,
-                          [r.userId]: { ...d[r.userId], salary: e.target.value },
-                        }))
-                      }
-                      className="w-full h-8 px-2 rounded-md border border-border bg-background text-xs tabular-nums text-right"
-                    />
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={0}
+                        step={eff.basis === "daily" ? 5000 : 50000}
+                        value={eff.salary}
+                        onChange={(e) =>
+                          setDrafts((d) => ({
+                            ...d,
+                            [r.userId]: { ...d[r.userId], salary: e.target.value },
+                          }))
+                        }
+                        className={
+                          "w-full h-8 px-2 rounded-md border border-border bg-background text-xs tabular-nums text-right " +
+                          (eff.basis === "daily" ? "pr-9" : "")
+                        }
+                      />
+                      {eff.basis === "daily" && (
+                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-rose-500">
+                          /hari
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-2 py-1.5 w-44">
                     <select
@@ -657,6 +670,7 @@ function CompensationBasisSection({ rows }: { rows: EmployeeRow[] }) {
                       <option value="deliverables">Deliverables</option>
                       <option value="both">Both</option>
                       <option value="fixed">Gaji tetap</option>
+                      <option value="daily">Gaji harian</option>
                     </select>
                   </td>
                   <td className="px-2 py-1.5 w-20">
@@ -939,11 +953,17 @@ function ExpectedDaysSection({
               // Hari kerja tidak relevan untuk basis=deliverables atau
               // basis=fixed — keduanya skip kalkulasi attendance.
               const basis = r.settings?.calculation_basis;
-              if (basis === "deliverables" || basis === "fixed") {
+              if (
+                basis === "deliverables" ||
+                basis === "fixed" ||
+                basis === "daily"
+              ) {
                 const label =
                   basis === "fixed"
                     ? "Basis = Gaji tetap — hari kerja tidak dipakai dalam kalkulasi."
-                    : "Basis = deliverables saja — hari kerja tidak dipakai dalam kalkulasi.";
+                    : basis === "daily"
+                      ? "Basis = gaji harian — dibayar per hari hadir; target hari kerja tidak dipakai."
+                      : "Basis = deliverables saja — hari kerja tidak dipakai dalam kalkulasi.";
                 return (
                   <RowShell key={r.userId} locked={true}>
                     <NameCell row={r} />

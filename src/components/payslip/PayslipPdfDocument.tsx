@@ -192,6 +192,7 @@ function fmtRp(n: number): string {
 function describeBasis(s: PayslipSettings | null): string {
   const b = s?.calculation_basis ?? "presence";
   if (b === "presence") return "Kehadiran (prorata)";
+  if (b === "daily") return "Gaji harian (per hari hadir)";
   if (b === "deliverables") return "Pencapaian deliverables";
   if (b === "fixed") return "Kontrak tetap";
   const aw = Number(s?.attendance_weight_pct ?? 50);
@@ -227,11 +228,16 @@ function buildPdfEarnings(
   const bonus = Number(p.monthly_bonus);
   const cakeBonus = Number(p.cake_bonus ?? 0);
 
-  if (basis === "presence" || basis === "both") {
+  if (basis === "presence" || basis === "both" || basis === "daily") {
     if (prorated > 0) {
       const overworked = p.actual_work_days > p.expected_work_days;
       lines.push({
-        label: overworked ? "Gaji prorata (termasuk hari ekstra)" : "Gaji prorata",
+        label:
+          basis === "daily"
+            ? `Gaji harian (${p.actual_work_days} hari)`
+            : overworked
+              ? "Gaji prorata (termasuk hari ekstra)"
+              : "Gaji prorata",
         amount: prorated,
         sign: "+",
       });
@@ -297,7 +303,10 @@ function buildPdfDeductions(
   const debt = Number(p.debt_deduction);
   const other = Number(p.other_penalty);
 
-  if ((basis === "presence" || basis === "both") && late > 0) {
+  if (
+    (basis === "presence" || basis === "both" || basis === "daily") &&
+    late > 0
+  ) {
     const lateDays = (breakdown?.late_days ?? []).filter((d) => !d.excused).length;
     lines.push({
       label: `Denda terlambat${lateDays ? ` (${lateDays} hari)` : ""}`,
@@ -395,7 +404,8 @@ export function PayslipPdfDocument({
   });
 
   const basis = settings?.calculation_basis ?? "presence";
-  const isAttendanceBased = basis === "presence" || basis === "both";
+  const isAttendanceBased =
+    basis === "presence" || basis === "both" || basis === "daily";
   const breakdown = p.breakdown_json as PayslipBreakdown | null;
   const earnings = buildPdfEarnings(p, basis, breakdown);
   const deductions = buildPdfDeductions(p, basis, breakdown);

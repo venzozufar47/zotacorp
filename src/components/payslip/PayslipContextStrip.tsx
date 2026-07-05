@@ -26,6 +26,7 @@ function describeBasis(
 ): string {
   const basis = settings?.calculation_basis ?? "presence";
   if (basis === "presence") return d.basisPresence;
+  if (basis === "daily") return "Gaji harian";
   if (basis === "deliverables") return d.basisDeliverables;
   if (basis === "fixed") return d.basisFixed;
   // both
@@ -104,7 +105,8 @@ export function PayslipContextStrip({ payslip: p, settings, disputes }: Props) {
   const { t } = useTranslation();
   const d = t.payslipDetail;
   const basis = settings?.calculation_basis ?? "presence";
-  const isAttendanceBased = basis === "presence" || basis === "both";
+  const isAttendanceBased =
+    basis === "presence" || basis === "both" || basis === "daily";
   const isDeliverablesBased = basis === "deliverables" || basis === "both";
 
   const baseSalary = Number(p.base_salary);
