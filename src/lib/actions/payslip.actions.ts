@@ -388,6 +388,9 @@ function calculateFromAttendance(
   let totalOvertimeMinutes = 0;
   let overtimePay = 0;
   const overtimeDays: PayslipBreakdown["overtime_days"] = [];
+  // Nilai 1 hari OT PENUH sesuai mode — dipakai untuk lembur bulanan
+  // "hari ekstra" (hari hadir di atas kuota) di bawah.
+  let fullOtDayValue = 0;
 
   if (settings.overtime_mode === "hourly_tiered") {
     // Derive hourly rate from base salary so admin doesn't have to
@@ -405,6 +408,10 @@ function calculateFromAttendance(
         : 0;
     const firstHourRate = hourlyRate * 1.5;
     const nextHourRate = hourlyRate * 2;
+    // Satu hari OT penuh = seluruh jam standar pada tarif tiered.
+    fullOtDayValue = Math.round(
+      firstHourRate + Math.max(0, stdHours - 1) * nextHourRate
+    );
     for (const log of regularLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
@@ -431,6 +438,7 @@ function calculateFromAttendance(
       : expectedDays > 0
         ? Math.round((baseSalary / expectedDays) * 0.5)
         : 0;
+    fullOtDayValue = dailyHalfPay;
     for (const log of regularLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
@@ -445,6 +453,7 @@ function calculateFromAttendance(
   } else {
     // fixed_per_day
     const dailyRate = Number(settings.ot_fixed_daily_rate);
+    fullOtDayValue = Math.round(dailyRate);
     for (const log of regularLogs) {
       if (!log.is_overtime || log.overtime_minutes <= 0) continue;
       if (log.overtime_status !== "approved") continue;
@@ -452,6 +461,26 @@ function calculateFromAttendance(
       const dayPay = Math.round(dailyRate);
       overtimePay += dayPay;
       overtimeDays.push({ date: log.date, minutes: log.overtime_minutes, pay: dayPay });
+    }
+  }
+
+  // ─── Lembur bulanan "hari ekstra" ──────────────────────────────────────
+  // Opt-in per karyawan (monthly_overtime_enabled). Setiap hari hadir yang
+  // MELEBIHI kuota (expected_work_days) dibayar 1 hari OT PENUH sesuai mode
+  // (fullOtDayValue). Ini DI ATAS lembur per-hari di atas — tidak menggantikan.
+  // Butuh kuota valid (expected > 0), kalau tidak: dilewati.
+  let extraDayOvertime: PayslipBreakdown["extra_day_overtime"] | undefined;
+  if (
+    settings.monthly_overtime_enabled &&
+    expected > 0 &&
+    actualWorkDays > expected &&
+    fullOtDayValue > 0
+  ) {
+    const surplusDays = actualWorkDays - expected;
+    const extraPay = Math.round(surplusDays * fullOtDayValue);
+    if (extraPay > 0) {
+      overtimePay += extraPay;
+      extraDayOvertime = { days: surplusDays, pay: extraPay };
     }
   }
 
@@ -613,6 +642,7 @@ function calculateFromAttendance(
     late_penalty_mode: settings.late_penalty_mode as PayslipBreakdown["late_penalty_mode"],
     grace_period_min: gracePeriodMin,
     overtime_days: overtimeDays.sort((a, b) => a.date.localeCompare(b.date)),
+    extra_day_overtime: extraDayOvertime,
     late_days: lateDaysBreakdown.sort((a, b) => a.date.localeCompare(b.date)),
     late_penalty_daily_cap: dailyPayCapApplied,
     attendance_days: regularLogs

@@ -242,11 +242,20 @@ function buildPdfEarnings(
         sign: "+",
       });
     }
-    if (ot > 0) {
+    const extraDayOt = breakdown?.extra_day_overtime;
+    const dailyOt = ot - (extraDayOt?.pay ?? 0);
+    if (dailyOt > 0) {
       const days = breakdown?.overtime_days.length ?? 0;
       lines.push({
         label: `Bayaran lembur${days ? ` (${days} hari)` : ""}`,
-        amount: ot,
+        amount: dailyOt,
+        sign: "+",
+      });
+    }
+    if (extraDayOt && extraDayOt.pay > 0) {
+      lines.push({
+        label: `Lembur hari ekstra (${extraDayOt.days} hari)`,
+        amount: extraDayOt.pay,
         sign: "+",
       });
     }

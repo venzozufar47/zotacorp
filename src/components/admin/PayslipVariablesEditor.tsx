@@ -937,7 +937,7 @@ function ExpectedDaysSection({
       ).toLocaleDateString("id-ID", {
         month: "long",
         year: "numeric",
-      })} (ubah lewat Periode di atas).`}
+      })} (ubah lewat Periode di atas). Untuk basis gaji harian, angka ini dipakai sebagai KUOTA lembur bulanan (hari ekstra), bukan prorata.`}
       dirtyCount={dirtyUserIds.length}
       pending={pending}
       onSave={save}
@@ -951,19 +951,15 @@ function ExpectedDaysSection({
             colspan={4}
             renderRow={(r) => {
               // Hari kerja tidak relevan untuk basis=deliverables atau
-              // basis=fixed — keduanya skip kalkulasi attendance.
+              // basis=fixed — keduanya skip kalkulasi attendance. Basis=daily
+              // TETAP aktif: hari kerja dipakai sebagai KUOTA lembur bulanan
+              // (hari ekstra), bukan untuk prorata gaji.
               const basis = r.settings?.calculation_basis;
-              if (
-                basis === "deliverables" ||
-                basis === "fixed" ||
-                basis === "daily"
-              ) {
+              if (basis === "deliverables" || basis === "fixed") {
                 const label =
                   basis === "fixed"
                     ? "Basis = Gaji tetap — hari kerja tidak dipakai dalam kalkulasi."
-                    : basis === "daily"
-                      ? "Basis = gaji harian — dibayar per hari hadir; target hari kerja tidak dipakai."
-                      : "Basis = deliverables saja — hari kerja tidak dipakai dalam kalkulasi.";
+                    : "Basis = deliverables saja — hari kerja tidak dipakai dalam kalkulasi.";
                 return (
                   <RowShell key={r.userId} locked={true}>
                     <NameCell row={r} />
@@ -1264,6 +1260,7 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
     lateMode?: LatePenaltyMode;
     lateAmount?: string;
     lateInterval?: string;
+    monthlyOt?: boolean;
   };
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [pending, startTransition] = useTransition();
@@ -1272,6 +1269,7 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
   function effective(r: EmployeeRow) {
     const d = drafts[r.userId] ?? {};
     return {
+      monthlyOt: d.monthlyOt ?? Boolean(r.settings?.monthly_overtime_enabled),
       otMode: (d.otMode ??
         r.settings?.overtime_mode ??
         "fixed_per_day") as OvertimeMode,
@@ -1298,6 +1296,7 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
         if (!r) return false;
         const eff = effective(r);
         const s = r.settings;
+        if (eff.monthlyOt !== Boolean(s?.monthly_overtime_enabled)) return true;
         if (eff.otMode !== (s?.overtime_mode ?? "fixed_per_day")) return true;
         if (Number(eff.otFirstHour) !== Number(s?.ot_first_hour_rate ?? 0))
           return true;
@@ -1325,6 +1324,7 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
       return {
         userId: uid,
         fields: {
+          monthly_overtime_enabled: eff.monthlyOt,
           overtime_mode: eff.otMode,
           ot_first_hour_rate:
             eff.otMode === "hourly_tiered" ? Number(eff.otFirstHour) : 0,
@@ -1377,12 +1377,13 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
             "Late mode",
             "Late amount (Rp)",
             "Interval (mnt)",
+            "Hari ekstra → lembur",
           ]}
         />
         <tbody>
           <GroupedRows
             rows={rows}
-            colspan={8}
+            colspan={9}
             renderRow={(r) => {
               const eff = effective(r);
               return (
@@ -1494,6 +1495,28 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
                     ) : (
                       <MutedCellText />
                     )}
+                  </td>
+                  <td className="px-2 py-1.5 w-28 text-center">
+                    {(() => {
+                      const basis = r.settings?.calculation_basis ?? "presence";
+                      // Hanya berlaku untuk basis attendance-based (presence/
+                      // both/daily). Fixed/deliverables tak pakai kalkulasi
+                      // kehadiran, jadi toggle disembunyikan.
+                      if (basis === "fixed" || basis === "deliverables") {
+                        return <MutedCellText />;
+                      }
+                      return (
+                        <input
+                          type="checkbox"
+                          checked={eff.monthlyOt}
+                          onChange={(e) =>
+                            setDraft(r.userId, { monthlyOt: e.target.checked })
+                          }
+                          className="size-4 accent-primary cursor-pointer"
+                          title="Hari hadir di atas kuota (Hari kerja) dibayar 1 hari lembur penuh (sesuai OT mode)."
+                        />
+                      );
+                    })()}
                   </td>
                 </RowShell>
               );

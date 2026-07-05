@@ -2459,6 +2459,7 @@ export type Database = {
           attendance_weight_pct: number
           bonus_day_hourly: boolean
           calculation_basis: string
+          monthly_overtime_enabled: boolean
           created_at: string | null
           deliverables_weight_pct: number
           expected_days_mode: string
@@ -2488,6 +2489,7 @@ export type Database = {
           attendance_weight_pct?: number
           bonus_day_hourly?: boolean
           calculation_basis?: string
+          monthly_overtime_enabled?: boolean
           created_at?: string | null
           deliverables_weight_pct?: number
           expected_days_mode?: string
@@ -2517,6 +2519,7 @@ export type Database = {
           attendance_weight_pct?: number
           bonus_day_hourly?: boolean
           calculation_basis?: string
+          monthly_overtime_enabled?: boolean
           created_at?: string | null
           deliverables_weight_pct?: number
           expected_days_mode?: string
@@ -4461,6 +4464,9 @@ export type PayslipBreakdown = {
   late_penalty_mode: 'per_minutes' | 'per_day' | 'none';
   grace_period_min: number;
   overtime_days: Array<{ date: string; minutes: number; pay: number }>;
+  /** Lembur bulanan "hari ekstra": hari hadir melebihi kuota (expected_work_days)
+   *  dibayar 1 hari OT penuh per surplus (mode-based). Ditambahkan ke overtime_pay. */
+  extra_day_overtime?: { days: number; pay: number };
   late_days: Array<{ date: string; raw_minutes: number; after_grace_minutes: number; penalty: number; excused: boolean; penalty_pre_cap?: number; excuse_note?: string | null }>;
   late_penalty_daily_cap?: number;
   extra_work_days?: Array<{ date: string; kind: string; pay: number }>;

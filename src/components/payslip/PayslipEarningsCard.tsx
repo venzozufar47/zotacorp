@@ -89,7 +89,11 @@ function buildEarnings(
           .replace("{hours}", String(Math.round(totalHours * 10) / 10)),
       });
     }
-    if (ot > 0) {
+    // Lembur bulanan "hari ekstra" (hari di atas kuota) sudah termasuk di
+    // overtime_pay — pisahkan agar baris lembur harian tetap akurat.
+    const extraDayOt = breakdown?.extra_day_overtime;
+    const dailyOt = ot - (extraDayOt?.pay ?? 0);
+    if (dailyOt > 0) {
       const totalOtMin = (breakdown?.overtime_days ?? []).reduce(
         (a, r) => a + r.minutes,
         0
@@ -97,11 +101,19 @@ function buildEarnings(
       rows.push({
         key: "overtime",
         label: detail.earningOvertime,
-        amount: ot,
+        amount: dailyOt,
         note: detail.earningOvertimeNote
           .replace("{days}", String(breakdown?.overtime_days.length ?? 0))
           .replace("{duration}", formatMins(totalOtMin, "j", "m")),
         expandKey: "overtime",
+      });
+    }
+    if (extraDayOt && extraDayOt.pay > 0) {
+      rows.push({
+        key: "extra_day_ot",
+        label: `Lembur hari ekstra (${extraDayOt.days} hari)`,
+        amount: extraDayOt.pay,
+        note: "Hari hadir di atas kuota bulanan — dibayar 1 hari lembur penuh.",
       });
     }
   }
