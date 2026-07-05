@@ -4460,7 +4460,7 @@ export const Constants = {
 
 /** Per-day transparency snapshot for payslips.breakdown_json. */
 export type PayslipBreakdown = {
-  overtime_mode: 'hourly_tiered' | 'fixed_per_day';
+  overtime_mode: 'hourly_tiered' | 'fixed_per_day' | 'half_daily' | 'hourly_tiered_reduced';
   late_penalty_mode: 'per_minutes' | 'per_day' | 'none';
   grace_period_min: number;
   overtime_days: Array<{ date: string; minutes: number; pay: number }>;

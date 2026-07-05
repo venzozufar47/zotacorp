@@ -33,7 +33,19 @@ import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDe
 
 type Basis = "presence" | "deliverables" | "both" | "fixed" | "daily";
 type ExpectedDaysMode = "manual" | "weekly_pattern" | "none" | "paired_alternating";
-type OvertimeMode = "hourly_tiered" | "fixed_per_day" | "half_daily";
+type OvertimeMode =
+  | "hourly_tiered"
+  | "fixed_per_day"
+  | "half_daily"
+  | "hourly_tiered_reduced";
+
+/** Pengali OT per jam untuk mode tiered: [jam pertama, jam berikutnya].
+ *  null untuk mode non-tiered. */
+function otHourlyMultipliers(mode: OvertimeMode): [number, number] | null {
+  if (mode === "hourly_tiered") return [1.5, 2];
+  if (mode === "hourly_tiered_reduced") return [1.2, 1.5];
+  return null;
+}
 type LatePenaltyMode = "per_minutes" | "per_day" | "none";
 
 interface ExtraWorkLogRow {
@@ -1400,6 +1412,9 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
                       className="w-full h-8 rounded-md border border-border bg-background px-2 text-xs"
                     >
                       <option value="hourly_tiered">Hourly tiered</option>
+                      <option value="hourly_tiered_reduced">
+                        Hourly tiered (1.2× / 1.5×)
+                      </option>
                       <option value="fixed_per_day">Fixed per day</option>
                       <option value="half_daily">
                         50% gaji harian per hari OT
@@ -1407,12 +1422,12 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
                     </select>
                   </td>
                   <td className="px-2 py-1.5 w-32">
-                    {eff.otMode === "hourly_tiered" ? (
+                    {otHourlyMultipliers(eff.otMode) ? (
                       <HourlyTieredCell
                         baseSalary={Number(r.settings?.monthly_fixed_amount ?? 0)}
                         expectedDays={Number(r.settings?.expected_work_days ?? 0)}
                         stdHours={Number(r.settings?.standard_working_hours ?? 8)}
-                        multiplier={1.5}
+                        multiplier={otHourlyMultipliers(eff.otMode)![0]}
                         suffix="× gapok/jam"
                       />
                     ) : (
@@ -1420,12 +1435,12 @@ function OvertimePenaltySection({ rows }: { rows: EmployeeRow[] }) {
                     )}
                   </td>
                   <td className="px-2 py-1.5 w-32">
-                    {eff.otMode === "hourly_tiered" ? (
+                    {otHourlyMultipliers(eff.otMode) ? (
                       <HourlyTieredCell
                         baseSalary={Number(r.settings?.monthly_fixed_amount ?? 0)}
                         expectedDays={Number(r.settings?.expected_work_days ?? 0)}
                         stdHours={Number(r.settings?.standard_working_hours ?? 8)}
-                        multiplier={2}
+                        multiplier={otHourlyMultipliers(eff.otMode)![1]}
                         suffix="× gapok/jam"
                       />
                     ) : eff.otMode === "half_daily" ? (

@@ -392,12 +392,19 @@ function calculateFromAttendance(
   // "hari ekstra" (hari hadir di atas kuota) di bawah.
   let fullOtDayValue = 0;
 
-  if (settings.overtime_mode === "hourly_tiered") {
+  if (
+    settings.overtime_mode === "hourly_tiered" ||
+    settings.overtime_mode === "hourly_tiered_reduced"
+  ) {
     // Derive hourly rate from base salary so admin doesn't have to
     // manually re-enter it. Standard formula:
     //   hourly = base_salary / (expected_work_days × standard_working_hours)
-    //   1st hour OT = 1.5 × hourly
-    //   next hours  = 2 × hourly
+    //   hourly_tiered         → 1.5× jam pertama, 2× berikutnya
+    //   hourly_tiered_reduced → 1.2× jam pertama, 1.5× berikutnya
+    const [firstMult, nextMult] =
+      settings.overtime_mode === "hourly_tiered_reduced"
+        ? [1.2, 1.5]
+        : [1.5, 2];
     const stdHours = Number(settings.standard_working_hours ?? 8);
     const hourlyRate = isDaily
       ? stdHours > 0
@@ -406,8 +413,8 @@ function calculateFromAttendance(
       : expected > 0 && stdHours > 0
         ? baseSalary / (expected * stdHours)
         : 0;
-    const firstHourRate = hourlyRate * 1.5;
-    const nextHourRate = hourlyRate * 2;
+    const firstHourRate = hourlyRate * firstMult;
+    const nextHourRate = hourlyRate * nextMult;
     // Satu hari OT penuh = seluruh jam standar pada tarif tiered.
     fullOtDayValue = Math.round(
       firstHourRate + Math.max(0, stdHours - 1) * nextHourRate
