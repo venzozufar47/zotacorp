@@ -405,6 +405,22 @@ export async function createManualTransaction(input: {
 
   const supabase = await createClient();
 
+  // Branch fallback: rekening per-cabang (Cash Pare/Semarang, Cash Yeobo
+  // tiap cabang, bank Yeobo "All") menyimpan `default_branch`. Entri
+  // manual yang tak menyertakan branch mewarisinya — kalau tidak, belanja
+  // yang diinput tanpa branch jatuh ke "unassigned" dan hilang dari P&L
+  // per-cabang. Rekening bank Haengbocake (default_branch null) tetap
+  // null → dialokasikan lewat Pusat allocator seperti biasa.
+  let resolvedBranch = input.branch?.trim() || null;
+  if (!resolvedBranch) {
+    const { data: acct } = await supabase
+      .from("bank_accounts")
+      .select("default_branch")
+      .eq("id", input.bankAccountId)
+      .maybeSingle();
+    resolvedBranch = acct?.default_branch?.trim() || null;
+  }
+
   // Find-or-create the monthly statement bucket. Status stays whatever
   // it was (upload-confirmed, or draft if freshly created by this call).
   const { data: existingStmt } = await supabase
@@ -496,7 +512,7 @@ export async function createManualTransaction(input: {
       credit: input.credit,
       running_balance: input.runningBalance ?? null,
       category: input.category?.trim() || null,
-      branch: input.branch?.trim() || null,
+      branch: resolvedBranch,
       sort_order: nextSortOrder,
     })
     .select("id")
@@ -751,6 +767,22 @@ export async function saveStatementTransactions(
   }
 
   const supabase = await createClient();
+
+  // Branch fallback (see createManualTransaction): resolve the statement's
+  // rekening default_branch so rows saved without an explicit branch
+  // inherit it instead of landing as unassigned.
+  let defaultBranch: string | null = null;
+  {
+    const { data: stmt } = await supabase
+      .from("cashflow_statements")
+      .select("bank_accounts!inner(default_branch)")
+      .eq("id", statementId)
+      .maybeSingle();
+    const acct = (stmt as { bank_accounts?: { default_branch?: string | null } } | null)
+      ?.bank_accounts;
+    defaultBranch = acct?.default_branch?.trim() || null;
+  }
+
   // Replace transactions.
   const { error: deleteError } = await supabase
     .from("cashflow_transactions")
@@ -767,7 +799,7 @@ export async function saveStatementTransactions(
       credit: t.credit,
       running_balance: t.runningBalance ?? null,
       category: t.category?.trim() || null,
-      branch: t.branch?.trim() || null,
+      branch: t.branch?.trim() || defaultBranch,
       notes: t.notes?.trim() || null,
       sort_order: idx,
     }));
