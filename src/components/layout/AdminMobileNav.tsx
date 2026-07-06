@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BellRing,
+  Brain,
   Cake,
   Camera,
   ClipboardList,
   Coins,
   Database,
+  FileSignature,
   HandCoins,
   Home as HomeIcon,
   LogOut,
@@ -58,6 +60,8 @@ export function AdminMobileNav({
     { href: "/admin/cleaning", icon: Sparkles, label: "Kebersihan", color: "bg-quaternary" },
     // Org
     { href: "/admin/users", icon: Users, label: t.nav.users, color: "bg-pop-pink" },
+    { href: "/admin/employment-contracts", icon: FileSignature, label: "Kontrak Kerja", color: "bg-quaternary" },
+    { href: "/admin/disc", icon: Brain, label: "Tes DISC", color: "bg-pop-pink" },
     { href: "/admin/locations", icon: MapPin, label: t.nav.locations, color: "bg-quaternary" },
     // Money & Care
     { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },
