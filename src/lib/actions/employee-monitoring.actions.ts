@@ -682,16 +682,17 @@ async function runCelebrationBroadcast(
   let sent = 0;
   let failed = 0;
   for (const t of targets) {
-    // Birthday pakai template editable; anniversary hardcode (belum ada
-    // template broadcast anniversary — sesuai permintaan, hardcode is fine).
-    const message =
+    // Keduanya pakai template editable di /admin/settings (WhatsApp).
+    const message = await renderWaTemplate(
       kind === "birthday"
-        ? await renderWaTemplate("celebration_birthday_broadcast", {
-            recipientName: t.name,
-            celebrantNames,
-            count: celebrants.length,
-          })
-        : `Halo ${t.name}!\n\n🎉 Hari ini ${celebrantNames} merayakan anniversary kerja di Zota. Yuk kasih ucapan lewat Zota App — buka dashboard dan tulis pesannya. Cukup 30 detik 💌`;
+        ? "celebration_birthday_broadcast"
+        : "celebration_anniversary_broadcast",
+      {
+        recipientName: t.name,
+        celebrantNames,
+        count: celebrants.length,
+      }
+    );
     let status: "sent" | "failed" = "sent";
     let errorMessage: string | null = null;
     try {
