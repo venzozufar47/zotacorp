@@ -25,6 +25,7 @@ import {
   Coins,
   HandCoins,
   FileSignature,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -100,6 +101,7 @@ export function AdminSidebar({
           icon: FileSignature,
           label: "Kontrak Kerja",
         },
+        { href: "/admin/disc", icon: Brain, label: "Tes DISC" },
         { href: "/admin/locations", icon: MapPin, label: t.nav.locations },
       ],
     },
