@@ -109,8 +109,9 @@ export function Sidebar({
         <p className="eyebrow mt-2 text-muted-foreground">Workspace</p>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1.5">
+      {/* Nav — scrolls internally so the footer (profile menu) stays pinned
+          and reachable even when there are many nav items on short screens. */}
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-1.5">
         {navItems.map((item) => {
           const { href, icon: Icon, label, color } = item;
           const badge = "badge" in item ? item.badge : undefined;
