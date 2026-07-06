@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, FileSignature } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -37,7 +37,6 @@ export function Sidebar({
     { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home, color: "bg-primary" },
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
-    { href: "/kontrak", icon: FileSignature, label: "Kontrak", color: "bg-quaternary" },
     { href: "/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
     ...(hasCakeOrders
       ? [{ href: "/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" }]

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, User, Settings, LogOut, X } from "lucide-react";
+import { Menu, User, Settings, LogOut, X, FileSignature, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
@@ -70,6 +70,8 @@ export function HamburgerMenu({ variant, me = null }: HamburgerMenuProps) {
 
   const items = [
     { href: "/profile", icon: User, label: t.nav.profile, color: "bg-quaternary" },
+    { href: "/kontrak", icon: FileSignature, label: "Kontrak", color: "bg-tertiary" },
+    { href: "/disc", icon: Brain, label: "Tes DISC", color: "bg-pop-pink" },
     { href: "/settings", icon: Settings, label: t.nav.settings, color: "bg-card" },
   ];
 
