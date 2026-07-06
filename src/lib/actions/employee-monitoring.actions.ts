@@ -434,13 +434,28 @@ export async function listEmployeeMonitoring(): Promise<{
 }
 
 /**
+ * Service-role client — dipakai oleh finder + broadcast supaya jalan
+ * TANPA sesi user (mis. dari cron). Return null kalau env belum di-set.
+ */
+function getServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createAdminClient<Database>(url, key, {
+    auth: { persistSession: false },
+  });
+}
+
+/**
  * Cari karyawan yang ulang tahunnya jatuh hari ini di timezone admin.
  * MM-DD comparison; Feb-29 fallback ke Feb-28 di non-leap year.
+ * Resigned/inactive DIKECUALIKAN (is_active + resigned_at null).
  */
 async function findTodaysBirthdayCelebrants(): Promise<
   Array<{ id: string; full_name: string; nickname: string | null }>
 > {
-  const supabase = await createClient();
+  const supabase = getServiceClient();
+  if (!supabase) return [];
   const { data: settings } = await supabase
     .from("attendance_settings")
     .select("timezone")
@@ -457,6 +472,7 @@ async function findTodaysBirthdayCelebrants(): Promise<
     .neq("role", "admin")
     .neq("role", "investor")
     .eq("is_active", true)
+    .is("resigned_at", null)
     .eq("is_probation", false)
     .not("date_of_birth", "is", null);
 
@@ -483,6 +499,50 @@ async function findTodaysBirthdayCelebrants(): Promise<
         nickname: p.nickname,
       });
     }
+  }
+  return celebrants;
+}
+
+/**
+ * Cari karyawan yang anniversary kerja-nya (first_day_of_work MM-DD)
+ * jatuh hari ini + sudah ≥ 1 tahun. Resigned/inactive dikecualikan.
+ */
+async function findTodaysAnniversaryCelebrants(): Promise<
+  Array<{ id: string; full_name: string; nickname: string | null }>
+> {
+  const supabase = getServiceClient();
+  if (!supabase) return [];
+  const { data: settings } = await supabase
+    .from("attendance_settings")
+    .select("timezone")
+    .limit(1)
+    .maybeSingle();
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const todayIso = todayIsoInTz(tz);
+  const [yStr, mStr, dStr] = todayIso.split("-");
+  const mmdd = `${mStr}-${dStr}`;
+
+  const { data: profs } = await supabase
+    .from("profiles")
+    .select("id, full_name, nickname, first_day_of_work")
+    .neq("role", "admin")
+    .neq("role", "investor")
+    .eq("is_active", true)
+    .is("resigned_at", null)
+    .not("first_day_of_work", "is", null);
+
+  const celebrants: Array<{ id: string; full_name: string; nickname: string | null }> = [];
+  for (const p of profs ?? []) {
+    if (!p.first_day_of_work) continue;
+    const [fy, fm, fd] = p.first_day_of_work.split("-").map(Number);
+    const profMmdd = `${String(fm).padStart(2, "0")}-${String(fd).padStart(2, "0")}`;
+    if (profMmdd !== mmdd) continue;
+    if (Number(yStr) - fy <= 0) continue; // baru masuk tahun ini → bukan anniversary
+    celebrants.push({
+      id: p.id,
+      full_name: p.full_name ?? "",
+      nickname: p.nickname,
+    });
   }
   return celebrants;
 }
@@ -545,69 +605,66 @@ export interface BroadcastResult {
  * recipient yang BUKAN sang celebrant. Tujuannya: log buat audit, tapi
  * tidak duplikat dengan dispatcher pagi yang menargetkan celebrant.
  */
-export async function broadcastBirthdayReminder(): Promise<BroadcastResult> {
-  const role = await getCurrentRole();
-  if (role !== "admin") return { ok: false, error: "Forbidden" };
-
-  const celebrants = await findTodaysBirthdayCelebrants();
+/**
+ * Inti broadcast reminder untuk satu `kind` (birthday / anniversary).
+ * TANPA gate role — dipakai oleh admin action (yang gate sendiri) DAN
+ * cron. Kirim WA ke SEMUA karyawan aktif & belum resign yang BELUM
+ * ngucapin celebrant hari ini (skip celebrant + tanpa nomor WA).
+ */
+async function runCelebrationBroadcast(
+  kind: "birthday" | "anniversary"
+): Promise<BroadcastResult> {
+  const celebrants =
+    kind === "birthday"
+      ? await findTodaysBirthdayCelebrants()
+      : await findTodaysAnniversaryCelebrants();
   if (celebrants.length === 0) {
     return {
       ok: false,
-      error: "Tidak ada karyawan yang berulang tahun hari ini.",
+      error:
+        kind === "birthday"
+          ? "Tidak ada karyawan yang berulang tahun hari ini."
+          : "Tidak ada karyawan yang anniversary hari ini.",
     };
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
+  const admin = getServiceClient();
+  if (!admin) {
     return { ok: false, error: "Service role key belum di-konfigurasi." };
   }
-  const admin = createAdminClient<Database>(supabaseUrl, serviceKey, {
-    auth: { persistSession: false },
-  });
 
+  // Penerima: semua karyawan AKTIF & BELUM RESIGN (is_active + resigned_at
+  // null — belt-and-suspenders karena resign sudah set is_active=false;
+  // pernah ada error kirim ke yang resign).
   const { data: recipients } = await admin
     .from("profiles")
     .select("id, full_name, nickname, whatsapp_number")
     .neq("role", "admin")
     .neq("role", "investor")
-    .eq("is_active", true);
+    .eq("is_active", true)
+    .is("resigned_at", null);
 
-  // Karyawan yang sudah ngucapin di dashboard untuk SALAH SATU
-  // celebrant hari ini → di-skip dari broadcast. Cek event_type
-  // birthday + event_year tahun ini + kind 'greeting'.
+  // Karyawan yang sudah ngucapin di dashboard untuk SALAH SATU celebrant
+  // hari ini → di-skip (default: reminder hanya ke yang BELUM ngucapin).
   const yearNow = Number(new Date().toISOString().slice(0, 4));
   const celebrantIds = celebrants.map((c) => c.id);
   const { data: greetedRows } = await admin
     .from("celebration_messages")
     .select("author_id")
     .in("celebrant_id", celebrantIds)
-    .eq("event_type", "birthday")
+    .eq("event_type", kind)
     .eq("event_year", yearNow)
     .eq("kind", "greeting");
-  const alreadyGreeted = new Set(
-    (greetedRows ?? []).map((r) => r.author_id)
-  );
+  const alreadyGreeted = new Set((greetedRows ?? []).map((r) => r.author_id));
 
-  type Target = {
-    id: string;
-    phone: string;
-    name: string;
-  };
+  type Target = { id: string; phone: string; name: string };
   const targets: Target[] = (recipients ?? [])
     .map((p) => {
-      // Karyawan yang sudah ngucapin tidak perlu di-nag lagi.
-      if (alreadyGreeted.has(p.id)) return null;
-      // Celebrant juga di-skip — tidak perlu di-suruh ngucapin diri
-      // sendiri (mereka sudah dapat birthday morning WA).
-      if (celebrantIds.includes(p.id)) return null;
+      if (alreadyGreeted.has(p.id)) return null; // sudah ngucapin
+      if (celebrantIds.includes(p.id)) return null; // celebrant sendiri
       const phone = normalizePhone(p.whatsapp_number ?? "");
       if (!phone) return null;
-      return {
-        id: p.id,
-        phone,
-        name: p.nickname || p.full_name || "teman",
-      };
+      return { id: p.id, phone, name: p.nickname || p.full_name || "teman" };
     })
     .filter((t): t is Target => t !== null);
 
@@ -618,8 +675,6 @@ export async function broadcastBirthdayReminder(): Promise<BroadcastResult> {
     };
   }
 
-  // Body di-render PER recipient supaya {recipientName} personalize.
-  // {celebrantNames} sama untuk semua karena celebrant hari itu sama.
   const celebrantNames = celebrants
     .map((c) => c.nickname || c.full_name || "teman")
     .join(", ");
@@ -627,11 +682,16 @@ export async function broadcastBirthdayReminder(): Promise<BroadcastResult> {
   let sent = 0;
   let failed = 0;
   for (const t of targets) {
-    const message = await renderWaTemplate("celebration_birthday_broadcast", {
-      recipientName: t.name,
-      celebrantNames,
-      count: celebrants.length,
-    });
+    // Birthday pakai template editable; anniversary hardcode (belum ada
+    // template broadcast anniversary — sesuai permintaan, hardcode is fine).
+    const message =
+      kind === "birthday"
+        ? await renderWaTemplate("celebration_birthday_broadcast", {
+            recipientName: t.name,
+            celebrantNames,
+            count: celebrants.length,
+          })
+        : `Halo ${t.name}!\n\n🎉 Hari ini ${celebrantNames} merayakan anniversary kerja di Zota. Yuk kasih ucapan lewat Zota App — buka dashboard dan tulis pesannya. Cukup 30 detik 💌`;
     let status: "sent" | "failed" = "sent";
     let errorMessage: string | null = null;
     try {
@@ -667,4 +727,25 @@ export async function broadcastBirthdayReminder(): Promise<BroadcastResult> {
     targetCount: targets.length,
     skippedAlreadyGreetedCount: alreadyGreeted.size,
   };
+}
+
+/** Admin manual broadcast (tombol) — ulang tahun. Gate admin. */
+export async function broadcastBirthdayReminder(): Promise<BroadcastResult> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { ok: false, error: "Forbidden" };
+  return runCelebrationBroadcast("birthday");
+}
+
+/**
+ * Auto broadcast reminder untuk cron siang (12:00 WIB). Jalankan KEDUA
+ * jenis — ulang tahun + anniversary. TANPA gate role (caller = cron yang
+ * sudah diverifikasi CRON_SECRET). Best-effort per jenis.
+ */
+export async function runCelebrationBroadcastsForCron(): Promise<{
+  birthday: BroadcastResult;
+  anniversary: BroadcastResult;
+}> {
+  const birthday = await runCelebrationBroadcast("birthday");
+  const anniversary = await runCelebrationBroadcast("anniversary");
+  return { birthday, anniversary };
 }
