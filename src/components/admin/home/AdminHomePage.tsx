@@ -318,25 +318,6 @@ export function AdminHomePage({
             </div>
           </Card>
 
-          {/* PULSE */}
-          <Card>
-            <CardHead title="Pulse" sub="Hourly check-ins" />
-            <div className="px-5 pb-5">
-              <Pulse
-                buckets={today.hourlyCheckIns}
-                nowHour={
-                  Number(
-                    new Date(today.asOfIso).toLocaleString("en-US", {
-                      timeZone: "Asia/Jakarta",
-                      hour: "numeric",
-                      hour12: false,
-                    })
-                  ) - 7
-                }
-              />
-            </div>
-          </Card>
-
           {/* UPCOMING */}
           <Card>
             <CardHead title="Coming up" sub="Birthdays & anniversaries" />
@@ -553,58 +534,6 @@ function InboxRow({
         className="shrink-0 text-muted-foreground/70 group-hover/sub:text-foreground transition"
       />
     </button>
-  );
-}
-
-function Pulse({
-  buckets,
-  nowHour,
-}: {
-  buckets: number[];
-  nowHour: number;
-}) {
-  // Pixel heights — sidesteps the "% of auto-height parent = 0" trap.
-  const max = Math.max(1, ...buckets);
-  const barHeight = (v: number) =>
-    Math.max(v > 0 ? 6 : 3, Math.round((v / max) * 76));
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-end gap-1 h-20">
-        {buckets.map((v, i) => {
-          const isNow = i === nowHour;
-          return (
-            <div
-              key={i}
-              className="flex-1 rounded-md transition"
-              style={{
-                height: `${barHeight(v)}px`,
-                background: isNow
-                  ? "var(--teal-500)"
-                  : v > 0
-                    ? "var(--teal-200)"
-                    : "var(--muted)",
-              }}
-              title={`${i + 7}:00 — ${v} check-ins`}
-            />
-          );
-        })}
-      </div>
-      <div className="flex gap-1">
-        {buckets.map((_, i) => (
-          <span
-            key={i}
-            className={cn(
-              "flex-1 text-center text-[9px] sm:text-[10px]",
-              i === nowHour
-                ? "font-semibold text-foreground"
-                : "text-muted-foreground/70"
-            )}
-          >
-            {i + 7}
-          </span>
-        ))}
-      </div>
-    </div>
   );
 }
 
