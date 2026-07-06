@@ -57,13 +57,19 @@ export default async function EmployeePayslipsPage() {
       100
   );
 
-  const [payslips, settings, disputes] = profileComplete
-    ? await Promise.all([
-        getEmployeePayslips(user.id),
-        getPayslipSettings(user.id),
-        listMyPayslipDisputes(),
-      ])
-    : [[], null, []];
+  // Gate DISC: karyawan yang di-push admin untuk ambil Tes Kepribadian
+  // DISC tidak bisa melihat slip gaji sampai tesnya selesai (flag mati
+  // otomatis saat submit tes di /disc).
+  const discRequired = Boolean(profile?.disc_test_required);
+
+  const [payslips, settings, disputes] =
+    profileComplete && !discRequired
+      ? await Promise.all([
+          getEmployeePayslips(user.id),
+          getPayslipSettings(user.id),
+          listMyPayslipDisputes(),
+        ])
+      : [[], null, []];
   const deliverablesByPayslip = new Map(
     await Promise.all(
       payslips.map(
@@ -86,9 +92,11 @@ export default async function EmployeePayslipsPage() {
 
       {/* Opt-in to push once the profile is complete — works even before the
           first payslip exists, so they're notified the moment it lands. */}
-      {profileComplete && <EnablePushButton />}
+      {profileComplete && !discRequired && <EnablePushButton />}
 
-      {showLocked ? (
+      {discRequired ? (
+        <DiscLockedNotice />
+      ) : showLocked ? (
         <LockedNotice
           profileComplete={profileComplete}
           completionPct={completionPct}
@@ -155,6 +163,33 @@ function LockedNotice({
             </Link>
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Slip gaji terkunci karena karyawan di-push mengambil Tes DISC. */
+function DiscLockedNotice() {
+  return (
+    <Card>
+      <CardContent className="p-6 text-center space-y-4">
+        <div className="inline-flex items-center justify-center size-16 rounded-full border-2 border-foreground bg-warning shadow-hard-sm">
+          <span className="text-3xl">🧠</span>
+        </div>
+        <h3 className="font-display text-lg font-bold">
+          Ambil Tes Kepribadian DISC dulu
+        </h3>
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          Kamu diminta admin untuk mengambil Tes Kepribadian DISC. Slip gaji
+          terkunci sampai tesnya selesai — cuma butuh ±10 menit dan hasilnya
+          langsung muncul.
+        </p>
+        <Link
+          href="/disc"
+          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-primary text-primary-foreground font-display font-bold text-sm border-2 border-foreground shadow-hard hover:bg-primary/90 transition"
+        >
+          Ambil tes sekarang →
+        </Link>
       </CardContent>
     </Card>
   );

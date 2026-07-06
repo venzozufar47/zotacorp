@@ -32,7 +32,7 @@ import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
 import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
 import Link from "next/link";
-import { FileSignature } from "lucide-react";
+import { Brain, FileSignature } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -204,6 +204,26 @@ export default async function DashboardPage() {
                   ? `Perubahan: ${pendingContract.updateNote} Ketuk untuk baca & tanda tangani ulang.`
                   : "Ada perubahan pada kontrakmu. Ketuk untuk baca & tanda tangani ulang."
                 : "Tandatangani kontrakmu. Ketuk untuk membuka."}
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
+
+      {profile?.disc_test_required && (
+        <Link
+          href="/disc"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+            <Brain size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">
+              Kamu diminta mengambil Tes Kepribadian DISC
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              ±10 menit. Slip gaji terkunci sampai tes selesai — ketuk untuk mulai.
             </span>
           </span>
           <span className="text-sm font-bold shrink-0">→</span>

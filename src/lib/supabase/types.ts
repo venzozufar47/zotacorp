@@ -1965,6 +1965,80 @@ export type Database = {
           },
         ]
       }
+      disc_results: {
+        Row: {
+          id: string
+          user_id: string
+          taken_at: string
+          source: string
+          position_label: string | null
+          answers: Json | null
+          most_counts: Json | null
+          least_counts: Json | null
+          graph1: Json | null
+          graph2: Json | null
+          pattern1_num: number | null
+          pattern1_name: string | null
+          pattern1_high: string | null
+          pattern2_num: number | null
+          pattern2_name: string | null
+          pattern2_high: string | null
+          imported_pdf_path: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          taken_at: string
+          source: string
+          position_label?: string | null
+          answers?: Json | null
+          most_counts?: Json | null
+          least_counts?: Json | null
+          graph1?: Json | null
+          graph2?: Json | null
+          pattern1_num?: number | null
+          pattern1_name?: string | null
+          pattern1_high?: string | null
+          pattern2_num?: number | null
+          pattern2_name?: string | null
+          pattern2_high?: string | null
+          imported_pdf_path?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          taken_at?: string
+          source?: string
+          position_label?: string | null
+          answers?: Json | null
+          most_counts?: Json | null
+          least_counts?: Json | null
+          graph1?: Json | null
+          graph2?: Json | null
+          pattern1_num?: number | null
+          pattern1_name?: string | null
+          pattern1_high?: string | null
+          pattern2_num?: number | null
+          pattern2_name?: string | null
+          pattern2_high?: string | null
+          imported_pdf_path?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "disc_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_locations: {
         Row: {
           created_at: string
@@ -3282,6 +3356,7 @@ export type Database = {
           email: string
           emergency_contact_name: string | null
           emergency_contact_whatsapp: string | null
+          disc_test_required: boolean
           extra_work_enabled: boolean
           first_day_of_work: string | null
           full_name: string
@@ -3338,6 +3413,7 @@ export type Database = {
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_whatsapp?: string | null
+          disc_test_required?: boolean
           extra_work_enabled?: boolean
           first_day_of_work?: string | null
           full_name?: string
@@ -3394,6 +3470,7 @@ export type Database = {
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_whatsapp?: string | null
+          disc_test_required?: boolean
           extra_work_enabled?: boolean
           first_day_of_work?: string | null
           full_name?: string

@@ -255,6 +255,8 @@ function sampleValuesFor(
         celebrantNames: "Arifin",
         count: 1,
       };
+    case "disc_test_push":
+      return { name: "Arifin" };
     case "streak_milestone":
       return { name: "Arifin", days: 10 };
     case "payslip_paid_notification":

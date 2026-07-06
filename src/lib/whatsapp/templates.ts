@@ -20,6 +20,7 @@ export type TemplateKey =
   | "celebration_greeting_notification"
   | "celebration_birthday_broadcast"
   | "celebration_anniversary_broadcast"
+  | "disc_test_push"
   | "streak_milestone"
   | "payslip_paid_notification"
   | "attendance_check_in_alert"
@@ -129,6 +130,15 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "Halo {recipientName}!\n\n🎉 Hari ini {celebrantNames} merayakan anniversary kerja di Zota. Yuk kasih ucapan lewat Zota App — buka dashboard dan tulis pesannya. Cukup 30 detik 💌",
+  },
+  disc_test_push: {
+    label: "Permintaan tes kepribadian DISC",
+    description:
+      "Dikirim saat admin menandai (push) karyawan untuk mengambil Tes Kepribadian DISC di Zota App. Slip gaji karyawan terkunci sampai tes selesai.",
+    recipient: "Karyawan yang di-push",
+    placeholders: [{ key: "name", description: "Nama karyawan (nickname kalau ada)" }],
+    defaultBody:
+      "Halo {name}! 🧠\n\nKamu diminta mengambil Tes Kepribadian DISC di Zota App. Tesnya singkat (±10 menit) dan hasilnya membantu kamu memahami gaya kerjamu sendiri.\n\nCatatan: slip gaji kamu terkunci sampai tes selesai. Buka Zota App → menu Tes DISC untuk mulai ✨",
   },
   streak_milestone: {
     label: "Streak milestone",
