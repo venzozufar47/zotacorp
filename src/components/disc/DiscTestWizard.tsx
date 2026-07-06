@@ -122,8 +122,8 @@ export function DiscTestWizard() {
         <div className="text-sm space-y-2 leading-relaxed">
           <p>
             Kamu akan melihat <strong>24 kelompok kata</strong>. Di tiap kelompok, pilih satu
-            baris yang <strong>Paling menggambarkan</strong> dirimu dan satu baris yang{" "}
-            <strong>Kurang menggambarkan</strong> dirimu.
+            baris yang <strong>paling mirip</strong> dengan dirimu dan satu baris yang{" "}
+            <strong>paling tidak mirip</strong> dengan dirimu.
           </p>
           <ul className="list-disc pl-5 space-y-1 text-[13px] text-muted-foreground">
             <li>Ini bukan ujian — tidak ada jawaban benar atau salah.</li>
@@ -163,10 +163,18 @@ export function DiscTestWizard() {
 
       {/* Kartu soal */}
       <div className="rounded-2xl border-2 border-foreground bg-card p-4 sm:p-5 shadow-hard-sm">
-        <div className="grid grid-cols-[auto_auto_1fr] gap-x-2 items-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground pb-2">
-          <span className="w-16 text-center">Paling</span>
-          <span className="w-16 text-center">Kurang</span>
-          <span>Pilih satu di tiap kolom</span>
+        <div className="grid grid-cols-[auto_auto_1fr] gap-x-2 items-end text-[9.5px] font-bold text-muted-foreground pb-2">
+          <span className="w-20 text-center leading-tight">
+            Paling
+            <br />
+            mirip
+          </span>
+          <span className="w-20 text-center leading-tight">
+            Paling tidak
+            <br />
+            mirip
+          </span>
+          <span className="uppercase tracking-wider pb-0.5">Pilih satu di tiap kolom</span>
         </div>
         <div className="space-y-2">
           {box.lines.map((line, li) => {
@@ -187,28 +195,28 @@ export function DiscTestWizard() {
                 <button
                   type="button"
                   onClick={() => setChoice("most", li)}
-                  aria-label={`Paling menggambarkan: ${line.id}`}
+                  aria-label={`Paling mirip: ${line.id}`}
                   className={cn(
-                    "w-16 h-9 rounded-lg border-2 grid place-items-center text-xs font-bold transition",
+                    "w-20 h-9 rounded-lg border-2 grid place-items-center text-[11px] font-bold leading-none transition",
                     isMost
                       ? "border-success bg-success text-white"
                       : "border-border bg-card hover:border-success/60"
                   )}
                 >
-                  {isMost ? <Check size={16} /> : "P"}
+                  {isMost ? <Check size={16} /> : "Mirip"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setChoice("least", li)}
-                  aria-label={`Kurang menggambarkan: ${line.id}`}
+                  aria-label={`Paling tidak mirip: ${line.id}`}
                   className={cn(
-                    "w-16 h-9 rounded-lg border-2 grid place-items-center text-xs font-bold transition",
+                    "w-20 h-9 rounded-lg border-2 grid place-items-center text-center text-[11px] font-bold leading-tight transition",
                     isLeast
                       ? "border-destructive bg-destructive text-white"
                       : "border-border bg-card hover:border-destructive/60"
                   )}
                 >
-                  {isLeast ? <Check size={16} /> : "K"}
+                  {isLeast ? <Check size={16} /> : "Tidak mirip"}
                 </button>
                 <span className="text-sm leading-snug py-1">{line.id}</span>
               </div>
@@ -249,8 +257,8 @@ export function DiscTestWizard() {
       </div>
       {!stepDone && (
         <p className="text-[11px] text-muted-foreground text-center">
-          Pilih satu <strong>Paling (P)</strong> dan satu <strong>Kurang (K)</strong> — baris
-          berbeda — untuk lanjut.
+          Pilih satu <strong>Paling mirip</strong> dan satu <strong>Paling tidak mirip</strong> —
+          baris berbeda — untuk lanjut.
         </p>
       )}
     </div>
