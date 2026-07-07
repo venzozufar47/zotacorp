@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Brain, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Brain, Check, Loader2, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DISC_QUESTIONS } from "@/lib/disc/data/questions";
 import { submitDiscTest } from "@/lib/actions/disc.actions";
@@ -162,19 +162,18 @@ export function DiscTestWizard() {
       </div>
 
       {/* Kartu soal */}
-      <div className="rounded-2xl border-2 border-foreground bg-card p-4 sm:p-5 shadow-hard-sm">
-        <div className="grid grid-cols-[auto_auto_1fr] gap-x-2 items-end text-[9.5px] font-bold text-muted-foreground pb-2">
-          <span className="w-20 text-center leading-tight">
-            Paling
-            <br />
-            mirip
-          </span>
-          <span className="w-20 text-center leading-tight">
-            Paling tidak
-            <br />
-            mirip
-          </span>
-          <span className="uppercase tracking-wider pb-0.5">Pilih satu di tiap kolom</span>
+      <div className="rounded-2xl border-2 border-foreground bg-card p-4 sm:p-5 shadow-hard-sm space-y-3">
+        <p className="text-center text-xs text-muted-foreground">
+          Pilih satu kata yang{" "}
+          <span className="font-semibold text-success">paling mirip</span> dan satu
+          yang{" "}
+          <span className="font-semibold text-destructive">paling tidak mirip</span>{" "}
+          dengan dirimu di lingkungan kerja.
+        </p>
+        <div className="flex items-center justify-between px-1 text-[11px] font-bold">
+          <span className="text-success">Paling mirip</span>
+          <span className="text-muted-foreground">Kata</span>
+          <span className="text-destructive">Paling tidak mirip</span>
         </div>
         <div className="space-y-2">
           {box.lines.map((line, li) => {
@@ -184,7 +183,7 @@ export function DiscTestWizard() {
               <div
                 key={li}
                 className={cn(
-                  "grid grid-cols-[auto_auto_1fr] gap-x-2 items-center rounded-xl border-2 px-2 py-2 transition",
+                  "flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 transition",
                   isMost
                     ? "border-success bg-success/10"
                     : isLeast
@@ -196,29 +195,33 @@ export function DiscTestWizard() {
                   type="button"
                   onClick={() => setChoice("most", li)}
                   aria-label={`Paling mirip: ${line.id}`}
+                  aria-pressed={isMost}
                   className={cn(
-                    "w-20 h-9 rounded-lg border-2 grid place-items-center text-[11px] font-bold leading-none transition",
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg border-2 transition",
                     isMost
                       ? "border-success bg-success text-white"
-                      : "border-border bg-card hover:border-success/60"
+                      : "border-border bg-card text-muted-foreground hover:border-success hover:text-success"
                   )}
                 >
-                  {isMost ? <Check size={16} /> : "Mirip"}
+                  <Check size={16} />
                 </button>
+                <span className="flex-1 text-center text-sm sm:text-base font-semibold leading-snug">
+                  {line.id}
+                </span>
                 <button
                   type="button"
                   onClick={() => setChoice("least", li)}
                   aria-label={`Paling tidak mirip: ${line.id}`}
+                  aria-pressed={isLeast}
                   className={cn(
-                    "w-20 h-9 rounded-lg border-2 grid place-items-center text-center text-[11px] font-bold leading-tight transition",
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg border-2 transition",
                     isLeast
                       ? "border-destructive bg-destructive text-white"
-                      : "border-border bg-card hover:border-destructive/60"
+                      : "border-border bg-card text-muted-foreground hover:border-destructive hover:text-destructive"
                   )}
                 >
-                  {isLeast ? <Check size={16} /> : "Tidak mirip"}
+                  <Minus size={16} />
                 </button>
-                <span className="text-sm leading-snug py-1">{line.id}</span>
               </div>
             );
           })}
