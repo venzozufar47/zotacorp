@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
+import { contractNeedsSignature } from "@/lib/employment-contracts/types";
 
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_SIZE = 3 * 1024 * 1024; // 3 MB — tanda tangan kecil.
@@ -54,17 +55,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     path = `templates/${id}/employer-signature-${crypto.randomUUID()}.png`;
   } else {
-    // Employee signature — verifikasi kontrak milik user (atau admin) & pending.
+    // Employee signature — verifikasi kontrak milik user (atau admin) & masih
+    // butuh (tanda tangan / tanda tangan ulang). Kontrak yang direvisi admin
+    // berstatus "signed" tapi signed_version < version → tetap boleh TTD ulang.
     const { data: c } = await admin
       .from("employment_contracts" as never)
-      .select("user_id, status")
+      .select("user_id, status, version, signed_version")
       .eq("id", id)
       .maybeSingle();
-    const row = c as unknown as { user_id: string; status: string } | null;
+    const row = c as unknown as {
+      user_id: string;
+      status: "draft" | "pending_signature" | "signed" | "terminated";
+      version: number | null;
+      signed_version: number | null;
+    } | null;
     if (!row) return NextResponse.json({ error: "Kontrak tidak ada" }, { status: 404 });
     if (role !== "admin" && row.user_id !== user.id)
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (row.status !== "pending_signature")
+    if (!contractNeedsSignature(row))
       return NextResponse.json(
         { error: "Kontrak tidak dalam status menunggu tanda tangan" },
         { status: 409 }
