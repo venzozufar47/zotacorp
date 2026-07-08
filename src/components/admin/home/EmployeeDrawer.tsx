@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   Paperclip,
+  UserCheck,
 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@/lib/actions/admin-home.actions";
 import { reviewLateProof } from "@/lib/actions/attendance.actions";
 import { reviewOvertimeRequest } from "@/lib/actions/overtime.actions";
+import { approveRegistration } from "@/lib/actions/pending-registrations.actions";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
@@ -35,6 +37,9 @@ export interface DrawerSubject {
   avatarSeed: string | null;
   /** Optional secondary line — role / status / pending count summary. */
   caption?: string;
+  /** True bila subjek adalah pendaftar baru yang belum di-ACC — drawer
+   *  menampilkan banner "Aktifkan akun". */
+  pendingRegistration?: boolean;
 }
 
 const MONTH_LABELS = [
@@ -148,6 +153,21 @@ export function EmployeeDrawer({
     }
   }
 
+  const [approvingReg, setApprovingReg] = useState(false);
+  async function activateRegistration() {
+    if (!subject) return;
+    setApprovingReg(true);
+    const res = await approveRegistration(subject.userId);
+    setApprovingReg(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(`${subject.fullName} diaktifkan — sekarang bisa login.`);
+    router.refresh();
+    onClose();
+  }
+
   useEffect(() => {
     if (!subject) return;
     function onKey(e: KeyboardEvent) {
@@ -204,6 +224,32 @@ export function EmployeeDrawer({
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 text-[13px]">
+          {subject.pendingRegistration && (
+            <section className="rounded-xl border-2 border-foreground bg-warning/15 p-3.5 space-y-2.5">
+              <div>
+                <p className="font-display font-bold text-[13.5px]">
+                  Pendaftar baru — belum aktif
+                </p>
+                <p className="text-[12px] text-muted-foreground leading-snug mt-0.5">
+                  Akun ini mendaftar sendiri dan belum bisa login. Setujui untuk
+                  mengaktifkan aksesnya.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={activateRegistration}
+                disabled={approvingReg}
+                className="w-full inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full border-2 border-foreground bg-success text-white text-[12.5px] font-display font-bold shadow-hard-sm hover:-translate-y-0.5 transition disabled:opacity-50 disabled:hover:translate-y-0"
+              >
+                {approvingReg ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <UserCheck size={14} />
+                )}
+                Aktifkan akun
+              </button>
+            </section>
+          )}
           {loading || !data ? (
             <div className="grid place-items-center py-10 text-muted-foreground">
               <Loader2 size={20} className="animate-spin" />

@@ -2,10 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
+import { getPendingRegistrations } from "@/lib/actions/pending-registrations.actions";
 
 export type PendingConfirmationItem = {
   rowId: string;
-  kind: "late_proof" | "overtime";
+  kind: "late_proof" | "overtime" | "registration";
   /** Owner of the attendance row — lets the admin drawer load this
    *  employee's stats + full pending-approval list when clicked. */
   userId: string;
@@ -30,7 +31,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
 
   const supabase = await createClient();
 
-  const [lateRes, otRes] = await Promise.all([
+  const [lateRes, otRes, registrations] = await Promise.all([
     supabase
       .from("attendance_logs")
       .select(
@@ -49,6 +50,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .eq("is_overtime", true)
       .order("date", { ascending: false })
       .limit(200),
+    getPendingRegistrations(),
   ]);
 
   type Row = {
@@ -92,5 +94,18 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     if (a.kind !== b.kind) return a.kind === "late_proof" ? -1 : 1;
     return a.employeeName.localeCompare(b.employeeName);
   });
-  return items;
+
+  // Pendaftar baru menunggu ACC — taruh paling atas karena mereka tidak bisa
+  // login sampai disetujui (`date` = tanggal daftar untuk label & agoLabel).
+  const registrationItems: PendingConfirmationItem[] = registrations.map((r) => ({
+    rowId: r.id,
+    kind: "registration",
+    userId: r.id,
+    employeeName: r.fullName,
+    userAvatarUrl: r.avatarUrl,
+    userAvatarSeed: r.avatarSeed,
+    date: r.createdAt.slice(0, 10),
+  }));
+
+  return [...registrationItems, ...items];
 }

@@ -1,28 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import {
   Wallet as WalletIcon,
   CakeSlice,
   CheckCircle2,
   ArrowRight,
   RefreshCw,
-  UserPlus,
-  UserCheck,
-  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { EmployeeDrawer, type DrawerSubject } from "./EmployeeDrawer";
 import type { AdminHomeToday } from "@/lib/actions/admin-home.actions";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
-import {
-  approveRegistration,
-  type PendingRegistration,
-} from "@/lib/actions/pending-registrations.actions";
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
 
@@ -40,13 +31,14 @@ interface InboxItem {
   userAvatarSeed: string | null;
   desc: string;
   ago: string;
+  /** True untuk pendaftar baru — drawer menampilkan tombol Aktifkan akun. */
+  isRegistration?: boolean;
 }
 
 export function AdminHomePage({
   greetingName,
   today,
   pendingConfirmations,
-  pendingRegistrations,
   disputes,
   upcomingCelebrants,
   userDirectory,
@@ -54,7 +46,6 @@ export function AdminHomePage({
   greetingName: string;
   today: AdminHomeToday;
   pendingConfirmations: PendingConfirmationItem[];
-  pendingRegistrations: PendingRegistration[];
   disputes: DisputeRow[];
   upcomingCelebrants: Celebrant[];
   /** name + avatar lookup for dispute rows (which only carry userId). */
@@ -76,7 +67,7 @@ export function AdminHomePage({
   });
 
   const inbox = buildInbox(pendingConfirmations, disputes, userDirectory);
-  const totalPending = inbox.length + pendingRegistrations.length;
+  const totalPending = inbox.length;
   const onDutyCount = today.clockedInNow.filter((p) => !p.checkedOut).length;
 
   return (
@@ -210,11 +201,6 @@ export function AdminHomePage({
         />
       </div>
 
-      {/* PENDAFTAR BARU — muncul saat ada karyawan menunggu ACC */}
-      {pendingRegistrations.length > 0 && (
-        <PendingRegistrationsCard registrations={pendingRegistrations} />
-      )}
-
       {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
         {/* INBOX */}
@@ -249,6 +235,7 @@ export function AdminHomePage({
                       avatarUrl: it.userAvatarUrl,
                       avatarSeed: it.userAvatarSeed,
                       caption: it.desc,
+                      pendingRegistration: it.isRegistration,
                     })
                   }
                 />
@@ -553,100 +540,6 @@ function InboxRow({
   );
 }
 
-/** Kartu notifikasi pendaftar baru + tombol ACC (aktifkan akun) per orang. */
-function PendingRegistrationsCard({
-  registrations,
-}: {
-  registrations: PendingRegistration[];
-}) {
-  const router = useRouter();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  const approve = (r: PendingRegistration) => {
-    setBusyId(r.id);
-    startTransition(async () => {
-      const res = await approveRegistration(r.id);
-      setBusyId(null);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(`${r.fullName} diaktifkan — sekarang bisa login.`);
-      router.refresh();
-    });
-  };
-
-  return (
-    <div
-      className="rounded-2xl border-2 border-foreground bg-warning/15 overflow-hidden"
-      style={{ boxShadow: "0 4px 16px rgba(8, 49, 46, 0.06)" }}
-    >
-      <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="grid place-items-center size-9 rounded-full border-2 border-foreground bg-warning/50 shrink-0">
-            <UserPlus size={17} />
-          </span>
-          <div>
-            <div className="font-display font-semibold text-[15px] text-foreground tracking-[-0.015em]">
-              Pendaftar baru menunggu ACC
-            </div>
-            <div className="text-[11.5px] text-muted-foreground mt-0.5">
-              {registrations.length} akun karyawan baru — setujui untuk membuka
-              akses login.
-            </div>
-          </div>
-        </div>
-        <Link
-          href="/admin/users"
-          className="hidden sm:inline-flex items-center gap-1 text-[11.5px] font-semibold text-[var(--teal-700)] hover:underline shrink-0"
-        >
-          Kelola di Users <ArrowRight size={12} />
-        </Link>
-      </div>
-      <div className="px-2 pb-2 divide-y divide-foreground/10">
-        {registrations.map((r) => {
-          const rowBusy = pending && busyId === r.id;
-          return (
-            <div
-              key={r.id}
-              className="flex items-center gap-3 px-3 py-2.5"
-            >
-              <EmployeeAvatar
-                size="sm"
-                full_name={r.fullName}
-                avatar_url={r.avatarUrl}
-                avatar_seed={r.avatarSeed}
-              />
-              <span className="flex-1 min-w-0">
-                <span className="block text-[13px] font-medium text-foreground truncate">
-                  {r.fullName}
-                </span>
-                <span className="block text-[11.5px] text-muted-foreground truncate">
-                  {r.email ?? "—"} · daftar {agoLabel(r.createdAt)} lalu
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => approve(r)}
-                disabled={pending}
-                className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border-2 border-foreground bg-success text-white text-[12.5px] font-display font-bold shadow-hard-sm hover:-translate-y-0.5 transition disabled:opacity-50 disabled:hover:translate-y-0"
-              >
-                {rowBusy ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <UserCheck size={14} />
-                )}
-                ACC
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function buildInbox(
   pending: PendingConfirmationItem[],
   disputes: DisputeRow[],
@@ -657,16 +550,26 @@ function buildInbox(
 ): InboxItem[] {
   const out: InboxItem[] = [];
   for (const p of pending) {
+    const isRegistration = p.kind === "registration";
     out.push({
-      id: `pending-${p.rowId}`,
-      tag: p.kind === "late_proof" ? "Late proof" : "Overtime",
+      id: `pending-${p.kind}-${p.rowId}`,
+      tag: isRegistration
+        ? "Pendaftar"
+        : p.kind === "late_proof"
+          ? "Late proof"
+          : "Overtime",
       tagTone: p.kind === "late_proof" ? "warn" : "info",
       userId: p.userId,
       userName: p.employeeName,
       userAvatarUrl: p.userAvatarUrl,
       userAvatarSeed: p.userAvatarSeed,
-      desc: p.kind === "late_proof" ? "Awaiting approval" : "OT awaiting approval",
+      desc: isRegistration
+        ? "Menunggu ACC akun"
+        : p.kind === "late_proof"
+          ? "Awaiting approval"
+          : "OT awaiting approval",
       ago: agoLabel(p.date),
+      isRegistration,
     });
   }
   for (const d of disputes) {

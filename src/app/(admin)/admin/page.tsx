@@ -5,7 +5,6 @@ import { getCurrentUser, getCurrentRole, getCurrentProfile } from "@/lib/supabas
 import { createClient } from "@/lib/supabase/server";
 import { getAdminHomeToday } from "@/lib/actions/admin-home.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
-import { getPendingRegistrations } from "@/lib/actions/pending-registrations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import {
   getAdminCelebrationsRadar,
@@ -27,12 +26,11 @@ export default async function AdminHomeRoute() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [profile, today, pending, registrations, disputes, radar, celebrationsFeed] =
+  const [profile, today, pending, disputes, radar, celebrationsFeed] =
     await Promise.all([
       getCurrentProfile(),
       getAdminHomeToday(),
       getPendingConfirmations(),
-      getPendingRegistrations(),
       listOpenPayslipDisputes(),
       getAdminCelebrationsRadar(),
       getCelebrationsFeed().catch(() => ({
@@ -75,7 +73,6 @@ export default async function AdminHomeRoute() {
         greetingName={greetingName}
         today={today}
         pendingConfirmations={pending}
-        pendingRegistrations={registrations}
         disputes={disputes}
         upcomingCelebrants={radar}
         userDirectory={userDirectory}

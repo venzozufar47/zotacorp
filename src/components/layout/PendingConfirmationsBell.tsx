@@ -45,6 +45,11 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
 
   function jumpTo(it: PendingConfirmationItem) {
     setOpen(false);
+    if (it.kind === "registration") {
+      // Pendaftar baru → kelola & aktifkan di halaman Users.
+      router.push("/admin/users");
+      return;
+    }
     // Pin the recap table to the right month + scroll target so the
     // existing in-page flash highlight kicks in.
     const [y, m] = it.date.split("-").map(Number);
@@ -117,10 +122,16 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
                       "shrink-0 mt-0.5 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider " +
                       (it.kind === "late_proof"
                         ? "bg-purple-100 text-purple-800"
-                        : "bg-sky-100 text-sky-800")
+                        : it.kind === "registration"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-sky-100 text-sky-800")
                     }
                   >
-                    {it.kind === "late_proof" ? "Late proof" : "Overtime"}
+                    {it.kind === "late_proof"
+                      ? "Late proof"
+                      : it.kind === "registration"
+                        ? "Pendaftar"
+                        : "Overtime"}
                   </span>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-foreground truncate">
