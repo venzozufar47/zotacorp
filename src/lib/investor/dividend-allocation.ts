@@ -92,6 +92,54 @@ export function investorPoolFracBeforeBep(config: DivBranchConfig): number {
   return (100 - config.mgmtPctBeforeBep) / 100;
 }
 
+/** Batas model BEP: mulai Mei 2026 memakai investor_payouts REAL; s/d Apr
+ *  2026 memakai estimasi porsi investor atas histori dividen PnL. */
+const BEP_BASELINE_THROUGH = { year: 2026, month: 4 } as const;
+
+/**
+ * Kumulatif "modal terbalik" (BEP recoup) untuk SATU kontrak investor —
+ * basis HYBRID yang identik dengan konsol dividen admin
+ * (getDividendConsoleData, `cumByContract`):
+ *   - s/d Apr 2026 : `ifrac × investorPoolFrac × ΣDividendPool(→ y,m)`
+ *   - Mei 2026+    : `ifrac × baselineAkhirApr2026 + payout real (Mei 2026+)`
+ * dengan `ifrac` = fraksi investor dalam pool cabang (investasi ÷ total
+ * modal cabang, atau bagi-hasil %). `report` WAJIB mencakup dari awal
+ * histori dividen (2023-01) s/d (year, month).
+ *
+ * PENTING: jaga tetap SINKRON dengan yeobo-dividend-console.actions.ts —
+ * dua permukaan (hero investor & konsol admin) harus memberi angka sama.
+ */
+export function cumulativeInvestorRecoup(args: {
+  report: YeoboPnLReport;
+  branch: string;
+  config: DivBranchConfig;
+  ifrac: number;
+  /** Σ investor_payouts kontrak ini, periode Mei 2026+ s/d (year, month). */
+  realPayoutThrough: number;
+  year: number;
+  month: number;
+}): number {
+  const { report, branch, config, ifrac, realPayoutThrough, year, month } = args;
+  const oldFrac = investorPoolFracBeforeBep(config);
+  const rank = year * 100 + month;
+  const baselineRank = BEP_BASELINE_THROUGH.year * 100 + BEP_BASELINE_THROUGH.month;
+  if (rank <= baselineRank) {
+    return Math.round(
+      ifrac * oldFrac * cumulativeDividendPool(report, branch, year, month)
+    );
+  }
+  const baselineThruApr = Math.round(
+    oldFrac *
+      cumulativeDividendPool(
+        report,
+        branch,
+        BEP_BASELINE_THROUGH.year,
+        BEP_BASELINE_THROUGH.month
+      )
+  );
+  return Math.round(ifrac * baselineThruApr) + realPayoutThrough;
+}
+
 /**
  * Is the branch "after BEP" for the given month? Manual override wins.
  * Otherwise: the investors collectively recoup their capital when the

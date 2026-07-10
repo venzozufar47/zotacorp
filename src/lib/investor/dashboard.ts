@@ -16,6 +16,8 @@ import {
   getInvestorContractsForBu,
   type InvestorContract,
 } from "@/lib/actions/investor.actions";
+import { getDividendBranchConfig } from "@/lib/actions/yeobo-dividend.actions";
+import { cumulativeInvestorRecoup } from "@/lib/investor/dividend-allocation";
 
 /**
  * Per-month rollup yang menggabungkan PnL admin (revenue/COGS/opex/
@@ -724,7 +726,13 @@ export async function fetchYeoboInvestorDashboard(input: {
   // lifetime span; slice both in memory (was two separate full fetches).
   const selLo = mIdx(input.from.year, input.from.month);
   const selHi = mIdx(input.to.year, input.to.month);
-  const loIdx = anyStarted ? Math.min(selLo, mIdx(earliestY, earliestM)) : selLo;
+  // Perhitungan BEP hybrid butuh histori dividen sejak 2023-01 (baseline s/d
+  // Apr 2026), jadi turunkan batas bawah report ke situ.
+  const DIVIDEND_BASELINE_LO = mIdx(2023, 1);
+  const loIdx = Math.min(
+    anyStarted ? Math.min(selLo, mIdx(earliestY, earliestM)) : selLo,
+    DIVIDEND_BASELINE_LO
+  );
   const hiIdx = anyStarted
     ? Math.max(selHi, mIdx(currentYear, currentMonth))
     : selHi;
@@ -747,6 +755,14 @@ export async function fetchYeoboInvestorDashboard(input: {
     contracts.map((c) => c.id)
   );
 
+  // Konfigurasi dividen per cabang (mgmt %, total modal cabang) — untuk BEP
+  // "modal terbalik" hybrid yang konsisten dengan konsol dividen admin.
+  const branchList = Array.from(
+    new Set(contracts.map((c) => c.branch).filter((b): b is string => !!b))
+  );
+  const branchConfigs = await Promise.all(branchList.map((b) => getDividendBranchConfig(b)));
+  const configByBranch = new Map(branchList.map((b, i) => [b, branchConfigs[i]]));
+
   const blocks: InvestorBranchDashboardBlock[] = [];
   for (const contract of contracts) {
     const b = contract.branch as string;
@@ -757,10 +773,35 @@ export async function fetchYeoboInvestorDashboard(input: {
     const payouts = payoutsByContract.get(contract.id) ?? [];
     const totalCashback = payouts.reduce((s, p) => s + p.amountIdr, 0);
     const bepTarget = contract.bepTargetIdr ?? 0;
+
+    // BEP "modal terbalik": basis HYBRID identik dengan konsol dividen admin
+    // (baseline estimasi porsi investor s/d Apr 2026 + payout real Mei 2026+),
+    // supaya % di hero investor == % di tabel payout admin. `investor_payouts`
+    // hanya berisi periode Mei 2026+, jadi totalCashback = payout real.
+    const cfg = contract.branch ? configByBranch.get(contract.branch) : undefined;
+    let bepCurrent = totalCashback;
+    if (cfg && contract.branch) {
+      const total = cfg.totalInvestmentIdr;
+      const ifrac =
+        total && total > 0
+          ? contract.totalInvestIdr / total
+          : (contract.bagiHasilPct ?? 0) / 100;
+      bepCurrent = cumulativeInvestorRecoup({
+        report: bigReport,
+        branch: contract.branch,
+        config: cfg,
+        ifrac,
+        realPayoutThrough: totalCashback,
+        year: currentYear,
+        month: currentMonth,
+      });
+    }
     const bepProgress = {
-      current: totalCashback,
+      current: bepCurrent,
       target: bepTarget,
-      pct: bepTarget > 0 ? Math.min(100, (totalCashback / bepTarget) * 100) : 0,
+      // Tidak di-clamp: boleh > 100% bila kumulatif melampaui target BEP
+      // (mis. Tlogosari 113%). Lebar bar dibatasi terpisah di komponen.
+      pct: bepTarget > 0 ? (bepCurrent / bepTarget) * 100 : 0,
     };
     const contractProgress = computeContractProgress(contract);
 
