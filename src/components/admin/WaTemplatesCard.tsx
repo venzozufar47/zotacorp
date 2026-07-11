@@ -293,5 +293,24 @@ function sampleValuesFor(
         sisaTagihan: "Rp 500.000",
         jumlahSesi: 100,
       };
+    case "ticket_new_alert":
+      return {
+        branch: "Tlogosari",
+        category: "Barang rusak / perlu ganti",
+        title: "AC ruang edit mati",
+      };
+    case "ticket_escalated_alert":
+      return {
+        branch: "Tlogosari",
+        title: "AC ruang edit mati",
+        note: "Perlu ganti unit, di luar budget studio",
+      };
+    case "ticket_resolved_alert":
+      return { note: "Sudah diganti unit baru" };
+    case "ticket_returned_alert":
+      return {
+        title: "AC ruang edit mati",
+        note: "Coba servis dulu, budget masih cukup",
+      };
   }
 }

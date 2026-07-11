@@ -275,3 +275,51 @@ export async function requireCakeProductionRole(
   }
   return { ok: true, userId: user.id };
 }
+
+/**
+ * Ticketing — boleh MEMBUAT tiket: admin, Kepala Studio (membership
+ * `studio_heads`), atau karyawan business_unit='Yeobo Space'.
+ */
+export async function requireTicketFiler(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  if (role === "investor") return { ok: false, error: "Forbidden" };
+  const supabase = await createClient();
+  const [{ data: head }, { data: prof }] = await Promise.all([
+    supabase
+      .from("studio_heads" as never)
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase.from("profiles").select("business_unit").eq("id", user.id).maybeSingle(),
+  ]);
+  if (head) return { ok: true, userId: user.id };
+  if ((prof?.business_unit ?? "").trim() === "Yeobo Space")
+    return { ok: true, userId: user.id };
+  return { ok: false, error: "Forbidden" };
+}
+
+/**
+ * Ticketing — boleh MENINDAKLANJUTI tiket (mulai/selesai/eskalasi):
+ * admin (owner) atau Kepala Studio.
+ */
+export async function requireStudioHeadOrAdmin(): Promise<
+  { ok: true; userId: string; isAdmin: boolean } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id, isAdmin: true };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("studio_heads" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id, isAdmin: false };
+}

@@ -125,6 +125,11 @@ const TARGETS: Array<{
     refs: [["cake_order_attachments", ["storage_path"]]],
     minAgeHours: 7 * 24,
   },
+  {
+    bucket: "ticket-attachments",
+    refs: [["ticket_attachments", ["path"]]],
+    minAgeHours: 48,
+  },
 ];
 
 /** Jalankan GC semua target. Error per-bucket ditelan (fire-and-forget). */

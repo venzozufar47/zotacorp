@@ -31,8 +31,13 @@ import type { AttendanceBreakLog } from "@/lib/supabase/types";
 import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
 import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
+import {
+  getMyOpenTicketsSummary,
+  getStudioQueueCount,
+} from "@/lib/actions/tickets.actions";
+import { isStudioHead } from "@/lib/tickets/access";
 import Link from "next/link";
-import { Brain, FileSignature } from "lucide-react";
+import { Brain, FileSignature, Ticket as TicketIcon } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -97,6 +102,9 @@ export default async function DashboardPage() {
     cleaningTasks,
     extraWorkKinds,
     myPendingContract,
+    myTicketsSummary,
+    studioQueueCount,
+    isHeadOfStudio,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -126,6 +134,9 @@ export default async function DashboardPage() {
     getTodayCleaningTasks(),
     listExtraWorkKindsForUser(user.id),
     getMyPendingContract(),
+    getMyOpenTicketsSummary(),
+    getStudioQueueCount(),
+    isStudioHead(),
   ]);
   const pendingContract = myPendingContract;
 
@@ -224,6 +235,46 @@ export default async function DashboardPage() {
             </span>
             <span className="block text-xs text-muted-foreground">
               ±10 menit. Slip gaji terkunci sampai tes selesai — ketuk untuk mulai.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
+
+      {isHeadOfStudio && studioQueueCount > 0 && (
+        <Link
+          href="/tickets"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+            <TicketIcon size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">
+              {studioQueueCount} tiket studio menunggu ditangani
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Kamu Kepala Studio — ketuk untuk menindaklanjuti.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
+
+      {myTicketsSummary.openCount > 0 && (
+        <Link
+          href="/tickets"
+          className="flex items-center gap-3 rounded-2xl border-2 border-border bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
+            <TicketIcon size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">
+              {myTicketsSummary.openCount} tiket kamu sedang diproses
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Ketuk untuk lihat status & lampiran.
             </span>
           </span>
           <span className="text-sm font-bold shrink-0">→</span>

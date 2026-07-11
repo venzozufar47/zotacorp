@@ -33,6 +33,8 @@ interface InboxItem {
   ago: string;
   /** True untuk pendaftar baru — drawer menampilkan tombol Aktifkan akun. */
   isRegistration?: boolean;
+  /** Bila diisi, klik baris navigasi ke href ini (bukan buka drawer). */
+  href?: string;
 }
 
 export function AdminHomePage({
@@ -229,14 +231,16 @@ export function AdminHomePage({
                   key={it.id}
                   item={it}
                   onSubject={() =>
-                    setDrawer({
-                      userId: it.userId,
-                      fullName: it.userName,
-                      avatarUrl: it.userAvatarUrl,
-                      avatarSeed: it.userAvatarSeed,
-                      caption: it.desc,
-                      pendingRegistration: it.isRegistration,
-                    })
+                    it.href
+                      ? router.push(it.href)
+                      : setDrawer({
+                          userId: it.userId,
+                          fullName: it.userName,
+                          avatarUrl: it.userAvatarUrl,
+                          avatarSeed: it.userAvatarSeed,
+                          caption: it.desc,
+                          pendingRegistration: it.isRegistration,
+                        })
                   }
                 />
               ))
@@ -551,25 +555,31 @@ function buildInbox(
   const out: InboxItem[] = [];
   for (const p of pending) {
     const isRegistration = p.kind === "registration";
+    const isTicket = p.kind === "ticket";
     out.push({
       id: `pending-${p.kind}-${p.rowId}`,
-      tag: isRegistration
-        ? "Pendaftar"
-        : p.kind === "late_proof"
-          ? "Late proof"
-          : "Overtime",
-      tagTone: p.kind === "late_proof" ? "warn" : "info",
+      tag: isTicket
+        ? "Tiket"
+        : isRegistration
+          ? "Pendaftar"
+          : p.kind === "late_proof"
+            ? "Late proof"
+            : "Overtime",
+      tagTone: isTicket ? "bad" : p.kind === "late_proof" ? "warn" : "info",
       userId: p.userId,
       userName: p.employeeName,
       userAvatarUrl: p.userAvatarUrl,
       userAvatarSeed: p.userAvatarSeed,
-      desc: isRegistration
-        ? "Menunggu ACC akun"
-        : p.kind === "late_proof"
-          ? "Awaiting approval"
-          : "OT awaiting approval",
+      desc: isTicket
+        ? "Eskalasi tiket studio"
+        : isRegistration
+          ? "Menunggu ACC akun"
+          : p.kind === "late_proof"
+            ? "Awaiting approval"
+            : "OT awaiting approval",
       ago: agoLabel(p.date),
       isRegistration,
+      href: isTicket ? "/admin/tickets" : undefined,
     });
   }
   for (const d of disputes) {

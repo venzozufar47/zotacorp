@@ -29,7 +29,11 @@ export type TemplateKey =
   | "yeobo_booth_reminder_h3"
   | "yeobo_booth_reminder_h1"
   | "yeobo_booth_reminder_generic"
-  | "yeobo_booth_reminder_generic_space_rent";
+  | "yeobo_booth_reminder_generic_space_rent"
+  | "ticket_new_alert"
+  | "ticket_escalated_alert"
+  | "ticket_resolved_alert"
+  | "ticket_returned_alert";
 
 export interface PlaceholderInfo {
   key: string;
@@ -292,6 +296,52 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "📸 Reminder H-{hari} Sewa Space Yeobo Booth\n\nPenyewa: {namaKlien}\nTanggal: {tanggal}\nJam: {jamMulai}–{jamSelesai} WIB\nLokasi: {lokasi}\nTim: {freelance}\n\nJumlah sesi: {jumlahSesi}\n\nSiapkan space & tim ya. 🙏",
+  },
+  ticket_new_alert: {
+    label: "Tiket — laporan baru masuk",
+    description:
+      "Dikirim ke Kepala Studio saat ada tiket baru dibuat karyawan Yeobo Space.",
+    recipient: "Kepala Studio (studio_heads)",
+    placeholders: [
+      { key: "branch", description: "Cabang studio (Tlogosari/Tembalang/Jebres)" },
+      { key: "category", description: "Kategori laporan" },
+      { key: "title", description: "Judul tiket" },
+    ],
+    defaultBody:
+      "🎫 Tiket baru — {branch}\n\n{category}: {title}\n\nBuka Zota App → menu Tiket untuk menindaklanjuti. 🙏",
+  },
+  ticket_escalated_alert: {
+    label: "Tiket — eskalasi ke owner",
+    description:
+      "Dikirim ke owner/admin saat Kepala Studio mengeskalasi sebuah tiket.",
+    recipient: "Owner / admin (daftar penerima admin)",
+    placeholders: [
+      { key: "branch", description: "Cabang studio" },
+      { key: "title", description: "Judul tiket" },
+      { key: "note", description: "Catatan eskalasi dari Kepala Studio" },
+    ],
+    defaultBody:
+      "⏫ Eskalasi tiket — {branch}\n\n{title}\n\nCatatan Kepala Studio: {note}\n\nBuka Zota App → Tiket untuk ACC atau tolak. 🙏",
+  },
+  ticket_resolved_alert: {
+    label: "Tiket — selesai",
+    description: "Dikirim ke pembuat tiket saat tiketnya ditandai selesai.",
+    recipient: "Pembuat tiket",
+    placeholders: [{ key: "note", description: "Catatan penyelesaian (jika ada)" }],
+    defaultBody:
+      "✅ Tiket kamu sudah selesai ditangani.\n\nCatatan: {note}\n\nTerima kasih sudah melapor 🙏",
+  },
+  ticket_returned_alert: {
+    label: "Tiket — dikembalikan owner",
+    description:
+      "Dikirim ke Kepala Studio saat owner menolak eskalasi (tiket dikembalikan untuk dikerjakan sendiri).",
+    recipient: "Kepala Studio (studio_heads)",
+    placeholders: [
+      { key: "title", description: "Judul tiket" },
+      { key: "note", description: "Catatan owner" },
+    ],
+    defaultBody:
+      "↩️ Eskalasi ditolak owner — dikerjakan sendiri ya.\n\nTiket: {title}\nCatatan owner: {note}\n\nBuka Zota App → Tiket. 🙏",
   },
 };
 

@@ -6,7 +6,7 @@ import { getPendingRegistrations } from "@/lib/actions/pending-registrations.act
 
 export type PendingConfirmationItem = {
   rowId: string;
-  kind: "late_proof" | "overtime" | "registration";
+  kind: "late_proof" | "overtime" | "registration" | "ticket";
   /** Owner of the attendance row — lets the admin drawer load this
    *  employee's stats + full pending-approval list when clicked. */
   userId: string;
@@ -31,7 +31,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
 
   const supabase = await createClient();
 
-  const [lateRes, otRes, registrations] = await Promise.all([
+  const [lateRes, otRes, registrations, ticketsRes] = await Promise.all([
     supabase
       .from("attendance_logs")
       .select(
@@ -51,6 +51,12 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .order("date", { ascending: false })
       .limit(200),
     getPendingRegistrations(),
+    supabase
+      .from("tickets" as never)
+      .select("id, created_by, escalated_at, title, profiles!inner(full_name, avatar_url, avatar_seed)")
+      .eq("status", "escalated")
+      .order("escalated_at", { ascending: true })
+      .limit(100),
   ]);
 
   type Row = {
@@ -107,5 +113,28 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     date: r.createdAt.slice(0, 10),
   }));
 
-  return [...registrationItems, ...items];
+  // Tiket studio yang dieskalasi ke owner — menunggu keputusan.
+  type TicketRow = {
+    id: string;
+    created_by: string;
+    escalated_at: string | null;
+    profiles: {
+      full_name: string | null;
+      avatar_url: string | null;
+      avatar_seed: string | null;
+    } | null;
+  };
+  const ticketItems: PendingConfirmationItem[] = (
+    (ticketsRes.data ?? []) as unknown as TicketRow[]
+  ).map((t) => ({
+    rowId: t.id,
+    kind: "ticket",
+    userId: t.created_by,
+    employeeName: t.profiles?.full_name || "Karyawan",
+    userAvatarUrl: t.profiles?.avatar_url ?? null,
+    userAvatarSeed: t.profiles?.avatar_seed ?? null,
+    date: (t.escalated_at ?? new Date().toISOString()).slice(0, 10),
+  }));
+
+  return [...ticketItems, ...registrationItems, ...items];
 }

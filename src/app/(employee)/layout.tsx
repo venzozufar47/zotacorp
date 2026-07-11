@@ -6,6 +6,7 @@ import { countMyAssignments } from "@/lib/actions/cashflow-assignments.actions";
 import { getCurrentProfile } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
+import { canFileTickets } from "@/lib/tickets/access";
 
 export default async function EmployeeLayout({
   children,
@@ -16,15 +17,23 @@ export default async function EmployeeLayout({
   // Yeobo Booth) only when the user actually has access. All queries run
   // in parallel — each is a cheap indexed lookup scoped to the current
   // user via RLS.
-  const [assignedIds, profile, cakeAccess, assignmentCount, hasYeoboBooth, hasCash] =
-    await Promise.all([
-      listMyAssignedBankAccountIds(),
-      getCurrentProfile(),
-      getMyCakeAccess(),
-      countMyAssignments(),
-      isYeoboBoothAdmin(),
-      hasAssignedCashDashboard(),
-    ]);
+  const [
+    assignedIds,
+    profile,
+    cakeAccess,
+    assignmentCount,
+    hasYeoboBooth,
+    hasCash,
+    hasTickets,
+  ] = await Promise.all([
+    listMyAssignedBankAccountIds(),
+    getCurrentProfile(),
+    getMyCakeAccess(),
+    countMyAssignments(),
+    isYeoboBoothAdmin(),
+    hasAssignedCashDashboard(),
+    canFileTickets(),
+  ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
     ? {
@@ -45,6 +54,7 @@ export default async function EmployeeLayout({
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
         hasYeoboBooth={hasYeoboBooth}
+        hasTickets={hasTickets}
         assignmentCount={assignmentCount}
         me={me}
       />
@@ -59,6 +69,7 @@ export default async function EmployeeLayout({
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
         hasYeoboBooth={hasYeoboBooth}
+        hasTickets={hasTickets}
         assignmentCount={assignmentCount}
         me={me}
       />

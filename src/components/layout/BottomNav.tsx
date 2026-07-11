@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -13,6 +13,7 @@ export function BottomNav({
   hasCakeOrders = false,
   hasCakeProduction = false,
   hasYeoboBooth = false,
+  hasTickets = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -21,6 +22,7 @@ export function BottomNav({
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
   hasYeoboBooth?: boolean;
+  hasTickets?: boolean;
   assignmentCount?: number;
   me?: MenuViewer | null;
 }) {
@@ -31,6 +33,9 @@ export function BottomNav({
     { href: "/dashboard", icon: LayoutDashboard, label: t.nav.home, color: "bg-primary" },
     { href: "/attendance", icon: Clock, label: t.nav.attendance, color: "bg-pop-pink" },
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
+    ...(hasTickets
+      ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      : []),
     ...(hasCakeOrders
       ? [{ href: "/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" }]
       : []),
