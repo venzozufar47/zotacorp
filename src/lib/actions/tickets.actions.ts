@@ -82,9 +82,13 @@ async function hydrate(db: any, rows: any[]): Promise<Ticket[]> {
   if (tickets.length === 0) return tickets;
   const ids = tickets.map((t) => t.id);
   const creatorIds = Array.from(new Set(tickets.map((t) => t.createdBy)));
+  // Nama/avatar pembuat di-resolve lewat service-role supaya konsisten utk
+  // semua penampil — RLS `profiles` memblokir Kepala Studio (non-admin)
+  // membaca profil rekan lain, yang sebelumnya bikin nama jatuh ke "Karyawan".
+  const admin = createAdminClient() as any;
   const [{ data: atts }, { data: profs }] = await Promise.all([
     db.from("ticket_attachments").select("*").in("ticket_id", ids),
-    db
+    admin
       .from("profiles")
       .select("id, full_name, nickname, avatar_url, avatar_seed")
       .in("id", creatorIds),
