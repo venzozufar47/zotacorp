@@ -327,9 +327,13 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Tiket — selesai",
     description: "Dikirim ke pembuat tiket saat tiketnya ditandai selesai.",
     recipient: "Pembuat tiket",
-    placeholders: [{ key: "note", description: "Catatan penyelesaian (jika ada)" }],
+    placeholders: [
+      { key: "branch", description: "Cabang studio" },
+      { key: "title", description: "Judul tiket yang selesai" },
+      { key: "note", description: "Catatan penyelesaian (jika ada)" },
+    ],
     defaultBody:
-      "✅ Tiket kamu sudah selesai ditangani.\n\nCatatan: {note}\n\nTerima kasih sudah melapor 🙏",
+      "✅ Tiket kamu sudah selesai ditangani.\n\nTiket: {title} ({branch})\nCatatan: {note}\n\nTerima kasih sudah melapor 🙏",
   },
   ticket_returned_alert: {
     label: "Tiket — dikembalikan owner",

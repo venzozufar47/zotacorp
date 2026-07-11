@@ -277,10 +277,15 @@ export async function resolveTicket(
   const supabase = await createClient();
   const { data: t } = await supabase
     .from("tickets" as never)
-    .select("status, created_by")
+    .select("status, created_by, title, branch")
     .eq("id", ticketId)
     .maybeSingle();
-  const row = t as unknown as { status: string; created_by: string } | null;
+  const row = t as unknown as {
+    status: string;
+    created_by: string;
+    title: string;
+    branch: string;
+  } | null;
   if (!row) return { ok: false, error: "Tiket tidak ditemukan" };
   if (!["open", "in_progress", "owner_handling"].includes(row.status))
     return { ok: false, error: "Tiket tidak bisa diselesaikan pada status ini" };
@@ -298,6 +303,8 @@ export async function resolveTicket(
   const phone = await creatorPhone(row.created_by);
   if (phone) {
     const msg = await renderWaTemplate("ticket_resolved_alert", {
+      branch: row.branch,
+      title: row.title,
       note: note?.trim() || "-",
     });
     void fireWa([phone], msg);

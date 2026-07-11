@@ -306,7 +306,11 @@ function sampleValuesFor(
         note: "Perlu ganti unit, di luar budget studio",
       };
     case "ticket_resolved_alert":
-      return { note: "Sudah diganti unit baru" };
+      return {
+        branch: "Tlogosari",
+        title: "AC ruang edit mati",
+        note: "Sudah diganti unit baru",
+      };
     case "ticket_returned_alert":
       return {
         title: "AC ruang edit mati",
