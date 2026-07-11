@@ -82,9 +82,21 @@ export interface Ticket {
   ownerDecidedAt: string | null;
   ownerDecidedBy: string | null;
   ownerNote: string | null;
+  /** Konfirmasi pembuat atas penyelesaian (cross-check). */
+  confirmedAt: string | null;
+  confirmedBy: string | null;
+  /** Catatan "belum beres" saat pembuat menolak penyelesaian. */
+  disputeNote: string | null;
   createdAt: string;
   updatedAt: string;
   attachments?: TicketAttachment[];
+}
+
+/** Tiket sudah diselesaikan tapi belum dikonfirmasi pembuat. */
+export function needsFilerConfirmation(
+  t: Pick<Ticket, "status" | "confirmedAt">
+): boolean {
+  return t.status === "resolved" && !t.confirmedAt;
 }
 
 /** Peran penampil terhadap sistem tiket. */

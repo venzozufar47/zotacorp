@@ -71,6 +71,9 @@ function mapTicket(r: any): Ticket {
     ownerDecidedAt: r.owner_decided_at ?? null,
     ownerDecidedBy: r.owner_decided_by ?? null,
     ownerNote: r.owner_note ?? null,
+    confirmedAt: r.confirmed_at ?? null,
+    confirmedBy: r.confirmed_by ?? null,
+    disputeNote: r.dispute_note ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -412,6 +415,70 @@ export async function ownerDecideTicket(
   return { ok: true };
 }
 
+// ─── Filer confirmation (cross-check) ───────────────────────────────────────
+export async function confirmTicketResolution(
+  ticketId: string,
+  decision: "confirm" | "dispute",
+  note?: string
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  if (decision === "dispute" && !note?.trim())
+    return { ok: false, error: "Catatan 'belum beres' wajib diisi" };
+
+  const supabase = await createClient();
+  const { data: t } = await supabase
+    .from("tickets" as never)
+    .select("created_by, status, confirmed_at, title")
+    .eq("id", ticketId)
+    .maybeSingle();
+  const row = t as unknown as {
+    created_by: string;
+    status: string;
+    confirmed_at: string | null;
+    title: string;
+  } | null;
+  if (!row) return { ok: false, error: "Tiket tidak ditemukan" };
+  // Hanya pembuat tiket yang mengkonfirmasi (cross-check).
+  if (row.created_by !== user.id) return { ok: false, error: "Forbidden" };
+  if (row.status !== "resolved" || row.confirmed_at)
+    return { ok: false, error: "Tiket tidak menunggu konfirmasi" };
+
+  if (decision === "confirm") {
+    const { error } = await supabase
+      .from("tickets" as never)
+      .update({ confirmed_at: new Date().toISOString(), confirmed_by: user.id } as never)
+      .eq("id", ticketId);
+    if (error) return { ok: false, error: error.message };
+    revalidateTickets();
+    return { ok: true };
+  }
+
+  // dispute → buka kembali ke antrian Kepala Studio, bersihkan jejak selesai.
+  const { error } = await supabase
+    .from("tickets" as never)
+    .update({
+      status: "in_progress",
+      resolved_at: null,
+      resolved_by: null,
+      resolution_note: null,
+      dispute_note: note!.trim(),
+    } as never)
+    .eq("id", ticketId);
+  if (error) return { ok: false, error: error.message };
+
+  const phones = await studioHeadPhones();
+  if (phones.length > 0) {
+    const msg = await renderWaTemplate("ticket_reopened_alert", {
+      title: row.title,
+      note: note!.trim(),
+    });
+    void fireWa(phones, msg);
+  }
+  revalidateTickets();
+  return { ok: true };
+}
+
 // ─── Reads ──────────────────────────────────────────────────────────────────
 export async function getMyTickets(): Promise<Ticket[]> {
   const user = await getCurrentUser();
@@ -505,28 +572,25 @@ export async function getStudioHeadKpi(): Promise<StudioHeadKpi | null> {
 /** Ringkasan utk kartu dashboard karyawan (pembuat). */
 export async function getMyOpenTicketsSummary(): Promise<{
   openCount: number;
-  latestResolved: { title: string; note: string | null } | null;
+  awaitingConfirmation: number;
 }> {
   const user = await getCurrentUser();
-  if (!user) return { openCount: 0, latestResolved: null };
+  if (!user) return { openCount: 0, awaitingConfirmation: 0 };
   const supabase = await createClient();
   const { data } = await supabase
     .from("tickets" as never)
-    .select("status, title, resolution_note, owner_note, resolved_at")
+    .select("status, confirmed_at")
     .eq("created_by", user.id)
     .order("updated_at", { ascending: false })
-    .limit(50);
+    .limit(100);
   const rows = (data ?? []) as any[];
   const openCount = rows.filter((r) =>
     ["open", "in_progress", "escalated", "owner_handling"].includes(r.status)
   ).length;
-  const resolved = rows.find((r) => r.status === "resolved");
-  return {
-    openCount,
-    latestResolved: resolved
-      ? { title: resolved.title, note: resolved.resolution_note ?? resolved.owner_note ?? null }
-      : null,
-  };
+  const awaitingConfirmation = rows.filter(
+    (r) => r.status === "resolved" && !r.confirmed_at
+  ).length;
+  return { openCount, awaitingConfirmation };
 }
 
 /** Jumlah tiket di antrian Kepala Studio (kartu dashboard). */

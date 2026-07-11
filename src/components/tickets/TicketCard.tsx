@@ -29,12 +29,14 @@ import {
   escalateTicket,
   cancelTicket,
   ownerDecideTicket,
+  confirmTicketResolution,
 } from "@/lib/actions/tickets.actions";
 import {
   TICKET_CATEGORY_LABELS,
   TICKET_STATUS_LABELS,
   ticketResolutionMs,
   formatDuration,
+  needsFilerConfirmation,
   type Ticket,
   type TicketViewerRole,
 } from "@/lib/tickets/types";
@@ -176,10 +178,18 @@ export function TicketCard({
           text={ticket.ownerNote}
         />
       )}
+      {ticket.disputeNote && ticket.status === "in_progress" && (
+        <NoteLine tone="warn" label="Belum beres (dari pelapor)" text={ticket.disputeNote} />
+      )}
       {ticket.status === "resolved" && (
         <div className="text-[11.5px] text-success font-medium">
           ✓ Selesai{resMs != null ? ` dalam ${formatDuration(resMs)}` : ""}
           {ticket.resolutionNote ? ` — ${ticket.resolutionNote}` : ""}
+          {ticket.confirmedAt ? (
+            <span className="block text-success/80">✓✓ Dikonfirmasi pelapor</span>
+          ) : (
+            <span className="block text-warning">⏳ Menunggu konfirmasi pelapor</span>
+          )}
         </div>
       )}
 
@@ -225,6 +235,20 @@ export function TicketCard({
             required: true,
             run: (n) => ownerDecideTicket(ticket.id, "reject", n),
             successMsg: "Eskalasi ditolak — dikembalikan ke Kepala Studio",
+          })
+        }
+        onConfirm={() =>
+          runDirect(
+            () => confirmTicketResolution(ticket.id, "confirm"),
+            "Terima kasih — konfirmasi tercatat"
+          )
+        }
+        onDispute={() =>
+          setPrompt({
+            title: "Belum beres — buka kembali tiket",
+            required: true,
+            run: (n) => confirmTicketResolution(ticket.id, "dispute", n),
+            successMsg: "Tiket dibuka kembali untuk ditindaklanjuti",
           })
         }
       />
@@ -289,6 +313,8 @@ function ActionBar({
   onCancel,
   onAccept,
   onReject,
+  onConfirm,
+  onDispute,
 }: {
   ticket: Ticket;
   viewerRole: TicketViewerRole;
@@ -300,6 +326,8 @@ function ActionBar({
   onCancel: () => void;
   onAccept: () => void;
   onReject: () => void;
+  onConfirm: () => void;
+  onDispute: () => void;
 }) {
   const s = ticket.status;
   const btns: React.ReactNode[] = [];
@@ -311,6 +339,18 @@ function ActionBar({
           <XIcon size={13} /> Batalkan
         </Button>
       );
+    if (needsFilerConfirmation(ticket)) {
+      btns.push(
+        <Button key="confirm" variant="emerald" size="xs" disabled={pending} onClick={onConfirm}>
+          <CheckCircle2 size={13} /> Konfirmasi selesai
+        </Button>
+      );
+      btns.push(
+        <Button key="dispute" variant="outline" size="xs" disabled={pending} onClick={onDispute}>
+          <ThumbsDown size={13} /> Belum beres
+        </Button>
+      );
+    }
   }
 
   if (context === "queue") {

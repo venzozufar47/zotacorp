@@ -33,7 +33,8 @@ export type TemplateKey =
   | "ticket_new_alert"
   | "ticket_escalated_alert"
   | "ticket_resolved_alert"
-  | "ticket_returned_alert";
+  | "ticket_returned_alert"
+  | "ticket_reopened_alert";
 
 export interface PlaceholderInfo {
   key: string;
@@ -333,7 +334,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
       { key: "note", description: "Catatan penyelesaian (jika ada)" },
     ],
     defaultBody:
-      "✅ Tiket kamu sudah selesai ditangani.\n\nTiket: {title} ({branch})\nCatatan: {note}\n\nTerima kasih sudah melapor 🙏",
+      "✅ Tiket kamu ditandai SELESAI.\n\nTiket: {title} ({branch})\nCatatan: {note}\n\nMohon cek & konfirmasi di Zota App → menu Tiket. Kalau belum beres, tandai 'Belum beres' ya 🙏",
   },
   ticket_returned_alert: {
     label: "Tiket — dikembalikan owner",
@@ -346,6 +347,18 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "↩️ Eskalasi ditolak owner — dikerjakan sendiri ya.\n\nTiket: {title}\nCatatan owner: {note}\n\nBuka Zota App → Tiket. 🙏",
+  },
+  ticket_reopened_alert: {
+    label: "Tiket — dibuka kembali oleh pelapor",
+    description:
+      "Dikirim ke Kepala Studio saat karyawan pelapor menandai tiket yang sudah diselesaikan sebagai 'belum beres' (dibuka kembali).",
+    recipient: "Kepala Studio (studio_heads)",
+    placeholders: [
+      { key: "title", description: "Judul tiket" },
+      { key: "note", description: "Catatan pelapor kenapa belum beres" },
+    ],
+    defaultBody:
+      "🔁 Tiket dibuka kembali oleh pelapor — belum beres.\n\nTiket: {title}\nCatatan pelapor: {note}\n\nMohon ditindaklanjuti lagi. Buka Zota App → Tiket. 🙏",
   },
 };
 

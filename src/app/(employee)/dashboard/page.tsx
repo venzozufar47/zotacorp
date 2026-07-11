@@ -261,6 +261,26 @@ export default async function DashboardPage() {
         </Link>
       )}
 
+      {myTicketsSummary.awaitingConfirmation > 0 && (
+        <Link
+          href="/tickets"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-success/20 px-4 py-3 shadow-hard-sm hover:bg-success/30 transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+            <TicketIcon size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">
+              {myTicketsSummary.awaitingConfirmation} tiket menunggu konfirmasimu
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Sudah ditandai selesai — cek & konfirmasi, atau tandai belum beres.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
+
       {myTicketsSummary.openCount > 0 && (
         <Link
           href="/tickets"

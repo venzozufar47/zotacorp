@@ -316,5 +316,10 @@ function sampleValuesFor(
         title: "AC ruang edit mati",
         note: "Coba servis dulu, budget masih cukup",
       };
+    case "ticket_reopened_alert":
+      return {
+        title: "AC ruang edit mati",
+        note: "Masih mati, belum benar-benar diganti",
+      };
   }
 }
