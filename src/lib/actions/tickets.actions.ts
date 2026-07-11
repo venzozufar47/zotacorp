@@ -23,11 +23,9 @@ import { sendWhatsApp, getAdminWhatsAppRecipients } from "@/lib/whatsapp/fonnte"
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import {
-  TICKET_BRANCHES,
   TICKET_CATEGORY_LABELS,
   type Ticket,
   type TicketAttachment,
-  type TicketBranch,
 } from "@/lib/tickets/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -647,6 +645,3 @@ export async function removeStudioHead(userId: string): Promise<ActionResult> {
   revalidateTickets();
   return { ok: true };
 }
-
-export { TICKET_BRANCHES };
-export type { TicketBranch };
