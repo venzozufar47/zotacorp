@@ -109,6 +109,14 @@ export function DiscTestWizard() {
 
   if (!started) {
     return (
+      <div className="space-y-5">
+      <div className="rounded-xl border-2 border-warning bg-warning/15 px-4 py-3 text-sm">
+        <p className="font-semibold">Kamu diminta mengambil tes ini oleh admin.</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Slip gaji kamu terkunci sampai tes selesai. Hasilnya langsung muncul
+          setelah submit — cuma butuh ±10 menit.
+        </p>
+      </div>
       <div className="rounded-2xl border-2 border-foreground bg-card p-6 shadow-hard-sm space-y-4">
         <div className="flex items-center gap-3">
           <span className="grid place-items-center size-12 rounded-full border-2 border-foreground bg-warning/40">
@@ -135,6 +143,7 @@ export function DiscTestWizard() {
         <Button size="lg" className="w-full sm:w-auto" onClick={() => setStarted(true)}>
           Mulai Tes →
         </Button>
+      </div>
       </div>
     );
   }

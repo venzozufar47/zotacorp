@@ -37,13 +37,6 @@ export default async function DiscPage() {
 
       {required ? (
         <>
-          <div className="rounded-xl border-2 border-warning bg-warning/15 px-4 py-3 text-sm">
-            <p className="font-semibold">Kamu diminta mengambil tes ini oleh admin.</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Slip gaji kamu terkunci sampai tes selesai. Hasilnya langsung muncul
-              setelah submit — cuma butuh ±10 menit.
-            </p>
-          </div>
           <DiscTestWizard />
           {result && (
             <details className="rounded-xl border border-border bg-card px-4 py-3">
