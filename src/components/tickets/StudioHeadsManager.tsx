@@ -17,13 +17,16 @@ interface Eligible {
   business_unit: string | null;
 }
 
-/** Manajemen allowlist Kepala Studio (admin-only). Mirror AdminsManager. */
+/** Manajemen allowlist Kepala Studio (admin-only). Mirror AdminsManager.
+ *  `embedded` = tanpa kartu luar (dipakai di dalam popover). */
 export function StudioHeadsManager({
   heads,
   eligible,
+  embedded = false,
 }: {
   heads: StudioHeadRow[];
   eligible: Eligible[];
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -59,7 +62,13 @@ export function StudioHeadsManager({
   }
 
   return (
-    <section className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm space-y-3">
+    <div
+      className={
+        embedded
+          ? "space-y-3"
+          : "rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm space-y-3"
+      }
+    >
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-display font-bold text-base flex items-center gap-2">
           <UserCog size={17} /> Kepala Studio
@@ -150,6 +159,6 @@ export function StudioHeadsManager({
           </form>
         </div>
       )}
-    </section>
+    </div>
   );
 }

@@ -12,7 +12,7 @@ import {
 } from "@/lib/actions/tickets.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TicketingSystem } from "@/components/tickets/TicketingSystem";
-import { StudioHeadsManager } from "@/components/tickets/StudioHeadsManager";
+import { StudioHeadsPopover } from "@/components/tickets/StudioHeadsPopover";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 
 export default async function AdminTicketsPage() {
@@ -37,8 +37,8 @@ export default async function AdminTicketsPage() {
       <PageHeader
         title="Tiket Studio"
         subtitle="Antrian eskalasi, pemantauan tiket Yeobo Space, dan penunjukan Kepala Studio."
+        action={<StudioHeadsPopover heads={heads} eligible={eligible} />}
       />
-      <StudioHeadsManager heads={heads} eligible={eligible} />
       <TicketingSystem
         viewerRole="owner"
         uid={user.id}
