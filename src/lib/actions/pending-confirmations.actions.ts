@@ -54,7 +54,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     supabase
       .from("tickets" as never)
       .select("id, created_by, escalated_at, title, profiles!inner(full_name, avatar_url, avatar_seed)")
-      .eq("status", "escalated")
+      .in("status", ["escalated", "owner_handling"])
       .order("escalated_at", { ascending: true })
       .limit(100),
   ]);

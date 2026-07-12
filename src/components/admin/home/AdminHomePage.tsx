@@ -571,7 +571,7 @@ function buildInbox(
       userAvatarUrl: p.userAvatarUrl,
       userAvatarSeed: p.userAvatarSeed,
       desc: isTicket
-        ? "Eskalasi tiket studio"
+        ? "Tiket studio perlu ditangani"
         : isRegistration
           ? "Menunggu ACC akun"
           : p.kind === "late_proof"
