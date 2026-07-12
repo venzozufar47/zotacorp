@@ -34,11 +34,13 @@ export default async function AdminTicketsPage() {
   return (
     <div className="space-y-6">
       <RealtimeRefresher channel="tickets-admin" table="tickets" />
-      <PageHeader
-        title="Tiket Studio"
-        subtitle="Antrian eskalasi, pemantauan tiket Yeobo Space, dan penunjukan Kepala Studio."
-        action={<StudioHeadsPopover heads={heads} eligible={eligible} />}
-      />
+      <div className="relative z-40">
+        <PageHeader
+          title="Tiket Studio"
+          subtitle="Antrian eskalasi, pemantauan tiket Yeobo Space, dan penunjukan Kepala Studio."
+          action={<StudioHeadsPopover heads={heads} eligible={eligible} />}
+        />
+      </div>
       <TicketingSystem
         viewerRole="owner"
         uid={user.id}
