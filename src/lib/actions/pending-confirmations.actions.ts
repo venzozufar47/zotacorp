@@ -53,7 +53,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     getPendingRegistrations(),
     supabase
       .from("tickets" as never)
-      .select("id, created_by, escalated_at, title, profiles!inner(full_name, avatar_url, avatar_seed)")
+      .select("id, created_by, escalated_at, title")
       .in("status", ["escalated", "owner_handling"])
       .order("escalated_at", { ascending: true })
       .limit(100),
@@ -113,28 +113,39 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     date: r.createdAt.slice(0, 10),
   }));
 
-  // Tiket studio yang dieskalasi ke owner — menunggu keputusan.
+  // Tiket studio yang perlu ditangani owner (eskalasi / owner_handling).
+  // `tickets` punya banyak FK ke profiles, jadi tak bisa embed — lookup
+  // nama/avatar pembuat terpisah.
   type TicketRow = {
     id: string;
     created_by: string;
     escalated_at: string | null;
-    profiles: {
-      full_name: string | null;
-      avatar_url: string | null;
-      avatar_seed: string | null;
-    } | null;
   };
-  const ticketItems: PendingConfirmationItem[] = (
-    (ticketsRes.data ?? []) as unknown as TicketRow[]
-  ).map((t) => ({
-    rowId: t.id,
-    kind: "ticket",
-    userId: t.created_by,
-    employeeName: t.profiles?.full_name || "Karyawan",
-    userAvatarUrl: t.profiles?.avatar_url ?? null,
-    userAvatarSeed: t.profiles?.avatar_seed ?? null,
-    date: (t.escalated_at ?? new Date().toISOString()).slice(0, 10),
-  }));
+  const ticketRows = (ticketsRes.data ?? []) as unknown as TicketRow[];
+  const ticketCreatorIds = Array.from(new Set(ticketRows.map((t) => t.created_by)));
+  const ticketProfById = new Map<
+    string,
+    { full_name: string | null; avatar_url: string | null; avatar_seed: string | null }
+  >();
+  if (ticketCreatorIds.length > 0) {
+    const { data: tProfs } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, avatar_seed")
+      .in("id", ticketCreatorIds);
+    for (const p of tProfs ?? []) ticketProfById.set(p.id, p);
+  }
+  const ticketItems: PendingConfirmationItem[] = ticketRows.map((t) => {
+    const p = ticketProfById.get(t.created_by);
+    return {
+      rowId: t.id,
+      kind: "ticket",
+      userId: t.created_by,
+      employeeName: p?.full_name || "Karyawan",
+      userAvatarUrl: p?.avatar_url ?? null,
+      userAvatarSeed: p?.avatar_seed ?? null,
+      date: (t.escalated_at ?? new Date().toISOString()).slice(0, 10),
+    };
+  });
 
   return [...ticketItems, ...registrationItems, ...items];
 }
