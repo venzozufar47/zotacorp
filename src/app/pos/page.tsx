@@ -1,7 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
+import {
+  getCurrentUser,
+  getCurrentRole,
+  getCurrentProfile,
+} from "@/lib/supabase/cached";
 import {
   findPosAccountForCurrentUser,
   listActivePosProducts,
@@ -28,11 +32,12 @@ export default async function PosPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const [products, role, onHand, activeDiscount] = await Promise.all([
+  const [products, role, onHand, activeDiscount, profile] = await Promise.all([
     listActivePosProducts(account.id),
     getCurrentRole(),
     listStockOnHand(account.id).catch(() => []),
     getActiveDiscount(account.id),
+    getCurrentProfile(),
   ]);
 
   // Format key sama dengan helper `cartKey` di POSClient — duplikasi
@@ -49,6 +54,8 @@ export default async function PosPage() {
     <POSClient
       bankAccountId={account.id}
       accountName={account.accountName}
+      branch={account.branch}
+      cashierName={profile?.full_name ?? null}
       products={products}
       isAdmin={role === "admin"}
       stockByKey={stockByKey}

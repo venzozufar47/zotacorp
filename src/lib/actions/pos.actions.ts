@@ -589,7 +589,9 @@ export async function createPosSale(input: {
    *  catalog, "c:<localId>" untuk custom). Value yang sama dengan
    *  transaction-level boleh di-omit. */
   itemFulfillmentOverrides?: Record<string, FulfillmentType>;
-}): Promise<ActionResult<{ saleId: string; total: number }>> {
+}): Promise<
+  ActionResult<{ saleId: string; total: number; branch: string | null }>
+> {
   if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
   if (
     input.paymentMethod !== "cash" &&
@@ -868,7 +870,10 @@ export async function createPosSale(input: {
   if (isPesanan) {
     revalidatePath("/pos", "layout");
     revalidatePath("/pos/pesanan", "layout");
-    return { ok: true, data: { saleId: sale.id, total } };
+    return {
+      ok: true,
+      data: { saleId: sale.id, total, branch: account.default_branch ?? null },
+    };
   }
 
   // 7. Find-or-create monthly statement.
@@ -984,7 +989,10 @@ export async function createPosSale(input: {
 
   revalidatePath("/pos", "layout");
   revalidatePath("/admin/finance", "layout");
-  return { ok: true, data: { saleId: sale.id, total } };
+  return {
+    ok: true,
+    data: { saleId: sale.id, total, branch: account.default_branch ?? null },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1277,7 +1285,7 @@ export async function listRecentPosSales(
  * Return null kalau user tidak punya akses ke rekening POS manapun.
  */
 export async function findPosAccountForCurrentUser(): Promise<
-  { id: string; accountName: string } | null
+  { id: string; accountName: string; branch: string | null } | null
 > {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -1285,13 +1293,17 @@ export async function findPosAccountForCurrentUser(): Promise<
   // RLS sudah scope ke admin + assignee — jadi aman SELECT apa adanya.
   const { data, error } = await supabase
     .from("bank_accounts")
-    .select("id, account_name")
+    .select("id, account_name, default_branch")
     .eq("pos_enabled", true)
     .eq("is_active", true)
     .order("created_at", { ascending: true })
     .limit(1);
   if (error || !data || data.length === 0) return null;
-  return { id: data[0].id, accountName: data[0].account_name };
+  return {
+    id: data[0].id,
+    accountName: data[0].account_name,
+    branch: data[0].default_branch ?? null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────

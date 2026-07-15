@@ -13,6 +13,7 @@ import {
   Loader2,
   Minus,
   Plus,
+  Printer,
   Search,
   Settings,
   ShoppingBasket,
@@ -36,6 +37,15 @@ import { activateTodayDiscountPreset } from "@/lib/actions/pos-discount.actions"
 import { formatRp } from "@/lib/cashflow/format";
 import { applyDiscount, type RoundingMode } from "@/lib/pos/discount";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
+import {
+  buildReceiptBytes,
+  formatReceiptDateTime,
+  type ReceiptData,
+} from "@/lib/pos/receipt";
+import { loadReceiptSettings } from "@/lib/pos/receipt-settings";
+import { printReceipt } from "@/lib/pos/rawbt";
+import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
+import { StrukSettingsDialog } from "./StrukSettingsDialog";
 
 interface ActiveDiscountProp {
   id: string;
@@ -48,6 +58,10 @@ interface ActiveDiscountProp {
 interface Props {
   bankAccountId: string;
   accountName: string;
+  /** Cabang default rekening — dicetak di header struk. */
+  branch?: string | null;
+  /** Nama kasir (opsional) — dicetak di struk. */
+  cashierName?: string | null;
   products: PosProduct[];
   /** Admin-only UI affordances (link ke /pos/produk, empty-state CTA). */
   isAdmin: boolean;
@@ -98,6 +112,8 @@ function parseCartKey(key: string): { productId: string; variantId: string | nul
 export function POSClient({
   bankAccountId,
   accountName,
+  branch = null,
+  cashierName = null,
   products,
   isAdmin,
   stockByKey,
@@ -133,6 +149,12 @@ export function POSClient({
     null
   );
   const [pending, startTransition] = useTransition();
+
+  // Struk: snapshot sale terakhir untuk dialog cetak + toggle setelan.
+  // Snapshot ditangkap di submit() SEBELUM reset karena uang tunai/
+  // kembalian hanya hidup di client state.
+  const [lastSale, setLastSale] = useState<ReceiptData | null>(null);
+  const [strukSettingsOpen, setStrukSettingsOpen] = useState(false);
 
   // Concept-b additions: search filter + mobile cart drawer toggle.
   // payMode menggantikan confirmMethod — pembayaran kini inline di
@@ -464,6 +486,44 @@ export function POSClient({
           ? `Pesanan ${customerName.trim()} dibuat — ${formatRp(res.data?.total ?? 0)}`
           : `Tersimpan: ${formatRp(res.data?.total ?? 0)} — ${methodLabel}`
       );
+
+      // Struk: tangkap snapshot SEBELUM reset (uang tunai/kembalian hanya
+      // ada di client state). Auto-cetak bila diaktifkan & sudah lunas.
+      const rc = loadReceiptSettings(accountName);
+      const receipt: ReceiptData = {
+        header: rc.header,
+        branch,
+        address: rc.address,
+        datetime: formatReceiptDateTime(new Date()),
+        cashierName,
+        customerName: customerName.trim(),
+        fulfillment: fulfillmentType,
+        items: cartLines.map((l) => ({
+          name: l.name,
+          qty: l.qty,
+          subtotal: l.subtotal,
+        })),
+        grossTotal: total,
+        discountAmount,
+        total: finalTotal,
+        method,
+        cashReceived: method === "cash" ? cashReceived : null,
+        change:
+          method === "cash" && cashReceived != null
+            ? cashReceived - finalTotal
+            : null,
+        footer: rc.footer,
+        saleShortId: res.data?.saleId ? res.data.saleId.slice(0, 8) : null,
+      };
+      if (rc.autoPrint && method !== "pending") {
+        try {
+          printReceipt(buildReceiptBytes(receipt));
+        } catch {
+          // best-effort — jangan ganggu alur kasir kalau cetak gagal.
+        }
+      }
+      setLastSale(receipt);
+
       resetCart();
       setCustomerName("");
       setFulfillmentType("dine_in");
@@ -923,6 +983,15 @@ export function POSClient({
         </span>
         <button
           type="button"
+          onClick={() => setStrukSettingsOpen(true)}
+          className="size-9 rounded-full border border-border bg-card text-foreground inline-flex items-center justify-center shrink-0"
+          aria-label="Setelan struk"
+          title="Setelan struk"
+        >
+          <Printer size={16} />
+        </button>
+        <button
+          type="button"
           onClick={() => setCartOpen(true)}
           className="md:hidden relative size-9 rounded-full border border-border bg-card text-foreground inline-flex items-center justify-center shrink-0"
           aria-label="Buka cart"
@@ -1290,6 +1359,19 @@ export function POSClient({
           />
         );
       })()}
+
+      {lastSale && (
+        <ReceiptSuccessDialog data={lastSale} onClose={() => setLastSale(null)} />
+      )}
+
+      {strukSettingsOpen && (
+        <StrukSettingsDialog
+          brand={accountName}
+          branch={branch}
+          now={new Date()}
+          onClose={() => setStrukSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

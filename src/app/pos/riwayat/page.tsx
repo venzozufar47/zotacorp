@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PosNavLink } from "@/components/pos/PosNavLink";
 import { PosShell } from "@/components/pos/PosShell";
 import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
+import { ReprintReceiptButton } from "@/components/pos/ReprintReceiptButton";
 import { QRIS_RECEIPT_FROM_RIWAYAT } from "@/lib/pos/flags";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
@@ -284,6 +285,15 @@ export default async function PosRiwayatPage({
                       {formatRp(s.total)}
                     </span>
                   </div>
+                </li>
+              )}
+              {!s.voidedAt && (
+                <li>
+                  <ReprintReceiptButton
+                    sale={s}
+                    brand={account.accountName}
+                    branch={account.branch}
+                  />
                 </li>
               )}
             </ul>
