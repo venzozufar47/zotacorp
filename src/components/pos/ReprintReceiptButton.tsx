@@ -9,6 +9,7 @@ import {
   type ReceiptContent,
 } from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
+import { resolveCashierName } from "@/lib/pos/cashier-schedule";
 
 /**
  * Tombol cetak ulang struk dari Riwayat. Konten struk (`content`) berasal
@@ -39,6 +40,11 @@ export function ReprintReceiptButton({
         wifiPassword: content.wifiPassword,
         labels: content.labels,
       });
+      // Nama kasir Pare mengikuti jadwal shift pada waktu sale itu.
+      const saleAt = new Date(
+        `${sale.saleDate}T${(sale.saleTime || "00:00").slice(0, 5)}:00+07:00`
+      );
+      data.cashierName = resolveCashierName(branch, saleAt, null);
       await sendToPrinter(buildReceiptBytes(data), loadReceiptTransport().method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");

@@ -47,6 +47,7 @@ import {
   type ReceiptContent,
 } from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
+import { resolveCashierName } from "@/lib/pos/cashier-schedule";
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
 
@@ -497,13 +498,15 @@ export function POSClient({
       // ada di client state). Auto-cetak bila diaktifkan & sudah lunas.
       const rc = receiptContent;
       const t = loadReceiptTransport();
+      const now = new Date();
       const effBranch = rc.showBranch ? rc.branchOverride.trim() || branch : null;
       const receipt: ReceiptData = {
         header: rc.header,
         branch: effBranch,
         address: rc.address,
-        datetime: formatReceiptDateTime(new Date()),
-        cashierName,
+        datetime: formatReceiptDateTime(now),
+        // Cabang Pare pakai jadwal shift; cabang lain pakai nama akun login.
+        cashierName: resolveCashierName(branch, now, cashierName),
         customerName: customerName.trim(),
         fulfillment: fulfillmentType,
         items: cartLines.map((l) => ({
