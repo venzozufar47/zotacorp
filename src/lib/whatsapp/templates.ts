@@ -34,7 +34,8 @@ export type TemplateKey =
   | "ticket_escalated_alert"
   | "ticket_resolved_alert"
   | "ticket_returned_alert"
-  | "ticket_reopened_alert";
+  | "ticket_reopened_alert"
+  | "ticket_active_reminder";
 
 export interface PlaceholderInfo {
   key: string;
@@ -359,6 +360,18 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "🔁 Tiket dibuka kembali oleh pelapor — belum beres.\n\nTiket: {title}\nCatatan pelapor: {note}\n\nMohon ditindaklanjuti lagi. Buka Zota App → Tiket. 🙏",
+  },
+  ticket_active_reminder: {
+    label: "Tiket — reminder harian Kepala Studio",
+    description:
+      "Dikirim tiap hari 11.00 WIB ke Kepala Studio berisi jumlah tiket studio yang masih aktif hari itu, sebagai pengingat untuk segera menyelesaikannya. Tidak dikirim bila tidak ada tiket aktif.",
+    recipient: "Kepala Studio (studio_heads)",
+    placeholders: [
+      { key: "name", description: "Nama/panggilan Kepala Studio" },
+      { key: "count", description: "Jumlah tiket aktif (open + in progress) hari ini" },
+    ],
+    defaultBody:
+      "⏰ Halo {name}!\n\nHari ini masih ada {count} tiket studio Yeobo Space yang aktif & menunggu ditindaklanjuti.\n\nYuk segera diselesaikan ya 🙏 Buka Zota App → menu Tiket.",
   },
 };
 

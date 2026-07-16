@@ -321,5 +321,10 @@ function sampleValuesFor(
         title: "AC ruang edit mati",
         note: "Masih mati, belum benar-benar diganti",
       };
+    case "ticket_active_reminder":
+      return {
+        name: "Chelsy",
+        count: 3,
+      };
   }
 }
