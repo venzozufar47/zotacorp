@@ -25,11 +25,13 @@ export function ReprintReceiptButton({
   async function onPrint() {
     try {
       const rc = loadReceiptSettings(brand);
+      const effBranch = rc.showBranch ? rc.branchOverride.trim() || branch : null;
       const data = receiptDataFromSummary(sale, {
         header: rc.header,
-        branch,
+        branch: effBranch,
         address: rc.address,
         footer: rc.footer,
+        labels: rc.labels,
       });
       await sendToPrinter(buildReceiptBytes(data), rc.method);
     } catch (e) {

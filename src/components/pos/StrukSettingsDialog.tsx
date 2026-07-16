@@ -7,6 +7,7 @@ import {
   loadReceiptSettings,
   saveReceiptSettings,
   type PrintMethod,
+  type ReceiptLabels,
   type ReceiptSettings,
 } from "@/lib/pos/receipt-settings";
 import { buildReceiptBytes, formatReceiptDateTime, type ReceiptData } from "@/lib/pos/receipt";
@@ -17,6 +18,25 @@ const METHOD_OPTIONS: Array<{ id: PrintMethod; label: string; hint: string }> = 
   { id: "rawbt", label: "RawBT", hint: "Perlu app RawBT. Paling andal (Bluetooth Classic + LE)." },
   { id: "webbluetooth", label: "Web Bluetooth", hint: "Tanpa app, langsung Chrome. Hanya printer Bluetooth LE." },
   { id: "native", label: "Native", hint: "Lewat app native (belum tersedia — menyusul)." },
+];
+
+/** Kolom editor label — caption Indonesia untuk tiap teks tetap struk. */
+const LABEL_FIELDS: Array<{ key: keyof ReceiptLabels; caption: string }> = [
+  { key: "branch", caption: "Label cabang" },
+  { key: "cashier", caption: "Label kasir" },
+  { key: "customer", caption: "Label nama" },
+  { key: "dineIn", caption: "Dine-in" },
+  { key: "takeAway", caption: "Take-away" },
+  { key: "subtotal", caption: "Subtotal" },
+  { key: "discount", caption: "Diskon" },
+  { key: "total", caption: "Total" },
+  { key: "cash", caption: "Tunai" },
+  { key: "change", caption: "Kembalian" },
+  { key: "method", caption: "Label metode" },
+  { key: "methodCash", caption: "Nama metode Cash" },
+  { key: "methodQris", caption: "Nama metode QRIS" },
+  { key: "methodPending", caption: "Nama metode Pesanan" },
+  { key: "methodAdmin", caption: "Nama metode Admin" },
 ];
 
 /**
@@ -42,12 +62,13 @@ export function StrukSettingsDialog({
   const [preview, setPreview] = useState<string | null>(null);
 
   function sampleData(): ReceiptData {
+    const effBranch = s.showBranch ? s.branchOverride.trim() || branch : null;
     return {
       header: s.header,
-      branch,
+      branch: effBranch,
       address: s.address,
       datetime: formatReceiptDateTime(now),
-      cashierName: null,
+      cashierName: "Kasir Contoh",
       customerName: "Contoh",
       fulfillment: "dine_in",
       items: [
@@ -62,7 +83,12 @@ export function StrukSettingsDialog({
       change: 5000,
       footer: s.footer,
       saleShortId: "contoh12",
+      labels: s.labels,
     };
+  }
+
+  function setLabel(key: keyof ReceiptLabels, value: string) {
+    setS({ ...s, labels: { ...s.labels, [key]: value } });
   }
 
   function onPreview() {
@@ -135,6 +161,48 @@ export function StrukSettingsDialog({
             onChange={(e) => setS({ ...s, footer: e.target.value })}
           />
         </label>
+
+        {/* Cabang */}
+        <div className="rounded-xl border border-border bg-background px-3 py-2.5 space-y-2">
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium text-foreground">
+              Tampilkan cabang
+            </span>
+            <input
+              type="checkbox"
+              className="size-5 accent-primary"
+              checked={s.showBranch}
+              onChange={(e) => setS({ ...s, showBranch: e.target.checked })}
+            />
+          </label>
+          {s.showBranch && (
+            <input
+              className="w-full rounded-lg border-2 border-border bg-card px-3 py-2 text-sm"
+              placeholder={branch ? `Default: ${branch}` : "Isi nama cabang"}
+              value={s.branchOverride}
+              onChange={(e) => setS({ ...s, branchOverride: e.target.value })}
+            />
+          )}
+        </div>
+
+        {/* Editor label — semua teks tetap struk */}
+        <details className="rounded-xl border border-border bg-background px-3 py-2.5">
+          <summary className="text-sm font-medium text-foreground cursor-pointer">
+            Teks &amp; label lanjutan
+          </summary>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {LABEL_FIELDS.map((f) => (
+              <label key={f.key} className="block">
+                <span className="text-[11px] text-muted-foreground">{f.caption}</span>
+                <input
+                  className="mt-0.5 w-full rounded-lg border-2 border-border bg-card px-2 py-1.5 text-sm"
+                  value={s.labels[f.key]}
+                  onChange={(e) => setLabel(f.key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        </details>
 
         <div>
           <span className="text-xs font-medium text-foreground">Metode cetak</span>

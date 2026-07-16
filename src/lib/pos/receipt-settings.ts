@@ -15,6 +15,43 @@ const KEY = "zota:pos:receiptSettings:v1";
  *  - native: plugin Capacitor di app native (belum dirilis). */
 export type PrintMethod = "rawbt" | "webbluetooth" | "native";
 
+/** Semua label/teks tetap pada struk — bisa diganti kata-katanya. */
+export interface ReceiptLabels {
+  branch: string; // prefiks cabang, mis. "Cabang"
+  cashier: string; // "Kasir"
+  customer: string; // "Nama"
+  dineIn: string; // "Dine-in"
+  takeAway: string; // "Take-away"
+  subtotal: string; // "Subtotal"
+  discount: string; // "Diskon"
+  total: string; // "TOTAL"
+  cash: string; // "Tunai"
+  change: string; // "Kembalian"
+  method: string; // prefiks metode, "Metode"
+  methodCash: string; // "Cash"
+  methodQris: string; // "QRIS"
+  methodPending: string; // "Belum bayar"
+  methodAdmin: string; // "Admin"
+}
+
+export const DEFAULT_LABELS: ReceiptLabels = {
+  branch: "Cabang",
+  cashier: "Kasir",
+  customer: "Nama",
+  dineIn: "Dine-in",
+  takeAway: "Take-away",
+  subtotal: "Subtotal",
+  discount: "Diskon",
+  total: "TOTAL",
+  cash: "Tunai",
+  change: "Kembalian",
+  method: "Metode",
+  methodCash: "Cash",
+  methodQris: "QRIS",
+  methodPending: "Belum bayar",
+  methodAdmin: "Admin",
+};
+
 export interface ReceiptSettings {
   /** Brand di header struk. */
   header: string;
@@ -26,6 +63,12 @@ export interface ReceiptSettings {
   autoPrint: boolean;
   /** Metode kirim ke printer. */
   method: PrintMethod;
+  /** Tampilkan baris cabang di struk. */
+  showBranch: boolean;
+  /** Override teks cabang (kosong = pakai cabang rekening). */
+  branchOverride: string;
+  /** Label/teks tetap yang bisa diedit. */
+  labels: ReceiptLabels;
 }
 
 export function defaultReceiptSettings(brand: string): ReceiptSettings {
@@ -35,11 +78,26 @@ export function defaultReceiptSettings(brand: string): ReceiptSettings {
     footer: "Terima kasih!",
     autoPrint: false,
     method: "rawbt",
+    showBranch: true,
+    branchOverride: "",
+    labels: { ...DEFAULT_LABELS },
   };
 }
 
 function isPrintMethod(v: unknown): v is PrintMethod {
   return v === "rawbt" || v === "webbluetooth" || v === "native";
+}
+
+/** Merge label tersimpan dengan default per-field (guard string). */
+function mergeLabels(saved: unknown): ReceiptLabels {
+  const out = { ...DEFAULT_LABELS };
+  if (saved && typeof saved === "object") {
+    for (const k of Object.keys(DEFAULT_LABELS) as Array<keyof ReceiptLabels>) {
+      const v = (saved as Record<string, unknown>)[k];
+      if (typeof v === "string") out[k] = v;
+    }
+  }
+  return out;
 }
 
 /**
@@ -60,6 +118,13 @@ export function loadReceiptSettings(brand: string): ReceiptSettings {
       footer: typeof saved.footer === "string" ? saved.footer : base.footer,
       autoPrint: typeof saved.autoPrint === "boolean" ? saved.autoPrint : base.autoPrint,
       method: isPrintMethod(saved.method) ? saved.method : base.method,
+      showBranch:
+        typeof saved.showBranch === "boolean" ? saved.showBranch : base.showBranch,
+      branchOverride:
+        typeof saved.branchOverride === "string"
+          ? saved.branchOverride
+          : base.branchOverride,
+      labels: mergeLabels(saved.labels),
     };
   } catch {
     return base;

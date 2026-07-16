@@ -490,9 +490,10 @@ export function POSClient({
       // Struk: tangkap snapshot SEBELUM reset (uang tunai/kembalian hanya
       // ada di client state). Auto-cetak bila diaktifkan & sudah lunas.
       const rc = loadReceiptSettings(accountName);
+      const effBranch = rc.showBranch ? rc.branchOverride.trim() || branch : null;
       const receipt: ReceiptData = {
         header: rc.header,
-        branch,
+        branch: effBranch,
         address: rc.address,
         datetime: formatReceiptDateTime(new Date()),
         cashierName,
@@ -514,6 +515,7 @@ export function POSClient({
             : null,
         footer: rc.footer,
         saleShortId: res.data?.saleId ? res.data.saleId.slice(0, 8) : null,
+        labels: rc.labels,
       };
       if (rc.autoPrint && method !== "pending") {
         // best-effort — jangan ganggu alur kasir kalau cetak gagal.
