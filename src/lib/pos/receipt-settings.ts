@@ -66,6 +66,8 @@ export interface ReceiptContent {
   address: string;
   /** Teks penutup (mis. "Terima kasih!"). */
   footer: string;
+  /** Info WiFi (opsional, multi-baris) — dicetak di area bawah struk. */
+  wifi: string;
   /** Tampilkan baris cabang di struk. */
   showBranch: boolean;
   /** Override teks cabang (kosong = pakai cabang rekening). */
@@ -79,6 +81,7 @@ export function defaultReceiptContent(brand: string): ReceiptContent {
     header: brand.trim() || "STRUK",
     address: "",
     footer: "Terima kasih!",
+    wifi: "",
     showBranch: true,
     branchOverride: "",
     labels: { ...DEFAULT_LABELS },
@@ -113,6 +116,7 @@ export function normalizeReceiptContent(
     header: typeof r.header === "string" ? r.header : base.header,
     address: typeof r.address === "string" ? r.address : base.address,
     footer: typeof r.footer === "string" ? r.footer : base.footer,
+    wifi: typeof r.wifi === "string" ? r.wifi : base.wifi,
     showBranch: typeof r.showBranch === "boolean" ? r.showBranch : base.showBranch,
     branchOverride:
       typeof r.branchOverride === "string" ? r.branchOverride : base.branchOverride,

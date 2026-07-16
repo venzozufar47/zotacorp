@@ -35,6 +35,7 @@ export function ReprintReceiptButton({
         branch: effBranch,
         address: content.address,
         footer: content.footer,
+        wifi: content.wifi,
         labels: content.labels,
       });
       await sendToPrinter(buildReceiptBytes(data), loadReceiptTransport().method);

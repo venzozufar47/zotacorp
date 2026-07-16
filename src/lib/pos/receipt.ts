@@ -43,6 +43,8 @@ export interface ReceiptData {
   cashReceived?: number | null;
   change?: number | null;
   footer: string;
+  /** Info WiFi (opsional, multi-baris). */
+  wifi?: string;
   /** Potongan id sale untuk jejak (mis. 8 char pertama). */
   saleShortId?: string | null;
   /** Label/teks tetap. Kosong = pakai default. */
@@ -133,9 +135,17 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
   }
   b.textLine(`${L.method}: ${methodLabel(data.method, L)}`);
 
-  // Footer.
+  // WiFi (opsional) — di area bawah, center.
   b.line();
   b.align("center");
+  if (data.wifi && data.wifi.trim()) {
+    for (const ln of data.wifi.split("\n")) {
+      const w = ln.trim();
+      if (w) b.textLine(w);
+    }
+  }
+
+  // Footer.
   if (data.footer.trim()) {
     for (const ln of data.footer.split("\n")) {
       const t = ln.trim();
@@ -153,6 +163,7 @@ export interface ReceiptConfig {
   branch: string | null;
   address: string;
   footer: string;
+  wifi?: string;
   labels?: ReceiptLabels;
 }
 
@@ -184,6 +195,7 @@ export function receiptDataFromSummary(
     total: s.total,
     method,
     footer: cfg.footer,
+    wifi: cfg.wifi,
     saleShortId: s.id.slice(0, 8),
     labels: cfg.labels,
   };

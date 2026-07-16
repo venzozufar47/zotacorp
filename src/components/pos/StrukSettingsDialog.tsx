@@ -93,6 +93,7 @@ export function StrukSettingsDialog({
       cashReceived: 50000,
       change: 5000,
       footer: c.footer,
+      wifi: c.wifi,
       saleShortId: "contoh12",
       labels: c.labels,
     };
@@ -184,6 +185,19 @@ export function StrukSettingsDialog({
             className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
             value={c.footer}
             onChange={(e) => setC({ ...c, footer: e.target.value })}
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-foreground">
+            WiFi (opsional, bisa multi-baris)
+          </span>
+          <textarea
+            className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
+            rows={2}
+            placeholder={"WiFi: Haengbocake\nPassword: kopienak"}
+            value={c.wifi}
+            onChange={(e) => setC({ ...c, wifi: e.target.value })}
           />
         </label>
 
