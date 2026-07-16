@@ -4,36 +4,40 @@ import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import type { PosSaleSummary } from "@/lib/actions/pos.actions";
 import { buildReceiptBytes, receiptDataFromSummary } from "@/lib/pos/receipt";
-import { loadReceiptSettings } from "@/lib/pos/receipt-settings";
+import {
+  loadReceiptTransport,
+  type ReceiptContent,
+} from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
 
 /**
- * Tombol cetak ulang struk dari Riwayat. Membaca setelan struk
- * device-local saat diklik (localStorage tak terbaca di server
- * component), lalu susun byte dari `PosSaleSummary`. Uang tunai &
- * kembalian tak tersedia untuk sale lama → tidak dicetak.
+ * Tombol cetak ulang struk dari Riwayat. Konten struk (`content`) berasal
+ * dari server (sama lintas perangkat); metode cetak dibaca device-local
+ * saat diklik. Uang tunai & kembalian tak tersedia untuk sale lama → tidak
+ * dicetak.
  */
 export function ReprintReceiptButton({
   sale,
-  brand,
+  content,
   branch,
 }: {
   sale: PosSaleSummary;
-  brand: string;
+  content: ReceiptContent;
   branch: string | null;
 }) {
   async function onPrint() {
     try {
-      const rc = loadReceiptSettings(brand);
-      const effBranch = rc.showBranch ? rc.branchOverride.trim() || branch : null;
+      const effBranch = content.showBranch
+        ? content.branchOverride.trim() || branch
+        : null;
       const data = receiptDataFromSummary(sale, {
-        header: rc.header,
+        header: content.header,
         branch: effBranch,
-        address: rc.address,
-        footer: rc.footer,
-        labels: rc.labels,
+        address: content.address,
+        footer: content.footer,
+        labels: content.labels,
       });
-      await sendToPrinter(buildReceiptBytes(data), rc.method);
+      await sendToPrinter(buildReceiptBytes(data), loadReceiptTransport().method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");
     }

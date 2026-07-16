@@ -12,6 +12,8 @@ import {
 } from "@/lib/actions/pos.actions";
 import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
 import { getActiveDiscount } from "@/lib/actions/pos-discount.actions";
+import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
+import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { POSClient } from "@/components/pos/POSClient";
 
 /**
@@ -32,13 +34,17 @@ export default async function PosPage() {
   const account = await findPosAccountForCurrentUser();
   if (!account) redirect("/");
 
-  const [products, role, onHand, activeDiscount, profile] = await Promise.all([
-    listActivePosProducts(account.id),
-    getCurrentRole(),
-    listStockOnHand(account.id).catch(() => []),
-    getActiveDiscount(account.id),
-    getCurrentProfile(),
-  ]);
+  const [products, role, onHand, activeDiscount, profile, receiptConfig] =
+    await Promise.all([
+      listActivePosProducts(account.id),
+      getCurrentRole(),
+      listStockOnHand(account.id).catch(() => []),
+      getActiveDiscount(account.id),
+      getCurrentProfile(),
+      getPosReceiptConfig(account.id).catch(() => null),
+    ]);
+  const receiptContent =
+    receiptConfig ?? defaultReceiptContent(account.accountName);
 
   // Format key sama dengan helper `cartKey` di POSClient — duplikasi
   // kecil supaya server-side tidak import komponen client.
@@ -56,6 +62,7 @@ export default async function PosPage() {
       accountName={account.accountName}
       branch={account.branch}
       cashierName={profile?.full_name ?? null}
+      receiptContent={receiptContent}
       products={products}
       isAdmin={role === "admin"}
       stockByKey={stockByKey}

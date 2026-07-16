@@ -13,6 +13,8 @@ import {
   listPosSaleDates,
   listRecentPosSales,
 } from "@/lib/actions/pos.actions";
+import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
+import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
 
@@ -48,6 +50,10 @@ export default async function PosRiwayatPage({
 
   const role = await getCurrentRole();
   const isAdmin = role === "admin";
+
+  const receiptContent =
+    (await getPosReceiptConfig(account.id).catch(() => null)) ??
+    defaultReceiptContent(account.accountName);
 
   const sp = await searchParams;
 
@@ -291,7 +297,7 @@ export default async function PosRiwayatPage({
                 <li>
                   <ReprintReceiptButton
                     sale={s}
-                    brand={account.accountName}
+                    content={receiptContent}
                     branch={account.branch}
                   />
                 </li>

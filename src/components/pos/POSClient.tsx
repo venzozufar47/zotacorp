@@ -42,7 +42,10 @@ import {
   formatReceiptDateTime,
   type ReceiptData,
 } from "@/lib/pos/receipt";
-import { loadReceiptSettings } from "@/lib/pos/receipt-settings";
+import {
+  loadReceiptTransport,
+  type ReceiptContent,
+} from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
@@ -62,6 +65,8 @@ interface Props {
   branch?: string | null;
   /** Nama kasir (opsional) — dicetak di struk. */
   cashierName?: string | null;
+  /** Konten struk bersama (server, per rekening). */
+  receiptContent: ReceiptContent;
   products: PosProduct[];
   /** Admin-only UI affordances (link ke /pos/produk, empty-state CTA). */
   isAdmin: boolean;
@@ -114,6 +119,7 @@ export function POSClient({
   accountName,
   branch = null,
   cashierName = null,
+  receiptContent,
   products,
   isAdmin,
   stockByKey,
@@ -489,7 +495,8 @@ export function POSClient({
 
       // Struk: tangkap snapshot SEBELUM reset (uang tunai/kembalian hanya
       // ada di client state). Auto-cetak bila diaktifkan & sudah lunas.
-      const rc = loadReceiptSettings(accountName);
+      const rc = receiptContent;
+      const t = loadReceiptTransport();
       const effBranch = rc.showBranch ? rc.branchOverride.trim() || branch : null;
       const receipt: ReceiptData = {
         header: rc.header,
@@ -517,11 +524,11 @@ export function POSClient({
         saleShortId: res.data?.saleId ? res.data.saleId.slice(0, 8) : null,
         labels: rc.labels,
       };
-      if (rc.autoPrint && method !== "pending") {
+      if (t.autoPrint && method !== "pending") {
         // best-effort — jangan ganggu alur kasir kalau cetak gagal.
         // (Web Bluetooth mungkin butuh perangkat sudah dipilih lebih dulu
         //  lewat tombol; kegagalan di sini diabaikan.)
-        void sendToPrinter(buildReceiptBytes(receipt), rc.method).catch(() => {});
+        void sendToPrinter(buildReceiptBytes(receipt), t.method).catch(() => {});
       }
       setLastSale(receipt);
 
@@ -1367,8 +1374,10 @@ export function POSClient({
 
       {strukSettingsOpen && (
         <StrukSettingsDialog
+          bankAccountId={bankAccountId}
           brand={accountName}
           branch={branch}
+          initialContent={receiptContent}
           now={new Date()}
           onClose={() => setStrukSettingsOpen(false)}
         />

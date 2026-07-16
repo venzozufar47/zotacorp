@@ -1,13 +1,19 @@
-"use client";
-
 /**
- * Setelan struk POS — device-local (localStorage). Sengaja per-perangkat
- * karena printer fisik terikat ke HP kasir tertentu; header/alamat/footer
- * & preferensi auto-cetak wajar berbeda antar outlet/HP. Pola mirror
- * `src/components/admin/PayslipViewPersist.tsx`.
+ * Setelan struk POS terbagi dua:
+ *
+ *  1. KONTEN (ReceiptContent) — header, alamat, footer, cabang, label.
+ *     Disimpan di SERVER per rekening POS (bank_accounts.pos_receipt_config)
+ *     supaya SAMA di semua perangkat kasir. Lihat pos-receipt-config.actions.
+ *
+ *  2. TRANSPORT (ReceiptTransport) — metode cetak + auto-cetak. Tetap
+ *     device-local (localStorage) karena tiap HP punya printer/koneksi
+ *     sendiri. Pola mirror `PayslipViewPersist.tsx`.
+ *
+ * Modul ini murni util (tanpa "use client") supaya tipe & default konten
+ * bisa diimpor server component; fungsi localStorage dijaga `typeof window`.
  */
 
-const KEY = "zota:pos:receiptSettings:v1";
+const KEY = "zota:pos:receiptTransport:v1";
 
 /** Jalur pengiriman byte struk ke printer.
  *  - rawbt: via app RawBT (Android intent) — Bluetooth Classic + LE.
@@ -52,17 +58,14 @@ export const DEFAULT_LABELS: ReceiptLabels = {
   methodAdmin: "Admin",
 };
 
-export interface ReceiptSettings {
+// ── Konten bersama (server) ──────────────────────────────────────────
+export interface ReceiptContent {
   /** Brand di header struk. */
   header: string;
   /** Alamat multi-baris (dipisah "\n"). */
   address: string;
   /** Teks penutup (mis. "Terima kasih!"). */
   footer: string;
-  /** Auto-cetak begitu sale lunas (cash/qris) tanpa menekan tombol. */
-  autoPrint: boolean;
-  /** Metode kirim ke printer. */
-  method: PrintMethod;
   /** Tampilkan baris cabang di struk. */
   showBranch: boolean;
   /** Override teks cabang (kosong = pakai cabang rekening). */
@@ -71,21 +74,15 @@ export interface ReceiptSettings {
   labels: ReceiptLabels;
 }
 
-export function defaultReceiptSettings(brand: string): ReceiptSettings {
+export function defaultReceiptContent(brand: string): ReceiptContent {
   return {
     header: brand.trim() || "STRUK",
     address: "",
     footer: "Terima kasih!",
-    autoPrint: false,
-    method: "rawbt",
     showBranch: true,
     branchOverride: "",
     labels: { ...DEFAULT_LABELS },
   };
-}
-
-function isPrintMethod(v: unknown): v is PrintMethod {
-  return v === "rawbt" || v === "webbluetooth" || v === "native";
 }
 
 /** Merge label tersimpan dengan default per-field (guard string). */
@@ -101,40 +98,63 @@ function mergeLabels(saved: unknown): ReceiptLabels {
 }
 
 /**
- * Muat setelan tersimpan, di-merge dengan default (turunan `brand`).
- * `brand` dipakai hanya untuk mengisi header default bila belum ada
- * nilai tersimpan. Aman dipanggil di server (mengembalikan default).
+ * Normalisasi jsonb tersimpan (bisa null / bentuk lama) → ReceiptContent
+ * lengkap dengan default turunan `brand`. Dipakai server saat membaca
+ * `bank_accounts.pos_receipt_config`.
  */
-export function loadReceiptSettings(brand: string): ReceiptSettings {
-  const base = defaultReceiptSettings(brand);
+export function normalizeReceiptContent(
+  raw: unknown,
+  brand: string
+): ReceiptContent {
+  const base = defaultReceiptContent(brand);
+  if (!raw || typeof raw !== "object") return base;
+  const r = raw as Record<string, unknown>;
+  return {
+    header: typeof r.header === "string" ? r.header : base.header,
+    address: typeof r.address === "string" ? r.address : base.address,
+    footer: typeof r.footer === "string" ? r.footer : base.footer,
+    showBranch: typeof r.showBranch === "boolean" ? r.showBranch : base.showBranch,
+    branchOverride:
+      typeof r.branchOverride === "string" ? r.branchOverride : base.branchOverride,
+    labels: mergeLabels(r.labels),
+  };
+}
+
+// ── Transport (device-local) ─────────────────────────────────────────
+export interface ReceiptTransport {
+  method: PrintMethod;
+  autoPrint: boolean;
+}
+
+export function defaultReceiptTransport(): ReceiptTransport {
+  return { method: "rawbt", autoPrint: false };
+}
+
+function isPrintMethod(v: unknown): v is PrintMethod {
+  return v === "rawbt" || v === "webbluetooth" || v === "native";
+}
+
+export function loadReceiptTransport(): ReceiptTransport {
+  const base = defaultReceiptTransport();
   if (typeof window === "undefined") return base;
   try {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return base;
-    const saved = JSON.parse(raw) as Partial<ReceiptSettings>;
+    const saved = JSON.parse(raw) as Partial<ReceiptTransport>;
     return {
-      header: typeof saved.header === "string" ? saved.header : base.header,
-      address: typeof saved.address === "string" ? saved.address : base.address,
-      footer: typeof saved.footer === "string" ? saved.footer : base.footer,
-      autoPrint: typeof saved.autoPrint === "boolean" ? saved.autoPrint : base.autoPrint,
       method: isPrintMethod(saved.method) ? saved.method : base.method,
-      showBranch:
-        typeof saved.showBranch === "boolean" ? saved.showBranch : base.showBranch,
-      branchOverride:
-        typeof saved.branchOverride === "string"
-          ? saved.branchOverride
-          : base.branchOverride,
-      labels: mergeLabels(saved.labels),
+      autoPrint:
+        typeof saved.autoPrint === "boolean" ? saved.autoPrint : base.autoPrint,
     };
   } catch {
     return base;
   }
 }
 
-export function saveReceiptSettings(s: ReceiptSettings): void {
+export function saveReceiptTransport(t: ReceiptTransport): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(s));
+    window.localStorage.setItem(KEY, JSON.stringify(t));
   } catch {
     // storage penuh / dinonaktifkan — abaikan.
   }

@@ -1,15 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { X, Printer, Eye } from "lucide-react";
 import { toast } from "sonner";
 import {
-  loadReceiptSettings,
-  saveReceiptSettings,
+  loadReceiptTransport,
+  saveReceiptTransport,
   type PrintMethod,
+  type ReceiptContent,
   type ReceiptLabels,
-  type ReceiptSettings,
+  type ReceiptTransport,
 } from "@/lib/pos/receipt-settings";
+import { savePosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
 import { buildReceiptBytes, formatReceiptDateTime, type ReceiptData } from "@/lib/pos/receipt";
 import { escPosToPreviewText } from "@/lib/pos/escpos";
 import { sendToPrinter } from "@/lib/pos/print-transport";
@@ -40,33 +43,41 @@ const LABEL_FIELDS: Array<{ key: keyof ReceiptLabels; caption: string }> = [
 ];
 
 /**
- * Setelan struk per-perangkat: header/alamat/footer + toggle auto-cetak.
- * Menyediakan Pratinjau (render teks tanpa printer) & Tes cetak (kirim
- * struk contoh ke RawBT). Simpan ke localStorage.
+ * Setelan struk. KONTEN (header/alamat/footer/cabang/label) disimpan di
+ * SERVER per rekening → sama di semua perangkat. TRANSPORT (metode cetak +
+ * auto-cetak) tetap device-local. Menyediakan Pratinjau & Tes cetak.
  */
 export function StrukSettingsDialog({
+  bankAccountId,
   brand,
   branch,
+  initialContent,
   now,
   onClose,
 }: {
-  /** Default header (nama outlet). */
+  bankAccountId: string;
+  /** Nama outlet (untuk placeholder). */
   brand: string;
   branch: string | null;
+  /** Konten tersimpan di server (dibagikan). */
+  initialContent: ReceiptContent;
   /** Waktu untuk contoh struk (dilewatkan supaya komponen tetap murni). */
   now: Date;
   onClose: () => void;
 }) {
-  const initial = useMemo(() => loadReceiptSettings(brand), [brand]);
-  const [s, setS] = useState<ReceiptSettings>(initial);
+  const router = useRouter();
+  const [c, setC] = useState<ReceiptContent>(initialContent);
+  const initialTransport = useMemo(() => loadReceiptTransport(), []);
+  const [t, setT] = useState<ReceiptTransport>(initialTransport);
   const [preview, setPreview] = useState<string | null>(null);
+  const [saving, startSave] = useTransition();
 
   function sampleData(): ReceiptData {
-    const effBranch = s.showBranch ? s.branchOverride.trim() || branch : null;
+    const effBranch = c.showBranch ? c.branchOverride.trim() || branch : null;
     return {
-      header: s.header,
+      header: c.header,
       branch: effBranch,
-      address: s.address,
+      address: c.address,
       datetime: formatReceiptDateTime(now),
       cashierName: "Kasir Contoh",
       customerName: "Contoh",
@@ -81,14 +92,14 @@ export function StrukSettingsDialog({
       method: "cash",
       cashReceived: 50000,
       change: 5000,
-      footer: s.footer,
+      footer: c.footer,
       saleShortId: "contoh12",
-      labels: s.labels,
+      labels: c.labels,
     };
   }
 
   function setLabel(key: keyof ReceiptLabels, value: string) {
-    setS({ ...s, labels: { ...s.labels, [key]: value } });
+    setC({ ...c, labels: { ...c.labels, [key]: value } });
   }
 
   function onPreview() {
@@ -97,16 +108,25 @@ export function StrukSettingsDialog({
 
   async function onTestPrint() {
     try {
-      await sendToPrinter(buildReceiptBytes(sampleData()), s.method);
+      await sendToPrinter(buildReceiptBytes(sampleData()), t.method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");
     }
   }
 
   function onSave() {
-    saveReceiptSettings(s);
-    toast.success("Setelan struk disimpan");
-    onClose();
+    // Transport (device-local) langsung; konten (bersama) ke server.
+    saveReceiptTransport(t);
+    startSave(async () => {
+      const res = await savePosReceiptConfig(bankAccountId, c);
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal menyimpan setelan struk");
+        return;
+      }
+      toast.success("Setelan struk disimpan (berlaku di semua perangkat)");
+      router.refresh();
+      onClose();
+    });
   }
 
   return (
@@ -134,12 +154,17 @@ export function StrukSettingsDialog({
           </button>
         </div>
 
+        <p className="text-[11px] text-muted-foreground -mt-1">
+          Header, alamat, footer &amp; label berlaku di <strong>semua perangkat</strong>.
+          Metode cetak &amp; auto-cetak hanya untuk perangkat ini.
+        </p>
+
         <label className="block">
           <span className="text-xs font-medium text-foreground">Header (brand)</span>
           <input
             className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
-            value={s.header}
-            onChange={(e) => setS({ ...s, header: e.target.value })}
+            value={c.header}
+            onChange={(e) => setC({ ...c, header: e.target.value })}
           />
         </label>
 
@@ -148,8 +173,8 @@ export function StrukSettingsDialog({
           <textarea
             className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
             rows={2}
-            value={s.address}
-            onChange={(e) => setS({ ...s, address: e.target.value })}
+            value={c.address}
+            onChange={(e) => setC({ ...c, address: e.target.value })}
           />
         </label>
 
@@ -157,8 +182,8 @@ export function StrukSettingsDialog({
           <span className="text-xs font-medium text-foreground">Footer</span>
           <input
             className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
-            value={s.footer}
-            onChange={(e) => setS({ ...s, footer: e.target.value })}
+            value={c.footer}
+            onChange={(e) => setC({ ...c, footer: e.target.value })}
           />
         </label>
 
@@ -171,16 +196,16 @@ export function StrukSettingsDialog({
             <input
               type="checkbox"
               className="size-5 accent-primary"
-              checked={s.showBranch}
-              onChange={(e) => setS({ ...s, showBranch: e.target.checked })}
+              checked={c.showBranch}
+              onChange={(e) => setC({ ...c, showBranch: e.target.checked })}
             />
           </label>
-          {s.showBranch && (
+          {c.showBranch && (
             <input
               className="w-full rounded-lg border-2 border-border bg-card px-3 py-2 text-sm"
               placeholder={branch ? `Default: ${branch}` : "Isi nama cabang"}
-              value={s.branchOverride}
-              onChange={(e) => setS({ ...s, branchOverride: e.target.value })}
+              value={c.branchOverride}
+              onChange={(e) => setC({ ...c, branchOverride: e.target.value })}
             />
           )}
         </div>
@@ -196,7 +221,7 @@ export function StrukSettingsDialog({
                 <span className="text-[11px] text-muted-foreground">{f.caption}</span>
                 <input
                   className="mt-0.5 w-full rounded-lg border-2 border-border bg-card px-2 py-1.5 text-sm"
-                  value={s.labels[f.key]}
+                  value={c.labels[f.key]}
                   onChange={(e) => setLabel(f.key, e.target.value)}
                 />
               </label>
@@ -205,15 +230,17 @@ export function StrukSettingsDialog({
         </details>
 
         <div>
-          <span className="text-xs font-medium text-foreground">Metode cetak</span>
+          <span className="text-xs font-medium text-foreground">
+            Metode cetak <span className="text-muted-foreground">(perangkat ini)</span>
+          </span>
           <div className="mt-1.5 grid grid-cols-3 gap-2">
             {METHOD_OPTIONS.map((m) => {
-              const active = s.method === m.id;
+              const active = t.method === m.id;
               return (
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => setS({ ...s, method: m.id })}
+                  onClick={() => setT({ ...t, method: m.id })}
                   className={`h-10 rounded-lg text-xs font-semibold border-2 transition ${
                     active
                       ? "border-foreground bg-foreground text-background"
@@ -226,7 +253,7 @@ export function StrukSettingsDialog({
             })}
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            {METHOD_OPTIONS.find((m) => m.id === s.method)?.hint}
+            {METHOD_OPTIONS.find((m) => m.id === t.method)?.hint}
           </p>
         </div>
 
@@ -234,14 +261,14 @@ export function StrukSettingsDialog({
           <span className="text-sm">
             <span className="font-medium text-foreground">Auto-cetak</span>
             <span className="block text-[11px] text-muted-foreground">
-              Cetak otomatis tiap sale lunas (cash/QRIS).
+              Cetak otomatis tiap sale lunas (cash/QRIS) — perangkat ini.
             </span>
           </span>
           <input
             type="checkbox"
             className="size-5 accent-primary"
-            checked={s.autoPrint}
-            onChange={(e) => setS({ ...s, autoPrint: e.target.checked })}
+            checked={t.autoPrint}
+            onChange={(e) => setT({ ...t, autoPrint: e.target.checked })}
           />
         </label>
 
@@ -271,9 +298,10 @@ export function StrukSettingsDialog({
         <button
           type="button"
           onClick={onSave}
-          className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90"
+          disabled={saving}
+          className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 disabled:opacity-50"
         >
-          Simpan
+          {saving ? "Menyimpan…" : "Simpan"}
         </button>
       </div>
     </div>

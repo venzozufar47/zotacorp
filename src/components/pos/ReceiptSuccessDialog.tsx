@@ -4,7 +4,7 @@ import { Printer, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import { buildReceiptBytes, type ReceiptData } from "@/lib/pos/receipt";
-import { loadReceiptSettings } from "@/lib/pos/receipt-settings";
+import { loadReceiptTransport } from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
 
 /**
@@ -21,7 +21,7 @@ export function ReceiptSuccessDialog({
 }) {
   async function onPrint() {
     try {
-      const { method } = loadReceiptSettings(data.header);
+      const { method } = loadReceiptTransport();
       await sendToPrinter(buildReceiptBytes(data), method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");
