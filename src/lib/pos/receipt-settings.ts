@@ -38,6 +38,8 @@ export interface ReceiptLabels {
   methodQris: string; // "QRIS"
   methodPending: string; // "Belum bayar"
   methodAdmin: string; // "Admin"
+  wifi: string; // prefiks nama WiFi, "WiFi"
+  wifiPassword: string; // prefiks password, "Password"
 }
 
 export const DEFAULT_LABELS: ReceiptLabels = {
@@ -56,6 +58,8 @@ export const DEFAULT_LABELS: ReceiptLabels = {
   methodQris: "QRIS",
   methodPending: "Belum bayar",
   methodAdmin: "Admin",
+  wifi: "WiFi",
+  wifiPassword: "Password",
 };
 
 // ── Konten bersama (server) ──────────────────────────────────────────
@@ -64,10 +68,12 @@ export interface ReceiptContent {
   header: string;
   /** Alamat multi-baris (dipisah "\n"). */
   address: string;
-  /** Teks penutup (mis. "Terima kasih!"). */
+  /** Teks penutup (mis. "Terima kasih!"), bisa multi-baris. */
   footer: string;
-  /** Info WiFi (opsional, multi-baris) — dicetak di area bawah struk. */
-  wifi: string;
+  /** Nama/SSID WiFi (opsional). */
+  wifiName: string;
+  /** Password WiFi (opsional). */
+  wifiPassword: string;
   /** Tampilkan baris cabang di struk. */
   showBranch: boolean;
   /** Override teks cabang (kosong = pakai cabang rekening). */
@@ -81,7 +87,8 @@ export function defaultReceiptContent(brand: string): ReceiptContent {
     header: brand.trim() || "STRUK",
     address: "",
     footer: "Terima kasih!",
-    wifi: "",
+    wifiName: "",
+    wifiPassword: "",
     showBranch: true,
     branchOverride: "",
     labels: { ...DEFAULT_LABELS },
@@ -116,7 +123,14 @@ export function normalizeReceiptContent(
     header: typeof r.header === "string" ? r.header : base.header,
     address: typeof r.address === "string" ? r.address : base.address,
     footer: typeof r.footer === "string" ? r.footer : base.footer,
-    wifi: typeof r.wifi === "string" ? r.wifi : base.wifi,
+    wifiName:
+      typeof r.wifiName === "string"
+        ? r.wifiName
+        : typeof r.wifi === "string" // kompat lama: field `wifi` tunggal
+          ? (r.wifi as string)
+          : base.wifiName,
+    wifiPassword:
+      typeof r.wifiPassword === "string" ? r.wifiPassword : base.wifiPassword,
     showBranch: typeof r.showBranch === "boolean" ? r.showBranch : base.showBranch,
     branchOverride:
       typeof r.branchOverride === "string" ? r.branchOverride : base.branchOverride,

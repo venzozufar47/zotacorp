@@ -40,6 +40,8 @@ const LABEL_FIELDS: Array<{ key: keyof ReceiptLabels; caption: string }> = [
   { key: "methodQris", caption: "Nama metode QRIS" },
   { key: "methodPending", caption: "Nama metode Pesanan" },
   { key: "methodAdmin", caption: "Nama metode Admin" },
+  { key: "wifi", caption: "Label WiFi" },
+  { key: "wifiPassword", caption: "Label Password" },
 ];
 
 /**
@@ -93,7 +95,8 @@ export function StrukSettingsDialog({
       cashReceived: 50000,
       change: 5000,
       footer: c.footer,
-      wifi: c.wifi,
+      wifiName: c.wifiName,
+      wifiPassword: c.wifiPassword,
       saleShortId: "contoh12",
       labels: c.labels,
     };
@@ -180,26 +183,38 @@ export function StrukSettingsDialog({
         </label>
 
         <label className="block">
-          <span className="text-xs font-medium text-foreground">Footer</span>
-          <input
+          <span className="text-xs font-medium text-foreground">
+            Footer (bisa multi-baris — Enter untuk pindah baris)
+          </span>
+          <textarea
             className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
+            rows={2}
             value={c.footer}
             onChange={(e) => setC({ ...c, footer: e.target.value })}
           />
         </label>
 
-        <label className="block">
-          <span className="text-xs font-medium text-foreground">
-            WiFi (opsional, bisa multi-baris)
-          </span>
-          <textarea
-            className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
-            rows={2}
-            placeholder={"WiFi: Haengbocake\nPassword: kopienak"}
-            value={c.wifi}
-            onChange={(e) => setC({ ...c, wifi: e.target.value })}
-          />
-        </label>
+        {/* WiFi */}
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="text-xs font-medium text-foreground">Nama WiFi</span>
+            <input
+              className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
+              placeholder="opsional"
+              value={c.wifiName}
+              onChange={(e) => setC({ ...c, wifiName: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-foreground">Password WiFi</span>
+            <input
+              className="mt-1 w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm"
+              placeholder="opsional"
+              value={c.wifiPassword}
+              onChange={(e) => setC({ ...c, wifiPassword: e.target.value })}
+            />
+          </label>
+        </div>
 
         {/* Cabang */}
         <div className="rounded-xl border border-border bg-background px-3 py-2.5 space-y-2">

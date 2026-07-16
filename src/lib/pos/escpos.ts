@@ -25,11 +25,29 @@ const LF = 0x0a;
  * yang dibaca printer sebagai sampah. Struk kita ASCII-only (Rupiah
  * "Rp" + angka), jadi ini cukup.
  */
+/** Ganti punctuation tipografis umum ke ASCII sebelum encode, supaya
+ *  tidak jadi "?" di printer (mis. em/en dash "—" dari nama varian). */
+const ASCII_FOLD: Record<string, string> = {
+  "—": "-", // — em dash
+  "–": "-", // – en dash
+  "‘": "'", // ' left single quote
+  "’": "'", // ' right single quote
+  "“": '"', // " left double quote
+  "”": '"', // " right double quote
+  "…": "...", // … ellipsis
+  "×": "x", // × multiply
+  "•": "*", // • bullet
+  " ": " ", // nbsp
+};
+
 function encodeLatin1(str: string): number[] {
   const out: number[] = [];
-  for (let i = 0; i < str.length; i++) {
-    const code = str.charCodeAt(i);
-    out.push(code <= 0xff ? code : 0x3f /* '?' */);
+  for (const ch of str) {
+    const folded = ASCII_FOLD[ch] ?? ch;
+    for (let i = 0; i < folded.length; i++) {
+      const code = folded.charCodeAt(i);
+      out.push(code <= 0xff ? code : 0x3f /* '?' */);
+    }
   }
   return out;
 }

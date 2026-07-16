@@ -521,7 +521,8 @@ export function POSClient({
             ? cashReceived - finalTotal
             : null,
         footer: rc.footer,
-        wifi: rc.wifi,
+        wifiName: rc.wifiName,
+        wifiPassword: rc.wifiPassword,
         saleShortId: res.data?.saleId ? res.data.saleId.slice(0, 8) : null,
         labels: rc.labels,
       };

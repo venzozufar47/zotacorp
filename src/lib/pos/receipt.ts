@@ -9,8 +9,39 @@
 import type { PosSaleSummary } from "@/lib/actions/pos.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
-import { EscPosBuilder } from "./escpos";
+import { COLS, EscPosBuilder } from "./escpos";
 import { DEFAULT_LABELS, type ReceiptLabels } from "./receipt-settings";
+
+/**
+ * Pecah teks menjadi baris ≤ COLS karakter, memutus di batas KATA (bukan
+ * di tengah kata). Menghormati newline eksplisit dari user. Kata yang
+ * lebih panjang dari COLS dipotong keras sebagai fallback.
+ */
+function wrapText(s: string): string[] {
+  const out: string[] = [];
+  for (const rawLine of s.split("\n")) {
+    let line = "";
+    for (const word of rawLine.trim().split(/\s+/).filter(Boolean)) {
+      let w = word;
+      while (w.length > COLS) {
+        if (line) {
+          out.push(line);
+          line = "";
+        }
+        out.push(w.slice(0, COLS));
+        w = w.slice(COLS);
+      }
+      if (!line) line = w;
+      else if (line.length + 1 + w.length <= COLS) line += " " + w;
+      else {
+        out.push(line);
+        line = w;
+      }
+    }
+    if (line) out.push(line);
+  }
+  return out;
+}
 
 export type ReceiptMethod = "cash" | "qris" | "pending" | "admin";
 export type ReceiptFulfillment = "dine_in" | "take_away" | null;
@@ -43,8 +74,10 @@ export interface ReceiptData {
   cashReceived?: number | null;
   change?: number | null;
   footer: string;
-  /** Info WiFi (opsional, multi-baris). */
-  wifi?: string;
+  /** Nama/SSID WiFi (opsional). */
+  wifiName?: string;
+  /** Password WiFi (opsional). */
+  wifiPassword?: string;
   /** Potongan id sale untuk jejak (mis. 8 char pertama). */
   saleShortId?: string | null;
   /** Label/teks tetap. Kosong = pakai default. */
@@ -89,12 +122,11 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
   // Header brand — besar & center.
   b.align("center").size("double").bold(true).textLine(data.header);
   b.size("normal").bold(false);
-  if (data.branch) b.textLine(`${L.branch}: ${data.branch}`);
+  if (data.branch) {
+    for (const l of wrapText(`${L.branch}: ${data.branch}`)) b.textLine(l);
+  }
   if (data.address.trim()) {
-    for (const ln of data.address.split("\n")) {
-      const t = ln.trim();
-      if (t) b.textLine(t);
-    }
+    for (const l of wrapText(data.address)) b.textLine(l);
   }
 
   b.align("left").line();
@@ -135,22 +167,19 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
   }
   b.textLine(`${L.method}: ${methodLabel(data.method, L)}`);
 
-  // WiFi (opsional) — di area bawah, center.
+  // WiFi (opsional) — di area bawah, center. Nama & password baris sendiri.
   b.line();
   b.align("center");
-  if (data.wifi && data.wifi.trim()) {
-    for (const ln of data.wifi.split("\n")) {
-      const w = ln.trim();
-      if (w) b.textLine(w);
-    }
+  const wifiName = (data.wifiName ?? "").trim();
+  const wifiPass = (data.wifiPassword ?? "").trim();
+  if (wifiName) for (const l of wrapText(`${L.wifi}: ${wifiName}`)) b.textLine(l);
+  if (wifiPass) {
+    for (const l of wrapText(`${L.wifiPassword}: ${wifiPass}`)) b.textLine(l);
   }
 
-  // Footer.
+  // Footer — word-wrap supaya tak terpotong di tengah kata.
   if (data.footer.trim()) {
-    for (const ln of data.footer.split("\n")) {
-      const t = ln.trim();
-      if (t) b.textLine(t);
-    }
+    for (const l of wrapText(data.footer)) b.textLine(l);
   }
   if (data.saleShortId) b.textLine(`#${data.saleShortId}`);
 
@@ -163,7 +192,8 @@ export interface ReceiptConfig {
   branch: string | null;
   address: string;
   footer: string;
-  wifi?: string;
+  wifiName?: string;
+  wifiPassword?: string;
   labels?: ReceiptLabels;
 }
 
@@ -195,7 +225,8 @@ export function receiptDataFromSummary(
     total: s.total,
     method,
     footer: cfg.footer,
-    wifi: cfg.wifi,
+    wifiName: cfg.wifiName,
+    wifiPassword: cfg.wifiPassword,
     saleShortId: s.id.slice(0, 8),
     labels: cfg.labels,
   };
