@@ -41,9 +41,11 @@ export function ReprintReceiptButton({
         labels: content.labels,
       });
       // Nama kasir Pare mengikuti jadwal shift pada waktu sale itu.
-      const saleAt = new Date(
-        `${sale.saleDate}T${(sale.saleTime || "00:00").slice(0, 5)}:00+07:00`
-      );
+      // saleTime = timestamp ISO penuh; fallback ke tengah malam WIB tanggal itu.
+      let saleAt = sale.saleTime ? new Date(sale.saleTime) : new Date(NaN);
+      if (Number.isNaN(saleAt.getTime())) {
+        saleAt = new Date(`${sale.saleDate}T00:00:00+07:00`);
+      }
       data.cashierName = resolveCashierName(branch, saleAt, null);
       await sendToPrinter(buildReceiptBytes(data), loadReceiptTransport().method);
     } catch (e) {

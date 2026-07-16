@@ -90,11 +90,18 @@ export function formatReceiptDateTime(d: Date): string {
   return `${day}/${m}/${y} ${jakartaHHMM(d)}`;
 }
 
-/** "DD/MM/YYYY HH:mm" dari saleDate (YYYY-MM-DD) + saleTime (HH:mm). */
+/**
+ * "DD/MM/YYYY HH:mm" untuk sale historis. `saleTime` adalah timestamp ISO
+ * penuh (mis. "2026-07-16T12:00:00+00:00") — di-parse & diformat ke WIB.
+ * Bila kosong/tak valid, jatuh ke tanggal saja.
+ */
 function formatSummaryDateTime(saleDate: string, saleTime: string): string {
+  if (saleTime) {
+    const d = new Date(saleTime);
+    if (!Number.isNaN(d.getTime())) return formatReceiptDateTime(d);
+  }
   const [y, m, day] = saleDate.split("-");
-  const hhmm = (saleTime || "").slice(0, 5);
-  return `${day}/${m}/${y} ${hhmm}`;
+  return `${day}/${m}/${y}`;
 }
 
 function methodLabel(m: ReceiptMethod, L: ReceiptLabels): string {

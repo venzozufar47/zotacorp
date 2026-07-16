@@ -50,6 +50,8 @@ export function resolveCashierName(
   at: Date,
   fallback: string | null
 ): string | null {
+  // Tanggal invalid (mis. timestamp tak terparse) → jangan lempar; pakai fallback.
+  if (Number.isNaN(at.getTime())) return fallback;
   if (branch === "Pare") return resolvePareCashier(at);
   return fallback;
 }
