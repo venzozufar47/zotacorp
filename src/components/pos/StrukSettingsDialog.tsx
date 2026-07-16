@@ -6,11 +6,18 @@ import { toast } from "sonner";
 import {
   loadReceiptSettings,
   saveReceiptSettings,
+  type PrintMethod,
   type ReceiptSettings,
 } from "@/lib/pos/receipt-settings";
 import { buildReceiptBytes, formatReceiptDateTime, type ReceiptData } from "@/lib/pos/receipt";
 import { escPosToPreviewText } from "@/lib/pos/escpos";
-import { printReceipt } from "@/lib/pos/rawbt";
+import { sendToPrinter } from "@/lib/pos/print-transport";
+
+const METHOD_OPTIONS: Array<{ id: PrintMethod; label: string; hint: string }> = [
+  { id: "rawbt", label: "RawBT", hint: "Perlu app RawBT. Paling andal (Bluetooth Classic + LE)." },
+  { id: "webbluetooth", label: "Web Bluetooth", hint: "Tanpa app, langsung Chrome. Hanya printer Bluetooth LE." },
+  { id: "native", label: "Native", hint: "Lewat app native (belum tersedia — menyusul)." },
+];
 
 /**
  * Setelan struk per-perangkat: header/alamat/footer + toggle auto-cetak.
@@ -62,9 +69,9 @@ export function StrukSettingsDialog({
     setPreview(escPosToPreviewText(buildReceiptBytes(sampleData())));
   }
 
-  function onTestPrint() {
+  async function onTestPrint() {
     try {
-      printReceipt(buildReceiptBytes(sampleData()));
+      await sendToPrinter(buildReceiptBytes(sampleData()), s.method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");
     }
@@ -128,6 +135,32 @@ export function StrukSettingsDialog({
             onChange={(e) => setS({ ...s, footer: e.target.value })}
           />
         </label>
+
+        <div>
+          <span className="text-xs font-medium text-foreground">Metode cetak</span>
+          <div className="mt-1.5 grid grid-cols-3 gap-2">
+            {METHOD_OPTIONS.map((m) => {
+              const active = s.method === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setS({ ...s, method: m.id })}
+                  className={`h-10 rounded-lg text-xs font-semibold border-2 transition ${
+                    active
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            {METHOD_OPTIONS.find((m) => m.id === s.method)?.hint}
+          </p>
+        </div>
 
         <label className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2.5">
           <span className="text-sm">

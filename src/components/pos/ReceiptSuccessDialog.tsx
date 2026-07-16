@@ -4,7 +4,8 @@ import { Printer, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import { buildReceiptBytes, type ReceiptData } from "@/lib/pos/receipt";
-import { printReceipt, isAndroid } from "@/lib/pos/rawbt";
+import { loadReceiptSettings } from "@/lib/pos/receipt-settings";
+import { sendToPrinter } from "@/lib/pos/print-transport";
 
 /**
  * Layar sukses singkat setelah sale dibuat. Menampung tombol Cetak Struk
@@ -18,9 +19,10 @@ export function ReceiptSuccessDialog({
   data: ReceiptData;
   onClose: () => void;
 }) {
-  function onPrint() {
+  async function onPrint() {
     try {
-      printReceipt(buildReceiptBytes(data));
+      const { method } = loadReceiptSettings(data.header);
+      await sendToPrinter(buildReceiptBytes(data), method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");
     }
@@ -73,11 +75,6 @@ export function ReceiptSuccessDialog({
         >
           <Printer size={18} /> Cetak Struk
         </button>
-        {!isAndroid() && (
-          <p className="text-[11px] text-muted-foreground text-center -mt-1">
-            Cetak struk butuh HP Android + app RawBT.
-          </p>
-        )}
 
         <button
           type="button"

@@ -43,7 +43,7 @@ import {
   type ReceiptData,
 } from "@/lib/pos/receipt";
 import { loadReceiptSettings } from "@/lib/pos/receipt-settings";
-import { printReceipt } from "@/lib/pos/rawbt";
+import { sendToPrinter } from "@/lib/pos/print-transport";
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
 
@@ -516,11 +516,10 @@ export function POSClient({
         saleShortId: res.data?.saleId ? res.data.saleId.slice(0, 8) : null,
       };
       if (rc.autoPrint && method !== "pending") {
-        try {
-          printReceipt(buildReceiptBytes(receipt));
-        } catch {
-          // best-effort — jangan ganggu alur kasir kalau cetak gagal.
-        }
+        // best-effort — jangan ganggu alur kasir kalau cetak gagal.
+        // (Web Bluetooth mungkin butuh perangkat sudah dipilih lebih dulu
+        //  lewat tombol; kegagalan di sini diabaikan.)
+        void sendToPrinter(buildReceiptBytes(receipt), rc.method).catch(() => {});
       }
       setLastSale(receipt);
 

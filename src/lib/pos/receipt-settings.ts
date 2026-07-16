@@ -9,6 +9,12 @@
 
 const KEY = "zota:pos:receiptSettings:v1";
 
+/** Jalur pengiriman byte struk ke printer.
+ *  - rawbt: via app RawBT (Android intent) — Bluetooth Classic + LE.
+ *  - webbluetooth: langsung dari Chrome tanpa app — HANYA printer BLE.
+ *  - native: plugin Capacitor di app native (belum dirilis). */
+export type PrintMethod = "rawbt" | "webbluetooth" | "native";
+
 export interface ReceiptSettings {
   /** Brand di header struk. */
   header: string;
@@ -18,6 +24,8 @@ export interface ReceiptSettings {
   footer: string;
   /** Auto-cetak begitu sale lunas (cash/qris) tanpa menekan tombol. */
   autoPrint: boolean;
+  /** Metode kirim ke printer. */
+  method: PrintMethod;
 }
 
 export function defaultReceiptSettings(brand: string): ReceiptSettings {
@@ -26,7 +34,12 @@ export function defaultReceiptSettings(brand: string): ReceiptSettings {
     address: "",
     footer: "Terima kasih!",
     autoPrint: false,
+    method: "rawbt",
   };
+}
+
+function isPrintMethod(v: unknown): v is PrintMethod {
+  return v === "rawbt" || v === "webbluetooth" || v === "native";
 }
 
 /**
@@ -46,6 +59,7 @@ export function loadReceiptSettings(brand: string): ReceiptSettings {
       address: typeof saved.address === "string" ? saved.address : base.address,
       footer: typeof saved.footer === "string" ? saved.footer : base.footer,
       autoPrint: typeof saved.autoPrint === "boolean" ? saved.autoPrint : base.autoPrint,
+      method: isPrintMethod(saved.method) ? saved.method : base.method,
     };
   } catch {
     return base;

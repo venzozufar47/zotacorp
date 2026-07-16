@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import type { PosSaleSummary } from "@/lib/actions/pos.actions";
 import { buildReceiptBytes, receiptDataFromSummary } from "@/lib/pos/receipt";
 import { loadReceiptSettings } from "@/lib/pos/receipt-settings";
-import { printReceipt } from "@/lib/pos/rawbt";
+import { sendToPrinter } from "@/lib/pos/print-transport";
 
 /**
  * Tombol cetak ulang struk dari Riwayat. Membaca setelan struk
@@ -22,7 +22,7 @@ export function ReprintReceiptButton({
   brand: string;
   branch: string | null;
 }) {
-  function onPrint() {
+  async function onPrint() {
     try {
       const rc = loadReceiptSettings(brand);
       const data = receiptDataFromSummary(sale, {
@@ -31,7 +31,7 @@ export function ReprintReceiptButton({
         address: rc.address,
         footer: rc.footer,
       });
-      printReceipt(buildReceiptBytes(data));
+      await sendToPrinter(buildReceiptBytes(data), rc.method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");
     }
