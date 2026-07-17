@@ -320,20 +320,29 @@ function ProductionCard({
   const [pending, startTransition] = useTransition();
   const setStatus = (next: CakeProductionStatus) => {
     startTransition(async () => {
-      const res = await setOrderProductionStatus(snapshot.orderId, next);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await setOrderProductionStatus(snapshot.orderId, next);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        const labels: Record<CakeProductionStatus, string> = {
+          pending: "Direset ke pending",
+          in_progress: "Mulai diproduksi",
+          decorating: "Mulai menghias",
+          done: "Selesai diproduksi",
+          cancelled: "Dibatalkan",
+        };
+        toast.success(labels[next]);
+        onChange(next);
+      } catch {
+        // Deployment skew: tab lama, ID server action tak ada di deploy baru.
+        // Recovery = muat ulang penuh untuk ambil bundle terbaru.
+        toast.error("Aplikasi baru diperbarui. Memuat ulang halaman…");
+        setTimeout(() => {
+          if (typeof window !== "undefined") window.location.reload();
+        }, 1200);
       }
-      const labels: Record<CakeProductionStatus, string> = {
-        pending: "Direset ke pending",
-        in_progress: "Mulai diproduksi",
-        decorating: "Mulai menghias",
-        done: "Selesai diproduksi",
-        cancelled: "Dibatalkan",
-      };
-      toast.success(labels[next]);
-      onChange(next);
     });
   };
 
