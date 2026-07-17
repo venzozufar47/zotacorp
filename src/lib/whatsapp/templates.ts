@@ -369,9 +369,10 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     placeholders: [
       { key: "name", description: "Nama/panggilan Kepala Studio" },
       { key: "count", description: "Jumlah tiket aktif (open + in progress) hari ini" },
+      { key: "list", description: "Daftar tiket aktif (judul, cabang, kategori; urgent ditandai)" },
     ],
     defaultBody:
-      "⏰ Halo {name}!\n\nHari ini masih ada {count} tiket studio Yeobo Space yang aktif & menunggu ditindaklanjuti.\n\nYuk segera diselesaikan ya 🙏 Buka Zota App → menu Tiket.",
+      "⏰ Halo {name}!\n\nHari ini ada {count} tiket studio Yeobo Space yang masih aktif & menunggu ditindaklanjuti:\n\n{list}\n\nYuk segera diselesaikan ya 🙏 Buka Zota App → menu Tiket.",
   },
 };
 

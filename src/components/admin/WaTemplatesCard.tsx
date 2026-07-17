@@ -323,8 +323,12 @@ function sampleValuesFor(
       };
     case "ticket_active_reminder":
       return {
-        name: "Chelsy",
+        name: "Ikaa",
         count: 3,
+        list:
+          "1. 🔴 tinta printer (Jebres · Kebutuhan barang)\n" +
+          "2. 4 lampu mati (Jebres · Barang rusak / perlu ganti)\n" +
+          "3. packaging & keychain (Jebres · Kebutuhan barang)",
       };
   }
 }
