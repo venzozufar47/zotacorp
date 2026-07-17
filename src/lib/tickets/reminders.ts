@@ -72,7 +72,11 @@ export async function runStudioHeadTicketReminders(): Promise<StudioReminderSumm
   if (activeCount === 0) {
     return { activeCount: 0, heads: 0, sent: 0, skipped: "no active tickets" };
   }
-  const list = buildTicketList(rows);
+  // Legend hanya bila ada tiket urgent — supaya arti 🔴 jelas bagi kepala studio.
+  const hasUrgent = rows.some((r) => r.priority === "urgent");
+  const list = hasUrgent
+    ? `${buildTicketList(rows)}\n\n🔴 = mendesak, mohon didahulukan.`
+    : buildTicketList(rows);
 
   // 2. Ambil Kepala Studio + nomor WA.
   const { data: heads } = await admin.from("studio_heads").select("user_id");
