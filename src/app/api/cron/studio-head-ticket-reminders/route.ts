@@ -1,9 +1,9 @@
 /**
  * Daily cron: reminder tiket studio aktif untuk Kepala Studio (Yeobo Space).
  *
- * Dispatched Vercel Cron (vercel.json) sekali sehari `0 4 * * *` = 11:00 WIB
- * (batas Vercel Hobby = cron harian). Menghitung tiket open + in_progress lalu
- * kirim WA ke tiap Kepala Studio; skip bila tidak ada tiket aktif.
+ * Dispatched Vercel Cron (vercel.json) dua kali sehari — `0 4 * * *` = 11:00 WIB
+ * dan `0 11 * * *` = 18:00 WIB. Menghitung tiket open + in_progress lalu kirim WA
+ * ke tiap Kepala Studio; skip bila tidak ada tiket aktif.
  *
  * Auth: Vercel cron mengirim `Authorization: Bearer <CRON_SECRET>`.
  *
