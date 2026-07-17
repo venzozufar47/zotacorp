@@ -8,11 +8,15 @@ import {
   CheckCircle2,
   ArrowRight,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { EmployeeDrawer, type DrawerSubject } from "./EmployeeDrawer";
-import type { AdminHomeToday } from "@/lib/actions/admin-home.actions";
+import type {
+  AdminHomeToday,
+  CleaningExceptionRow,
+} from "@/lib/actions/admin-home.actions";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
@@ -44,6 +48,7 @@ export function AdminHomePage({
   disputes,
   upcomingCelebrants,
   userDirectory,
+  cleaningExceptions,
 }: {
   greetingName: string;
   today: AdminHomeToday;
@@ -55,6 +60,8 @@ export function AdminHomePage({
     string,
     { full_name: string | null; avatar_url: string | null; avatar_seed: string | null }
   >;
+  /** Karyawan yang sudah sign-in tapi belum menyelesaikan kebersihan. */
+  cleaningExceptions: CleaningExceptionRow[];
 }) {
   const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
   const router = useRouter();
@@ -202,6 +209,52 @@ export function AdminHomePage({
           compact
         />
       </div>
+
+      {/* CLEANING — management by exception. Muncul HANYA untuk miss
+          terkonfirmasi: karyawan yang KEMARIN hadir + dijadwalkan bersih
+          tapi checklistnya tidak diselesaikan sampai harinya berakhir.
+          Hari berjalan sengaja tidak diflag (masih bisa dikerjakan). */}
+      {cleaningExceptions.length > 0 && (
+        <Card>
+          <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="grid place-items-center size-[26px] rounded-lg shrink-0 bg-destructive/15 text-destructive">
+                <Sparkles size={14} />
+              </span>
+              <div className="min-w-0">
+                <div className="font-display font-semibold text-[15px] lg:text-base text-foreground tracking-[-0.015em]">
+                  Kebersihan terlewat
+                </div>
+                <div className="text-[11.5px] text-muted-foreground mt-0.5">
+                  Hadir kemarin tapi checklist tidak diselesaikan
+                </div>
+              </div>
+            </div>
+            <span className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full tabular-nums bg-destructive/15 text-destructive">
+              {cleaningExceptions.length}
+            </span>
+          </div>
+          <div className="px-2 pb-2">
+            {cleaningExceptions.map((c) => (
+              <CleaningMissRow
+                key={`${c.userId}-${c.checklistName}`}
+                row={c}
+                onSubject={() =>
+                  setDrawer({
+                    userId: c.userId,
+                    fullName: c.userName,
+                    avatarUrl: c.avatarUrl,
+                    avatarSeed: c.avatarSeed,
+                    caption: `Tidak selesaikan ${c.checklistName} (${missDateLabel(
+                      c.date
+                    )})`,
+                  })
+                }
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
@@ -544,6 +597,45 @@ function InboxRow({
   );
 }
 
+function CleaningMissRow({
+  row,
+  onSubject,
+}: {
+  row: CleaningExceptionRow;
+  onSubject: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSubject}
+      className="group/sub w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-muted/50 transition"
+    >
+      <EmployeeAvatar
+        size="sm"
+        full_name={row.userName}
+        avatar_url={row.avatarUrl}
+        avatar_seed={row.avatarSeed}
+      />
+      <span className="flex-1 min-w-0">
+        <span className="block text-[13px] font-medium text-foreground truncate group-hover/sub:underline">
+          {row.userName}
+        </span>
+        <span className="block text-[11.5px] text-muted-foreground truncate">
+          {row.checklistName} · {row.completedItems}/{row.totalItems} selesai
+        </span>
+      </span>
+      {/* Tanggal shift yang terlewat — biasanya "Kemarin". */}
+      <span className="shrink-0 inline-flex items-center text-[9.5px] font-semibold uppercase tracking-[0.06em] px-2 py-1 rounded-full bg-destructive/15 text-destructive">
+        {missDateLabel(row.date)}
+      </span>
+      <ArrowRight
+        size={13}
+        className="shrink-0 text-muted-foreground/70 group-hover/sub:text-foreground transition"
+      />
+    </button>
+  );
+}
+
 function buildInbox(
   pending: PendingConfirmationItem[],
   disputes: DisputeRow[],
@@ -621,6 +713,28 @@ function agoLabel(iso: string) {
 
 function firstName(full: string) {
   return full.split(/\s+/)[0] ?? full;
+}
+
+/** Label tanggal miss (WIB): "Kemarin" / "Hari ini" / "14 Jul". */
+function missDateLabel(ymd: string): string {
+  const todayWib = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const yesterdayWib = (() => {
+    const d = new Date(todayWib + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  if (ymd === yesterdayWib) return "Kemarin";
+  if (ymd === todayWib) return "Hari ini";
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+  });
 }
 
 /**

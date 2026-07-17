@@ -8,6 +8,7 @@ import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/cashflow/access";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
+import { getCleaningMisses } from "@/lib/actions/admin-home.actions";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 
 export default async function AdminLayout({
@@ -68,11 +69,13 @@ export default async function AdminLayout({
     );
   }
 
-  const [pendingConfirmations, disputes, profile] = await Promise.all([
-    getPendingConfirmations(),
-    listOpenPayslipDisputes(),
-    getCurrentProfile(),
-  ]);
+  const [pendingConfirmations, disputes, profile, cleaningExceptions] =
+    await Promise.all([
+      getPendingConfirmations(),
+      listOpenPayslipDisputes(),
+      getCurrentProfile(),
+      getCleaningMisses(),
+    ]);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -81,6 +84,7 @@ export default async function AdminLayout({
       <AdminSidebar
         pendingCount={pendingConfirmations.length}
         disputesCount={disputes.length}
+        cleaningCount={cleaningExceptions.length}
         profile={profile}
       />
       <main className="flex-1 min-w-0 flex flex-col">

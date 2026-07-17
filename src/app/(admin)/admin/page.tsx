@@ -3,7 +3,10 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
-import { getAdminHomeToday } from "@/lib/actions/admin-home.actions";
+import {
+  getAdminHomeToday,
+  getCleaningMisses,
+} from "@/lib/actions/admin-home.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import {
@@ -26,19 +29,27 @@ export default async function AdminHomeRoute() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [profile, today, pending, disputes, radar, celebrationsFeed] =
-    await Promise.all([
-      getCurrentProfile(),
-      getAdminHomeToday(),
-      getPendingConfirmations(),
-      listOpenPayslipDisputes(),
-      getAdminCelebrationsRadar(),
-      getCelebrationsFeed().catch(() => ({
-        today: [],
-        upcoming: [],
-        mySelfCelebration: null,
-      })),
-    ]);
+  const [
+    profile,
+    today,
+    pending,
+    disputes,
+    radar,
+    celebrationsFeed,
+    cleaningExceptions,
+  ] = await Promise.all([
+    getCurrentProfile(),
+    getAdminHomeToday(),
+    getPendingConfirmations(),
+    listOpenPayslipDisputes(),
+    getAdminCelebrationsRadar(),
+    getCelebrationsFeed().catch(() => ({
+      today: [],
+      upcoming: [],
+      mySelfCelebration: null,
+    })),
+    getCleaningMisses(),
+  ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
   // round-trip per row.
@@ -76,6 +87,7 @@ export default async function AdminHomeRoute() {
         disputes={disputes}
         upcomingCelebrants={radar}
         userDirectory={userDirectory}
+        cleaningExceptions={cleaningExceptions}
       />
       <div className="mt-5">
         <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />

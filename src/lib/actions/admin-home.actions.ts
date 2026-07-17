@@ -8,6 +8,8 @@ import {
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
 import { zonedDateString } from "@/lib/utils/celebrations";
+import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
+import { getCleaningMonitor } from "./cleaning.actions";
 
 /**
  * Live snapshot for the admin Home dashboard. All numbers are scoped
@@ -510,4 +512,85 @@ export async function getEmployeeApprovals(
     return 0;
   });
   return out;
+}
+
+/**
+ * Management by exception — kebersihan (miss terkonfirmasi).
+ *
+ * Karyawan yang pada suatu hari sudah sign-in (check-in) DAN dijadwalkan
+ * membersihkan, tapi checklistnya tidak diselesaikan sampai hari itu
+ * berakhir. Ini sinyal "hadir tapi tidak membersihkan".
+ *
+ * PENTING soal timing (permintaan admin): selama masih di HARI yang sama
+ * (WIB), jangan diflag — checklist masih bisa dikerjakan kapan pun hari
+ * itu. Exception baru muncul setelah harinya berganti. Karena itu home
+ * meng-evaluasi HARI KEMARIN (WIB), bukan hari berjalan. Sekali hari
+ * kemarin lewat tanpa selesai, itu miss permanen (tidak bisa dibersihkan
+ * surut).
+ *
+ * Deteksi exception (jadwal weekday, rotasi on-duty, skip hari libur)
+ * di-reuse penuh dari `getCleaningMonitor` supaya logikanya satu sumber;
+ * kita hanya menyilangkannya dengan roster check-in di hari yang sama.
+ *
+ * Return kosong bila tidak ada miss → home menyembunyikan kartunya
+ * (philosophy: no news = good news).
+ */
+export interface CleaningExceptionRow {
+  userId: string;
+  userName: string;
+  businessUnit: string | null;
+  avatarUrl: string | null;
+  avatarSeed: string | null;
+  checklistName: string;
+  totalItems: number;
+  completedItems: number;
+  /** Tanggal WIB shift yang terlewat (YYYY-MM-DD). */
+  date: string;
+}
+
+export async function getCleaningMisses(): Promise<CleaningExceptionRow[]> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return [];
+
+  // Evaluasi KEMARIN (WIB). Hari berjalan sengaja dilewati: checklist
+  // masih bisa diselesaikan kapan pun sampai hari itu berakhir.
+  const target = jakartaDateMinusDays(jakartaDateString(new Date()), 1);
+  const monitor = await getCleaningMonitor({ date: target });
+  const exceptions = monitor.rows.filter((r) => r.is_exception);
+  if (exceptions.length === 0) return [];
+
+  // Roster check-in di hari yang sama (monitor.date) — hanya yang benar-
+  // benar hadir hari itu yang dihitung "hadir tapi tidak membersihkan".
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_logs")
+    .select("user_id, profiles!inner(avatar_url, avatar_seed)")
+    .eq("date", monitor.date)
+    .not("checked_in_at", "is", null);
+  const attMap = new Map(
+    ((data ?? []) as Array<{
+      user_id: string;
+      profiles: { avatar_url: string | null; avatar_seed: string | null };
+    }>).map((l) => [l.user_id, l])
+  );
+
+  const rows: CleaningExceptionRow[] = exceptions
+    .filter((r) => attMap.has(r.user_id))
+    .map((r) => {
+      const att = attMap.get(r.user_id)!;
+      return {
+        userId: r.user_id,
+        userName: r.user_name,
+        businessUnit: r.business_unit,
+        avatarUrl: att.profiles?.avatar_url ?? null,
+        avatarSeed: att.profiles?.avatar_seed ?? null,
+        checklistName: r.checklist_name,
+        totalItems: r.total_items,
+        completedItems: r.completed_items,
+        date: monitor.date,
+      };
+    });
+
+  rows.sort((a, b) => a.userName.localeCompare(b.userName));
+  return rows;
 }

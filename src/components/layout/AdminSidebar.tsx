@@ -49,11 +49,13 @@ import type { Profile } from "@/lib/supabase/types";
 export function AdminSidebar({
   pendingCount = 0,
   disputesCount = 0,
+  cleaningCount = 0,
   profile,
   scope = "full",
 }: {
   pendingCount?: number;
   disputesCount?: number;
+  cleaningCount?: number;
   profile?: Pick<
     Profile,
     "id" | "full_name" | "email" | "avatar_url" | "avatar_seed"
@@ -90,7 +92,12 @@ export function AdminSidebar({
           label: t.nav.payslips,
           badge: disputesCount || undefined,
         },
-        { href: "/admin/cleaning", icon: Sparkles, label: "Kebersihan" },
+        {
+          href: "/admin/cleaning",
+          icon: Sparkles,
+          label: "Kebersihan",
+          badge: cleaningCount || undefined,
+        },
       ],
     },
     {
