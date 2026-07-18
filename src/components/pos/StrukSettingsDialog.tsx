@@ -163,6 +163,30 @@ export function StrukSettingsDialog({
           Metode cetak &amp; auto-cetak hanya untuk perangkat ini.
         </p>
 
+        {/* Master switch sistem struk (per rekening, semua perangkat) */}
+        <label
+          className={`flex items-center justify-between gap-3 rounded-xl border-2 px-3 py-3 ${
+            c.enabled
+              ? "border-foreground bg-tertiary/30"
+              : "border-border bg-muted/40"
+          }`}
+        >
+          <span className="text-sm">
+            <span className="font-bold text-foreground">Sistem struk</span>
+            <span className="block text-[11px] text-muted-foreground">
+              {c.enabled
+                ? "Aktif — tombol Cetak Struk & cetak ulang tersedia."
+                : "Nonaktif — semua tombol cetak disembunyikan."}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="size-6 accent-primary"
+            checked={c.enabled}
+            onChange={(e) => setC({ ...c, enabled: e.target.checked })}
+          />
+        </label>
+
         <label className="block">
           <span className="text-xs font-medium text-foreground">Header (brand)</span>
           <input

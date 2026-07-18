@@ -64,6 +64,10 @@ export const DEFAULT_LABELS: ReceiptLabels = {
 
 // ── Konten bersama (server) ──────────────────────────────────────────
 export interface ReceiptContent {
+  /** Master switch sistem struk untuk rekening ini. false = semua
+   *  afordance cetak (tombol Cetak Struk, auto-cetak, cetak ulang)
+   *  disembunyikan. Default true (perilaku lama = selalu aktif). */
+  enabled: boolean;
   /** Brand di header struk. */
   header: string;
   /** Alamat multi-baris (dipisah "\n"). */
@@ -84,6 +88,7 @@ export interface ReceiptContent {
 
 export function defaultReceiptContent(brand: string): ReceiptContent {
   return {
+    enabled: true,
     header: brand.trim() || "STRUK",
     address: "",
     footer: "Terima kasih!",
@@ -120,6 +125,8 @@ export function normalizeReceiptContent(
   if (!raw || typeof raw !== "object") return base;
   const r = raw as Record<string, unknown>;
   return {
+    // Missing = true (config lama tanpa flag ini tetap aktif).
+    enabled: typeof r.enabled === "boolean" ? r.enabled : base.enabled,
     header: typeof r.header === "string" ? r.header : base.header,
     address: typeof r.address === "string" ? r.address : base.address,
     footer: typeof r.footer === "string" ? r.footer : base.footer,

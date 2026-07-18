@@ -293,7 +293,7 @@ export default async function PosRiwayatPage({
                   </div>
                 </li>
               )}
-              {!s.voidedAt && (
+              {!s.voidedAt && receiptContent.enabled && (
                 <li>
                   <ReprintReceiptButton
                     sale={s}

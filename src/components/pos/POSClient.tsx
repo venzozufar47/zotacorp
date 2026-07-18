@@ -494,9 +494,11 @@ export function POSClient({
           : `Tersimpan: ${formatRp(res.data?.total ?? 0)} — ${methodLabel}`
       );
 
-      // Struk: tangkap snapshot SEBELUM reset (uang tunai/kembalian hanya
-      // ada di client state). Auto-cetak bila diaktifkan & sudah lunas.
+      // Struk: hanya bila sistem struk rekening ini aktif.
+      // Tangkap snapshot SEBELUM reset (uang tunai/kembalian hanya ada di
+      // client state). Auto-cetak bila diaktifkan & sudah lunas.
       const rc = receiptContent;
+      if (rc.enabled) {
       const t = loadReceiptTransport();
       const now = new Date();
       const effBranch = rc.showBranch ? rc.branchOverride.trim() || branch : null;
@@ -536,6 +538,7 @@ export function POSClient({
         void sendToPrinter(buildReceiptBytes(receipt), t.method).catch(() => {});
       }
       setLastSale(receipt);
+      }
 
       resetCart();
       setCustomerName("");
