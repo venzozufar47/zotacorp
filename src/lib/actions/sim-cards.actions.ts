@@ -217,7 +217,12 @@ const cardSchema = z
   .refine(
     (v) => Boolean(v.picUserId) || (Boolean(v.picName) && Boolean(v.picPhone)),
     { message: "Pilih karyawan, atau isi nama + nomor WA penanggung jawab" }
-  );
+  )
+  // Masa tenggang selalu SESUDAH masa aktif. Kalau terbalik, perhitungan
+  // status jadi rancu (kartu terbaca "hangus" padahal masih aktif).
+  .refine((v) => !(v.activeUntil && v.graceUntil) || v.graceUntil >= v.activeUntil, {
+    message: "Masa tenggang tidak boleh lebih awal dari masa aktif",
+  });
 
 export type SimCardInput = z.infer<typeof cardSchema>;
 
@@ -335,10 +340,33 @@ export async function recordSimTopup(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
   const v = parsed.data;
 
+  if (v.newGraceUntil && v.newGraceUntil < v.newActiveUntil)
+    return {
+      ok: false,
+      error: "Masa tenggang tidak boleh lebih awal dari masa aktif",
+    };
+
   const gate = await requireSimCardActor(v.simCardId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const admin = createAdminClient() as any;
+
+  // Bukti harus BENAR-BENAR ada di bucket & diunggah oleh akun ini.
+  // Tanpa cek ini, string path sembarang bisa "mematikan" reminder tanpa
+  // bukti sungguhan (path convention: `${uid}/${uuid}.ext`).
+  const slash = v.proofPath.indexOf("/");
+  if (slash <= 0) return { ok: false, error: "Path bukti tidak valid" };
+  const folder = v.proofPath.slice(0, slash);
+  const fileName = v.proofPath.slice(slash + 1);
+  if (folder !== gate.userId)
+    return { ok: false, error: "Bukti harus diunggah dari akun ini" };
+  const { data: files } = await admin.storage
+    .from("sim-topup-proofs")
+    .list(folder, { search: fileName, limit: 100 });
+  const exists = ((files ?? []) as any[]).some((f) => f.name === fileName);
+  if (!exists)
+    return { ok: false, error: "File bukti tidak ditemukan — ulangi unggah" };
+
   const { error: insErr } = await admin.from("sim_card_topups").insert({
     sim_card_id: v.simCardId,
     topped_up_by: gate.userId,

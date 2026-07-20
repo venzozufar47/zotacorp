@@ -68,11 +68,19 @@ export function diffDays(aYmd: string, bYmd: string): number {
 
 type DatePair = { activeUntil: string | null; graceUntil: string | null };
 
-/** Status kartu pada tanggal WIB `todayYmd` (YYYY-MM-DD). */
+/**
+ * Status kartu pada tanggal WIB `todayYmd` (YYYY-MM-DD).
+ *
+ * Defensif terhadap data tidak konsisten (grace_until < active_until, mis.
+ * hasil impor lama): "hangus" hanya bila masa aktif JUGA sudah lewat —
+ * kalau masa aktif masih berjalan, kartu tetap dianggap aman.
+ */
 export function simStatus(card: DatePair, todayYmd: string): SimStatus {
   const { activeUntil, graceUntil } = card;
   if (!activeUntil && !graceUntil) return "unset";
-  if (graceUntil && diffDays(todayYmd, graceUntil) > 0) return "expired";
+  const activePassed = !activeUntil || diffDays(todayYmd, activeUntil) > 0;
+  if (graceUntil && diffDays(todayYmd, graceUntil) > 0 && activePassed)
+    return "expired";
   if (activeUntil && diffDays(todayYmd, activeUntil) > 0) return "grace";
   return "ok";
 }

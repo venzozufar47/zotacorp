@@ -38,12 +38,14 @@ create table if not exists public.sim_cards (
 
   created_at timestamptz not null default now(),
   created_by uuid references public.profiles(id) on delete set null,
-  updated_at timestamptz not null default now(),
-
-  constraint sim_cards_pic_present check (
-    pic_user_id is not null or (pic_name is not null and pic_phone is not null)
-  )
+  updated_at timestamptz not null default now()
 );
+
+-- Catatan: kewajiban "PIC harus ada" SENGAJA divalidasi di server action
+-- (zod), bukan CHECK constraint. Sebab FK pic_user_id ON DELETE SET NULL
+-- memicu UPDATE saat profil PIC dihapus — CHECK akan menolaknya dan
+-- membuat penghapusan user gagal. Kartu tanpa PIC = state sah yang perlu
+-- ditugaskan ulang admin.
 
 create index if not exists sim_cards_business_unit_idx on public.sim_cards(business_unit_id);
 create index if not exists sim_cards_pic_user_idx on public.sim_cards(pic_user_id);
