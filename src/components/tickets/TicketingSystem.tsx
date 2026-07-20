@@ -68,6 +68,7 @@ export function TicketingSystem({
           <Kpi
             label="Rata-rata pengerjaan"
             value={kpi.avgResolutionMs != null ? formatDuration(kpi.avgResolutionMs) : "—"}
+            hint="Hanya tiket yang diselesaikan Kepala Studio. Tiket yang eskalasinya di-ACC owner tidak dihitung."
           />
         </div>
       )}
@@ -152,13 +153,19 @@ function Kpi({
   label,
   value,
   tone,
+  hint,
 }: {
   label: string;
   value: string | number;
   tone?: "warn" | "good";
+  /** Tooltip penjelas cakupan angka (native title). */
+  hint?: string;
 }) {
   return (
-    <div className="rounded-2xl border-2 border-foreground bg-card p-3 shadow-hard-sm">
+    <div
+      className="rounded-2xl border-2 border-foreground bg-card p-3 shadow-hard-sm"
+      title={hint}
+    >
       <div
         className={
           "font-display font-bold text-xl tabular-nums " +

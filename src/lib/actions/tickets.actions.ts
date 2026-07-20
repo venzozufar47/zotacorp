@@ -532,7 +532,7 @@ export async function getStudioHeadKpi(): Promise<StudioHeadKpi | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("tickets" as never)
-    .select("status, created_at, resolved_at");
+    .select("status, created_at, resolved_at, owner_decision");
   const rows = (data ?? []) as any[];
   const now = new Date();
   const kpi: StudioHeadKpi = {
@@ -555,8 +555,14 @@ export async function getStudioHeadKpi(): Promise<StudioHeadKpi | null> {
       case "resolved": {
         kpi.resolvedCount++;
         if (r.resolved_at) {
-          const ms = new Date(r.resolved_at).getTime() - new Date(r.created_at).getTime();
-          if (ms >= 0) { durSum += ms; durN++; }
+          // "Rata-rata pengerjaan" = KPI Kepala Studio, jadi tiket yang
+          // eskalasinya di-ACC owner (dikerjakan owner) TIDAK dihitung.
+          // Eskalasi yang DITOLAK owner tetap dihitung: tiketnya balik
+          // ke in_progress dan diselesaikan Kepala Studio sendiri.
+          if (r.owner_decision !== "accepted") {
+            const ms = new Date(r.resolved_at).getTime() - new Date(r.created_at).getTime();
+            if (ms >= 0) { durSum += ms; durN++; }
+          }
           const rd = new Date(r.resolved_at);
           if (rd.getFullYear() === now.getFullYear() && rd.getMonth() === now.getMonth())
             kpi.resolvedThisMonth++;
