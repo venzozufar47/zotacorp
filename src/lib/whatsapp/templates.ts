@@ -35,7 +35,8 @@ export type TemplateKey =
   | "ticket_resolved_alert"
   | "ticket_returned_alert"
   | "ticket_reopened_alert"
-  | "ticket_active_reminder";
+  | "ticket_active_reminder"
+  | "sim_expiry_reminder";
 
 export interface PlaceholderInfo {
   key: string;
@@ -373,6 +374,22 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     ],
     defaultBody:
       "⏰ Halo {name}!\n\nHari ini ada {count} tiket studio Yeobo Space yang masih aktif & menunggu ditindaklanjuti:\n\n{list}\n\nYuk segera diselesaikan ya 🙏 Buka Zota App → menu Tiket.",
+  },
+  sim_expiry_reminder: {
+    label: "Kartu SIM — tenggat terlewat",
+    description:
+      "Dikirim tiap hari 11.00 WIB ke penanggung jawab nomor & admin selama masih ada nomor yang lewat masa aktif/tenggang. Berhenti otomatis setelah PIC mengisi pulsa lalu memperbarui tanggal + unggah bukti.",
+    recipient: "Penanggung jawab nomor + admin",
+    placeholders: [
+      { key: "name", description: "Nama penerima (PIC atau Admin)" },
+      { key: "count", description: "Jumlah nomor yang lewat tenggat" },
+      {
+        key: "list",
+        description: "Daftar nomor + unit bisnis + status (tenggang/hangus, telat N hari)",
+      },
+    ],
+    defaultBody:
+      "📵 Halo {name}!\n\nAda {count} nomor yang sudah lewat masa aktif/tenggang:\n\n{list}\n\nMohon segera isi pulsa, lalu perbarui tanggalnya di Zota App → Kartu SIM dan unggah bukti screenshot ya 🙏",
   },
 };
 

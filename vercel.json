@@ -23,6 +23,10 @@
       "schedule": "0 11 * * *"
     },
     {
+      "path": "/api/cron/sim-card-reminders",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/celebration-broadcast",
       "schedule": "0 5 * * *"
     }

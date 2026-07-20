@@ -21,6 +21,7 @@ import {
   Settings,
   Sparkles,
   Ticket,
+  Smartphone,
   TrendingUp,
   Users,
   Wallet,
@@ -64,6 +65,7 @@ export function AdminMobileNav({
     { href: "/admin/employment-contracts", icon: FileSignature, label: "Kontrak Kerja", color: "bg-quaternary" },
     { href: "/admin/disc", icon: Brain, label: "Tes DISC", color: "bg-pop-pink" },
     { href: "/admin/tickets", icon: Ticket, label: "Tiket Studio", color: "bg-tertiary" },
+    { href: "/admin/sim-cards", icon: Smartphone, label: "Kartu SIM", color: "bg-quaternary" },
     { href: "/admin/locations", icon: MapPin, label: t.nav.locations, color: "bg-quaternary" },
     // Money & Care
     { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },

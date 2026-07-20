@@ -3,10 +3,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { getPendingRegistrations } from "@/lib/actions/pending-registrations.actions";
+import { jakartaDateString } from "@/lib/utils/jakarta";
+import { isSimOverdue, simStatus } from "@/lib/sim-cards/types";
 
 export type PendingConfirmationItem = {
   rowId: string;
-  kind: "late_proof" | "overtime" | "registration" | "ticket";
+  kind: "late_proof" | "overtime" | "registration" | "ticket" | "sim_card";
   /** Owner of the attendance row — lets the admin drawer load this
    *  employee's stats + full pending-approval list when clicked. */
   userId: string;
@@ -31,7 +33,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
 
   const supabase = await createClient();
 
-  const [lateRes, otRes, registrations, ticketsRes] = await Promise.all([
+  const [lateRes, otRes, registrations, ticketsRes, simRes] = await Promise.all([
     supabase
       .from("attendance_logs")
       .select(
@@ -57,6 +59,13 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .in("status", ["escalated", "owner_handling"])
       .order("escalated_at", { ascending: true })
       .limit(100),
+    supabase
+      .from("sim_cards" as never)
+      .select(
+        "id, phone_number, pic_user_id, pic_name, active_until, grace_until"
+      )
+      .eq("is_active", true)
+      .limit(200),
   ]);
 
   type Row = {
@@ -147,5 +156,49 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     };
   });
 
-  return [...ticketItems, ...registrationItems, ...items];
+  // Nomor SIM yang sudah lewat masa aktif/tenggang — perlu diisi pulsa.
+  // Nama yang ditampilkan = penanggung jawab (profil bila karyawan
+  // terdaftar, else pic_name manual) supaya admin tahu siapa yang ditagih.
+  const today = jakartaDateString(new Date());
+  type SimRow = {
+    id: string;
+    phone_number: string;
+    pic_user_id: string | null;
+    pic_name: string | null;
+    active_until: string | null;
+    grace_until: string | null;
+  };
+  const simRows = ((simRes.data ?? []) as unknown as SimRow[]).filter((s) =>
+    isSimOverdue(
+      simStatus({ activeUntil: s.active_until, graceUntil: s.grace_until }, today)
+    )
+  );
+  const simPicIds = Array.from(
+    new Set(simRows.map((s) => s.pic_user_id).filter((x): x is string => !!x))
+  );
+  const simProfById = new Map<
+    string,
+    { full_name: string | null; avatar_url: string | null; avatar_seed: string | null }
+  >();
+  if (simPicIds.length > 0) {
+    const { data: sProfs } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, avatar_seed")
+      .in("id", simPicIds);
+    for (const p of sProfs ?? []) simProfById.set(p.id, p);
+  }
+  const simItems: PendingConfirmationItem[] = simRows.map((s) => {
+    const p = s.pic_user_id ? simProfById.get(s.pic_user_id) : null;
+    return {
+      rowId: s.id,
+      kind: "sim_card",
+      userId: s.pic_user_id ?? s.id,
+      employeeName: p?.full_name || s.pic_name || "Penanggung jawab",
+      userAvatarUrl: p?.avatar_url ?? null,
+      userAvatarSeed: p?.avatar_seed ?? null,
+      date: s.grace_until ?? s.active_until ?? today,
+    };
+  });
+
+  return [...simItems, ...ticketItems, ...registrationItems, ...items];
 }

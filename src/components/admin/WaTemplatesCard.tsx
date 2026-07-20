@@ -331,5 +331,13 @@ function sampleValuesFor(
           "3. packaging & keychain (Jebres · Kebutuhan barang)\n\n" +
           "🔴 = mendesak, mohon didahulukan.",
       };
+    case "sim_expiry_reminder":
+      return {
+        name: "Ikaa",
+        count: 2,
+        list:
+          "1. 0812xxxxxxx — Yeobo Space · tenggang, telat 3 hari\n" +
+          "2. 0857xxxxxxx — Haengbocake · hangus, telat 12 hari",
+      };
   }
 }

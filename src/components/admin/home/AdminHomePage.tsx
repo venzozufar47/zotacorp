@@ -648,30 +648,36 @@ function buildInbox(
   for (const p of pending) {
     const isRegistration = p.kind === "registration";
     const isTicket = p.kind === "ticket";
+    const isSim = p.kind === "sim_card";
     out.push({
       id: `pending-${p.kind}-${p.rowId}`,
-      tag: isTicket
-        ? "Tiket"
-        : isRegistration
-          ? "Pendaftar"
-          : p.kind === "late_proof"
-            ? "Late proof"
-            : "Overtime",
-      tagTone: isTicket ? "bad" : p.kind === "late_proof" ? "warn" : "info",
+      tag: isSim
+        ? "SIM"
+        : isTicket
+          ? "Tiket"
+          : isRegistration
+            ? "Pendaftar"
+            : p.kind === "late_proof"
+              ? "Late proof"
+              : "Overtime",
+      tagTone:
+        isTicket || isSim ? "bad" : p.kind === "late_proof" ? "warn" : "info",
       userId: p.userId,
       userName: p.employeeName,
       userAvatarUrl: p.userAvatarUrl,
       userAvatarSeed: p.userAvatarSeed,
-      desc: isTicket
-        ? "Tiket studio perlu ditangani"
-        : isRegistration
-          ? "Menunggu ACC akun"
-          : p.kind === "late_proof"
-            ? "Awaiting approval"
-            : "OT awaiting approval",
+      desc: isSim
+        ? "Nomor SIM lewat tenggat — perlu isi pulsa"
+        : isTicket
+          ? "Tiket studio perlu ditangani"
+          : isRegistration
+            ? "Menunggu ACC akun"
+            : p.kind === "late_proof"
+              ? "Awaiting approval"
+              : "OT awaiting approval",
       ago: agoLabel(p.date),
       isRegistration,
-      href: isTicket ? "/admin/tickets" : undefined,
+      href: isSim ? "/admin/sim-cards" : isTicket ? "/admin/tickets" : undefined,
     });
   }
   for (const d of disputes) {

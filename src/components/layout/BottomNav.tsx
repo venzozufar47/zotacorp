@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -14,6 +14,7 @@ export function BottomNav({
   hasCakeProduction = false,
   hasYeoboBooth = false,
   hasTickets = false,
+  hasSimCards = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -23,6 +24,7 @@ export function BottomNav({
   hasCakeProduction?: boolean;
   hasYeoboBooth?: boolean;
   hasTickets?: boolean;
+  hasSimCards?: boolean;
   assignmentCount?: number;
   me?: MenuViewer | null;
 }) {
@@ -35,6 +37,16 @@ export function BottomNav({
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     ...(hasTickets
       ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      : []),
+    ...(hasSimCards
+      ? [
+          {
+            href: "/sim-cards",
+            icon: Smartphone,
+            label: "Kartu SIM",
+            color: "bg-quaternary",
+          },
+        ]
       : []),
     ...(hasCakeOrders
       ? [{ href: "/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" }]

@@ -7,6 +7,7 @@ import { getCurrentProfile } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { canFileTickets } from "@/lib/tickets/access";
+import { isSimPic } from "@/lib/sim-cards/access";
 
 export default async function EmployeeLayout({
   children,
@@ -25,6 +26,7 @@ export default async function EmployeeLayout({
     hasYeoboBooth,
     hasCash,
     hasTickets,
+    hasSimCards,
   ] = await Promise.all([
     listMyAssignedBankAccountIds(),
     getCurrentProfile(),
@@ -33,6 +35,7 @@ export default async function EmployeeLayout({
     isYeoboBoothAdmin(),
     hasAssignedCashDashboard(),
     canFileTickets(),
+    isSimPic(),
   ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -55,6 +58,7 @@ export default async function EmployeeLayout({
         hasCakeProduction={cakeAccess.hasProduction}
         hasYeoboBooth={hasYeoboBooth}
         hasTickets={hasTickets}
+        hasSimCards={hasSimCards}
         assignmentCount={assignmentCount}
         me={me}
       />
@@ -70,6 +74,7 @@ export default async function EmployeeLayout({
         hasCakeProduction={cakeAccess.hasProduction}
         hasYeoboBooth={hasYeoboBooth}
         hasTickets={hasTickets}
+        hasSimCards={hasSimCards}
         assignmentCount={assignmentCount}
         me={me}
       />

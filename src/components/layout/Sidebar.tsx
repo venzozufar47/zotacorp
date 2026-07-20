@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -15,6 +15,7 @@ export function Sidebar({
   hasCakeProduction = false,
   hasYeoboBooth = false,
   hasTickets = false,
+  hasSimCards = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -29,6 +30,7 @@ export function Sidebar({
   hasYeoboBooth?: boolean;
   /** Show "Tiket" tab for Yeobo Space employees / Kepala Studio. */
   hasTickets?: boolean;
+  hasSimCards?: boolean;
   /** Jumlah transaksi yang di-assign ke user & masih "Needs Assignment". */
   assignmentCount?: number;
   me?: MenuViewer | null;
@@ -43,6 +45,16 @@ export function Sidebar({
     { href: "/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
     ...(hasTickets
       ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      : []),
+    ...(hasSimCards
+      ? [
+          {
+            href: "/sim-cards",
+            icon: Smartphone,
+            label: "Kartu SIM",
+            color: "bg-quaternary",
+          },
+        ]
       : []),
     ...(hasCakeOrders
       ? [{ href: "/cake-orders", icon: Cake, label: "Cake", color: "bg-pop-pink" }]

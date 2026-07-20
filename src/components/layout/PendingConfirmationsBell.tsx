@@ -54,6 +54,10 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
       router.push("/admin/tickets");
       return;
     }
+    if (it.kind === "sim_card") {
+      router.push("/admin/sim-cards");
+      return;
+    }
     // Pin the recap table to the right month + scroll target so the
     // existing in-page flash highlight kicks in.
     const [y, m] = it.date.split("-").map(Number);
@@ -130,7 +134,9 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
                           ? "bg-emerald-100 text-emerald-800"
                           : it.kind === "ticket"
                             ? "bg-rose-100 text-rose-800"
-                            : "bg-sky-100 text-sky-800")
+                            : it.kind === "sim_card"
+                              ? "bg-orange-100 text-orange-800"
+                              : "bg-sky-100 text-sky-800")
                     }
                   >
                     {it.kind === "late_proof"
@@ -139,7 +145,9 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
                         ? "Pendaftar"
                         : it.kind === "ticket"
                           ? "Tiket"
-                          : "Overtime"}
+                          : it.kind === "sim_card"
+                            ? "SIM"
+                            : "Overtime"}
                   </span>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-foreground truncate">

@@ -323,3 +323,40 @@ export async function requireStudioHeadOrAdmin(): Promise<
   if (!data) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id, isAdmin: false };
 }
+
+/**
+ * Kartu SIM — kelola master data (tambah/ubah/arsip nomor): admin saja.
+ * PIC hanya boleh mencatat isi pulsa (lihat requireSimCardActor).
+ */
+export async function requireSimAdmin(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  return await requireAdmin();
+}
+
+/**
+ * Kartu SIM — boleh mencatat isi pulsa + memperbarui tenggat untuk SATU
+ * kartu: admin (bisa mewakili siapa pun) atau PIC terdaftar kartu itu.
+ * PIC manual (pic_name/pic_phone tanpa akun) tidak bisa login → hanya
+ * admin yang bisa update kartunya. IDOR-guard: cek kepemilikan by cardId.
+ */
+export async function requireSimCardActor(
+  cardId: string
+): Promise<
+  { ok: true; userId: string; isAdmin: boolean } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  if (!cardId) return { ok: false, error: "Kartu tidak valid" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id, isAdmin: true };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("sim_cards" as never)
+    .select("id")
+    .eq("id", cardId)
+    .eq("pic_user_id", user.id)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id, isAdmin: false };
+}
