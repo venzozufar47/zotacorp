@@ -2897,6 +2897,7 @@ export type Database = {
           name: string
           price: number
           product_id: string
+          requires_sugar_level: boolean
           sort_order: number
           updated_at: string
         }
@@ -2907,6 +2908,7 @@ export type Database = {
           name: string
           price: number
           product_id: string
+          requires_sugar_level?: boolean
           sort_order?: number
           updated_at?: string
         }
@@ -2917,6 +2919,7 @@ export type Database = {
           name?: string
           price?: number
           product_id?: string
+          requires_sugar_level?: boolean
           sort_order?: number
           updated_at?: string
         }
@@ -2940,6 +2943,7 @@ export type Database = {
           name: string
           notes: string | null
           price: number
+          requires_sugar_level: boolean
           sort_order: number
           stock_aggregate_variants: boolean
           track_stock: boolean
@@ -2954,6 +2958,7 @@ export type Database = {
           name: string
           notes?: string | null
           price: number
+          requires_sugar_level?: boolean
           sort_order?: number
           stock_aggregate_variants?: boolean
           track_stock?: boolean
@@ -2968,6 +2973,7 @@ export type Database = {
           name?: string
           notes?: string | null
           price?: number
+          requires_sugar_level?: boolean
           sort_order?: number
           stock_aggregate_variants?: boolean
           track_stock?: boolean
@@ -2992,6 +2998,7 @@ export type Database = {
           qty: number
           sale_id: string
           subtotal: number
+          sugar_level: string | null
           unit_price: number
           variant_id: string | null
           variant_name: string | null
@@ -3004,6 +3011,7 @@ export type Database = {
           qty: number
           sale_id: string
           subtotal: number
+          sugar_level?: string | null
           unit_price: number
           variant_id?: string | null
           variant_name?: string | null
@@ -3016,6 +3024,7 @@ export type Database = {
           qty?: number
           sale_id?: string
           subtotal?: number
+          sugar_level?: string | null
           unit_price?: number
           variant_id?: string | null
           variant_name?: string | null

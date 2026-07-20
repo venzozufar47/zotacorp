@@ -11,6 +11,7 @@ import { formatIDR } from "@/lib/cashflow/format";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { COLS, EscPosBuilder } from "./escpos";
 import { DEFAULT_LABELS, type ReceiptLabels } from "./receipt-settings";
+import { sugarLevelLabel } from "./sugar-levels";
 
 /**
  * Pecah teks menjadi baris ≤ COLS karakter, memutus di batas KATA (bukan
@@ -222,11 +223,19 @@ export function receiptDataFromSummary(
     datetime: formatSummaryDateTime(s.saleDate, s.saleTime),
     customerName: s.customerName,
     fulfillment: s.fulfillmentType,
-    items: s.items.map((it) => ({
-      name: it.variantName ? `${it.productName} — ${it.variantName}` : it.productName,
-      qty: it.qty,
-      subtotal: it.subtotal,
-    })),
+    items: s.items.map((it) => {
+      // "Produk — varian — tingkat gula" (segmen yang kosong dilewati),
+      // sama seperti nama baris yang dicetak di penjualan langsung.
+      const parts = [it.productName];
+      if (it.variantName) parts.push(it.variantName);
+      const sugar = sugarLevelLabel(it.sugarLevel);
+      if (sugar) parts.push(sugar);
+      return {
+        name: parts.join(" — "),
+        qty: it.qty,
+        subtotal: it.subtotal,
+      };
+    }),
     grossTotal: s.grossTotal ?? s.total,
     discountAmount: s.discountAmount,
     total: s.total,

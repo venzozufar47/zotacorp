@@ -21,6 +21,7 @@ import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
 import type { PendingPesanan } from "@/lib/actions/pos-pesanan.actions";
+import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
 
 function timeAgo(iso: string): string {
   if (!iso) return "";
@@ -95,10 +96,11 @@ function PesananCard({
     pesanan.fulfillmentType === "dine_in" ? "🍽️ Dine-in" : "🥡 Take-away";
   const itemsLabel = pesanan.items
     .map((it) => {
-      const name = it.variantName
-        ? `${it.productName} ${it.variantName}`
-        : it.productName;
-      return `${it.qty}× ${name}`;
+      const parts = [it.productName];
+      if (it.variantName) parts.push(it.variantName);
+      const sugar = sugarLevelLabel(it.sugarLevel);
+      if (sugar) parts.push(sugar);
+      return `${it.qty}× ${parts.join(" ")}`;
     })
     .join(" · ");
   return (

@@ -110,6 +110,7 @@ export function ProductCatalogClient({
           stockAggregateVariants: false,
           isOpenPrice: false,
           notes: null,
+          requiresSugarLevel: false,
           variants: [],
         },
       ]);
@@ -122,7 +123,15 @@ export function ProductCatalogClient({
   function updateField(
     id: string,
     patch: Partial<
-      Pick<PosProduct, "name" | "price" | "active" | "isOpenPrice" | "notes">
+      Pick<
+        PosProduct,
+        | "name"
+        | "price"
+        | "active"
+        | "isOpenPrice"
+        | "notes"
+        | "requiresSugarLevel"
+      >
     >
   ) {
     const prev = products;
@@ -174,6 +183,7 @@ export function ProductCatalogClient({
         price,
         active: true,
         sortOrder: maxOrder + 1,
+        requiresSugarLevel: false,
       };
       setProducts((ps) =>
         ps.map((p) =>
@@ -187,7 +197,12 @@ export function ProductCatalogClient({
   function updateVariantField(
     productId: string,
     variantId: string,
-    patch: Partial<Pick<PosProductVariant, "name" | "price" | "active">>
+    patch: Partial<
+      Pick<
+        PosProductVariant,
+        "name" | "price" | "active" | "requiresSugarLevel"
+      >
+    >
   ) {
     const prev = products;
     setProducts((ps) =>
@@ -453,6 +468,26 @@ export function ProductCatalogClient({
                   />
                   open price
                 </label>
+                {/* Wajib gula hanya relevan untuk produk TANPA varian —
+                    kalau produk punya varian, penentunya flag per varian
+                    (lihat checkbox "gula" di daftar varian). */}
+                {variantCount === 0 && (
+                  <label
+                    className="inline-flex items-center gap-1 text-xs shrink-0"
+                    title="Kasir wajib pilih tingkat gula (No/Less/Normal Sugar) sebelum item masuk keranjang"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={p.requiresSugarLevel}
+                      onChange={(e) =>
+                        updateField(p.id, {
+                          requiresSugarLevel: e.target.checked,
+                        })
+                      }
+                    />
+                    tingkat gula
+                  </label>
+                )}
                 <label className="inline-flex items-center gap-1 text-xs shrink-0">
                   <input
                     type="checkbox"
@@ -618,7 +653,9 @@ function VariantSection({
   onAdd: (name: string, price: number) => void;
   onUpdate: (
     variantId: string,
-    patch: Partial<Pick<PosProductVariant, "name" | "price" | "active">>
+    patch: Partial<
+      Pick<PosProductVariant, "name" | "price" | "active" | "requiresSugarLevel">
+    >
   ) => void;
   onDelete: (variantId: string) => void;
   onReorder: (e: DragEndEvent) => void;
@@ -744,6 +781,21 @@ function VariantSection({
                 onChange={(e) => onUpdate(v.id, { active: e.target.checked })}
               />
               aktif
+            </label>
+            {/* Minuman racikan → kasir wajib pilih tingkat gula. Biarkan
+                mati untuk minuman kemasan (mis. Air Mineral). */}
+            <label
+              className="inline-flex items-center gap-1 text-[11px] shrink-0"
+              title="Kasir wajib pilih tingkat gula (No/Less/Normal Sugar) sebelum item masuk keranjang"
+            >
+              <input
+                type="checkbox"
+                checked={v.requiresSugarLevel}
+                onChange={(e) =>
+                  onUpdate(v.id, { requiresSugarLevel: e.target.checked })
+                }
+              />
+              gula
             </label>
             <button
               type="button"

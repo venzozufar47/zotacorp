@@ -24,6 +24,8 @@ export interface PendingPesanan {
   items: Array<{
     productName: string;
     variantName: string | null;
+    /** Tingkat gula minuman (null untuk non-minuman). */
+    sugarLevel: string | null;
     qty: number;
     subtotal: number;
     fulfillmentType: FulfillmentType | null;
@@ -74,6 +76,7 @@ export async function listPendingPesanan(
     sale_id: string;
     product_name: string;
     variant_name: string | null;
+    sugar_level: string | null;
     qty: number;
     subtotal: number | string;
     fulfillment_type: FulfillmentType | null;
@@ -81,7 +84,7 @@ export async function listPendingPesanan(
   const { data: itemsRaw } = await supabase
     .from("pos_sale_items")
     .select(
-      "sale_id, product_name, variant_name, qty, subtotal, fulfillment_type"
+      "sale_id, product_name, variant_name, sugar_level, qty, subtotal, fulfillment_type"
     )
     .in("sale_id", ids);
   const items = (itemsRaw ?? []) as unknown as ItemRow[];
@@ -91,6 +94,7 @@ export async function listPendingPesanan(
     arr.push({
       productName: it.product_name,
       variantName: it.variant_name,
+      sugarLevel: it.sugar_level,
       qty: it.qty,
       subtotal: Number(it.subtotal),
       fulfillmentType: it.fulfillment_type,

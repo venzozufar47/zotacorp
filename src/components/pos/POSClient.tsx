@@ -48,6 +48,12 @@ import {
 } from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
 import { resolveCashierName } from "@/lib/pos/cashier-schedule";
+import {
+  SUGAR_LEVELS,
+  SUGAR_LEVEL_LABELS,
+  isSugarLevel,
+  type SugarLevel,
+} from "@/lib/pos/sugar-levels";
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
 
@@ -94,18 +100,70 @@ interface CustomLine {
   variantId?: string;
 }
 
-/** Cart key scheme: "p:<productId>" untuk produk tanpa varian,
- *  "p:<productId>|v:<variantId>" untuk yang pakai varian. */
-function cartKey(productId: string, variantId?: string | null) {
-  return variantId ? `p:${productId}|v:${variantId}` : `p:${productId}`;
+/** Cart key scheme: "p:<productId>[|v:<variantId>][|s:<sugarLevel>]".
+ *
+ *  Segmen gula IKUT jadi bagian key supaya satu minuman dengan tingkat
+ *  gula berbeda jadi baris terpisah. Cart adalah `Record<key, qty>`,
+ *  jadi tanpa segmen ini 2 gelas beda gula akan menyatu jadi satu baris
+ *  qty 2 dan salah satu tingkat gulanya hilang.
+ *
+ *  PENTING: `stockByKey` TIDAK memakai segmen gula (stok tidak peduli
+ *  gula), jadi lookup stok selalu pakai key tanpa `|s:` — lihat
+ *  `cartQtyForSku` untuk menjumlahkan qty lintas tingkat gula. */
+function cartKey(
+  productId: string,
+  variantId?: string | null,
+  sugarLevel?: SugarLevel | null
+) {
+  let k = `p:${productId}`;
+  if (variantId) k += `|v:${variantId}`;
+  if (sugarLevel) k += `|s:${sugarLevel}`;
+  return k;
 }
 
+function parseCartKey(key: string): {
+  productId: string;
+  variantId: string | null;
+  sugarLevel: SugarLevel | null;
+} {
+  let productId = "";
+  let variantId: string | null = null;
+  let sugarLevel: SugarLevel | null = null;
+  for (const part of key.split("|")) {
+    if (part.startsWith("p:")) productId = part.slice(2);
+    else if (part.startsWith("v:")) variantId = part.slice(2);
+    else if (part.startsWith("s:")) {
+      const s = part.slice(2);
+      if (isSugarLevel(s)) sugarLevel = s;
+    }
+  }
+  return { productId, variantId, sugarLevel };
+}
 
-function parseCartKey(key: string): { productId: string; variantId: string | null } {
-  const [pPart, vPart] = key.split("|");
-  const productId = pPart.slice(2);
-  const variantId = vPart ? vPart.slice(2) : null;
-  return { productId, variantId };
+/** Total qty satu SKU (produk + varian) di cart, MENJUMLAHKAN semua
+ *  tingkat gula. Stok dan tampilan qty tidak peduli gula, sedangkan
+ *  `cart[cartKey(...)]` hanya cocok persis satu tingkat gula — memakai
+ *  lookup langsung di sana akan meng-undercount dan bikin stok kejual
+ *  melebihi on-hand. */
+function cartQtyForSku(
+  cart: Record<string, number>,
+  productId: string,
+  variantId?: string | null
+): number {
+  const base = cartKey(productId, variantId);
+  let n = 0;
+  for (const [k, q] of Object.entries(cart)) {
+    if (k === base || k.startsWith(`${base}|s:`)) n += q;
+  }
+  return n;
+}
+
+/** Unit yang dijual = varian (kalau produk punya varian), selain itu
+ *  produknya sendiri. Cocok dengan aturan resolusi di server. */
+function sugarRequiredFor(p: PosProduct, variantId: string | null): boolean {
+  if (variantId)
+    return p.variants.find((v) => v.id === variantId)?.requiresSugarLevel ?? false;
+  return p.requiresSugarLevel;
 }
 
 /**
@@ -155,6 +213,12 @@ export function POSClient({
   const [openPriceVariantFor, setOpenPriceVariantFor] = useState<string | null>(
     null
   );
+  // Pemilih tingkat gula (minuman). null = tertutup. Menutup dialog =
+  // BATAL menambah — item tidak boleh masuk cart tanpa tingkat gula.
+  const [sugarPickerFor, setSugarPickerFor] = useState<{
+    productId: string;
+    variantId: string | null;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
   // Struk: snapshot sale terakhir untuk dialog cetak + toggle setelan.
@@ -215,12 +279,18 @@ export function POSClient({
     const qtyByProductId = new Map<string, number>();
     for (const [key, qty] of Object.entries(cart)) {
       if (qty <= 0) continue;
-      const info = lineByKey.get(key);
+      // `lineByKey` di-index tanpa segmen gula, jadi lookup pakai base
+      // key lalu label gulanya ditempel ke nama baris.
+      const { productId, variantId, sugarLevel } = parseCartKey(key);
+      const info = lineByKey.get(cartKey(productId, variantId));
       if (!info) continue;
+      const name = sugarLevel
+        ? `${info.name} — ${SUGAR_LEVEL_LABELS[sugarLevel]}`
+        : info.name;
       const subtotal = info.price * qty;
       total += subtotal;
       itemCount += qty;
-      cartLines.push({ key, name: info.name, qty, subtotal, custom: false });
+      cartLines.push({ key, name, qty, subtotal, custom: false });
       qtyByProductId.set(
         info.productId,
         (qtyByProductId.get(info.productId) ?? 0) + qty
@@ -281,16 +351,26 @@ export function POSClient({
     const { productId, variantId } = parseCartKey(key);
     const product = products.find((p) => p.id === productId);
     if (!product || !product.trackStock || product.isOpenPrice) return null;
-    if (product.stockAggregateVariants && product.variants.length > 0) {
-      const onHand = stockByKey[cartKey(productId, null)] ?? 0;
-      let inCartOtherVariants = 0;
-      for (const v of product.variants) {
-        if (v.id === variantId) continue;
-        inCartOtherVariants += snapshot[cartKey(productId, v.id)] ?? 0;
-      }
-      return Math.max(0, onHand - inCartOtherVariants);
+    const aggregate =
+      product.stockAggregateVariants && product.variants.length > 0;
+    // Pool stok yang ditarik baris ini: level produk kalau agregat,
+    // selain itu level SKU (produk+varian). Key stok tidak pernah
+    // menyertakan segmen gula.
+    const onHand = aggregate
+      ? stockByKey[cartKey(productId, null)] ?? 0
+      : stockByKey[cartKey(productId, variantId)] ?? 0;
+    // Semua baris cart LAIN yang menarik dari pool yang sama — termasuk
+    // baris SKU yang sama dengan tingkat gula berbeda. Tanpa ini, satu
+    // SKU berstok 3 bisa terjual 3× per tingkat gula.
+    let othersFromSamePool = 0;
+    for (const [k, q] of Object.entries(snapshot)) {
+      if (k === key) continue;
+      const other = parseCartKey(k);
+      if (other.productId !== productId) continue;
+      if (!aggregate && other.variantId !== variantId) continue;
+      othersFromSamePool += q;
     }
-    return stockByKey[key] ?? 0;
+    return Math.max(0, onHand - othersFromSamePool);
   }
 
   function inc(key: string) {
@@ -323,18 +403,18 @@ export function POSClient({
     if (!stockByKey || !p.trackStock || p.isOpenPrice) return true;
     if (p.variants.length === 0) {
       const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
-      return onHand - (cart[cartKey(p.id)] ?? 0) > 0;
+      return onHand - cartQtyForSku(cart, p.id) > 0;
     }
     if (p.stockAggregateVariants) {
       const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
       let inCart = 0;
-      for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+      for (const v of p.variants) inCart += cartQtyForSku(cart, p.id, v.id);
       return onHand - inCart > 0;
     }
     // Per-variant stok: at least one variant has remaining capacity.
     return p.variants.some((v) => {
       const onHand = stockByKey[cartKey(p.id, v.id)] ?? 0;
-      return onHand - (cart[cartKey(p.id, v.id)] ?? 0) > 0;
+      return onHand - cartQtyForSku(cart, p.id, v.id) > 0;
     });
   }
 
@@ -355,13 +435,23 @@ export function POSClient({
       return;
     }
     if (p.variants.length === 0) {
+      // Minuman tanpa varian → pilih tingkat gula dulu.
+      if (sugarRequiredFor(p, null)) {
+        setSugarPickerFor({ productId: p.id, variantId: null });
+        return;
+      }
       inc(cartKey(p.id));
       return;
     }
     // Kalau cuma 1 varian aktif, langsung inc tanpa modal — tidak ada
     // ambiguitas. (Admin mungkin hapus varian lain, sisakan 1.)
     if (p.variants.length === 1) {
-      inc(cartKey(p.id, p.variants[0].id));
+      const only = p.variants[0];
+      if (sugarRequiredFor(p, only.id)) {
+        setSugarPickerFor({ productId: p.id, variantId: only.id });
+        return;
+      }
+      inc(cartKey(p.id, only.id));
       return;
     }
     setVariantPickerFor(p.id);
@@ -426,10 +516,10 @@ export function POSClient({
     const catalogItems: PosSaleItemInput[] = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
       .map(([key, qty]) => {
-        const { productId, variantId } = parseCartKey(key);
+        const { productId, variantId, sugarLevel } = parseCartKey(key);
         return variantId
-          ? { productId, variantId, qty }
-          : { productId, qty };
+          ? { productId, variantId, qty, sugarLevel }
+          : { productId, qty, sugarLevel };
       });
     const items: PosSaleItemInput[] = [
       ...catalogItems,
@@ -1322,11 +1412,39 @@ export function POSClient({
           product={pickerProduct}
           cart={cart}
           stockByKey={stockByKey}
-          onInc={(variantId) => inc(cartKey(pickerProduct.id, variantId))}
+          onInc={(variantId) => {
+            // Minuman → lanjut ke pemilih gula (satu dialog pada satu
+            // waktu: tutup variant picker dulu).
+            if (sugarRequiredFor(pickerProduct, variantId)) {
+              setVariantPickerFor(null);
+              setSugarPickerFor({ productId: pickerProduct.id, variantId });
+              return;
+            }
+            inc(cartKey(pickerProduct.id, variantId));
+          }}
           onDec={(variantId) => dec(cartKey(pickerProduct.id, variantId))}
           onClose={() => setVariantPickerFor(null)}
         />
       )}
+
+      {sugarPickerFor && (() => {
+        const p = products.find((x) => x.id === sugarPickerFor.productId);
+        if (!p) return null;
+        const v = sugarPickerFor.variantId
+          ? p.variants.find((x) => x.id === sugarPickerFor.variantId) ?? null
+          : null;
+        return (
+          <SugarPickerDialog
+            title={v ? `${p.name} — ${v.name}` : p.name}
+            price={v ? v.price : p.price}
+            onPick={(level) => {
+              inc(cartKey(p.id, sugarPickerFor.variantId, level));
+              setSugarPickerFor(null);
+            }}
+            onClose={() => setSugarPickerFor(null)}
+          />
+        );
+      })()}
 
       {openPriceVariantFor && (() => {
         const p = products.find((x) => x.id === openPriceVariantFor);
@@ -1735,7 +1853,10 @@ function VariantPickerDialog({
         </div>
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
           {product.variants.map((v) => {
-            const qty = cart[cartKey(product.id, v.id)] ?? 0;
+            // Qty dijumlahkan lintas tingkat gula — satu varian bisa
+            // punya beberapa baris cart (No/Less/Normal Sugar).
+            const qty = cartQtyForSku(cart, product.id, v.id);
+            const needsSugar = v.requiresSugarLevel;
             // Resolve sisa stok khusus varian ini.
             let remaining: number | null = null;
             if (tracked) {
@@ -1743,7 +1864,7 @@ function VariantPickerDialog({
                 let inCartOther = 0;
                 for (const x of product.variants) {
                   if (x.id === v.id) continue;
-                  inCartOther += cart[cartKey(product.id, x.id)] ?? 0;
+                  inCartOther += cartQtyForSku(cart, product.id, x.id);
                 }
                 remaining = Math.max(0, productOnHand - inCartOther - qty);
               } else {
@@ -1785,29 +1906,48 @@ function VariantPickerDialog({
                     {formatRp(v.price)}
                   </p>
                 </div>
-                <div className="flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
+                {needsSugar ? (
+                  // Minuman: "−" ambigu di sini (tingkat gula yang mana?),
+                  // jadi cukup tombol tambah → buka pemilih gula. Ubah/
+                  // hapus qty dilakukan di daftar keranjang, tempat tiap
+                  // tingkat gula punya barisnya sendiri.
                   <button
                     type="button"
-                    aria-label="Kurangi"
-                    onClick={() => onDec(v.id)}
-                    className="h-9 w-9 flex items-center justify-center rounded-l-full active:bg-primary/80 disabled:opacity-40"
-                    disabled={qty === 0}
-                  >
-                    <Minus size={14} />
-                  </button>
-                  <span className="min-w-[28px] text-center text-sm font-bold tabular-nums px-1">
-                    {qty}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Tambah"
                     onClick={() => onInc(v.id)}
                     disabled={habis}
-                    className="h-9 w-9 flex items-center justify-center rounded-r-full active:bg-primary/80 disabled:opacity-40"
+                    className="h-9 px-3 flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground shadow text-sm font-semibold active:bg-primary/80 disabled:opacity-40"
                   >
                     <Plus size={14} />
+                    Tambah
+                    {qty > 0 && (
+                      <span className="tabular-nums opacity-80">({qty})</span>
+                    )}
                   </button>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-0 rounded-full bg-primary text-primary-foreground shadow select-none">
+                    <button
+                      type="button"
+                      aria-label="Kurangi"
+                      onClick={() => onDec(v.id)}
+                      className="h-9 w-9 flex items-center justify-center rounded-l-full active:bg-primary/80 disabled:opacity-40"
+                      disabled={qty === 0}
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <span className="min-w-[28px] text-center text-sm font-bold tabular-nums px-1">
+                      {qty}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Tambah"
+                      onClick={() => onInc(v.id)}
+                      disabled={habis}
+                      className="h-9 w-9 flex items-center justify-center rounded-r-full active:bg-primary/80 disabled:opacity-40"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1818,6 +1958,64 @@ function VariantPickerDialog({
           className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold"
         >
           Selesai
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Pemilih tingkat gula untuk minuman. WAJIB: menutup dialog = batal
+ * menambah, item tidak pernah masuk cart tanpa tingkat gula (server juga
+ * menolaknya, jadi UI tidak bisa di-bypass).
+ *
+ * Tiap pilihan menambah SATU baris cart tersendiri, sehingga 2 gelas
+ * minuman sama dengan gula berbeda tetap terpisah di keranjang & struk.
+ */
+function SugarPickerDialog({
+  title,
+  price,
+  onPick,
+  onClose,
+}: {
+  title: string;
+  price: number;
+  onPick: (level: SugarLevel) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold text-foreground">{title}</h2>
+          <p className="text-xs text-muted-foreground">
+            Pilih tingkat gula — wajib. {formatRp(price)}
+          </p>
+        </div>
+        <div className="space-y-2">
+          {SUGAR_LEVELS.map((level) => (
+            <button
+              key={level}
+              type="button"
+              onClick={() => onPick(level)}
+              className="w-full h-12 rounded-xl border border-border bg-card font-semibold text-foreground text-left px-4 active:bg-muted hover:border-primary transition-colors"
+            >
+              {SUGAR_LEVEL_LABELS[level]}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full h-11 rounded-xl border border-border text-muted-foreground font-semibold"
+        >
+          Batal
         </button>
       </div>
     </div>

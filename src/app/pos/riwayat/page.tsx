@@ -17,6 +17,7 @@ import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
+import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
 
 function formatDateLong(iso: string): string {
   const d = new Date(iso + "T00:00:00");
@@ -238,10 +239,13 @@ export default async function PosRiwayatPage({
                   }`}
                 >
                   {s.items
-                    .map(
-                      (it) =>
-                        `${it.qty}× ${it.variantName ? `${it.productName} ${it.variantName}` : it.productName}`
-                    )
+                    .map((it) => {
+                      const parts = [it.productName];
+                      if (it.variantName) parts.push(it.variantName);
+                      const sugar = sugarLevelLabel(it.sugarLevel);
+                      if (sugar) parts.push(sugar);
+                      return `${it.qty}× ${parts.join(" ")}`;
+                    })
                     .join(", ")}
                 </div>
               </div>
@@ -267,6 +271,12 @@ export default async function PosRiwayatPage({
                       <span className="text-muted-foreground">
                         {" "}
                         — {it.variantName}
+                      </span>
+                    )}
+                    {sugarLevelLabel(it.sugarLevel) && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {sugarLevelLabel(it.sugarLevel)}
                       </span>
                     )}
                   </span>

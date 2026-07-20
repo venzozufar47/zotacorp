@@ -234,6 +234,20 @@ export async function downloadPosInsightsExcel(args: {
     );
   }
 
+  // ── Sheet: Tingkat Gula (skip kalau tak ada penjualan minuman) ──
+  if (insights.sugarLevels.length > 0) {
+    addTableSheet(
+      "Tingkat Gula",
+      [
+        { header: "Tingkat gula", width: 20 },
+        { header: "Qty terjual", width: 14, fmt: INT_FMT, align: "right", total: true },
+        { header: "Revenue", width: 18, fmt: RP_FMT, align: "right", total: true },
+      ],
+      insights.sugarLevels.map((s) => [s.label, s.qty, s.revenue]),
+      { totalLabelIndex: 0 }
+    );
+  }
+
   // ── Sheet 4: Revenue Harian ──
   addTableSheet(
     "Revenue Harian",

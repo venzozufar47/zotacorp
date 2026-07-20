@@ -3,6 +3,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
 import { jakartaDateMinusDays, jakartaHour } from "@/lib/utils/jakarta";
+import {
+  SUGAR_LEVELS,
+  SUGAR_LEVEL_LABELS,
+  sugarLevelLabel,
+} from "@/lib/pos/sugar-levels";
 
 export interface PosInsightsSummary {
   /** Total revenue (rupiah) di periode, exclude voided. */
@@ -33,6 +38,13 @@ export interface PosTopVariant {
   revenue: number;
 }
 
+export interface PosSugarBreakdown {
+  /** Label siap tampil ("No Sugar" / "Less Sugar" / "Normal Sugar"). */
+  label: string;
+  qty: number;
+  revenue: number;
+}
+
 export interface PosInsights {
   /** Lebar window (inklusif) dalam hari. Dipakai untuk array daily. */
   periodDays: number;
@@ -41,6 +53,10 @@ export interface PosInsights {
   summary: PosInsightsSummary;
   topProducts: PosTopProduct[];
   topVariants: PosTopVariant[];
+  /** Preferensi tingkat gula minuman. Dimensi TERPISAH dari topVariants
+   *  supaya peringkat varian tidak terpecah per tingkat gula. Kosong
+   *  kalau tidak ada penjualan minuman di rentang ini. */
+  sugarLevels: PosSugarBreakdown[];
   /** Per hari, dari `from` sampai `to` — entry kosong tetap diisi 0
    *  supaya chart tidak skip tanggal. */
   daily: Array<{ date: string; revenue: number; txCount: number }>;
@@ -139,6 +155,7 @@ export async function getPosInsights(
     sale_id: string;
     product_name: string;
     variant_name: string | null;
+    sugar_level: string | null;
     qty: number;
     subtotal: number;
   };
@@ -153,7 +170,9 @@ export async function getPosInsights(
       slices.map((slice) =>
         supabase
           .from("pos_sale_items")
-          .select("sale_id, product_name, variant_name, qty, subtotal")
+          .select(
+            "sale_id, product_name, variant_name, sugar_level, qty, subtotal"
+          )
           .in("sale_id", slice)
       )
     );
@@ -190,6 +209,7 @@ export async function getPosInsights(
   // Top products + top variants — level produk meng-aggregate varian.
   const productMap = new Map<string, { qty: number; revenue: number }>();
   const variantMap = new Map<string, { qty: number; revenue: number }>();
+  const sugarMap = new Map<string, { qty: number; revenue: number }>();
   for (const it of items) {
     const subtotal = Number(it.subtotal);
     const qty = Number(it.qty);
@@ -204,6 +224,13 @@ export async function getPosInsights(
     vAgg.qty += qty;
     vAgg.revenue += subtotal;
     variantMap.set(vKey, vAgg);
+    const sugar = sugarLevelLabel(it.sugar_level);
+    if (sugar) {
+      const sAgg = sugarMap.get(sugar) ?? { qty: 0, revenue: 0 };
+      sAgg.qty += qty;
+      sAgg.revenue += subtotal;
+      sugarMap.set(sugar, sAgg);
+    }
   }
   const topProducts: PosTopProduct[] = [...productMap.entries()]
     .map(([productName, v]) => ({ productName, qty: v.qty, revenue: v.revenue }))
@@ -211,6 +238,13 @@ export async function getPosInsights(
   const topVariants: PosTopVariant[] = [...variantMap.entries()]
     .map(([name, v]) => ({ name, qty: v.qty, revenue: v.revenue }))
     .sort((a, b) => b.qty - a.qty);
+  // Urut mengikuti SUGAR_LEVELS (No → Less → Normal), bukan by qty,
+  // supaya perbandingan antar periode selalu di kolom yang sama.
+  const sugarLevels: PosSugarBreakdown[] = SUGAR_LEVELS.map((lv) => {
+    const label = SUGAR_LEVEL_LABELS[lv];
+    const agg = sugarMap.get(label);
+    return { label, qty: agg?.qty ?? 0, revenue: agg?.revenue ?? 0 };
+  }).filter((s) => s.qty > 0);
 
   // Daily series — zero-fill supaya chart tidak skip tanggal.
   const dailyMap = new Map<string, { revenue: number; txCount: number }>();
@@ -276,6 +310,7 @@ export async function getPosInsights(
       summary,
       topProducts,
       topVariants,
+      sugarLevels,
       daily,
       hourly,
       dow,
