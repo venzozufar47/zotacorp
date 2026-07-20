@@ -780,12 +780,14 @@ export async function createPosSale(input: {
             ok: false,
             error: `Minuman "${unitLabel}" wajib pilih tingkat gula`,
           };
-      } else if (it.sugarLevel != null && !sugarUnit.requires_sugar_level) {
-        return {
-          ok: false,
-          error: `"${unitLabel}" tidak memakai tingkat gula`,
-        };
       }
+      // Sengaja TIDAK menolak kalau tingkat gula dikirim untuk unit yang
+      // flag-nya mati: admin bisa mematikan flag saat keranjang kasir
+      // sudah terisi, dan menolak di situ membuat kasir buntu (prop
+      // produk di client sudah basi, jadi retry akan gagal terus sampai
+      // halaman di-refresh). Nilainya tetap dicatat — lebih informatif
+      // daripada menggagalkan transaksi yang sah. Nilai ngawur sudah
+      // disaring `isSugarLevel` saat resolve + check constraint DB.
     }
   }
 

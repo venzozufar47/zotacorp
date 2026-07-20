@@ -240,7 +240,9 @@ export function POSClient({
   const [fulfillmentType, setFulfillmentType] = useState<
     "dine_in" | "take_away"
   >("dine_in");
-  // Per-item override: key = cartKey ("p:<id>" / "p:<id>|v:<vid>").
+  // Per-item override: key = cartKey penuh
+  // ("p:<id>[|v:<vid>][|s:<gula>]") — segmen gula ikut, jadi dua baris
+  // minuman yang sama dengan gula berbeda bisa punya mode berbeda.
   // Hanya entries yang BEDA dari fulfillmentType yang disimpan;
   // server akan resolve sisanya ke transaction-level.
   const [itemFulfillmentOverrides, setItemFulfillmentOverrides] = useState<
@@ -271,7 +273,12 @@ export function POSClient({
     let itemCount = 0;
     const cartLines: Array<{
       key: string;
+      /** Nama untuk LAYAR (sudah termasuk label gula). */
       name: string;
+      /** Nama tanpa label gula — dipakai struk, yang mencetak gula di
+       *  baris terpisah agar tidak kena truncation kolom harga. */
+      baseName: string;
+      sugarLabel: string | null;
       qty: number;
       subtotal: number;
       custom: boolean;
@@ -284,13 +291,20 @@ export function POSClient({
       const { productId, variantId, sugarLevel } = parseCartKey(key);
       const info = lineByKey.get(cartKey(productId, variantId));
       if (!info) continue;
-      const name = sugarLevel
-        ? `${info.name} — ${SUGAR_LEVEL_LABELS[sugarLevel]}`
-        : info.name;
+      const sugarLabel = sugarLevel ? SUGAR_LEVEL_LABELS[sugarLevel] : null;
+      const name = sugarLabel ? `${info.name} — ${sugarLabel}` : info.name;
       const subtotal = info.price * qty;
       total += subtotal;
       itemCount += qty;
-      cartLines.push({ key, name, qty, subtotal, custom: false });
+      cartLines.push({
+        key,
+        name,
+        baseName: info.name,
+        sugarLabel,
+        qty,
+        subtotal,
+        custom: false,
+      });
       qtyByProductId.set(
         info.productId,
         (qtyByProductId.get(info.productId) ?? 0) + qty
@@ -303,6 +317,8 @@ export function POSClient({
       cartLines.push({
         key: `c:${c.localId}`,
         name: c.name,
+        baseName: c.name,
+        sugarLabel: null,
         qty: c.qty,
         subtotal,
         custom: true,
@@ -602,9 +618,10 @@ export function POSClient({
         customerName: customerName.trim(),
         fulfillment: fulfillmentType,
         items: cartLines.map((l) => ({
-          name: l.name,
+          name: l.baseName,
           qty: l.qty,
           subtotal: l.subtotal,
+          note: l.sugarLabel,
         })),
         grossTotal: total,
         discountAmount,
@@ -1169,13 +1186,23 @@ export function POSClient({
           const openPriceLineCount = openPriceAgg?.lines ?? 0;
           const selected =
             totalQtyOnThisProduct > 0 || openPriceQty > 0;
+          // Produk tanpa varian yang WAJIB GULA tidak boleh punya pill:
+          // tombol +/- di pill bekerja pada key tanpa segmen gula, jadi
+          // "+" akan membuat baris tanpa tingkat gula (ditolak server saat
+          // bayar) dan "-" tidak menemukan baris ber-gula. Untuk produk
+          // ini setiap penambahan harus lewat dialog gula (tap kartu),
+          // dan penyesuaian qty dilakukan di daftar keranjang.
+          const needsSugarSingle = !hasVariants && sugarRequiredFor(p, null);
           // Untuk produk tanpa varian (dan bukan open-price), tampilkan
           // [- qty +] pill di card. Open-price tidak punya pill — tiap
           // tap buka dialog harga baru. Variant: tap = modal varian.
-          const showInlinePill = !hasVariants && !p.isOpenPrice && selected;
+          const showInlinePill =
+            !hasVariants && !p.isOpenPrice && selected && !needsSugarSingle;
           const singleKey =
             !hasVariants && !p.isOpenPrice ? cartKey(p.id) : null;
-          const qtyOnSingleKey = singleKey ? cart[singleKey] ?? 0 : 0;
+          const qtyOnSingleKey = singleKey
+            ? cartQtyForSku(cart, p.id)
+            : 0;
           // Stok badge: hanya untuk produk track stok + non open-price.
           // - "habis" => onHand - kart === 0 di seluruh varian (atau
           //   single-SKU). Card greyed + disabled.
@@ -1270,6 +1297,13 @@ export function POSClient({
                     {openPriceLineCount} line · {openPriceQty}× di cart
                   </div>
                 )}
+                {/* Pengganti pill untuk minuman tanpa varian — qty tetap
+                    terlihat walau +/- hanya tersedia di keranjang. */}
+                {needsSugarSingle && totalQtyOnThisProduct > 0 && (
+                  <div className="mt-1 text-[10px] uppercase tracking-wider text-primary font-semibold">
+                    {totalQtyOnThisProduct}× di cart
+                  </div>
+                )}
                 {hasVariants && (
                   <>
                     <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -1281,7 +1315,7 @@ export function POSClient({
                         {p.variants
                           .map((v) => ({
                             v,
-                            qty: cart[cartKey(p.id, v.id)] ?? 0,
+                            qty: cartQtyForSku(cart, p.id, v.id),
                             remaining: variantRemainingStock(
                               p,
                               v.id,
@@ -1728,17 +1762,17 @@ function computeStockState(
   let remaining: number;
   if (p.variants.length === 0) {
     const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
-    remaining = onHand - (cart[cartKey(p.id)] ?? 0);
+    remaining = onHand - cartQtyForSku(cart, p.id);
   } else if (p.stockAggregateVariants) {
     const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
     let inCart = 0;
-    for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+    for (const v of p.variants) inCart += cartQtyForSku(cart, p.id, v.id);
     remaining = onHand - inCart;
   } else {
     remaining = p.variants.reduce((max, v) => {
       const avail =
         (stockByKey[cartKey(p.id, v.id)] ?? 0) -
-        (cart[cartKey(p.id, v.id)] ?? 0);
+        cartQtyForSku(cart, p.id, v.id);
       return Math.max(max, avail);
     }, 0);
   }
@@ -1765,21 +1799,19 @@ function productRemainingStock(
   if (!stockByKey || !p.trackStock || p.isOpenPrice) return null;
   if (p.variants.length === 0) {
     const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
-    const inCart = cart[cartKey(p.id)] ?? 0;
-    return Math.max(0, onHand - inCart);
+    return Math.max(0, onHand - cartQtyForSku(cart, p.id));
   }
   if (p.stockAggregateVariants) {
     const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
     let inCart = 0;
-    for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+    for (const v of p.variants) inCart += cartQtyForSku(cart, p.id, v.id);
     return Math.max(0, onHand - inCart);
   }
   // Per-variant tracking → sum semua varian.
   let total = 0;
   for (const v of p.variants) {
     const onHand = stockByKey[cartKey(p.id, v.id)] ?? 0;
-    const inCart = cart[cartKey(p.id, v.id)] ?? 0;
-    total += Math.max(0, onHand - inCart);
+    total += Math.max(0, onHand - cartQtyForSku(cart, p.id, v.id));
   }
   return total;
 }
@@ -1794,12 +1826,11 @@ function variantRemainingStock(
   if (p.stockAggregateVariants) {
     const onHand = stockByKey[cartKey(p.id, null)] ?? 0;
     let inCart = 0;
-    for (const v of p.variants) inCart += cart[cartKey(p.id, v.id)] ?? 0;
+    for (const v of p.variants) inCart += cartQtyForSku(cart, p.id, v.id);
     return Math.max(0, onHand - inCart);
   }
   const onHand = stockByKey[cartKey(p.id, variantId)] ?? 0;
-  const inCart = cart[cartKey(p.id, variantId)] ?? 0;
-  return Math.max(0, onHand - inCart);
+  return Math.max(0, onHand - cartQtyForSku(cart, p.id, variantId));
 }
 
 /** "Rp 10.000" kalau semua varian sama harganya, "Rp 10.000 – Rp 15.000"

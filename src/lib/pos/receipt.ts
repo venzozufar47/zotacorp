@@ -51,6 +51,11 @@ export interface ReceiptItem {
   name: string;
   qty: number;
   subtotal: number;
+  /** Modifier per item (mis. tingkat gula). Dicetak di baris SENDIRI
+   *  di bawah nama, karena `row()` memotong teks kiri yang melebihi
+   *  lebar kertas — kalau digabung ke nama, "Less Sugar" bisa terpotong
+   *  jadi "Less" dan struk kehilangan gunanya sebagai acuan barista. */
+  note?: string | null;
 }
 
 export interface ReceiptData {
@@ -155,6 +160,13 @@ export function buildReceiptBytes(data: ReceiptData): Uint8Array {
   // Item.
   for (const it of data.items) {
     b.row(`${it.qty}x ${it.name}`, formatIDR(it.subtotal));
+    // Modifier di baris terpisah + indent supaya jelas menempel ke item
+    // di atasnya dan tidak kena truncation kolom harga.
+    if (it.note) {
+      // Label gula pendek (maks "Normal Sugar"), tapi tetap dibatasi ke
+      // lebar kertas supaya aman kalau `note` dipakai teks lain nanti.
+      b.textLine(`  * ${it.note}`.slice(0, COLS));
+    }
   }
 
   b.line();
@@ -223,19 +235,14 @@ export function receiptDataFromSummary(
     datetime: formatSummaryDateTime(s.saleDate, s.saleTime),
     customerName: s.customerName,
     fulfillment: s.fulfillmentType,
-    items: s.items.map((it) => {
-      // "Produk — varian — tingkat gula" (segmen yang kosong dilewati),
-      // sama seperti nama baris yang dicetak di penjualan langsung.
-      const parts = [it.productName];
-      if (it.variantName) parts.push(it.variantName);
-      const sugar = sugarLevelLabel(it.sugarLevel);
-      if (sugar) parts.push(sugar);
-      return {
-        name: parts.join(" — "),
-        qty: it.qty,
-        subtotal: it.subtotal,
-      };
-    }),
+    items: s.items.map((it) => ({
+      name: it.variantName
+        ? `${it.productName} — ${it.variantName}`
+        : it.productName,
+      qty: it.qty,
+      subtotal: it.subtotal,
+      note: sugarLevelLabel(it.sugarLevel),
+    })),
     grossTotal: s.grossTotal ?? s.total,
     discountAmount: s.discountAmount,
     total: s.total,

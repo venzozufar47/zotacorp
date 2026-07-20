@@ -5,7 +5,8 @@ import type { PosInsights } from "@/lib/actions/pos-insights.actions";
  * Sales Insights screen. Runs fully client-side from the already-fetched
  * `insights` object (no re-query). `exceljs` is heavy, so it's imported
  * dynamically — keeps it out of the initial bundle. Mirrors the on-screen
- * data exactly for the currently selected period.
+ * data for the currently selected period, plus sheet "Tingkat Gula" yang
+ * belum punya padanan di layar (dipakai untuk analisis preferensi gula).
  */
 
 const RP_FMT = '"Rp"#,##0';
