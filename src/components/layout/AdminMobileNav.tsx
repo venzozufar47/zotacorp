@@ -6,6 +6,7 @@ import {
   BellRing,
   Brain,
   Cake,
+  Calculator,
   Camera,
   ClipboardList,
   Coins,
@@ -70,6 +71,7 @@ export function AdminMobileNav({
     // Money & Care
     { href: "/admin/finance", icon: Wallet, label: t.nav.finance, color: "bg-pop-emerald" },
     { href: "/admin/finance/dividen", icon: HandCoins, label: "Dividen", color: "bg-pop-emerald" },
+    { href: "/admin/costing", icon: Calculator, label: "HPP", color: "bg-pop-emerald" },
     { href: "/cash", icon: Coins, label: "Kas Cabang", color: "bg-pop-emerald" },
     { href: "/admin/celebrations", icon: PartyPopper, label: "Celebrations", color: "bg-pop-pink" },
     // Comms

@@ -28,6 +28,7 @@ import {
   Brain,
   Ticket,
   Smartphone,
+  Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
@@ -121,6 +122,7 @@ export function AdminSidebar({
       items: [
         { href: "/admin/finance", icon: Wallet, label: t.nav.finance },
         { href: "/admin/finance/dividen", icon: HandCoins, label: "Dividen" },
+        { href: "/admin/costing", icon: Calculator, label: "HPP / Costing" },
         { href: "/cash", icon: Coins, label: "Kas Cabang" },
         {
           href: "/admin/celebrations",
