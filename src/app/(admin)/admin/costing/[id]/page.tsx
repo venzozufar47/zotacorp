@@ -6,6 +6,7 @@ import {
   getProduct,
   listMaterials,
   listUnits,
+  listPosOptions,
 } from "@/lib/actions/costing.actions";
 import { RecipeBuilder } from "@/components/admin/costing/RecipeBuilder";
 
@@ -29,9 +30,10 @@ export default async function AdminCostingProductPage({
     );
   }
   const { product, items } = res.data!;
-  const [matsRes, unitsRes] = await Promise.all([
+  const [matsRes, unitsRes, posRes] = await Promise.all([
     listMaterials(product.business_unit),
     listUnits(),
+    listPosOptions(product.business_unit),
   ]);
 
   return (
@@ -41,6 +43,7 @@ export default async function AdminCostingProductPage({
         initialItems={items}
         materials={matsRes.ok ? matsRes.data ?? [] : []}
         units={unitsRes.ok ? unitsRes.data ?? [] : []}
+        posOptions={posRes.ok ? posRes.data ?? [] : []}
       />
     </div>
   );

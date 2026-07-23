@@ -37,11 +37,14 @@ import {
   updateProduct,
   captureHppSnapshots,
   listHppSnapshots,
+  setPosLink,
+  applyRecommendedPriceToPos,
   type CostingMaterial,
   type CostingProduct,
   type CostingRecipeItem,
   type CostingUnit,
   type CostingSnapshot,
+  type PosLinkOption,
 } from "@/lib/actions/costing.actions";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { NumField, TextField, formatNum, parseDecimalId } from "./fields";
@@ -66,11 +69,13 @@ export function RecipeBuilder({
   initialItems,
   materials,
   units,
+  posOptions,
 }: {
   product: CostingProduct;
   initialItems: CostingRecipeItem[];
   materials: CostingMaterial[];
   units: CostingUnit[];
+  posOptions: PosLinkOption[];
 }) {
   const [product, setProduct] = useState(initialProduct);
   const [items, setItems] = useState(initialItems);
@@ -81,6 +86,52 @@ export function RecipeBuilder({
   // kalau field dikosongkan.
   const [savedName, setSavedName] = useState(initialProduct.name);
   const [snapshots, setSnapshots] = useState<CostingSnapshot[]>([]);
+  const [opts, setOpts] = useState(posOptions);
+
+  const linkKey = (pp: string | null, pv: string | null) => `${pp ?? ""}|${pv ?? ""}`;
+  const currentLink = linkKey(product.pos_product_id, product.pos_variant_id);
+  const linkedOption = opts.find(
+    (o) => linkKey(o.pos_product_id, o.pos_variant_id) === currentLink
+  );
+
+  function changePosLink(key: string) {
+    const opt = opts.find((o) => linkKey(o.pos_product_id, o.pos_variant_id) === key);
+    const pp = opt?.pos_product_id ?? null;
+    const pv = opt?.pos_variant_id ?? null;
+    const prev = { pp: product.pos_product_id, pv: product.pos_variant_id };
+    setProduct((p) => ({ ...p, pos_product_id: pp, pos_variant_id: pv }));
+    startTransition(async () => {
+      const res = await setPosLink({
+        costingId: product.id,
+        pos_product_id: pp,
+        pos_variant_id: pv,
+      });
+      if (!res.ok) {
+        toast.error(res.error);
+        setProduct((p) => ({ ...p, pos_product_id: prev.pp, pos_variant_id: prev.pv }));
+      }
+    });
+  }
+
+  function applyPosPrice() {
+    startTransition(async () => {
+      const res = await applyRecommendedPriceToPos(product.id);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      const applied = res.data!.price;
+      // Update harga opsi tertaut secara lokal supaya banding langsung segar.
+      setOpts((os) =>
+        os.map((o) =>
+          linkKey(o.pos_product_id, o.pos_variant_id) === currentLink
+            ? { ...o, price: applied }
+            : o
+        )
+      );
+      toast.success(`Harga POS diperbarui → ${formatRp(applied)}`);
+    });
+  }
 
   useEffect(() => {
     let alive = true;
@@ -569,6 +620,74 @@ export function RecipeBuilder({
               Margin dihitung atas harga jual, markup atas HPP — angka
               keduanya beda. Margin 40% ≠ markup 40%.
             </p>
+          </Card>
+
+          {/* Tautan POS + banding rekomendasi vs aktual (C2) */}
+          <Card title="Tautan POS">
+            {posOptions.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground">
+                Belum ada produk POS untuk brand ini. (Integrasi cake belum
+                didukung — harga cake berupa matrix.)
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <select
+                  value={currentLink}
+                  onChange={(e) => changePosLink(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm"
+                >
+                  <option value="|">— tidak ditautkan —</option>
+                  {opts.map((o) => (
+                    <option
+                      key={linkKey(o.pos_product_id, o.pos_variant_id)}
+                      value={linkKey(o.pos_product_id, o.pos_variant_id)}
+                    >
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                {linkedOption && (
+                  <div className="rounded-lg border border-border bg-background/60 p-2.5 text-[13px] space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Rekomendasi (HPP)</span>
+                      <span className="tabular-nums font-semibold">
+                        {breakdown.finalPrice != null
+                          ? formatRp(breakdown.finalPrice)
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Harga POS aktual</span>
+                      <span className="tabular-nums font-semibold">
+                        {formatRp(linkedOption.price)}
+                      </span>
+                    </div>
+                    {breakdown.finalPrice != null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Selisih</span>
+                        <span
+                          className={`tabular-nums font-semibold ${
+                            linkedOption.price >= breakdown.finalPrice
+                              ? "text-success"
+                              : "text-destructive"
+                          }`}
+                        >
+                          {formatRp(linkedOption.price - breakdown.finalPrice)}
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={applyPosPrice}
+                      disabled={pending || breakdown.finalPrice == null}
+                      className="mt-1 w-full h-9 rounded-lg bg-primary border-2 border-foreground text-sm font-bold disabled:opacity-60"
+                    >
+                      Terapkan harga rekomendasi ke POS
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
         </div>
 

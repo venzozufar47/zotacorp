@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { runHppSnapshotCapture } from "@/lib/costing/snapshot";
+import { updatePosProduct, updatePosProductVariant } from "./pos.actions";
 import {
   computeHpp,
   type CostingMaterialLite,
@@ -76,6 +77,9 @@ export interface CostingProduct {
   rounding_unit: number;
   rounding_mode: RoundingMode;
   is_active: boolean;
+  /** Tautan ke produk/varian POS (C2). Null = belum ditautkan. */
+  pos_product_id: string | null;
+  pos_variant_id: string | null;
 }
 
 export interface MaterialPriceHistoryRow {
@@ -183,6 +187,8 @@ function mapProduct(r: Record<string, unknown>): CostingProduct {
     rounding_unit: num(r.rounding_unit),
     rounding_mode: r.rounding_mode as RoundingMode,
     is_active: r.is_active as boolean,
+    pos_product_id: (r.pos_product_id as string | null) ?? null,
+    pos_variant_id: (r.pos_variant_id as string | null) ?? null,
   };
 }
 
@@ -1038,4 +1044,164 @@ export async function listHppSnapshots(
       margin_percent: r.margin_percent != null ? num(r.margin_percent) : null,
     })),
   };
+}
+
+// ══════════════════════ Integrasi POS (C2) ═══════════════════════════
+
+/** Satu opsi produk/varian POS yang bisa ditautkan. */
+export interface PosLinkOption {
+  pos_product_id: string;
+  pos_variant_id: string | null;
+  label: string;
+  price: number;
+}
+
+/** Produk/varian POS untuk brand (via bank_accounts.business_unit).
+ *  Dipakai picker "Tautkan ke POS". */
+export async function listPosOptions(
+  businessUnit: string
+): Promise<ActionResult<PosLinkOption[]>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { data: accts } = await supabase
+    .from("bank_accounts")
+    .select("id")
+    .eq("business_unit", businessUnit);
+  const acctIds = ((accts ?? []) as { id: string }[]).map((a) => a.id);
+  if (acctIds.length === 0) return { ok: true, data: [] };
+
+  const { data: prods } = await supabase
+    .from("pos_products")
+    .select("id, name, price")
+    .in("bank_account_id", acctIds)
+    .eq("active", true)
+    .order("name", { ascending: true });
+  const products = (prods ?? []) as { id: string; name: string; price: number | string }[];
+  if (products.length === 0) return { ok: true, data: [] };
+
+  const { data: vars } = await supabase
+    .from("pos_product_variants")
+    .select("id, product_id, name, price")
+    .in(
+      "product_id",
+      products.map((p) => p.id)
+    )
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  const variantsByProduct = new Map<
+    string,
+    { id: string; name: string; price: number | string }[]
+  >();
+  for (const v of (vars ?? []) as {
+    id: string;
+    product_id: string;
+    name: string;
+    price: number | string;
+  }[]) {
+    const arr = variantsByProduct.get(v.product_id) ?? [];
+    arr.push({ id: v.id, name: v.name, price: v.price });
+    variantsByProduct.set(v.product_id, arr);
+  }
+
+  const options: PosLinkOption[] = [];
+  for (const p of products) {
+    const vs = variantsByProduct.get(p.id) ?? [];
+    if (vs.length === 0) {
+      options.push({
+        pos_product_id: p.id,
+        pos_variant_id: null,
+        label: p.name,
+        price: num(p.price),
+      });
+    } else {
+      for (const v of vs)
+        options.push({
+          pos_product_id: p.id,
+          pos_variant_id: v.id,
+          label: `${p.name} — ${v.name}`,
+          price: num(v.price),
+        });
+    }
+  }
+  return { ok: true, data: options };
+}
+
+export async function setPosLink(input: {
+  costingId: string;
+  pos_product_id: string | null;
+  pos_variant_id: string | null;
+}): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { error } = await supabase
+    .from("costing_products" as never)
+    .update({
+      pos_product_id: input.pos_product_id,
+      pos_variant_id: input.pos_variant_id,
+    } as never)
+    .eq("id", input.costingId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/admin/costing", "layout");
+  return { ok: true };
+}
+
+/** Terapkan harga jual rekomendasi (finalPrice) ke produk/varian POS
+ *  yang tertaut. Reuse updater POS (gated + revalidate /pos). */
+export async function applyRecommendedPriceToPos(
+  costingId: string
+): Promise<ActionResult<{ price: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { data: prodRow } = await supabase
+    .from("costing_products" as never)
+    .select("*")
+    .eq("id", costingId)
+    .maybeSingle();
+  if (!prodRow) return { ok: false, error: "Produk tidak ditemukan" };
+  const product = mapProduct(prodRow as Record<string, unknown>);
+  if (!product.pos_product_id)
+    return { ok: false, error: "Produk belum ditautkan ke POS" };
+
+  // Hitung finalPrice terkini.
+  const [{ data: itemRows }, { data: matRows }] = await Promise.all([
+    supabase
+      .from("costing_recipe_items" as never)
+      .select("material_id, qty, shrink_factor, unit")
+      .eq("product_id", costingId),
+    supabase
+      .from("costing_materials" as never)
+      .select("*")
+      .eq("business_unit", product.business_unit),
+  ]);
+  const materialsById = new Map(
+    ((matRows ?? []) as Record<string, unknown>[]).map((r) => {
+      const m = mapMaterial(r);
+      return [m.id, toLite(m)] as const;
+    })
+  );
+  const unitsByCode = await fetchUnitsMap(supabase);
+  const breakdown = computeHpp(
+    ((itemRows ?? []) as Record<string, unknown>[]).map((r) => ({
+      material_id: r.material_id as string,
+      qty: num(r.qty),
+      shrink_factor: num(r.shrink_factor),
+      unit: (r.unit as string | null) ?? null,
+    })),
+    product,
+    materialsById,
+    unitsByCode
+  );
+  if (breakdown.finalPrice == null)
+    return { ok: false, error: "Harga rekomendasi tidak valid (cek margin/yield)" };
+  const price = Math.round(breakdown.finalPrice);
+
+  const res = product.pos_variant_id
+    ? await updatePosProductVariant({ id: product.pos_variant_id, price })
+    : await updatePosProduct({ id: product.pos_product_id, price });
+  if (!res.ok) return res;
+  revalidatePath("/admin/costing", "layout");
+  return { ok: true, data: { price } };
 }
