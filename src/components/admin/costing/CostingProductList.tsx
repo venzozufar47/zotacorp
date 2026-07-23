@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Plus, Copy, Trash2, Package, FlaskConical } from "lucide-react";
+import { Plus, Copy, Trash2, Package, FlaskConical, BarChart3 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   createProduct,
@@ -108,6 +108,12 @@ export function CostingProductList({
           className="inline-flex items-center gap-1.5 h-9 rounded-xl border-2 border-foreground bg-card px-3 text-sm font-semibold hover:bg-muted transition"
         >
           <Package size={15} /> Master Bahan
+        </Link>
+        <Link
+          href={`/admin/costing/dashboard${activeBrand ? `?bu=${encodeURIComponent(activeBrand)}` : ""}`}
+          className="inline-flex items-center gap-1.5 h-9 rounded-xl border-2 border-foreground bg-card px-3 text-sm font-semibold hover:bg-muted transition"
+        >
+          <BarChart3 size={15} /> Dashboard
         </Link>
         <div className="ml-auto">
           {creating ? null : (

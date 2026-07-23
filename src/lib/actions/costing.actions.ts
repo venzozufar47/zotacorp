@@ -932,6 +932,90 @@ export async function captureHppSnapshots(
   }
 }
 
+/** Ambang "HPP naik signifikan" bulan ini (vs snapshot terakhir). */
+const HPP_RISE_THRESHOLD = 0.05;
+
+export interface CostingDashboardRow {
+  product: CostingProduct;
+  breakdown: HppBreakdown;
+  /** Kenaikan HPP vs snapshot terakhir (fraksi). null bila belum ada. */
+  hppRosePct: number | null;
+}
+export interface CostingDashboard {
+  rows: CostingDashboardRow[];
+  avgMarginPercent: number | null;
+  belowTargetCount: number;
+  hppRoseCount: number;
+}
+
+/**
+ * Data dashboard margin + repricing untuk satu brand: produk urut margin
+ * TERENDAH, flag di bawah target, flag HPP naik >5% vs snapshot terakhir.
+ */
+export async function getCostingDashboard(
+  businessUnit: string
+): Promise<ActionResult<CostingDashboard>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const listRes = await listProductsWithHpp(businessUnit);
+  if (!listRes.ok) return listRes;
+  const list = listRes.data ?? [];
+
+  // Snapshot terakhir per produk untuk deteksi kenaikan HPP.
+  const supabase = adminClient();
+  const ids = list.map((r) => r.product.id);
+  const latestByProduct = new Map<string, number>();
+  if (ids.length > 0) {
+    const { data } = await supabase
+      .from("costing_hpp_snapshot" as never)
+      .select("product_id, hpp_unit, snapshot_date")
+      .in("product_id", ids)
+      .order("snapshot_date", { ascending: false });
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const pid = r.product_id as string;
+      if (!latestByProduct.has(pid)) latestByProduct.set(pid, num(r.hpp_unit));
+    }
+  }
+
+  const rows: CostingDashboardRow[] = list.map((r) => {
+    const last = latestByProduct.get(r.product.id);
+    const cur = r.breakdown.hppUnit;
+    const hppRosePct =
+      last != null && last > 0 ? (cur - last) / last : null;
+    return { product: r.product, breakdown: r.breakdown, hppRosePct };
+  });
+  // Urut margin terendah dulu (null/invalid dianggap paling bawah).
+  rows.sort((a, b) => {
+    const ma = a.breakdown.marginPercent;
+    const mb = b.breakdown.marginPercent;
+    if (ma == null && mb == null) return 0;
+    if (ma == null) return -1;
+    if (mb == null) return 1;
+    return ma - mb;
+  });
+
+  const valid = rows.filter((r) => r.breakdown.marginPercent != null);
+  const avgMarginPercent =
+    valid.length > 0
+      ? valid.reduce((s, r) => s + (r.breakdown.marginPercent ?? 0), 0) /
+        valid.length
+      : null;
+  const belowTargetCount = rows.filter(
+    (r) =>
+      r.breakdown.marginPercent != null &&
+      r.product.price_method === "margin" &&
+      r.breakdown.marginPercent < r.product.target_percent
+  ).length;
+  const hppRoseCount = rows.filter(
+    (r) => r.hppRosePct != null && r.hppRosePct > HPP_RISE_THRESHOLD
+  ).length;
+
+  return {
+    ok: true,
+    data: { rows, avgMarginPercent, belowTargetCount, hppRoseCount },
+  };
+}
+
 /** Tren snapshot satu produk (lama → baru) untuk sparkline. */
 export async function listHppSnapshots(
   productId: string
