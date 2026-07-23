@@ -11,6 +11,7 @@ import {
   type OverheadMethod,
   type PriceMethod,
   type RoundingMode,
+  type UnitDef,
 } from "@/lib/costing/calc";
 
 /**
@@ -42,6 +43,15 @@ export interface CostingRecipeItem {
   qty: number;
   shrink_factor: number;
   sort_order: number;
+  /** Satuan qty resep; null = pakai satuan pakai bahan. */
+  unit: string | null;
+}
+
+export interface CostingUnit {
+  code: string;
+  label: string;
+  dimension: "mass" | "volume" | "count";
+  to_base: number;
 }
 
 export interface CostingProduct {
@@ -109,7 +119,45 @@ function mapItem(r: Record<string, unknown>): CostingRecipeItem {
     qty: num(r.qty),
     shrink_factor: num(r.shrink_factor),
     sort_order: num(r.sort_order),
+    unit: (r.unit as string | null) ?? null,
   };
+}
+
+/** Semua satuan konversi. Digunakan client (picker) & server (hitung). */
+export async function listUnits(): Promise<ActionResult<CostingUnit[]>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { data, error } = await supabase
+    .from("costing_units" as never)
+    .select("*")
+    .order("dimension", { ascending: true })
+    .order("to_base", { ascending: true });
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    data: ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+      code: r.code as string,
+      label: r.label as string,
+      dimension: r.dimension as "mass" | "volume" | "count",
+      to_base: num(r.to_base),
+    })),
+  };
+}
+
+async function fetchUnitsMap(
+  supabase: ReturnType<typeof adminClient>
+): Promise<Map<string, UnitDef>> {
+  const { data } = await supabase
+    .from("costing_units" as never)
+    .select("code, dimension, to_base");
+  const m = new Map<string, UnitDef>();
+  for (const r of (data ?? []) as Record<string, unknown>[])
+    m.set(r.code as string, {
+      dimension: r.dimension as "mass" | "volume" | "count",
+      to_base: num(r.to_base),
+    });
+  return m;
 }
 
 function mapProduct(r: Record<string, unknown>): CostingProduct {
@@ -150,16 +198,19 @@ function toLite(m: CostingMaterial): CostingMaterialLite {
 function breakdownFor(
   product: CostingProduct,
   items: CostingRecipeItem[],
-  materialsById: Map<string, CostingMaterialLite>
+  materialsById: Map<string, CostingMaterialLite>,
+  unitsByCode?: Map<string, UnitDef>
 ): HppBreakdown {
   return computeHpp(
     items.map((it) => ({
       material_id: it.material_id,
       qty: it.qty,
       shrink_factor: it.shrink_factor,
+      unit: it.unit,
     })),
     product,
-    materialsById
+    materialsById,
+    unitsByCode
   );
 }
 
@@ -389,10 +440,8 @@ export async function listProductsWithHpp(
     .select("*")
     .order("name", { ascending: true });
   if (businessUnit) pq = pq.eq("business_unit", businessUnit);
-  const [{ data: prodRows, error: pErr }, matsRes] = await Promise.all([
-    pq,
-    listMaterials(businessUnit),
-  ]);
+  const [{ data: prodRows, error: pErr }, matsRes, unitsByCode] =
+    await Promise.all([pq, listMaterials(businessUnit), fetchUnitsMap(supabase)]);
   if (pErr) return { ok: false, error: pErr.message };
   if (!matsRes.ok) return matsRes;
   const products = ((prodRows ?? []) as Record<string, unknown>[]).map(mapProduct);
@@ -421,7 +470,11 @@ export async function listProductsWithHpp(
     ok: true,
     data: products.map((product) => {
       const items = itemsByProduct.get(product.id) ?? [];
-      return { product, items, breakdown: breakdownFor(product, items, materialsById) };
+      return {
+        product,
+        items,
+        breakdown: breakdownFor(product, items, materialsById, unitsByCode),
+      };
     }),
   };
 }
@@ -622,7 +675,7 @@ export async function duplicateProduct(
 
   const { data: items, error: itErr } = await supabase
     .from("costing_recipe_items" as never)
-    .select("material_id, qty, shrink_factor, sort_order")
+    .select("material_id, qty, shrink_factor, sort_order, unit")
     .eq("product_id", id)
     .order("sort_order", { ascending: true });
   if (itErr) return { ok: false, error: itErr.message };
@@ -637,6 +690,7 @@ export async function duplicateProduct(
           qty: r.qty,
           shrink_factor: r.shrink_factor,
           sort_order: r.sort_order,
+          unit: r.unit,
         })) as never
       );
     if (insErr) return { ok: false, error: insErr.message };
@@ -652,6 +706,7 @@ export async function addRecipeItem(input: {
   material_id: string;
   qty?: number;
   shrink_factor?: number;
+  unit?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -673,6 +728,7 @@ export async function addRecipeItem(input: {
       qty: input.qty ?? 0,
       shrink_factor: input.shrink_factor ?? 0,
       sort_order: nextOrder,
+      unit: input.unit ?? null,
     } as never)
     .select("id")
     .single();
@@ -687,10 +743,13 @@ export async function updateRecipeItem(input: {
   shrink_factor?: number;
   /** Ganti bahan pada baris — divalidasi harus se-brand dgn produknya. */
   material_id?: string;
+  /** Satuan qty resep; null = satuan pakai bahan. */
+  unit?: string | null;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const patch: Record<string, unknown> = {};
+  if (input.unit !== undefined) patch.unit = input.unit;
   if (input.qty !== undefined) {
     if (!Number.isFinite(input.qty) || input.qty < 0)
       return { ok: false, error: "Qty tidak valid" };
@@ -827,6 +886,7 @@ export async function listProductsUsingMaterial(
       return [m.id, toLite(m)];
     })
   );
+  const unitsByCode = await fetchUnitsMap(supabase);
 
   return {
     ok: true,
@@ -836,7 +896,7 @@ export async function listProductsUsingMaterial(
         return {
           product,
           items: its,
-          breakdown: breakdownFor(product, its, materialsById),
+          breakdown: breakdownFor(product, its, materialsById, unitsByCode),
         };
       })
       .sort((a, b) => a.product.name.localeCompare(b.product.name)),

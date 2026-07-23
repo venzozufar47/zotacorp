@@ -27,6 +27,7 @@ import {
   type OverheadMethod,
   type PriceMethod,
   type RoundingMode,
+  type UnitDef,
 } from "@/lib/costing/calc";
 import {
   addRecipeItem,
@@ -37,6 +38,7 @@ import {
   type CostingMaterial,
   type CostingProduct,
   type CostingRecipeItem,
+  type CostingUnit,
 } from "@/lib/actions/costing.actions";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { NumField, TextField, formatNum, parseDecimalId } from "./fields";
@@ -59,10 +61,12 @@ export function RecipeBuilder({
   product: initialProduct,
   initialItems,
   materials,
+  units,
 }: {
   product: CostingProduct;
   initialItems: CostingRecipeItem[];
   materials: CostingMaterial[];
+  units: CostingUnit[];
 }) {
   const [product, setProduct] = useState(initialProduct);
   const [items, setItems] = useState(initialItems);
@@ -90,6 +94,13 @@ export function RecipeBuilder({
     return m;
   }, [materials]);
 
+  const unitsByCode = useMemo(() => {
+    const m = new Map<string, UnitDef>();
+    for (const u of units)
+      m.set(u.code, { dimension: u.dimension, to_base: u.to_base });
+    return m;
+  }, [units]);
+
   const breakdown = useMemo(
     () =>
       computeHpp(
@@ -97,11 +108,13 @@ export function RecipeBuilder({
           material_id: it.material_id,
           qty: it.qty,
           shrink_factor: it.shrink_factor,
+          unit: it.unit,
         })),
         product,
-        materialsById
+        materialsById,
+        unitsByCode
       ),
-    [items, product, materialsById]
+    [items, product, materialsById, unitsByCode]
   );
 
   const sensors = useSensors(
@@ -214,6 +227,7 @@ export function RecipeBuilder({
           qty,
           shrink_factor: 0,
           sort_order: xs.length,
+          unit: null,
         },
       ]);
       setAddMaterialId("");
@@ -300,15 +314,17 @@ export function RecipeBuilder({
                         item={it}
                         material={materialsById.get(it.material_id) ?? null}
                         materials={activeMaterials}
-                        cost={
+                        units={units}
+                        comp={
                           breakdown.components.find(
                             (c) => c.material_id === it.material_id
-                          )?.cost ?? null
+                          ) ?? null
                         }
                         pending={pending}
                         onQty={(v) => commitItem(it.id, { qty: v })}
                         onShrink={(v) => commitItem(it.id, { shrink_factor: v })}
                         onMaterial={(mid) => commitItem(it.id, { material_id: mid })}
+                        onUnit={(u) => commitItem(it.id, { unit: u })}
                         onRemove={() => removeItem(it.id)}
                       />
                     ))}
@@ -510,30 +526,44 @@ export function RecipeBuilder({
 
 /* ───────────────────────── sub-komponen ───────────────────────── */
 
-/** Baris resep yang bisa di-drag; berisi ganti-bahan, qty, %susut, biaya. */
+/** Baris resep yang bisa di-drag; ganti-bahan, satuan, qty, %susut, biaya. */
 function SortableRecipeRow({
   item,
   material,
   materials,
-  cost,
+  units,
+  comp,
   pending,
   onQty,
   onShrink,
   onMaterial,
+  onUnit,
   onRemove,
 }: {
   item: CostingRecipeItem;
   material: CostingMaterialLite | null;
   materials: CostingMaterial[];
-  cost: number | null;
+  units: CostingUnit[];
+  comp: { cost: number; unitError?: boolean } | null;
   pending: boolean;
   onQty: (v: number) => void;
   onShrink: (v: number) => void;
   onMaterial: (materialId: string) => void;
+  onUnit: (unit: string | null) => void;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
+  // Satuan native bahan + satuan lain se-dimensi (bila usage_unit bahan
+  // adalah kode unit dikenal). Satuan bebas-teks → hanya native.
+  const usageUnit = material?.usage_unit ?? "";
+  const nativeDef = units.find((u) => u.code === usageUnit);
+  const unitOptions = nativeDef
+    ? units.filter((u) => u.dimension === nativeDef.dimension)
+    : usageUnit
+      ? [{ code: usageUnit, label: usageUnit } as CostingUnit]
+      : [];
+  const currentUnit = item.unit || usageUnit;
   // Bahan aktif + (jika bahan baris ini nonaktif/terhapus tapi masih
   // dipakai) sisipkan agar tetap terpilih di dropdown.
   const options =
@@ -588,11 +618,27 @@ function SortableRecipeRow({
           <Trash2 size={14} />
         </button>
       </div>
-      <div className="mt-1 flex items-center gap-2 pl-6">
+      <div className="mt-1 flex items-center flex-wrap gap-2 pl-6">
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Qty
-          <InlineNum value={item.qty} onCommit={onQty} suffix={material?.usage_unit} />
+          <InlineNum value={item.qty} onCommit={onQty} width="w-16" />
         </label>
+        {/* Picker satuan: default satuan pakai bahan; unit lain se-dimensi
+            di-konversi. Disable kalau tak ada opsi konversi. */}
+        <select
+          value={currentUnit}
+          onChange={(e) =>
+            onUnit(e.target.value === usageUnit ? null : e.target.value)
+          }
+          disabled={unitOptions.length <= 1}
+          className="h-7 rounded-md border border-border bg-background px-1 text-[11px] disabled:opacity-60"
+        >
+          {unitOptions.map((u) => (
+            <option key={u.code} value={u.code}>
+              {u.code}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Susut
           <InlineNum
@@ -603,9 +649,21 @@ function SortableRecipeRow({
           />
         </label>
         <div className="ml-auto text-right text-[13px] tabular-nums font-semibold">
-          {cost != null ? formatRp(cost) : "—"}
+          {comp?.unitError ? (
+            <span className="text-destructive text-[11px]">satuan ✗</span>
+          ) : comp ? (
+            formatRp(comp.cost)
+          ) : (
+            "—"
+          )}
         </div>
       </div>
+      {comp?.unitError && (
+        <p className="pl-6 mt-0.5 text-[10.5px] text-destructive">
+          Satuan “{currentUnit}” tak bisa dikonversi ke “{usageUnit}” (beda
+          dimensi). Biaya dihitung 0.
+        </p>
+      )}
     </div>
   );
 }

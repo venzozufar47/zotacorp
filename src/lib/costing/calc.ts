@@ -28,12 +28,21 @@ export interface CostingMaterialLite {
   usage_unit: string;
 }
 
-/** Satu baris resep. `qty` dalam satuan pakai bahannya. */
+/** Satu baris resep. `qty` dalam `unit` (bila di-set) atau satuan pakai
+ *  bahannya. */
 export interface RecipeItemLite {
   material_id: string;
   qty: number;
   /** Faktor susut produksi (fraksi, 0 = tanpa susut). */
   shrink_factor: number;
+  /** Satuan qty resep. null/kosong = satuan pakai bahan (tanpa konversi). */
+  unit?: string | null;
+}
+
+/** Definisi satuan untuk konversi (subset costing_units). */
+export interface UnitDef {
+  dimension: "mass" | "volume" | "count";
+  to_base: number;
 }
 
 /** Field biaya + pricing sebuah produk (subset dari costing_products). */
@@ -88,6 +97,10 @@ export interface ComponentBreakdown {
   unitPrice: number;
   shrink_factor: number;
   cost: number;
+  /** True bila satuan resep tak bisa dikonversi ke satuan pakai bahan
+   *  (beda dimensi / satuan tak dikenal) → biaya dipaksa 0, UI wajib
+   *  memperingatkan (jangan diam-diam salah). */
+  unitError?: boolean;
 }
 
 export interface HppBreakdown {
@@ -120,13 +133,32 @@ export interface HppBreakdown {
 export function computeHpp(
   items: RecipeItemLite[],
   cost: ProductCostLite,
-  materialsById: Map<string, CostingMaterialLite>
+  materialsById: Map<string, CostingMaterialLite>,
+  unitsByCode?: Map<string, UnitDef>
 ): HppBreakdown {
   const components: ComponentBreakdown[] = items.map((it) => {
     const m = materialsById.get(it.material_id);
     const unitPrice = m ? usageUnitPrice(m) : 0;
     const shrink = it.shrink_factor > 0 ? it.shrink_factor : 0;
-    const cost = it.qty * unitPrice * (1 + shrink);
+
+    // Konversi qty resep → satuan pakai bahan. Tanpa `unit`, atau unit ==
+    // satuan pakai bahan → tak ada konversi (juga menampung satuan bebas-
+    // teks seperti "butir"). Beda satuan butuh keduanya terdaftar + se-
+    // dimensi; kalau tidak, tandai error dan paksa biaya 0.
+    let qtyInUsage = it.qty;
+    let unitError = false;
+    if (m && it.unit && it.unit !== m.usage_unit) {
+      const ru = unitsByCode?.get(it.unit);
+      const mu = unitsByCode?.get(m.usage_unit);
+      if (!ru || !mu || ru.dimension !== mu.dimension) {
+        unitError = true;
+        qtyInUsage = 0;
+      } else {
+        qtyInUsage = (it.qty * ru.to_base) / mu.to_base;
+      }
+    }
+
+    const cost = qtyInUsage * unitPrice * (1 + shrink);
     return {
       material_id: it.material_id,
       name: m ? m.name : null,
@@ -134,6 +166,7 @@ export function computeHpp(
       unitPrice,
       shrink_factor: shrink,
       cost,
+      unitError,
     };
   });
 

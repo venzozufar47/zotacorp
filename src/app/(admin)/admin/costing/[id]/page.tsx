@@ -2,7 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { getProduct, listMaterials } from "@/lib/actions/costing.actions";
+import {
+  getProduct,
+  listMaterials,
+  listUnits,
+} from "@/lib/actions/costing.actions";
 import { RecipeBuilder } from "@/components/admin/costing/RecipeBuilder";
 
 export default async function AdminCostingProductPage({
@@ -25,7 +29,10 @@ export default async function AdminCostingProductPage({
     );
   }
   const { product, items } = res.data!;
-  const matsRes = await listMaterials(product.business_unit);
+  const [matsRes, unitsRes] = await Promise.all([
+    listMaterials(product.business_unit),
+    listUnits(),
+  ]);
 
   return (
     <div className="animate-fade-up">
@@ -33,6 +40,7 @@ export default async function AdminCostingProductPage({
         product={product}
         initialItems={items}
         materials={matsRes.ok ? matsRes.data ?? [] : []}
+        units={unitsRes.ok ? unitsRes.data ?? [] : []}
       />
     </div>
   );
