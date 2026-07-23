@@ -7,6 +7,7 @@ import {
   computeHpp,
   type CostingMaterialLite,
   type HppBreakdown,
+  type LaborMode,
   type OverheadMethod,
   type PriceMethod,
   type RoundingMode,
@@ -52,6 +53,9 @@ export interface CostingProduct {
   yield_qty: number;
   yield_unit: string | null;
   labor: number;
+  labor_mode: LaborMode;
+  labor_rate: number;
+  labor_hours: number;
   packaging: number;
   overhead_method: OverheadMethod;
   overhead_percent: number;
@@ -118,6 +122,9 @@ function mapProduct(r: Record<string, unknown>): CostingProduct {
     yield_qty: num(r.yield_qty),
     yield_unit: (r.yield_unit as string | null) ?? null,
     labor: num(r.labor),
+    labor_mode: (r.labor_mode as LaborMode) ?? "nominal",
+    labor_rate: num(r.labor_rate),
+    labor_hours: num(r.labor_hours),
     packaging: num(r.packaging),
     overhead_method: r.overhead_method as OverheadMethod,
     overhead_percent: num(r.overhead_percent),
@@ -485,6 +492,9 @@ export async function updateProduct(input: {
   yield_qty?: number;
   yield_unit?: string | null;
   labor?: number;
+  labor_mode?: LaborMode;
+  labor_rate?: number;
+  labor_hours?: number;
   packaging?: number;
   overhead_method?: OverheadMethod;
   overhead_percent?: number;
@@ -516,6 +526,11 @@ export async function updateProduct(input: {
   }
   if (setNum("labor", input.labor) === "invalid")
     return { ok: false, error: "TKL tidak valid" };
+  if (setNum("labor_rate", input.labor_rate) === "invalid")
+    return { ok: false, error: "Tarif TKL tidak valid" };
+  if (setNum("labor_hours", input.labor_hours) === "invalid")
+    return { ok: false, error: "Jam TKL tidak valid" };
+  if (input.labor_mode !== undefined) patch.labor_mode = input.labor_mode;
   if (setNum("packaging", input.packaging) === "invalid")
     return { ok: false, error: "Kemasan tidak valid" };
   if (setNum("overhead_percent", input.overhead_percent) === "invalid")
@@ -586,6 +601,9 @@ export async function duplicateProduct(
       yield_qty: src.yield_qty,
       yield_unit: src.yield_unit,
       labor: src.labor,
+      labor_mode: src.labor_mode,
+      labor_rate: src.labor_rate,
+      labor_hours: src.labor_hours,
       packaging: src.packaging,
       overhead_method: src.overhead_method,
       overhead_percent: src.overhead_percent,
@@ -667,6 +685,8 @@ export async function updateRecipeItem(input: {
   id: string;
   qty?: number;
   shrink_factor?: number;
+  /** Ganti bahan pada baris — divalidasi harus se-brand dgn produknya. */
+  material_id?: string;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -681,8 +701,30 @@ export async function updateRecipeItem(input: {
       return { ok: false, error: "Faktor susut tidak valid" };
     patch.shrink_factor = input.shrink_factor;
   }
-  if (Object.keys(patch).length === 0) return { ok: true };
   const supabase = adminClient();
+  if (input.material_id !== undefined) {
+    // Cegah ganti ke bahan brand lain: bandingkan business_unit produk
+    // (via recipe item) dengan business_unit bahan target.
+    const { data: joined } = await supabase
+      .from("costing_recipe_items" as never)
+      .select("product:costing_products!inner(business_unit)")
+      .eq("id", input.id)
+      .maybeSingle();
+    const prodBu = (
+      joined as { product?: { business_unit?: string } } | null
+    )?.product?.business_unit;
+    const { data: mat } = await supabase
+      .from("costing_materials" as never)
+      .select("business_unit")
+      .eq("id", input.material_id)
+      .maybeSingle();
+    const matBu = (mat as { business_unit?: string } | null)?.business_unit;
+    if (!matBu) return { ok: false, error: "Bahan tidak ditemukan" };
+    if (prodBu && matBu !== prodBu)
+      return { ok: false, error: "Bahan bukan milik brand produk ini" };
+    patch.material_id = input.material_id;
+  }
+  if (Object.keys(patch).length === 0) return { ok: true };
   const { error } = await supabase
     .from("costing_recipe_items" as never)
     .update(patch as never)

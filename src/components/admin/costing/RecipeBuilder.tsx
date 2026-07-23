@@ -3,11 +3,27 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   computeHpp,
   type CostingMaterialLite,
+  type LaborMode,
   type OverheadMethod,
   type PriceMethod,
   type RoundingMode,
@@ -16,6 +32,7 @@ import {
   addRecipeItem,
   updateRecipeItem,
   deleteRecipeItem,
+  reorderRecipeItems,
   updateProduct,
   type CostingMaterial,
   type CostingProduct,
@@ -86,6 +103,27 @@ export function RecipeBuilder({
       ),
     [items, product, materialsById]
   );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIdx = items.findIndex((x) => x.id === active.id);
+    const newIdx = items.findIndex((x) => x.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const prev = items;
+    const next = arrayMove(items, oldIdx, newIdx);
+    setItems(next);
+    startTransition(async () => {
+      const res = await reorderRecipeItems(next.map((x) => x.id));
+      if (!res.ok) {
+        toast.error(res.error);
+        setItems(prev);
+      }
+    });
+  }
 
   // ── commit helpers (optimistic + rollback) ──────────────────────────
   // Apply lewat FUNCTIONAL updater; rollback hanya kembalikan KEY yang
@@ -246,46 +284,37 @@ export function RecipeBuilder({
                 Belum ada bahan. Tambahkan di bawah.
               </p>
             ) : (
-              <div className="space-y-1.5">
-                {items.map((it) => {
-                  const m = materialsById.get(it.material_id);
-                  const comp = breakdown.components.find(
-                    (c) => c.material_id === it.material_id
-                  );
-                  return (
-                    <div
-                      key={it.id}
-                      className="flex items-center gap-2 rounded-lg border border-border bg-background/60 px-2 py-1.5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-medium truncate">
-                          {m ? m.name : "(bahan dihapus)"}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {m ? `${fmtRpPrecise(m.purchase_price / m.content_per_purchase)}/${m.usage_unit}` : ""}
-                        </div>
-                      </div>
-                      <InlineNum
-                        value={it.qty}
-                        onCommit={(v) => commitItem(it.id, { qty: v })}
-                        suffix={m?.usage_unit}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={items.map((x) => x.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-1.5">
+                    {items.map((it) => (
+                      <SortableRecipeRow
+                        key={it.id}
+                        item={it}
+                        material={materialsById.get(it.material_id) ?? null}
+                        materials={activeMaterials}
+                        cost={
+                          breakdown.components.find(
+                            (c) => c.material_id === it.material_id
+                          )?.cost ?? null
+                        }
+                        pending={pending}
+                        onQty={(v) => commitItem(it.id, { qty: v })}
+                        onShrink={(v) => commitItem(it.id, { shrink_factor: v })}
+                        onMaterial={(mid) => commitItem(it.id, { material_id: mid })}
+                        onRemove={() => removeItem(it.id)}
                       />
-                      <div className="w-20 text-right text-[13px] tabular-nums font-semibold">
-                        {comp ? formatRp(comp.cost) : "—"}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(it.id)}
-                        disabled={pending}
-                        className="p-1 text-muted-foreground hover:text-destructive disabled:opacity-50"
-                        title="Hapus bahan"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             )}
 
             {/* Tambah bahan */}
@@ -344,13 +373,40 @@ export function RecipeBuilder({
 
           {/* Biaya lain */}
           <Card title="Tenaga kerja, kemasan & overhead">
-            <div className="grid grid-cols-2 gap-3">
-              <NumField
-                label="TKL (per batch)"
-                value={product.labor}
-                onCommit={(v) => commitProduct({ labor: v })}
-                money
+            <div className="mb-2">
+              <Segmented
+                options={[
+                  { value: "nominal", label: "TKL nominal" },
+                  { value: "hourly", label: "TKL tarif/jam" },
+                ]}
+                value={product.labor_mode}
+                onChange={(v) => commitProduct({ labor_mode: v as LaborMode })}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {product.labor_mode === "nominal" ? (
+                <NumField
+                  label="TKL (per batch)"
+                  value={product.labor}
+                  onCommit={(v) => commitProduct({ labor: v })}
+                  money
+                />
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <NumField
+                    label="Tarif / jam"
+                    value={product.labor_rate}
+                    onCommit={(v) => commitProduct({ labor_rate: v })}
+                    money
+                  />
+                  <NumField
+                    label="Jam"
+                    value={product.labor_hours}
+                    onCommit={(v) => commitProduct({ labor_hours: v })}
+                    decimal
+                  />
+                </div>
+              )}
               <NumField
                 label="Kemasan (per batch)"
                 value={product.packaging}
@@ -453,6 +509,106 @@ export function RecipeBuilder({
 }
 
 /* ───────────────────────── sub-komponen ───────────────────────── */
+
+/** Baris resep yang bisa di-drag; berisi ganti-bahan, qty, %susut, biaya. */
+function SortableRecipeRow({
+  item,
+  material,
+  materials,
+  cost,
+  pending,
+  onQty,
+  onShrink,
+  onMaterial,
+  onRemove,
+}: {
+  item: CostingRecipeItem;
+  material: CostingMaterialLite | null;
+  materials: CostingMaterial[];
+  cost: number | null;
+  pending: boolean;
+  onQty: (v: number) => void;
+  onShrink: (v: number) => void;
+  onMaterial: (materialId: string) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: item.id });
+  // Bahan aktif + (jika bahan baris ini nonaktif/terhapus tapi masih
+  // dipakai) sisipkan agar tetap terpilih di dropdown.
+  const options =
+    material && !materials.some((m) => m.id === item.material_id)
+      ? [
+          ...materials,
+          {
+            id: item.material_id,
+            name: material.name,
+            usage_unit: material.usage_unit,
+          } as CostingMaterial,
+        ]
+      : materials;
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.6 : 1,
+      }}
+      className="rounded-lg border border-border bg-background/60 px-2 py-1.5"
+    >
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          className="p-1 text-muted-foreground/60 hover:text-foreground cursor-grab touch-none"
+          {...attributes}
+          {...listeners}
+          title="Seret untuk urutkan"
+        >
+          <GripVertical size={14} />
+        </button>
+        <select
+          value={item.material_id}
+          onChange={(e) => onMaterial(e.target.value)}
+          className="flex-1 min-w-0 h-8 rounded-md border border-border bg-background px-1.5 text-[13px] font-medium"
+        >
+          {options.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name} ({m.usage_unit})
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={pending}
+          className="p-1 text-muted-foreground hover:text-destructive disabled:opacity-50"
+          title="Hapus bahan"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+      <div className="mt-1 flex items-center gap-2 pl-6">
+        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          Qty
+          <InlineNum value={item.qty} onCommit={onQty} suffix={material?.usage_unit} />
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          Susut
+          <InlineNum
+            value={item.shrink_factor * 100}
+            onCommit={(v) => onShrink(v / 100)}
+            suffix="%"
+            width="w-16"
+          />
+        </label>
+        <div className="ml-auto text-right text-[13px] tabular-nums font-semibold">
+          {cost != null ? formatRp(cost) : "—"}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -569,14 +725,16 @@ function InlineNum({
   value,
   onCommit,
   suffix,
+  width = "w-24",
 }: {
   value: number;
   onCommit: (v: number) => void;
   suffix?: string;
+  width?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <div className="relative w-24">
+    <div className={`relative ${width}`}>
       <input
         value={draft ?? formatNum(value, true)}
         inputMode="decimal"

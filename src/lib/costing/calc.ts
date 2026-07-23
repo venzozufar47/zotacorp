@@ -14,6 +14,7 @@
 export type OverheadMethod = "persen" | "nominal";
 export type PriceMethod = "margin" | "markup";
 export type RoundingMode = "floor" | "nearest" | "ceil";
+export type LaborMode = "nominal" | "hourly";
 
 /** Data bahan yang relevan untuk costing (subset dari costing_materials). */
 export interface CostingMaterialLite {
@@ -39,8 +40,12 @@ export interface RecipeItemLite {
 export interface ProductCostLite {
   /** Jumlah hasil per batch (unit). Harus > 0. */
   yield_qty: number;
-  /** Tenaga kerja langsung per batch (rupiah). */
+  /** TKL nominal per batch (rupiah) — dipakai saat labor_mode='nominal'. */
   labor: number;
+  /** 'nominal' = pakai `labor`; 'hourly' = labor_rate × labor_hours. */
+  labor_mode: LaborMode;
+  labor_rate: number;
+  labor_hours: number;
   /** Kemasan per batch (rupiah). */
   packaging: number;
   overhead_method: OverheadMethod;
@@ -137,13 +142,18 @@ export function computeHpp(
     cost.overhead_method === "persen"
       ? totalMaterial * cost.overhead_percent
       : cost.overhead_nominal;
-  const hppBatch = totalMaterial + cost.packaging + cost.labor + overhead;
+  // TKL efektif: nominal langsung, atau tarif × jam.
+  const labor =
+    cost.labor_mode === "hourly"
+      ? cost.labor_rate * cost.labor_hours
+      : cost.labor;
+  const hppBatch = totalMaterial + cost.packaging + labor + overhead;
 
   const base = {
     components,
     totalMaterial,
     packaging: cost.packaging,
-    labor: cost.labor,
+    labor,
     overhead,
     hppBatch,
   };
