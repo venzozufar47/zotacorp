@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
+import { runHppSnapshotCapture } from "@/lib/costing/snapshot";
 import {
   computeHpp,
   type CostingMaterialLite,
@@ -900,5 +901,57 @@ export async function listProductsUsingMaterial(
         };
       })
       .sort((a, b) => a.product.name.localeCompare(b.product.name)),
+  };
+}
+
+// ═══════════════════════ Snapshot HPP (tren B2) ══════════════════════
+
+export interface CostingSnapshot {
+  snapshot_date: string;
+  hpp_unit: number;
+  final_price: number | null;
+  margin_percent: number | null;
+}
+
+/** Tombol manual "Ambil snapshot" — capture HPP hari ini utk 1 brand
+ *  (atau semua bila tak diisi). */
+export async function captureHppSnapshots(
+  businessUnit?: string
+): Promise<ActionResult<{ count: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  try {
+    const { count } = await runHppSnapshotCapture({
+      businessUnit,
+      createdBy: gate.userId,
+    });
+    revalidatePath("/admin/costing", "layout");
+    return { ok: true, data: { count } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal" };
+  }
+}
+
+/** Tren snapshot satu produk (lama → baru) untuk sparkline. */
+export async function listHppSnapshots(
+  productId: string
+): Promise<ActionResult<CostingSnapshot[]>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const supabase = adminClient();
+  const { data, error } = await supabase
+    .from("costing_hpp_snapshot" as never)
+    .select("snapshot_date, hpp_unit, final_price, margin_percent")
+    .eq("product_id", productId)
+    .order("snapshot_date", { ascending: true });
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    data: ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+      snapshot_date: r.snapshot_date as string,
+      hpp_unit: num(r.hpp_unit),
+      final_price: r.final_price != null ? num(r.final_price) : null,
+      margin_percent: r.margin_percent != null ? num(r.margin_percent) : null,
+    })),
   };
 }

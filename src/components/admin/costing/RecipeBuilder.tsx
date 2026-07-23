@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, GripVertical } from "lucide-react";
@@ -35,13 +35,17 @@ import {
   deleteRecipeItem,
   reorderRecipeItems,
   updateProduct,
+  captureHppSnapshots,
+  listHppSnapshots,
   type CostingMaterial,
   type CostingProduct,
   type CostingRecipeItem,
   type CostingUnit,
+  type CostingSnapshot,
 } from "@/lib/actions/costing.actions";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { NumField, TextField, formatNum, parseDecimalId } from "./fields";
+import { Sparkline } from "./Sparkline";
 
 /** Ambil hanya key-key yang ada di `patch` dari `src` — untuk rollback
  *  per-field tanpa menyentuh field lain. */
@@ -76,6 +80,30 @@ export function RecipeBuilder({
   // Nama yang sudah tersimpan — dipakai untuk deteksi perubahan + revert
   // kalau field dikosongkan.
   const [savedName, setSavedName] = useState(initialProduct.name);
+  const [snapshots, setSnapshots] = useState<CostingSnapshot[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    listHppSnapshots(initialProduct.id).then((r) => {
+      if (alive && r.ok) setSnapshots(r.data ?? []);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [initialProduct.id]);
+
+  function takeSnapshot() {
+    startTransition(async () => {
+      const res = await captureHppSnapshots(product.business_unit);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      const list = await listHppSnapshots(product.id);
+      if (list.ok) setSnapshots(list.data ?? []);
+      toast.success("Snapshot HPP diambil");
+    });
+  }
 
   const activeMaterials = useMemo(
     () => materials.filter((m) => m.is_active),
@@ -262,6 +290,35 @@ export function RecipeBuilder({
         <p className="text-xs text-muted-foreground mt-1">
           {product.business_unit}
         </p>
+      </div>
+
+      {/* Tren HPP (snapshot) */}
+      <div className="flex items-center gap-3 flex-wrap rounded-xl border border-border bg-card/60 px-3 py-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Tren HPP
+        </span>
+        {snapshots.length >= 2 ? (
+          <>
+            <Sparkline values={snapshots.map((s) => s.hpp_unit)} />
+            <span className="text-[12px] text-muted-foreground tabular-nums">
+              {formatRp(snapshots[0].hpp_unit)} →{" "}
+              {formatRp(snapshots[snapshots.length - 1].hpp_unit)}
+            </span>
+          </>
+        ) : (
+          <span className="text-[12px] text-muted-foreground">
+            Belum cukup data ({snapshots.length} snapshot). Ambil snapshot
+            berkala untuk lihat tren.
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={takeSnapshot}
+          disabled={pending}
+          className="ml-auto h-8 rounded-lg border border-border px-3 text-[12px] font-semibold hover:bg-muted disabled:opacity-60"
+        >
+          Ambil snapshot
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-5">
