@@ -4,7 +4,16 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Plus, Copy, Trash2, Package, FlaskConical, BarChart3 } from "lucide-react";
+import {
+  Plus,
+  Copy,
+  Trash2,
+  Package,
+  FlaskConical,
+  BarChart3,
+  FileSpreadsheet,
+  FileText,
+} from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   createProduct,
@@ -12,6 +21,8 @@ import {
   deleteProduct,
   type CostingProductWithHpp,
 } from "@/lib/actions/costing.actions";
+import { downloadHppExcel } from "@/lib/costing/exportHppExcel";
+import { downloadQuotePdf } from "@/lib/costing/downloadQuotePdf";
 import { fmtPercent } from "./format";
 import { parseDecimalId } from "./fields";
 
@@ -115,6 +126,21 @@ export function CostingProductList({
         >
           <BarChart3 size={15} /> Dashboard
         </Link>
+        {rows.length > 0 && activeBrand && (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await downloadHppExcel({ brand: activeBrand, rows });
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Gagal export");
+              }
+            }}
+            className="inline-flex items-center gap-1.5 h-9 rounded-xl border-2 border-foreground bg-card px-3 text-sm font-semibold hover:bg-muted transition"
+          >
+            <FileSpreadsheet size={15} /> Export XLSX
+          </button>
+        )}
         <div className="ml-auto">
           {creating ? null : (
             <button
@@ -194,7 +220,8 @@ export function CostingProductList({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ product, breakdown: b }) => {
+              {rows.map((row) => {
+                const { product, breakdown: b } = row;
                 const marginPct = b.marginPercent;
                 const tone =
                   b.error || marginPct == null || marginPct <= 0
@@ -257,6 +284,25 @@ export function CostingProductList({
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50"
                         >
                           <Copy size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          title="Kutipan PDF"
+                          onClick={async () => {
+                            try {
+                              await downloadQuotePdf({
+                                brand: product.business_unit,
+                                row,
+                              });
+                            } catch (e) {
+                              toast.error(
+                                e instanceof Error ? e.message : "Gagal PDF"
+                              );
+                            }
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                        >
+                          <FileText size={15} />
                         </button>
                         <button
                           type="button"
