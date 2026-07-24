@@ -375,7 +375,9 @@ export async function updateMaterial(input: {
   return { ok: true };
 }
 
-export async function deleteMaterial(id: string): Promise<ActionResult> {
+export async function deleteMaterial(
+  id: string
+): Promise<ActionResult<{ softDeleted: boolean }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
@@ -397,7 +399,7 @@ export async function deleteMaterial(id: string): Promise<ActionResult> {
     const error = await softDelete();
     if (error) return { ok: false, error: error.message };
     revalidatePath("/admin/costing", "layout");
-    return { ok: true };
+    return { ok: true, data: { softDeleted: true } };
   }
   const { error } = await supabase
     .from("costing_materials" as never)
@@ -409,10 +411,10 @@ export async function deleteMaterial(id: string): Promise<ActionResult> {
     const softErr = await softDelete();
     if (softErr) return { ok: false, error: softErr.message };
     revalidatePath("/admin/costing", "layout");
-    return { ok: true };
+    return { ok: true, data: { softDeleted: true } };
   }
   revalidatePath("/admin/costing", "layout");
-  return { ok: true };
+  return { ok: true, data: { softDeleted: false } };
 }
 
 export async function listMaterialPriceHistory(

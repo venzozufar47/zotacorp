@@ -149,7 +149,11 @@ export async function runHppSnapshotCapture(opts?: {
     const { error } = await supabase
       .from("costing_hpp_snapshot" as never)
       .upsert(snapshots as never, { onConflict: "product_id,snapshot_date" });
-    if (!error) count += snapshots.length;
+    if (error) {
+      console.error(`[costing-snapshot] upsert gagal brand "${bu}":`, error.message);
+    } else {
+      count += snapshots.length;
+    }
   }
 
   return { count };

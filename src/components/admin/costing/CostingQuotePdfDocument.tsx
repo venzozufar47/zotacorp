@@ -10,6 +10,7 @@ const C = {
   mutedFg: "#6e6e73",
   border: "#d2d2d7",
   accent: "#eef7f9",
+  red: "#a8261d",
 };
 
 const rp = (n: number) =>
@@ -101,10 +102,20 @@ export function CostingQuotePdfDocument({
             <View style={s.row} key={i}>
               <Text style={s.label}>
                 {c.name ?? "(bahan)"} × {c.qty}
+                {c.unitError ? "  (satuan tak terkonversi)" : ""}
               </Text>
-              <Text>{rp(c.cost)}</Text>
+              <Text style={c.unitError ? { color: C.red } : undefined}>
+                {rp(c.cost)}
+              </Text>
             </View>
           ))}
+          {b.components.some((c) => c.unitError) && (
+            <Text style={{ fontSize: 8, color: C.red, marginTop: 3 }}>
+              ⚠ Ada bahan dengan satuan yang tak bisa dikonversi (dihitung
+              Rp 0) — HPP di bawah ini kemungkinan understated. Perbaiki
+              satuan resep sebelum memakai kutipan.
+            </Text>
+          )}
 
           <Text style={s.sectionTitle}>Biaya</Text>
           <View style={s.row}>

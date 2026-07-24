@@ -29,14 +29,20 @@ export async function downloadHppExcel(args: {
     { header: "Margin", width: 12, fmt: PCT_FMT, align: "right" },
   ];
 
-  const data: (string | number)[][] = rows.map((r) => [
-    r.product.name,
-    r.product.category ?? "",
-    r.product.yield_qty,
-    Math.round(r.breakdown.hppUnit),
-    r.breakdown.finalPrice != null ? Math.round(r.breakdown.finalPrice) : "",
-    r.breakdown.marginPercent != null ? r.breakdown.marginPercent : "",
-  ]);
+  const errLabel = (e: string | null) =>
+    e === "margin_too_high" ? "target >100%" : e === "yield_invalid" ? "yield 0" : "";
+  const data: (string | number)[][] = rows.map((r) => {
+    const b = r.breakdown;
+    return [
+      r.product.name,
+      r.product.category ?? "",
+      r.product.yield_qty,
+      Math.round(b.hppUnit),
+      // Produk error: beri label (bukan sel kosong yg ambigu).
+      b.finalPrice != null ? Math.round(b.finalPrice) : errLabel(b.error),
+      b.marginPercent != null ? b.marginPercent : errLabel(b.error),
+    ];
+  });
 
   const today = new Date().toLocaleDateString("id-ID", {
     day: "2-digit",

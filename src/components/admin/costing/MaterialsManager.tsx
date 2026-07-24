@@ -236,7 +236,21 @@ export function MaterialsManager({
               }
               onDelete={() => {
                 if (!confirm(`Hapus bahan "${m.name}"?`)) return;
-                run(() => deleteMaterial(m.id), "Bahan dihapus");
+                startTransition(async () => {
+                  const res = await deleteMaterial(m.id);
+                  if (!res.ok) {
+                    toast.error(res.error);
+                    return;
+                  }
+                  // Bahan yang masih dipakai resep hanya dinonaktifkan
+                  // (jaga integritas HPP historis), bukan dihapus permanen.
+                  toast.success(
+                    res.data?.softDeleted
+                      ? "Bahan dinonaktifkan (masih dipakai resep)"
+                      : "Bahan dihapus"
+                  );
+                  router.refresh();
+                });
               }}
             />
           ))}

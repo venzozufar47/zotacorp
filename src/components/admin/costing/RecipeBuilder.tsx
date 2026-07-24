@@ -422,18 +422,17 @@ export function RecipeBuilder({
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="space-y-1.5">
-                    {items.map((it) => (
+                    {items.map((it, idx) => (
                       <SortableRecipeRow
                         key={it.id}
                         item={it}
                         material={materialsById.get(it.material_id) ?? null}
                         materials={activeMaterials}
                         units={units}
-                        comp={
-                          breakdown.components.find(
-                            (c) => c.material_id === it.material_id
-                          ) ?? null
-                        }
+                        // Ambil komponen by INDEX: computeHpp memancarkan 1
+                        // komponen per item dgn urutan sama. Lookup by
+                        // material_id salah kalau satu bahan dipakai 2 baris.
+                        comp={breakdown.components[idx] ?? null}
                         pending={pending}
                         onQty={(v) => commitItem(it.id, { qty: v })}
                         onShrink={(v) => commitItem(it.id, { shrink_factor: v })}
