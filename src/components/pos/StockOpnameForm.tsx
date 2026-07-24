@@ -12,6 +12,7 @@ import { PosPinAuthDialog } from "./PosPinAuthDialog";
 interface Props {
   bankAccountId: string;
   accountName: string;
+  basePath: string;
   skus: OpnameFormSku[];
   /** Designated PIN authorizer for opname. Null = no PIN gate. */
   authorizer: { userId: string; fullName: string } | null;
@@ -28,6 +29,7 @@ function skuLabel(s: OpnameFormSku) {
 export function StockOpnameForm({
   bankAccountId,
   accountName,
+  basePath,
   skus,
   authorizer,
 }: Props) {
@@ -138,7 +140,7 @@ export function StockOpnameForm({
       toast.success("Opname tersimpan");
       setPinOpen(false);
       setDiscrepancy(null);
-      router.push(`/pos/stok/opname/${res.data!.opnameId}`);
+      router.push(`${basePath}/stok/opname/${res.data!.opnameId}`);
     });
   }
 
@@ -158,7 +160,7 @@ export function StockOpnameForm({
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <header>
         <PosNavLink
-          href="/pos/stok"
+          href={`${basePath}/stok`}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
         >
           <ArrowLeft size={12} /> Kembali ke Stok

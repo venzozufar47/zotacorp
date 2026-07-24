@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { findPosAccountForCurrentUser, listActivePosProducts } from "@/lib/actions/pos.actions";
+import { findPosAccount, listActivePosProducts } from "@/lib/actions/pos.actions";
 import {
   getPosAuthorizers,
   listExcludedStockProducts,
@@ -10,13 +10,23 @@ import {
   listStockOnHand,
   listStockOpnames,
 } from "@/lib/actions/pos-stock.actions";
+import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { StockLandingClient } from "@/components/pos/StockLandingClient";
 
-export default async function PosStockPage() {
+export default async function PosStockPage({
+  params,
+}: {
+  params: Promise<{ branch: string }>;
+}) {
+  const { branch: branchParam } = await params;
+  const branch = posBranchFromParam(branchParam);
+  if (!branch) redirect("/pospare");
+  const basePath = posBasePath(branchParam);
+
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const account = await findPosAccountForCurrentUser();
+  const account = await findPosAccount(branch);
   if (!account) redirect("/");
 
   const [onHand, movements, opnames, products, excluded, authorizers, role] =
@@ -43,6 +53,7 @@ export default async function PosStockPage() {
     <StockLandingClient
       bankAccountId={account.id}
       accountName={account.accountName}
+      basePath={basePath}
       onHand={onHand}
       movements={movements}
       opnames={opnames}

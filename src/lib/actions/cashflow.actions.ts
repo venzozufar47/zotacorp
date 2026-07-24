@@ -150,7 +150,7 @@ export async function listBankAccounts(businessUnit?: string) {
   const supabase = await createClient();
   let query = supabase
     .from("bank_accounts")
-    .select("id, business_unit, bank, account_number, account_name, is_active, pos_enabled, created_at")
+    .select("id, business_unit, bank, account_number, account_name, is_active, pos_enabled, default_branch, created_at")
     .order("created_at", { ascending: true });
   if (businessUnit) query = query.eq("business_unit", businessUnit);
   const { data, error } = await query;

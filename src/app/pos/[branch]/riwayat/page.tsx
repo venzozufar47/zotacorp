@@ -9,12 +9,13 @@ import { ReprintReceiptButton } from "@/components/pos/ReprintReceiptButton";
 import { QRIS_RECEIPT_FROM_RIWAYAT } from "@/lib/pos/flags";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
-  findPosAccountForCurrentUser,
+  findPosAccount,
   listPosSaleDates,
   listRecentPosSales,
 } from "@/lib/actions/pos.actions";
 import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
+import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
 import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
@@ -39,14 +40,21 @@ function formatDateShort(iso: string): string {
 }
 
 export default async function PosRiwayatPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ branch: string }>;
   searchParams: Promise<{ date?: string }>;
 }) {
+  const { branch: branchParam } = await params;
+  const branch = posBranchFromParam(branchParam);
+  if (!branch) redirect("/pospare");
+  const basePath = posBasePath(branchParam);
+
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const account = await findPosAccountForCurrentUser();
+  const account = await findPosAccount(branch);
   if (!account) redirect("/");
 
   const role = await getCurrentRole();
@@ -68,6 +76,7 @@ export default async function PosRiwayatPage({
     return (
       <PosShell
         outletName={account.accountName}
+        basePath={basePath}
         isAdmin={isAdmin}
         active="riwayat"
         title="Riwayat Penjualan"
@@ -110,6 +119,7 @@ export default async function PosRiwayatPage({
 
   const nav = (
     <DateNav
+      basePath={basePath}
       currentDate={requestedDate}
       prevDate={prevDate}
       nextDate={nextDate}
@@ -121,6 +131,7 @@ export default async function PosRiwayatPage({
   return (
     <PosShell
       outletName={account.accountName}
+      basePath={basePath}
       isAdmin={isAdmin}
       active="riwayat"
       title="Riwayat Penjualan"
@@ -324,12 +335,14 @@ export default async function PosRiwayatPage({
 }
 
 function DateNav({
+  basePath,
   currentDate,
   prevDate,
   nextDate,
   dayIndex,
   totalDays,
 }: {
+  basePath: string;
   currentDate: string;
   prevDate: string | null;
   nextDate: string | null;
@@ -339,7 +352,7 @@ function DateNav({
   return (
     <nav className="flex items-center justify-between gap-2">
       <DateButton
-        href={prevDate ? `/pos/riwayat?date=${prevDate}` : null}
+        href={prevDate ? `${basePath}/riwayat?date=${prevDate}` : null}
         label={prevDate ? formatDateShort(prevDate) : "Tidak ada"}
         side="prev"
       />
@@ -350,7 +363,7 @@ function DateNav({
         <span className="text-[10px]">{formatDateShort(currentDate)}</span>
       </span>
       <DateButton
-        href={nextDate ? `/pos/riwayat?date=${nextDate}` : null}
+        href={nextDate ? `${basePath}/riwayat?date=${nextDate}` : null}
         label={nextDate ? formatDateShort(nextDate) : "Tidak ada"}
         side="next"
       />

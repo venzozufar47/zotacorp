@@ -40,6 +40,21 @@ const nextConfig: NextConfig = {
    */
   serverExternalPackages: ["unpdf", "pdfjs-dist", "web-push"],
   /**
+   * POS per-cabang: URL publik cantik `/pospare` & `/possemarang`
+   * di-rewrite (internal, browser tetap menampilkan URL asli) ke satu
+   * route dinamis `/pos/[branch]`. Satu basis kode POS dipakai ulang;
+   * cabang ditentukan segmen `[branch]`. `:path*` juga menangkap index
+   * (path kosong).
+   */
+  async rewrites() {
+    return [
+      { source: "/pospare", destination: "/pos/pare" },
+      { source: "/pospare/:path*", destination: "/pos/pare/:path*" },
+      { source: "/possemarang", destination: "/pos/semarang" },
+      { source: "/possemarang/:path*", destination: "/pos/semarang/:path*" },
+    ];
+  },
+  /**
    * HSTS preload — paired with the Lighthouse "Avoid multiple page
    * redirects" fix that moved login UI to `/`. Once the domain is
    * accepted into hstspreload.org, browsers shipping the preload

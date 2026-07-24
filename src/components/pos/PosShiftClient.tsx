@@ -12,11 +12,17 @@ import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
 
 interface Props {
   accountName: string;
+  basePath: string;
   summary: PosShiftSummary;
   isAdmin: boolean;
 }
 
-export default function PosShiftClient({ accountName, summary, isAdmin }: Props) {
+export default function PosShiftClient({
+  accountName,
+  basePath,
+  summary,
+  isAdmin,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -73,7 +79,7 @@ export default function PosShiftClient({ accountName, summary, isAdmin }: Props)
         Refresh
       </button>
       <PosNavLink
-        href="/pos/stok/opname/new"
+        href={`${basePath}/stok/opname/new`}
         className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-3 h-9 text-xs font-semibold hover:translate-x-[1px] hover:translate-y-[1px] transition-transform whitespace-nowrap"
       >
         <CheckCircle2 size={13} />
@@ -85,6 +91,7 @@ export default function PosShiftClient({ accountName, summary, isAdmin }: Props)
   return (
     <PosShell
       outletName={accountName}
+      basePath={basePath}
       isAdmin={isAdmin}
       active="shift"
       title="Cek Saldo Shift"

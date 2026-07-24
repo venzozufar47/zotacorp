@@ -68,6 +68,8 @@ interface ActiveDiscountProp {
 interface Props {
   bankAccountId: string;
   accountName: string;
+  /** Base path publik cabang, mis. "/pospare". Semua nav link relatif ini. */
+  basePath: string;
   /** Cabang default rekening — dicetak di header struk. */
   branch?: string | null;
   /** Nama kasir (opsional) — dicetak di struk. */
@@ -176,6 +178,7 @@ function sugarRequiredFor(p: PosProduct, variantId: string | null): boolean {
 export function POSClient({
   bankAccountId,
   accountName,
+  basePath,
   branch = null,
   cashierName = null,
   receiptContent,
@@ -675,6 +678,7 @@ export function POSClient({
     return (
       <PosShell
         outletName={accountName}
+        basePath={basePath}
         isAdmin={isAdmin}
         active="pos"
         title="POS"
@@ -687,7 +691,7 @@ export function POSClient({
             <div className="flex flex-col gap-2 items-center">
               {isAdmin && (
                 <PosNavLink
-                  href="/pos/produk"
+                  href={`${basePath}/produk`}
                   className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
                 >
                   <Settings size={14} />
@@ -704,7 +708,8 @@ export function POSClient({
               </button>
               {!isAdmin && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Atau minta admin menambahkan produk di <code>/pos/produk</code>.
+                  Atau minta admin menambahkan produk di{" "}
+                  <code>{basePath}/produk</code>.
                 </p>
               )}
             </div>
@@ -734,13 +739,13 @@ export function POSClient({
     active?: boolean;
     adminOnly?: boolean;
   }> = [
-    { href: "/pos", label: "POS", icon: Home, active: true },
-    { href: "/pos/produk", label: "Katalog", icon: Settings, adminOnly: true },
-    { href: "/pos/shift", label: "Saldo", icon: Wallet },
-    { href: "/pos/stok", label: "Stok", icon: Boxes },
-    { href: "/pos/pesanan", label: "Pesanan", icon: ShoppingBasket },
-    { href: "/pos/riwayat", label: "Riwayat", icon: History },
-    { href: "/pos/insights", label: "Insights", icon: BarChart3, adminOnly: true },
+    { href: basePath, label: "POS", icon: Home, active: true },
+    { href: `${basePath}/produk`, label: "Katalog", icon: Settings, adminOnly: true },
+    { href: `${basePath}/shift`, label: "Saldo", icon: Wallet },
+    { href: `${basePath}/stok`, label: "Stok", icon: Boxes },
+    { href: `${basePath}/pesanan`, label: "Pesanan", icon: ShoppingBasket },
+    { href: `${basePath}/riwayat`, label: "Riwayat", icon: History },
+    { href: `${basePath}/insights`, label: "Insights", icon: BarChart3, adminOnly: true },
   ];
   const visibleRailItems = railItems.filter((it) => !it.adminOnly || isAdmin);
 

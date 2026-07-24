@@ -14,6 +14,7 @@ import {
 
 interface Props {
   accountName: string;
+  basePath: string;
   range: { from: string; to: string };
   insights: PosInsights | null;
   error: string | null;
@@ -85,6 +86,7 @@ function trimToOperatingHours<T extends { hour: number; txCount: number }>(
 
 export function PosInsightsClient({
   accountName,
+  basePath,
   range,
   insights,
   error,
@@ -196,6 +198,7 @@ export function PosInsightsClient({
   return (
     <PosShell
       outletName={accountName}
+      basePath={basePath}
       isAdmin={isAdmin}
       active="insights"
       title="Insights Penjualan"

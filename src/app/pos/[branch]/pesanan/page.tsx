@@ -2,10 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import {
-  findPosAccountForCurrentUser,
-} from "@/lib/actions/pos.actions";
+import { findPosAccount } from "@/lib/actions/pos.actions";
 import { listPendingPesanan } from "@/lib/actions/pos-pesanan.actions";
+import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { PosShell } from "@/components/pos/PosShell";
 import { PesananList } from "@/components/pos/PesananList";
 
@@ -14,11 +13,20 @@ import { PesananList } from "@/components/pos/PesananList";
  * settle. Karyawan klik kartu untuk pilih cara settle: cash / QRIS /
  * via admin (WhatsApp).
  */
-export default async function PesananPage() {
+export default async function PesananPage({
+  params,
+}: {
+  params: Promise<{ branch: string }>;
+}) {
+  const { branch: branchParam } = await params;
+  const branch = posBranchFromParam(branchParam);
+  if (!branch) redirect("/pospare");
+  const basePath = posBasePath(branchParam);
+
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const account = await findPosAccountForCurrentUser();
+  const account = await findPosAccount(branch);
   if (!account) redirect("/");
 
   const [role, pesanan] = await Promise.all([
@@ -29,6 +37,7 @@ export default async function PesananPage() {
   return (
     <PosShell
       outletName={account.accountName}
+      basePath={basePath}
       isAdmin={role === "admin"}
       active="pesanan"
       title="Pesanan tertunda"

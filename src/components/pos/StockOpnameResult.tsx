@@ -5,9 +5,10 @@ import type { StockOpnameDetail } from "@/lib/actions/pos-stock.actions";
 
 interface Props {
   detail: StockOpnameDetail;
+  basePath: string;
 }
 
-export function StockOpnameResult({ detail }: Props) {
+export function StockOpnameResult({ detail, basePath }: Props) {
   const { summary, items, notes } = detail;
   const totalColor =
     summary.totalDiffValue < 0
@@ -20,7 +21,7 @@ export function StockOpnameResult({ detail }: Props) {
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <header>
         <PosNavLink
-          href="/pos/stok"
+          href={`${basePath}/stok`}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
         >
           <ArrowLeft size={12} /> Kembali ke Stok

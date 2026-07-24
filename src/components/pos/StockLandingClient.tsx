@@ -27,6 +27,7 @@ type Tab = "on-hand" | "produksi" | "penarikan" | "opname" | "pantauan";
 interface Props {
   bankAccountId: string;
   accountName: string;
+  basePath: string;
   onHand: StockOnHand[];
   movements: StockMovementRow[];
   opnames: StockOpnameSummary[];
@@ -47,6 +48,7 @@ const TABS: { id: Tab; label: string }[] = [
 export function StockLandingClient({
   bankAccountId,
   accountName,
+  basePath,
   onHand,
   movements,
   opnames,
@@ -72,6 +74,7 @@ export function StockLandingClient({
   return (
     <PosShell
       outletName={accountName}
+      basePath={basePath}
       isAdmin={isAdmin}
       active="stok"
       title="Stok"
@@ -144,7 +147,7 @@ export function StockLandingClient({
         />
       )}
 
-      {tab === "opname" && <OpnamePanel rows={opnames} />}
+      {tab === "opname" && <OpnamePanel rows={opnames} basePath={basePath} />}
 
       {tab === "pantauan" && (
         <StockReadinessView bankAccountId={bankAccountId} />
@@ -494,11 +497,17 @@ function MovementPanel({
   );
 }
 
-function OpnamePanel({ rows }: { rows: StockOpnameSummary[] }) {
+function OpnamePanel({
+  rows,
+  basePath,
+}: {
+  rows: StockOpnameSummary[];
+  basePath: string;
+}) {
   return (
     <div className="space-y-3">
       <PosNavLink
-        href="/pos/stok/opname/new"
+        href={`${basePath}/stok/opname/new`}
         className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium hover:opacity-90"
       >
         <Plus size={14} /> Opname Baru
@@ -517,7 +526,7 @@ function OpnamePanel({ rows }: { rows: StockOpnameSummary[] }) {
             return (
               <PosNavLink
                 key={o.id}
-                href={`/pos/stok/opname/${o.id}`}
+                href={`${basePath}/stok/opname/${o.id}`}
                 className="block rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted"
               >
                 <div className="flex items-center justify-between gap-3">

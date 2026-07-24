@@ -45,12 +45,14 @@ import { setProductStockAggregateVariants } from "@/lib/actions/pos-stock.action
 interface Props {
   bankAccountId: string;
   accountName: string;
+  basePath: string;
   initialProducts: PosProduct[];
 }
 
 export function ProductCatalogClient({
   bankAccountId,
   accountName,
+  basePath,
   initialProducts,
 }: Props) {
   const [products, setProducts] = useState<PosProduct[]>(initialProducts);
@@ -306,6 +308,7 @@ export function ProductCatalogClient({
   return (
     <PosShell
       outletName={accountName}
+      basePath={basePath}
       isAdmin
       active="produk"
       title="Katalog Produk"

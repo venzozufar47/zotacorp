@@ -12,7 +12,8 @@ import type { PosNavSection } from "./PosTopNav";
 import "./workstation.css";
 
 interface RailItem {
-  href: string;
+  /** Suffix relatif terhadap basePath cabang, mis. "/produk". POS = "". */
+  path: string;
   label: string;
   icon: typeof Home;
   section: PosNavSection;
@@ -20,25 +21,25 @@ interface RailItem {
 }
 
 const RAIL: RailItem[] = [
-  { href: "/pos", label: "POS", icon: Home, section: "pos" },
+  { path: "", label: "POS", icon: Home, section: "pos" },
   {
-    href: "/pos/produk",
+    path: "/produk",
     label: "Katalog",
     icon: Settings,
     section: "produk",
     adminOnly: true,
   },
-  { href: "/pos/shift", label: "Saldo", icon: Wallet, section: "shift" },
-  { href: "/pos/stok", label: "Stok", icon: Boxes, section: "stok" },
+  { path: "/shift", label: "Saldo", icon: Wallet, section: "shift" },
+  { path: "/stok", label: "Stok", icon: Boxes, section: "stok" },
   {
-    href: "/pos/pesanan",
+    path: "/pesanan",
     label: "Pesanan",
     icon: ShoppingBasket,
     section: "pesanan",
   },
-  { href: "/pos/riwayat", label: "Riwayat", icon: History, section: "riwayat" },
+  { path: "/riwayat", label: "Riwayat", icon: History, section: "riwayat" },
   {
-    href: "/pos/insights",
+    path: "/insights",
     label: "Insights",
     icon: BarChart3,
     section: "insights",
@@ -60,6 +61,7 @@ const RAIL: RailItem[] = [
  */
 export function PosShell({
   outletName,
+  basePath,
   active,
   isAdmin,
   title,
@@ -69,6 +71,8 @@ export function PosShell({
   children,
 }: {
   outletName: string;
+  /** Base path publik cabang, mis. "/pospare". Semua nav link relatif ini. */
+  basePath: string;
   active: PosNavSection;
   isAdmin: boolean;
   /** Heading di main area (mirror "page-head" dari design). */
@@ -116,8 +120,8 @@ export function PosShell({
           const isActive = it.section === active;
           return (
             <PosNavLink
-              key={it.href}
-              href={it.href}
+              key={it.section}
+              href={`${basePath}${it.path}`}
               className={`flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-colors ${
                 isActive
                   ? "bg-primary/10 text-primary"
@@ -167,8 +171,8 @@ export function PosShell({
             const isActive = it.section === active;
             return (
               <PosNavLink
-                key={it.href}
-                href={it.href}
+                key={it.section}
+                href={`${basePath}${it.path}`}
                 className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
                   isActive
                     ? "text-primary"

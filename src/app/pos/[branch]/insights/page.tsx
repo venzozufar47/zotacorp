@@ -2,8 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { findPosAccountForCurrentUser } from "@/lib/actions/pos.actions";
+import { findPosAccount } from "@/lib/actions/pos.actions";
 import { getPosInsights } from "@/lib/actions/pos-insights.actions";
+import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { PosInsightsClient } from "@/components/pos/PosInsightsClient";
 import {
   jakartaDateMinusDays,
@@ -50,19 +51,26 @@ function resolveRange(sp: { from?: string; to?: string; period?: string }): {
 }
 
 export default async function PosInsightsPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ branch: string }>;
   searchParams: Promise<{ from?: string; to?: string; period?: string }>;
 }) {
+  const { branch: branchParam } = await params;
+  const branch = posBranchFromParam(branchParam);
+  if (!branch) redirect("/pospare");
+  const basePath = posBasePath(branchParam);
+
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
   // Insights = data sensitif (revenue, ranking produk) — hanya admin.
-  // Kasir lihat detail penjualannya cukup di /pos/riwayat.
+  // Kasir lihat detail penjualannya cukup di riwayat.
   const role = await getCurrentRole();
-  if (role !== "admin") redirect("/pos");
+  if (role !== "admin") redirect(basePath);
 
-  const account = await findPosAccountForCurrentUser();
+  const account = await findPosAccount(branch);
   if (!account) redirect("/");
 
   const sp = await searchParams;
@@ -74,6 +82,7 @@ export default async function PosInsightsPage({
   return (
     <PosInsightsClient
       accountName={account.accountName}
+      basePath={basePath}
       range={range}
       insights={insights}
       error={res.ok ? null : res.error}

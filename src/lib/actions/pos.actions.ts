@@ -1038,7 +1038,9 @@ export async function createPosSale(input: {
         input.paymentMethod === "qris"
           ? POS_QRIS_CATEGORY
           : POS_CASH_CATEGORY,
-      branch: account.default_branch ?? "Pare",
+      // Ambil cabang dari rekening apa adanya (Pare/Semarang/…); jangan
+      // hardcode "Pare" — itu akan salah-tag transaksi cabang lain.
+      branch: account.default_branch ?? null,
       sort_order: nextSortOrder,
     })
     .select("id")
@@ -1382,6 +1384,36 @@ export async function findPosAccountForCurrentUser(): Promise<
   const { data, error } = await supabase
     .from("bank_accounts")
     .select("id, account_name, default_branch")
+    .eq("pos_enabled", true)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  return {
+    id: data[0].id,
+    accountName: data[0].account_name,
+    branch: data[0].default_branch ?? null,
+  };
+}
+
+/**
+ * Cari rekening POS Haengbocake untuk cabang tertentu (Pare / Semarang).
+ * Dipakai route per-cabang `/pospare` & `/possemarang`. RLS tetap scope ke
+ * rekening yang boleh dilihat user, jadi kasir cabang lain → null → page
+ * redirect. Dipilih by (business_unit + default_branch) supaya deterministik
+ * walau user punya akses beberapa rekening POS.
+ */
+export async function findPosAccount(
+  branch: string
+): Promise<{ id: string; accountName: string; branch: string | null } | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("bank_accounts")
+    .select("id, account_name, default_branch")
+    .eq("business_unit", "Haengbocake")
+    .eq("default_branch", branch)
     .eq("pos_enabled", true)
     .eq("is_active", true)
     .order("created_at", { ascending: true })

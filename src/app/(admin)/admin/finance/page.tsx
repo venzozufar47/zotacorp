@@ -79,6 +79,7 @@ export default async function AdminFinancePage({
         accountName: acc.account_name,
         isActive: acc.is_active,
         posEnabled: acc.pos_enabled,
+        defaultBranch: acc.default_branch,
         statements: (statements ?? []).slice(0, 12),
       };
     })

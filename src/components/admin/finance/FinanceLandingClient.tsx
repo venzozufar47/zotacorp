@@ -34,6 +34,8 @@ interface AccountRow {
   accountName: string;
   isActive: boolean;
   posEnabled: boolean;
+  /** Cabang default rekening — menentukan URL POS (/pospare vs /possemarang). */
+  defaultBranch: string | null;
   statements: StatementRow[];
 }
 
@@ -288,20 +290,24 @@ export function FinanceLandingClient({
               {/* POS shortcut — muncul hanya untuk rekening pos_enabled.
                   Pakai <span role="button"> bukan <Link> untuk menghindari
                   nested-anchor HTML yang invalid (card parent sudah Link). */}
-              {acc.posEnabled && (
+              {acc.posEnabled && (() => {
+                // Pare kanonik di /pospare; Semarang di /possemarang.
+                const posHref =
+                  acc.defaultBranch === "Semarang" ? "/possemarang" : "/pospare";
+                return (
                 <span
                   role="button"
                   tabIndex={0}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    router.push("/pos");
+                    router.push(posHref);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       e.stopPropagation();
-                      router.push("/pos");
+                      router.push(posHref);
                     }
                   }}
                   className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/15 transition cursor-pointer"
@@ -309,7 +315,8 @@ export function FinanceLandingClient({
                   <Smartphone size={12} />
                   Buka POS
                 </span>
-              )}
+                );
+              })()}
             </Link>
           ))}
         </div>
