@@ -597,47 +597,61 @@ export function RecipeBuilder({
               options={[
                 { value: "margin", label: "Margin (atas harga jual)" },
                 { value: "markup", label: "Markup (atas HPP)" },
+                { value: "manual", label: "Harga manual" },
               ]}
               value={product.price_method}
               onChange={(v) =>
                 commitProduct({ price_method: v as PriceMethod })
               }
             />
-            <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <NumField
-                label={product.price_method === "margin" ? "Target margin" : "Target markup"}
-                value={product.target_percent * 100}
-                onCommit={(v) => commitProduct({ target_percent: v / 100 })}
-                decimal
-                suffix="%"
-              />
-              <NumField
-                label="Pembulatan (Rp)"
-                value={product.rounding_unit}
-                onCommit={(v) =>
-                  commitProduct({ rounding_unit: Math.max(1, Math.round(v)) })
-                }
-              />
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Arah bulat
-                </span>
-                <select
-                  value={product.rounding_mode}
-                  onChange={(e) =>
-                    commitProduct({ rounding_mode: e.target.value as RoundingMode })
+            {product.price_method === "manual" ? (
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <NumField
+                  label="Harga jual (Rp)"
+                  value={product.manual_price}
+                  onCommit={(v) =>
+                    commitProduct({ manual_price: Math.max(0, v) })
                   }
-                  className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
-                >
-                  <option value="nearest">Terdekat</option>
-                  <option value="ceil">Ke atas</option>
-                  <option value="floor">Ke bawah</option>
-                </select>
-              </label>
-            </div>
+                />
+              </div>
+            ) : (
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <NumField
+                  label={product.price_method === "margin" ? "Target margin" : "Target markup"}
+                  value={product.target_percent * 100}
+                  onCommit={(v) => commitProduct({ target_percent: v / 100 })}
+                  decimal
+                  suffix="%"
+                />
+                <NumField
+                  label="Pembulatan (Rp)"
+                  value={product.rounding_unit}
+                  onCommit={(v) =>
+                    commitProduct({ rounding_unit: Math.max(1, Math.round(v)) })
+                  }
+                />
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Arah bulat
+                  </span>
+                  <select
+                    value={product.rounding_mode}
+                    onChange={(e) =>
+                      commitProduct({ rounding_mode: e.target.value as RoundingMode })
+                    }
+                    className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
+                  >
+                    <option value="nearest">Terdekat</option>
+                    <option value="ceil">Ke atas</option>
+                    <option value="floor">Ke bawah</option>
+                  </select>
+                </label>
+              </div>
+            )}
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Margin dihitung atas harga jual, markup atas HPP — angka
-              keduanya beda. Margin 40% ≠ markup 40%.
+              {product.price_method === "manual"
+                ? "Harga jual diketik langsung; margin dihitung otomatis dari HPP. Harga tetap walau HPP berubah."
+                : "Margin dihitung atas harga jual, markup atas HPP — angka keduanya beda. Margin 40% ≠ markup 40%."}
             </p>
           </Card>
 

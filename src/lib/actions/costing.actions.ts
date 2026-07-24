@@ -83,6 +83,8 @@ export interface CostingProduct {
   depreciation_per_event: number;
   price_method: PriceMethod;
   target_percent: number;
+  /** Harga jual manual (rupiah) — dipakai saat price_method='manual'. */
+  manual_price: number;
   rounding_unit: number;
   rounding_mode: RoundingMode;
   is_active: boolean;
@@ -434,6 +436,7 @@ export async function updateProduct(input: {
   depreciation_per_event?: number;
   price_method?: PriceMethod;
   target_percent?: number;
+  manual_price?: number;
   rounding_unit?: number;
   rounding_mode?: RoundingMode;
   is_active?: boolean;
@@ -478,6 +481,8 @@ export async function updateProduct(input: {
     return { ok: false, error: "Depresiasi tidak valid" };
   if (setNum("target_percent", input.target_percent) === "invalid")
     return { ok: false, error: "Target % tidak valid" };
+  if (setNum("manual_price", input.manual_price) === "invalid")
+    return { ok: false, error: "Harga manual tidak valid" };
   if (input.overhead_method !== undefined)
     patch.overhead_method = input.overhead_method;
   if (input.price_method !== undefined) patch.price_method = input.price_method;
@@ -552,6 +557,7 @@ export async function duplicateProduct(
       depreciation_per_event: src.depreciation_per_event,
       price_method: src.price_method,
       target_percent: src.target_percent,
+      manual_price: src.manual_price,
       rounding_unit: src.rounding_unit,
       rounding_mode: src.rounding_mode,
       is_active: src.is_active,

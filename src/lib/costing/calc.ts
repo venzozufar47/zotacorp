@@ -12,7 +12,7 @@
  */
 
 export type OverheadMethod = "persen" | "nominal";
-export type PriceMethod = "margin" | "markup";
+export type PriceMethod = "margin" | "markup" | "manual";
 export type RoundingMode = "floor" | "nearest" | "ceil";
 export type LaborMode = "nominal" | "hourly";
 
@@ -73,6 +73,9 @@ export interface ProductCostLite {
   price_method: PriceMethod;
   /** Fraksi target (0.40 = 40%). Margin atas harga jual, markup atas HPP. */
   target_percent: number;
+  /** Harga jual yang diketik langsung (rupiah) — dipakai saat
+   *  price_method='manual'. Margin dihitung maju dari sini. */
+  manual_price: number;
   /** Kelipatan pembulatan harga jual (mis. 500/1000). 1 = tanpa bulat. */
   rounding_unit: number;
   rounding_mode: RoundingMode;
@@ -228,6 +231,26 @@ export function computeHpp(
   }
 
   const hppUnit = hppBatch / cost.yield_qty;
+
+  // Harga manual: harga jual diketik langsung (tanpa pembulatan), margin
+  // dihitung maju. manual_price ≤ 0 → dianggap belum diisi (harga null).
+  if (cost.price_method === "manual") {
+    const finalPrice = cost.manual_price > 0 ? cost.manual_price : null;
+    const marginRupiah = finalPrice != null ? finalPrice - hppUnit : null;
+    const marginPercent =
+      finalPrice != null && finalPrice > 0
+        ? (finalPrice - hppUnit) / finalPrice
+        : null;
+    return {
+      ...base,
+      hppUnit,
+      sellingPrice: finalPrice,
+      finalPrice,
+      marginRupiah,
+      marginPercent,
+      error: null,
+    };
+  }
 
   // Margin dihitung ATAS HARGA JUAL → target ≥ 100% membuat pembagi
   // (1 − target) ≤ 0 (harga jual tak terhingga/negatif). Markup atas HPP

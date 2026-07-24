@@ -80,6 +80,7 @@ export function mapProduct(r: Record<string, unknown>): CostingProduct {
     depreciation_per_event: num(r.depreciation_per_event),
     price_method: r.price_method as CostingProduct["price_method"],
     target_percent: num(r.target_percent),
+    manual_price: num(r.manual_price),
     rounding_unit: num(r.rounding_unit),
     rounding_mode: r.rounding_mode as CostingProduct["rounding_mode"],
     is_active: r.is_active as boolean,
