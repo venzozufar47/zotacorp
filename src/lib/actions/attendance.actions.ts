@@ -29,6 +29,7 @@ import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import { getBlockingCleaning } from "@/lib/actions/cleaning.actions";
+import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -966,6 +967,13 @@ export async function checkOut(payload?: CheckOutPayload) {
       timezone,
     });
   }
+
+  // Gate absen pulang: karyawan studio Yeobo Space wajib menyelesaikan
+  // stock opname cabangnya lebih dulu (sumber kebenaran = API eksternal
+  // yeobospace.id). Karyawan non-studio otomatis dilewati. Ditaruh tepat
+  // sebelum UPDATE supaya tak ada baris tertulis kalau di-tolak.
+  const opnameGate = await guardCheckoutByStockOpname(user.id);
+  if (!opnameGate.ok) return { error: opnameGate.error };
 
   const { data, error } = await supabase
     .from("attendance_logs")
