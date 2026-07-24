@@ -6,7 +6,7 @@ import {
   checkStockOpnameDone,
   decideCheckoutGate,
   guardCheckoutByStockOpname,
-  resolveStockGateBranch,
+  resolveStockGateBranchFromLocation,
 } from "@/lib/attendance/stock-opname-gate";
 
 /**
@@ -20,7 +20,8 @@ import {
  *   GET /api/dev/stock-opname-gate?mock=false   → { decision: blokir }  (opname belum selesai)
  *   GET /api/dev/stock-opname-gate?mock=true    → { decision: lolos }
  *   GET /api/dev/stock-opname-gate?branch=jebres        → panggil API asli utk 1 cabang
- *   GET /api/dev/stock-opname-gate?profile=<uuid>       → jalankan gate penuh utk 1 karyawan
+ *   GET /api/dev/stock-opname-gate?location=<geofenceId>&role=Manager
+ *       → simulasi gate penuh dari lokasi sign-in + jabatan
  */
 export async function GET(request: Request) {
   if (process.env.NODE_ENV === "production") {
@@ -46,7 +47,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const mock = url.searchParams.get("mock");
   const branch = url.searchParams.get("branch");
-  const profile = url.searchParams.get("profile");
+  const location = url.searchParams.get("location");
+  const role = url.searchParams.get("role");
 
   // 1) Mock murni — buktikan keputusan gate utk submitted=false lalu true,
   //    tanpa menyentuh API eksternal.
@@ -68,13 +70,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ mode: "live-branch", branch, status });
   }
 
-  // 3) Gate penuh utk satu karyawan (resolve cabang → cek → keputusan).
-  if (profile) {
-    const branchId = resolveStockGateBranch(profile);
-    const decision = await guardCheckoutByStockOpname(profile);
+  // 3) Gate penuh dari lokasi sign-in + jabatan (resolve cabang dari
+  //    geofence → cek jabatan → cek opname → keputusan).
+  if (location) {
+    const branchId = resolveStockGateBranchFromLocation(location);
+    const decision = await guardCheckoutByStockOpname({
+      matchedLocationId: location,
+      businessUnit: "Yeobo Space",
+      jobRole: role,
+    });
     return NextResponse.json({
-      mode: "live-profile",
-      profile,
+      mode: "live-location",
+      location,
+      role: role ?? null,
       resolvedBranch: branchId,
       gated: branchId !== null,
       decision,
@@ -85,8 +93,13 @@ export async function GET(request: Request) {
     usage: {
       mock: "?mock=false | ?mock=true",
       liveBranch: `?branch=${STOCK_BRANCH_IDS.join("|")}`,
-      liveProfile: "?profile=<profile-uuid>",
+      liveLocation: "?location=<geofence-uuid>&role=Manager",
     },
     branches: STOCK_BRANCH_IDS,
+    studioGeofences: {
+      tlogosari: "6e0ba10c-b6b7-4c32-b488-8a7f08a1d05b",
+      tembalang: "54d9029e-06b4-4967-995a-f4a80125f7b4",
+      jebres: "fed542f3-c9a7-4bbd-bdc9-cfc1f6fe2a51",
+    },
   });
 }

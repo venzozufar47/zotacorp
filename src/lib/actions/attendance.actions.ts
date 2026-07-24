@@ -775,7 +775,7 @@ export async function checkOut(payload?: CheckOutPayload) {
   const { data: existing } = await supabase
     .from("attendance_logs")
     .select(
-      "id, checked_out_at, checked_in_at, latitude, longitude, total_break_minutes"
+      "id, checked_out_at, checked_in_at, latitude, longitude, total_break_minutes, matched_location_id"
     )
     .eq("user_id", user.id)
     .eq("date", today)
@@ -819,7 +819,7 @@ export async function checkOut(payload?: CheckOutPayload) {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "full_name, is_flexible_schedule, work_start_time, work_end_time, break_enabled, break_windows"
+      "full_name, is_flexible_schedule, work_start_time, work_end_time, break_enabled, break_windows, business_unit, job_role"
     )
     .eq("id", user.id)
     .single();
@@ -968,11 +968,17 @@ export async function checkOut(payload?: CheckOutPayload) {
     });
   }
 
-  // Gate absen pulang: karyawan studio Yeobo Space wajib menyelesaikan
-  // stock opname cabangnya lebih dulu (sumber kebenaran = API eksternal
-  // yeobospace.id). Karyawan non-studio otomatis dilewati. Ditaruh tepat
+  // Gate absen pulang: karyawan studio Yeobo Space (jabatan Admin/Editor/
+  // Manager) yang hari itu SIGN-IN di geofence studio wajib menyelesaikan
+  // stock opname cabangnya dulu. Cabang ditentukan dari LOKASI sign-in
+  // (matched_location_id), bukan jadwal shift. Sumber kebenaran opname =
+  // API eksternal yeobospace.id. Selain itu dilewati. Ditaruh tepat
   // sebelum UPDATE supaya tak ada baris tertulis kalau di-tolak.
-  const opnameGate = await guardCheckoutByStockOpname(user.id);
+  const opnameGate = await guardCheckoutByStockOpname({
+    matchedLocationId: existing.matched_location_id,
+    businessUnit: profile?.business_unit ?? null,
+    jobRole: profile?.job_role ?? null,
+  });
   if (!opnameGate.ok) return { error: opnameGate.error };
 
   const { data, error } = await supabase

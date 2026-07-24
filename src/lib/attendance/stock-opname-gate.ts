@@ -30,37 +30,59 @@ const ENDPOINT = "https://yeobospace.id/api/stock/status";
 const TIMEOUT_MS = 5000;
 
 /**
- * Peta OTORITATIF karyawan → cabang studio (BRANCH_ID API). Sengaja
- * di-key ke `profiles.id` (bukan pencocokan nama) karena ini gate akses:
- * pencocokan keyword nama rawan tabrakan (mis. "Azim" ⊂ "Lazimatu").
- * Daftar ini SEKALIGUS menentukan "siapa yang kena gate" — hanya id di
- * sini yang di-gate; sisanya (non-studio) dilewati.
+ * Peta geofence sign-in → cabang studio (BRANCH_ID API).
  *
- * Sumber: instruksi admin (Yeobo Space, jabatan Admin/Editor/Admin & Editor;
- * plus Ika/Manager atas permintaan eksplisit). Tambah/ubah di sini kalau
- * ada rotasi staf.
+ * Cabang ditentukan dari LOKASI karyawan saat sign-in (check-in), yakni
+ * `attendance_logs.matched_location_id` yang menunjuk ke salah satu
+ * geofence "Yeobo Space - …" di tabel `attendance_locations`. Bukan dari
+ * jadwal shift atau roster per-orang — jadi karyawan yang hari itu memang
+ * check-in di studio-lah yang kena gate.
+ *
+ * (id geofence bersifat stabil; kalau geofence dibuat ulang, perbarui di
+ * sini.)
  */
-const STOCK_GATE_BRANCH_BY_PROFILE: Record<string, StockBranchId> = {
-  // Yeosari → Tlogosari
-  "1284ad2f-3734-4f90-a3ab-c42050ce7778": "tlogosari", // Ika Lailatul Khasanah (Manager, atas permintaan)
-  "e83395af-9ab5-47e3-ab68-3b963ef1c2a9": "tlogosari", // NUR HIDAYATUS SHOLEKHAH (Editor)
-  "ccef12cf-a2c9-45fa-8b74-e7f5477bd2c1": "tlogosari", // Sukma arum (Admin & Editor)
-  // Yeotem → Tembalang
-  "cf4a676b-bf8b-4e63-8b0d-0ca5f6ddaf55": "tembalang", // Lazimatu Masruroh (Editor) — dirujuk sebagai "Azim"
-  "9f8c419c-3b00-495e-be25-2f21ed32d564": "tembalang", // Gita Refi Maharani (Admin & Editor)
-  "db6363cd-97d1-43f8-8ba7-8c9d6f4280b5": "tembalang", // Mutiara Dwyocha Agustin (Admin)
-  // Yeosol → Jebres
-  "a381a5e6-3b56-4140-be36-914d19a337f5": "jebres", // Nila Fadhila (Admin & Editor)
-  "17582e6f-f27f-4ac7-8165-1ca1f6fdda57": "jebres", // Muthia Syahidah (Editor)
-  "8d68258a-600e-4b03-8fbc-6f89982ad07a": "jebres", // Citra Fitria Nur Suryani (Admin)
+const STUDIO_LOCATION_TO_BRANCH: Record<string, StockBranchId> = {
+  "6e0ba10c-b6b7-4c32-b488-8a7f08a1d05b": "tlogosari", // Yeobo Space - Tlogosari
+  "54d9029e-06b4-4967-995a-f4a80125f7b4": "tembalang", // Yeobo Space - Tembalang
+  "fed542f3-c9a7-4bbd-bdc9-cfc1f6fe2a51": "jebres", // Yeobo Space - Jebres
 };
 
 /**
- * Cabang studio karyawan (untuk gate opname), atau `null` bila karyawan
- * tidak terikat cabang studio → gate dilewati.
+ * Cabang studio dari geofence tempat karyawan sign-in, atau `null` bila
+ * bukan geofence studio (mis. check-in di luar / lokasi lain) → gate
+ * dilewati.
  */
-export function resolveStockGateBranch(profileId: string): StockBranchId | null {
-  return STOCK_GATE_BRANCH_BY_PROFILE[profileId] ?? null;
+export function resolveStockGateBranchFromLocation(
+  matchedLocationId: string | null | undefined,
+): StockBranchId | null {
+  if (!matchedLocationId) return null;
+  return STUDIO_LOCATION_TO_BRANCH[matchedLocationId] ?? null;
+}
+
+/**
+ * Jabatan (profiles.job_role) Yeobo Space yang kena gate. Dinormalisasi
+ * lower-case + trim supaya toleran spasi/kapitalisasi dari input admin.
+ */
+const GATED_JOB_ROLES = new Set([
+  "admin",
+  "editor",
+  "admin & editor",
+  "manager",
+]);
+
+/**
+ * True bila karyawan Yeobo Space dengan jabatan yang termasuk cakupan gate
+ * (Admin / Editor / Admin & Editor / Manager).
+ */
+export function isGatedJobRole(
+  businessUnit: string | null | undefined,
+  jobRole: string | null | undefined,
+): boolean {
+  return (
+    businessUnit === "Yeobo Space" &&
+    !!jobRole &&
+    GATED_JOB_ROLES.has(jobRole.trim().toLowerCase())
+  );
 }
 
 /** Hasil pemanggilan API status opname. */
@@ -167,18 +189,33 @@ export function decideCheckoutGate(
     : { ok: false, error: STOCK_GATE_MSG_UNVERIFIED };
 }
 
+/** Konteks absen pulang yang dibutuhkan gate — semua dari data sign-in. */
+export interface CheckoutGateContext {
+  /** attendance_logs.matched_location_id dari check-in hari ini. */
+  matchedLocationId: string | null | undefined;
+  /** profiles.business_unit karyawan. */
+  businessUnit: string | null | undefined;
+  /** profiles.job_role karyawan. */
+  jobRole: string | null | undefined;
+}
+
 /**
  * Gate lengkap yang dipanggil di alur absen pulang SEBELUM menyimpan
- * absensi. Menentukan cabang dari `profileId`, cek status opname, lalu
- * kembalikan izin/tolak dengan pesan jelas. Karyawan yang tidak terikat
- * cabang studio otomatis dilewati (`{ ok: true }`).
+ * absensi. Menentukan cabang dari LOKASI sign-in (bukan jadwal shift),
+ * lalu cek status opname. Dilewati (`{ ok: true }`) bila:
+ *   - sign-in bukan di geofence studio Yeobo, ATAU
+ *   - jabatan karyawan di luar cakupan gate (bukan Admin/Editor/Manager).
  */
 export async function guardCheckoutByStockOpname(
-  profileId: string,
+  ctx: CheckoutGateContext,
 ): Promise<CheckoutGateResult> {
-  const branchId = resolveStockGateBranch(profileId);
+  const branchId = resolveStockGateBranchFromLocation(ctx.matchedLocationId);
   if (!branchId) return { ok: true };
+  if (!isGatedJobRole(ctx.businessUnit, ctx.jobRole)) return { ok: true };
 
   const status = await checkStockOpnameDone(branchId);
-  return decideCheckoutGate(status, `branch=${branchId} profile=${profileId}`);
+  return decideCheckoutGate(
+    status,
+    `branch=${branchId} role=${ctx.jobRole ?? "?"}`,
+  );
 }
