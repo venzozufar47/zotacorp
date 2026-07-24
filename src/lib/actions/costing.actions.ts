@@ -40,6 +40,8 @@ export interface CostingMaterial {
   purchase_price: number;
   content_per_purchase: number;
   usage_unit: string;
+  /** Faktor susut/waste bahan (fraksi). Berlaku di semua resep. */
+  shrink_factor: number;
   price_updated_at: string;
   is_active: boolean;
 }
@@ -49,7 +51,6 @@ export interface CostingRecipeItem {
   product_id: string;
   material_id: string;
   qty: number;
-  shrink_factor: number;
   sort_order: number;
   /** Satuan qty resep; null = pakai satuan pakai bahan. */
   unit: string | null;
@@ -158,6 +159,8 @@ export interface MaterialInput {
   purchase_price: number;
   content_per_purchase: number;
   usage_unit: string;
+  /** Faktor susut (fraksi, 0 = tanpa susut). Opsional; default 0. */
+  shrink_factor?: number;
 }
 
 export async function createMaterial(
@@ -171,6 +174,9 @@ export async function createMaterial(
     return { ok: false, error: "Isi per satuan beli harus > 0" };
   if (!Number.isFinite(input.purchase_price) || input.purchase_price < 0)
     return { ok: false, error: "Harga beli tidak valid" };
+  const shrink = input.shrink_factor ?? 0;
+  if (!Number.isFinite(shrink) || shrink < 0)
+    return { ok: false, error: "Faktor susut tidak valid" };
   const supabase = adminClient();
   const { data, error } = await supabase
     .from("costing_materials" as never)
@@ -182,6 +188,7 @@ export async function createMaterial(
       purchase_price: Math.round(input.purchase_price * 100) / 100,
       content_per_purchase: input.content_per_purchase,
       usage_unit: input.usage_unit.trim() || "unit",
+      shrink_factor: shrink,
       created_by: gate.userId,
     } as never)
     .select("id")
@@ -199,6 +206,7 @@ export async function updateMaterial(input: {
   purchase_price?: number;
   content_per_purchase?: number;
   usage_unit?: string;
+  shrink_factor?: number;
   is_active?: boolean;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
@@ -227,6 +235,11 @@ export async function updateMaterial(input: {
     patch.purchase_unit = input.purchase_unit.trim() || "unit";
   if (input.usage_unit !== undefined)
     patch.usage_unit = input.usage_unit.trim() || "unit";
+  if (input.shrink_factor !== undefined) {
+    if (!Number.isFinite(input.shrink_factor) || input.shrink_factor < 0)
+      return { ok: false, error: "Faktor susut tidak valid" };
+    patch.shrink_factor = input.shrink_factor;
+  }
   if (input.is_active !== undefined) patch.is_active = input.is_active;
 
   const newPrice =
@@ -570,7 +583,7 @@ export async function duplicateProduct(
 
   const { data: items, error: itErr } = await supabase
     .from("costing_recipe_items" as never)
-    .select("material_id, qty, shrink_factor, sort_order, unit")
+    .select("material_id, qty, sort_order, unit")
     .eq("product_id", id)
     .order("sort_order", { ascending: true });
   if (itErr) return { ok: false, error: itErr.message };
@@ -583,7 +596,6 @@ export async function duplicateProduct(
           product_id: newId,
           material_id: r.material_id,
           qty: r.qty,
-          shrink_factor: r.shrink_factor,
           sort_order: r.sort_order,
           unit: r.unit,
         })) as never
@@ -600,7 +612,6 @@ export async function addRecipeItem(input: {
   product_id: string;
   material_id: string;
   qty?: number;
-  shrink_factor?: number;
   unit?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
   const gate = await requireAdmin();
@@ -643,7 +654,6 @@ export async function addRecipeItem(input: {
       product_id: input.product_id,
       material_id: input.material_id,
       qty: input.qty ?? 0,
-      shrink_factor: input.shrink_factor ?? 0,
       sort_order: nextOrder,
       unit: input.unit ?? null,
     } as never)
@@ -657,7 +667,6 @@ export async function addRecipeItem(input: {
 export async function updateRecipeItem(input: {
   id: string;
   qty?: number;
-  shrink_factor?: number;
   /** Ganti bahan pada baris — divalidasi harus se-brand dgn produknya. */
   material_id?: string;
   /** Satuan qty resep; null = satuan pakai bahan. */
@@ -671,11 +680,6 @@ export async function updateRecipeItem(input: {
     if (!Number.isFinite(input.qty) || input.qty < 0)
       return { ok: false, error: "Qty tidak valid" };
     patch.qty = input.qty;
-  }
-  if (input.shrink_factor !== undefined) {
-    if (!Number.isFinite(input.shrink_factor) || input.shrink_factor < 0)
-      return { ok: false, error: "Faktor susut tidak valid" };
-    patch.shrink_factor = input.shrink_factor;
   }
   const supabase = adminClient();
   if (input.material_id !== undefined) {

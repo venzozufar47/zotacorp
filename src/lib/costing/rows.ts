@@ -41,6 +41,7 @@ export function mapMaterial(r: Record<string, unknown>): CostingMaterial {
     purchase_price: num(r.purchase_price),
     content_per_purchase: num(r.content_per_purchase),
     usage_unit: r.usage_unit as string,
+    shrink_factor: num(r.shrink_factor),
     price_updated_at: r.price_updated_at as string,
     is_active: r.is_active as boolean,
   };
@@ -52,7 +53,6 @@ export function mapItem(r: Record<string, unknown>): CostingRecipeItem {
     product_id: r.product_id as string,
     material_id: r.material_id as string,
     qty: num(r.qty),
-    shrink_factor: num(r.shrink_factor),
     sort_order: num(r.sort_order),
     unit: (r.unit as string | null) ?? null,
   };
@@ -96,6 +96,7 @@ export function toLite(m: CostingMaterial): CostingMaterialLite {
     purchase_price: m.purchase_price,
     content_per_purchase: m.content_per_purchase,
     usage_unit: m.usage_unit,
+    shrink_factor: m.shrink_factor,
   };
 }
 
@@ -123,7 +124,6 @@ export function breakdownFor(
     items.map((it) => ({
       material_id: it.material_id,
       qty: it.qty,
-      shrink_factor: it.shrink_factor,
       unit: it.unit,
     })),
     product,

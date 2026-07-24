@@ -26,15 +26,16 @@ export interface CostingMaterialLite {
   content_per_purchase: number;
   /** Label satuan pakai (mis. "gram"). Hanya untuk tampilan. */
   usage_unit: string;
+  /** Faktor susut/waste bahan (fraksi, 0 = tanpa susut). Sifat bahan,
+   *  berlaku di semua resep yang memakainya. */
+  shrink_factor: number;
 }
 
 /** Satu baris resep. `qty` dalam `unit` (bila di-set) atau satuan pakai
- *  bahannya. */
+ *  bahannya. Susut mengikuti bahannya (bukan per baris). */
 export interface RecipeItemLite {
   material_id: string;
   qty: number;
-  /** Faktor susut produksi (fraksi, 0 = tanpa susut). */
-  shrink_factor: number;
   /** Satuan qty resep. null/kosong = satuan pakai bahan (tanpa konversi). */
   unit?: string | null;
 }
@@ -155,7 +156,8 @@ export function computeHpp(
   const components: ComponentBreakdown[] = items.map((it) => {
     const m = materialsById.get(it.material_id);
     const unitPrice = m ? usageUnitPrice(m) : 0;
-    const shrink = it.shrink_factor > 0 ? it.shrink_factor : 0;
+    // Susut mengikuti bahan (properti bahan, bukan baris resep).
+    const shrink = m && m.shrink_factor > 0 ? m.shrink_factor : 0;
 
     // Konversi qty resep → satuan pakai bahan. Tanpa `unit`, atau unit ==
     // satuan pakai bahan → tak ada konversi (juga menampung satuan bebas-

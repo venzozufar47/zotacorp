@@ -166,6 +166,7 @@ export function RecipeBuilder({
         purchase_price: x.purchase_price,
         content_per_purchase: x.content_per_purchase,
         usage_unit: x.usage_unit,
+        shrink_factor: x.shrink_factor,
       });
     return m;
   }, [materials]);
@@ -183,7 +184,6 @@ export function RecipeBuilder({
         items.map((it) => ({
           material_id: it.material_id,
           qty: it.qty,
-          shrink_factor: it.shrink_factor,
           unit: it.unit,
         })),
         product,
@@ -286,7 +286,6 @@ export function RecipeBuilder({
           product_id: product.id,
           material_id: addMaterialId,
           qty,
-          shrink_factor: 0,
           sort_order: xs.length,
           unit: null,
         },
@@ -416,7 +415,6 @@ export function RecipeBuilder({
                         comp={breakdown.components[idx] ?? null}
                         pending={pending}
                         onQty={(v) => commitItem(it.id, { qty: v })}
-                        onShrink={(v) => commitItem(it.id, { shrink_factor: v })}
                         onMaterial={(mid) => commitItem(it.id, { material_id: mid })}
                         onUnit={(u) => commitItem(it.id, { unit: u })}
                         onRemove={() => removeItem(it.id)}
@@ -735,7 +733,8 @@ export function RecipeBuilder({
 
 /* ───────────────────────── sub-komponen ───────────────────────── */
 
-/** Baris resep yang bisa di-drag; ganti-bahan, satuan, qty, %susut, biaya. */
+/** Baris resep yang bisa di-drag; ganti-bahan, satuan, qty, biaya. Susut
+ *  mengikuti bahan (diatur di Master Bahan). */
 function SortableRecipeRow({
   item,
   material,
@@ -744,7 +743,6 @@ function SortableRecipeRow({
   comp,
   pending,
   onQty,
-  onShrink,
   onMaterial,
   onUnit,
   onRemove,
@@ -756,7 +754,6 @@ function SortableRecipeRow({
   comp: { cost: number; unitError?: boolean } | null;
   pending: boolean;
   onQty: (v: number) => void;
-  onShrink: (v: number) => void;
   onMaterial: (materialId: string) => void;
   onUnit: (unit: string | null) => void;
   onRemove: () => void;
@@ -848,15 +845,11 @@ function SortableRecipeRow({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-          Susut
-          <InlineNum
-            value={item.shrink_factor * 100}
-            onCommit={(v) => onShrink(v / 100)}
-            suffix="%"
-            width="w-16"
-          />
-        </label>
+        {material && material.shrink_factor > 0 && (
+          <span className="text-[10.5px] text-muted-foreground">
+            susut {Math.round(material.shrink_factor * 1000) / 10}%
+          </span>
+        )}
         <div className="ml-auto text-right text-[13px] tabular-nums font-semibold">
           {comp?.unitError ? (
             <span className="text-destructive text-[11px]">satuan ✗</span>

@@ -272,7 +272,7 @@ function MaterialRow({
         m.is_active ? "border-foreground" : "border-border opacity-70"
       }`}
     >
-      <div className="p-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 items-end">
+      <div className="p-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 items-end">
         <TextField label="Nama" value={m.name} onCommit={(v) => v && onField({ name: v })} />
         <TextField
           label="Kategori"
@@ -301,6 +301,13 @@ function MaterialRow({
           label="Satuan pakai"
           value={m.usage_unit}
           onCommit={(v) => onField({ usage_unit: v })}
+        />
+        <NumField
+          label="Susut"
+          value={m.shrink_factor * 100}
+          decimal
+          suffix="%"
+          onCommit={(v) => onField({ shrink_factor: Math.max(0, v) / 100 })}
         />
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
