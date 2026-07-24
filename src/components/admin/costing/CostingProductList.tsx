@@ -41,6 +41,7 @@ export function CostingProductList({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newYield, setNewYield] = useState("1");
+  const [newType, setNewType] = useState<"resep" | "paket_jasa">("resep");
 
   function selectBrand(bu: string) {
     router.push(`/admin/costing?bu=${encodeURIComponent(bu)}`);
@@ -66,6 +67,7 @@ export function CostingProductList({
         business_unit: activeBrand,
         name,
         yield_qty: yieldQty,
+        type: newType,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -180,6 +182,21 @@ export function CostingProductList({
               inputMode="decimal"
               className="h-9 rounded-lg border border-border bg-background px-2 text-sm tabular-nums"
             />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Tipe
+            </span>
+            <select
+              value={newType}
+              onChange={(e) =>
+                setNewType(e.target.value as "resep" | "paket_jasa")
+              }
+              className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
+            >
+              <option value="resep">Resep (bahan)</option>
+              <option value="paket_jasa">Paket jasa</option>
+            </select>
           </label>
           <button
             type="button"

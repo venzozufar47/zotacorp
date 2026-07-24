@@ -45,8 +45,12 @@ export interface UnitDef {
   to_base: number;
 }
 
+export type ProductType = "resep" | "paket_jasa";
+
 /** Field biaya + pricing sebuah produk (subset dari costing_products). */
 export interface ProductCostLite {
+  /** 'resep' (default) atau 'paket_jasa' (crew/transport/depresiasi). */
+  type?: ProductType;
   /** Jumlah hasil per batch (unit). Harus > 0. */
   yield_qty: number;
   /** TKL nominal per batch (rupiah) — dipakai saat labor_mode='nominal'. */
@@ -62,6 +66,10 @@ export interface ProductCostLite {
   overhead_percent: number;
   /** Rupiah — dipakai bila overhead_method='nominal'. */
   overhead_nominal: number;
+  /** Bucket jasa (dipakai bila type='paket_jasa'). Rupiah per batch/event. */
+  crew_fee?: number;
+  transport?: number;
+  depreciation_per_event?: number;
   price_method: PriceMethod;
   /** Fraksi target (0.40 = 40%). Margin atas harga jual, markup atas HPP. */
   target_percent: number;
@@ -109,6 +117,11 @@ export interface HppBreakdown {
   packaging: number;
   labor: number;
   overhead: number;
+  /** Total bucket jasa (crew+transport+depresiasi); 0 utk resep. */
+  serviceCost: number;
+  crewFee: number;
+  transport: number;
+  depreciation: number;
   hppBatch: number;
   /** HPP per unit (hppBatch / yield). */
   hppUnit: number;
@@ -180,7 +193,14 @@ export function computeHpp(
     cost.labor_mode === "hourly"
       ? cost.labor_rate * cost.labor_hours
       : cost.labor;
-  const hppBatch = totalMaterial + cost.packaging + labor + overhead;
+  // Bucket jasa hanya untuk paket_jasa.
+  const isJasa = cost.type === "paket_jasa";
+  const crewFee = isJasa ? cost.crew_fee ?? 0 : 0;
+  const transport = isJasa ? cost.transport ?? 0 : 0;
+  const depreciation = isJasa ? cost.depreciation_per_event ?? 0 : 0;
+  const serviceCost = crewFee + transport + depreciation;
+  const hppBatch =
+    totalMaterial + cost.packaging + labor + overhead + serviceCost;
 
   const base = {
     components,
@@ -188,6 +208,10 @@ export function computeHpp(
     packaging: cost.packaging,
     labor,
     overhead,
+    serviceCost,
+    crewFee,
+    transport,
+    depreciation,
     hppBatch,
   };
 

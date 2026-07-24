@@ -400,7 +400,13 @@ export function RecipeBuilder({
           </Card>
 
           {/* Resep */}
-          <Card title="Resep (bahan)">
+          <Card
+            title={
+              product.type === "paket_jasa"
+                ? "Consumable per event"
+                : "Resep (bahan)"
+            }
+          >
             {items.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">
                 Belum ada bahan. Tambahkan di bawah.
@@ -571,6 +577,39 @@ export function RecipeBuilder({
               </div>
             </div>
           </Card>
+
+          {/* Biaya jasa (hanya paket_jasa) */}
+          {product.type === "paket_jasa" && (
+            <Card title="Biaya jasa (per event)">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <NumField
+                  label="Fee crew"
+                  value={product.crew_fee}
+                  onCommit={(v) => commitProduct({ crew_fee: v })}
+                  money
+                />
+                <NumField
+                  label="Transport"
+                  value={product.transport}
+                  onCommit={(v) => commitProduct({ transport: v })}
+                  money
+                />
+                <NumField
+                  label="Depresiasi alat / event"
+                  value={product.depreciation_per_event}
+                  onCommit={(v) =>
+                    commitProduct({ depreciation_per_event: v })
+                  }
+                  money
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Consumable per event dimasukkan lewat “Resep” (mis. kertas
+                qty = per-cetak × jumlah cetak). Depresiasi = alokasi nominal
+                per event (mis. depresiasi bulanan ÷ estimasi jumlah event).
+              </p>
+            </Card>
+          )}
 
           {/* Pricing */}
           <Card title="Harga jual">
@@ -884,6 +923,13 @@ function BreakdownPanel({
         label={`Overhead${product.overhead_method === "persen" ? ` (${fmtPercent(product.overhead_percent)})` : ""}`}
         value={formatRp(b.overhead)}
       />
+      {product.type === "paket_jasa" && (
+        <>
+          <Row label="Fee crew" value={formatRp(b.crewFee)} />
+          <Row label="Transport" value={formatRp(b.transport)} />
+          <Row label="Depresiasi / event" value={formatRp(b.depreciation)} />
+        </>
+      )}
       <div className="border-t border-border my-1.5" />
       <Row label={`HPP / batch`} value={formatRp(b.hppBatch)} strong />
       <Row

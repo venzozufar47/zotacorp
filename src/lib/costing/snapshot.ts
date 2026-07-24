@@ -27,6 +27,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function toCostLite(p: Record<string, unknown>): ProductCostLite {
   return {
+    type: (p.type as "resep" | "paket_jasa") ?? "resep",
     yield_qty: num(p.yield_qty),
     labor: num(p.labor),
     labor_mode: (p.labor_mode as LaborMode) ?? "nominal",
@@ -36,6 +37,9 @@ function toCostLite(p: Record<string, unknown>): ProductCostLite {
     overhead_method: (p.overhead_method as OverheadMethod) ?? "persen",
     overhead_percent: num(p.overhead_percent),
     overhead_nominal: num(p.overhead_nominal),
+    crew_fee: num(p.crew_fee),
+    transport: num(p.transport),
+    depreciation_per_event: num(p.depreciation_per_event),
     price_method: (p.price_method as PriceMethod) ?? "margin",
     target_percent: num(p.target_percent),
     rounding_unit: num(p.rounding_unit),

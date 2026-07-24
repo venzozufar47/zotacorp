@@ -72,6 +72,9 @@ export interface CostingProduct {
   overhead_method: OverheadMethod;
   overhead_percent: number;
   overhead_nominal: number;
+  crew_fee: number;
+  transport: number;
+  depreciation_per_event: number;
   price_method: PriceMethod;
   target_percent: number;
   rounding_unit: number;
@@ -182,6 +185,9 @@ function mapProduct(r: Record<string, unknown>): CostingProduct {
     overhead_method: r.overhead_method as OverheadMethod,
     overhead_percent: num(r.overhead_percent),
     overhead_nominal: num(r.overhead_nominal),
+    crew_fee: num(r.crew_fee),
+    transport: num(r.transport),
+    depreciation_per_event: num(r.depreciation_per_event),
     price_method: r.price_method as PriceMethod,
     target_percent: num(r.target_percent),
     rounding_unit: num(r.rounding_unit),
@@ -520,6 +526,7 @@ export async function createProduct(input: {
   category?: string | null;
   yield_qty?: number;
   yield_unit?: string | null;
+  type?: "resep" | "paket_jasa";
 }): Promise<ActionResult<{ id: string }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -534,6 +541,7 @@ export async function createProduct(input: {
       business_unit: input.business_unit,
       name: input.name.trim(),
       category: input.category?.trim() || null,
+      type: input.type === "paket_jasa" ? "paket_jasa" : "resep",
       yield_qty: yieldQty,
       yield_unit: input.yield_unit?.trim() || null,
       created_by: gate.userId,
@@ -559,6 +567,9 @@ export async function updateProduct(input: {
   overhead_method?: OverheadMethod;
   overhead_percent?: number;
   overhead_nominal?: number;
+  crew_fee?: number;
+  transport?: number;
+  depreciation_per_event?: number;
   price_method?: PriceMethod;
   target_percent?: number;
   rounding_unit?: number;
@@ -597,6 +608,12 @@ export async function updateProduct(input: {
     return { ok: false, error: "Overhead % tidak valid" };
   if (setNum("overhead_nominal", input.overhead_nominal) === "invalid")
     return { ok: false, error: "Overhead nominal tidak valid" };
+  if (setNum("crew_fee", input.crew_fee) === "invalid")
+    return { ok: false, error: "Fee crew tidak valid" };
+  if (setNum("transport", input.transport) === "invalid")
+    return { ok: false, error: "Transport tidak valid" };
+  if (setNum("depreciation_per_event", input.depreciation_per_event) === "invalid")
+    return { ok: false, error: "Depresiasi tidak valid" };
   if (setNum("target_percent", input.target_percent) === "invalid")
     return { ok: false, error: "Target % tidak valid" };
   if (input.overhead_method !== undefined)
@@ -668,6 +685,9 @@ export async function duplicateProduct(
       overhead_method: src.overhead_method,
       overhead_percent: src.overhead_percent,
       overhead_nominal: src.overhead_nominal,
+      crew_fee: src.crew_fee,
+      transport: src.transport,
+      depreciation_per_event: src.depreciation_per_event,
       price_method: src.price_method,
       target_percent: src.target_percent,
       rounding_unit: src.rounding_unit,
