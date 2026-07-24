@@ -738,6 +738,26 @@ export async function addRecipeItem(input: {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+  // Cegah bahan brand lain masuk ke resep — kalau tidak, HPP di daftar/
+  // snapshot (materials di-scope per brand → 0) beda dgn panel dampak.
+  const [{ data: prodRow }, { data: matRow }] = await Promise.all([
+    supabase
+      .from("costing_products" as never)
+      .select("business_unit")
+      .eq("id", input.product_id)
+      .maybeSingle(),
+    supabase
+      .from("costing_materials" as never)
+      .select("business_unit")
+      .eq("id", input.material_id)
+      .maybeSingle(),
+  ]);
+  const prodBu = (prodRow as { business_unit?: string } | null)?.business_unit;
+  const matBu = (matRow as { business_unit?: string } | null)?.business_unit;
+  if (!prodBu) return { ok: false, error: "Produk tidak ditemukan" };
+  if (!matBu) return { ok: false, error: "Bahan tidak ditemukan" };
+  if (matBu !== prodBu)
+    return { ok: false, error: "Bahan bukan milik brand produk ini" };
   const { data: maxRow } = await supabase
     .from("costing_recipe_items" as never)
     .select("sort_order")
@@ -1147,6 +1167,33 @@ export async function listPosOptions(
   return { ok: true, data: options };
 }
 
+/** Brand (business_unit) + apakah punya varian aktif, untuk produk POS. */
+async function posProductInfo(
+  supabase: ReturnType<typeof adminClient>,
+  posProductId: string
+): Promise<{ brand: string | null; hasVariants: boolean } | null> {
+  const { data: p } = await supabase
+    .from("pos_products")
+    .select("bank_account_id")
+    .eq("id", posProductId)
+    .maybeSingle();
+  if (!p) return null;
+  const { data: ba } = await supabase
+    .from("bank_accounts")
+    .select("business_unit")
+    .eq("id", (p as { bank_account_id: string }).bank_account_id)
+    .maybeSingle();
+  const { count } = await supabase
+    .from("pos_product_variants")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", posProductId)
+    .eq("active", true);
+  return {
+    brand: (ba as { business_unit?: string } | null)?.business_unit ?? null,
+    hasVariants: (count ?? 0) > 0,
+  };
+}
+
 export async function setPosLink(input: {
   costingId: string;
   pos_product_id: string | null;
@@ -1155,6 +1202,34 @@ export async function setPosLink(input: {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+
+  // Validasi lintas-brand + varian↔produk. UI hanya menawarkan opsi
+  // se-brand, tapi action harus menolak id sembarang (integritas data).
+  if (input.pos_product_id) {
+    const { data: cp } = await supabase
+      .from("costing_products" as never)
+      .select("business_unit")
+      .eq("id", input.costingId)
+      .maybeSingle();
+    const cpBu = (cp as { business_unit?: string } | null)?.business_unit;
+    const info = await posProductInfo(supabase, input.pos_product_id);
+    if (!info) return { ok: false, error: "Produk POS tidak ditemukan" };
+    if (cpBu && info.brand && info.brand !== cpBu)
+      return { ok: false, error: "Produk POS beda brand" };
+    if (input.pos_variant_id) {
+      const { data: v } = await supabase
+        .from("pos_product_variants")
+        .select("product_id")
+        .eq("id", input.pos_variant_id)
+        .maybeSingle();
+      if (
+        !v ||
+        (v as { product_id: string }).product_id !== input.pos_product_id
+      )
+        return { ok: false, error: "Varian tidak cocok dengan produk POS" };
+    }
+  }
+
   const { error } = await supabase
     .from("costing_products" as never)
     .update({
@@ -1184,6 +1259,19 @@ export async function applyRecommendedPriceToPos(
   const product = mapProduct(prodRow as Record<string, unknown>);
   if (!product.pos_product_id)
     return { ok: false, error: "Produk belum ditautkan ke POS" };
+
+  // Link level-produk padahal produk POS punya varian → harga produk
+  // diabaikan POS. Tolak (jangan "sukses" menyesatkan) — minta tautkan
+  // ke varian tertentu.
+  if (!product.pos_variant_id) {
+    const info = await posProductInfo(supabase, product.pos_product_id);
+    if (info?.hasVariants)
+      return {
+        ok: false,
+        error:
+          "Produk POS punya varian — tautkan ke varian tertentu, bukan level produk.",
+      };
+  }
 
   // Hitung finalPrice terkini.
   const [{ data: itemRows }, { data: matRows }] = await Promise.all([
