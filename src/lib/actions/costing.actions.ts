@@ -6,14 +6,20 @@ import { requireAdmin, type ActionResult } from "./_gates";
 import { runHppSnapshotCapture } from "@/lib/costing/snapshot";
 import { updatePosProduct, updatePosProductVariant } from "./pos.actions";
 import {
-  computeHpp,
-  type CostingMaterialLite,
+  num,
+  mapMaterial,
+  mapProduct,
+  mapItem,
+  breakdownFor,
+  loadBrandCosting,
+  computeAll,
+} from "@/lib/costing/rows";
+import {
   type HppBreakdown,
   type LaborMode,
   type OverheadMethod,
   type PriceMethod,
   type RoundingMode,
-  type UnitDef,
 } from "@/lib/costing/calc";
 
 /**
@@ -99,38 +105,6 @@ export interface CostingProductWithHpp {
   breakdown: HppBreakdown;
 }
 
-// ── Koersi baris mentah (numeric → number) ─────────────────────────────
-function num(v: unknown): number {
-  return typeof v === "number" ? v : Number(v ?? 0);
-}
-
-function mapMaterial(r: Record<string, unknown>): CostingMaterial {
-  return {
-    id: r.id as string,
-    business_unit: r.business_unit as string,
-    name: r.name as string,
-    category: (r.category as string | null) ?? null,
-    purchase_unit: r.purchase_unit as string,
-    purchase_price: num(r.purchase_price),
-    content_per_purchase: num(r.content_per_purchase),
-    usage_unit: r.usage_unit as string,
-    price_updated_at: r.price_updated_at as string,
-    is_active: r.is_active as boolean,
-  };
-}
-
-function mapItem(r: Record<string, unknown>): CostingRecipeItem {
-  return {
-    id: r.id as string,
-    product_id: r.product_id as string,
-    material_id: r.material_id as string,
-    qty: num(r.qty),
-    shrink_factor: num(r.shrink_factor),
-    sort_order: num(r.sort_order),
-    unit: (r.unit as string | null) ?? null,
-  };
-}
-
 /** Semua satuan konversi. Digunakan client (picker) & server (hitung). */
 export async function listUnits(): Promise<ActionResult<CostingUnit[]>> {
   const gate = await requireAdmin();
@@ -151,80 +125,6 @@ export async function listUnits(): Promise<ActionResult<CostingUnit[]>> {
       to_base: num(r.to_base),
     })),
   };
-}
-
-async function fetchUnitsMap(
-  supabase: ReturnType<typeof adminClient>
-): Promise<Map<string, UnitDef>> {
-  const { data } = await supabase
-    .from("costing_units" as never)
-    .select("code, dimension, to_base");
-  const m = new Map<string, UnitDef>();
-  for (const r of (data ?? []) as Record<string, unknown>[])
-    m.set(r.code as string, {
-      dimension: r.dimension as "mass" | "volume" | "count",
-      to_base: num(r.to_base),
-    });
-  return m;
-}
-
-function mapProduct(r: Record<string, unknown>): CostingProduct {
-  return {
-    id: r.id as string,
-    business_unit: r.business_unit as string,
-    name: r.name as string,
-    category: (r.category as string | null) ?? null,
-    type: r.type as "resep" | "paket_jasa",
-    yield_qty: num(r.yield_qty),
-    yield_unit: (r.yield_unit as string | null) ?? null,
-    labor: num(r.labor),
-    labor_mode: (r.labor_mode as LaborMode) ?? "nominal",
-    labor_rate: num(r.labor_rate),
-    labor_hours: num(r.labor_hours),
-    packaging: num(r.packaging),
-    overhead_method: r.overhead_method as OverheadMethod,
-    overhead_percent: num(r.overhead_percent),
-    overhead_nominal: num(r.overhead_nominal),
-    crew_fee: num(r.crew_fee),
-    transport: num(r.transport),
-    depreciation_per_event: num(r.depreciation_per_event),
-    price_method: r.price_method as PriceMethod,
-    target_percent: num(r.target_percent),
-    rounding_unit: num(r.rounding_unit),
-    rounding_mode: r.rounding_mode as RoundingMode,
-    is_active: r.is_active as boolean,
-    pos_product_id: (r.pos_product_id as string | null) ?? null,
-    pos_variant_id: (r.pos_variant_id as string | null) ?? null,
-  };
-}
-
-function toLite(m: CostingMaterial): CostingMaterialLite {
-  return {
-    id: m.id,
-    name: m.name,
-    purchase_price: m.purchase_price,
-    content_per_purchase: m.content_per_purchase,
-    usage_unit: m.usage_unit,
-  };
-}
-
-function breakdownFor(
-  product: CostingProduct,
-  items: CostingRecipeItem[],
-  materialsById: Map<string, CostingMaterialLite>,
-  unitsByCode?: Map<string, UnitDef>
-): HppBreakdown {
-  return computeHpp(
-    items.map((it) => ({
-      material_id: it.material_id,
-      qty: it.qty,
-      shrink_factor: it.shrink_factor,
-      unit: it.unit,
-    })),
-    product,
-    materialsById,
-    unitsByCode
-  );
 }
 
 // ═══════════════════════════════ Bahan ═══════════════════════════════
@@ -448,50 +348,10 @@ export async function listProductsWithHpp(
 ): Promise<ActionResult<CostingProductWithHpp[]>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  const supabase = adminClient();
-
-  let pq = supabase
-    .from("costing_products" as never)
-    .select("*")
-    .order("name", { ascending: true });
-  if (businessUnit) pq = pq.eq("business_unit", businessUnit);
-  const [{ data: prodRows, error: pErr }, matsRes, unitsByCode] =
-    await Promise.all([pq, listMaterials(businessUnit), fetchUnitsMap(supabase)]);
-  if (pErr) return { ok: false, error: pErr.message };
-  if (!matsRes.ok) return matsRes;
-  const products = ((prodRows ?? []) as Record<string, unknown>[]).map(mapProduct);
-  const materialsById = new Map(
-    (matsRes.data ?? []).map((m) => [m.id, toLite(m)])
-  );
-
-  const productIds = products.map((p) => p.id);
-  const itemsByProduct = new Map<string, CostingRecipeItem[]>();
-  if (productIds.length > 0) {
-    const { data: itemRows, error: iErr } = await supabase
-      .from("costing_recipe_items" as never)
-      .select("*")
-      .in("product_id", productIds)
-      .order("sort_order", { ascending: true });
-    if (iErr) return { ok: false, error: iErr.message };
-    for (const r of (itemRows ?? []) as Record<string, unknown>[]) {
-      const it = mapItem(r);
-      const arr = itemsByProduct.get(it.product_id) ?? [];
-      arr.push(it);
-      itemsByProduct.set(it.product_id, arr);
-    }
-  }
-
-  return {
-    ok: true,
-    data: products.map((product) => {
-      const items = itemsByProduct.get(product.id) ?? [];
-      return {
-        product,
-        items,
-        breakdown: breakdownFor(product, items, materialsById, unitsByCode),
-      };
-    }),
-  };
+  // Semua pemanggil menyediakan brand; tanpa brand → kosong.
+  if (!businessUnit) return { ok: true, data: [] };
+  const loaded = await loadBrandCosting(adminClient(), { businessUnit });
+  return { ok: true, data: computeAll(loaded) };
 }
 
 export async function getProduct(
@@ -742,31 +602,33 @@ export async function addRecipeItem(input: {
   const supabase = adminClient();
   // Cegah bahan brand lain masuk ke resep — kalau tidak, HPP di daftar/
   // snapshot (materials di-scope per brand → 0) beda dgn panel dampak.
-  const [{ data: prodRow }, { data: matRow }] = await Promise.all([
-    supabase
-      .from("costing_products" as never)
-      .select("business_unit")
-      .eq("id", input.product_id)
-      .maybeSingle(),
-    supabase
-      .from("costing_materials" as never)
-      .select("business_unit")
-      .eq("id", input.material_id)
-      .maybeSingle(),
-  ]);
+  // Guard + max-sort-order semuanya independen → satu Promise.all.
+  const [{ data: prodRow }, { data: matRow }, { data: maxRow }] =
+    await Promise.all([
+      supabase
+        .from("costing_products" as never)
+        .select("business_unit")
+        .eq("id", input.product_id)
+        .maybeSingle(),
+      supabase
+        .from("costing_materials" as never)
+        .select("business_unit")
+        .eq("id", input.material_id)
+        .maybeSingle(),
+      supabase
+        .from("costing_recipe_items" as never)
+        .select("sort_order")
+        .eq("product_id", input.product_id)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
   const prodBu = (prodRow as { business_unit?: string } | null)?.business_unit;
   const matBu = (matRow as { business_unit?: string } | null)?.business_unit;
   if (!prodBu) return { ok: false, error: "Produk tidak ditemukan" };
   if (!matBu) return { ok: false, error: "Bahan tidak ditemukan" };
   if (matBu !== prodBu)
     return { ok: false, error: "Bahan bukan milik brand produk ini" };
-  const { data: maxRow } = await supabase
-    .from("costing_recipe_items" as never)
-    .select("sort_order")
-    .eq("product_id", input.product_id)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
   const nextOrder =
     (maxRow ? num((maxRow as { sort_order: unknown }).sort_order) : -1) + 1;
   const { data, error } = await supabase
@@ -813,19 +675,21 @@ export async function updateRecipeItem(input: {
   if (input.material_id !== undefined) {
     // Cegah ganti ke bahan brand lain: bandingkan business_unit produk
     // (via recipe item) dengan business_unit bahan target.
-    const { data: joined } = await supabase
-      .from("costing_recipe_items" as never)
-      .select("product:costing_products!inner(business_unit)")
-      .eq("id", input.id)
-      .maybeSingle();
+    const [{ data: joined }, { data: mat }] = await Promise.all([
+      supabase
+        .from("costing_recipe_items" as never)
+        .select("product:costing_products!inner(business_unit)")
+        .eq("id", input.id)
+        .maybeSingle(),
+      supabase
+        .from("costing_materials" as never)
+        .select("business_unit")
+        .eq("id", input.material_id)
+        .maybeSingle(),
+    ]);
     const prodBu = (
       joined as { product?: { business_unit?: string } } | null
     )?.product?.business_unit;
-    const { data: mat } = await supabase
-      .from("costing_materials" as never)
-      .select("business_unit")
-      .eq("id", input.material_id)
-      .maybeSingle();
     const matBu = (mat as { business_unit?: string } | null)?.business_unit;
     if (!matBu) return { ok: false, error: "Bahan tidak ditemukan" };
     if (prodBu && matBu !== prodBu)
@@ -887,69 +751,21 @@ export async function listProductsUsingMaterial(
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
 
-  const { data: refRows, error: rErr } = await supabase
-    .from("costing_recipe_items" as never)
-    .select("product_id")
-    .eq("material_id", materialId);
-  if (rErr) return { ok: false, error: rErr.message };
-  const productIds = Array.from(
-    new Set(
-      ((refRows ?? []) as Record<string, unknown>[]).map(
-        (r) => r.product_id as string
-      )
-    )
-  );
-  if (productIds.length === 0) return { ok: true, data: [] };
-
-  const { data: prodRows, error: pErr } = await supabase
-    .from("costing_products" as never)
-    .select("*")
-    .in("id", productIds);
-  if (pErr) return { ok: false, error: pErr.message };
-  const products = ((prodRows ?? []) as Record<string, unknown>[]).map(mapProduct);
-
-  const { data: itemRows, error: iErr } = await supabase
-    .from("costing_recipe_items" as never)
-    .select("*")
-    .in("product_id", productIds)
-    .order("sort_order", { ascending: true });
-  if (iErr) return { ok: false, error: iErr.message };
-  const items = ((itemRows ?? []) as Record<string, unknown>[]).map(mapItem);
-  const itemsByProduct = new Map<string, CostingRecipeItem[]>();
-  for (const it of items) {
-    const arr = itemsByProduct.get(it.product_id) ?? [];
-    arr.push(it);
-    itemsByProduct.set(it.product_id, arr);
-  }
-
-  // Bahan yang dibutuhkan semua produk terdampak (untuk hitung HPP).
-  const materialIds = Array.from(new Set(items.map((it) => it.material_id)));
-  const { data: matRows, error: mErr } = await supabase
+  // Bahan brand-scoped + resep se-brand (invariant dijaga) → semua produk
+  // yang memakainya berada di brand yang sama. Muat brand itu, filter.
+  const { data: matRow } = await supabase
     .from("costing_materials" as never)
-    .select("*")
-    .in("id", materialIds);
-  if (mErr) return { ok: false, error: mErr.message };
-  const materialsById = new Map(
-    ((matRows ?? []) as Record<string, unknown>[]).map((r) => {
-      const m = mapMaterial(r);
-      return [m.id, toLite(m)];
-    })
-  );
-  const unitsByCode = await fetchUnitsMap(supabase);
+    .select("business_unit")
+    .eq("id", materialId)
+    .maybeSingle();
+  const bu = (matRow as { business_unit?: string } | null)?.business_unit;
+  if (!bu) return { ok: true, data: [] };
 
-  return {
-    ok: true,
-    data: products
-      .map((product) => {
-        const its = itemsByProduct.get(product.id) ?? [];
-        return {
-          product,
-          items: its,
-          breakdown: breakdownFor(product, its, materialsById, unitsByCode),
-        };
-      })
-      .sort((a, b) => a.product.name.localeCompare(b.product.name)),
-  };
+  const loaded = await loadBrandCosting(supabase, { businessUnit: bu });
+  const rows = computeAll(loaded)
+    .filter((r) => r.items.some((it) => it.material_id === materialId))
+    .sort((a, b) => a.product.name.localeCompare(b.product.name));
+  return { ok: true, data: rows };
 }
 
 // ═══════════════════════ Snapshot HPP (tren B2) ══════════════════════
@@ -1005,24 +821,26 @@ export async function getCostingDashboard(
 ): Promise<ActionResult<CostingDashboard>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  const listRes = await listProductsWithHpp(businessUnit);
+  const supabase = adminClient();
+
+  // Snapshot difilter by business_unit → bisa diambil PARALEL dgn daftar
+  // produk (tak perlu tunggu ids). Snapshot terakhir per produk dipakai
+  // deteksi kenaikan HPP.
+  const [listRes, { data: snapRows }] = await Promise.all([
+    listProductsWithHpp(businessUnit),
+    supabase
+      .from("costing_hpp_snapshot" as never)
+      .select("product_id, hpp_unit, snapshot_date")
+      .eq("business_unit", businessUnit)
+      .order("snapshot_date", { ascending: false }),
+  ]);
   if (!listRes.ok) return listRes;
   const list = listRes.data ?? [];
 
-  // Snapshot terakhir per produk untuk deteksi kenaikan HPP.
-  const supabase = adminClient();
-  const ids = list.map((r) => r.product.id);
   const latestByProduct = new Map<string, number>();
-  if (ids.length > 0) {
-    const { data } = await supabase
-      .from("costing_hpp_snapshot" as never)
-      .select("product_id, hpp_unit, snapshot_date")
-      .in("product_id", ids)
-      .order("snapshot_date", { ascending: false });
-    for (const r of (data ?? []) as Record<string, unknown>[]) {
-      const pid = r.product_id as string;
-      if (!latestByProduct.has(pid)) latestByProduct.set(pid, num(r.hpp_unit));
-    }
+  for (const r of (snapRows ?? []) as Record<string, unknown>[]) {
+    const pid = r.product_id as string;
+    if (!latestByProduct.has(pid)) latestByProduct.set(pid, num(r.hpp_unit));
   }
 
   const rows: CostingDashboardRow[] = list.map((r) => {
@@ -1180,16 +998,19 @@ async function posProductInfo(
     .eq("id", posProductId)
     .maybeSingle();
   if (!p) return null;
-  const { data: ba } = await supabase
-    .from("bank_accounts")
-    .select("business_unit")
-    .eq("id", (p as { bank_account_id: string }).bank_account_id)
-    .maybeSingle();
-  const { count } = await supabase
-    .from("pos_product_variants")
-    .select("id", { count: "exact", head: true })
-    .eq("product_id", posProductId)
-    .eq("active", true);
+  // Brand-lookup & variant-count independen → paralel.
+  const [{ data: ba }, { count }] = await Promise.all([
+    supabase
+      .from("bank_accounts")
+      .select("business_unit")
+      .eq("id", (p as { bank_account_id: string }).bank_account_id)
+      .maybeSingle(),
+    supabase
+      .from("pos_product_variants")
+      .select("id", { count: "exact", head: true })
+      .eq("product_id", posProductId)
+      .eq("active", true),
+  ]);
   return {
     brand: (ba as { business_unit?: string } | null)?.business_unit ?? null,
     hasVariants: (count ?? 0) > 0,
@@ -1275,34 +1096,16 @@ export async function applyRecommendedPriceToPos(
       };
   }
 
-  // Hitung finalPrice terkini.
-  const [{ data: itemRows }, { data: matRows }] = await Promise.all([
-    supabase
-      .from("costing_recipe_items" as never)
-      .select("material_id, qty, shrink_factor, unit")
-      .eq("product_id", costingId),
-    supabase
-      .from("costing_materials" as never)
-      .select("*")
-      .eq("business_unit", product.business_unit),
-  ]);
-  const materialsById = new Map(
-    ((matRows ?? []) as Record<string, unknown>[]).map((r) => {
-      const m = mapMaterial(r);
-      return [m.id, toLite(m)] as const;
-    })
-  );
-  const unitsByCode = await fetchUnitsMap(supabase);
-  const breakdown = computeHpp(
-    ((itemRows ?? []) as Record<string, unknown>[]).map((r) => ({
-      material_id: r.material_id as string,
-      qty: num(r.qty),
-      shrink_factor: num(r.shrink_factor),
-      unit: (r.unit as string | null) ?? null,
-    })),
+  // Hitung finalPrice terkini via engine bersama (satu sumber).
+  const loaded = await loadBrandCosting(supabase, {
+    businessUnit: product.business_unit,
+  });
+  const items = loaded.itemsByProduct.get(costingId) ?? [];
+  const breakdown = breakdownFor(
     product,
-    materialsById,
-    unitsByCode
+    items,
+    loaded.materialsById,
+    loaded.unitsByCode
   );
   if (breakdown.finalPrice == null)
     return { ok: false, error: "Harga rekomendasi tidak valid (cek margin/yield)" };

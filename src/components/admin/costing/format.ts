@@ -8,13 +8,10 @@ export function fmtPercent(fraction: number, decimals = 1): string {
   return `${s}%`;
 }
 
-/** "Rp 12,5" untuk harga per satuan pakai yang bisa < 1 rupiah/pecahan. */
+import { formatIDR } from "@/lib/cashflow/format";
+
+/** "Rp 12,5" untuk harga per satuan pakai yang bisa < 1 rupiah/pecahan.
+ *  Delegasi ke formatter cashflow bersama (satu sumber). */
 export function fmtRpPrecise(n: number): string {
-  return (
-    "Rp " +
-    n.toLocaleString("id-ID", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    })
-  );
+  return formatIDR(n, { withRp: true, decimals: 2 });
 }

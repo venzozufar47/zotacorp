@@ -82,9 +82,6 @@ export function RecipeBuilder({
   const [pending, startTransition] = useTransition();
   const [addMaterialId, setAddMaterialId] = useState("");
   const [addQty, setAddQty] = useState("");
-  // Nama yang sudah tersimpan — dipakai untuk deteksi perubahan + revert
-  // kalau field dikosongkan.
-  const [savedName, setSavedName] = useState(initialProduct.name);
   const [snapshots, setSnapshots] = useState<CostingSnapshot[]>([]);
   const [opts, setOpts] = useState(posOptions);
 
@@ -232,21 +229,6 @@ export function RecipeBuilder({
       }
     });
   }
-  // Nama produk: input terikat langsung ke state (bukan draft), jadi
-  // rollback butuh nilai tersimpan (savedName), dan savedName hanya maju
-  // saat sukses.
-  function commitName(v: string) {
-    setProduct((p) => ({ ...p, name: v }));
-    startTransition(async () => {
-      const res = await updateProduct({ id: product.id, name: v });
-      if (!res.ok) {
-        toast.error(res.error);
-        setProduct((p) => ({ ...p, name: savedName }));
-      } else {
-        setSavedName(v);
-      }
-    });
-  }
   function commitItem(id: string, patch: Partial<CostingRecipeItem>) {
     const prevItem = items.find((x) => x.id === id);
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
@@ -323,18 +305,17 @@ export function RecipeBuilder({
         >
           <ArrowLeft size={13} /> Semua produk
         </Link>
-        <input
+        {/* TextField menangani draft + commit-on-blur + auto-revert
+            kalau tak berubah. Nama kosong ditolak di sini (bukan commit),
+            jadi field otomatis balik ke value lama. */}
+        <TextField
           value={product.name}
-          onChange={(e) => setProduct({ ...product, name: e.target.value })}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
+          onCommit={(v) => {
             if (!v) {
-              // Nama kosong tidak valid → kembalikan ke yang tersimpan.
-              setProduct((p) => ({ ...p, name: savedName }));
+              toast.error("Nama produk wajib diisi");
               return;
             }
-            if (v === savedName) return;
-            commitName(v);
+            commitProduct({ name: v });
           }}
           className="font-display text-2xl md:text-3xl font-extrabold tracking-tight bg-transparent border-b-2 border-transparent focus:border-foreground outline-none w-full"
         />
@@ -662,7 +643,7 @@ export function RecipeBuilder({
 
           {/* Tautan POS + banding rekomendasi vs aktual (C2) */}
           <Card title="Tautan POS">
-            {posOptions.length === 0 ? (
+            {opts.length === 0 ? (
               <p className="text-[12px] text-muted-foreground">
                 Belum ada produk POS untuk brand ini. (Integrasi cake belum
                 didukung — harga cake berupa matrix.)

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useRunAction } from "@/components/admin/cleaning/useRunAction";
 import {
   Plus,
   Copy,
@@ -36,8 +36,7 @@ export function CostingProductList({
   activeBrand: string | null;
   rows: CostingProductWithHpp[];
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { run, pending, startTransition, router } = useRunAction();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newYield, setNewYield] = useState("1");
@@ -77,17 +76,6 @@ export function CostingProductList({
     });
   }
 
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>, ok: string) {
-    startTransition(async () => {
-      const res = await fn();
-      if (!res.ok) {
-        toast.error(res.error ?? "Gagal");
-        return;
-      }
-      toast.success(ok);
-      router.refresh();
-    });
-  }
 
   if (brands.length === 0) {
     return (

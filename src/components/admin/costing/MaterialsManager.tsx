@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useRunAction } from "@/components/admin/cleaning/useRunAction";
 import { ArrowLeft, Plus, Trash2, AlertTriangle, History } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
@@ -31,8 +31,7 @@ export function MaterialsManager({
   activeBrand: string | null;
   rows: CostingMaterial[];
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { run, pending, startTransition, router } = useRunAction();
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Form tambah bahan.
@@ -45,18 +44,6 @@ export function MaterialsManager({
 
   function selectBrand(bu: string) {
     router.push(`/admin/costing/bahan?bu=${encodeURIComponent(bu)}`);
-  }
-
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>, ok?: string) {
-    startTransition(async () => {
-      const res = await fn();
-      if (!res.ok) {
-        toast.error(res.error ?? "Gagal");
-        return;
-      }
-      if (ok) toast.success(ok);
-      router.refresh();
-    });
   }
 
   function addMaterial() {
