@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
+import { costingBrands } from "@/lib/costing/brands";
 import { listProductsWithHpp } from "@/lib/actions/costing.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { CostingProductList } from "@/components/admin/costing/CostingProductList";
@@ -23,7 +24,7 @@ export default async function AdminCostingPage({
 
   const { bu } = await searchParams;
   const units = await listBusinessUnits();
-  const brands = units.map((u) => u.name);
+  const brands = costingBrands(units.map((u) => u.name));
   const activeBrand = bu && brands.includes(bu) ? bu : brands[0];
 
   const res = activeBrand ? await listProductsWithHpp(activeBrand) : null;
