@@ -507,22 +507,39 @@ export async function getStockOpname(
   };
 }
 
-export async function createStockMovement(input: {
-  bankAccountId: string;
+/** Satu baris SKU dalam batch produksi/penarikan. */
+export interface StockMovementLine {
   productId: string;
   variantId?: string | null;
-  type: StockMovementType;
   qty: number;
+}
+
+/**
+ * Catat produksi/penarikan untuk satu ATAU banyak SKU sekaligus — satu
+ * submit, satu verifikasi PIN. Dipakai dialog Produksi/Penarikan di POS
+ * supaya kasir tak perlu buka modal berulang untuk tiap produk.
+ *
+ * Validasi dilakukan untuk SEMUA baris lebih dulu; kalau ada satu saja
+ * yang tidak valid, tidak ada baris yang ditulis (all-or-nothing pada
+ * tahap validasi). Insert-nya sendiri satu batch.
+ */
+export async function createStockMovements(input: {
+  bankAccountId: string;
+  type: StockMovementType;
+  lines: StockMovementLine[];
   notes?: string;
-  /** Authorizer's PIN. Required when the rekening has the relevant
-   *  authorizer assigned (production_authorizer_id /
-   *  withdrawal_authorizer_id). Ignored when authorizer is null. */
+  /** PIN authorizer — diverifikasi SEKALI untuk seluruh batch. */
   pin?: string;
-}): Promise<ActionResult<{ id: string }>> {
+}): Promise<ActionResult<{ count: number }>> {
   const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
-  if (!Number.isInteger(input.qty) || input.qty <= 0)
-    return { ok: false, error: "Qty harus bilangan bulat > 0" };
+  if (!Array.isArray(input.lines) || input.lines.length === 0)
+    return { ok: false, error: "Minimal 1 produk" };
+  for (const l of input.lines) {
+    if (!Number.isInteger(l.qty) || l.qty <= 0)
+      return { ok: false, error: "Qty harus bilangan bulat > 0" };
+  }
+
   const auth = await verifyAuthorization(
     input.bankAccountId,
     input.type,
@@ -530,37 +547,53 @@ export async function createStockMovement(input: {
   );
   if (!auth.ok) return { ok: false, error: auth.error };
 
-  const now = new Date();
   const supabase = await createClient();
-  // Aggregate mode: paksa variant_id=null meskipun caller kirim variant —
-  // produksi/penarikan memang di-track di level produk.
-  const { data: product } = await supabase
+
+  // Ambil metadata semua produk sekali jalan (hindari N query).
+  const productIds = [...new Set(input.lines.map((l) => l.productId))];
+  const { data: products } = await supabase
     .from("pos_products")
-    .select("stock_aggregate_variants, track_stock")
-    .eq("id", input.productId)
-    .maybeSingle();
-  if (!product) return { ok: false, error: "Produk tidak ditemukan" };
-  if (!product.track_stock)
-    return { ok: false, error: "Produk tidak dihitung di sistem stok" };
-  const variantId = product.stock_aggregate_variants ? null : input.variantId ?? null;
+    .select("id, name, stock_aggregate_variants, track_stock")
+    .in("id", productIds);
+  const byId = new Map((products ?? []).map((p) => [p.id, p]));
+
+  for (const id of productIds) {
+    const p = byId.get(id);
+    if (!p) return { ok: false, error: "Produk tidak ditemukan" };
+    if (!p.track_stock)
+      return {
+        ok: false,
+        error: `${p.name} tidak dihitung di sistem stok`,
+      };
+  }
+
+  const now = new Date();
+  const movementDate = jakartaDateString(now);
+  const movementTime = jakartaHHMM(now);
+  const notes = input.notes?.trim() || null;
+
+  const rows = input.lines.map((l) => ({
+    bank_account_id: input.bankAccountId,
+    product_id: l.productId,
+    // Aggregate mode: paksa variant_id=null — sama seperti versi single.
+    variant_id: byId.get(l.productId)?.stock_aggregate_variants
+      ? null
+      : l.variantId ?? null,
+    type: input.type,
+    qty: l.qty,
+    notes,
+    movement_date: movementDate,
+    movement_time: movementTime,
+    created_by: gate.userId,
+  }));
+
   const { data, error } = await supabase
     .from("pos_stock_movements")
-    .insert({
-      bank_account_id: input.bankAccountId,
-      product_id: input.productId,
-      variant_id: variantId,
-      type: input.type,
-      qty: input.qty,
-      notes: input.notes?.trim() || null,
-      movement_date: jakartaDateString(now),
-      movement_time: jakartaHHMM(now),
-      created_by: gate.userId,
-    })
-    .select("id")
-    .single();
-  if (error || !data) return { ok: false, error: error?.message ?? "Gagal" };
+    .insert(rows)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
   revalidatePath("/pos", "layout");
-  return { ok: true, data: { id: data.id } };
+  return { ok: true, data: { count: data?.length ?? rows.length } };
 }
 
 /**
