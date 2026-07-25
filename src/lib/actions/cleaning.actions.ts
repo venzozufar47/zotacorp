@@ -1700,6 +1700,122 @@ export async function getCleaningMonitor(input?: {
 }
 
 // ---------------------------------------------------------------------------
+// Admin: photo review (browse past evidence)
+// ---------------------------------------------------------------------------
+
+export interface PhotoHistoryRow {
+  completion_id: string;
+  date: string;
+  completed_at: string;
+  user_name: string;
+  checklist_name: string;
+  item_title: string;
+  /** Which photo slot this was, e.g. "Kloset — bersih…". */
+  label: string | null;
+  /** Signed URL, or null when the image is gone (retention or missing file). */
+  url: string | null;
+  /** True when the image was deleted by the 90-day retention sweep. */
+  purged: boolean;
+}
+
+/**
+ * Past cleaning evidence for admin review, newest first.
+ *
+ * The monitor answers "was today done?"; this answers "show me what the photos
+ * actually looked like over the last N days" — the thing you need when a guest
+ * complains about a room that was reported clean all week.
+ *
+ * URLs are minted in ONE batch call (createSignedUrls) rather than per
+ * thumbnail: a 60-photo grid would otherwise be 60 round trips. Expiry is 30
+ * minutes — long enough to browse, short enough that a copied URL dies quickly.
+ */
+export async function getCleaningPhotoHistory(input: {
+  from: string;
+  to: string;
+  checklist_id?: string | null;
+  user_id?: string | null;
+  limit?: number;
+  offset?: number;
+}): Promise<{ rows: PhotoHistoryRow[]; hasMore: boolean } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+
+  const limit = Math.min(Math.max(input.limit ?? 60, 1), 200);
+  const offset = Math.max(input.offset ?? 0, 0);
+  const supabase = await createClient();
+
+  let q = supabase
+    .from("cleaning_task_completions")
+    .select(
+      "id, date, completed_at, photo_path, photo_purged_at, user_id, photo_req_id, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles(full_name)"
+    )
+    .gte("date", input.from)
+    .lte("date", input.to)
+    // A checkbox item (never had a photo) is not evidence to review.
+    .or("photo_path.not.is.null,photo_purged_at.not.is.null")
+    .order("date", { ascending: false })
+    .order("completed_at", { ascending: false })
+    .range(offset, offset + limit); // +1 row to detect "more"
+
+  if (input.checklist_id) q = q.eq("item.checklist_id", input.checklist_id);
+  if (input.user_id) q = q.eq("user_id", input.user_id);
+
+  const { data, error } = await q;
+  if (error) return { error: error.message };
+
+  const all = data ?? [];
+  const hasMore = all.length > limit;
+  const page = hasMore ? all.slice(0, limit) : all;
+
+  // Slot labels come from a separate table; fetch the ones this page needs.
+  const slotIds = [
+    ...new Set(page.map((r) => r.photo_req_id).filter((v): v is string => !!v)),
+  ];
+  const labelById = new Map<string, string | null>();
+  if (slotIds.length) {
+    const { data: slots } = await supabase
+      .from("cleaning_item_photos")
+      .select("id, label")
+      .in("id", slotIds);
+    for (const s of slots ?? []) labelById.set(s.id, s.label);
+  }
+
+  const paths = page
+    .map((r) => r.photo_path)
+    .filter((p): p is string => !!p);
+  const urlByPath = new Map<string, string>();
+  if (paths.length) {
+    const { data: signed } = await supabase.storage
+      .from("cleaning-photos")
+      .createSignedUrls(paths, 1800);
+    for (const s of signed ?? []) {
+      if (s.signedUrl && s.path) urlByPath.set(s.path, s.signedUrl);
+    }
+  }
+
+  const rows: PhotoHistoryRow[] = page.map((r) => {
+    const item = r.item as unknown as {
+      title?: string;
+      checklist?: { name?: string } | null;
+    } | null;
+    const profile = r.profile as unknown as { full_name?: string } | null;
+    return {
+      completion_id: r.id,
+      date: r.date,
+      completed_at: r.completed_at,
+      user_name: profile?.full_name ?? "—",
+      checklist_name: item?.checklist?.name ?? "—",
+      item_title: item?.title ?? "—",
+      label: r.photo_req_id ? labelById.get(r.photo_req_id) ?? null : null,
+      url: r.photo_path ? urlByPath.get(r.photo_path) ?? null : null,
+      purged: !r.photo_path && !!r.photo_purged_at,
+    };
+  });
+
+  return { rows, hasMore };
+}
+
+// ---------------------------------------------------------------------------
 // Admin: branch duty — a checklist that belongs to a place, not a person
 // ---------------------------------------------------------------------------
 

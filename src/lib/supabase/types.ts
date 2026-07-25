@@ -1914,6 +1914,7 @@ export type Database = {
           longitude: number | null
           note: string | null
           photo_path: string | null
+          photo_purged_at: string | null
           photo_req_id: string | null
           user_id: string
         }
@@ -1928,6 +1929,7 @@ export type Database = {
           longitude?: number | null
           note?: string | null
           photo_path?: string | null
+          photo_purged_at?: string | null
           photo_req_id?: string | null
           user_id: string
         }
@@ -1942,6 +1944,7 @@ export type Database = {
           longitude?: number | null
           note?: string | null
           photo_path?: string | null
+          photo_purged_at?: string | null
           photo_req_id?: string | null
           user_id?: string
         }

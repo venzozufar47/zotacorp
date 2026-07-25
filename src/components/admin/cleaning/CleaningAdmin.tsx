@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ListChecks, UserCheck, BarChart3, MapPin } from "lucide-react";
+import { ListChecks, UserCheck, BarChart3, MapPin, Images } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChecklistManager } from "./ChecklistManager";
 import { AssignmentManager } from "./AssignmentManager";
 import { BranchDutyManager } from "./BranchDutyManager";
+import { PhotoReviewGallery } from "./PhotoReviewGallery";
 import { CleaningMonitor } from "./CleaningMonitor";
 import type {
   CleaningChecklist,
@@ -22,10 +23,11 @@ export interface CleaningEmployee {
   business_unit: string | null;
 }
 
-type Tab = "monitor" | "checklists" | "branch" | "assignments";
+type Tab = "monitor" | "review" | "checklists" | "branch" | "assignments";
 
 const TABS: { key: Tab; label: string; icon: typeof ListChecks }[] = [
   { key: "monitor", label: "Monitoring", icon: BarChart3 },
+  { key: "review", label: "Review Foto", icon: Images },
   { key: "checklists", label: "Checklist", icon: ListChecks },
   { key: "branch", label: "Duty Cabang", icon: MapPin },
   { key: "assignments", label: "Assignment", icon: UserCheck },
@@ -72,6 +74,9 @@ export function CleaningAdmin({
       </div>
 
       {tab === "monitor" && <CleaningMonitor initial={monitor} />}
+      {tab === "review" && (
+        <PhotoReviewGallery checklists={checklists} employees={employees} />
+      )}
       {tab === "checklists" && <ChecklistManager initial={checklists} />}
       {tab === "branch" && (
         <BranchDutyManager

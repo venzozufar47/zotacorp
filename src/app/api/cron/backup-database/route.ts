@@ -19,6 +19,7 @@ export const maxDuration = 300; // 5 menit — backup besar bisa lama
 import { NextResponse } from "next/server";
 import { dueForCron, runBackupCron } from "@/lib/actions/backup.actions";
 import { gcOrphanStorage } from "@/lib/storage/gc-orphans";
+import { sweepCleaningPhotoRetention } from "@/lib/storage/cleaning-retention";
 import { checkCronAuth } from "@/lib/utils/cron-auth";
 
 export async function GET(req: Request) {
@@ -28,21 +29,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: denied.error }, { status: denied.status });
   }
 
-  // GC storage yatim — best-effort; jangan blokir/ gagalkan backup.
+  // GC storage yatim + retensi foto kebersihan — best-effort; jangan
+  // blokir/gagalkan backup. Retensi jalan lebih dulu supaya file yang baru
+  // dilepas rujukannya tidak menunggu sehari lagi untuk disapu GC.
+  const retention = await sweepCleaningPhotoRetention().catch(() => null);
   const gc = await gcOrphanStorage().catch(() => []);
 
   const check = await dueForCron();
   if (!check.due) {
-    return NextResponse.json({ skipped: true, reason: check.reason, gc });
+    return NextResponse.json({ skipped: true, reason: check.reason, gc, retention });
   }
   const res = await runBackupCron();
   if (!res.ok) {
-    return NextResponse.json({ error: res.error, gc }, { status: 500 });
+    return NextResponse.json({ error: res.error, gc, retention }, { status: 500 });
   }
   return NextResponse.json({
     ok: true,
     runId: res.data?.runId,
     fileName: res.data?.fileName,
     gc,
+    retention,
   });
 }
