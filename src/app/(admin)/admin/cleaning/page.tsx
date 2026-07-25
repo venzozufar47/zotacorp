@@ -8,6 +8,8 @@ import { CleaningAdmin } from "@/components/admin/cleaning/CleaningAdmin";
 import {
   listChecklists,
   listAssignments,
+  listBranchDuties,
+  listCleaningLocations,
   getCleaningMonitor,
 } from "@/lib/actions/cleaning.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
@@ -19,9 +21,19 @@ export default async function AdminCleaningPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [checklists, assignments, monitor, employeesRes, holidays] = await Promise.all([
+  const [
+    checklists,
+    assignments,
+    branchDuties,
+    locations,
+    monitor,
+    employeesRes,
+    holidays,
+  ] = await Promise.all([
     listChecklists(),
     listAssignments(),
+    listBranchDuties(),
+    listCleaningLocations(),
     getCleaningMonitor(),
     supabase
       .from("profiles")
@@ -47,6 +59,8 @@ export default async function AdminCleaningPage() {
       <CleaningAdmin
         checklists={checklists}
         assignments={assignments}
+        branchDuties={branchDuties}
+        locations={locations}
         monitor={monitor}
         employees={employees}
         holidays={holidays}

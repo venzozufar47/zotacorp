@@ -15,6 +15,10 @@ import {
   cleaningWindowLabel,
 } from "@/lib/utils/cleaning-window";
 import { isOnDutyToday, type RotationMode } from "@/lib/utils/cleaning-rotation";
+import {
+  branchDutySlotFor,
+  resolveBranchDuty,
+} from "@/lib/utils/cleaning-branch-duty";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -557,10 +561,13 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
     .select(
       "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, rotation_anchor, skip_holidays, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
     )
+    .is("location_id", null) // branch duties are listed by listBranchDuties()
     .order("rotation_order", { ascending: true })
     .order("created_at", { ascending: true });
   if (error || !data) return [];
-  return data.map((a) => {
+  return data.flatMap((a) => {
+    // Defensive: the filter above already excludes person-less branch duties.
+    if (!a.user_id) return [];
     const checklist = a.checklist as { name?: string } | null;
     const profile = a.profile as { full_name?: string; business_unit?: string | null } | null;
     return {
@@ -596,6 +603,225 @@ async function fetchHolidays(
     .from("national_holidays")
     .select("holiday_date, name");
   return new Map((data ?? []).map((h) => [h.holiday_date, h.name]));
+}
+
+type MonitorCompletion = {
+  id: string;
+  photo_path: string | null;
+};
+
+/**
+ * Per-item progress for one person against one checklist, for the admin
+ * monitor. Shared by personal assignments and branch duties so both are
+ * measured identically — "done" always means every required photo slot filled.
+ */
+function buildMonitorProgress(
+  items: (CleaningItem & { title: string })[],
+  userId: string,
+  compMap: ReadonlyMap<string, MonitorCompletion>
+): { items: MonitorItem[]; completedCount: number; photoMissing: number } {
+  let completedCount = 0;
+  let photoMissing = 0;
+  const monitorItems: MonitorItem[] = items.map((it) => {
+    const units: MonitorUnit[] = requiredUnits(it).map((u) => {
+      const comp = compMap.get(`${userId}|${it.id}|${u.photo_req_id ?? ""}`);
+      if (u.requires_photo && (!comp || !comp.photo_path)) photoMissing++;
+      return {
+        photo_req_id: u.photo_req_id,
+        label: u.label,
+        requires_photo: u.requires_photo,
+        completed: !!comp,
+        photo_path: comp?.photo_path ?? null,
+        completion_id: comp?.id ?? null,
+      };
+    });
+    const itemDone = units.every((u) => u.completed);
+    if (itemDone) completedCount++;
+    return {
+      id: it.id,
+      title: it.title,
+      completed: itemDone,
+      photo_missing: units.filter((u) => u.requires_photo && !u.photo_path).length,
+      units,
+    };
+  });
+  return { items: monitorItems, completedCount, photoMissing };
+}
+
+/**
+ * Which branch-duty assignment (if any) the given user must perform today.
+ *
+ * Branch duties belong to a place, not a person (migration 109), so the owner
+ * is derived instead of stored: find where the user checked in, take that
+ * branch's ordered pool members who are also present today, rank them, and let
+ * cleaning-branch-duty.ts hand out the slots (with the daily swap).
+ *
+ * Returns null whenever the user has no duty — not checked in, checked in
+ * somewhere that runs no duty, not in the pool, ranked beyond the number of
+ * slots, or the day is unscheduled/a skipped holiday.
+ */
+async function resolveMyBranchDuty(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  today: string,
+  dow: number,
+  holidaySet: ReadonlySet<string>,
+  matchedLocationId: string | null | undefined
+): Promise<{ assignmentId: string; slot: number } | null> {
+  if (!matchedLocationId) return null;
+
+  // Both lookups depend only on the location, so they go out together.
+  const [{ data: duties }, { data: present }] = await Promise.all([
+    supabase
+      .from("cleaning_assignments")
+      .select("id, duty_slot, weekdays, skip_holidays, rotation_anchor")
+      .eq("location_id", matchedLocationId)
+      .eq("is_active", true)
+      .order("duty_slot", { ascending: true }),
+    // Ordered pool members present at this branch today (SECURITY DEFINER: an
+    // employee cannot read a colleague's attendance row directly).
+    supabase.rpc("cleaning_branch_present", {
+      p_location_id: matchedLocationId,
+      p_date: today,
+    }),
+  ]);
+  if (!duties || duties.length === 0) return null;
+
+  const presentUserIds = (present ?? []).map((p) => p.user_id);
+  if (!presentUserIds.includes(userId)) return null;
+
+  // Slot config is uniform per branch; slot 0 carries the schedule.
+  const base = duties[0];
+  const slot = branchDutySlotFor(userId, {
+    dateYmd: today,
+    anchorYmd: base.rotation_anchor ?? today,
+    dow,
+    weekdays: base.weekdays,
+    slotCount: duties.length,
+    presentUserIds,
+    holidays: holidaySet,
+    skipHolidays: base.skip_holidays,
+  });
+  if (slot < 0) return null;
+
+  const row = duties.find((d) => d.duty_slot === slot);
+  return row ? { assignmentId: row.id, slot } : null;
+}
+
+/** Checklist payload shape shared by the monitor queries. */
+type MonitorChecklist = {
+  name: string;
+  is_active: boolean;
+  items: (CleaningItem & { title: string })[];
+};
+
+/**
+ * Monitor rows for every branch duty on `date`. Nobody owns these checklists,
+ * so the performers are re-derived from attendance exactly the way the employee
+ * view derives them — the admin sees the same truth the employee was shown.
+ * Branches where nobody eligible turned up simply produce no rows.
+ */
+async function buildBranchDutyMonitorRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  date: string,
+  dow: number,
+  holidaySet: ReadonlySet<string>,
+  isHoliday: boolean,
+  compMap: ReadonlyMap<string, MonitorCompletion>
+): Promise<MonitorRow[]> {
+  const { data: duties } = await supabase
+    .from("cleaning_assignments")
+    .select(
+      "id, location_id, duty_slot, weekdays, block_checkout, skip_holidays, rotation_anchor, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
+    )
+    .eq("is_active", true)
+    .not("location_id", "is", null)
+    .order("duty_slot", { ascending: true });
+  if (!duties || duties.length === 0) return [];
+
+  const locationIds = [
+    ...new Set(duties.map((d) => d.location_id).filter((id): id is string => !!id)),
+  ];
+  const [{ data: pool }, { data: present }] = await Promise.all([
+    supabase
+      .from("cleaning_duty_pool")
+      .select(
+        "location_id, user_id, sort_order, profile:profiles!inner(full_name, business_unit, is_active)"
+      )
+      .in("location_id", locationIds),
+    // Admins may read all attendance, so no RPC needed on this path.
+    supabase
+      .from("attendance_logs")
+      .select("user_id, matched_location_id")
+      .eq("date", date)
+      .in("matched_location_id", locationIds),
+  ]);
+
+  const rows: MonitorRow[] = [];
+  for (const locationId of locationIds) {
+    const slots = duties.filter((d) => d.location_id === locationId);
+    const base = slots[0];
+    if (!base) continue;
+    if (base.skip_holidays && isHoliday) continue;
+
+    const poolRows = (pool ?? [])
+      .filter((p) => p.location_id === locationId)
+      .sort(
+        (a, b) => a.sort_order - b.sort_order || a.user_id.localeCompare(b.user_id)
+      );
+    const presentSet = new Set(
+      (present ?? [])
+        .filter((p) => p.matched_location_id === locationId)
+        .map((p) => p.user_id)
+    );
+    const presentUserIds = poolRows
+      .filter((p) => presentSet.has(p.user_id))
+      .map((p) => p.user_id);
+
+    const dutyByUser = resolveBranchDuty({
+      dateYmd: date,
+      anchorYmd: base.rotation_anchor ?? date,
+      dow,
+      weekdays: base.weekdays,
+      slotCount: slots.length,
+      presentUserIds,
+      holidays: holidaySet,
+      skipHolidays: base.skip_holidays,
+    });
+
+    for (const [userId, slot] of dutyByUser) {
+      const duty = slots.find((d) => d.duty_slot === slot);
+      if (!duty) continue;
+      const checklist = duty.checklist as unknown as MonitorChecklist | null;
+      if (!checklist?.is_active) continue;
+      const items = (checklist.items ?? [])
+        .slice()
+        .sort((x, y) => x.sort_order - y.sort_order);
+      if (items.length === 0) continue;
+
+      const profile = poolRows.find((p) => p.user_id === userId)?.profile as unknown as
+        | { full_name?: string; business_unit?: string | null; is_active?: boolean }
+        | null;
+      if (profile && profile.is_active === false) continue; // hide resigned
+
+      const { items: monitorItems, completedCount, photoMissing } =
+        buildMonitorProgress(items, userId, compMap);
+      rows.push({
+        assignment_id: duty.id,
+        user_id: userId,
+        user_name: profile?.full_name ?? "—",
+        business_unit: profile?.business_unit ?? null,
+        checklist_name: checklist.name,
+        block_checkout: duty.block_checkout,
+        total_items: items.length,
+        completed_items: completedCount,
+        photo_missing: photoMissing,
+        is_exception: completedCount < items.length || photoMissing > 0,
+        items: monitorItems,
+      });
+    }
+  }
+  return rows;
 }
 
 /** Normalize window fields: keep only the times the mode uses. */
@@ -823,12 +1049,17 @@ export async function setRotationMembers(input: {
     )
     .eq("rotation_group_id", input.rotation_group_id);
   if (!existing || existing.length === 0) return { error: "Rotasi tidak ditemukan." };
-  const tmpl = existing[0];
-  const existingUsers = new Set(existing.map((e) => e.user_id));
+  // Rotations are always per-person; a branch duty never carries a group id.
+  const existingRows = existing.filter(
+    (e): e is typeof e & { user_id: string } => e.user_id !== null
+  );
+  if (existingRows.length === 0) return { error: "Rotasi tidak ditemukan." };
+  const tmpl = existingRows[0];
+  const existingUsers = new Set(existingRows.map((e) => e.user_id));
   const newSet = new Set(members);
 
   // Remove members no longer in the rotation (cascades their completions).
-  const removed = existing.filter((e) => !newSet.has(e.user_id)).map((e) => e.user_id);
+  const removed = existingRows.filter((e) => !newSet.has(e.user_id)).map((e) => e.user_id);
   if (removed.length) {
     const { error } = await supabase
       .from("cleaning_assignments")
@@ -901,6 +1132,10 @@ export async function deleteRotation(input: {
 // Employee: today's tasks + completion
 // ---------------------------------------------------------------------------
 
+/** Assignment row + its full checklist payload, as the employee view needs it. */
+const TODAY_ASSIGNMENT_SELECT =
+  "id, checklist_id, weekdays, block_checkout, skip_holidays, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_anchor, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))";
+
 export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
   const user = await getCurrentUser();
   const tz = await getTimezone();
@@ -915,14 +1150,12 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
     await Promise.all([
       supabase
         .from("cleaning_assignments")
-        .select(
-          "id, checklist_id, weekdays, block_checkout, skip_holidays, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_anchor, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
-        )
+        .select(TODAY_ASSIGNMENT_SELECT)
         .eq("user_id", user.id)
         .eq("is_active", true),
       supabase
         .from("attendance_logs")
-        .select("id, checked_in_at, checked_out_at")
+        .select("id, checked_in_at, checked_out_at, matched_location_id")
         .eq("user_id", user.id)
         .eq("date", today)
         .maybeSingle(),
@@ -935,6 +1168,25 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
     ]);
   const holidaySet = new Set(holidays.keys());
   const isHoliday = holidays.has(today);
+
+  // Today's branch duty, if the place they checked in at runs one. It is an
+  // ordinary assignment row, so it joins the same pipeline below.
+  const branchDuty = await resolveMyBranchDuty(
+    supabase,
+    user.id,
+    today,
+    dow,
+    holidaySet,
+    log?.matched_location_id
+  );
+  let branchAssignments: typeof assignments = null;
+  if (branchDuty) {
+    const { data } = await supabase
+      .from("cleaning_assignments")
+      .select(TODAY_ASSIGNMENT_SELECT)
+      .eq("id", branchDuty.assignmentId);
+    branchAssignments = data;
+  }
 
   const checkedIn = !!log?.checked_in_at && !log?.checked_out_at;
   // Key completions by item + photo slot (null slot → "").
@@ -949,7 +1201,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
     is_active: boolean;
     items: CleaningItem[];
   };
-  const tasks: TodayTask[] = (assignments ?? [])
+  const tasks: TodayTask[] = [...(assignments ?? []), ...(branchAssignments ?? [])]
     .filter(
       (a) =>
         isWorkdayFor(a.weekdays, dow) &&
@@ -1039,7 +1291,7 @@ export async function completeCleaningItem(input: {
     await Promise.all([
       supabase
         .from("attendance_logs")
-        .select("checked_in_at, checked_out_at")
+        .select("checked_in_at, checked_out_at, matched_location_id")
         .eq("user_id", user.id)
         .eq("date", today)
         .maybeSingle(),
@@ -1051,7 +1303,7 @@ export async function completeCleaningItem(input: {
       supabase
         .from("cleaning_assignments")
         .select(
-          "id, checklist_id, user_id, weekdays, skip_holidays, window_mode, window_start, window_end, rotation_anchor, rotation_mode, rotation_order, rotation_member_count"
+          "id, checklist_id, user_id, location_id, duty_slot, weekdays, skip_holidays, window_mode, window_start, window_end, rotation_anchor, rotation_mode, rotation_order, rotation_member_count"
         )
         .eq("id", input.assignment_id)
         .maybeSingle(),
@@ -1072,7 +1324,23 @@ export async function completeCleaningItem(input: {
   // Verify the item is part of the assignment, and the assignment is the
   // employee's own.
   if (!item) return { error: "Item checklist tidak ditemukan." };
-  if (!assignment || assignment.user_id !== user.id) {
+  if (!assignment) return { error: "Assignment tidak valid." };
+  if (assignment.location_id) {
+    // Branch duty: nobody owns the row, so ownership is re-derived from today's
+    // attendance. This is the write-side twin of the read-side resolution —
+    // being able to see a checklist and being allowed to submit it must agree.
+    const duty = await resolveMyBranchDuty(
+      supabase,
+      user.id,
+      today,
+      jakartaDayOfWeek(now, tz),
+      holidaySet,
+      log.matched_location_id
+    );
+    if (!duty || duty.assignmentId !== assignment.id) {
+      return { error: "Checklist ini bukan giliran Anda hari ini." };
+    }
+  } else if (assignment.user_id !== user.id) {
     return { error: "Assignment tidak valid." };
   }
   if (assignment.checklist_id !== item.checklist_id) {
@@ -1207,24 +1475,52 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
   const dow = jakartaDayOfWeek(now, tz);
   const supabase = await createClient();
 
-  const [{ data: assignments }, { data: completions }, holidays] = await Promise.all([
-    supabase
-      .from("cleaning_assignments")
-      .select(
-        "id, weekdays, skip_holidays, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))"
-      )
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .eq("block_checkout", true),
-    supabase
-      .from("cleaning_task_completions")
-      .select("item_id, photo_req_id")
-      .eq("user_id", user.id)
-      .eq("date", today),
-    fetchHolidays(supabase),
-  ]);
+  const blockingSelect =
+    "id, weekdays, skip_holidays, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))";
+
+  const [{ data: assignments }, { data: completions }, { data: log }, holidays] =
+    await Promise.all([
+      supabase
+        .from("cleaning_assignments")
+        .select(blockingSelect)
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .eq("block_checkout", true),
+      supabase
+        .from("cleaning_task_completions")
+        .select("item_id, photo_req_id")
+        .eq("user_id", user.id)
+        .eq("date", today),
+      supabase
+        .from("attendance_logs")
+        .select("matched_location_id")
+        .eq("user_id", user.id)
+        .eq("date", today)
+        .maybeSingle(),
+      fetchHolidays(supabase),
+    ]);
   const holidaySet = new Set(holidays.keys());
   const isHoliday = holidays.has(today);
+
+  // A branch duty blocks check-out exactly like a personal assignment does —
+  // but only for the person it landed on today.
+  const branchDuty = await resolveMyBranchDuty(
+    supabase,
+    user.id,
+    today,
+    dow,
+    holidaySet,
+    log?.matched_location_id
+  );
+  let branchAssignments: typeof assignments = null;
+  if (branchDuty) {
+    const { data } = await supabase
+      .from("cleaning_assignments")
+      .select(blockingSelect)
+      .eq("id", branchDuty.assignmentId)
+      .eq("block_checkout", true);
+    branchAssignments = data;
+  }
 
   // Done units keyed by item + slot (null slot → "").
   const doneUnits = new Set(
@@ -1232,7 +1528,7 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
   );
   const blocking: BlockingChecklist[] = [];
 
-  for (const a of assignments ?? []) {
+  for (const a of [...(assignments ?? []), ...(branchAssignments ?? [])]) {
     if (!isWorkdayFor(a.weekdays, dow)) continue;
     if (a.skip_holidays && isHoliday) continue; // holiday → not blocking
     // Off-duty rotation members are NOT blocked by someone else's turn.
@@ -1321,6 +1617,9 @@ export async function getCleaningMonitor(input?: {
 
   const rows: MonitorRow[] = [];
   for (const a of assignments ?? []) {
+    // Branch duties have nobody to inner-join a profile against, so they never
+    // reach here; they are reported by getBranchDutyMonitor() instead.
+    if (!a.user_id) continue;
     if (!isWorkdayFor(a.weekdays, dow)) continue;
     if (a.skip_holidays && isHoliday) continue; // holiday → checklist skipped
     // For a rotation, attribute the day to ONLY the on-duty member; off-duty
@@ -1357,32 +1656,11 @@ export async function getCleaningMonitor(input?: {
       .sort((x, y) => x.sort_order - y.sort_order);
     if (items.length === 0) continue;
 
-    let completedCount = 0;
-    let photoMissing = 0;
-    const monitorItems: MonitorItem[] = items.map((it) => {
-      const units: MonitorUnit[] = requiredUnits(it).map((u) => {
-        const comp = compMap.get(`${a.user_id}|${it.id}|${u.photo_req_id ?? ""}`);
-        const completed = !!comp;
-        if (u.requires_photo && (!comp || !comp.photo_path)) photoMissing++;
-        return {
-          photo_req_id: u.photo_req_id,
-          label: u.label,
-          requires_photo: u.requires_photo,
-          completed,
-          photo_path: comp?.photo_path ?? null,
-          completion_id: comp?.id ?? null,
-        };
-      });
-      const itemDone = units.every((u) => u.completed);
-      if (itemDone) completedCount++;
-      return {
-        id: it.id,
-        title: it.title,
-        completed: itemDone,
-        photo_missing: units.filter((u) => u.requires_photo && !u.photo_path).length,
-        units,
-      };
-    });
+    const {
+      items: monitorItems,
+      completedCount,
+      photoMissing,
+    } = buildMonitorProgress(items, a.user_id, compMap);
 
     rows.push({
       assignment_id: a.id,
@@ -1399,6 +1677,19 @@ export async function getCleaningMonitor(input?: {
     });
   }
 
+  // Branch duties are person-less rows, so they are resolved separately and
+  // appended before sorting — the admin sees one flat list either way.
+  rows.push(
+    ...(await buildBranchDutyMonitorRows(
+      supabase,
+      date,
+      dow,
+      holidaySet,
+      isHoliday,
+      compMap
+    ))
+  );
+
   // Exceptions first, then by employee name.
   rows.sort((x, y) => {
     if (x.is_exception !== y.is_exception) return x.is_exception ? -1 : 1;
@@ -1406,4 +1697,263 @@ export async function getCleaningMonitor(input?: {
   });
 
   return { date, holiday: holidayNm, rows };
+}
+
+// ---------------------------------------------------------------------------
+// Admin: branch duty — a checklist that belongs to a place, not a person
+// ---------------------------------------------------------------------------
+
+export interface BranchDutySlotRow {
+  assignment_id: string;
+  duty_slot: number;
+  checklist_id: string;
+  checklist_name: string;
+}
+
+export interface BranchDutyPoolMember {
+  user_id: string;
+  name: string;
+  sort_order: number;
+}
+
+export interface BranchDutyRow {
+  location_id: string;
+  location_name: string;
+  is_active: boolean;
+  weekdays: number;
+  block_checkout: boolean;
+  skip_holidays: boolean;
+  window_mode: string;
+  window_start: string | null;
+  window_end: string | null;
+  rotation_anchor: string | null;
+  slots: BranchDutySlotRow[];
+  pool: BranchDutyPoolMember[];
+}
+
+export interface CleaningLocation {
+  id: string;
+  name: string;
+}
+
+/** Attendance locations, which double as the branches a duty can attach to. */
+export async function listCleaningLocations(): Promise<CleaningLocation[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_locations")
+    .select("id, name")
+    .order("name");
+  return (data ?? []).map((l) => ({ id: l.id, name: l.name }));
+}
+
+export async function listBranchDuties(): Promise<BranchDutyRow[]> {
+  const supabase = await createClient();
+  const [{ data: duties }, { data: pool }] = await Promise.all([
+    supabase
+      .from("cleaning_assignments")
+      .select(
+        "id, location_id, checklist_id, duty_slot, weekdays, block_checkout, skip_holidays, is_active, window_mode, window_start, window_end, rotation_anchor, checklist:cleaning_checklists(name), location:attendance_locations(name)"
+      )
+      .not("location_id", "is", null)
+      .order("duty_slot", { ascending: true }),
+    supabase
+      .from("cleaning_duty_pool")
+      .select("location_id, user_id, sort_order, profile:profiles(full_name)")
+      .order("sort_order", { ascending: true }),
+  ]);
+
+  const byLocation = new Map<string, BranchDutyRow>();
+  for (const d of duties ?? []) {
+    if (!d.location_id || d.duty_slot === null) continue;
+    const location = d.location as { name?: string } | null;
+    const checklist = d.checklist as { name?: string } | null;
+    let row = byLocation.get(d.location_id);
+    if (!row) {
+      row = {
+        location_id: d.location_id,
+        location_name: location?.name ?? "—",
+        is_active: d.is_active,
+        weekdays: d.weekdays,
+        block_checkout: d.block_checkout,
+        skip_holidays: d.skip_holidays,
+        window_mode: d.window_mode,
+        window_start: d.window_start,
+        window_end: d.window_end,
+        rotation_anchor: d.rotation_anchor,
+        slots: [],
+        pool: [],
+      };
+      byLocation.set(d.location_id, row);
+    }
+    row.slots.push({
+      assignment_id: d.id,
+      duty_slot: d.duty_slot,
+      checklist_id: d.checklist_id,
+      checklist_name: checklist?.name ?? "—",
+    });
+  }
+
+  for (const p of pool ?? []) {
+    const row = byLocation.get(p.location_id);
+    if (!row) continue;
+    const profile = p.profile as { full_name?: string } | null;
+    row.pool.push({
+      user_id: p.user_id,
+      name: profile?.full_name ?? "—",
+      sort_order: p.sort_order,
+    });
+  }
+
+  return [...byLocation.values()].sort((a, b) =>
+    a.location_name.localeCompare(b.location_name)
+  );
+}
+
+/**
+ * Create or rewrite a branch's duty: `checklist_ids` in order become slots
+ * 0..n-1, which is also the swap order.
+ *
+ * Slots whose checklist is dropped are deleted (their completions cascade);
+ * surviving slots are updated in place so today's evidence and the rotation
+ * anchor stay intact. Renumbering happens in two phases because
+ * (location_id, duty_slot) is unique — parking survivors on negative slots
+ * first means a reorder can never collide mid-flight.
+ */
+export async function saveBranchDuty(input: {
+  location_id: string;
+  checklist_ids: string[];
+  weekdays?: number;
+  block_checkout?: boolean;
+  skip_holidays?: boolean;
+  window_mode?: string;
+  window_start?: string | null;
+  window_end?: string | null;
+  is_active?: boolean;
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  if (!input.location_id) return { error: "Cabang wajib dipilih." };
+
+  const ids = [...new Set(input.checklist_ids.filter(Boolean))];
+  if (ids.length === 0) return { error: "Pilih minimal 1 checklist." };
+  if (ids.length > 6) return { error: "Maksimal 6 checklist per cabang." };
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("cleaning_assignments")
+    .select("id, checklist_id, duty_slot, rotation_anchor")
+    .eq("location_id", input.location_id);
+
+  const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
+  const settings = {
+    weekdays: input.weekdays ?? 126, // Mon–Sat
+    block_checkout: input.block_checkout ?? true,
+    skip_holidays: input.skip_holidays ?? true,
+    is_active: input.is_active ?? true,
+    ...win,
+  };
+  // Keep the branch's original anchor so an edit never shifts whose turn it is.
+  const anchor =
+    (existing ?? []).find((e) => e.rotation_anchor)?.rotation_anchor ??
+    jakartaDateString(new Date());
+
+  const keep = new Set(ids);
+  const doomed = (existing ?? [])
+    .filter((e) => !keep.has(e.checklist_id))
+    .map((e) => e.id);
+  if (doomed.length) {
+    const { error } = await supabase
+      .from("cleaning_assignments")
+      .delete()
+      .in("id", doomed);
+    if (error) return { error: error.message };
+  }
+
+  const survivors = (existing ?? []).filter((e) => keep.has(e.checklist_id));
+  for (let i = 0; i < survivors.length; i++) {
+    const { error } = await supabase
+      .from("cleaning_assignments")
+      .update({ duty_slot: -(i + 1) })
+      .eq("id", survivors[i].id);
+    if (error) return { error: error.message };
+  }
+
+  for (let i = 0; i < ids.length; i++) {
+    const survivor = survivors.find((e) => e.checklist_id === ids[i]);
+    if (survivor) {
+      const { error } = await supabase
+        .from("cleaning_assignments")
+        .update({ duty_slot: i, rotation_anchor: anchor, ...settings })
+        .eq("id", survivor.id);
+      if (error) return { error: error.message };
+    } else {
+      const { error } = await supabase.from("cleaning_assignments").insert({
+        location_id: input.location_id,
+        checklist_id: ids[i],
+        duty_slot: i,
+        user_id: null,
+        rotation_anchor: anchor,
+        ...settings,
+      });
+      if (error) return { error: error.message };
+    }
+  }
+
+  revalidatePath("/admin/cleaning");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/** Replace a branch's eligible-employee pool. Order = the daily rank order. */
+export async function setBranchDutyPool(input: {
+  location_id: string;
+  user_ids: string[];
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  if (!input.location_id) return { error: "Cabang wajib dipilih." };
+
+  const ids = [...new Set(input.user_ids.filter(Boolean))];
+  const supabase = await createClient();
+  const { error: delErr } = await supabase
+    .from("cleaning_duty_pool")
+    .delete()
+    .eq("location_id", input.location_id);
+  if (delErr) return { error: delErr.message };
+
+  if (ids.length) {
+    const { error } = await supabase.from("cleaning_duty_pool").insert(
+      ids.map((user_id, i) => ({
+        location_id: input.location_id,
+        user_id,
+        sort_order: i,
+      }))
+    );
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath("/admin/cleaning");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/** Remove a branch's duty entirely (slots + pool). Completions cascade. */
+export async function deleteBranchDuty(input: {
+  location_id: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("cleaning_assignments")
+    .delete()
+    .eq("location_id", input.location_id);
+  if (error) return { error: error.message };
+  await supabase
+    .from("cleaning_duty_pool")
+    .delete()
+    .eq("location_id", input.location_id);
+  revalidatePath("/admin/cleaning");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }

@@ -1677,8 +1677,10 @@ export type Database = {
           block_checkout: boolean
           checklist_id: string
           created_at: string
+          duty_slot: number | null
           id: string
           is_active: boolean
+          location_id: string | null
           rotation_anchor: string | null
           rotation_group_id: string | null
           rotation_member_count: number
@@ -1686,7 +1688,7 @@ export type Database = {
           rotation_order: number
           skip_holidays: boolean
           updated_at: string
-          user_id: string
+          user_id: string | null
           weekdays: number
           window_mode: string
           window_start: string | null
@@ -1696,8 +1698,10 @@ export type Database = {
           block_checkout?: boolean
           checklist_id: string
           created_at?: string
+          duty_slot?: number | null
           id?: string
           is_active?: boolean
+          location_id?: string | null
           rotation_anchor?: string | null
           rotation_group_id?: string | null
           rotation_member_count?: number
@@ -1705,7 +1709,7 @@ export type Database = {
           rotation_order?: number
           skip_holidays?: boolean
           updated_at?: string
-          user_id: string
+          user_id?: string | null
           weekdays?: number
           window_mode?: string
           window_start?: string | null
@@ -1715,8 +1719,10 @@ export type Database = {
           block_checkout?: boolean
           checklist_id?: string
           created_at?: string
+          duty_slot?: number | null
           id?: string
           is_active?: boolean
+          location_id?: string | null
           rotation_anchor?: string | null
           rotation_group_id?: string | null
           rotation_member_count?: number
@@ -1724,7 +1730,7 @@ export type Database = {
           rotation_order?: number
           skip_holidays?: boolean
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
           weekdays?: number
           window_mode?: string
           window_start?: string | null
@@ -1743,6 +1749,13 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_assignments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
             referencedColumns: ["id"]
           },
         ]
@@ -1814,6 +1827,45 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      cleaning_duty_pool: {
+        Row: {
+          created_at: string
+          id: string
+          location_id: string
+          sort_order: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location_id: string
+          sort_order?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location_id?: string
+          sort_order?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_duty_pool_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_duty_pool_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cleaning_item_photos: {
         Row: {
@@ -4357,6 +4409,13 @@ export type Database = {
     }
     Functions: {
       can_manage_yeobo_booth: { Args: never; Returns: boolean }
+      cleaning_branch_present: {
+        Args: { p_location_id: string; p_date: string }
+        Returns: {
+          user_id: string
+          sort_order: number
+        }[]
+      }
       count_my_needs_assignments: { Args: never; Returns: number }
       get_intercom_presence: {
         Args: { room_ids: string[] }
