@@ -406,7 +406,7 @@ function ImpactPanel({ material }: { material: CostingMaterial }) {
                 <span className="tabular-nums text-muted-foreground shrink-0">
                   HPP {formatRp(breakdown.hppUnit)}
                   {breakdown.marginPercent != null
-                    ? ` · ${fmtPercent(breakdown.marginPercent)}`
+                    ? ` · Margin ${fmtPercent(breakdown.marginPercent)}`
                     : ""}
                 </span>
               </li>
