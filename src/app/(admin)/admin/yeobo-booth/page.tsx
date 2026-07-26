@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  BellRing,
   CalendarDays,
   ClipboardList,
   Plus,
@@ -99,12 +100,16 @@ export default async function YeoboBoothOverviewPage() {
       />
 
       {/* Tool row — di mobile horizontal scroll dengan icon kompak;
-          di desktop wrap inline di sebelah primary CTA atas. */}
+          di desktop wrap inline di sebelah primary CTA atas.
+
+          Harus mirror children "Yeobo Booth" di `@/lib/nav/admin-nav`
+          supaya sub-page yang sama muncul di sidebar dan di hub ini. */}
       <div className="flex gap-2 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         <ToolLink href="/admin/yeobo-booth/calendar" icon={CalendarDays} label="Kalender" />
         <ToolLink href="/admin/yeobo-booth/bookings" icon={ClipboardList} label="Semua Booking" />
         <ToolLink href="/admin/yeobo-booth/laporan" icon={Wallet} label="Laporan" />
         <ToolLink href="/admin/yeobo-booth/freelance" icon={Users} label="Freelance" />
+        <ToolLink href="/admin/yeobo-booth/settings" icon={BellRing} label="Reminder" />
         {isAdminZota && (
           <ToolLink href="/admin/yeobo-booth/admins" icon={Shield} label="Akses Admin" />
         )}

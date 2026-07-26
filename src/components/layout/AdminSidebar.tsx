@@ -2,39 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ClipboardList,
-  ShieldCheck,
-  LogOut,
-  Users,
-  Settings,
-  Receipt,
-  MapPin,
-  Wallet,
-  PartyPopper,
-  Home as HomeIcon,
-  Search,
-  ChevronUp,
-  Radio,
-  Cake,
-  Camera,
-  BellRing,
-  Factory,
-  Database,
-  TrendingUp,
-  Sparkles,
-  Coins,
-  HandCoins,
-  FileSignature,
-  Brain,
-  Ticket,
-  Smartphone,
-  Calculator,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { LogOut, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import {
+  buildAdminNav,
+  isBranchActive,
+  resolveActiveHref,
+  type AdminNavScope,
+} from "@/lib/nav/admin-nav";
 import type { Profile } from "@/lib/supabase/types";
 
 /**
@@ -42,10 +21,13 @@ import type { Profile } from "@/lib/supabase/types";
  *
  * Sections:
  *   1. Brand block (`z` mark + "zota." wordmark + "Admin" caption)
- *   2. Search slot (visual only for v1 — focuses on click; ⌘K wiring TBD)
- *   3. Grouped nav (Operations / Org / Money & Care / System) with
- *      optional badges per item.
- *   4. Footer user card with sign-out.
+ *   2. Grouped nav (Operasional / Karyawan / Keuangan / Unit Bisnis /
+ *      Sistem) with optional badges, and collapsible parents for
+ *      sections that have sub-pages.
+ *   3. Footer user card with sign-out.
+ *
+ * The nav data itself lives in `@/lib/nav/admin-nav` and is shared with
+ * AdminMobileNav — do not re-declare items here.
  *
  * Bell + pending list moved to the home dashboard Inbox + topbar.
  */
@@ -55,6 +37,7 @@ export function AdminSidebar({
   cleaningCount = 0,
   profile,
   scope = "full",
+  isAdminZota = false,
 }: {
   pendingCount?: number;
   disputesCount?: number;
@@ -64,138 +47,36 @@ export function AdminSidebar({
     "id" | "full_name" | "email" | "avatar_url" | "avatar_seed"
   > | null;
   /** "full" = admin Zota (semua nav). "yeobo-booth" = admin unit Yeobo
-   *  Booth (hanya nav group Yeobo Booth, tanpa modul lain). */
-  scope?: "full" | "yeobo-booth";
+   *  Booth (hanya nav Yeobo Booth, tanpa modul lain). */
+  scope?: AdminNavScope;
+  isAdminZota?: boolean;
 }) {
   const pathname = usePathname();
   const { t } = useTranslation();
 
-  const allGroups: Array<{
-    label: string;
-    items: Array<{
-      href: string;
-      icon: typeof HomeIcon;
-      label: string;
-      badge?: number;
-    }>;
-  }> = [
-    {
-      label: "Operations",
-      items: [
-        { href: "/admin", icon: HomeIcon, label: t.nav.home },
-        {
-          href: "/admin/attendance",
-          icon: ClipboardList,
-          label: t.nav.attendance,
-          badge: pendingCount || undefined,
-        },
-        {
-          href: "/admin/payslips/variables",
-          icon: Receipt,
-          label: t.nav.payslips,
-          badge: disputesCount || undefined,
-        },
-        {
-          href: "/admin/cleaning",
-          icon: Sparkles,
-          label: "Kebersihan",
-          badge: cleaningCount || undefined,
-        },
-        {
-          href: "/admin/stock-gate",
-          icon: ShieldCheck,
-          label: "Gate Absen Pulang",
-        },
-      ],
-    },
-    {
-      label: "Org",
-      items: [
-        { href: "/admin/users", icon: Users, label: t.nav.users },
-        {
-          href: "/admin/employment-contracts",
-          icon: FileSignature,
-          label: "Kontrak Kerja",
-        },
-        { href: "/admin/disc", icon: Brain, label: "Tes DISC" },
-        { href: "/admin/tickets", icon: Ticket, label: "Tiket Studio" },
-        { href: "/admin/sim-cards", icon: Smartphone, label: "Kartu SIM" },
-        { href: "/admin/locations", icon: MapPin, label: t.nav.locations },
-      ],
-    },
-    {
-      label: "Money & Care",
-      items: [
-        { href: "/admin/finance", icon: Wallet, label: t.nav.finance },
-        { href: "/admin/finance/dividen", icon: HandCoins, label: "Dividen" },
-        { href: "/admin/costing", icon: Calculator, label: "HPP / Costing" },
-        { href: "/cash", icon: Coins, label: "Kas Cabang" },
-        {
-          href: "/admin/celebrations",
-          icon: PartyPopper,
-          label: "Celebrations",
-        },
-      ],
-    },
-    {
-      label: "Comms",
-      items: [
-        { href: "/admin/intercom", icon: Radio, label: "Intercom" },
-      ],
-    },
-    {
-      label: "Cake",
-      items: [
-        { href: "/admin/cake-orders", icon: Cake, label: "Pesanan Cake" },
-      ],
-    },
-    {
-      label: "Yeobo Booth",
-      items: [
-        { href: "/admin/yeobo-booth", icon: Camera, label: "Scheduling" },
-        {
-          href: "/admin/yeobo-booth/settings",
-          icon: BellRing,
-          label: "Reminder",
-        },
-      ],
-    },
-    {
-      label: "Stakeholders",
-      items: [
-        { href: "/admin/investors", icon: TrendingUp, label: "Investor" },
-      ],
-    },
-    {
-      label: "System",
-      items: [
-        { href: "/admin/settings", icon: Settings, label: t.nav.settings },
-        { href: "/admin/backups", icon: Database, label: "Backups" },
-      ],
-    },
-  ];
+  // `t` is referentially stable (LanguageProvider memoizes it), so this
+  // only rebuilds when a badge count or the scope actually changes.
+  const groups = useMemo(
+    () =>
+      buildAdminNav({
+        pendingCount,
+        disputesCount,
+        cleaningCount,
+        scope,
+        isAdminZota,
+        t,
+      }),
+    [pendingCount, disputesCount, cleaningCount, scope, isAdminZota, t]
+  );
 
-  // Filter nav berdasarkan scope. Admin Yeobo Booth (unit-only) hanya
-  // melihat group Yeobo Booth — segment lain disembunyikan agar tidak
-  // mengundang klik yang berakhir di middleware redirect.
-  const groups =
-    scope === "yeobo-booth"
-      ? allGroups.filter((g) => g.label === "Yeobo Booth")
-      : allGroups;
+  const activeHref = useMemo(
+    () => resolveActiveHref(groups, pathname),
+    [groups, pathname]
+  );
 
-  // Pilih SATU item aktif via match terpanjang supaya rute bertingkat
-  // (mis. /admin/finance/dividen) tidak ikut menyalakan parent-nya
-  // (/admin/finance). /admin (Home) hanya cocok persis.
-  const activeHref = groups
-    .flatMap((g) => g.items)
-    .filter((it) =>
-      it.href === "/admin"
-        ? pathname === "/admin"
-        : pathname === it.href || pathname.startsWith(it.href + "/")
-    )
-    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
-
-  const isActive = (href: string) => href === activeHref;
+  // Expansion is derived from the active route, so the section you're in
+  // is always open. A manual toggle overrides that for the session.
+  const [manual, setManual] = useState<Record<string, boolean>>({});
 
   const displayName =
     profile?.full_name?.trim() || profile?.email?.split("@")[0] || "Admin";
@@ -213,7 +94,7 @@ export function AdminSidebar({
       {/* Brand block */}
       <Link
         href="/admin"
-        className="flex items-center gap-3 px-5 pt-5 pb-3 group"
+        className="flex items-center gap-3 px-5 pt-5 pb-4 group"
       >
         <span
           className="grid place-items-center size-[38px] rounded-xl text-white font-display font-semibold text-[20px] tracking-tight shrink-0"
@@ -234,64 +115,112 @@ export function AdminSidebar({
         </span>
       </Link>
 
-      {/* Search slot — placeholder; click does nothing (yet) */}
-      <div className="px-3.5 pb-3.5">
-        <button
-          type="button"
-          className="flex items-center gap-2 w-full h-9 px-3 rounded-full bg-muted/70 border border-border/70 text-[12.5px] text-muted-foreground hover:bg-card hover:border-border transition"
-        >
-          <Search size={13} className="opacity-70" />
-          <span className="opacity-80">Search…</span>
-          <span className="ml-auto font-mono text-[10px] px-1.5 py-0.5 bg-card border border-border/70 rounded text-muted-foreground/80">
-            ⌘K
-          </span>
-        </button>
-      </div>
-
       {/* Grouped nav */}
       <nav className="flex-1 overflow-y-auto px-2.5 pb-2">
         {groups.map((g) => (
-          <div key={g.label}>
-            <div className="px-3 pt-3.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {g.label}
-            </div>
-            {g.items.map(({ href, icon: Icon, label, badge }) => {
-              const active = isActive(href);
+          <div key={g.label || "__root"}>
+            {g.label && (
+              <div className="px-3 pt-3.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {g.label}
+              </div>
+            )}
+            {g.items.map((item) => {
+              const { href, icon: Icon, label, badge, children } = item;
+              const active = href === activeHref;
+              const open = manual[href] ?? isBranchActive(item, activeHref);
+
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-2.5 px-3 py-2 my-0.5 rounded-[10px] text-[13px] font-medium tracking-[-0.005em] transition relative",
-                    active
-                      ? "text-white"
-                      : "text-foreground/70 hover:bg-muted hover:text-foreground"
-                  )}
-                  style={
-                    active
-                      ? {
-                          background: "var(--grad-teal)",
-                          boxShadow:
-                            "0 4px 14px rgba(17, 122, 140, 0.28)",
-                        }
-                      : undefined
-                  }
-                >
-                  <Icon size={16} strokeWidth={1.8} className="shrink-0" />
-                  <span className="flex-1">{label}</span>
-                  {badge != null && (
-                    <span
+                <div key={href}>
+                  <div
+                    className={cn(
+                      "flex items-center my-0.5 rounded-[10px] transition",
+                      active ? "text-white" : "hover:bg-muted"
+                    )}
+                    style={
+                      active
+                        ? {
+                            background: "var(--grad-teal)",
+                            boxShadow: "0 4px 14px rgba(17, 122, 140, 0.28)",
+                          }
+                        : undefined
+                    }
+                  >
+                    <Link
+                      href={href}
+                      aria-current={active ? "page" : undefined}
                       className={cn(
-                        "text-[10.5px] font-semibold px-2 rounded-full min-w-[22px] text-center",
+                        "flex flex-1 min-w-0 items-center gap-2.5 px-3 py-2 text-[13px] font-medium tracking-[-0.005em] transition",
                         active
-                          ? "bg-white/20 text-white"
-                          : "bg-destructive text-white"
+                          ? "text-white"
+                          : "text-foreground/70 hover:text-foreground"
                       )}
                     >
-                      {badge}
-                    </span>
+                      <Icon size={16} strokeWidth={1.8} className="shrink-0" />
+                      <span className="flex-1 truncate">{label}</span>
+                      {badge != null && (
+                        <span
+                          className={cn(
+                            "text-[10.5px] font-semibold px-2 rounded-full min-w-[22px] text-center",
+                            active
+                              ? "bg-white/20 text-white"
+                              : "bg-destructive text-white"
+                          )}
+                        >
+                          {badge}
+                        </span>
+                      )}
+                    </Link>
+
+                    {children && children.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setManual((m) => ({ ...m, [href]: !open }))
+                        }
+                        aria-expanded={open}
+                        aria-label={`${open ? "Tutup" : "Buka"} sub-menu ${label}`}
+                        className={cn(
+                          "grid place-items-center size-7 mr-1 rounded-md shrink-0 transition",
+                          active
+                            ? "text-white/80 hover:bg-white/20"
+                            : "text-muted-foreground hover:bg-border/60 hover:text-foreground"
+                        )}
+                      >
+                        <ChevronRight
+                          size={14}
+                          strokeWidth={2}
+                          className={cn(
+                            "transition-transform duration-200",
+                            open && "rotate-90"
+                          )}
+                        />
+                      </button>
+                    )}
+                  </div>
+
+                  {children && children.length > 0 && open && (
+                    <div className="ml-[22px] pl-2.5 border-l border-border/70">
+                      {children.map((c) => {
+                        const childActive = c.href === activeHref;
+                        return (
+                          <Link
+                            key={c.href}
+                            href={c.href}
+                            aria-current={childActive ? "page" : undefined}
+                            className={cn(
+                              "block px-2.5 py-1.5 my-0.5 rounded-lg text-[12.5px] font-medium tracking-[-0.005em] transition truncate",
+                              childActive
+                                ? "bg-muted text-foreground"
+                                : "text-foreground/60 hover:bg-muted/70 hover:text-foreground"
+                            )}
+                          >
+                            {c.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
                   )}
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -328,7 +257,6 @@ export function AdminSidebar({
             >
               <LogOut size={14} />
             </span>
-            <ChevronUp size={14} className="text-muted-foreground/40" aria-hidden />
             <span className="sr-only">{t.nav.signOut}</span>
           </button>
         </form>

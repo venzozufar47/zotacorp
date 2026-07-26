@@ -33,7 +33,7 @@ export default async function AdminLayout({
       return (
         <div className="flex min-h-screen bg-background">
           <RouteProgressBar />
-          <AdminMobileNav pendingConfirmations={[]} />
+          <AdminMobileNav pendingConfirmations={[]} scope="yeobo-booth" />
           <AdminSidebar
             pendingCount={0}
             disputesCount={0}
@@ -80,12 +80,19 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-screen bg-background">
       <RouteProgressBar />
-      <AdminMobileNav pendingConfirmations={pendingConfirmations} />
+      <AdminMobileNav
+        pendingConfirmations={pendingConfirmations}
+        pendingCount={pendingConfirmations.length}
+        disputesCount={disputes.length}
+        cleaningCount={cleaningExceptions.length}
+        isAdminZota
+      />
       <AdminSidebar
         pendingCount={pendingConfirmations.length}
         disputesCount={disputes.length}
         cleaningCount={cleaningExceptions.length}
         profile={profile}
+        isAdminZota
       />
       <main className="flex-1 min-w-0 flex flex-col">
         <AdminTopbar pendingConfirmations={pendingConfirmations} />

@@ -13,6 +13,15 @@ import {
 } from "@/lib/actions/cake-options.actions";
 import { CakeOrderDetail } from "@/components/cake/CakeOrderDetail";
 
+/**
+ * Standalone full-page view of one cake order.
+ *
+ * Intentionally has NO inbound links: the admin board opens orders in a
+ * drawer via CakeOrderDetailLoader, so this route exists purely as a
+ * shareable deep link (note CakeOrderDetail renders its own back button
+ * to /admin/cake-orders). It can't live in the sidebar either — dynamic
+ * segments have no stable href. Don't delete it as "dead code".
+ */
 export default async function AdminCakeOrderDetailPage({
   params,
 }: {

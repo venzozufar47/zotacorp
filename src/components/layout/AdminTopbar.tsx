@@ -104,19 +104,51 @@ function deriveCrumbs(pathname: string): string[] {
   const segs = pathname.split("/").filter(Boolean);
   if (segs.length === 0 || segs[0] !== "admin") return ["Admin"];
   if (segs.length === 1) return ["Admin", "Home"];
+  // Mirrors the nav taxonomy in `@/lib/nav/admin-nav`. Segments missing
+  // here fall through to `capitalize()` and surface as raw slugs
+  // ("Stock-gate", "Sim-cards"), so keep this in step when adding routes.
   const labelMap: Record<string, string> = {
+    // Operasional
     attendance: "Attendance",
-    payslips: "Payslips",
-    variables: "Variables",
+    "stock-gate": "Gate Absen Pulang",
+    cleaning: "Kebersihan",
+    tickets: "Tiket Studio",
+    // Karyawan
     users: "Users",
-    locations: "Locations",
+    payslips: "Slip Gaji",
+    variables: "Variables",
+    "employment-contracts": "Kontrak Kerja",
+    disc: "Tes DISC",
+    celebrations: "Monitoring Karyawan",
+    // Keuangan
     finance: "Finance",
+    pnl: "Profit & Loss",
+    assignments: "Assignment Queue",
+    employees: "Mapping Karyawan",
     rekening: "Rekening",
     statements: "Statements",
     aturan: "Aturan",
-    pnl: "PnL",
-    celebrations: "Celebrations",
+    dividen: "Dividen",
+    costing: "HPP / Costing",
+    bahan: "Master Bahan",
+    dashboard: "Dashboard Margin",
+    investors: "Investor",
+    // Unit Bisnis
+    "cake-orders": "Pesanan Cake",
+    options: "Opsi Form",
+    access: "Akses Karyawan",
+    "yeobo-booth": "Yeobo Booth",
+    calendar: "Kalender",
+    bookings: "Booking",
+    laporan: "Laporan",
+    freelance: "Freelance",
+    admins: "Akses Admin",
+    // Sistem
+    locations: "Locations",
+    "sim-cards": "Kartu SIM",
+    intercom: "Intercom",
     settings: "Settings",
+    backups: "Backups",
   };
   return [
     "Admin",
