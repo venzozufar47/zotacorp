@@ -5,6 +5,10 @@ import { createAdminClient as adminClient } from "./_supabase-admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
 import { jakartaHHMM } from "@/lib/utils/jakarta";
+import {
+  RECEIPT_ALLOWED_TYPES,
+  RECEIPT_MAX_SIZE,
+} from "@/lib/pos/receipt-file";
 
 /**
  * Upload bukti foto QRIS ke sale POS. Dipanggil client POSClient tepat
@@ -19,8 +23,10 @@ import { jakartaHHMM } from "@/lib/utils/jakarta";
  * akses `full` ke cashflow tapi boleh attach ke sale mereka sendiri.
  */
 
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
-const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+// Aturan file dipusatkan di lib/pos/receipt-file.ts supaya validasi
+// client (saat kasir memilih foto) dan server tidak pernah beda.
+const ALLOWED_TYPES = RECEIPT_ALLOWED_TYPES;
+const MAX_SIZE = RECEIPT_MAX_SIZE;
 const BUCKET = "cashflow-receipts";
 
 export async function attachPosQrisReceipt(

@@ -20,6 +20,7 @@ import {
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
+import { validateReceiptImage } from "@/lib/pos/receipt-file";
 import type { PendingPesanan } from "@/lib/actions/pos-pesanan.actions";
 import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
 
@@ -350,12 +351,16 @@ function SettlePesananDialog({
             >
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                // `image/*` (bukan daftar subtipe) supaya Chrome Android
+                // menawarkan Kamera, bukan galeri saja — lihat
+                // lib/pos/receipt-file.ts. Tipe asli divalidasi di bawah.
+                accept="image/*"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0] ?? null;
-                  if (f && f.size > 5 * 1024 * 1024) {
-                    toast.error("Foto maksimal 5MB");
+                  const err = f ? validateReceiptImage(f) : null;
+                  if (err) {
+                    toast.error(err);
                     e.target.value = "";
                     return;
                   }
