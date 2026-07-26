@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ClipboardList,
+  ShieldCheck,
   LogOut,
   Users,
   Settings,
@@ -99,6 +100,11 @@ export function AdminSidebar({
           icon: Sparkles,
           label: "Kebersihan",
           badge: cleaningCount || undefined,
+        },
+        {
+          href: "/admin/stock-gate",
+          icon: ShieldCheck,
+          label: "Gate Absen Pulang",
         },
       ],
     },

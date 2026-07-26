@@ -47,6 +47,16 @@ const STUDIO_LOCATION_TO_BRANCH: Record<string, StockBranchId> = {
   "fed542f3-c9a7-4bbd-bdc9-cfc1f6fe2a51": "jebres", // Yeobo Space - Jebres
 };
 
+/** Id geofence studio yang memicu gate — dipakai panel monitor admin. */
+export const STUDIO_LOCATION_IDS = Object.keys(STUDIO_LOCATION_TO_BRANCH);
+
+/** Label tampilan per cabang (nama fisik yang dikenal admin). */
+export const STOCK_BRANCH_LABEL: Record<StockBranchId, string> = {
+  tlogosari: "Tlogosari",
+  tembalang: "Tembalang",
+  jebres: "Jebres",
+};
+
 /**
  * Cabang studio dari geofence tempat karyawan sign-in, atau `null` bila
  * bukan geofence studio (mis. check-in di luar / lokasi lain) → gate
@@ -69,6 +79,25 @@ const GATED_JOB_ROLES = new Set([
   "admin & editor",
   "manager",
 ]);
+
+/** Daftar jabatan yang kena gate — untuk ditampilkan di panel monitor. */
+export const GATED_JOB_ROLE_LABELS = [
+  "Admin",
+  "Editor",
+  "Admin & Editor",
+  "Manager",
+];
+
+/**
+ * Apakah `STOCK_STATUS_API_KEY` sudah di-set. Hanya boolean — NILAI key
+ * tidak pernah dikembalikan supaya aman dipakai di panel admin.
+ */
+export function isStockGateConfigured(): boolean {
+  return !!process.env.STOCK_STATUS_API_KEY;
+}
+
+/** Host endpoint yang dipanggil — konteks non-rahasia untuk panel monitor. */
+export const STOCK_STATUS_ENDPOINT = ENDPOINT;
 
 /**
  * True bila karyawan Yeobo Space dengan jabatan yang termasuk cakupan gate

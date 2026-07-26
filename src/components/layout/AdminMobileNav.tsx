@@ -20,6 +20,7 @@ import {
   Radio,
   Receipt,
   Settings,
+  ShieldCheck,
   Sparkles,
   Ticket,
   Smartphone,
@@ -61,6 +62,7 @@ export function AdminMobileNav({
     { href: "/admin/attendance", icon: ClipboardList, label: t.nav.attendance, color: "bg-primary" },
     { href: "/admin/payslips/variables", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     { href: "/admin/cleaning", icon: Sparkles, label: "Kebersihan", color: "bg-quaternary" },
+    { href: "/admin/stock-gate", icon: ShieldCheck, label: "Gate Pulang", color: "bg-tertiary" },
     // Org
     { href: "/admin/users", icon: Users, label: t.nav.users, color: "bg-pop-pink" },
     { href: "/admin/employment-contracts", icon: FileSignature, label: "Kontrak Kerja", color: "bg-quaternary" },
