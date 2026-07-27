@@ -16,6 +16,7 @@ import {
   type CostingProductWithHpp,
   type MaterialPriceHistoryRow,
 } from "@/lib/actions/costing.actions";
+import { rememberBrand } from "@/lib/costing/brands";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { NumField, TextField, parseDecimalId } from "./fields";
 
@@ -43,6 +44,7 @@ export function MaterialsManager({
   const [nUsageUnit, setNUsageUnit] = useState("");
 
   function selectBrand(bu: string) {
+    rememberBrand(bu);
     router.push(`/admin/costing/bahan?bu=${encodeURIComponent(bu)}`);
   }
 

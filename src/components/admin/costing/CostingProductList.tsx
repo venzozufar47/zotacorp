@@ -21,6 +21,7 @@ import {
   deleteProduct,
   type CostingProductWithHpp,
 } from "@/lib/actions/costing.actions";
+import { rememberBrand } from "@/lib/costing/brands";
 import { downloadHppExcel } from "@/lib/costing/exportHppExcel";
 import { downloadQuotePdf } from "@/lib/costing/downloadQuotePdf";
 import { fmtPercent } from "./format";
@@ -43,6 +44,7 @@ export function CostingProductList({
   const [newType, setNewType] = useState<"resep" | "paket_jasa">("resep");
 
   function selectBrand(bu: string) {
+    rememberBrand(bu);
     router.push(`/admin/costing?bu=${encodeURIComponent(bu)}`);
   }
 

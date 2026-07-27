@@ -1,9 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
-import { costingBrands } from "@/lib/costing/brands";
+import {
+  costingBrands,
+  pickActiveBrand,
+  COSTING_BRAND_COOKIE,
+} from "@/lib/costing/brands";
 import { listProductsWithHpp } from "@/lib/actions/costing.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { CostingProductList } from "@/components/admin/costing/CostingProductList";
@@ -25,7 +30,8 @@ export default async function AdminCostingPage({
   const { bu } = await searchParams;
   const units = await listBusinessUnits();
   const brands = costingBrands(units.map((u) => u.name));
-  const activeBrand = bu && brands.includes(bu) ? bu : brands[0];
+  const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
+  const activeBrand = pickActiveBrand(brands, bu, lastOpened);
 
   const res = activeBrand ? await listProductsWithHpp(activeBrand) : null;
   const rows = res && res.ok ? res.data ?? [] : [];

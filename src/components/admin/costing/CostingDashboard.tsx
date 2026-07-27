@@ -10,6 +10,7 @@ import {
   captureHppSnapshots,
   type CostingDashboard as Dashboard,
 } from "@/lib/actions/costing.actions";
+import { rememberBrand } from "@/lib/costing/brands";
 import { fmtPercent } from "./format";
 
 export function CostingDashboard({
@@ -25,6 +26,7 @@ export function CostingDashboard({
   const [pending, startTransition] = useTransition();
 
   function selectBrand(bu: string) {
+    rememberBrand(bu);
     router.push(`/admin/costing/dashboard?bu=${encodeURIComponent(bu)}`);
   }
   function snapshotAll() {
