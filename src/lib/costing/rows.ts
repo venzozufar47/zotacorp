@@ -42,6 +42,7 @@ export function mapMaterial(r: Record<string, unknown>): CostingMaterial {
     content_per_purchase: num(r.content_per_purchase),
     usage_unit: r.usage_unit as string,
     shrink_factor: num(r.shrink_factor),
+    shopee_url: (r.shopee_url as string | null) ?? null,
     price_updated_at: r.price_updated_at as string,
     is_active: r.is_active as boolean,
   };

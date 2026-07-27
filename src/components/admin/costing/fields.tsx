@@ -97,18 +97,22 @@ export function TextField({
   placeholder,
   onCommit,
   className,
+  list,
 }: {
   label?: string;
   value: string;
   placeholder?: string;
   onCommit: (v: string) => void;
   className?: string;
+  /** id `<datalist>` untuk saran nilai (mis. kategori yang sudah ada). */
+  list?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const input = (
     <input
       value={draft ?? value}
       placeholder={placeholder}
+      list={list}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
         if (draft == null) return;

@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useRunAction } from "@/components/admin/cleaning/useRunAction";
-import { ArrowLeft, Plus, Trash2, AlertTriangle, History } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  History,
+  ExternalLink,
+} from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   createMaterial,
@@ -22,6 +29,8 @@ import { NumField, TextField, parseDecimalId } from "./fields";
 
 const STALE_DAYS = 60;
 const STALE_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
+/** Kunci semu untuk bahan yang belum diberi kategori. */
+const NO_CATEGORY = "__none__";
 
 export function MaterialsManager({
   brands,
@@ -34,6 +43,8 @@ export function MaterialsManager({
 }) {
   const { run, pending, startTransition, router } = useRunAction();
   const [expanded, setExpanded] = useState<string | null>(null);
+  /** Filter kategori; "" = semua, NO_CATEGORY = bahan tanpa kategori. */
+  const [catFilter, setCatFilter] = useState("");
 
   // Form tambah bahan.
   const [nName, setNName] = useState("");
@@ -42,6 +53,39 @@ export function MaterialsManager({
   const [nPrice, setNPrice] = useState("");
   const [nContent, setNContent] = useState("");
   const [nUsageUnit, setNUsageUnit] = useState("");
+  const [nShopee, setNShopee] = useState("");
+
+  // Kategori unik (untuk filter + datalist form), urut alfabetis.
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of rows) if (m.category?.trim()) set.add(m.category.trim());
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+  }, [rows]);
+
+  const hasUncategorized = useMemo(
+    () => rows.some((m) => !m.category?.trim()),
+    [rows]
+  );
+
+  // Bahan sesuai filter, dikelompokkan per kategori (urut; tanpa kategori
+  // di akhir) supaya daftar panjang tetap mudah dipindai.
+  const groups = useMemo(() => {
+    const visible = rows.filter((m) => {
+      const cat = m.category?.trim() || "";
+      if (!catFilter) return true;
+      return catFilter === NO_CATEGORY ? !cat : cat === catFilter;
+    });
+    const byCat = new Map<string, CostingMaterial[]>();
+    for (const m of visible) {
+      const key = m.category?.trim() || NO_CATEGORY;
+      const arr = byCat.get(key) ?? [];
+      arr.push(m);
+      byCat.set(key, arr);
+    }
+    return Array.from(byCat.entries()).sort(([a], [b]) =>
+      a === NO_CATEGORY ? 1 : b === NO_CATEGORY ? -1 : a.localeCompare(b, "id")
+    );
+  }, [rows, catFilter]);
 
   function selectBrand(bu: string) {
     rememberBrand(bu);
@@ -72,6 +116,7 @@ export function MaterialsManager({
         purchase_price: price,
         content_per_purchase: content,
         usage_unit: nUsageUnit.trim() || "unit",
+        shopee_url: nShopee.trim() || null,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -83,6 +128,7 @@ export function MaterialsManager({
       setNPrice("");
       setNContent("");
       setNUsageUnit("");
+      setNShopee("");
       toast.success("Bahan ditambahkan");
       router.refresh();
     });
@@ -143,9 +189,17 @@ export function MaterialsManager({
             <input
               value={nCategory}
               onChange={(e) => setNCategory(e.target.value)}
+              list="costing-categories"
               placeholder="tepung"
               className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
             />
+            {/* Saran dari kategori yang sudah ada → mengurangi typo yang
+                memecah kategori jadi dua. */}
+            <datalist id="costing-categories">
+              {categories.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -193,6 +247,18 @@ export function MaterialsManager({
               className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
             />
           </label>
+          <label className="flex flex-col gap-1 col-span-2 sm:col-span-3 lg:col-span-6">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Link Shopee (opsional)
+            </span>
+            <input
+              value={nShopee}
+              onChange={(e) => setNShopee(e.target.value)}
+              inputMode="url"
+              placeholder="https://shopee.co.id/…"
+              className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
+            />
+          </label>
         </div>
         <div className="mt-2 flex justify-end">
           <button
@@ -206,42 +272,82 @@ export function MaterialsManager({
         </div>
       </div>
 
-      {/* Daftar bahan */}
+      {/* Filter kategori */}
+      {rows.length > 0 && (categories.length > 0 || hasUncategorized) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FilterChip
+            label={`Semua (${rows.length})`}
+            active={catFilter === ""}
+            onClick={() => setCatFilter("")}
+          />
+          {categories.map((c) => (
+            <FilterChip
+              key={c}
+              label={`${c} (${
+                rows.filter((m) => m.category?.trim() === c).length
+              })`}
+              active={catFilter === c}
+              onClick={() => setCatFilter(c)}
+            />
+          ))}
+          {hasUncategorized && (
+            <FilterChip
+              label={`Tanpa kategori (${
+                rows.filter((m) => !m.category?.trim()).length
+              })`}
+              active={catFilter === NO_CATEGORY}
+              onClick={() => setCatFilter(NO_CATEGORY)}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Daftar bahan — dikelompokkan per kategori */}
       {rows.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
           Belum ada bahan untuk {activeBrand}.
         </div>
       ) : (
-        <div className="space-y-2">
-          {rows.map((m) => (
-            <MaterialRow
-              key={m.id}
-              m={m}
-              pending={pending}
-              expanded={expanded === m.id}
-              onToggle={() => setExpanded((e) => (e === m.id ? null : m.id))}
-              onField={(patch) =>
-                run(() => updateMaterial({ id: m.id, ...patch }))
-              }
-              onDelete={() => {
-                if (!confirm(`Hapus bahan "${m.name}"?`)) return;
-                startTransition(async () => {
-                  const res = await deleteMaterial(m.id);
-                  if (!res.ok) {
-                    toast.error(res.error);
-                    return;
+        <div className="space-y-4">
+          {groups.map(([cat, list]) => (
+            <div key={cat} className="space-y-2">
+              <h3 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                {cat === NO_CATEGORY ? "Tanpa kategori" : cat}
+                <span className="font-normal normal-case">({list.length})</span>
+                <span className="flex-1 h-px bg-border" />
+              </h3>
+              {list.map((m) => (
+                <MaterialRow
+                  key={m.id}
+                  m={m}
+                  pending={pending}
+                  categories={categories}
+                  expanded={expanded === m.id}
+                  onToggle={() => setExpanded((e) => (e === m.id ? null : m.id))}
+                  onField={(patch) =>
+                    run(() => updateMaterial({ id: m.id, ...patch }))
                   }
-                  // Bahan yang masih dipakai resep hanya dinonaktifkan
-                  // (jaga integritas HPP historis), bukan dihapus permanen.
-                  toast.success(
-                    res.data?.softDeleted
-                      ? "Bahan dinonaktifkan (masih dipakai resep)"
-                      : "Bahan dihapus"
-                  );
-                  router.refresh();
-                });
-              }}
-            />
+                  onDelete={() => {
+                    if (!confirm(`Hapus bahan "${m.name}"?`)) return;
+                    startTransition(async () => {
+                      const res = await deleteMaterial(m.id);
+                      if (!res.ok) {
+                        toast.error(res.error);
+                        return;
+                      }
+                      // Bahan yang masih dipakai resep hanya dinonaktifkan
+                      // (jaga integritas HPP historis), bukan dihapus permanen.
+                      toast.success(
+                        res.data?.softDeleted
+                          ? "Bahan dinonaktifkan (masih dipakai resep)"
+                          : "Bahan dihapus"
+                      );
+                      router.refresh();
+                    });
+                  }}
+                />
+              ))}
+            </div>
           ))}
         </div>
       )}
@@ -249,15 +355,41 @@ export function MaterialsManager({
   );
 }
 
+function FilterChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-7 rounded-full border-2 px-2.5 text-[11px] font-semibold transition ${
+        active
+          ? "border-foreground bg-primary text-foreground"
+          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function MaterialRow({
   m,
   pending,
+  categories,
   expanded,
   onToggle,
   onField,
   onDelete,
 }: {
   m: CostingMaterial;
+  categories: string[];
   pending: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -279,8 +411,14 @@ function MaterialRow({
         <TextField
           label="Kategori"
           value={m.category ?? ""}
+          list={`cats-${m.id}`}
           onCommit={(v) => onField({ category: v || null })}
         />
+        <datalist id={`cats-${m.id}`}>
+          {categories.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
         <TextField
           label="Satuan beli"
           value={m.purchase_unit}
@@ -327,6 +465,29 @@ function MaterialRow({
             )}
           </div>
         </div>
+      </div>
+      {/* Link beli — full-width supaya URL panjang tetap terbaca. */}
+      <div className="px-3 pb-2 flex items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
+          Link beli
+        </span>
+        <TextField
+          value={m.shopee_url ?? ""}
+          placeholder="https://shopee.co.id/…"
+          onCommit={(v) => onField({ shopee_url: v || null })}
+          className="h-8 w-full rounded-lg border border-border bg-background px-2 text-[12px]"
+        />
+        {m.shopee_url && (
+          <a
+            href={m.shopee_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Buka link pembelian"
+            className="shrink-0 inline-flex items-center gap-1 h-8 rounded-lg border border-border px-2 text-[11px] font-semibold text-muted-foreground hover:border-foreground hover:text-foreground"
+          >
+            <ExternalLink size={13} /> Buka
+          </a>
+        )}
       </div>
       <div className="flex items-center gap-3 px-3 pb-2 -mt-1">
         {!m.is_active && (

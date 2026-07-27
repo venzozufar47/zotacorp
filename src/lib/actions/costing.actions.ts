@@ -42,6 +42,8 @@ export interface CostingMaterial {
   usage_unit: string;
   /** Faktor susut/waste bahan (fraksi). Berlaku di semua resep. */
   shrink_factor: number;
+  /** Link pembelian (Shopee dsb). Null = belum diisi. */
+  shopee_url: string | null;
   price_updated_at: string;
   is_active: boolean;
 }
@@ -151,6 +153,30 @@ export async function listMaterials(
   };
 }
 
+const LINK_ERROR = "Link harus diawali http:// atau https://";
+
+/**
+ * Normalisasi link pembelian: kosong → null, `toko.com/x` → diberi
+ * `https://`. Hanya http(s) yang diterima — skema lain (mis. javascript:)
+ * ditolak karena link ini dirender sebagai anchor yang bisa diklik.
+ * Bukan export: file ini "use server" (semua export wajib async).
+ */
+function normalizeLink(raw: string | null | undefined): string | null | "invalid" {
+  if (raw === undefined) return null;
+  if (raw === null) return null;
+  const s = raw.trim();
+  if (!s) return null;
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s) ? s : `https://${s}`;
+  let u: URL;
+  try {
+    u = new URL(withScheme);
+  } catch {
+    return "invalid";
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return "invalid";
+  return u.toString();
+}
+
 export interface MaterialInput {
   business_unit: string;
   name: string;
@@ -161,6 +187,8 @@ export interface MaterialInput {
   usage_unit: string;
   /** Faktor susut (fraksi, 0 = tanpa susut). Opsional; default 0. */
   shrink_factor?: number;
+  /** Link pembelian (Shopee dsb). Opsional. */
+  shopee_url?: string | null;
 }
 
 export async function createMaterial(
@@ -177,6 +205,8 @@ export async function createMaterial(
   const shrink = input.shrink_factor ?? 0;
   if (!Number.isFinite(shrink) || shrink < 0)
     return { ok: false, error: "Faktor susut tidak valid" };
+  const link = normalizeLink(input.shopee_url);
+  if (link === "invalid") return { ok: false, error: LINK_ERROR };
   const supabase = adminClient();
   const { data, error } = await supabase
     .from("costing_materials" as never)
@@ -189,6 +219,7 @@ export async function createMaterial(
       content_per_purchase: input.content_per_purchase,
       usage_unit: input.usage_unit.trim() || "unit",
       shrink_factor: shrink,
+      shopee_url: link,
       created_by: gate.userId,
     } as never)
     .select("id")
@@ -207,6 +238,7 @@ export async function updateMaterial(input: {
   content_per_purchase?: number;
   usage_unit?: string;
   shrink_factor?: number;
+  shopee_url?: string | null;
   is_active?: boolean;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
@@ -239,6 +271,11 @@ export async function updateMaterial(input: {
     if (!Number.isFinite(input.shrink_factor) || input.shrink_factor < 0)
       return { ok: false, error: "Faktor susut tidak valid" };
     patch.shrink_factor = input.shrink_factor;
+  }
+  if (input.shopee_url !== undefined) {
+    const link = normalizeLink(input.shopee_url);
+    if (link === "invalid") return { ok: false, error: LINK_ERROR };
+    patch.shopee_url = link;
   }
   if (input.is_active !== undefined) patch.is_active = input.is_active;
 
