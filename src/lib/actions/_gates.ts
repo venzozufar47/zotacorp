@@ -376,6 +376,19 @@ export async function requireSimAdmin(): Promise<
 }
 
 /**
+ * Social Insights — kelola akun sosmed, kredensial, dan target KPI.
+ *
+ * Admin saja untuk sekarang. Gate terpisah (alih-alih memanggil requireAdmin
+ * langsung di tiap action) supaya memperkenalkan peran "Sosmed Manager" kelak
+ * cukup satu perubahan di sini, bukan menyisir puluhan pemanggilan.
+ */
+export async function requireSocialAdmin(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  return await requireAdmin();
+}
+
+/**
  * Kartu SIM — boleh mencatat isi pulsa + memperbarui tenggat untuk SATU
  * kartu: admin (bisa mewakili siapa pun) atau PIC terdaftar kartu itu.
  * PIC manual (pic_name/pic_phone tanpa akun) tidak bisa login → hanya
