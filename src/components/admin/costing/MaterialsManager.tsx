@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   History,
   ExternalLink,
+  Search,
+  X,
 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
@@ -45,6 +47,7 @@ export function MaterialsManager({
   const [expanded, setExpanded] = useState<string | null>(null);
   /** Filter kategori; "" = semua, NO_CATEGORY = bahan tanpa kategori. */
   const [catFilter, setCatFilter] = useState("");
+  const [query, setQuery] = useState("");
 
   // Form tambah bahan.
   const [nName, setNName] = useState("");
@@ -70,8 +73,13 @@ export function MaterialsManager({
   // Bahan sesuai filter, dikelompokkan per kategori (urut; tanpa kategori
   // di akhir) supaya daftar panjang tetap mudah dipindai.
   const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
     const visible = rows.filter((m) => {
       const cat = m.category?.trim() || "";
+      // Pencarian menembus filter kategori: saat mencari, cari di semua
+      // kategori — kalau tidak, bahan yang dicari "hilang" hanya karena
+      // chip lain sedang aktif.
+      if (q) return m.name.toLowerCase().includes(q) || cat.toLowerCase().includes(q);
       if (!catFilter) return true;
       return catFilter === NO_CATEGORY ? !cat : cat === catFilter;
     });
@@ -85,7 +93,12 @@ export function MaterialsManager({
     return Array.from(byCat.entries()).sort(([a], [b]) =>
       a === NO_CATEGORY ? 1 : b === NO_CATEGORY ? -1 : a.localeCompare(b, "id")
     );
-  }, [rows, catFilter]);
+  }, [rows, catFilter, query]);
+
+  const shownCount = useMemo(
+    () => groups.reduce((s, [, list]) => s + list.length, 0),
+    [groups]
+  );
 
   function selectBrand(bu: string) {
     rememberBrand(bu);
@@ -190,8 +203,8 @@ export function MaterialsManager({
               value={nCategory}
               onChange={(e) => setNCategory(e.target.value)}
               list="costing-categories"
-              placeholder="tepung"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
+              placeholder="Tepung & Pati"
+              className="h-9 rounded-lg border border-border bg-background px-2 text-sm [&::-webkit-calendar-picker-indicator]:hidden"
             />
             {/* Saran dari kategori yang sudah ada → mengurangi typo yang
                 memecah kategori jadi dua. */}
@@ -272,8 +285,32 @@ export function MaterialsManager({
         </div>
       </div>
 
-      {/* Filter kategori */}
-      {rows.length > 0 && (categories.length > 0 || hasUncategorized) && (
+      {/* Cari + filter kategori */}
+      {rows.length > 0 && (
+        <div className="relative">
+          <Search
+            size={14}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari bahan atau kategori…"
+            className="h-9 w-full rounded-xl border-2 border-foreground bg-card pl-8 pr-8 text-sm"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              title="Bersihkan pencarian"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+      {rows.length > 0 && !query && (categories.length > 0 || hasUncategorized) && (
         <div className="flex flex-wrap items-center gap-1.5">
           <FilterChip
             label={`Semua (${rows.length})`}
@@ -306,6 +343,10 @@ export function MaterialsManager({
       {rows.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
           Belum ada bahan untuk {activeBrand}.
+        </div>
+      ) : shownCount === 0 ? (
+        <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
+          Tidak ada bahan cocok “{query}”.
         </div>
       ) : (
         <div className="space-y-4">
