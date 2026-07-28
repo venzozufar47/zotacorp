@@ -10,6 +10,7 @@ import {
 } from "./_gates";
 import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
+import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import type { FulfillmentType, SettleVia } from "./pos.actions";
 
 export interface PendingPesanan {
@@ -371,103 +372,18 @@ export async function cancelPesanan(input: {
   // Pulihkan stok bila opname terakhir terjadi SETELAH pesanan dibuat —
   // dalam kasus itu void saja tidak cukup (deduksi sudah terserap baseline
   // opname). Best-effort: kegagalan di sini tidak membatalkan void.
-  await restoreStockIfAbsorbedByOpname(adminDb, sale, gate.userId);
+  const cust = sale.customer_name?.trim();
+  await restoreStockIfAbsorbedByOpname(
+    adminDb,
+    sale,
+    gate.userId,
+    `Auto: stok kembali — pembatalan pesanan${cust ? ` ${cust}` : ""}`
+  );
 
   revalidatePath("/pos", "layout");
   revalidatePath("/pos/pesanan", "layout");
   revalidatePath("/pos/riwayat", "layout");
   return { ok: true, data: { saleId: sale.id } };
-}
-
-/**
- * Saat pesanan dibatalkan tapi sudah "terserap" opname (opname terakhir
- * dibuat setelah pesanan), masukkan gerakan `production` kompensasi
- * sebesar qty tiap item ber-track_stock supaya stok kembali. Aggregate-
- * variant di-collapse ke level produk. Item non-track / custom dilewati.
- */
-async function restoreStockIfAbsorbedByOpname(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  adminDb: any,
-  sale: { id: string; bank_account_id: string; created_at: string; customer_name: string | null },
-  userId: string
-): Promise<void> {
-  try {
-    const { data: lastOpname } = await adminDb
-      .from("pos_stock_opnames")
-      .select("created_at")
-      .eq("bank_account_id", sale.bank_account_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    // Tidak ada opname, atau opname terakhir <= waktu pesanan dibuat →
-    // void sudah cukup memulihkan stok. Jangan kompensasi (cegah dobel).
-    if (!lastOpname || (lastOpname.created_at as string) <= sale.created_at) {
-      return;
-    }
-
-    const { data: itemsRaw } = await adminDb
-      .from("pos_sale_items")
-      .select("product_id, variant_id, qty")
-      .eq("sale_id", sale.id);
-    const items = (itemsRaw ?? []) as Array<{
-      product_id: string | null;
-      variant_id: string | null;
-      qty: number;
-    }>;
-    const productIds = Array.from(
-      new Set(items.map((i) => i.product_id).filter((v): v is string => !!v))
-    );
-    if (productIds.length === 0) return;
-
-    const { data: productsRaw } = await adminDb
-      .from("pos_products")
-      .select("id, track_stock, stock_aggregate_variants")
-      .in("id", productIds);
-    const products = new Map(
-      (
-        (productsRaw ?? []) as Array<{
-          id: string;
-          track_stock: boolean;
-          stock_aggregate_variants: boolean;
-        }>
-      ).map((p) => [p.id, p])
-    );
-
-    // Group qty per SKU (collapse aggregate-variant ke null).
-    const bySku = new Map<
-      string,
-      { productId: string; variantId: string | null; qty: number }
-    >();
-    for (const it of items) {
-      if (!it.product_id) continue; // item custom — tidak ada stok
-      const p = products.get(it.product_id);
-      if (!p || !p.track_stock) continue; // produk tidak dihitung di stok
-      const variantId = p.stock_aggregate_variants ? null : it.variant_id;
-      const key = `${it.product_id}|${variantId ?? "-"}`;
-      const prev = bySku.get(key);
-      if (prev) prev.qty += it.qty;
-      else bySku.set(key, { productId: it.product_id, variantId, qty: it.qty });
-    }
-    if (bySku.size === 0) return;
-
-    const now = new Date();
-    const cust = sale.customer_name?.trim();
-    const note = `Auto: stok kembali — pembatalan pesanan${cust ? ` ${cust}` : ""}`;
-    const rows = Array.from(bySku.values()).map((s) => ({
-      bank_account_id: sale.bank_account_id,
-      product_id: s.productId,
-      variant_id: s.variantId,
-      type: "production" as const,
-      qty: s.qty,
-      notes: note,
-      movement_date: jakartaDateString(now),
-      movement_time: jakartaHHMM(now),
-      created_by: userId,
-    }));
-    await adminDb.from("pos_stock_movements").insert(rows);
-  } catch {
-    // Best-effort — void sudah sukses. Gap stok bisa dikoreksi manual.
-  }
 }
 
 /** Count pesanan pending — dipakai badge nav di PosShell. */

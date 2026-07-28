@@ -3129,7 +3129,10 @@ export type Database = {
           settled_by: string | null
           settled_via: string | null
           total: number
+          void_reason: string | null
           voided_at: string | null
+          voided_by: string | null
+          voided_by_name: string | null
         }
         Insert: {
           bank_account_id: string
@@ -3151,7 +3154,10 @@ export type Database = {
           settled_by?: string | null
           settled_via?: string | null
           total: number
+          void_reason?: string | null
           voided_at?: string | null
+          voided_by?: string | null
+          voided_by_name?: string | null
         }
         Update: {
           bank_account_id?: string
@@ -3173,7 +3179,10 @@ export type Database = {
           settled_by?: string | null
           settled_via?: string | null
           total?: number
+          void_reason?: string | null
           voided_at?: string | null
+          voided_by?: string | null
+          voided_by_name?: string | null
         }
         Relationships: [
           {

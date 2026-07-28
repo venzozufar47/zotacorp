@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import type { Database } from "@/lib/supabase/types";
 import {
   requireAdmin,
@@ -17,6 +17,7 @@ import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { getActiveDiscount } from "./pos-discount.actions";
 import { applyDiscount } from "@/lib/pos/discount";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
+import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -120,11 +121,17 @@ export interface PosSaleSummary {
   grossTotal: number | null;
   /** Selisih grossTotal − total (≥ 0). 0 kalau no campaign. */
   discountAmount: number;
-  /** Non-null kalau cashflow_transactions yang terkait sudah dihapus
-   *  dari ledger utama. DB trigger `cashflow_tx_void_pos_sale` yang
-   *  set — bukan action POS. Row pos_sales + items tetap disimpan
-   *  untuk audit; UI tinggal render strike + badge. */
+  /** Non-null kalau penjualan ini dibatalkan — lewat `voidPosSale()` dari
+   *  Riwayat, atau lewat DB trigger `cashflow_tx_void_pos_sale` kalau
+   *  cashflow tx-nya dihapus langsung. Row pos_sales + items tetap
+   *  disimpan untuk audit; UI tinggal render strike + badge. */
   voidedAt: string | null;
+  /** Alasan yang ditulis kasir saat membatalkan. Null untuk void lama
+   *  (sebelum fitur ini) atau void via penghapusan cashflow tx. */
+  voidReason: string | null;
+  /** Nama kasir yang membatalkan — diisi manual, default dari jadwal
+   *  shift. Bukan `voided_by` (itu akun tablet). */
+  voidedByName: string | null;
   /** Untuk QRIS: status upload bukti foto nota customer ke
    *  `cashflow_transactions.attachment_path`. Null kalau sale bukan
    *  QRIS atau tidak punya cashflow_transaction_id (edge case).
@@ -1135,7 +1142,7 @@ export async function listPosSaleDates(
  * full history (insights, dll).
  */
 const POS_SALE_LIST_COLUMNS =
-  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via" as const;
+  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via" as const;
 
 export async function listRecentPosSales(
   bankAccountId: string,
@@ -1165,6 +1172,8 @@ export async function listRecentPosSales(
     gross_total: number | null;
     discount_amount: number | null;
     voided_at: string | null;
+    void_reason: string | null;
+    voided_by_name: string | null;
     cashflow_transaction_id: string | null;
     customer_name: string | null;
     fulfillment_type: FulfillmentType | null;
@@ -1348,6 +1357,8 @@ export async function listRecentPosSales(
     grossTotal: s.gross_total != null ? Number(s.gross_total) : null,
     discountAmount: s.discount_amount != null ? Number(s.discount_amount) : 0,
     voidedAt: s.voided_at,
+    voidReason: s.void_reason,
+    voidedByName: s.voided_by_name,
     // Untuk QRIS selalu return boolean (true/false) supaya badge muncul
     // di UI — termasuk sale lama yang mungkin tidak punya
     // cashflow_transaction_id (data pre-link). Null khusus untuk cash
@@ -1596,4 +1607,114 @@ export async function getPosShiftSummary(
       expectedTill,
     },
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Void transaksi (dari /pos/riwayat)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Batalkan transaksi POS yang sudah lunas, dari halaman Riwayat.
+ *
+ * Alasan dan nama kasir WAJIB — nama diisi manual (bukan diambil dari akun
+ * login) karena tablet POS login permanen sebagai satu akun, sehingga
+ * `created_by`/`voided_by` menunjuk perangkat, bukan orangnya.
+ *
+ * Efeknya dibuat supaya transaksi benar-benar "seolah tidak pernah ada":
+ *
+ *  1. UANG — cashflow tx-nya DIHAPUS. Ini yang menentukan, karena semua
+ *     hitungan uang (getPosShiftSummary, saldo kas, P&L) membaca
+ *     `cashflow_transactions`, bukan `pos_sales`. Sekadar men-set
+ *     `voided_at` tidak akan mengubah angka kas sama sekali.
+ *  2. STOK — `computeExpectedCounts` hanya menghitung penjualan
+ *     non-void, jadi `voided_at` saja sudah cukup UNTUK penjualan yang
+ *     dibuat setelah opname terakhir. Kalau sudah terserap opname,
+ *     `restoreStockIfAbsorbedByOpname` memasukkan gerakan kompensasi.
+ *  3. JEJAK — baris pos_sales + items sengaja TIDAK dihapus, supaya masih
+ *     bisa ditelusuri siapa membatalkan apa dan kenapa.
+ *
+ * Kasir hanya boleh membatalkan transaksi hari ini; hari sebelumnya
+ * terkunci supaya rekap yang sudah dilaporkan tidak berubah diam-diam.
+ * Admin tidak kena batas ini.
+ */
+export async function voidPosSale(input: {
+  saleId: string;
+  reason: string;
+  cashierName: string;
+}): Promise<ActionResult<{ saleId: string }>> {
+  const reason = input.reason?.trim() ?? "";
+  const cashierName = input.cashierName?.trim() ?? "";
+  if (!input.saleId) return { ok: false, error: "saleId wajib" };
+  if (reason.length < 3)
+    return { ok: false, error: "Alasan pembatalan wajib diisi (minimal 3 karakter)." };
+  if (!cashierName) return { ok: false, error: "Nama kasir wajib diisi." };
+
+  const supabase = await createClient();
+  const { data: sale } = await supabase
+    .from("pos_sales")
+    .select(
+      "id, bank_account_id, sale_date, created_at, voided_at, customer_name, cashflow_transaction_id"
+    )
+    .eq("id", input.saleId)
+    .maybeSingle();
+  if (!sale) return { ok: false, error: "Transaksi tidak ditemukan." };
+  if (sale.voided_at) return { ok: false, error: "Transaksi ini sudah dibatalkan." };
+
+  const gate = await requireAdminOrPosAssignee(sale.bank_account_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const role = await getCurrentRole();
+  if (role !== "admin" && sale.sale_date !== jakartaDateString(new Date())) {
+    return {
+      ok: false,
+      error:
+        "Hanya transaksi hari ini yang bisa dibatalkan kasir. Untuk transaksi lama, minta bantuan admin.",
+    };
+  }
+
+  const adminDb = createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  // `.is("voided_at", null)` = penjaga balapan: kalau dua kasir menekan
+  // batal bersamaan, hanya satu yang menulis dan yang kedua tidak menimpa
+  // alasan milik yang pertama.
+  const { data: updated, error: voidErr } = await adminDb
+    .from("pos_sales")
+    .update({
+      voided_at: new Date().toISOString(),
+      void_reason: reason,
+      voided_by: gate.userId,
+      voided_by_name: cashierName,
+    })
+    .eq("id", sale.id)
+    .is("voided_at", null)
+    .select("id");
+  if (voidErr) return { ok: false, error: voidErr.message };
+  if (!updated || updated.length === 0)
+    return { ok: false, error: "Transaksi ini baru saja dibatalkan orang lain." };
+
+  // Hapus jejak uangnya. Trigger `cashflow_tx_void_pos_sale` ikut jalan
+  // tapi tidak menimpa apa pun — kondisinya `voided_at is null`, dan kita
+  // sudah mengisinya di atas.
+  if (sale.cashflow_transaction_id) {
+    const { error: cashErr } = await adminDb
+      .from("cashflow_transactions")
+      .delete()
+      .eq("id", sale.cashflow_transaction_id);
+    if (cashErr) return { ok: false, error: `Void gagal di sisi kas: ${cashErr.message}` };
+  }
+
+  const cust = sale.customer_name?.trim();
+  await restoreStockIfAbsorbedByOpname(
+    adminDb,
+    sale,
+    gate.userId,
+    `Auto: stok kembali — void transaksi${cust ? ` ${cust}` : ""}`
+  );
+
+  revalidatePath("/pos", "layout");
+  revalidatePath("/admin/finance", "layout");
+  return { ok: true, data: { saleId: sale.id } };
 }

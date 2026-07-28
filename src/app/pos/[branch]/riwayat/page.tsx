@@ -6,6 +6,7 @@ import { PosNavLink } from "@/components/pos/PosNavLink";
 import { PosShell } from "@/components/pos/PosShell";
 import { QrisReceiptBadge } from "@/components/pos/QrisReceiptBadge";
 import { ReprintReceiptButton } from "@/components/pos/ReprintReceiptButton";
+import { VoidSaleButton } from "@/components/pos/VoidSaleButton";
 import { QRIS_RECEIPT_FROM_RIWAYAT } from "@/lib/pos/flags";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
@@ -314,6 +315,20 @@ export default async function PosRiwayatPage({
                   </div>
                 </li>
               )}
+              {s.voidedAt && (s.voidReason || s.voidedByName) && (
+                <li className="mt-1 pt-2 border-t border-dashed border-destructive/30 text-xs text-muted-foreground">
+                  {s.voidReason && (
+                    <span className="text-destructive font-medium">
+                      Alasan: {s.voidReason}
+                    </span>
+                  )}
+                  {s.voidedByName && (
+                    <span className="block mt-0.5">
+                      Dibatalkan oleh {s.voidedByName}
+                    </span>
+                  )}
+                </li>
+              )}
               {!s.voidedAt && receiptContent.enabled && (
                 <li>
                   <ReprintReceiptButton
@@ -321,6 +336,11 @@ export default async function PosRiwayatPage({
                     content={receiptContent}
                     branch={account.branch}
                   />
+                </li>
+              )}
+              {!s.voidedAt && s.paymentStatus === "paid" && (
+                <li>
+                  <VoidSaleButton sale={s} branch={account.branch} />
                 </li>
               )}
             </ul>
