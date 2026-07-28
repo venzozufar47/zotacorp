@@ -2424,12 +2424,9 @@ function DiscountDialog({
   // Preset cepat — dibulatkan ke 500 supaya nominalnya wajar di kasir.
   // `keep` = porsi harga yang DIBAYAR; dipakai pecahan (bukan persen
   // bulat) supaya potongan ⅓ jatuh pas (15.000 → 10.000).
-  const presets = [
-    { label: "−10%", keep: 0.9 },
-    { label: "−25%", keep: 0.75 },
-    { label: "−⅓", keep: 2 / 3 },
-    { label: "−50%", keep: 0.5 },
-  ].map((p) => ({
+  // Untuk saat ini hanya potongan ⅓ yang dipakai di kasir; nominal lain
+  // tetap bisa diketik manual di bawah.
+  const presets = [{ label: "−⅓", keep: 2 / 3 }].map((p) => ({
     label: p.label,
     value: Math.round((listPrice * p.keep) / 500) * 500,
   }));
