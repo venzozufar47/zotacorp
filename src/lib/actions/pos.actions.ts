@@ -113,6 +113,10 @@ export interface PosSaleSummary {
   fulfillmentType: FulfillmentType | null;
   paymentStatus: "paid" | "pending";
   settledVia: SettleVia | null;
+  /** Kapan uangnya masuk (ISO). Beda dari saleDate untuk pesanan yang
+   *  di-settle belakangan — inilah tanggal yang dipakai aturan "hanya
+   *  hari ini" di voidPosSale, jadi UI harus memakai yang sama. */
+  settledAt: string | null;
   /** Harga akhir setelah diskon + rounding — sama dengan
    *  cashflow_transactions.credit untuk sale ini. */
   total: number;
@@ -1142,7 +1146,7 @@ export async function listPosSaleDates(
  * full history (insights, dll).
  */
 const POS_SALE_LIST_COLUMNS =
-  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via" as const;
+  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at" as const;
 
 export async function listRecentPosSales(
   bankAccountId: string,
@@ -1179,6 +1183,7 @@ export async function listRecentPosSales(
     fulfillment_type: FulfillmentType | null;
     payment_status: "paid" | "pending";
     settled_via: SettleVia | null;
+    settled_at: string | null;
   };
   let sales: SaleRow[] = [];
   if (saleDate) {
@@ -1353,6 +1358,7 @@ export async function listRecentPosSales(
     fulfillmentType: s.fulfillment_type,
     paymentStatus: s.payment_status,
     settledVia: s.settled_via,
+    settledAt: s.settled_at,
     total: Number(s.total),
     grossTotal: s.gross_total != null ? Number(s.gross_total) : null,
     discountAmount: s.discount_amount != null ? Number(s.discount_amount) : 0,
@@ -1653,18 +1659,51 @@ export async function voidPosSale(input: {
   const { data: sale } = await supabase
     .from("pos_sales")
     .select(
-      "id, bank_account_id, sale_date, created_at, voided_at, customer_name, cashflow_transaction_id"
+      "id, bank_account_id, sale_date, created_at, voided_at, customer_name, cashflow_transaction_id, payment_status, payment_method, settled_at"
     )
     .eq("id", input.saleId)
     .maybeSingle();
   if (!sale) return { ok: false, error: "Transaksi tidak ditemukan." };
   if (sale.voided_at) return { ok: false, error: "Transaksi ini sudah dibatalkan." };
 
+  // Pesanan yang belum dibayar punya alur sendiri (cancelPesanan) tanpa
+  // batas hari. Tolak di sini supaya tidak ada dua pintu ke lifecycle yang
+  // sama dengan aturan berbeda.
+  if (sale.payment_status === "pending") {
+    return {
+      ok: false,
+      error: "Ini pesanan yang belum dibayar — batalkan dari halaman Pesanan.",
+    };
+  }
+
+  // Dua sebab berbeda kenapa sale lunas bisa tidak punya cashflow tx:
+  //  - settle lewat admin (payment_method 'admin'): memang tidak pernah
+  //    dibuatkan tx, uangnya masuk di luar POS → aman di-void.
+  //  - data lama pra-link (cash/qris awal April): uangnya ADA di ledger
+  //    tapi barisnya tidak diketahui. Menebak lewat tanggal+jam+nominal
+  //    berisiko menghapus transaksi lain, jadi tolak — lebih baik gagal
+  //    daripada menandai "dibatalkan" sambil uangnya diam-diam terhitung.
+  const settledOutsidePos = sale.payment_method === "admin";
+  if (!sale.cashflow_transaction_id && !settledOutsidePos) {
+    return {
+      ok: false,
+      error:
+        "Transaksi lama ini tidak tertaut ke catatan kas, jadi uangnya tidak bisa dikembalikan otomatis. Perlu dikoreksi manual oleh admin.",
+    };
+  }
+
   const gate = await requireAdminOrPosAssignee(sale.bank_account_id);
   if (!gate.ok) return { ok: false, error: gate.error };
 
+  // Batas "hari ini" diukur dari kapan UANGNYA masuk, bukan kapan pesanan
+  // dibuat. Pesanan yang dipesan Senin lalu di-settle Rabu mencatat kas di
+  // Rabu — memakai sale_date akan mengunci kasir dari membatalkan salah
+  // settle yang baru saja dia lakukan.
+  const moneyDate = sale.settled_at
+    ? jakartaDateString(new Date(sale.settled_at))
+    : sale.sale_date;
   const role = await getCurrentRole();
-  if (role !== "admin" && sale.sale_date !== jakartaDateString(new Date())) {
+  if (role !== "admin" && moneyDate !== jakartaDateString(new Date())) {
     return {
       ok: false,
       error:
@@ -1677,33 +1716,52 @@ export async function voidPosSale(input: {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // `.is("voided_at", null)` = penjaga balapan: kalau dua kasir menekan
-  // batal bersamaan, hanya satu yang menulis dan yang kedua tidak menimpa
-  // alasan milik yang pertama.
-  const { data: updated, error: voidErr } = await adminDb
-    .from("pos_sales")
-    .update({
-      voided_at: new Date().toISOString(),
-      void_reason: reason,
-      voided_by: gate.userId,
-      voided_by_name: cashierName,
-    })
-    .eq("id", sale.id)
-    .is("voided_at", null)
-    .select("id");
-  if (voidErr) return { ok: false, error: voidErr.message };
-  if (!updated || updated.length === 0)
-    return { ok: false, error: "Transaksi ini baru saja dibatalkan orang lain." };
+  // URUTAN DI SINI PENTING. Keadaan paling berbahaya adalah penjualan
+  // bertanda "Dibatalkan" sementara uangnya masih terhitung di kas — kasir
+  // mengira beres, laporan diam-diam salah, dan tombolnya sudah hilang
+  // sehingga tak bisa diulang. Karena trigger `cashflow_tx_void_pos_sale`
+  // men-set `voided_at` SECARA ATOMIK saat cashflow tx dihapus, keadaan itu
+  // jadi mustahil kalau kas dihapus LEBIH DULU. Menulis catatan (alasan,
+  // nama) duluan aman: kalau proses mati setelahnya, yang tersisa hanya
+  // penjualan normal dengan kolom catatan terisi — tak terlihat di UI dan
+  // tertimpa sendiri saat dicoba ulang.
+  const annotation = {
+    void_reason: reason,
+    voided_by: gate.userId,
+    voided_by_name: cashierName,
+  };
 
-  // Hapus jejak uangnya. Trigger `cashflow_tx_void_pos_sale` ikut jalan
-  // tapi tidak menimpa apa pun — kondisinya `voided_at is null`, dan kita
-  // sudah mengisinya di atas.
   if (sale.cashflow_transaction_id) {
-    const { error: cashErr } = await adminDb
+    await adminDb
+      .from("pos_sales")
+      .update(annotation)
+      .eq("id", sale.id)
+      .is("voided_at", null);
+
+    const { data: deleted, error: cashErr } = await adminDb
       .from("cashflow_transactions")
       .delete()
-      .eq("id", sale.cashflow_transaction_id);
-    if (cashErr) return { ok: false, error: `Void gagal di sisi kas: ${cashErr.message}` };
+      .eq("id", sale.cashflow_transaction_id)
+      .select("id");
+    if (cashErr)
+      return { ok: false, error: `Kas gagal dikoreksi, transaksi TIDAK jadi dibatalkan: ${cashErr.message}` };
+    if (!deleted || deleted.length === 0)
+      return { ok: false, error: "Transaksi ini baru saja dibatalkan orang lain." };
+    // Trigger sudah men-set voided_at sebagai bagian dari DELETE di atas.
+  } else {
+    // Settle lewat admin — tidak ada baris kas yang perlu dihapus, jadi
+    // `voided_at` harus kita set sendiri. `.is("voided_at", null)` =
+    // penjaga balapan supaya klik bersamaan tidak menimpa alasan yang
+    // pertama.
+    const { data: updated, error: voidErr } = await adminDb
+      .from("pos_sales")
+      .update({ ...annotation, voided_at: new Date().toISOString() })
+      .eq("id", sale.id)
+      .is("voided_at", null)
+      .select("id");
+    if (voidErr) return { ok: false, error: voidErr.message };
+    if (!updated || updated.length === 0)
+      return { ok: false, error: "Transaksi ini baru saja dibatalkan orang lain." };
   }
 
   const cust = sale.customer_name?.trim();

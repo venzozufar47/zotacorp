@@ -28,8 +28,8 @@ comment on column public.pos_sales.voided_by_name is
   'Nama kasir yang membatalkan, diisi manual (default dari jadwal shift). '
   'Ini penanda orang yang sebenarnya, bukan voided_by.';
 
--- Riwayat memfilter per hari lalu menandai baris yang dibatalkan; index
--- parsial ini kecil karena hanya mencakup baris yang benar-benar di-void.
-create index if not exists pos_sales_voided_at_idx
-  on public.pos_sales (bank_account_id, voided_at)
-  where voided_at is not null;
+-- Sengaja TIDAK menambah index untuk voided_at. Tidak ada query yang
+-- memfilter `voided_at IS NOT NULL`: agregat memfilter `IS NULL` (yang
+-- justru dikecualikan predikat parsial), dan Riwayat memfilter
+-- bank_account_id + sale_date tanpa predikat void sama sekali. Index
+-- seperti itu murni beban tulis.

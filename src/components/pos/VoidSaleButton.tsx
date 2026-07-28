@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Ban, X } from "lucide-react";
 import { toast } from "sonner";
 import { voidPosSale, type PosSaleSummary } from "@/lib/actions/pos.actions";
@@ -22,9 +23,13 @@ export function VoidSaleButton({
   sale: PosSaleSummary;
   branch: string | null;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [cashier, setCashier] = useState("");
+  /** True kalau nama terisi otomatis dari jadwal shift — cuma cabang Pare
+   *  yang punya jadwal, jadi hint-nya tidak boleh mengklaim sebaliknya. */
+  const [prefilled, setPrefilled] = useState(false);
   const [pending, startTransition] = useTransition();
 
   // Prefill dihitung saat tombol ditekan, bukan di effect: namanya harus
@@ -32,7 +37,9 @@ export function VoidSaleButton({
   // jadi waktu render tidak bisa dipercaya), dan menghitungnya di sini
   // menghindari render berantai.
   function openDialog() {
-    setCashier(resolveCashierName(branch, new Date(), null) ?? "");
+    const fromSchedule = resolveCashierName(branch, new Date(), null);
+    setCashier(fromSchedule ?? "");
+    setPrefilled(Boolean(fromSchedule));
     setReason("");
     setOpen(true);
   }
@@ -64,6 +71,10 @@ export function VoidSaleButton({
       }
       toast.success("Transaksi dibatalkan. Kas dan stok sudah dikembalikan.");
       setOpen(false);
+      // Halaman ini force-dynamic, jadi revalidatePath di server tidak
+      // menyegarkan apa pun — tanpa ini baris yang sudah dibatalkan tetap
+      // tampil normal dan kasir menekan tombolnya lagi.
+      router.refresh();
     });
   }
 
@@ -122,9 +133,18 @@ export function VoidSaleButton({
               </div>
 
               <p className="text-[11.5px] text-muted-foreground leading-relaxed">
-                Uang dan stok akan kembali seperti transaksi ini tidak pernah
-                ada. Catatannya tetap tersimpan dan ditandai dibatalkan.
+                Catatan kas dan stok akan kembali seperti transaksi ini tidak
+                pernah ada. Barisnya tetap tersimpan dan ditandai dibatalkan.
               </p>
+
+              {sale.paymentMethod === "qris" && (
+                <p className="text-[11.5px] leading-relaxed rounded-lg bg-pop-amber/20 border border-pop-amber/50 px-2.5 py-2">
+                  Ini pembayaran QRIS — uangnya sudah benar-benar masuk ke
+                  rekening. Membatalkan hanya menghapus catatannya di sini;
+                  pengembalian ke pembeli tetap harus dilakukan manual dan
+                  dicatat sendiri.
+                </p>
+              )}
 
               <label className="block">
                 <span className="text-xs font-semibold text-foreground">
@@ -151,7 +171,9 @@ export function VoidSaleButton({
                   className="mt-1 w-full h-9 rounded-lg border-2 border-foreground bg-card px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
                 <span className="mt-1 block text-[10.5px] text-muted-foreground">
-                  Terisi dari jadwal shift — ganti kalau yang jaga bukan kamu.
+                  {prefilled
+                    ? "Terisi dari jadwal shift — ganti kalau yang jaga bukan kamu."
+                    : "Tulis nama kamu."}
                 </span>
               </label>
             </div>

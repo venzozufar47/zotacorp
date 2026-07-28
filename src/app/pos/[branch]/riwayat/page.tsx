@@ -19,6 +19,7 @@ import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
 
 function formatDateLong(iso: string): string {
@@ -117,6 +118,26 @@ export default async function PosRiwayatPage({
   );
   const voidedCount = sales.filter((s) => s.voidedAt).length;
   const activeCount = sales.length - voidedCount;
+
+  // Tombol batal hanya dirender kalau `voidPosSale` memang akan menerimanya
+  // — aturannya harus SAMA PERSIS dengan action, kalau tidak kasir menekan
+  // tombol yang selalu ditolak. Halaman ini sering menampilkan tanggal lain
+  // (default = hari terakhir yang ada penjualannya, bukan hari ini), jadi
+  // tanpa gating ini seluruh tombol di layar akan gagal.
+  //
+  // Sisa penolakan (transaksi lama pra-link yang tak tertaut kas) sengaja
+  // TIDAK dicek di sini: semuanya bertanggal April, jadi aturan hari-ini
+  // sudah menyembunyikannya dari kasir, dan hanya admin yang bisa
+  // menemuinya — dengan pesan error yang jelas.
+  const todayWib = jakartaDateString(new Date());
+  const canVoid = (s: (typeof sales)[number]) => {
+    if (s.voidedAt || s.paymentStatus !== "paid") return false;
+    if (isAdmin) return true;
+    const moneyDate = s.settledAt
+      ? jakartaDateString(new Date(s.settledAt))
+      : s.saleDate;
+    return moneyDate === todayWib;
+  };
 
   const nav = (
     <DateNav
@@ -338,7 +359,7 @@ export default async function PosRiwayatPage({
                   />
                 </li>
               )}
-              {!s.voidedAt && s.paymentStatus === "paid" && (
+              {canVoid(s) && (
                 <li>
                   <VoidSaleButton sale={s} branch={account.branch} />
                 </li>
