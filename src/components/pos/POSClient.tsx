@@ -2422,9 +2422,16 @@ function DiscountDialog({
   }
 
   // Preset cepat — dibulatkan ke 500 supaya nominalnya wajar di kasir.
-  const presets = [10, 25, 50].map((pct) => ({
-    pct,
-    value: Math.round((listPrice * (100 - pct)) / 100 / 500) * 500,
+  // `keep` = porsi harga yang DIBAYAR; dipakai pecahan (bukan persen
+  // bulat) supaya potongan ⅓ jatuh pas (15.000 → 10.000).
+  const presets = [
+    { label: "−10%", keep: 0.9 },
+    { label: "−25%", keep: 0.75 },
+    { label: "−⅓", keep: 2 / 3 },
+    { label: "−50%", keep: 0.5 },
+  ].map((p) => ({
+    label: p.label,
+    value: Math.round((listPrice * p.keep) / 500) * 500,
   }));
 
   return (
@@ -2446,13 +2453,13 @@ function DiscountDialog({
         <div className="flex flex-wrap gap-1.5">
           {presets.map((p) => (
             <button
-              key={p.pct}
+              key={p.label}
               type="button"
               onClick={() => apply(p.value)}
               disabled={p.value <= 0 || p.value >= listPrice}
               className="h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold hover:border-foreground disabled:opacity-40"
             >
-              −{p.pct}% · {formatRp(p.value)}
+              {p.label} · {formatRp(p.value)}
             </button>
           ))}
         </div>
