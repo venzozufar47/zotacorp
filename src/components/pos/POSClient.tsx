@@ -190,6 +190,13 @@ export function POSClient({
 }: Props) {
   // Catalog cart: Record<cartKey, qty>.
   const [cart, setCart] = useState<Record<string, number>>({});
+  // Harga diskon per baris cart (mis. produk menjelang expired).
+  // Record<cartKey, hargaSatuanDiskon>. Sengaja atribut baris katalog —
+  // bukan item custom — supaya product_id tetap terkirim sehingga stok
+  // berkurang dan stock opname tidak selisih.
+  const [discountByKey, setDiscountByKey] = useState<Record<string, number>>({});
+  // Baris cart yang sedang diatur diskonnya; null = dialog tertutup.
+  const [discountFor, setDiscountFor] = useState<string | null>(null);
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
   // QRIS wajib upload foto nota customer sebagai bukti — state-nya
   // di-reset setiap kali konfirmasi dibuka/ditutup.
@@ -286,6 +293,10 @@ export function POSClient({
       qty: number;
       subtotal: number;
       custom: boolean;
+      /** Harga satuan efektif (sudah diskon bila ada). */
+      unitPrice: number;
+      /** Harga normal; non-null hanya bila baris ini didiskon. */
+      originalPrice: number | null;
     }> = [];
     const qtyByProductId = new Map<string, number>();
     for (const [key, qty] of Object.entries(cart)) {
@@ -297,7 +308,13 @@ export function POSClient({
       if (!info) continue;
       const sugarLabel = sugarLevel ? SUGAR_LEVEL_LABELS[sugarLevel] : null;
       const name = sugarLabel ? `${info.name} — ${sugarLabel}` : info.name;
-      const subtotal = info.price * qty;
+      // Diskon hanya berlaku kalau nilainya benar-benar di bawah harga
+      // normal — sama dengan aturan server, supaya total di layar tak
+      // pernah beda dengan yang dihitung ulang saat submit.
+      const disc = discountByKey[key];
+      const discounted = disc != null && disc < info.price ? disc : null;
+      const unitPrice = discounted ?? info.price;
+      const subtotal = unitPrice * qty;
       total += subtotal;
       itemCount += qty;
       cartLines.push({
@@ -308,6 +325,8 @@ export function POSClient({
         qty,
         subtotal,
         custom: false,
+        unitPrice,
+        originalPrice: discounted != null ? info.price : null,
       });
       qtyByProductId.set(
         info.productId,
@@ -326,10 +345,12 @@ export function POSClient({
         qty: c.qty,
         subtotal,
         custom: true,
+        unitPrice: c.price,
+        originalPrice: null,
       });
     }
     return { total, itemCount, cartLines, qtyByProductId };
-  }, [cart, customItems, lineByKey]);
+  }, [cart, customItems, lineByKey, discountByKey]);
 
   // Concept-b: filter produk by case-insensitive substring of nama
   // (sederhana, sesuai design — chips kategori belum ada karena model
@@ -409,8 +430,17 @@ export function POSClient({
     setCart((c) => {
       const next = { ...c };
       const n = (next[key] ?? 0) - 1;
-      if (n <= 0) delete next[key];
-      else next[key] = n;
+      if (n <= 0) {
+        delete next[key];
+        // Baris habis → diskonnya ikut dibuang, jangan sampai nyangkut
+        // dan diam-diam berlaku lagi saat produk yang sama ditambah.
+        setDiscountByKey((d) => {
+          if (d[key] === undefined) return d;
+          const nd = { ...d };
+          delete nd[key];
+          return nd;
+        });
+      } else next[key] = n;
       return next;
     });
   }
@@ -530,6 +560,7 @@ export function POSClient({
   function resetCart() {
     setCart({});
     setCustomItems([]);
+    setDiscountByKey({});
   }
 
   function submit(method: PaymentMethod | "pending") {
@@ -537,9 +568,16 @@ export function POSClient({
       .filter(([, qty]) => qty > 0)
       .map(([key, qty]) => {
         const { productId, variantId, sugarLevel } = parseCartKey(key);
-        return variantId
+        // Kirim customPrice hanya kalau diskonnya benar-benar di bawah
+        // harga normal; server menolak yang tidak.
+        const info = lineByKey.get(cartKey(productId, variantId));
+        const disc = discountByKey[key];
+        const customPrice =
+          info && disc != null && disc < info.price ? disc : undefined;
+        const base = variantId
           ? { productId, variantId, qty, sugarLevel }
           : { productId, qty, sugarLevel };
+        return customPrice !== undefined ? { ...base, customPrice } : base;
       });
     const items: PosSaleItemInput[] = [
       ...catalogItems,
@@ -843,9 +881,33 @@ export function POSClient({
                     {line.name}
                   </p>
                   <p className="text-[11px] text-muted-foreground tabular-nums">
-                    {formatRp(line.subtotal / line.qty)} × {line.qty}
+                    {line.originalPrice != null && (
+                      <span className="line-through opacity-60 mr-1">
+                        {formatRp(line.originalPrice)}
+                      </span>
+                    )}
+                    {formatRp(line.unitPrice)} × {line.qty}
+                    {line.originalPrice != null && (
+                      <span className="ml-1 font-semibold text-pop-amber">
+                        diskon
+                      </span>
+                    )}
                   </p>
                 </div>
+                {!isCustom && (
+                  <button
+                    type="button"
+                    onClick={() => setDiscountFor(line.key)}
+                    className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                      line.originalPrice != null
+                        ? "border-pop-amber bg-pop-amber/20 text-foreground"
+                        : "border-border bg-card text-muted-foreground hover:text-foreground"
+                    }`}
+                    title="Atur harga diskon (mis. menjelang expired)"
+                  >
+                    %
+                  </button>
+                )}
                 {!isCustom && (
                   <button
                     type="button"
@@ -1534,6 +1596,30 @@ export function POSClient({
               addOpenPriceLine(p, openPriceFor.variantId, price, qty)
             }
             onClose={() => setOpenPriceFor(null)}
+          />
+        );
+      })()}
+
+      {discountFor && (() => {
+        const { productId, variantId } = parseCartKey(discountFor);
+        const info = lineByKey.get(cartKey(productId, variantId));
+        if (!info) return null;
+        return (
+          <DiscountDialog
+            name={info.name}
+            listPrice={info.price}
+            current={discountByKey[discountFor] ?? null}
+            onApply={(price) =>
+              setDiscountByKey((d) => ({ ...d, [discountFor]: price }))
+            }
+            onClear={() =>
+              setDiscountByKey((d) => {
+                const next = { ...d };
+                delete next[discountFor];
+                return next;
+              })
+            }
+            onClose={() => setDiscountFor(null)}
           />
         );
       })()}
@@ -2297,6 +2383,121 @@ function CustomItemDialog({
  * line BARU ke cart — kasir bisa tap produk yang sama berkali-kali
  * dengan harga berbeda (mis. discount per customer).
  */
+/**
+ * Atur harga diskon satu baris cart (mis. produk menjelang expired).
+ *
+ * Baris tetap produk katalog — hanya harganya turun — sehingga stok
+ * berkurang seperti penjualan biasa dan stock opname tidak selisih.
+ * Harga wajib di bawah harga normal; server memvalidasi ulang.
+ */
+function DiscountDialog({
+  name,
+  listPrice,
+  current,
+  onApply,
+  onClear,
+  onClose,
+}: {
+  name: string;
+  listPrice: number;
+  current: number | null;
+  onApply: (price: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const [price, setPrice] = useState(current != null ? String(current) : "");
+
+  function apply(value?: number) {
+    const p = value ?? Number(price);
+    if (!Number.isFinite(p) || p < 0) {
+      toast.error("Harga tidak valid");
+      return;
+    }
+    if (p >= listPrice) {
+      toast.error("Harga diskon harus di bawah harga normal");
+      return;
+    }
+    onApply(p);
+    onClose();
+  }
+
+  // Preset cepat — dibulatkan ke 500 supaya nominalnya wajar di kasir.
+  const presets = [10, 25, 50].map((pct) => ({
+    pct,
+    value: Math.round((listPrice * (100 - pct)) / 100 / 500) * 500,
+  }));
+
+  return (
+    <div
+      className="fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold text-foreground">{name}</h2>
+          <p className="text-xs text-muted-foreground">
+            Harga normal {formatRp(listPrice)}. Isi harga diskon — stok tetap
+            berkurang seperti penjualan biasa.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {presets.map((p) => (
+            <button
+              key={p.pct}
+              type="button"
+              onClick={() => apply(p.value)}
+              disabled={p.value <= 0 || p.value >= listPrice}
+              className="h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold hover:border-foreground disabled:opacity-40"
+            >
+              −{p.pct}% · {formatRp(p.value)}
+            </button>
+          ))}
+        </div>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+            Harga diskon
+          </span>
+          <input
+            autoFocus
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder={`di bawah ${listPrice}`}
+            inputMode="numeric"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") apply();
+            }}
+            className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-background text-sm tabular-nums"
+          />
+        </label>
+        <div className="flex gap-2">
+          {current != null && (
+            <button
+              type="button"
+              onClick={() => {
+                onClear();
+                onClose();
+              }}
+              className="h-10 px-3 rounded-lg border border-border text-sm text-muted-foreground hover:text-destructive"
+            >
+              Hapus diskon
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => apply()}
+            className="flex-1 h-10 rounded-lg bg-primary border-2 border-foreground text-sm font-bold"
+          >
+            Terapkan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OpenPriceDialog({
   product,
   variant,

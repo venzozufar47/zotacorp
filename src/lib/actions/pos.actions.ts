@@ -746,17 +746,27 @@ export async function createPosSale(input: {
       const hasVariants = productHasVariants.get(it.productId) ?? false;
       const p = productMap.get(it.productId)!;
       if (it.customPrice !== undefined) {
-        // Open-price branch: produk wajib flagged is_open_price.
-        // Boleh + varian (varian dipilih, harga tetap input manual).
-        if (!p.is_open_price)
-          return {
-            ok: false,
-            error: `Produk "${p.name}" bukan produk harga custom`,
-          };
+        // Dua jalur harga-manual:
+        //  a) open-price → harga bebas (produk flagged is_open_price);
+        //  b) DISKON pada produk katalog biasa (mis. menjelang expired).
+        //     Harga wajib DI BAWAH harga normal — jalur ini tidak boleh
+        //     dipakai menaikkan harga diam-diam. Baris tetap menunjuk
+        //     produk katalog sehingga stok berkurang & opname tetap pas.
         if (hasVariants && !it.variantId)
           return { ok: false, error: `Produk "${p.name}" wajib pilih varian` };
         if (!hasVariants && it.variantId)
           return { ok: false, error: `Produk "${p.name}" tidak punya varian` };
+        if (!p.is_open_price) {
+          const v = it.variantId ? variantMap.get(it.variantId) : null;
+          if (it.variantId && !v)
+            return { ok: false, error: "Varian tidak ditemukan / tidak aktif" };
+          const listPrice = Number(v ? v.price : p.price);
+          if (!(Number(it.customPrice) < listPrice))
+            return {
+              ok: false,
+              error: `Harga diskon "${p.name}" harus di bawah harga normal (${listPrice.toLocaleString("id-ID")})`,
+            };
+        }
       } else {
         if (hasVariants && !it.variantId)
           return { ok: false, error: `Produk "${p.name}" wajib pilih varian` };
@@ -784,7 +794,9 @@ export async function createPosSale(input: {
       // Alur open-price punya dialog sendiri yang tidak menanyakan gula.
       // Kalau flag-nya kebetulan menyala di produk open-price, jangan
       // memblokir penjualan (kasir jadi buntu) — cukup tidak dicatat.
-      const isOpenPriceLine = it.customPrice !== undefined;
+      // Baris DISKON bukan open-price: ia tetap baris katalog biasa
+      // (gula ikut di cart key), jadi aturan gula tetap berlaku.
+      const isOpenPriceLine = it.customPrice !== undefined && p.is_open_price;
       if (sugarUnit.requires_sugar_level && !isOpenPriceLine) {
         if (!isSugarLevel(it.sugarLevel))
           return {
@@ -809,10 +821,12 @@ export async function createPosSale(input: {
     if (isCatalogItem(it)) {
       const p = productMap.get(it.productId)!;
       const v = it.variantId ? variantMap.get(it.variantId)! : null;
+      const listPrice = Number(v ? v.price : p.price);
       const unitPrice =
-        it.customPrice !== undefined
-          ? Number(it.customPrice)
-          : Number(v ? v.price : p.price);
+        it.customPrice !== undefined ? Number(it.customPrice) : listPrice;
+      // Baris diskon (bukan open-price) menyimpan harga normalnya supaya
+      // nilai diskon tetap terlacak di laporan.
+      const isDiscounted = it.customPrice !== undefined && !p.is_open_price;
       const subtotal = unitPrice * it.qty;
       total += subtotal;
       return {
@@ -822,6 +836,7 @@ export async function createPosSale(input: {
         variantName: v?.name ?? null,
         sugarLevel: isSugarLevel(it.sugarLevel) ? it.sugarLevel : null,
         unitPrice,
+        originalUnitPrice: isDiscounted ? listPrice : null,
         qty: it.qty,
         subtotal,
       };
@@ -837,6 +852,7 @@ export async function createPosSale(input: {
       variantName: null,
       sugarLevel: null,
       unitPrice,
+      originalUnitPrice: null,
       qty: c.qty,
       subtotal,
     };
@@ -949,6 +965,7 @@ export async function createPosSale(input: {
         variant_name: it.variantName,
         sugar_level: it.sugarLevel,
         unit_price: it.unitPrice,
+        original_unit_price: it.originalUnitPrice,
         qty: it.qty,
         subtotal: it.subtotal,
         fulfillment_type: fulfillment,
@@ -1023,7 +1040,10 @@ export async function createPosSale(input: {
       const name = it.variantName
         ? `${it.productName} ${it.variantName}`
         : it.productName;
-      return `${it.qty}x ${name}`;
+      // Tandai baris berdiskon supaya mutasi kas tetap bisa dibaca tanpa
+      // membuka detail sale.
+      const tag = it.originalUnitPrice != null ? " (diskon)" : "";
+      return `${it.qty}x ${name}${tag}`;
     })
     .join(", ");
   const discountTag = campaign && discountAmount > 0
