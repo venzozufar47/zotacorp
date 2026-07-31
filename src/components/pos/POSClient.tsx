@@ -33,7 +33,6 @@ import {
 } from "@/lib/actions/pos.actions";
 import { useRouter } from "next/navigation";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
-import { activateTodayDiscountPreset } from "@/lib/actions/pos-discount.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { applyDiscount, type RoundingMode } from "@/lib/pos/discount";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
@@ -1241,11 +1240,7 @@ export function POSClient({
             />
           </div>
         )}
-        <DiscountBanner
-          activeDiscount={activeDiscount}
-          isAdmin={isAdmin}
-          bankAccountId={bankAccountId}
-        />
+        <DiscountBanner activeDiscount={activeDiscount} />
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur p-3 border-b border-border">
           <div className="relative">
             <Search
@@ -1667,67 +1662,27 @@ export function POSClient({
  */
 function DiscountBanner({
   activeDiscount,
-  isAdmin,
-  bankAccountId,
 }: {
   activeDiscount: ActiveDiscountProp | null;
-  isAdmin: boolean;
-  bankAccountId: string;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  if (activeDiscount) {
-    return (
-      <div className="px-3 pt-3">
-        <div className="rounded-xl border-2 border-success/40 bg-success/10 px-3 py-2 text-xs text-foreground flex items-center gap-2">
-          <Sparkles size={14} className="text-success shrink-0" />
-          <span>
-            <strong className="font-semibold">
-              Diskon {Math.round(activeDiscount.percentOff)}% aktif
-            </strong>{" "}
-            — pembulatan ke bawah Rp{" "}
-            {activeDiscount.roundingUnit.toLocaleString("id-ID")}
-            {activeDiscount.note ? ` · ${activeDiscount.note}` : ""}
-          </span>
-        </div>
-      </div>
-    );
-  }
-  if (!isAdmin) return null;
+  // Keadaan kosong ("Belum ada diskon aktif" + tombol "Aktifkan 10% hari
+  // ini") DIHAPUS atas permintaan: strip itu hanya ada untuk menampung
+  // tombolnya, jadi menyisakan teksnya saja cuma memakan ruang di layar
+  // kasir. Diskon tetap bisa diatur admin lewat panel diskon; yang hilang
+  // hanya pintasan satu-klik dari layar kasir.
+  if (!activeDiscount) return null;
   return (
     <div className="px-3 pt-3">
-      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-foreground flex items-center justify-between gap-2">
-        <span className="text-muted-foreground">
-          Belum ada diskon aktif hari ini.
+      <div className="rounded-xl border-2 border-success/40 bg-success/10 px-3 py-2 text-xs text-foreground flex items-center gap-2">
+        <Sparkles size={14} className="text-success shrink-0" />
+        <span>
+          <strong className="font-semibold">
+            Diskon {Math.round(activeDiscount.percentOff)}% aktif
+          </strong>{" "}
+          — pembulatan ke bawah Rp{" "}
+          {activeDiscount.roundingUnit.toLocaleString("id-ID")}
+          {activeDiscount.note ? ` · ${activeDiscount.note}` : ""}
         </span>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const res = await activateTodayDiscountPreset(bankAccountId);
-              if (!res.ok) {
-                toast.error(res.error);
-                return;
-              }
-              const n = res.data?.retroUpdatedCount ?? 0;
-              toast.success(
-                res.data?.created
-                  ? `Diskon 10% aktif${n > 0 ? ` · ${n} transaksi hari ini dijadikan diskon` : ""}`
-                  : "Diskon hari ini sudah aktif"
-              );
-              router.refresh();
-            })
-          }
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-2.5 h-7 text-[11px] font-semibold disabled:opacity-50"
-        >
-          {pending ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Sparkles size={12} />
-          )}
-          Aktifkan 10% hari ini
-        </button>
       </div>
     </div>
   );

@@ -554,14 +554,24 @@ export async function createStockOpname(input: {
   const [{ data: products }, { data: variants }] = await Promise.all([
     supabase
       .from("pos_products")
-      .select("id, bank_account_id, name, price, stock_aggregate_variants")
+      .select(
+        "id, bank_account_id, name, price, stock_aggregate_variants, created_at"
+      )
       .in("id", productIds),
     variantIds.length
       ? supabase
           .from("pos_product_variants")
-          .select("id, product_id, name, price")
+          .select("id, product_id, name, price, created_at")
           .in("id", variantIds)
-      : Promise.resolve({ data: [] as Array<{ id: string; product_id: string; name: string; price: number }> }),
+      : Promise.resolve({
+          data: [] as Array<{
+            id: string;
+            product_id: string;
+            name: string;
+            price: number;
+            created_at: string;
+          }>,
+        }),
   ]);
   const pById = new Map((products ?? []).map((p) => [p.id, p]));
   const vById = new Map((variants ?? []).map((v) => [v.id, v]));
@@ -589,6 +599,9 @@ export async function createStockOpname(input: {
       productName: p.name,
       variantName: v?.name ?? null,
       unitPrice: Number(v ? v.price : p.price),
+      // Tidak dipakai computeExpectedCounts, tapi bagian dari kontrak Sku
+      // — metrik Service Level memakainya untuk membatasi awal hidup SKU.
+      createdAt: v && v.created_at > p.created_at ? v.created_at : p.created_at,
     };
   });
   const baseline = await loadBaseline(supabase, input.bankAccountId);

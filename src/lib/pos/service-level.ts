@@ -123,6 +123,16 @@ export async function loadServiceLevelConfig(
   };
 }
 
+/** Tanggal WIB (YYYY-MM-DD) dari sebuah timestamp ISO. */
+function jakartaDateOfIso(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
 /** Tambah `n` hari ke tanggal YYYY-MM-DD. Aritmetika UTC murni. */
 function addDays(ymd: string, n: number): string {
   const dt = new Date(ymd + "T00:00:00Z");
@@ -220,6 +230,22 @@ export async function computeServiceLevel(
     return s;
   };
 
+  // Tanggal WIB sebuah SKU mulai ADA. `listActiveSkus` membaca katalog
+  // SAAT INI dan memproyeksikannya mundur, jadi tanpa batas ini setiap
+  // produk yang baru ditambahkan akan terhitung "habis" untuk seluruh
+  // periode sebelum ia dibuat — menekan angka historis secara palsu dan
+  // menaruhnya di puncak daftar penyebab terbesar.
+  //
+  // Ini pasangan alami pengecualian ber-tanggal: `created_at` membatasi
+  // AWAL hidup SKU, `excluded_from` membatasi akhirnya.
+  const bornOn = new Map<SkuKey, string>();
+  for (const s of stream.skus) {
+    bornOn.set(
+      skuKey(s.productId, s.variantId),
+      jakartaDateOfIso(s.createdAt)
+    );
+  }
+
   // Indeks sampel per tanggal.
   const idxByDate = new Map<string, number[]>();
   grid.forEach((g, i) => {
@@ -250,7 +276,11 @@ export async function computeServiceLevel(
     const excluded = excludedOn(date);
     const countedIdx: number[] = [];
     stream.skuKeys.forEach((k, j) => {
-      if (!excluded.has(k)) countedIdx.push(j);
+      if (excluded.has(k)) return;
+      // Belum ada di katalog pada tanggal itu → belum boleh dihitung.
+      const born = bornOn.get(k);
+      if (born && born > date) return;
+      countedIdx.push(j);
     });
     const trackedSkus = countedIdx.length;
 

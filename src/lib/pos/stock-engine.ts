@@ -40,6 +40,16 @@ export interface Sku {
   productName: string;
   variantName: string | null;
   unitPrice: number;
+  /**
+   * Kapan SKU ini mulai ADA (ISO), = `created_at` produk, atau varian
+   * kalau varian dibuat belakangan.
+   *
+   * Dipakai metrik Service Level supaya produk baru tidak dihitung
+   * "habis" untuk tanggal sebelum ia dibuat — `listActiveSkus` membaca
+   * katalog SAAT INI dan memproyeksikannya mundur, jadi tanpa ini setiap
+   * produk baru menekan angka historis secara palsu.
+   */
+  createdAt: string;
 }
 
 /** Ukuran halaman PostgREST. Batas keras server adalah 1000 baris. */
@@ -104,7 +114,7 @@ export async function listActiveSkus(
 ): Promise<{ skus: Sku[]; aggregateProductIds: Set<string> }> {
   const { data: products } = await supabase
     .from("pos_products")
-    .select("id, name, price, sort_order, stock_aggregate_variants")
+    .select("id, name, price, sort_order, stock_aggregate_variants, created_at")
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
     .eq("track_stock", true)
@@ -117,7 +127,7 @@ export async function listActiveSkus(
   const { data: variants } = productIds.length
     ? await supabase
         .from("pos_product_variants")
-        .select("id, product_id, name, price, sort_order")
+        .select("id, product_id, name, price, sort_order, created_at")
         .in("product_id", productIds)
         .eq("active", true)
         .order("sort_order", { ascending: true })
@@ -129,6 +139,7 @@ export async function listActiveSkus(
           name: string;
           price: number;
           sort_order: number;
+          created_at: string;
         }>,
       };
   const variantsByProduct = new Map<string, NonNullable<typeof variants>>();
@@ -147,6 +158,7 @@ export async function listActiveSkus(
         productName: p.name,
         variantName: null,
         unitPrice: Number(p.price),
+        createdAt: p.created_at,
       });
     } else {
       for (const v of vs) {
@@ -156,6 +168,11 @@ export async function listActiveSkus(
           productName: p.name,
           variantName: v.name,
           unitPrice: Number(v.price),
+          // Varian bisa ditambahkan jauh setelah produknya — pakai yang
+          // paling belakangan supaya SKU tidak dihitung sebelum benar-benar
+          // bisa dijual.
+          createdAt:
+            v.created_at > p.created_at ? v.created_at : p.created_at,
         });
       }
     }
