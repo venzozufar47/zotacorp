@@ -159,7 +159,10 @@ export async function loadBrandProcurement(
   for (const o of opnames) opnameAt.set(o.id as string, o.created_at as string);
 
   // Baseline per bahan = item opname terbaru yang memuatnya.
-  const baseline = new Map<string, { qty: number; atIso: string }>();
+  // Bandingkan sebagai WAKTU, bukan string: presisi pecahan detik dari
+  // PostgREST tidak seragam, dan urutan leksikografis kebetulan-benar itu
+  // rapuh untuk angka yang menentukan stok.
+  const baseline = new Map<string, { qty: number; atIso: string; atMs: number }>();
   if (opnames.length > 0) {
     const { data: itemRows } = await supabase
       .from("costing_material_opname_items" as never)
@@ -170,9 +173,11 @@ export async function loadBrandProcurement(
       const mid = it.material_id as string;
       const at = opnameAt.get(it.opname_id as string);
       if (!at) continue;
+      const atMs = Date.parse(at);
+      if (!Number.isFinite(atMs)) continue;
       const prev = baseline.get(mid);
-      if (!prev || at > prev.atIso)
-        baseline.set(mid, { qty: num(it.physical_qty), atIso: at });
+      if (!prev || atMs > prev.atMs)
+        baseline.set(mid, { qty: num(it.physical_qty), atIso: at, atMs });
     }
   }
 
@@ -180,19 +185,24 @@ export async function loadBrandProcurement(
   // karena tiap bahan punya cut-off sendiri.
   const receiptsByMaterial = new Map<string, number>();
   if (baseline.size > 0) {
-    let oldest: string | null = null;
+    let oldestMs = Number.POSITIVE_INFINITY;
+    let oldestIso: string | null = null;
     for (const b of baseline.values())
-      if (!oldest || b.atIso < oldest) oldest = b.atIso;
+      if (b.atMs < oldestMs) {
+        oldestMs = b.atMs;
+        oldestIso = b.atIso;
+      }
     const { data: recRows } = await supabase
       .from("costing_material_receipts" as never)
       .select("material_id, qty_usage_units, created_at")
       .eq("business_unit", opts.businessUnit)
-      .gt("created_at", oldest!);
+      .gt("created_at", oldestIso!);
     for (const r of (recRows ?? []) as Record<string, unknown>[]) {
       const mid = r.material_id as string;
       const b = baseline.get(mid);
       if (!b) continue; // belum pernah opname → barang masuk diabaikan
-      if ((r.created_at as string) <= b.atIso) continue;
+      const recMs = Date.parse(r.created_at as string);
+      if (!Number.isFinite(recMs) || recMs <= b.atMs) continue;
       receiptsByMaterial.set(
         mid,
         (receiptsByMaterial.get(mid) ?? 0) + num(r.qty_usage_units)

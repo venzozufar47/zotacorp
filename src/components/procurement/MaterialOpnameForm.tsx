@@ -36,16 +36,31 @@ export function MaterialOpnameForm({
   const [notes, setNotes] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Hanya baris yang benar-benar berisi ANGKA valid. Jangan memakai
+  // `?? 0`: input sampah ("abc") akan tercatat sebagai fisik 0 dan
+  // menghapus stok bahan itu diam-diam.
   const filled = useMemo(
     () =>
       rows
         .map((r) => ({ row: r, raw: draft[r.material.id] }))
         .filter((x) => x.raw !== undefined && x.raw.trim() !== "")
-        .map((x) => ({
-          row: x.row,
-          qty: parseDecimalId(x.raw!) ?? 0,
-        }))
-        .filter((x) => Number.isFinite(x.qty) && x.qty >= 0),
+        .map((x) => ({ row: x.row, qty: parseDecimalId(x.raw!) }))
+        .filter(
+          (x): x is { row: ProcurementRow; qty: number } =>
+            x.qty != null && Number.isFinite(x.qty) && x.qty >= 0
+        ),
+    [rows, draft]
+  );
+
+  /** Baris yang diketik tapi angkanya tak terbaca — dicegah, bukan didiamkan. */
+  const invalidCount = useMemo(
+    () =>
+      rows.filter((r) => {
+        const raw = draft[r.material.id];
+        if (raw === undefined || raw.trim() === "") return false;
+        const n = parseDecimalId(raw);
+        return n == null || !Number.isFinite(n) || n < 0;
+      }).length,
     [rows, draft]
   );
 
@@ -91,6 +106,10 @@ export function MaterialOpnameForm({
   }
 
   function onSubmit() {
+    if (invalidCount > 0) {
+      toast.error(`${invalidCount} isian bukan angka yang valid`);
+      return;
+    }
     if (diffs.count > 0) {
       setConfirmOpen(true);
       return;
@@ -149,7 +168,12 @@ export function MaterialOpnameForm({
                   }
                   inputMode="decimal"
                   placeholder="fisik"
-                  className="h-9 w-28 rounded-lg border border-border bg-background px-2 text-sm tabular-nums"
+                  aria-invalid={raw.trim() !== "" && qty == null}
+                  className={`h-9 w-28 rounded-lg border bg-background px-2 text-sm tabular-nums ${
+                    raw.trim() !== "" && qty == null
+                      ? "border-destructive border-2"
+                      : "border-border"
+                  }`}
                 />
                 <span className="text-[11px] text-muted-foreground w-10">
                   {r.material.usage_unit}
@@ -191,11 +215,19 @@ export function MaterialOpnameForm({
                 </span>
               </>
             )}
+            {invalidCount > 0 && (
+              <>
+                {" · "}
+                <span className="text-destructive font-semibold">
+                  {invalidCount} isian tak valid
+                </span>
+              </>
+            )}
           </span>
           <button
             type="button"
             onClick={onSubmit}
-            disabled={pending || filled.length === 0}
+            disabled={pending || filled.length === 0 || invalidCount > 0}
             className="ml-auto h-10 px-4 rounded-xl border-2 border-foreground bg-primary text-sm font-bold disabled:opacity-60"
           >
             {pending ? "Menyimpan…" : "Simpan opname"}

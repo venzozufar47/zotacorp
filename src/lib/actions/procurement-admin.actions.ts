@@ -12,7 +12,6 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
-import { num } from "@/lib/costing/rows";
 import {
   fetchProcurementSettings,
   mapSettings,
@@ -289,7 +288,7 @@ export async function countTrackedMaterials(): Promise<
   for (const r of (data ?? []) as Record<string, unknown>[]) {
     if (!(r.is_tracked as boolean)) continue;
     const bu = r.business_unit as string;
-    out[bu] = (out[bu] ?? 0) + num(1);
+    out[bu] = (out[bu] ?? 0) + 1;
   }
   return { ok: true, data: out };
 }
