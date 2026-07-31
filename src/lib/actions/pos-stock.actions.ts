@@ -26,6 +26,8 @@ import {
   jakartaHourIso,
   listActiveSkus,
   loadBaselineAt,
+  loadStockEventStream,
+  sampleReadiness,
   skuKey,
   type PosDbClient,
   type Sku,
@@ -974,11 +976,11 @@ export async function getStockReadinessAtTime(
  * Day-over-day series: untuk satu jam WIB tertentu, hitung jumlah SKU
  * ready pada N hari ke belakang (termasuk hari ini).
  *
- * **Single-sweep optimization**: alih-alih memanggil
- * `getStockReadinessAtTime` per hari (yang berakhir N×4 query
- * sekuensial), kita load semua opnames + movements + sales sampai
- * `nowIso` dalam **3 query**, lalu agregat in-memory per titik
- * window. Untuk N=30 + ribuan row, jauh di bawah sub-detik.
+ * Sweep-nya tinggal di `@/lib/pos/stock-engine`: satu muatan event
+ * berpaginasi (`loadStockEventStream`) lalu satu lintasan maju
+ * (`sampleReadiness`). Sebelumnya logika itu ditulis inline di sini dan
+ * memindai ulang seluruh array delta untuk SETIAP titik — plus query-nya
+ * tanpa paginasi sehingga terpotong diam-diam di 1000 baris.
  */
 export async function getStockReadinessSeries(
   bankAccountId: string,
@@ -994,126 +996,41 @@ export async function getStockReadinessSeries(
   const today = jakartaDateString(new Date());
   const nowIso = new Date().toISOString();
 
-  // Build daftar tanggal + atIso, tandai mana yang masa depan supaya
-  // tidak ikut diagregasi.
+  // Grid menaik; titik di masa depan dikeluarkan dari sampling tapi
+  // tetap muncul di seri dengan ready=null supaya sumbu-X tak berlubang.
   const items = Array.from({ length: span }, (_, i) => {
     const date = jakartaDateMinusDays(today, span - 1 - i);
     const atIso = jakartaHourIso(date, hour);
     return { date, atIso, future: atIso > nowIso };
   });
-  const latestAtIso =
-    items.filter((it) => !it.future).slice(-1)[0]?.atIso ?? nowIso;
+  const past = items.filter((it) => !it.future);
+  const latestAtIso = past.length > 0 ? past[past.length - 1].atIso : nowIso;
 
-  // 1) SKU set + 2) all opnames sampai latestAtIso + 3) all movements
-  // + 4) all sales — empat query paralel. Opname-items di-fetch sekali
-  // berdasarkan opname id yang relevan.
-  const [{ skus, aggregateProductIds }, opnamesRes, movementsRes, salesRes] =
-    await Promise.all([
-      listActiveSkus(supabase, bankAccountId),
-      supabase
-        .from("pos_stock_opnames")
-        .select("id, created_at")
-        .eq("bank_account_id", bankAccountId)
-        .lte("created_at", latestAtIso)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("pos_stock_movements")
-        .select("product_id, variant_id, type, qty, created_at")
-        .eq("bank_account_id", bankAccountId)
-        .lte("created_at", latestAtIso),
-      supabase
-        .from("pos_sale_items")
-        .select(
-          "product_id, variant_id, qty, pos_sales!inner(bank_account_id, created_at, voided_at)"
-        )
-        .eq("pos_sales.bank_account_id", bankAccountId)
-        .is("pos_sales.voided_at", null)
-        .lte("pos_sales.created_at", latestAtIso),
-    ]);
-  const total = skus.length;
-  const skuKeys = skus.map((s) => skuKey(s.productId, s.variantId));
-  const skuKeySet = new Set(skuKeys);
-
-  // Opname items diambil kalau ada opname dalam window. Cuma 1 query
-  // gabungan untuk semua opname id supaya tetap 1 round-trip.
-  const opnames = opnamesRes.data ?? [];
-  const opnameItemsByOpname = new Map<string, Map<SkuKey, number>>();
-  if (opnames.length > 0) {
-    const { data: itemsRaw } = await supabase
-      .from("pos_stock_opname_items")
-      .select("opname_id, product_id, variant_id, physical_count")
-      .in(
-        "opname_id",
-        opnames.map((o) => o.id)
-      );
-    for (const it of itemsRaw ?? []) {
-      const m =
-        opnameItemsByOpname.get(it.opname_id) ?? new Map<SkuKey, number>();
-      m.set(skuKey(it.product_id, it.variant_id), it.physical_count);
-      opnameItemsByOpname.set(it.opname_id, m);
-    }
-  }
-
-  // Pre-process movements & sales: filter ke SKU yang dipantau, normal-
-  // isasi variant_id untuk aggregate-products, hitung delta = +qty
-  // (production) / -qty (withdrawal & sale) lalu sort by created_at
-  // ascending. Setelah itu untuk tiap titik tinggal binary-cut.
-  type Delta = { key: SkuKey; createdAt: string; delta: number };
-  const deltas: Delta[] = [];
-  for (const m of movementsRes.data ?? []) {
-    const vId = aggregateProductIds.has(m.product_id) ? null : m.variant_id;
-    const key = skuKey(m.product_id, vId);
-    if (!skuKeySet.has(key)) continue;
-    deltas.push({
-      key,
-      createdAt: m.created_at,
-      delta: m.type === "production" ? m.qty : -m.qty,
-    });
-  }
-  for (const it of salesRes.data ?? []) {
-    if (!it.product_id) continue;
-    const vId = aggregateProductIds.has(it.product_id) ? null : it.variant_id;
-    const key = skuKey(it.product_id, vId);
-    if (!skuKeySet.has(key)) continue;
-    // pos_sale_items.created_at gak di-fetch — pakai pos_sales.created_at
-    // yang ada di nested join.
-    const saleCreatedAt = (
-      it as unknown as { pos_sales: { created_at: string } }
-    ).pos_sales.created_at;
-    deltas.push({ key, createdAt: saleCreatedAt, delta: -it.qty });
-  }
-  deltas.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-
-  // Untuk tiap titik atIso: cari opname terakhir <= atIso → seed,
-  // tambahkan delta (created_at > opname.cutoff && <= atIso). Karena
-  // deltas sudah ter-sort, kita bisa scan linear; window kecil (max
-  // 30 titik), jadi total cost ≈ O(deltas × points).
-  const points: StockReadinessSeriesPoint[] = items.map((it) => {
-    if (it.future) {
-      return { date: it.date, atIso: null, ready: null, total };
-    }
-    // Latest opname <= atIso (opnames sorted ascending; iterate dari
-    // belakang untuk first match).
-    let cutoffIso: string | null = null;
-    let baseline: Map<SkuKey, number> = new Map();
-    for (let i = opnames.length - 1; i >= 0; i -= 1) {
-      if (opnames[i].created_at <= it.atIso) {
-        cutoffIso = opnames[i].created_at;
-        baseline = opnameItemsByOpname.get(opnames[i].id) ?? new Map();
-        break;
-      }
-    }
-    const counts = new Map<SkuKey, number>();
-    for (const k of skuKeys) counts.set(k, baseline.get(k) ?? 0);
-    for (const d of deltas) {
-      if (cutoffIso && d.createdAt <= cutoffIso) continue;
-      if (d.createdAt > it.atIso) break; // sorted ascending
-      counts.set(d.key, (counts.get(d.key) ?? 0) + d.delta);
-    }
-    let ready = 0;
-    for (const v of counts.values()) if (v > 0) ready += 1;
-    return { date: it.date, atIso: it.atIso, ready, total };
+  // Jangkar ke opname terakhir sebelum titik paling awal — tanpa ini
+  // seluruh riwayat rekening ikut termuat.
+  const earliestAtIso = past.length > 0 ? past[0].atIso : latestAtIso;
+  const anchor = await loadBaselineAt(supabase, bankAccountId, earliestAtIso);
+  const stream = await loadStockEventStream(supabase, bankAccountId, {
+    anchorIso: anchor.cutoffIso,
+    toIso: latestAtIso,
   });
+  const { samples } = sampleReadiness(
+    stream,
+    past.map((it) => it.atIso)
+  );
+  const readyByIso = new Map(samples.map((s) => [s.atIso, s.ready]));
+  const total = stream.skuKeys.length;
+
+  const points: StockReadinessSeriesPoint[] = items.map((it) =>
+    it.future
+      ? { date: it.date, atIso: null, ready: null, total }
+      : {
+          date: it.date,
+          atIso: it.atIso,
+          ready: readyByIso.get(it.atIso) ?? 0,
+          total,
+        }
+  );
   return { ok: true, data: { hourLocal: hour, series: points } };
 }
 

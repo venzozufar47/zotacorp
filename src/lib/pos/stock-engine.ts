@@ -323,27 +323,42 @@ export interface StockEventStream {
  * Muat seluruh event stok satu rekening sampai `toIso` dalam beberapa
  * query berpaginasi, siap disampel berkali-kali tanpa query ulang.
  *
- * `fromIso` opsional: hanya optimisasi untuk memangkas delta yang pasti
- * mendahului opname penyeimbang paling awal. Biarkan null kalau ragu —
- * hasilnya sama, cuma lebih banyak baris dimuat.
+ * `anchorIso` = `created_at` opname terakhir yang mendahului titik
+ * sampel paling awal. Kalau diisi, hanya event SEJAK jangkar itu yang
+ * dimuat — dan itu tetap benar karena opname adalah reset total: apa pun
+ * sebelum jangkar sudah terserap ke `physical_count`-nya.
+ *
+ * Ini bukan sekadar optimisasi mikro. Tanpa jangkar, jendela 30 hari di
+ * Pare memuat SELURUH riwayat sejak April (7.800+ delta, ~10 detik).
+ * Dengan jangkar, hanya event dalam jendela yang dimuat.
+ *
+ * Cari jangkarnya dengan `loadBaselineAt(db, acct, awalJendelaIso)` lalu
+ * teruskan `cutoffIso`-nya. Biarkan null hanya kalau memang butuh
+ * seluruh riwayat.
  */
 export async function loadStockEventStream(
   supabase: PosDbClient,
   bankAccountId: string,
-  opts: { fromIso?: string | null; toIso: string }
+  opts: { anchorIso?: string | null; toIso: string }
 ): Promise<StockEventStream> {
-  const { fromIso = null, toIso } = opts;
+  const { anchorIso = null, toIso } = opts;
+  // Delta dipotong EKSKLUSIF di jangkar (cocok dengan `.gt(sinceIso)` di
+  // computeExpectedCounts); opname INKLUSIF supaya baris jangkar sendiri
+  // ikut termuat dan bisa jadi baseline.
+  const fromIso = anchorIso;
 
   const [{ skus, aggregateProductIds }, opnameHeadersRes, movementsRes, salesRes] =
     await Promise.all([
       listActiveSkus(supabase, bankAccountId),
-      fetchAllPages<{ id: string; created_at: string }>(() =>
-        supabase
+      fetchAllPages<{ id: string; created_at: string }>(() => {
+        let q = supabase
           .from("pos_stock_opnames")
           .select("id, created_at")
           .eq("bank_account_id", bankAccountId)
-          .lte("created_at", toIso)
-      ),
+          .lte("created_at", toIso);
+        if (anchorIso) q = q.gte("created_at", anchorIso);
+        return q;
+      }),
       fetchAllPages<{
         product_id: string;
         variant_id: string | null;
