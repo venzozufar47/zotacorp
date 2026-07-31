@@ -154,9 +154,12 @@ export default async function DashboardPage() {
   // Banner pengadaan — sengaja dihitung TERPISAH dan hanya untuk staf
   // pengadaan, supaya dashboard karyawan lain tidak ikut menanggung
   // biayanya (perhitungan ini menyapu seluruh bahan tiap unit bisnis).
-  const procurementBadge = (await isProcurementStaff())
-    ? ((await getProcurementDashboardBadge()).data ?? null)
-    : null;
+  let procurementBadge: { needBuy: number; staleDays: number | null } | null =
+    null;
+  if (await isProcurementStaff()) {
+    const res = await getProcurementDashboardBadge();
+    if (res.ok) procurementBadge = res.data ?? null;
+  }
   // Feature gating sekarang lewat assignment kind ke user (admin atur
   // di /admin/settings → Kerjaan tambahan). Karyawan tanpa assignment
   // = dropdown kosong = tombol tidak muncul.
