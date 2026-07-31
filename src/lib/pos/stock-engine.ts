@@ -502,7 +502,21 @@ export interface ReadinessSample {
 export function sampleReadiness(
   stream: StockEventStream,
   atIsoList: string[]
-): { samples: ReadinessSample[]; unavailableByKey: Map<SkuKey, number> } {
+): {
+  samples: ReadinessSample[];
+  unavailableByKey: Map<SkuKey, number>;
+  /**
+   * Keadaan ready per SKU di tiap sampel: `readyMask[i][j]` = SKU
+   * `skuKeys[j]` ready pada `atIsoList[i]`.
+   *
+   * Dibutuhkan karena penyebut Service Level BERBEDA TIAP HARI —
+   * pengecualian SKU ber-tanggal-berlaku membuat himpunan SKU yang
+   * dihitung berubah di tengah periode. Agregat `samples[].ready` saja
+   * tidak cukup untuk menghitung ulang per hari tanpa menyapu ulang.
+   * Biayanya kecil: 360 sampel x 24 SKU = 8.640 boolean.
+   */
+  readyMask: boolean[][];
+} {
   for (let i = 1; i < atIsoList.length; i += 1) {
     if (atIsoList[i] < atIsoList[i - 1]) {
       throw new Error("sampleReadiness: atIsoList harus menaik");
@@ -512,6 +526,7 @@ export function sampleReadiness(
   const { skuKeys, opnames, deltas } = stream;
   const total = skuKeys.length;
   const samples: ReadinessSample[] = [];
+  const readyMask: boolean[][] = [];
   const unavailableByKey = new Map<SkuKey, number>();
   for (const k of skuKeys) unavailableByKey.set(k, 0);
 
@@ -579,14 +594,17 @@ export function sampleReadiness(
     }
 
     samples.push({ atIso, ready: readyCount, total });
-    for (const k of skuKeys) {
-      if ((counts.get(k) ?? 0) <= 0) {
-        unavailableByKey.set(k, (unavailableByKey.get(k) ?? 0) + 1);
-      }
+    const mask: boolean[] = new Array(skuKeys.length);
+    for (let j = 0; j < skuKeys.length; j += 1) {
+      const k = skuKeys[j];
+      const ready = (counts.get(k) ?? 0) > 0;
+      mask[j] = ready;
+      if (!ready) unavailableByKey.set(k, (unavailableByKey.get(k) ?? 0) + 1);
     }
+    readyMask.push(mask);
   }
 
-  return { samples, unavailableByKey };
+  return { samples, unavailableByKey, readyMask };
 }
 
 /**

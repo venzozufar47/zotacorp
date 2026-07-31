@@ -404,6 +404,9 @@ export type Database = {
           pdf_password: string | null
           pos_enabled: boolean
           production_authorizer_id: string | null
+          service_level_close_hour: number
+          service_level_enabled: boolean
+          service_level_open_hour: number
           source_sheet: string | null
           source_url: string | null
           updated_at: string
@@ -425,6 +428,9 @@ export type Database = {
           pdf_password?: string | null
           pos_enabled?: boolean
           production_authorizer_id?: string | null
+          service_level_close_hour?: number
+          service_level_enabled?: boolean
+          service_level_open_hour?: number
           source_sheet?: string | null
           source_url?: string | null
           updated_at?: string
@@ -446,6 +452,9 @@ export type Database = {
           pdf_password?: string | null
           pos_enabled?: boolean
           production_authorizer_id?: string | null
+          service_level_close_hour?: number
+          service_level_enabled?: boolean
+          service_level_open_hour?: number
           source_sheet?: string | null
           source_url?: string | null
           updated_at?: string
@@ -2987,6 +2996,114 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pos_service_level_daily: {
+        Row: {
+          bank_account_id: string
+          close_hour: number
+          computed_at: string
+          detail_json: Json | null
+          had_activity: boolean
+          has_baseline: boolean
+          open_hour: number
+          partial_opname: boolean
+          percent: number | null
+          ready_sum: number
+          sample_count: number
+          snapshot_date: string
+          source: string
+          tracked_skus: number
+        }
+        Insert: {
+          bank_account_id: string
+          close_hour: number
+          computed_at?: string
+          detail_json?: Json | null
+          had_activity?: boolean
+          has_baseline?: boolean
+          open_hour: number
+          partial_opname?: boolean
+          percent?: number | null
+          ready_sum: number
+          sample_count: number
+          snapshot_date: string
+          source?: string
+          tracked_skus: number
+        }
+        Update: {
+          bank_account_id?: string
+          close_hour?: number
+          computed_at?: string
+          detail_json?: Json | null
+          had_activity?: boolean
+          has_baseline?: boolean
+          open_hour?: number
+          partial_opname?: boolean
+          percent?: number | null
+          ready_sum?: number
+          sample_count?: number
+          snapshot_date?: string
+          source?: string
+          tracked_skus?: number
+        }
+        Relationships: []
+      }
+      pos_service_level_exclusions: {
+        Row: {
+          bank_account_id: string
+          created_at: string
+          created_by: string | null
+          excluded_from: string
+          excluded_until: string | null
+          id: string
+          product_id: string
+          reason: string | null
+          variant_id: string | null
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string
+          created_by?: string | null
+          excluded_from: string
+          excluded_until?: string | null
+          id?: string
+          product_id: string
+          reason?: string | null
+          variant_id?: string | null
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string
+          created_by?: string | null
+          excluded_from?: string
+          excluded_until?: string | null
+          id?: string
+          product_id?: string
+          reason?: string | null
+          variant_id?: string | null
+        }
+        Relationships: []
+      }
+      pos_service_level_owners: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          bank_account_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       pos_products: {
         Row: {
