@@ -8,6 +8,7 @@ import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { canFileTickets } from "@/lib/tickets/access";
 import { isSimPic } from "@/lib/sim-cards/access";
+import { isProcurementStaff } from "@/lib/procurement/access";
 
 export default async function EmployeeLayout({
   children,
@@ -27,6 +28,7 @@ export default async function EmployeeLayout({
     hasCash,
     hasTickets,
     hasSimCards,
+    hasProcurement,
   ] = await Promise.all([
     listMyAssignedBankAccountIds(),
     getCurrentProfile(),
@@ -36,6 +38,7 @@ export default async function EmployeeLayout({
     hasAssignedCashDashboard(),
     canFileTickets(),
     isSimPic(),
+    isProcurementStaff(),
   ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -59,6 +62,7 @@ export default async function EmployeeLayout({
         hasYeoboBooth={hasYeoboBooth}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
+        hasProcurement={hasProcurement}
         assignmentCount={assignmentCount}
         me={me}
       />
@@ -75,6 +79,7 @@ export default async function EmployeeLayout({
         hasYeoboBooth={hasYeoboBooth}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
+        hasProcurement={hasProcurement}
         assignmentCount={assignmentCount}
         me={me}
       />

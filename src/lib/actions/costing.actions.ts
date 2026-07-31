@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { runHppSnapshotCapture } from "@/lib/costing/snapshot";
+import { normalizeLink, LINK_ERROR } from "@/lib/costing/link";
 import { updatePosProduct, updatePosProductVariant } from "./pos.actions";
 import {
   num,
@@ -151,30 +152,6 @@ export async function listMaterials(
     ok: true,
     data: ((data ?? []) as Record<string, unknown>[]).map(mapMaterial),
   };
-}
-
-const LINK_ERROR = "Link harus diawali http:// atau https://";
-
-/**
- * Normalisasi link pembelian: kosong → null, `toko.com/x` → diberi
- * `https://`. Hanya http(s) yang diterima — skema lain (mis. javascript:)
- * ditolak karena link ini dirender sebagai anchor yang bisa diklik.
- * Bukan export: file ini "use server" (semua export wajib async).
- */
-function normalizeLink(raw: string | null | undefined): string | null | "invalid" {
-  if (raw === undefined) return null;
-  if (raw === null) return null;
-  const s = raw.trim();
-  if (!s) return null;
-  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s) ? s : `https://${s}`;
-  let u: URL;
-  try {
-    u = new URL(withScheme);
-  } catch {
-    return "invalid";
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return "invalid";
-  return u.toString();
 }
 
 export interface MaterialInput {

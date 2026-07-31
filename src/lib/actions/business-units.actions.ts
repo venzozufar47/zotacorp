@@ -103,9 +103,10 @@ export async function renameBusinessUnit(input: { id: string; newName: string })
     if (error.code === "23505") return { error: `"${newName}" sudah ada` };
     return { error: error.message };
   }
-  // Cascade rename ke profiles & bank_accounts (kolom business_unit
-  // menyimpan nama string). Kedua tabel aman di-update tanpa FK karena
-  // mereka memang pakai string, bukan FK id.
+  // Cascade rename ke SEMUA tabel yang menyimpan nama BU sebagai string
+  // (bukan FK id). Kalau ada yang terlewat, rename memutus datanya
+  // diam-diam: costing kehilangan bahan/produknya, dan staf pengadaan
+  // kehilangan aksesnya tanpa pesan error apa pun.
   await supabase
     .from("profiles")
     .update({ business_unit: newName })
@@ -114,7 +115,23 @@ export async function renameBusinessUnit(input: { id: string; newName: string })
     .from("bank_accounts")
     .update({ business_unit: newName })
     .eq("business_unit", old.name);
+  for (const table of [
+    "costing_materials",
+    "costing_products",
+    "costing_hpp_snapshot",
+    "procurement_assignments",
+    "costing_material_procurement",
+    "costing_material_opnames",
+    "costing_material_receipts",
+  ]) {
+    await supabase
+      .from(table as never)
+      .update({ business_unit: newName } as never)
+      .eq("business_unit", old.name);
+  }
   revalidatePath("/admin/settings");
+  revalidatePath("/admin/costing", "layout");
+  revalidatePath("/pengadaan", "layout");
   return { ok: true as const };
 }
 

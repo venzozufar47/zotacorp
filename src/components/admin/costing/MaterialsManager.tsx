@@ -509,7 +509,10 @@ function MaterialRow({
       </div>
       {/* Link beli — full-width supaya URL panjang tetap terbaca. */}
       <div className="px-3 pb-2 flex items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
+        <span
+          className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0"
+          title="Link yang sama dipakai & bisa diperbarui tim pengadaan"
+        >
           Link beli
         </span>
         <TextField

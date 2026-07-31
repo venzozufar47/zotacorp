@@ -360,3 +360,63 @@ export async function requireSimCardActor(
   if (!data) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id, isAdmin: false };
 }
+
+/**
+ * Pengadaan — boleh menyentuh data bahan SATU unit bisnis: admin, atau
+ * karyawan yang punya baris `procurement_assignments` untuk BU itu.
+ * Cermin helper RLS `is_procurement_for_bu()`.
+ */
+export async function requireProcurementForBu(
+  businessUnit: string
+): Promise<
+  { ok: true; userId: string; isAdmin: boolean } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  if (!businessUnit?.trim())
+    return { ok: false, error: "Unit bisnis wajib dipilih" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id, isAdmin: true };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("procurement_assignments" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .eq("business_unit", businessUnit)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id, isAdmin: false };
+}
+
+/**
+ * Penjaga IDOR versi per-BAHAN. `business_unit` TIDAK PERNAH diambil dari
+ * payload klien — selalu di-resolve dari `costing_materials.id` di server,
+ * baru dicek ke penugasan. Semua tulis pengadaan (parameter, link beli,
+ * barang masuk, opname) wajib lewat sini, karena aksinya berjalan di
+ * service-role client yang melewati RLS.
+ *
+ * Resolve dulu, baru menilai: bahan milik BU lain menghasilkan "Forbidden",
+ * bukan "tidak ditemukan" — jangan sampai jadi oracle keberadaan data.
+ */
+export async function requireProcurementForMaterial(
+  materialId: string
+): Promise<
+  | { ok: true; userId: string; isAdmin: boolean; businessUnit: string }
+  | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  if (!materialId) return { ok: false, error: "Bahan tidak valid" };
+  const { createAdminClient } = await import("./_supabase-admin");
+  const { data } = await createAdminClient()
+    .from("costing_materials" as never)
+    .select("business_unit")
+    .eq("id", materialId)
+    .maybeSingle();
+  const businessUnit = (data as { business_unit?: string } | null)
+    ?.business_unit;
+  if (!businessUnit) return { ok: false, error: "Bahan tidak ditemukan" };
+  const gate = await requireProcurementForBu(businessUnit);
+  if (!gate.ok) return gate;
+  return { ok: true, userId: gate.userId, isAdmin: gate.isAdmin, businessUnit };
+}

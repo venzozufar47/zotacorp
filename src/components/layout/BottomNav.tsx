@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -15,6 +15,7 @@ export function BottomNav({
   hasYeoboBooth = false,
   hasTickets = false,
   hasSimCards = false,
+  hasProcurement = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -25,6 +26,9 @@ export function BottomNav({
   hasYeoboBooth?: boolean;
   hasTickets?: boolean;
   hasSimCards?: boolean;
+  /** Tab "Pengadaan" — array item di file ini TERPISAH dari Sidebar.tsx,
+   *  jadi setiap penambahan menu wajib dilakukan di KEDUANYA. */
+  hasProcurement?: boolean;
   assignmentCount?: number;
   me?: MenuViewer | null;
 }) {
@@ -45,6 +49,16 @@ export function BottomNav({
             icon: Smartphone,
             label: "Kartu SIM",
             color: "bg-quaternary",
+          },
+        ]
+      : []),
+    ...(hasProcurement
+      ? [
+          {
+            href: "/pengadaan",
+            icon: PackageSearch,
+            label: "Pengadaan",
+            color: "bg-pop-emerald",
           },
         ]
       : []),

@@ -210,6 +210,7 @@ export function buildAdminNav({
           children: [
             { href: "/admin/costing/bahan", label: "Master Bahan" },
             { href: "/admin/costing/dashboard", label: "Dashboard Margin" },
+            { href: "/admin/costing/pengadaan", label: "Pengadaan" },
           ],
         },
         // Sits at /admin/finance/dividen but stays top-level: it's a

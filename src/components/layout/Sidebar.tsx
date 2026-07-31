@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -16,6 +16,7 @@ export function Sidebar({
   hasYeoboBooth = false,
   hasTickets = false,
   hasSimCards = false,
+  hasProcurement = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -31,6 +32,8 @@ export function Sidebar({
   /** Show "Tiket" tab for Yeobo Space employees / Kepala Studio. */
   hasTickets?: boolean;
   hasSimCards?: boolean;
+  /** Tab "Pengadaan" untuk staf yang ditugaskan memantau stok bahan. */
+  hasProcurement?: boolean;
   /** Jumlah transaksi yang di-assign ke user & masih "Needs Assignment". */
   assignmentCount?: number;
   me?: MenuViewer | null;
@@ -53,6 +56,16 @@ export function Sidebar({
             icon: Smartphone,
             label: "Kartu SIM",
             color: "bg-quaternary",
+          },
+        ]
+      : []),
+    ...(hasProcurement
+      ? [
+          {
+            href: "/pengadaan",
+            icon: PackageSearch,
+            label: "Pengadaan",
+            color: "bg-pop-emerald",
           },
         ]
       : []),
