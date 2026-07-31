@@ -84,16 +84,16 @@ export function ServiceLevelHero({
   }
 
   return (
-    <div className="rounded-3xl border-2 border-foreground bg-card p-5 sm:p-6 shadow-[4px_4px_0_0_var(--foreground)]">
+    <div className="rounded-3xl border-2 border-foreground bg-card p-6 sm:p-8 shadow-[4px_4px_0_0_var(--foreground)]">
       <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         Service Level · {days} hari
       </p>
       <p
-        className={`font-display text-4xl sm:text-6xl font-extrabold tabular-nums leading-none mt-1 ${t.text}`}
+        className={`font-display text-5xl sm:text-6xl font-extrabold tabular-nums leading-none mt-2 ${t.text}`}
       >
         {label}
       </p>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className="mt-3 text-sm text-muted-foreground">
         {belum ? (
           "Belum ada data terhitung — snapshot berjalan tiap jam."
         ) : (
@@ -103,19 +103,30 @@ export function ServiceLevelHero({
           </>
         )}
       </p>
-      {summary.hasPartialOpname && (
-        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-warning">
-          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-          Ada hari dengan opname parsial — SKU yang tidak ikut dihitung saat
-          opname terbaca habis, jadi angkanya bisa tertekan semu.
-        </p>
-      )}
-      {summary.hasBackfill && (
-        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
-          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-          Sebagian hari dihitung mundur — penyebutnya memakai katalog hari ini,
-          jadi tidak sebanding dengan hari yang benar-benar terukur.
-        </p>
+      {/* Peringatan dibatasi ~65 karakter per baris; tanpa max-w teksnya
+          membentang selebar kartu dan jadi sulit dibaca di layar lebar. */}
+      {(summary.hasPartialOpname || summary.hasBackfill) && (
+        <div className="mt-4 space-y-2 border-t border-border pt-3">
+          {summary.hasPartialOpname && (
+            <p className="flex max-w-prose items-start gap-2 text-[11px] leading-relaxed text-warning">
+              <AlertTriangle size={13} className="mt-px shrink-0" />
+              <span>
+                Ada hari dengan opname parsial — SKU yang tidak ikut dihitung
+                saat opname terbaca habis, jadi angkanya bisa tertekan semu.
+              </span>
+            </p>
+          )}
+          {summary.hasBackfill && (
+            <p className="flex max-w-prose items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
+              <AlertTriangle size={13} className="mt-px shrink-0" />
+              <span>
+                Sebagian hari dihitung mundur — penyebutnya memakai katalog
+                hari ini, jadi tidak sebanding dengan hari yang benar-benar
+                terukur.
+              </span>
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
