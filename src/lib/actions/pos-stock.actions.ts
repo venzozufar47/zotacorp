@@ -18,6 +18,19 @@ import {
   POS_OPERATION_LABEL_ID,
   type PosOperation,
 } from "@/lib/pos-pin";
+// Primitif mesin stok tinggal di modul biasa supaya cron (tanpa sesi)
+// bisa memakainya juga — file ini "use server" dan tidak boleh
+// mengekspor fungsi non-async. Lihat header stock-engine.ts.
+import {
+  computeExpectedCounts,
+  jakartaHourIso,
+  listActiveSkus,
+  loadBaselineAt,
+  skuKey,
+  type PosDbClient,
+  type Sku,
+  type SkuKey,
+} from "@/lib/pos/stock-engine";
 
 /**
  * Authorization gate. If the rekening has an authorizer assigned for
@@ -133,198 +146,17 @@ export interface StockOpnameDetail {
   items: StockOpnameItemDetail[];
 }
 
-type SkuKey = string; // "p:<productId>|v:<variantId|->"
-function skuKey(productId: string, variantId: string | null): SkuKey {
-  return `p:${productId}|v:${variantId ?? "-"}`;
-}
-
-interface Sku {
-  productId: string;
-  variantId: string | null;
-  productName: string;
-  variantName: string | null;
-  unitPrice: number;
-}
-
-/**
- * Hitung expected count per SKU antara `sinceIso` (exclusive) dan
- * `untilIso` (inclusive) untuk rekening `bankAccountId`. Baseline
- * diambil dari `baselineByKey` — caller menyiapkan dari opname
- * terakhir atau 0.
- *
- * Single-scan untuk semua SKU: 2 query (movements + sale_items+join
- * pos_sales) → JS aggregation.
- */
-async function computeExpectedCounts(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  bankAccountId: string,
-  sinceIso: string | null,
-  untilIso: string,
-  skus: Sku[],
-  baselineByKey: Map<SkuKey, number>,
-  aggregateProductIds: Set<string>
-): Promise<Map<SkuKey, number>> {
-  const result = new Map<SkuKey, number>();
-  for (const s of skus) {
-    result.set(skuKey(s.productId, s.variantId), baselineByKey.get(skuKey(s.productId, s.variantId)) ?? 0);
-  }
-
-  // Movements.
-  {
-    let q = supabase
-      .from("pos_stock_movements")
-      .select("product_id, variant_id, type, qty, created_at")
-      .eq("bank_account_id", bankAccountId)
-      .lte("created_at", untilIso);
-    if (sinceIso) q = q.gt("created_at", sinceIso);
-    const { data } = await q;
-    for (const m of data ?? []) {
-      // Aggregate-mode: movement pasti variant_id=null (enforced di
-      // createStockMovement). Tapi data legacy mungkin ada variant_id
-      // sebelum toggle — paksa collapse supaya tetap masuk bucket.
-      const vId = aggregateProductIds.has(m.product_id) ? null : m.variant_id;
-      const key = skuKey(m.product_id, vId);
-      if (!result.has(key)) continue;
-      const prev = result.get(key) ?? 0;
-      result.set(key, prev + (m.type === "production" ? m.qty : -m.qty));
-    }
-  }
-
-  // Sales — join pos_sales untuk filter voided + created_at cut-off.
-  // Untuk aggregate product, sale variant_id di-collapse ke null supaya
-  // penjualan varian tetap mengurangi bucket level-produk.
-  {
-    let q = supabase
-      .from("pos_sale_items")
-      .select("product_id, variant_id, qty, pos_sales!inner(bank_account_id, created_at, voided_at)")
-      .eq("pos_sales.bank_account_id", bankAccountId)
-      .is("pos_sales.voided_at", null)
-      .lte("pos_sales.created_at", untilIso);
-    if (sinceIso) q = q.gt("pos_sales.created_at", sinceIso);
-    const { data } = await q;
-    for (const it of data ?? []) {
-      if (!it.product_id) continue;
-      const vId = aggregateProductIds.has(it.product_id) ? null : it.variant_id;
-      const key = skuKey(it.product_id, vId);
-      if (!result.has(key)) continue;
-      const prev = result.get(key) ?? 0;
-      result.set(key, prev - it.qty);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Load opname terakhir SEBELUM `beforeIso` sebagai baseline + cut-off
- * point. Untuk on-hand "sekarang" caller pass current ISO; untuk
- * snapshot historis (Pantauan) pass titik waktu yang dipilih supaya
- * baseline tidak bocor dari opname yang dilakukan setelahnya.
- *
- * Return { cutoffIso: null, baseline: empty } kalau belum pernah ada
- * opname pada window itu.
- */
-async function loadBaselineAt(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  bankAccountId: string,
-  beforeIso: string
-): Promise<{ cutoffIso: string | null; baseline: Map<SkuKey, number>; opnameId: string | null }> {
-  const { data: last } = await supabase
-    .from("pos_stock_opnames")
-    .select("id, created_at")
-    .eq("bank_account_id", bankAccountId)
-    .lte("created_at", beforeIso)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!last) return { cutoffIso: null, baseline: new Map(), opnameId: null };
-  const { data: items } = await supabase
-    .from("pos_stock_opname_items")
-    .select("product_id, variant_id, physical_count")
-    .eq("opname_id", last.id);
-  const baseline = new Map<SkuKey, number>();
-  for (const it of items ?? []) {
-    baseline.set(skuKey(it.product_id, it.variant_id), it.physical_count);
-  }
-  return { cutoffIso: last.created_at, baseline, opnameId: last.id };
-}
-
-/** Backward-compatible wrapper — baseline "sebelum sekarang". */
+/** Baseline "sebelum sekarang" — pembungkus tipis `loadBaselineAt`. */
 async function loadBaseline(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: PosDbClient,
   bankAccountId: string
-): Promise<{ cutoffIso: string | null; baseline: Map<SkuKey, number>; opnameId: string | null }> {
+): Promise<{
+  cutoffIso: string | null;
+  baseline: Map<SkuKey, number>;
+  opnameId: string | null;
+  itemCount: number;
+}> {
   return loadBaselineAt(supabase, bankAccountId, new Date().toISOString());
-}
-
-/**
- * Daftar SKU aktif untuk sistem stok.
- *
- * - Produk `track_stock=false` di-skip seluruhnya.
- * - Produk `stock_aggregate_variants=true` → 1 SKU di level produk
- *   (variantId=null), meskipun produk punya varian. Pakai harga base
- *   produk (karena varian belum dipilih saat produksi).
- * - Selain itu: satu SKU per varian aktif, atau satu SKU per produk
- *   kalau tak ada varian.
- *
- * Return juga set `aggregateProductIds` supaya caller bisa men-collapse
- * variant_id saat menghitung expected.
- */
-async function listActiveSkus(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  bankAccountId: string
-): Promise<{ skus: Sku[]; aggregateProductIds: Set<string> }> {
-  const { data: products } = await supabase
-    .from("pos_products")
-    .select("id, name, price, sort_order, stock_aggregate_variants")
-    .eq("bank_account_id", bankAccountId)
-    .eq("active", true)
-    .eq("track_stock", true)
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
-  const productIds = (products ?? []).map((p) => p.id);
-  const aggregateProductIds = new Set(
-    (products ?? []).filter((p) => p.stock_aggregate_variants).map((p) => p.id)
-  );
-  const { data: variants } = productIds.length
-    ? await supabase
-        .from("pos_product_variants")
-        .select("id, product_id, name, price, sort_order")
-        .in("product_id", productIds)
-        .eq("active", true)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true })
-    : { data: [] as Array<{ id: string; product_id: string; name: string; price: number; sort_order: number }> };
-  const variantsByProduct = new Map<string, typeof variants>();
-  for (const v of variants ?? []) {
-    const arr = variantsByProduct.get(v.product_id) ?? [];
-    arr.push(v);
-    variantsByProduct.set(v.product_id, arr);
-  }
-  const skus: Sku[] = [];
-  for (const p of products ?? []) {
-    const vs = variantsByProduct.get(p.id) ?? [];
-    if (vs.length === 0 || p.stock_aggregate_variants) {
-      skus.push({
-        productId: p.id,
-        variantId: null,
-        productName: p.name,
-        variantName: null,
-        unitPrice: Number(p.price),
-      });
-    } else {
-      for (const v of vs) {
-        skus.push({
-          productId: p.id,
-          variantId: v.id,
-          productName: p.name,
-          variantName: v.name,
-          unitPrice: Number(v.price),
-        });
-      }
-    }
-  }
-  return { skus, aggregateProductIds };
 }
 
 export async function listStockOnHand(
@@ -1285,20 +1117,6 @@ export async function getStockReadinessSeries(
   return { ok: true, data: { hourLocal: hour, series: points } };
 }
 
-/** Construct UTC ISO untuk `YYYY-MM-DD HH:00` di Asia/Jakarta. WIB =
- *  UTC+7 tanpa DST, jadi pengurangan jam langsung valid sepanjang
- *  tahun. */
-function jakartaHourIso(ymd: string, hour: number): string {
-  const utcHour = hour - 7;
-  if (utcHour >= 0) {
-    return `${ymd}T${String(utcHour).padStart(2, "0")}:00:00.000Z`;
-  }
-  // Roll back ke hari sebelumnya untuk jam 00:00–06:00 WIB.
-  const dt = new Date(ymd + "T00:00:00Z");
-  dt.setUTCDate(dt.getUTCDate() - 1);
-  const prev = dt.toISOString().slice(0, 10);
-  return `${prev}T${String(utcHour + 24).padStart(2, "0")}:00:00.000Z`;
-}
 
 // ─────────────────────────────────────────────────────────────────────
 //  Stock timeline (Gantt-style grid: SKU × hour) — Pantauan tab
