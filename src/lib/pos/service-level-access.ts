@@ -25,7 +25,7 @@ export interface ServiceLevelOutlet {
  *
  * Hanya outlet yang metriknya AKTIF — kartu untuk metrik yang dimatikan
  * admin cuma akan membingungkan. Nama outlet bisa terbaca berkat
- * pelebaran policy `bank_accounts` di migrasi 120; tanpa itu penanggung
+ * pelebaran policy `bank_accounts` di migrasi 122; tanpa itu penanggung
  * jawab yang bukan orang POS akan mendapat kartu tanpa nama.
  */
 export const listMyServiceLevelOutlets = cache(

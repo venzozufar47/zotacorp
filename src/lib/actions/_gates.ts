@@ -125,7 +125,7 @@ export async function requireAdminOrPosAssignee(
  * Boleh MELIHAT Service Level satu outlet: admin, assignee POS
  * (full|pos_only), atau penanggung jawab metrik.
  *
- * Mirror helper RLS `is_service_level_owner` dari migrasi 120. Sengaja
+ * Mirror helper RLS `is_service_level_owner` dari migrasi 122. Sengaja
  * query ulang alih-alih memakai cache `service-level-access.ts`, sesuai
  * kebiasaan gate lain di file ini: pemeriksaan keamanan tidak boleh
  * bergantung pada lapisan cache.

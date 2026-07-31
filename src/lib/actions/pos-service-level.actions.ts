@@ -184,7 +184,7 @@ export async function setServiceLevelSettings(input: {
 
   const open = Math.floor(input.openHour);
   const close = Math.floor(input.closeHour);
-  // Dijaga juga oleh CHECK constraint di migrasi 120; divalidasi di sini
+  // Dijaga juga oleh CHECK constraint di migrasi 122; divalidasi di sini
   // supaya pesannya manusiawi, bukan error Postgres mentah.
   if (!Number.isFinite(open) || open < 0 || open > 23) {
     return { ok: false, error: "Jam buka harus 0–23." };
