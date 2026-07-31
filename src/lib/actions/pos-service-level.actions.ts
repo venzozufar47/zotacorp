@@ -461,8 +461,18 @@ export async function listServiceLevelSkus(bankAccountId: string): Promise<
   }));
 }
 
-// Hanya tipe yang di-re-export. Mengekspor ulang `loadServiceLevelConfig`
-// dari file "use server" akan mengubahnya jadi endpoint server action
-// TANPA gate — konsumen yang butuh helper itu mengimpornya langsung dari
-// `@/lib/pos/service-level`.
-export type { ServiceLevelResult };
+// SENGAJA TIDAK ada re-export di sini.
+//
+// `export type { X }` dari file "use server" MEMATIKAN build produksi:
+// transform server-action Turbopack menyusun daftar ekspornya sebelum
+// tipe dihapus, lalu mencoba me-re-export `X` sebagai nilai runtime dan
+// gagal dengan "Export X doesn't exist in target module". `tsc` tidak
+// menangkap ini — hanya `next build` yang menangkap.
+//
+// (Deklarasi `export interface` di ATAS file aman: itu murni deklarasi
+// tipe, bukan re-export dari binding yang diimpor.)
+//
+// Konsumen mengimpor `ServiceLevelResult` langsung dari
+// `@/lib/pos/service-level`, dan `loadServiceLevelConfig` juga dari sana —
+// mengekspornya ulang di sini akan menjadikannya endpoint server action
+// tanpa gate.
