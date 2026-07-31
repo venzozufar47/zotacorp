@@ -12,6 +12,7 @@ import {
 } from "@/lib/actions/pos.actions";
 import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
 import { getActiveDiscount } from "@/lib/actions/pos-discount.actions";
+import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
@@ -43,14 +44,27 @@ export default async function PosPage({
   const account = await findPosAccount(branch);
   if (!account) redirect("/");
 
-  const [products, role, onHand, activeDiscount, profile, receiptConfig] =
-    await Promise.all([
+  const [
+    products,
+    role,
+    onHand,
+    activeDiscount,
+    profile,
+    receiptConfig,
+    serviceLevelRes,
+  ] = await Promise.all([
       listActivePosProducts(account.id),
       getCurrentRole(),
       listStockOnHand(account.id).catch(() => []),
       getActiveDiscount(account.id),
       getCurrentProfile(),
       getPosReceiptConfig(account.id).catch(() => null),
+      // Baca SNAPSHOT saja — menghitung live ~3 detik berapa pun lebar
+      // jendelanya (biaya round-trip, bukan volume), dan ini halaman yang
+      // paling sering dibuka kasir. Cron per jam menjaganya tetap segar.
+      // `.catch(() => null)` seperti listStockOnHand di atas: kegagalan
+      // metrik TIDAK boleh mengosongkan layar kasir.
+      getServiceLevelSummary(account.id, 30).catch(() => null),
     ]);
   const receiptContent =
     receiptConfig ?? defaultReceiptContent(account.accountName);
@@ -71,6 +85,9 @@ export default async function PosPage({
       accountName={account.accountName}
       branch={account.branch}
       basePath={basePath}
+      serviceLevel={
+        serviceLevelRes && serviceLevelRes.ok ? serviceLevelRes.data : null
+      }
       cashierName={profile?.full_name ?? null}
       receiptContent={receiptContent}
       products={products}

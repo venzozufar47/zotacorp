@@ -1,0 +1,122 @@
+import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
+import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
+
+/**
+ * Kartu Service Level — dipakai di layar kasir (`compact`) dan di
+ * halaman detail / cek shift (`hero`).
+ *
+ * Server component: tidak butuh interaktivitas, dan menjaga bundle
+ * layar kasir tetap ramping.
+ *
+ * PALET: layar POS meng-override palet jadi pink lewat `data-pos-palette`.
+ * Pakai token semantik saja — `bg-primary`, `text-success` — JANGAN hex,
+ * kalau tidak warnanya akan menyimpang dari tema POS.
+ */
+
+function tone(pct: number | null): {
+  text: string;
+  border: string;
+  bg: string;
+} {
+  if (pct === null)
+    return { text: "text-muted-foreground", border: "border-border", bg: "bg-card" };
+  if (pct >= 0.95)
+    return { text: "text-success", border: "border-success/40", bg: "bg-success/10" };
+  if (pct >= 0.85)
+    return { text: "text-warning", border: "border-warning/40", bg: "bg-warning/10" };
+  return {
+    text: "text-destructive",
+    border: "border-destructive/40",
+    bg: "bg-destructive/10",
+  };
+}
+
+export function ServiceLevelHero({
+  summary,
+  size = "compact",
+  href,
+  days = 30,
+}: {
+  summary: ServiceLevelSummary;
+  size?: "hero" | "compact";
+  href?: string;
+  days?: number;
+}) {
+  const pct = summary.percent;
+  const t = tone(pct);
+  const label = pct === null ? "—" : `${(pct * 100).toFixed(1)}%`;
+  const belum = summary.daysCounted === 0;
+
+  if (size === "compact") {
+    const inner = (
+      <div
+        className={`flex items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)]`}
+      >
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Service Level · {days} hari
+          </p>
+          <p className={`font-display text-2xl font-extrabold tabular-nums leading-none ${t.text}`}>
+            {label}
+          </p>
+        </div>
+        <p className="ml-auto text-right text-[11px] text-muted-foreground">
+          {belum ? (
+            "belum ada data"
+          ) : (
+            <>
+              target 100%
+              <br />
+              {summary.lostSkuHours.toLocaleString("id-ID")} SKU-jam kosong
+            </>
+          )}
+        </p>
+      </div>
+    );
+    return href ? (
+      <Link href={href} className="block">
+        {inner}
+      </Link>
+    ) : (
+      inner
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border-2 border-foreground bg-card p-5 sm:p-6 shadow-[4px_4px_0_0_var(--foreground)]">
+      <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        Service Level · {days} hari
+      </p>
+      <p
+        className={`font-display text-4xl sm:text-6xl font-extrabold tabular-nums leading-none mt-1 ${t.text}`}
+      >
+        {label}
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {belum ? (
+          "Belum ada data terhitung — snapshot berjalan tiap jam."
+        ) : (
+          <>
+            Target 100% · {summary.daysCounted} hari terhitung ·{" "}
+            {summary.lostSkuHours.toLocaleString("id-ID")} SKU-jam kosong
+          </>
+        )}
+      </p>
+      {summary.hasPartialOpname && (
+        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-warning">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          Ada hari dengan opname parsial — SKU yang tidak ikut dihitung saat
+          opname terbaca habis, jadi angkanya bisa tertekan semu.
+        </p>
+      )}
+      {summary.hasBackfill && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          Sebagian hari dihitung mundur — penyebutnya memakai katalog hari ini,
+          jadi tidak sebanding dengan hari yang benar-benar terukur.
+        </p>
+      )}
+    </div>
+  );
+}

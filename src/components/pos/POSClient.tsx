@@ -49,6 +49,8 @@ import {
 } from "@/lib/pos/receipt-settings";
 import { sendToPrinter } from "@/lib/pos/print-transport";
 import { resolveCashierName } from "@/lib/pos/cashier-schedule";
+import { ServiceLevelHero } from "@/components/pos/ServiceLevelHero";
+import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import {
   SUGAR_LEVELS,
   SUGAR_LEVEL_LABELS,
@@ -75,6 +77,9 @@ interface Props {
   branch?: string | null;
   /** Nama kasir (opsional) — dicetak di struk. */
   cashierName?: string | null;
+  /** Ringkasan Service Level dari snapshot. null = fitur mati / gagal
+   *  dibaca — komponennya tidak dirender, layar kasir tetap utuh. */
+  serviceLevel?: ServiceLevelSummary | null;
   /** Konten struk bersama (server, per rekening). */
   receiptContent: ReceiptContent;
   products: PosProduct[];
@@ -182,6 +187,7 @@ export function POSClient({
   basePath,
   branch = null,
   cashierName = null,
+  serviceLevel = null,
   receiptContent,
   products,
   isAdmin,
@@ -1224,6 +1230,17 @@ export function POSClient({
 
       {/* ── Main area: search + product grid ──────────────── */}
       <main className="min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
+        {/* Strip informasional di atas grid produk — ikut ter-scroll saat
+            kasir menelusuri produk, jadi tidak permanen memakan ruang. */}
+        {serviceLevel && (
+          <div className="px-3 pt-3">
+            <ServiceLevelHero
+              summary={serviceLevel}
+              size="compact"
+              href={`${basePath}/service-level`}
+            />
+          </div>
+        )}
         <DiscountBanner
           activeDiscount={activeDiscount}
           isAdmin={isAdmin}

@@ -1,12 +1,19 @@
 /**
  * Cron harian: rekam Service Level tiap outlet POS yang mengaktifkannya.
  *
- * Dispatched Vercel Cron (vercel.json) `30 15 * * *` = 22:30 WIB — setelah
- * jam tutup default (21:00) supaya hari yang baru selesai tertangkap utuh.
+ * DUA JADWAL (vercel.json), keduanya menabrak route yang sama:
+ *   `0 * * * *`     tiap jam, `?trailing=1` — menyegarkan HARI INI saja.
+ *   `30 15 * * *`   22:30 WIB, trailing default 3 — menyerap koreksi
+ *                   terlambat setelah toko tutup.
  *
- * Idempoten: upsert per (rekening, tanggal). Tiap run juga menghitung
- * ulang beberapa hari terakhir supaya void/koreksi yang masuk keesokan
- * paginya ikut terserap.
+ * Kenapa per jam: menghitung live ternyata ~3 detik berapa pun lebar
+ * jendelanya (biayanya round-trip jaringan, bukan volume data), jadi
+ * kartu di layar kasir TIDAK boleh menghitung live — layar itu yang
+ * paling sering dibuka. Snapshot per jam membuatnya cukup baca satu
+ * query, dan tidak ada informasi yang hilang karena metriknya memang
+ * bergrid per jam.
+ *
+ * Idempoten: upsert per (rekening, tanggal).
  *
  * Auth: Bearer <CRON_SECRET> (checkCronAuth, fail-closed).
  */
@@ -37,8 +44,14 @@ export async function GET(req: Request) {
         ? override
         : resolveSnapshotTargetDate(Date.now());
 
+    const trailingRaw = Number(url.searchParams.get("trailing"));
+    const trailingDays = Number.isFinite(trailingRaw) && trailingRaw > 0
+      ? Math.min(90, Math.floor(trailingRaw))
+      : undefined;
+
     const { count, outlets, failed } = await runServiceLevelSnapshot({
       targetDate,
+      trailingDays,
       source: "cron",
     });
     // Kegagalan sebagian tetap 200 dengan daftar `failed` — outlet yang

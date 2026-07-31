@@ -30,6 +30,8 @@ import { parseBreakWindows } from "@/lib/utils/break-windows";
 import type { AttendanceBreakLog } from "@/lib/supabase/types";
 import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
+import { ServiceLevelPanel } from "@/components/dashboard/ServiceLevelPanel";
+import { listMyServiceLevelOutlets } from "@/lib/pos/service-level-access";
 import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
 import {
   getMyOpenTicketsSummary,
@@ -107,6 +109,7 @@ export default async function DashboardPage() {
     myTicketsSummary,
     studioQueueCount,
     isHeadOfStudio,
+    serviceLevelOutlets,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -139,6 +142,7 @@ export default async function DashboardPage() {
     getMyOpenTicketsSummary(),
     getStudioQueueCount(),
     isStudioHead(),
+    listMyServiceLevelOutlets(),
   ]);
   const pendingContract = myPendingContract;
 
@@ -343,6 +347,11 @@ export default async function DashboardPage() {
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 
       <CleaningChecklistCard initial={cleaningTasks} />
+
+      {/* Tanggung jawab berjalan, bukan aksi hari ini — jadi masuk
+          kelompok panel substantif, bukan tumpukan banner di atas.
+          Render sendiri nol kalau user bukan penanggung jawab. */}
+      <ServiceLevelPanel outlets={serviceLevelOutlets} />
 
       {/* Attendance — magazine-style section with an eyebrow label and a soft
           white panel that floats above the page background. The section

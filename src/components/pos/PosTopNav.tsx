@@ -3,6 +3,7 @@
 import {
   BarChart3,
   Boxes,
+  Gauge,
   History,
   Home,
   Settings,
@@ -18,6 +19,7 @@ export type PosNavSection =
   | "stok"
   | "pesanan"
   | "riwayat"
+  | "service-level"
   | "insights";
 
 interface Props {
@@ -67,6 +69,12 @@ const ITEMS: NavItem[] = [
     label: "Riwayat",
     section: "riwayat",
     icon: <History size={16} />,
+  },
+  {
+    path: "/service-level",
+    label: "Service Lv",
+    section: "service-level",
+    icon: <Gauge size={16} />,
   },
   {
     path: "/insights",
