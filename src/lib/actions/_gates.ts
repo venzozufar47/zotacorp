@@ -122,6 +122,47 @@ export async function requireAdminOrPosAssignee(
 }
 
 /**
+ * Boleh MELIHAT Service Level satu outlet: admin, assignee POS
+ * (full|pos_only), atau penanggung jawab metrik.
+ *
+ * Mirror helper RLS `is_service_level_owner` dari migrasi 120. Sengaja
+ * query ulang alih-alih memakai cache `service-level-access.ts`, sesuai
+ * kebiasaan gate lain di file ini: pemeriksaan keamanan tidak boleh
+ * bergantung pada lapisan cache.
+ *
+ * Penanggung jawab metrik BUKAN assignee POS lulus di sini tapi gagal di
+ * `requireAdminOrPosAssignee` — itu memang disengaja: mereka boleh
+ * membaca snapshot yang sudah jadi, bukan menghitung live dari tabel POS
+ * mentah yang RLS-nya tertutup untuk mereka.
+ */
+export async function requireServiceLevelViewer(
+  bankAccountId: string
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const [{ data: posAssignment }, { data: owner }] = await Promise.all([
+    supabase
+      .from("bank_account_assignees")
+      .select("bank_account_id")
+      .eq("bank_account_id", bankAccountId)
+      .eq("user_id", user.id)
+      .in("scope", ["full", "pos_only"])
+      .maybeSingle(),
+    supabase
+      .from("pos_service_level_owners")
+      .select("bank_account_id")
+      .eq("bank_account_id", bankAccountId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
+  if (!posAssignment && !owner) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/**
  * Cake-feature access. Cake orders are NOT scoped to a rekening —
  * they're tracked as a separate per-user assignment table
  * (`cake_access_assignments`). Two scopes:
