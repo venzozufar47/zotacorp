@@ -44,6 +44,7 @@ import {
   formatTime,
   formatMinutesHuman,
 } from "@/lib/utils/date";
+import { formatDateWithDayID } from "@/lib/utils/date-formats";
 
 interface AttendanceRow {
   id: string;
@@ -514,7 +515,7 @@ export function AttendanceRecapTable({
                         colSpan={8}
                         className="bg-muted/40 border-t-2 border-foreground/10 py-1.5 px-3 text-[11px] font-display font-bold uppercase tracking-wider text-muted-foreground"
                       >
-                        {formatLocalDate(row.date)}
+                        {formatDateWithDayID(row.date)}
                       </TableCell>
                     </TableRow>
                   )}

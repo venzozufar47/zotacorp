@@ -58,6 +58,43 @@ export const WEEKDAY_NAMES = [
   "Sabtu",
 ] as const;
 
+/** Hari versi singkat. Index 0 = Minggu … 6 = Sabtu (getUTCDay). */
+export const WEEKDAY_SHORT_NAMES = [
+  "Min",
+  "Sen",
+  "Sel",
+  "Rab",
+  "Kam",
+  "Jum",
+  "Sab",
+] as const;
+
+/**
+ * Tanggal + hari singkat: "2026-07-17" → "Jum, 17 Jul 2026".
+ *
+ * Dipakai di header pengelompokan tanggal pada tabel absensi. Nama hari
+ * penting di sana karena jadwal kerja karyawan ditentukan per hari —
+ * tanpa itu admin harus menghitung sendiri untuk tahu apakah suatu
+ * tanggal jatuh di hari kerja atau bukan.
+ *
+ * Hari dihitung lewat `Date.UTC` + `getUTCDay` seperti
+ * `formatDateLongID` — deterministik, tidak bergeser oleh timezone.
+ * Sisa formatnya menumpang `formatDateID` supaya gaya tanggalnya tetap
+ * satu sumber.
+ */
+export function formatDateWithDayID(
+  value: string | null | undefined
+): string {
+  if (!value) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!m) return value;
+  const weekday =
+    WEEKDAY_SHORT_NAMES[
+      new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay()
+    ];
+  return `${weekday}, ${formatDateID(value)}`;
+}
+
 /**
  * Long human date: "2026-06-10" → "Senin, 10 Juni 2026".
  * Hari (weekday) + tanggal + bulan penuh + tahun, Bahasa Indonesia.
