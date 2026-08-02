@@ -30,6 +30,7 @@ import type {
 import { formatRp } from "@/lib/cashflow/format";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { PayslipBreakdownDetails } from "@/components/payslip/PayslipBreakdownDetails";
+import { NetTotalBasis } from "@/components/payslip/NetTotalBasis";
 
 type Basis = "presence" | "deliverables" | "both" | "fixed" | "daily";
 type ExpectedDaysMode = "manual" | "weekly_pattern" | "none" | "paired_alternating";
@@ -2095,6 +2096,33 @@ function ExpandedDetail({
             </button>
           </div>
         </div>
+
+        <NetTotalBasis
+          basis={basis}
+          attendanceWeightPct={Number(row.settings?.attendance_weight_pct ?? 0)}
+          deliverablesWeightPct={Number(
+            row.settings?.deliverables_weight_pct ?? 0
+          )}
+          fields={{
+            prorated_salary: Number(payslip.prorated_salary ?? 0),
+            bonus_day_pay: Number(payslip.bonus_day_pay ?? 0),
+            overtime_pay: Number(payslip.overtime_pay ?? 0),
+            late_penalty: Number(payslip.late_penalty ?? 0),
+            deliverables_pay: Number(payslip.deliverables_pay ?? 0),
+            monthly_bonus: Number(payslip.monthly_bonus ?? 0),
+            cake_bonus: Number(payslip.cake_bonus ?? 0),
+            debt_deduction: Number(payslip.debt_deduction ?? 0),
+            other_penalty: Number(payslip.other_penalty ?? 0),
+            extra_work_pay: Number(payslip.extra_work_pay ?? 0),
+            base_salary: Number(payslip.base_salary ?? 0),
+          }}
+          context={{
+            actualWorkDays: payslip.actual_work_days,
+            expectedWorkDays: payslip.expected_work_days,
+            deliverablesAchievementPct: payslip.deliverables_achievement_pct,
+          }}
+          storedNetTotal={Number(payslip.net_total ?? 0)}
+        />
 
         <div className="rounded-xl border border-border bg-card p-3">
           <h4 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">

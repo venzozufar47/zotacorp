@@ -13,6 +13,12 @@ import type {
   Database,
 } from "@/lib/supabase/types";
 import { parseBreakWindows, effectiveStandardHours } from "@/lib/utils/break-windows";
+import {
+  findFinalizeBlockers,
+  describeFinalizeBlockers,
+  type FinalizeBlocker,
+} from "@/lib/payslip/finalize-guard";
+import { explainNetTotal } from "@/lib/payslip/net-total";
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 import { sendPushToUser } from "@/lib/push/web-push";
@@ -719,42 +725,11 @@ function computeNetTotal(
     base_salary: number;
   }
 ): number {
-  // bonus_day_pay (hourly pay for bonus days) sits in the attendance bucket
-  // alongside prorated salary + overtime.
-  const attendanceBucket =
-    fields.prorated_salary +
-    fields.bonus_day_pay +
-    fields.overtime_pay -
-    fields.late_penalty;
-  const deliverablesBucket = fields.deliverables_pay;
-
-  let combined = 0;
-  if (basis === "fixed") {
-    // Skip attendance + deliverables sepenuhnya — bayar base salary
-    // utuh. Cocok untuk kontrak / freelancer flat fee.
-    combined = fields.base_salary;
-  } else if (basis === "presence" || basis === "daily") {
-    // Daily: proratedSalary sudah = tarif × hari hadir, jadi identik presence.
-    combined = attendanceBucket;
-  } else if (basis === "deliverables") {
-    combined = deliverablesBucket;
-  } else {
-    const aw = Math.max(0, attW) / 100;
-    const dw = Math.max(0, delW) / 100;
-    combined = Math.round(attendanceBucket * aw + deliverablesBucket * dw);
-  }
-
-  // Extra-work pay sits OUTSIDE the weighted attendance/deliverables
-  // bucket — it's a flat add regardless of basis or weight, since it
-  // represents discrete tasks not covered by the time-based salary.
-  return (
-    combined +
-    fields.extra_work_pay +
-    fields.monthly_bonus +
-    fields.cake_bonus -
-    fields.debt_deduction -
-    fields.other_penalty
-  );
+  // Rumusnya tinggal di `@/lib/payslip/net-total` bersama penjelasannya,
+  // supaya panel "Dasar perhitungan" di admin tidak pernah menjelaskan
+  // aritmetika yang berbeda dari yang benar-benar dibayarkan. Aturan
+  // bucket + pembulatan tidak berubah — cuma pindah rumah.
+  return explainNetTotal(basis, attW, delW, fields).total;
 }
 
 // ---------------------------------------------------------------------------
@@ -1586,6 +1561,67 @@ export async function bulkCalculatePayslips(
  * bulk-reopen karena reopening 20+ payslip sekaligus jarang di-do
  * oleh sengaja (lebih sering admin reopen 1-2 untuk koreksi).
  */
+/**
+ * Kumpulkan prasyarat finalisasi untuk sekumpulan slip.
+ *
+ * Dipakai KEDUA jalur finalisasi (satuan + massal) supaya definisi
+ * "belum lengkap" tidak pernah bercabang. Query-nya dibatasi pada
+ * `payslipIds` yang diminta, jadi jalur satuan tetap murah.
+ */
+async function collectFinalizeBlockers(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  payslipIds: string[]
+): Promise<FinalizeBlocker[]> {
+  if (payslipIds.length === 0) return [];
+
+  const { data: slips } = await supabase
+    .from("payslips")
+    .select("id, user_id, breakdown_json")
+    .in("id", payslipIds);
+  if (!slips || slips.length === 0) return [];
+
+  const userIds = [...new Set(slips.map((s) => s.user_id))];
+  const [settingsRes, delivRes, profilesRes] = await Promise.all([
+    supabase
+      .from("payslip_settings")
+      .select("user_id, calculation_basis")
+      .in("user_id", userIds),
+    // Ambil payslip_id-nya saja lalu hitung di memori — `count` per grup
+    // tidak tersedia lewat PostgREST tanpa RPC, dan jumlah barisnya kecil
+    // (beberapa deliverable per slip).
+    supabase
+      .from("payslip_deliverables")
+      .select("payslip_id")
+      .in("payslip_id", payslipIds),
+    supabase.from("profiles").select("id, full_name").in("id", userIds),
+  ]);
+
+  const basisByUser = new Map(
+    (settingsRes.data ?? []).map((s) => [s.user_id, s.calculation_basis])
+  );
+  const nameById = new Map(
+    (profilesRes.data ?? []).map((p) => [p.id, p.full_name ?? "(tanpa nama)"])
+  );
+  const delivCount = new Map<string, number>();
+  for (const d of delivRes.data ?? []) {
+    delivCount.set(d.payslip_id, (delivCount.get(d.payslip_id) ?? 0) + 1);
+  }
+
+  return findFinalizeBlockers(
+    slips.map((s) => {
+      const bd = (s.breakdown_json ?? null) as PayslipBreakdown | null;
+      return {
+        payslipId: s.id,
+        userId: s.user_id,
+        name: nameById.get(s.user_id) ?? "(tanpa nama)",
+        calculationBasis: basisByUser.get(s.user_id) ?? null,
+        deliverableCount: delivCount.get(s.id) ?? 0,
+        extraWorkDays: bd?.extra_work_days ?? [],
+      };
+    })
+  );
+}
+
 export async function bulkFinalizePayslipsForMonth(
   month: number,
   year: number
@@ -1594,6 +1630,24 @@ export async function bulkFinalizePayslipsForMonth(
   adminGuard(role);
 
   const supabase = await createClient();
+
+  // Periksa SEBELUM menulis. Kalau ada satu saja yang belum lengkap,
+  // tidak ada yang difinalisasi — finalisasi massal harus all-or-nothing
+  // supaya admin tidak perlu menebak siapa yang sudah terlanjur terbit.
+  const { data: drafts } = await supabase
+    .from("payslips")
+    .select("id")
+    .eq("month", month)
+    .eq("year", year)
+    .eq("status", "draft");
+  const blockers = await collectFinalizeBlockers(
+    supabase,
+    (drafts ?? []).map((d) => d.id)
+  );
+  if (blockers.length > 0) {
+    return { finalizedCount: 0, error: describeFinalizeBlockers(blockers) };
+  }
+
   const { data, error } = await supabase
     .from("payslips")
     .update({ status: "finalized", updated_at: new Date().toISOString() })
@@ -1997,6 +2051,15 @@ export async function finalizePayslip(payslipId: string) {
   adminGuard(role);
 
   const supabase = await createClient();
+
+  // Prasyarat kelengkapan data — lihat `finalize-guard.ts`. Ditaruh di
+  // action, bukan cuma di UI, karena tombolnya bisa dilewati (bulk,
+  // re-finalize, atau pemanggilan langsung).
+  const blockers = await collectFinalizeBlockers(supabase, [payslipId]);
+  if (blockers.length > 0) {
+    return { error: blockers[0].reasons.join(" ") };
+  }
+
   // Re-finalize: reset employee_response to 'pending' so admin gets a
   // fresh ack signal on every cycle. Payment status is intentionally
   // NOT reset — real money already moved.
