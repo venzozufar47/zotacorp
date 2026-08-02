@@ -964,7 +964,6 @@ export async function checkOut(payload?: CheckOutPayload) {
         : [],
       breakEnabled: profile?.break_enabled ?? false,
       isFlexible: false,
-      timezone,
     });
   }
 
@@ -1385,7 +1384,6 @@ export async function lateCheckout(payload: LateCheckoutPayload) {
         : [],
       breakEnabled: profile?.break_enabled ?? false,
       isFlexible: false,
-      timezone,
     });
   }
 

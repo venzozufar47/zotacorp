@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { MapPin, MapPinOff, Clock, Coffee } from "lucide-react";
@@ -55,7 +55,7 @@ import type {
   BreakWindow,
 } from "@/lib/supabase/types";
 import { formatMinutesHuman } from "@/lib/utils/date";
-import { getEffectiveWorkEnd } from "@/lib/utils/attendance-overtime";
+import { overtimeEligibleFrom } from "@/lib/utils/attendance-overtime";
 import { SelfieCaptureDialog } from "./SelfieCaptureDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
@@ -135,7 +135,27 @@ export function CheckInButton({
   const { t } = useTranslation();
 
   const state = getState(log);
-  const pastEndTime = canOptInOvertime();
+
+  /**
+   * Jam berdetak — HANYA untuk memutuskan kapan centang lembur muncul.
+   *
+   * Ambangnya waktu, bukan aksi pengguna: kalau tidak ada yang memicu
+   * render pada saat terlampaui, karyawan yang sedang menunggu tombolnya
+   * tidak akan pernah melihatnya muncul. 30 detik cukup halus untuk
+   * ambang bermenit-menit dan tidak membebani.
+   *
+   * Interval hanya hidup saat masih check-in; setelah checkout tidak ada
+   * lagi yang perlu dipantau.
+   */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const stillCheckedIn = state === "checked-in";
+  useEffect(() => {
+    if (!stillCheckedIn || isFlexible) return;
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [stillCheckedIn, isFlexible]);
+
+  const pastEndTime = canOptInOvertime(nowMs);
 
   // ── Istirahat (break) derivation ──────────────────────────────────────
   const tz = settings?.timezone ?? "Asia/Jakarta";
@@ -190,30 +210,42 @@ export function CheckInButton({
   /**
    * Should the overtime opt-in checkbox appear yet?
    *
-   * Today's behaviour for normal arrivals: `now > work_end_time`.
-   * Early-arrival behaviour: `now > checked_in_at + standard_duration`.
-   * Both cases collapse into a single check via `getEffectiveWorkEnd`,
-   * the same helper the server uses to credit OT minutes — so the UI
-   * never enables an opt-in the server then refuses.
+   * Muncul begitu jam kerja BERSIH hari itu terpenuhi:
+   *   `checked_in_at + standar_bersih + istirahat_yang_sudah_diambil`
+   *
+   * Ambang ini diturunkan dari `computeOvertimeMinutes` yang dipakai
+   * server, jadi tombolnya muncul TEPAT saat server mulai mengkredit —
+   * tidak lebih cepat, tidak lebih lambat.
+   *
+   * Sebelumnya gerbang ini memakai jam pulang JAM DINDING lewat
+   * `getEffectiveWorkEnd`. Untuk karyawan ber-istirahat yang melewatkan
+   * istirahatnya, server sudah mengkredit lembur jauh sebelum jam itu —
+   * Boles menyelesaikan 12 jam bersihnya pukul 19:00 tapi tombolnya baru
+   * muncul 21:00. Akibatnya 20 dari 26 hari kerjanya di Juli 2026 tidak
+   * pernah tercatat lembur meski memenuhi syarat.
+   *
+   * Perbandingan memakai instant apa adanya (bukan wall-clock yang
+   * digeser timezone) karena ambangnya kini murni durasi. `now` diterima
+   * sebagai argumen — bukan dibaca dari `Date.now()` di dalam sini —
+   * supaya fungsinya murni terhadap render (lihat jam berdetak di atas).
    */
-  function canOptInOvertime(): boolean {
+  function canOptInOvertime(now: number): boolean {
     if (!settings || isFlexible || !log) return false;
     try {
       const start = workStartTime ?? settings.work_start_time;
       const end = workEndTime ?? settings.work_end_time;
       if (!start || !end) return false;
-      const effectiveEnd = getEffectiveWorkEnd(
-        new Date(log.checked_in_at),
-        start,
-        end,
-        settings.timezone,
-        false
-      );
-      if (!effectiveEnd) return false;
-      const localNow = new Date(
-        new Date().toLocaleString("en-US", { timeZone: settings.timezone })
-      );
-      return localNow >= effectiveEnd;
+      const eligibleFrom = overtimeEligibleFrom({
+        checkedInAt: new Date(log.checked_in_at),
+        totalBreakMinutes: log.total_break_minutes ?? 0,
+        workStartTime: start,
+        workEndTime: end,
+        breakWindows: breakEnabled ? breakWindows : [],
+        breakEnabled,
+        isFlexible: false,
+      });
+      if (!eligibleFrom) return false;
+      return now >= eligibleFrom.getTime();
     } catch {
       return false;
     }
