@@ -7,6 +7,7 @@ import {
   getEmployeePayslips,
   getPayslipDeliverables,
   getPayslipSettings,
+  getIncompleteAttendanceByPeriod,
 } from "@/lib/actions/payslip.actions";
 import { listMyPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -62,14 +63,15 @@ export default async function EmployeePayslipsPage() {
   // otomatis saat submit tes di /disc).
   const discRequired = Boolean(profile?.disc_test_required);
 
-  const [payslips, settings, disputes] =
+  const [payslips, settings, disputes, incompleteByPeriod] =
     profileComplete && !discRequired
       ? await Promise.all([
           getEmployeePayslips(user.id),
           getPayslipSettings(user.id),
           listMyPayslipDisputes(),
+          getIncompleteAttendanceByPeriod(user.id),
         ])
-      : [[], null, []];
+      : [[], null, [], {}];
   const deliverablesByPayslip = new Map(
     await Promise.all(
       payslips.map(
@@ -109,6 +111,7 @@ export default async function EmployeePayslipsPage() {
           settings={settings}
           profile={profile}
           disputes={disputes}
+          incompleteByPeriod={incompleteByPeriod}
         />
       )}
     </div>

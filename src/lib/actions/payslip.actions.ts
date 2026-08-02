@@ -19,6 +19,7 @@ import {
   type FinalizeBlocker,
 } from "@/lib/payslip/finalize-guard";
 import { explainNetTotal } from "@/lib/payslip/net-total";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 import { sendPushToUser } from "@/lib/push/web-push";
@@ -2278,6 +2279,51 @@ export async function getEmployeePayslips(userId: string) {
     .order("month", { ascending: false });
 
   return data ?? [];
+}
+
+/**
+ * Tanggal absen yang check-in-nya ada tapi check-out-nya TIDAK, dikelompokkan
+ * per periode "YYYY-MM".
+ *
+ * KENAPA INI PENTING BAGI KARYAWAN. `calculateFromAttendance` menyaring
+ * `logs.filter((l) => l.checked_out_at)` — hari tanpa check-out tidak
+ * dihitung sebagai hari kerja sama sekali. Dampaknya langsung ke gaji
+ * lewat prorata (hari hadir ÷ kuota), tapi di slip hari itu cuma
+ * "hilang": tidak ada baris, tidak ada tanda, tidak ada penjelasan.
+ *
+ * Kasus nyata yang memicu ini: seorang karyawan terbaca 17 hari padahal
+ * absennya 18 — satu hari lupa tap pulang. Tanpa petunjuk apa pun,
+ * satu-satunya cara menemukannya adalah membandingkan manual dengan
+ * catatan absen.
+ *
+ * Hari BERJALAN sengaja dikecualikan: karyawan yang sedang bekerja hari
+ * ini memang belum check-out, dan menandainya sebagai masalah cuma
+ * kebisingan.
+ */
+export async function getIncompleteAttendanceByPeriod(
+  userId: string
+): Promise<Record<string, string[]>> {
+  const user = await getCurrentUser();
+  if (!user) return {};
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_logs")
+    .select("date")
+    .eq("user_id", userId)
+    .not("checked_in_at", "is", null)
+    .is("checked_out_at", null)
+    .order("date");
+
+  const today = jakartaDateString(new Date());
+  const out: Record<string, string[]> = {};
+  for (const row of data ?? []) {
+    const date = row.date as string;
+    if (date >= today) continue; // hari berjalan / masa depan — bukan anomali
+    const period = date.slice(0, 7); // "YYYY-MM"
+    (out[period] ??= []).push(date);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

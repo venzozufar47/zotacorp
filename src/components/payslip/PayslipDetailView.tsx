@@ -33,6 +33,9 @@ interface Props {
    *  basis, hari kerja). Threaded into PayslipContextStrip so each
    *  disputable cell can show a Lapor button or open-dispute badge. */
   disputes: DisputeRow[];
+  /** Absen tanpa check-out, dikelompokkan per "YYYY-MM". Dipetik untuk
+   *  periode yang sedang dibuka lalu diteruskan ke tombol konfirmasi. */
+  incompleteByPeriod?: Record<string, string[]>;
 }
 
 /**
@@ -48,6 +51,7 @@ export function PayslipDetailView({
   settings,
   profile,
   disputes,
+  incompleteByPeriod = {},
 }: Props) {
   const { t } = useTranslation();
   const d = t.payslipDetail;
@@ -136,6 +140,11 @@ export function PayslipDetailView({
           deliverables={activeDeliverables}
           settings={settings}
           profile={profile}
+          incompleteAttendance={
+            incompleteByPeriod[
+              `${active.year}-${String(active.month).padStart(2, "0")}`
+            ] ?? []
+          }
         />
 
         <PayslipHelpFooter />

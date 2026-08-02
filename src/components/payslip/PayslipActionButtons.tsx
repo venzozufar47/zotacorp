@@ -39,6 +39,68 @@ interface Props {
   deliverables: PayslipDeliverable[];
   settings: PayslipSettings | null;
   profile: Profile | null;
+  /** Tanggal "YYYY-MM-DD" pada periode slip ini yang check-out-nya kosong.
+   *  Hari seperti itu tidak dihitung sebagai hari kerja sama sekali, jadi
+   *  karyawan harus melihatnya SEBELUM menekan Konfirmasi. */
+  incompleteAttendance?: string[];
+}
+
+/** "2026-07-20" → "Sen, 20 Jul". Tanggal-saja, jadi diurai manual —
+ *  `new Date("2026-07-20")` ditafsirkan UTC dan bisa mundur sehari di WIB. */
+function formatDayLabel(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  return new Date(y, m - 1, d).toLocaleDateString("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+/**
+ * Peringatan absen menggantung. Sengaja TIDAK memblokir konfirmasi —
+ * karyawan mungkin memang tidak bekerja hari itu, dan mengunci tombolnya
+ * akan menyandera slip yang sebenarnya sudah benar. Tugasnya membuat
+ * kerugian yang senyap jadi terlihat sebelum keputusan diambil.
+ */
+function IncompleteAttendanceNotice({ dates }: { dates: string[] }) {
+  const { t } = useTranslation();
+  const d = t.payslipDetail;
+  return (
+    <div
+      className="space-y-1.5 rounded-xl p-3"
+      style={{ background: "#fff7e6", border: "1px solid #f0cd8a" }}
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle size={16} style={{ color: "#8a5a00", marginTop: 2 }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-[12.5px] font-semibold" style={{ color: "#8a5a00" }}>
+            {d.incompleteTitle.replace("{count}", String(dates.length))}
+          </p>
+          <p
+            className="text-[11.5px] leading-relaxed mt-0.5"
+            style={{ color: "#8a5a00" }}
+          >
+            {d.incompleteBody}
+          </p>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5">
+            {dates.map((ymd) => (
+              <li
+                key={ymd}
+                className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums"
+                style={{ background: "#f7e4bd", color: "#7a4f00" }}
+              >
+                {formatDayLabel(ymd)}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] mt-1.5" style={{ color: "#8a5a00" }}>
+            {d.incompleteAction}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -57,6 +119,7 @@ export function PayslipActionButtons({
   deliverables,
   settings,
   profile,
+  incompleteAttendance = [],
 }: Props) {
   const { t } = useTranslation();
   const d = t.payslipDetail;
@@ -101,6 +164,14 @@ export function PayslipActionButtons({
 
   return (
     <div className="space-y-2">
+      {/* Absen menggantung — DI ATAS tombol, karena gunanya menginformasikan
+          keputusan konfirmasi. Tetap ditampilkan setelah karyawan menjawab:
+          kalau mereka terlanjur konfirmasi, ini yang membuat mereka sadar
+          masih bisa membatalkan dan menyanggah. */}
+      {incompleteAttendance.length > 0 && (
+        <IncompleteAttendanceNotice dates={incompleteAttendance} />
+      )}
+
       {/* Response state — pending shows primary actions; otherwise shows
           the current status with edit/cancel affordances. */}
       {response === "pending" && (

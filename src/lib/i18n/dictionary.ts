@@ -539,6 +539,11 @@ export const dictionary = {
       // Banners
       bannerAcknowledged: "Confirmed",
       bannerIssue: "Reported issue",
+      // Incomplete attendance warning (shown above the confirm buttons)
+      incompleteTitle: "{count} day(s) missing a check-out",
+      incompleteBody:
+        "These days have a check-in but no check-out, so they are NOT counted as work days — which lowers your prorated pay. Check before confirming.",
+      incompleteAction: "Wrong? Use “Dispute” below to tell admin.",
       // Dispute dialog
       disputeDialogTitle: "Report an issue on this payslip",
       disputeDialogDescription:
@@ -1229,6 +1234,10 @@ export const dictionary = {
       actionSendToAdmin: "Kirim ke admin",
       bannerAcknowledged: "Sudah dikonfirmasi",
       bannerIssue: "Lapor masalah",
+      incompleteTitle: "{count} hari absennya belum lengkap",
+      incompleteBody:
+        "Hari berikut ada check-in tapi tidak ada check-out, jadi TIDAK dihitung sebagai hari kerja — dan itu mengurangi gaji prorata kamu. Cek dulu sebelum konfirmasi.",
+      incompleteAction: "Kalau tidak sesuai, pakai “Sanggah” di bawah untuk lapor ke admin.",
       disputeDialogTitle: "Sanggah slip gaji",
       disputeDialogDescription:
         "Tulis apa yang tidak sesuai (mis. nilai salah, denda telat tidak seharusnya, lembur belum dihitung). Admin akan tinjau dan menghubungi kamu.",
