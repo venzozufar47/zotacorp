@@ -351,6 +351,14 @@ function TxItem({ tx }: { tx: TxRow }) {
             {tx.notes}
           </p>
         )}
+        {/* Alasan auto-exclude. Tanpa ini baris cuma tampil tak
+            tercentang dan admin harus menebak kenapa — padahal
+            sebabnya cuma kategorinya bukan pendapatan. */}
+        {tx.excludedByCategory && (
+          <p className="text-[10px] font-medium text-amber-700">
+            bukan penjualan · kategori {tx.category}
+          </p>
+        )}
       </div>
       <span className="shrink-0 text-xs font-medium tabular-nums">
         {formatRp(tx.credit)}

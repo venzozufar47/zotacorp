@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
+import {
+  HAENGBOCAKE_NON_OPERATING_CATEGORIES,
+  normalizePnLCategory,
+} from "@/lib/cashflow/categories";
 
 // Hardcoded Haengbocake bank account IDs — derived from a one-time
 // listing query and unlikely to change. Storing as constants avoids
@@ -35,6 +39,61 @@ const BANK_LABEL: Record<BankKey, string> = {
  */
 
 /**
+ * Kategori kredit yang JELAS bukan penjualan custom cake, di luar
+ * himpunan non-operasional. Ketiganya pernah muncul nyata sebagai
+ * kredit di rekening Haengbocake:
+ *   - "Salaries & Wages" → pergerakan pocket yang salah kategori
+ *   - "Sales Refund"     → refund yang kembali masuk, bukan penjualan
+ *   - "Penyesuaian"      → koreksi saldo kas, sengaja ambigu (lihat
+ *                          komentar di `categories.ts`)
+ */
+const NON_SALES_EXTRA_CATEGORIES = new Set<string>([
+  "Salaries & Wages",
+  "Sales Refund",
+  "Penyesuaian",
+]);
+
+/**
+ * Gerbang kategori untuk basis bonus custom cake.
+ *
+ * KENAPA ADA: aturan teks di bawah menyaring pengirim per nama/kata
+ * kunci, dan itu bocor — transfer pribadi masuk (Debar Boles, rekening
+ * owner) tidak mengandung kata "pindah"/"pocket" mana pun, jadi lolos
+ * sebagai "penjualan". Terukur: Rp 157 juta Wealth Transfer di Jago
+ * ikut terhitung, hampir 2x total Sales aslinya. Komentar aturan Jago
+ * memang sudah berbunyi "SALES = custom cake by definition" — fungsi
+ * ini membuat niat itu literal alih-alih diwakili tebakan kata kunci.
+ *
+ * BENTUKNYA DAFTAR-HITAM, BUKAN DAFTAR-PUTIH. Kategori yang belum
+ * dikenal (atau `null`, mis. baris yang diinput manual sebelum
+ * dikategorikan) tetap LOLOS ke aturan teks. Arah salahnya disengaja:
+ * daftar-putih akan diam-diam membuang penjualan asli yang kebetulan
+ * berkategori tak terduga, dan itu memotong bonus orang tanpa jejak.
+ * Kelebihan hitung terlihat; kekurangan hitung tidak.
+ *
+ * cashPare DIKECUALIKAN. Ember itu bukan penjualan melainkan
+ * PENGURANG (setelmen QRIS yang pendapatan aslinya sudah tercatat di
+ * Mandiri), dan seluruh isinya berkategori "QRIS (non-operasional)" —
+ * yang ada di daftar non-operasional. Menerapkan gerbang ini di sana
+ * akan menghapus pengurangnya dan justru MENAIKKAN bonus.
+ */
+function isNonSalesCategory(
+  bankKey: BankKey,
+  category: string | null
+): boolean {
+  if (bankKey === "cashPare") return false;
+  if (!category) return false;
+  // Normalisasi dulu supaya label kas ikut terbaca: "Diambil mas Venzo"
+  // → "Dividend" (non-operasional), "Haengbo Cust"/"Slice Haengbo" →
+  // "Sales" (tetap dihitung).
+  const norm = normalizePnLCategory("Haengbocake", category);
+  return (
+    (HAENGBOCAKE_NON_OPERATING_CATEGORIES as readonly string[]).includes(norm) ||
+    NON_SALES_EXTRA_CATEGORIES.has(norm)
+  );
+}
+
+/**
  * Default classification rules per bank account. Returns whether a
  * transaction would be auto-included in custom cake total (before any
  * manual override).
@@ -46,10 +105,14 @@ function autoIncludeRule(
     description: string | null;
     source_destination: string | null;
     notes: string | null;
+    category: string | null;
   }
 ): boolean {
   const credit = Number(tx.credit ?? 0);
   if (credit <= 0) return false;
+  // Gerbang kategori lebih dulu — berlaku untuk SEMUA rekening, jadi
+  // kebocoran yang sama tidak perlu ditambal per-bank di bawah.
+  if (isNonSalesCategory(bankKey, tx.category)) return false;
   const desc = (tx.description ?? "").toLowerCase();
   const src = (tx.source_destination ?? "").toLowerCase();
   const notes = (tx.notes ?? "").toLowerCase();
@@ -116,6 +179,10 @@ export interface TxRow {
   sourceDestination: string | null;
   notes: string | null;
   credit: number;
+  category: string | null;
+  /** True kalau baris ini auto-exclude KARENA kategorinya (bukan karena
+   *  aturan teks) — dipakai UI untuk menjelaskan sebabnya. */
+  excludedByCategory: boolean;
   autoIncluded: boolean;
   manualOverride: boolean | null;
   effectiveIncluded: boolean;
@@ -137,6 +204,7 @@ function buildTxRow(
     source_destination: string | null;
     notes: string | null;
     credit: number | string | null;
+    category: string | null;
     custom_cake_included: boolean | null;
     statement_id: string;
   },
@@ -154,6 +222,8 @@ function buildTxRow(
     sourceDestination: raw.source_destination,
     notes: raw.notes,
     credit,
+    category: raw.category,
+    excludedByCategory: isNonSalesCategory(bankKey, raw.category),
     autoIncluded: auto,
     manualOverride: override,
     effectiveIncluded: override ?? auto,
@@ -188,6 +258,7 @@ export async function getCustomCakeBonusMonth(
     source_destination: string | null;
     notes: string | null;
     credit: number | string | null;
+    category: string | null;
     custom_cake_included: boolean | null;
     statement_id: string;
     cashflow_statements: { bank_account_id: string };
@@ -198,7 +269,7 @@ export async function getCustomCakeBonusMonth(
     const { data, error } = await supabase
       .from("cashflow_transactions")
       .select(
-        "id, transaction_date, description, source_destination, notes, credit, custom_cake_included, statement_id, cashflow_statements!inner(bank_account_id)"
+        "id, transaction_date, description, source_destination, notes, credit, category, custom_cake_included, statement_id, cashflow_statements!inner(bank_account_id)"
       )
       .gte("transaction_date", monthStart)
       .lt("transaction_date", monthEnd)
