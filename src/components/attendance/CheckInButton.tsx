@@ -337,7 +337,11 @@ export function CheckInButton({
           return;
         }
         if (result?.data) {
-          const d = result.data as { id: string; late_return: boolean };
+          const d = result.data as {
+            id: string;
+            late_return: boolean;
+            totalBreakMinutes?: number;
+          };
           const nowIso = new Date().toISOString();
           setSelfieOpen(false);
           setBreaks((b) =>
@@ -347,6 +351,17 @@ export function CheckInButton({
                 : x
             )
           );
+          // Segarkan total istirahat hari ini — ambang munculnya centang
+          // lembur bergantung padanya. Tanpa ini nilainya tetap seperti
+          // saat halaman dimuat, sehingga centang muncul lebih awal
+          // daripada saat server benar-benar mulai mengkredit.
+          if (typeof d.totalBreakMinutes === "number") {
+            setLog((prev) =>
+              prev
+                ? { ...prev, total_break_minutes: d.totalBreakMinutes! }
+                : prev
+            );
+          }
           if (d.late_return) toast.warning(t.checkIn.toastBreakInLate);
           else toast.success(t.checkIn.toastBreakIn);
           onSuccess?.();

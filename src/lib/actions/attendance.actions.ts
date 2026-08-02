@@ -505,10 +505,11 @@ export async function breakIn(payload: CheckInPayload) {
     .from("attendance_break_logs")
     .select("break_out_at, break_in_at")
     .eq("attendance_log_id", log.id);
+  const totalBreakMinutes = sumBreakMinutes(allBreaks ?? []);
   await supabase
     .from("attendance_logs")
     .update({
-      total_break_minutes: sumBreakMinutes(allBreaks ?? []),
+      total_break_minutes: totalBreakMinutes,
       updated_at: now.toISOString(),
     })
     .eq("id", log.id);
@@ -519,7 +520,15 @@ export async function breakIn(payload: CheckInPayload) {
     0,
     Math.round((now.getTime() - new Date(open.break_out_at).getTime()) / 60_000)
   );
-  return { data: { id: open.id, late_return, breakMinutes } };
+  // `totalBreakMinutes` (total HARI ITU, bukan cuma sesi ini) ikut
+  // dikembalikan supaya klien bisa menyegarkan `log.total_break_minutes`.
+  // Tanpa itu, ambang munculnya centang lembur dihitung dari nilai saat
+  // halaman dimuat — istirahat yang baru saja diambil tidak menggeser
+  // ambangnya, dan UI menawarkan lembur lebih awal daripada yang akan
+  // dikreditkan server.
+  return {
+    data: { id: open.id, late_return, breakMinutes, totalBreakMinutes },
+  };
 }
 
 /**
