@@ -94,7 +94,8 @@ export default async function PosServiceLevelPage({
           <section className="rounded-2xl border-2 border-foreground bg-card p-5">
             <h2 className="font-display text-sm font-bold">Penyebab terbesar</h2>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Produk yang paling lama kosong. Ini daftar produksinya.
+              Produk yang paling sering kosong. 100% artinya selalu kosong
+              dalam {days} hari kebelakang.
             </p>
             {/* Nama DULU, lalu bar, lalu angka. Sebelumnya bar mengambil
                 seluruh sisa lebar sehingga labelnya terdampar ~900px di
