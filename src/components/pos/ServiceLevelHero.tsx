@@ -1,18 +1,45 @@
-import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+"use client";
+
+import Link, { useLinkStatus } from "next/link";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 
 /**
  * Kartu Service Level — dipakai di layar kasir (`compact`) dan di
  * halaman detail / cek shift (`hero`).
  *
- * Server component: tidak butuh interaktivitas, dan menjaga bundle
- * layar kasir tetap ramping.
+ * "use client" karena varian `compact`-ber-href butuh `useLinkStatus`
+ * untuk spinner loading (lihat `CompactLinkPending` di bawah) — hook itu
+ * cuma jalan di dalam pohon `<Link>`. Tidak ada regresi bundle: file ini
+ * cuma pernah dipakai langsung dari `POSClient.tsx` yang sudah
+ * "use client", jadi sudah lama ikut ter-bundle ke client apa pun
+ * anotasinya sendiri.
  *
  * PALET: layar POS meng-override palet jadi pink lewat `data-pos-palette`.
  * Pakai token semantik saja — `bg-primary`, `text-success` — JANGAN hex,
  * kalau tidak warnanya akan menyimpang dari tema POS.
  */
+
+/**
+ * Spinner navigasi. HARUS jadi descendant `<Link>` — dipanggil hanya saat
+ * `href` terisi (lihat pemakaian di bawah), sesuai syarat `useLinkStatus`.
+ *
+ * Slot ikonnya SELALU dirender di ukuran tetap, cuma opacity yang
+ * berubah — anjuran dokumentasi Next sendiri: indikator inline gampang
+ * menggeser layout kalau elemennya cuma muncul saat pending.
+ */
+function CompactLinkPending() {
+  const { pending } = useLinkStatus();
+  return (
+    <Loader2
+      size={11}
+      aria-hidden
+      className={`shrink-0 animate-spin text-muted-foreground transition-opacity duration-150 ${
+        pending ? "opacity-100" : "opacity-0"
+      }`}
+    />
+  );
+}
 
 function tone(pct: number | null): {
   text: string;
@@ -54,8 +81,9 @@ export function ServiceLevelHero({
         className={`flex items-center gap-3 rounded-2xl border-2 border-foreground ${t.bg} px-3 py-2 shadow-[3px_3px_0_0_var(--foreground)]`}
       >
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Service Level · {days} hari
+            {href && <CompactLinkPending />}
           </p>
           <p className={`font-display text-2xl font-extrabold tabular-nums leading-none ${t.text}`}>
             {label}
