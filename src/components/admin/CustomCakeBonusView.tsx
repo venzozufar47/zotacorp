@@ -352,11 +352,12 @@ function TxItem({ tx }: { tx: TxRow }) {
           </p>
         )}
         {/* Alasan auto-exclude. Tanpa ini baris cuma tampil tak
-            tercentang dan admin harus menebak kenapa — padahal
-            sebabnya cuma kategorinya bukan pendapatan. */}
-        {tx.excludedByCategory && (
+            tercentang dan admin harus menebak kenapa. */}
+        {tx.excludeReason && (
           <p className="text-[10px] font-medium text-amber-700">
-            bukan penjualan · kategori {tx.category}
+            {tx.excludeReason === "kategori"
+              ? `bukan penjualan · kategori ${tx.category}`
+              : "penjualan ritel POS · bukan custom cake"}
           </p>
         )}
       </div>

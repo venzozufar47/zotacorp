@@ -98,6 +98,46 @@ function isNonSalesCategory(
  * transaction would be auto-included in custom cake total (before any
  * manual override).
  */
+/**
+ * Penjualan ritel dari layar kasir POS — BUKAN custom cake.
+ *
+ * Bonus ini dihitung dari omset custom cake (DP/pelunasan pesanan kue),
+ * sedangkan POS mencatat penjualan etalase harian: roti, cookies, minuman.
+ * Keduanya mendarat di rekening kas yang sama, jadi harus dibedakan lewat
+ * deskripsi.
+ *
+ * Penanda yang dipakai adalah AWALAN deskripsi yang dibangun
+ * `recordPosSale` (lihat `pos.actions.ts`): `POS ${method}${[nama]}: item`.
+ * Awalan, bukan "mengandung kata cash" — kas Semarang penuh entri manual
+ * seperti "dea pelunasan cash" atau "yusuf lunas cash" yang justru
+ * pelunasan custom cake asli dan HARUS tetap dihitung. Menyaring dengan
+ * kata "cash" akan membuang Rp 3,5 juta omset cake yang sah.
+ *
+ * cashPare dikecualikan: ember itu pengurang, dan isinya disaring
+ * terpisah lewat syarat "qris" — POS Cash memang tidak pernah lolos ke
+ * sana.
+ */
+function isPosRetailSale(
+  bankKey: BankKey,
+  description: string | null
+): boolean {
+  if (bankKey === "cashPare") return false;
+  return (description ?? "").trim().toLowerCase().startsWith("pos cash");
+}
+
+/** Alasan sebuah baris otomatis dikeluarkan dari basis bonus, atau null
+ *  kalau lolos. Dipakai UI untuk menjelaskan kotak yang tidak tercentang. */
+export type AutoExcludeReason = "kategori" | "pos-retail" | null;
+
+function autoExcludeReason(
+  bankKey: BankKey,
+  tx: { description: string | null; category: string | null }
+): AutoExcludeReason {
+  if (isNonSalesCategory(bankKey, tx.category)) return "kategori";
+  if (isPosRetailSale(bankKey, tx.description)) return "pos-retail";
+  return null;
+}
+
 function autoIncludeRule(
   bankKey: BankKey,
   tx: {
@@ -110,9 +150,9 @@ function autoIncludeRule(
 ): boolean {
   const credit = Number(tx.credit ?? 0);
   if (credit <= 0) return false;
-  // Gerbang kategori lebih dulu — berlaku untuk SEMUA rekening, jadi
-  // kebocoran yang sama tidak perlu ditambal per-bank di bawah.
-  if (isNonSalesCategory(bankKey, tx.category)) return false;
+  // Gerbang lintas-rekening (kategori non-pendapatan + ritel POS) lebih
+  // dulu, jadi kebocoran yang sama tidak perlu ditambal per-bank di bawah.
+  if (autoExcludeReason(bankKey, tx) !== null) return false;
   const desc = (tx.description ?? "").toLowerCase();
   const src = (tx.source_destination ?? "").toLowerCase();
   const notes = (tx.notes ?? "").toLowerCase();
@@ -180,9 +220,9 @@ export interface TxRow {
   notes: string | null;
   credit: number;
   category: string | null;
-  /** True kalau baris ini auto-exclude KARENA kategorinya (bukan karena
-   *  aturan teks) — dipakai UI untuk menjelaskan sebabnya. */
-  excludedByCategory: boolean;
+  /** Sebab baris ini auto-exclude oleh gerbang lintas-rekening (bukan oleh
+   *  aturan teks per-bank) — dipakai UI untuk menjelaskan kotak kosong. */
+  excludeReason: AutoExcludeReason;
   autoIncluded: boolean;
   manualOverride: boolean | null;
   effectiveIncluded: boolean;
@@ -223,7 +263,7 @@ function buildTxRow(
     notes: raw.notes,
     credit,
     category: raw.category,
-    excludedByCategory: isNonSalesCategory(bankKey, raw.category),
+    excludeReason: autoExcludeReason(bankKey, raw),
     autoIncluded: auto,
     manualOverride: override,
     effectiveIncluded: override ?? auto,
