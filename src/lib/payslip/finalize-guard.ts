@@ -48,6 +48,39 @@ export interface FinalizeCandidate {
    *  akan diterbitkan, bukan hitung ulang dari log mentah. Kalau
    *  breakdown bilang Rp 0, itulah yang akan dibaca karyawan. */
   extraWorkDays: Array<{ date: string; kind: string; pay: number }>;
+  /** Tanggal extra work yang tarifnya SUDAH diset di sumbernya
+   *  (`extra_work_logs` + `extra_work_kinds`). Dipakai memisahkan dua
+   *  sebab yang gejalanya identik — lihat `findBlockingReasons`. */
+  extraWorkPricedDates?: string[];
+}
+
+/**
+ * Apakah sebuah log extra work sudah punya tarif efektif?
+ *
+ * Mencerminkan persis cabang penentu tarif di `calculatePayslip`
+ * (`payslip.actions.ts`, blok "Extra-work pay") — TANPA butuh gaji pokok,
+ * karena yang ditanya cuma "tarifnya ada atau tidak", bukan nominalnya.
+ *
+ * `daily_multiplier` selalu dianggap sudah bertarif: di sana pengali 0
+ * di-fallback ke 1, jadi bayarannya mengikuti gaji harian dan tidak
+ * pernah nol karena konfigurasi yang belum diisi.
+ */
+export function hasConfiguredExtraWorkRate(
+  log: {
+    formula_override: string | null;
+    custom_rate_idr: number | null;
+    multiplier_override: number | null;
+  },
+  kind: { formula_kind: string; fixed_rate_idr: number } | undefined
+): boolean {
+  const formula = log.formula_override ?? kind?.formula_kind ?? "fixed";
+  if (formula === "fixed") {
+    return (log.custom_rate_idr ?? kind?.fixed_rate_idr ?? 0) > 0;
+  }
+  if (formula === "custom") {
+    return (log.custom_rate_idr ?? 0) > 0;
+  }
+  return true; // daily_multiplier
 }
 
 export interface FinalizeBlocker {
@@ -85,17 +118,44 @@ export function findBlockingReasons(c: FinalizeCandidate): string[] {
   // seharusnya ada) ikut tertahan alih-alih lolos diam-diam.
   const unpaid = c.extraWorkDays.filter((d) => d.pay <= 0);
   if (unpaid.length > 0) {
+    // DUA SEBAB, GEJALA SAMA. `breakdown_json` adalah snapshot hasil
+    // hitung terakhir; tarif yang baru disimpan belum masuk ke sana
+    // sampai payslip di-Recalc. Jadi "pay = 0" bisa berarti:
+    //   (a) tarifnya memang belum diisi, atau
+    //   (b) tarifnya sudah diisi tapi slipnya belum dihitung ulang.
+    // Keduanya tetap MENAHAN finalisasi — memfinalisasi snapshot basi
+    // benar-benar membayar Rp 0 — tapi tindakan perbaikannya berbeda,
+    // jadi pesannya tidak boleh disamakan.
+    const priced = new Set(c.extraWorkPricedDates ?? []);
+    const belumDiisi = unpaid.filter((d) => !priced.has(d.date));
+    const belumRecalc = unpaid.filter((d) => priced.has(d.date));
+
     // Tanggal disebut supaya admin tahu harus membuka hari yang mana,
     // tapi dibatasi 3 agar pesannya tetap terbaca kalau sebulan penuh
     // bermasalah.
-    const shown = unpaid.slice(0, 3).map((d) => `${d.date} (${d.kind})`);
-    const sisa = unpaid.length - shown.length;
-    reasons.push(
-      `${unpaid.length} extra work belum ada nominal bayarannya: ` +
-        shown.join(", ") +
-        (sisa > 0 ? `, +${sisa} lagi` : "") +
-        "."
-    );
+    const ringkas = (
+      items: typeof unpaid
+    ): string => {
+      const shown = items.slice(0, 3).map((d) => `${d.date} (${d.kind})`);
+      const sisa = items.length - shown.length;
+      return shown.join(", ") + (sisa > 0 ? `, +${sisa} lagi` : "");
+    };
+
+    if (belumDiisi.length > 0) {
+      reasons.push(
+        `${belumDiisi.length} extra work belum ada nominal bayarannya: ` +
+          ringkas(belumDiisi) +
+          "."
+      );
+    }
+    if (belumRecalc.length > 0) {
+      reasons.push(
+        `${belumRecalc.length} extra work tarifnya sudah diisi tapi slip ` +
+          `belum dihitung ulang — klik Recalc dulu: ` +
+          ringkas(belumRecalc) +
+          "."
+      );
+    }
   }
 
   return reasons;

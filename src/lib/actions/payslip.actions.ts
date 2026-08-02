@@ -16,6 +16,7 @@ import { parseBreakWindows, effectiveStandardHours } from "@/lib/utils/break-win
 import {
   findFinalizeBlockers,
   describeFinalizeBlockers,
+  hasConfiguredExtraWorkRate,
   type FinalizeBlocker,
 } from "@/lib/payslip/finalize-guard";
 import { explainNetTotal } from "@/lib/payslip/net-total";
@@ -1562,6 +1563,32 @@ export async function bulkCalculatePayslips(
  * bulk-reopen karena reopening 20+ payslip sekaligus jarang di-do
  * oleh sengaja (lebih sering admin reopen 1-2 untuk koreksi).
  */
+/** Batas bawah/atas rentang tanggal yang mencakup SEMUA bulan slip yang
+ *  sedang diperiksa — supaya log extra work cukup diambil sekali, lalu
+ *  dipilah per slip di memori. */
+function extraWorkRangeStart(
+  slips: Array<{ month: number; year: number }>
+): string {
+  const min = slips.reduce(
+    (acc, s) => (s.year * 12 + s.month < acc.year * 12 + acc.month ? s : acc),
+    slips[0]
+  );
+  return `${min.year}-${String(min.month).padStart(2, "0")}-01`;
+}
+
+function extraWorkRangeEnd(
+  slips: Array<{ month: number; year: number }>
+): string {
+  const max = slips.reduce(
+    (acc, s) => (s.year * 12 + s.month > acc.year * 12 + acc.month ? s : acc),
+    slips[0]
+  );
+  // Eksklusif: awal bulan BERIKUTNYA.
+  const y = max.month === 12 ? max.year + 1 : max.year;
+  const m = max.month === 12 ? 1 : max.month + 1;
+  return `${y}-${String(m).padStart(2, "0")}-01`;
+}
+
 /**
  * Kumpulkan prasyarat finalisasi untuk sekumpulan slip.
  *
@@ -1577,12 +1604,13 @@ async function collectFinalizeBlockers(
 
   const { data: slips } = await supabase
     .from("payslips")
-    .select("id, user_id, breakdown_json")
+    .select("id, user_id, month, year, breakdown_json")
     .in("id", payslipIds);
   if (!slips || slips.length === 0) return [];
 
   const userIds = [...new Set(slips.map((s) => s.user_id))];
-  const [settingsRes, delivRes, profilesRes] = await Promise.all([
+  const [settingsRes, delivRes, profilesRes, logsRes, kindsRes] =
+    await Promise.all([
     supabase
       .from("payslip_settings")
       .select("user_id, calculation_basis")
@@ -1595,7 +1623,35 @@ async function collectFinalizeBlockers(
       .select("payslip_id")
       .in("payslip_id", payslipIds),
     supabase.from("profiles").select("id, full_name").in("id", userIds),
+    // Sumber tarif extra work. Dibaca terpisah dari `breakdown_json`
+    // supaya bisa dibedakan "tarif belum diisi" vs "sudah diisi tapi
+    // slipnya belum di-Recalc" — dua hal yang di breakdown sama-sama
+    // muncul sebagai pay = 0.
+    supabase
+      .from("extra_work_logs")
+      .select(
+        "user_id, date, kind, formula_override, custom_rate_idr, multiplier_override"
+      )
+      .in("user_id", userIds)
+      .gte("date", extraWorkRangeStart(slips))
+      .lt("date", extraWorkRangeEnd(slips)),
+    supabase
+      .from("extra_work_kinds")
+      .select("name, formula_kind, fixed_rate_idr"),
   ]);
+
+  const kindByName = new Map(
+    (kindsRes.data ?? []).map((k) => [k.name, k])
+  );
+  // (user, "YYYY-MM") → tanggal yang tarifnya sudah terkonfigurasi.
+  const pricedByUserMonth = new Map<string, string[]>();
+  for (const log of logsRes.data ?? []) {
+    if (!hasConfiguredExtraWorkRate(log, kindByName.get(log.kind))) continue;
+    const key = `${log.user_id}|${(log.date as string).slice(0, 7)}`;
+    const arr = pricedByUserMonth.get(key);
+    if (arr) arr.push(log.date as string);
+    else pricedByUserMonth.set(key, [log.date as string]);
+  }
 
   const basisByUser = new Map(
     (settingsRes.data ?? []).map((s) => [s.user_id, s.calculation_basis])
@@ -1618,6 +1674,10 @@ async function collectFinalizeBlockers(
         calculationBasis: basisByUser.get(s.user_id) ?? null,
         deliverableCount: delivCount.get(s.id) ?? 0,
         extraWorkDays: bd?.extra_work_days ?? [],
+        extraWorkPricedDates:
+          pricedByUserMonth.get(
+            `${s.user_id}|${s.year}-${String(s.month).padStart(2, "0")}`
+          ) ?? [],
       };
     })
   );
