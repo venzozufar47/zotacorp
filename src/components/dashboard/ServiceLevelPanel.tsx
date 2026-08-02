@@ -1,4 +1,3 @@
-import { AlertTriangle } from "lucide-react";
 import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import type { ServiceLevelOutlet } from "@/lib/pos/service-level-access";
 
@@ -12,6 +11,11 @@ import type { ServiceLevelOutlet } from "@/lib/pos/service-level-access";
  *
  * Gaya mengikuti idiom dashboard karyawan (`.panel-sticker`), bukan gaya
  * POS — dua permukaan itu punya bahasa visual berbeda.
+ *
+ * Sengaja diringkas: cuma persentase. Tidak ada sparkline, tidak ada
+ * "SKU-jam kosong", tidak ada peringatan opname parsial — rincian itu
+ * ada di halaman detail POS (/pos/[branch]/service-level) untuk yang
+ * juga assignee POS; panel ini untuk sekilas lihat saja.
  */
 
 function tone(pct: number | null): string {
@@ -19,28 +23,6 @@ function tone(pct: number | null): string {
   if (pct >= 0.95) return "text-success";
   if (pct >= 0.85) return "text-warning";
   return "text-destructive";
-}
-
-/** Sparkline sederhana: satu batang per hari, tinggi = persentase. */
-function Sparkline({ trend }: { trend: Array<{ date: string; percent: number | null }> }) {
-  const last = trend.slice(-30);
-  if (last.length === 0) return null;
-  return (
-    <div className="flex items-end gap-[2px] h-8" aria-hidden>
-      {last.map((d) => (
-        <div
-          key={d.date}
-          title={`${d.date}: ${d.percent === null ? "tidak dihitung" : (d.percent * 100).toFixed(0) + "%"}`}
-          className={`flex-1 min-w-[2px] rounded-sm ${
-            d.percent === null ? "bg-border" : "bg-primary"
-          }`}
-          style={{
-            height: d.percent === null ? "4px" : `${Math.max(6, d.percent * 100)}%`,
-          }}
-        />
-      ))}
-    </div>
-  );
 }
 
 export async function ServiceLevelPanel({
@@ -82,31 +64,18 @@ export async function ServiceLevelPanel({
                 Belum ada data terhitung.
               </p>
             ) : (
-              <>
-                <div className="flex items-baseline gap-3">
-                  <span
-                    className={`font-display text-4xl sm:text-5xl font-extrabold tabular-nums leading-none ${tone(
-                      summary.percent
-                    )}`}
-                  >
-                    {summary.percent === null
-                      ? "—"
-                      : `${(summary.percent * 100).toFixed(1)}%`}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    30 hari · {summary.lostSkuHours.toLocaleString("id-ID")}{" "}
-                    SKU-jam kosong
-                  </span>
-                </div>
-                <Sparkline trend={summary.trend} />
-                {summary.hasPartialOpname && (
-                  <p className="flex items-start gap-1.5 text-[11px] text-warning">
-                    <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                    Ada hari dengan opname parsial — SKU yang tidak ikut
-                    dihitung saat opname terbaca habis.
-                  </p>
-                )}
-              </>
+              <div className="flex items-baseline gap-3">
+                <span
+                  className={`font-display text-4xl sm:text-5xl font-extrabold tabular-nums leading-none ${tone(
+                    summary.percent
+                  )}`}
+                >
+                  {summary.percent === null
+                    ? "—"
+                    : `${(summary.percent * 100).toFixed(1)}%`}
+                </span>
+                <span className="text-xs text-muted-foreground">30 hari</span>
+              </div>
             )}
           </div>
         ))}
