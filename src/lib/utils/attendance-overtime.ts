@@ -181,54 +181,51 @@ export function getEffectiveWorkEnd(
 }
 
 /**
- * Menit kerja standar BERSIH per hari = rentang jadwal − jatah istirahat.
- * Boles: (21:00 − 07:00) − 2 jam = 12 jam = 720 menit.
- *
- * Rentang yang melewati tengah malam (jam pulang < jam masuk) di-roll +24
- * jam, jadi shift malam tetap terhitung benar.
+ * Selisih istirahat: jatah terjadwal − yang benar-benar diambil.
+ * POSITIF = ada jatah tak terpakai (kerja ekstra sebanyak itu).
+ * NEGATIF = istirahat melebihi jatah (kerja berkurang sebanyak itu).
+ * Nol untuk karyawan tanpa fitur istirahat.
  */
-export function standardNetMinutes(
-  workStartTime: string,
-  workEndTime: string,
-  breakWindows: BreakWindow[],
-  breakEnabled: boolean
-): number {
-  const [sH, sM] = parseHHMM(workStartTime);
-  const [eH, eM] = parseHHMM(workEndTime);
-  let span = eH * 60 + eM - (sH * 60 + sM);
-  if (span <= 0) span += 24 * 60;
-  const scheduledBreak = breakEnabled ? scheduledBreakMinutes(breakWindows) : 0;
-  return Math.max(0, span - scheduledBreak);
+function breakDeltaMinutes(params: {
+  breakWindows: BreakWindow[];
+  breakEnabled: boolean;
+  totalBreakMinutes: number;
+}): number {
+  if (!params.breakEnabled) return 0;
+  return (
+    scheduledBreakMinutes(params.breakWindows) -
+    Math.max(0, params.totalBreakMinutes || 0)
+  );
 }
 
 /**
- * Menit lembur = KERJA BERSIH yang melebihi jam kerja standar bersih.
+ * Menit lembur = menit lewat jam kerja efektif + jatah istirahat tak terpakai.
  *
- *   kerja_bersih   = (checkout − checkin) − istirahat_yang_diambil
- *   standar_bersih = (jam_pulang − jam_masuk) − jatah_istirahat
- *   lembur         = max(0, kerja_bersih − standar_bersih)
+ *   lembur = (checkout − jam_kerja_efektif) + (jatah_istirahat − istirahat_diambil)
  *
- * KENAPA BENTUK INI. Rumus sebelumnya = "menit lewat jam pulang" DITAMBAH
- * "jatah istirahat yang tak diambil", dan keduanya salah arah:
+ * `jam_kerja_efektif` tetap dari `getEffectiveWorkEnd`, jadi aturan
+ * kedatangan awal TIDAK berubah: lebih awal ≤30 menit terserap, >30 menit
+ * menggeser jam selesai. Karyawan tanpa fitur istirahat juga sama persis
+ * seperti sebelumnya — suku keduanya nol.
  *
- *   - Penambahan istirahat bersifat borongan. Boles pulang 19:07 tanpa
- *     istirahat mendapat 120 menit penuh, padahal lebihnya cuma 7 menit.
- *     Lebih buruk lagi, pulang jam 15:00 pun dapat 120 menit — jendela
- *     istirahatnya (16:00–18:00) bahkan belum tiba.
- *   - Menit datang lebih awal hangus kecuali melewati ambang 30 menit,
- *     sehingga datang 3 menit lebih pagi bisa mengubah lembur dari 1 menit
- *     jadi 35 menit (kasus nyata: Lazimatu 16 vs 18 Juli).
+ * SATU PERBEDAAN dari versi sebelumnya, dan itulah perbaikannya: suku
+ * pertama TIDAK lagi dipangkas ke nol sebelum dijumlahkan. Dulu:
  *
- * Bentuk bersih ini menutup keduanya sekaligus tanpa aturan tambahan:
- * datang lebih awal, istirahat sebagian, dan pulang cepat semuanya masuk
- * hitungan secara proporsional. Datang telat pun otomatis mengurangi
- * lembur, karena jam yang tidak dikerjakan memang tidak dibayar.
+ *     base     = max(0, checkout − jam_efektif)     ← pemangkasan di sini
+ *     istirahat= max(0, jatah − diambil)
+ *     lembur   = base + istirahat
  *
- * BONUS: berbasis DURASI, bukan jam dinding — jadi tidak butuh konversi
- * timezone dan tidak punya kasus khusus lewat tengah malam. Shift Boles
- * yang berakhir 00:23 dulu harus lewat `toLocalClock`; sekarang tidak.
+ * Karena base tidak boleh negatif, kredit istirahat jadi borongan dan
+ * lepas dari kenyataan: Boles pulang 19:07 tanpa istirahat mendapat 120
+ * menit penuh (lebihnya cuma 7), dan pulang jam 15:00 pun tetap 120 —
+ * padahal jendela istirahatnya (16:00–18:00) belum tiba sama sekali.
  *
- * Flexible schedule → selalu 0. Hasil di-clamp ke [0, 480].
+ * Dengan membiarkan suku pertama negatif, pulang lebih awal otomatis
+ * memakan kredit istirahat: 19:07 → (−113) + 120 = 7; 15:00 → (−360) +
+ * 120 = 0. Suku kedua juga tidak lagi dipangkas, sehingga istirahat yang
+ * MELEBIHI jatah ikut mengurangi lembur.
+ *
+ * Flexible schedule → selalu 0. Hasil akhir di-clamp ke [0, 480].
  */
 export function computeOvertimeMinutes(params: {
   checkedInAt: Date;
@@ -240,43 +237,46 @@ export function computeOvertimeMinutes(params: {
   breakWindows: BreakWindow[];
   breakEnabled: boolean;
   isFlexible: boolean;
+  timezone: string;
 }): number {
   if (params.isFlexible) return 0;
 
-  const grossMs =
-    params.checkedOutAt.getTime() - params.checkedInAt.getTime();
-  if (grossMs <= 0) return 0;
-
-  const breakTaken = Math.max(0, params.totalBreakMinutes || 0);
-  const netWorked = grossMs / 60_000 - breakTaken;
-  const netStandard = standardNetMinutes(
+  const effEnd = getEffectiveWorkEnd(
+    params.checkedInAt,
     params.workStartTime,
     params.workEndTime,
-    params.breakWindows,
-    params.breakEnabled
+    params.timezone,
+    false
   );
+  if (!effEnd) return 0;
 
-  // `ceil`: kelebihan beberapa detik dihitung sebagai satu menit penuh —
-  // sama seperti perilaku sebelumnya.
+  const coLocal = toLocalClock(params.checkedOutAt, params.timezone);
+  const lewat = (coLocal.getTime() - effEnd.getTime()) / 60_000;
+
   return Math.max(
     0,
-    Math.min(MAX_OVERTIME_MIN, Math.ceil(netWorked - netStandard))
+    Math.min(MAX_OVERTIME_MIN, Math.ceil(lewat + breakDeltaMinutes(params)))
   );
 }
 
 /**
- * Instant paling awal saat lembur mulai berjalan — dipakai UI untuk
+ * Momen paling awal saat lembur mulai berjalan — dipakai UI untuk
  * memutuskan kapan centang "lembur" boleh muncul.
  *
  * Diturunkan langsung dari `computeOvertimeMinutes`: lembur > 0 tepat saat
- * `(sekarang − checkin) − istirahat > standar_bersih`, jadi ambangnya
- * `checkin + standar_bersih + istirahat_yang_sudah_diambil`.
+ * `checkout > jam_kerja_efektif − (jatah_istirahat − istirahat_diambil)`.
  *
- * Boles mulai 07:00 tanpa istirahat → tombol muncul 19:00. Kalau ia sudah
- * istirahat 1 jam → bergeser ke 20:00. Sebelumnya UI memakai jam pulang
- * jam dinding (21:00) sementara server sudah bersedia mengkredit sejak
- * 19:00 — celah dua jam yang membuat 20 dari 26 hari kerjanya di Juli
- * tidak pernah tercatat lembur.
+ * Boles (07:00–21:00, jatah 2 jam) yang belum istirahat → 21:00 − 120
+ * menit = **19:00**. Kalau ia sudah istirahat 1 jam → 20:00. Yang tidak
+ * punya fitur istirahat → tepat jam kerja efektifnya, sama seperti dulu.
+ *
+ * Sebelumnya UI memakai `getEffectiveWorkEnd` mentah (21:00 untuk Boles)
+ * sementara server sudah mengkredit sejak 19:00 — celah dua jam yang
+ * membuat 20 dari 26 hari kerjanya di Juli 2026 tidak pernah tercatat
+ * lembur.
+ *
+ * Nilai balik ber-ruang PSEUDO-LOKAL (lihat catatan modul): bandingkan
+ * dengan `now` yang digeser lewat cara yang sama, bukan `Date.now()`.
  */
 export function overtimeEligibleFrom(params: {
   checkedInAt: Date;
@@ -286,16 +286,16 @@ export function overtimeEligibleFrom(params: {
   breakWindows: BreakWindow[];
   breakEnabled: boolean;
   isFlexible: boolean;
+  timezone: string;
 }): Date | null {
   if (params.isFlexible) return null;
-  const netStandard = standardNetMinutes(
+  const effEnd = getEffectiveWorkEnd(
+    params.checkedInAt,
     params.workStartTime,
     params.workEndTime,
-    params.breakWindows,
-    params.breakEnabled
+    params.timezone,
+    false
   );
-  const breakTaken = Math.max(0, params.totalBreakMinutes || 0);
-  return new Date(
-    params.checkedInAt.getTime() + (netStandard + breakTaken) * 60_000
-  );
+  if (!effEnd) return null;
+  return new Date(effEnd.getTime() - breakDeltaMinutes(params) * 60_000);
 }

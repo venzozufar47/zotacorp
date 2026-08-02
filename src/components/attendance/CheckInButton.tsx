@@ -224,10 +224,11 @@ export function CheckInButton({
    * muncul 21:00. Akibatnya 20 dari 26 hari kerjanya di Juli 2026 tidak
    * pernah tercatat lembur meski memenuhi syarat.
    *
-   * Perbandingan memakai instant apa adanya (bukan wall-clock yang
-   * digeser timezone) karena ambangnya kini murni durasi. `now` diterima
-   * sebagai argumen — bukan dibaca dari `Date.now()` di dalam sini —
-   * supaya fungsinya murni terhadap render (lihat jam berdetak di atas).
+   * `overtimeEligibleFrom` mengembalikan waktu PSEUDO-LOKAL, jadi `now`
+   * harus digeser dengan cara yang sama sebelum dibandingkan. `now`
+   * diterima sebagai argumen — bukan dibaca dari `Date.now()` di dalam
+   * sini — supaya fungsinya murni terhadap render (lihat jam berdetak
+   * di atas).
    */
   function canOptInOvertime(now: number): boolean {
     if (!settings || isFlexible || !log) return false;
@@ -243,9 +244,13 @@ export function CheckInButton({
         breakWindows: breakEnabled ? breakWindows : [],
         breakEnabled,
         isFlexible: false,
+        timezone: settings.timezone,
       });
       if (!eligibleFrom) return false;
-      return now >= eligibleFrom.getTime();
+      const localNow = new Date(
+        new Date(now).toLocaleString("en-US", { timeZone: settings.timezone })
+      );
+      return localNow.getTime() >= eligibleFrom.getTime();
     } catch {
       return false;
     }
