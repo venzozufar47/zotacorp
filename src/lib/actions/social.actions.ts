@@ -22,6 +22,20 @@ import { createAdminClient } from "./_supabase-admin";
 import { requireSocialAdmin } from "./_gates";
 import { encryptToken, currentEncVersion } from "@/lib/social/crypto";
 import { isValidMetricKey } from "@/lib/social/metrics";
+import {
+  computeCreatorStats,
+  computeDailySeries,
+  computeOverview,
+  postAgeMilestones,
+  viewsTrajectory,
+  type AccountMetricRow,
+  type CreatorStats,
+  type DailyPoint,
+  type MetricSampleRow,
+  type OverviewTotals,
+  type PostRow,
+} from "@/lib/social/analytics";
+import { eachDate } from "@/lib/utils/date-range";
 import type {
   SocialAccount,
   SocialFormOptions,
@@ -409,6 +423,163 @@ export async function clearSocialAccountCredentials(
     .eq("id", accountId);
   revalidateSocial();
   return { ok: true };
+}
+
+// ─── Dashboard insight ─────────────────────────────────────────────────────
+
+export interface SocialDashboardFilters {
+  from: string;
+  to: string;
+  businessUnitId?: string | null;
+  platform?: string | null;
+  accountId?: string | null;
+  creatorId?: string | null;
+}
+
+export interface DashboardPost extends PostRow {
+  accountHandle: string;
+  creatorName: string | null;
+  v24: number | null;
+  v48: number | null;
+  v7d: number | null;
+  trajectory: number[];
+}
+
+export interface SocialDashboard {
+  totals: OverviewTotals;
+  daily: DailyPoint[];
+  creators: (CreatorStats & { creatorName: string })[];
+  posts: DashboardPost[];
+  /** Platform yang ikut terpilih — dipakai UI memasang peringatan saat metrik
+   *  yang dipakai memeringkat tidak tersedia di salah satunya. */
+  platformsInView: string[];
+  accountsInView: number;
+}
+
+/**
+ * Semua angka yang dibutuhkan empat tab, dalam satu perjalanan.
+ *
+ * Volume-nya kecil secara struktural (4 akun x ~30 postingan/bulan), jadi
+ * mengambil seluruh postingan dalam rentang lalu mengagregasi di memori jauh
+ * lebih sederhana — dan lebih mudah diperiksa — daripada menyebar SUM ke
+ * beberapa query SQL yang harus dijaga tetap konsisten satu sama lain.
+ */
+export async function getSocialDashboard(
+  filters: SocialDashboardFilters
+): Promise<SocialDashboard | { error: string }> {
+  const gate = await requireSocialAdmin();
+  if (!gate.ok) return { error: gate.error };
+  const db = createAdminClient();
+
+  // Akun dulu: filter unit bisnis/platform diterapkan di sini sekali, lalu
+  // postingan cukup disaring by account_id.
+  let accQ = db
+    .from("social_accounts" as never)
+    .select("id, handle, platform, business_unit_id")
+    .eq("is_active", true);
+  if (filters.businessUnitId) accQ = accQ.eq("business_unit_id", filters.businessUnitId);
+  if (filters.platform) accQ = accQ.eq("platform", filters.platform);
+  if (filters.accountId) accQ = accQ.eq("id", filters.accountId);
+  const { data: accRows } = await accQ;
+  const accounts = (accRows ?? []) as any[];
+  const accountIds = accounts.map((a) => a.id);
+
+  const empty: SocialDashboard = {
+    totals: computeOverview([], []),
+    daily: computeDailySeries(eachDate({ from: filters.from, to: filters.to }), [], []),
+    creators: [],
+    posts: [],
+    platformsInView: [],
+    accountsInView: 0,
+  };
+  if (accountIds.length === 0) return empty;
+
+  let postQ = db
+    .from("social_posts" as never)
+    .select(
+      "id, account_id, platform, published_at, published_date, creator_id, media_type, permalink, thumbnail_url, caption, views, likes, comments, shares, saves, reach, impressions, engagement_rate"
+    )
+    .in("account_id", accountIds)
+    .gte("published_date", filters.from)
+    .lte("published_date", filters.to)
+    .eq("is_deleted", false)
+    .order("published_at", { ascending: false });
+  if (filters.creatorId) postQ = postQ.eq("creator_id", filters.creatorId);
+
+  const [{ data: postRows }, { data: metricRows }] = await Promise.all([
+    postQ,
+    db
+      .from("social_account_metrics" as never)
+      .select("account_id, captured_date, follower_count, profile_views, reach")
+      .in("account_id", accountIds)
+      .gte("captured_date", filters.from)
+      .lte("captured_date", filters.to),
+  ]);
+
+  const posts = (postRows ?? []) as PostRow[];
+  const accountMetrics = (metricRows ?? []) as AccountMetricRow[];
+
+  // Deret waktu hanya untuk postingan yang tampil.
+  const samplesByPost = new Map<string, MetricSampleRow[]>();
+  if (posts.length) {
+    const { data: samples } = await db
+      .from("social_post_metrics" as never)
+      .select("post_id, age_minutes, captured_at, views, likes, comments, shares, saves, reach")
+      .in(
+        "post_id",
+        posts.map((p) => p.id)
+      );
+    for (const s of ((samples ?? []) as MetricSampleRow[])) {
+      const arr = samplesByPost.get(s.post_id) ?? [];
+      arr.push(s);
+      samplesByPost.set(s.post_id, arr);
+    }
+  }
+
+  const creatorStats = computeCreatorStats(posts, samplesByPost);
+  const creatorIds = creatorStats
+    .map((c) => c.creatorId)
+    .filter((v): v is string => !!v);
+  const nameById = new Map<string, string>();
+  if (creatorIds.length) {
+    const { data: profs } = await db
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", creatorIds);
+    for (const p of (profs ?? []) as any[]) nameById.set(p.id, p.full_name);
+  }
+
+  const handleById = new Map(accounts.map((a) => [a.id, a.handle as string]));
+
+  return {
+    totals: computeOverview(posts, accountMetrics),
+    daily: computeDailySeries(
+      eachDate({ from: filters.from, to: filters.to }),
+      posts,
+      accountMetrics
+    ),
+    creators: creatorStats.map((c) => ({
+      ...c,
+      creatorName: c.creatorId
+        ? nameById.get(c.creatorId) ?? "—"
+        : "Belum ditetapkan",
+    })),
+    posts: posts.map((p) => {
+      const s = samplesByPost.get(p.id) ?? [];
+      const ms = postAgeMilestones(s);
+      return {
+        ...p,
+        accountHandle: handleById.get(p.account_id) ?? "—",
+        creatorName: p.creator_id ? nameById.get(p.creator_id) ?? "—" : null,
+        v24: ms.v24,
+        v48: ms.v48,
+        v7d: ms.v7d,
+        trajectory: viewsTrajectory(s),
+      };
+    }),
+    platformsInView: [...new Set(accounts.map((a) => a.platform as string))],
+    accountsInView: accounts.length,
+  };
 }
 
 // ─── Target KPI ────────────────────────────────────────────────────────────
