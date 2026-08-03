@@ -1314,6 +1314,7 @@ export async function syncCashSheet(
 import { fetchAndParseMayar } from "@/lib/cashflow/mayar";
 import { makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Nama env var yang menyimpan API key Mayar. Read-only key; disimpan di
@@ -1341,6 +1342,32 @@ const MAYAR_DEDUPE_OPTS = {
 } as const;
 
 /**
+ * Biaya penarikan dana Mayar — flat, dipotong Mayar SEBELUM transfer.
+ *
+ * Karena dipotong di sisi Mayar, biaya ini tidak pernah muncul sebagai
+ * baris di rekening koran bank: nominal yang mendarat sudah bersih.
+ * API Mayar juga tidak punya endpoint disbursement, jadi satu-satunya
+ * jejaknya adalah baris penarikan di rekening bank tujuan. Tanpa
+ * langkah ini, biayanya hilang diam-diam tanpa error.
+ */
+const MAYAR_WITHDRAWAL_FEE = 2775;
+
+/**
+ * Penanda counterparty penarikan Mayar di rekening koran. Mayar
+ * mencairkan lewat entitas ini — deskripsi Mandiri berbunyi
+ * "Transfer antar Mandiri · DARI SINAR DIGITAL TERDEP · … Permintaan
+ * disbursement oleh …". Kata "Mayar" TIDAK muncul sama sekali, jadi
+ * pencocokan harus lewat nama entitas ini.
+ */
+const MAYAR_WITHDRAWAL_MARKER = "SINAR DIGITAL TERDEP";
+
+/** Kategori untuk baris biaya penarikan. */
+const MAYAR_FEE_CATEGORY = "Bank Administration";
+
+/** Prefix penanda idempotensi di kolom notes: `ref:<id tx bank>`. */
+const MAYAR_FEE_REF = "ref:";
+
+/**
  * Tarik transaksi Mayar lalu simpan sebagai baris cashflow.
  *
  * Hanya transaksi `settled` yang masuk (lihat catatan di
@@ -1360,6 +1387,10 @@ export async function syncMayar(
     added: number;
     skipped: number;
     skippedUnsettled: number;
+    /** Baris penarikan Mayar yang terdeteksi di rekening bank BU ini. */
+    withdrawalsSeen: number;
+    /** Baris biaya Rp2.775 yang baru dibuat pada sync ini. */
+    withdrawalFeesAdded: number;
     warnings: string[];
   }>
 > {
@@ -1536,6 +1567,15 @@ export async function syncMayar(
     .update({ last_synced_at: new Date().toISOString() })
     .eq("id", bankAccountId);
 
+  // Biaya penarikan tidak datang dari API Mayar — harus disimpulkan
+  // dari baris penarikan di rekening bank. Dijalankan setiap sync
+  // supaya penarikan yang baru ter-upload langsung dapat baris biaya.
+  const feeResult = await syncMayarWithdrawalFees(
+    supabase,
+    bankAccountId,
+    account.business_unit
+  );
+
   revalidatePath("/admin/finance", "layout");
   return {
     ok: true,
@@ -1544,9 +1584,188 @@ export async function syncMayar(
       added: newTxs.length,
       skipped: txs.length - newTxs.length,
       skippedUnsettled: parsed.skippedUnsettled,
-      warnings: parsed.warnings,
+      withdrawalsSeen: feeResult.withdrawals,
+      withdrawalFeesAdded: feeResult.feesAdded,
+      warnings: [...parsed.warnings, ...feeResult.warnings],
     },
   };
+}
+
+/**
+ * Pastikan setiap penarikan dana Mayar punya baris biaya Rp2.775 di
+ * rekening Mayar.
+ *
+ * Alur uangnya: saldo Mayar berkurang (pokok + biaya), rekening bank
+ * bertambah (pokok saja). Selisihnya — biayanya — tidak muncul di mana
+ * pun. Fungsi ini yang memunculkannya.
+ *
+ * Baris biaya ditaruh di rekening MAYAR, bukan rekening bank tujuan.
+ * Alasannya konkret: jalur commit menjalankan `verifyBalance` yang
+ * mencocokkan saldo awal + kredit − debit dengan saldo akhir rekening
+ * koran. Menyisipkan baris sintetis ke rekening bank akan membuat
+ * verifikasi itu gagal setiap kali admin upload. Rekening Mayar tidak
+ * punya saldo (opening/closing = 0), jadi aman.
+ *
+ * Idempoten lewat penanda `ref:<id transaksi bank>` di kolom notes —
+ * aman dijalankan berkali-kali, hanya menambah untuk penarikan yang
+ * belum punya pasangan.
+ */
+async function syncMayarWithdrawalFees(
+  supabase: SupabaseClient<Database>,
+  mayarAccountId: string,
+  businessUnit: string
+): Promise<{ withdrawals: number; feesAdded: number; warnings: string[] }> {
+  const warnings: string[] = [];
+
+  // 1. Semua baris penarikan Mayar, di rekening NON-Mayar milik BU yang
+  //    sama. Tidak dibatasi ke Mandiri saja — kalau suatu saat pencairan
+  //    diarahkan ke rekening lain, tetap ketangkap.
+  type WithdrawalRow = { id: string; transaction_date: string };
+  const withdrawals: WithdrawalRow[] = [];
+  {
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase
+        .from("cashflow_transactions")
+        .select(
+          "id, transaction_date, cashflow_statements!inner(bank_accounts!inner(bank, business_unit))"
+        )
+        .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
+        .neq("cashflow_statements.bank_accounts.bank", "mayar")
+        .gt("credit", 0)
+        .ilike("description", `%${MAYAR_WITHDRAWAL_MARKER}%`)
+        .range(offset, offset + PAGE - 1);
+      if (error) {
+        warnings.push(`Gagal membaca baris penarikan: ${error.message}`);
+        return { withdrawals: 0, feesAdded: 0, warnings };
+      }
+      const rows = (data ?? []) as unknown as WithdrawalRow[];
+      withdrawals.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+  }
+  if (withdrawals.length === 0) {
+    return { withdrawals: 0, feesAdded: 0, warnings };
+  }
+
+  // 2. Penarikan mana yang sudah punya baris biaya.
+  const covered = new Set<string>();
+  {
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase
+        .from("cashflow_transactions")
+        .select("notes, cashflow_statements!inner(bank_account_id)")
+        .eq("cashflow_statements.bank_account_id", mayarAccountId)
+        .gt("debit", 0)
+        .range(offset, offset + PAGE - 1);
+      if (error) {
+        warnings.push(`Gagal membaca baris biaya: ${error.message}`);
+        return { withdrawals: withdrawals.length, feesAdded: 0, warnings };
+      }
+      const rows = (data ?? []) as Array<{ notes: string | null }>;
+      for (const r of rows) {
+        const idx = r.notes?.indexOf(MAYAR_FEE_REF) ?? -1;
+        if (idx >= 0 && r.notes) {
+          covered.add(r.notes.slice(idx + MAYAR_FEE_REF.length).trim());
+        }
+      }
+      if (rows.length < PAGE) break;
+    }
+  }
+
+  const missing = withdrawals.filter((w) => !covered.has(w.id));
+  if (missing.length === 0) {
+    return { withdrawals: withdrawals.length, feesAdded: 0, warnings };
+  }
+
+  // 3. Satu baris biaya per penarikan, dikelompokkan ke statement bulan
+  //    penarikan. Statement-nya find-or-create: bulan dengan penarikan
+  //    tapi tanpa revenue Mayar belum tentu punya statement, dan tanpa
+  //    langkah ini biayanya akan hilang tanpa suara.
+  let feesAdded = 0;
+  const byMonth = new Map<string, WithdrawalRow[]>();
+  for (const w of missing) {
+    const key = w.transaction_date.slice(0, 7);
+    const bucket = byMonth.get(key) ?? [];
+    bucket.push(w);
+    byMonth.set(key, bucket);
+  }
+
+  for (const [monthKey, bucket] of byMonth) {
+    const periodYear = Number(monthKey.slice(0, 4));
+    const periodMonth = Number(monthKey.slice(5, 7));
+
+    const { data: existing } = await supabase
+      .from("cashflow_statements")
+      .select("id")
+      .eq("bank_account_id", mayarAccountId)
+      .eq("period_year", periodYear)
+      .eq("period_month", periodMonth)
+      .maybeSingle();
+
+    let stmtId: string;
+    if (existing) {
+      stmtId = existing.id;
+    } else {
+      const { data: inserted, error: stmtErr } = await supabase
+        .from("cashflow_statements")
+        .insert({
+          bank_account_id: mayarAccountId,
+          period_month: periodMonth,
+          period_year: periodYear,
+          opening_balance: 0,
+          closing_balance: 0,
+          status: "confirmed",
+        })
+        .select("id")
+        .single();
+      if (stmtErr || !inserted) {
+        warnings.push(
+          `Gagal membuat statement Mayar ${monthKey} untuk baris biaya: ${
+            stmtErr?.message ?? "unknown"
+          }`
+        );
+        continue;
+      }
+      stmtId = inserted.id;
+    }
+
+    const { data: maxRow } = await supabase
+      .from("cashflow_transactions")
+      .select("sort_order")
+      .eq("statement_id", stmtId)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    let nextSort = (maxRow?.sort_order ?? -1) + 1;
+
+    const rows = bucket.map((w) => ({
+      statement_id: stmtId,
+      transaction_date: w.transaction_date,
+      description: "Biaya penarikan dana Mayar",
+      debit: MAYAR_WITHDRAWAL_FEE,
+      credit: 0,
+      category: MAYAR_FEE_CATEGORY,
+      branch: "All",
+      notes:
+        `Biaya tarik flat Rp${MAYAR_WITHDRAWAL_FEE.toLocaleString("id-ID")} - ` +
+        `dipotong langsung oleh Mayar, tidak muncul di rekening koran - ` +
+        `${MAYAR_FEE_REF}${w.id}`,
+      sort_order: nextSort++,
+    }));
+
+    const { error: insErr } = await supabase
+      .from("cashflow_transactions")
+      .insert(rows);
+    if (insErr) {
+      warnings.push(`Gagal menyimpan baris biaya ${monthKey}: ${insErr.message}`);
+      continue;
+    }
+    feesAdded += rows.length;
+  }
+
+  return { withdrawals: withdrawals.length, feesAdded, warnings };
 }
 
 // ─────────────────────────────────────────────────────────────────────

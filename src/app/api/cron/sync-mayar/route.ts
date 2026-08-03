@@ -56,6 +56,8 @@ export async function GET(req: Request) {
     added?: number;
     skipped?: number;
     skippedUnsettled?: number;
+    withdrawalsSeen?: number;
+    withdrawalFeesAdded?: number;
     warnings?: string[];
     error?: string;
   }> = [];
@@ -70,6 +72,8 @@ export async function GET(req: Request) {
         added: res.data!.added,
         skipped: res.data!.skipped,
         skippedUnsettled: res.data!.skippedUnsettled,
+        withdrawalsSeen: res.data!.withdrawalsSeen,
+        withdrawalFeesAdded: res.data!.withdrawalFeesAdded,
         warnings: res.data!.warnings,
       });
     } else {
