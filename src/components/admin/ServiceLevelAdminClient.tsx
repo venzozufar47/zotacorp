@@ -242,8 +242,21 @@ function OwnersSection({
 }) {
   const router = useRouter();
   const initial = outlet.owners.map((o) => o.userId);
-  const [selected, setSelected] = useState<Set<string>>(new Set(initial));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initial));
   const [pending, start] = useTransition();
+
+  // `useState` hanya menyemai sekali, sedangkan `router.refresh()` — dipanggil
+  // section ini DAN HoursSection/ExclusionsSection di panel yang sama —
+  // mengirim props baru tanpa me-mount ulang. Tanpa sinkronisasi ini centang
+  // bisa melenceng dari data server (mis. admin lain mengubah penugasan).
+  // Pembanding dibuat dari ISI daftar, bukan tiap render, supaya centang yang
+  // sedang diedit tidak terhapus oleh refresh yang tak berhubungan.
+  const serverKey = [...initial].sort().join(",");
+  const [syncedKey, setSyncedKey] = useState(serverKey);
+  if (syncedKey !== serverKey) {
+    setSyncedKey(serverKey);
+    setSelected(new Set(initial));
+  }
 
   const dirty =
     selected.size !== initial.length || initial.some((id) => !selected.has(id));

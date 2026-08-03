@@ -219,16 +219,37 @@ export interface ServiceLevelOwnerRow {
   email: string;
 }
 
+/**
+ * Embed `profiles` WAJIB menyebut nama constraint-nya.
+ *
+ * `pos_service_level_owners` punya DUA foreign key ke `profiles` —
+ * `user_id` dan `assigned_by` (lihat migrasi 122). Dengan `profiles!inner`
+ * polos, PostgREST tidak bisa memilih relasi mana yang dimaksud dan
+ * menolak query (PGRST201) alih-alih mengembalikan baris. Efeknya dulu
+ * senyap total: daftar penanggung jawab selalu kosong walau datanya ada,
+ * jadi centangnya seolah hilang tiap kali halaman dibuka.
+ */
 export async function listServiceLevelOwners(
   bankAccountId: string
 ): Promise<ServiceLevelOwnerRow[]> {
   const gate = await requireAdmin();
   if (!gate.ok) return [];
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("pos_service_level_owners")
-    .select("user_id, profiles!inner(full_name, email)")
+    .select(
+      "user_id, profiles!pos_service_level_owners_user_id_fkey(full_name, email)"
+    )
     .eq("bank_account_id", bankAccountId);
+  // Jangan pernah menelan error di sini lagi — kegagalan baca harus
+  // kelihatan di log, bukan menyamar sebagai "belum ada yang ditugaskan".
+  if (error) {
+    console.error("[listServiceLevelOwners]", {
+      bankAccountId,
+      message: error.message,
+    });
+    return [];
+  }
   return (data ?? []).map((r) => {
     const p = (r as unknown as { profiles: { full_name: string | null; email: string } })
       .profiles;
