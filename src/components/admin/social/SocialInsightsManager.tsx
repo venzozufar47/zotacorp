@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   CalendarDays,
   Info,
+  PencilLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,18 +18,20 @@ import { cn } from "@/lib/utils";
 import { formatDateID } from "@/lib/utils/date-formats";
 import { Sparkline } from "@/components/admin/costing/Sparkline";
 import { SocialTrendChartsLazy } from "./SocialTrendChartsLazy";
+import { SocialManualInput } from "./SocialManualInput";
 import { SOCIAL_METRICS, metricGaps } from "@/lib/social/metrics";
 import { PLATFORM_LABELS, type SocialAccount, type SocialFormOptions, type SocialKpiTarget } from "@/lib/social/types";
 import type { DateRange } from "@/lib/utils/date-range";
 import type { SocialDashboard } from "@/lib/actions/social.actions";
 
-type Tab = "ringkasan" | "konten" | "kreator" | "tren";
+type Tab = "ringkasan" | "konten" | "kreator" | "tren" | "input";
 
 const TABS: { key: Tab; label: string; icon: typeof BarChart3 }[] = [
   { key: "ringkasan", label: "Ringkasan", icon: BarChart3 },
   { key: "konten", label: "Konten", icon: LayoutGrid },
   { key: "kreator", label: "Kreator", icon: Users },
   { key: "tren", label: "Tren", icon: TrendingUp },
+  { key: "input", label: "Input Manual", icon: PencilLine },
 ];
 
 /** Metrik yang masuk akal untuk memeringkat kreator. */
@@ -210,14 +213,16 @@ export function SocialInsightsManager({
         })}
       </div>
 
-      {noData && !error && (
+      {tab === "input" && <SocialManualInput accounts={accounts} />}
+
+      {noData && !error && tab !== "input" && (
         <div className="rounded-2xl border-2 border-dashed border-border bg-card p-6 text-center space-y-1">
           <Info className="mx-auto text-muted-foreground" size={20} />
           <p className="font-display font-bold text-[14px]">Belum ada data konten</p>
           <p className="text-[12.5px] text-muted-foreground max-w-lg mx-auto">
             {dashboard?.accountsInView === 0
               ? "Belum ada akun yang cocok dengan filter ini."
-              : "Akun sudah terdaftar, tapi belum tersambung ke API resmi Instagram/TikTok — data insights baru mengalir setelah app review disetujui."}
+              : "Belum ada konten pada rentang ini. Sambil menunggu app review Instagram/TikTok disetujui, kamu bisa mengisinya lewat tab Input Manual."}
           </p>
         </div>
       )}

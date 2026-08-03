@@ -35,7 +35,10 @@ import {
   type OverviewTotals,
   type PostRow,
 } from "@/lib/social/analytics";
+import { engagementRate } from "@/lib/social/analytics";
+import { parsePastedPosts, manualPostId } from "@/lib/social/import";
 import { eachDate } from "@/lib/utils/date-range";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import type {
   SocialAccount,
   SocialFormOptions,
@@ -580,6 +583,218 @@ export async function getSocialDashboard(
     platformsInView: [...new Set(accounts.map((a) => a.platform as string))],
     accountsInView: accounts.length,
   };
+}
+
+// ─── Input manual ──────────────────────────────────────────────────────────
+
+export interface ManualImportSummary {
+  parsed: number;
+  inserted: number;
+  updated: number;
+  metricRows: number;
+  errors: { line: number; message: string }[];
+}
+
+/**
+ * Tempel data konten dari spreadsheet / Insights bawaan platform.
+ *
+ * Ada karena app review Meta & TikTok makan berminggu-minggu, dan tanpa jalur
+ * ini dashboard KPI berdiri kosong selama itu. Baris manual memakai
+ * source='manual' sehingga saat API resmi aktif keduanya hidup berdampingan
+ * tanpa saling menimpa.
+ *
+ * Upsert DUA FASE, sama seperti yang nanti dipakai mesin sync: baris baru
+ * mendapat creator_id dari kreator default akun, baris lama TIDAK disentuh
+ * kolom atribusinya. Kalau tidak begitu, mengganti kreator default akan
+ * menulis ulang atribusi kuartal lalu setiap kali orang menempel data.
+ */
+export async function importManualPosts(input: {
+  accountId: string;
+  text: string;
+}): Promise<ManualImportSummary | { error: string }> {
+  const gate = await requireSocialAdmin();
+  if (!gate.ok) return { error: gate.error };
+
+  const { rows, errors } = parsePastedPosts(input.text);
+  if (rows.length === 0) {
+    return { parsed: 0, inserted: 0, updated: 0, metricRows: 0, errors };
+  }
+
+  const db = createAdminClient();
+  const { data: acc } = await db
+    .from("social_accounts" as never)
+    .select("id, platform, default_creator_id")
+    .eq("id", input.accountId)
+    .maybeSingle();
+  if (!acc) return { error: "Akun tidak ditemukan." };
+  const account = acc as any;
+
+  const now = new Date();
+  const capturedDate = jakartaDateString(now);
+  const prepared = rows.map((r) => {
+    const time = r.publishedTime ?? "12:00";
+    // Jam default 12:00 WIB, bukan 00:00: kalau jamnya tidak diketahui,
+    // tengah hari tidak akan menggeser tanggal WIB ke hari sebelumnya.
+    const publishedAt = `${r.publishedDate}T${time}:00+07:00`;
+    return {
+      row: r,
+      externalId: manualPostId(r),
+      publishedAt,
+      ageMinutes: Math.max(
+        0,
+        Math.floor((now.getTime() - Date.parse(publishedAt)) / 60_000)
+      ),
+    };
+  });
+
+  // Fase 1: mana yang sudah ada.
+  const { data: existingRows } = await db
+    .from("social_posts" as never)
+    .select("id, external_post_id")
+    .eq("account_id", input.accountId)
+    .in(
+      "external_post_id",
+      prepared.map((p) => p.externalId)
+    );
+  const existingIdByExternal = new Map(
+    ((existingRows ?? []) as any[]).map((r) => [r.external_post_id, r.id])
+  );
+
+  const metricsOf = (r: (typeof prepared)[number]["row"]) => ({
+    views: r.views,
+    likes: r.likes,
+    comments: r.comments,
+    shares: r.shares,
+    saves: r.saves,
+    reach: r.reach,
+  });
+
+  let inserted = 0;
+  let updated = 0;
+
+  // Fase 2: sisipkan yang baru — HANYA di sini creator_id ditetapkan.
+  const fresh = prepared.filter((p) => !existingIdByExternal.has(p.externalId));
+  if (fresh.length) {
+    const { data, error } = await db
+      .from("social_posts" as never)
+      .insert(
+        fresh.map((p) => ({
+          account_id: input.accountId,
+          external_post_id: p.externalId,
+          platform: account.platform,
+          media_type: p.row.mediaType,
+          permalink: p.row.permalink,
+          caption: p.row.caption,
+          published_at: p.publishedAt,
+          creator_id: account.default_creator_id,
+          creator_source: "account_default",
+          ...metricsOf(p.row),
+          engagement_rate: engagementRate({ ...metricsOf(p.row) }),
+          metrics_updated_at: now.toISOString(),
+          raw: { source: "manual" },
+        })) as never
+      )
+      .select("id, external_post_id");
+    if (error) return { error: error.message };
+    for (const r of (data ?? []) as any[]) {
+      existingIdByExternal.set(r.external_post_id, r.id);
+      inserted++;
+    }
+  }
+
+  // Fase 3: perbarui yang lama — TANPA menyentuh creator_id/creator_source.
+  for (const p of prepared.filter((x) => existingIdByExternal.has(x.externalId))) {
+    if (fresh.some((f) => f.externalId === p.externalId)) continue;
+    const { error } = await db
+      .from("social_posts" as never)
+      .update({
+        media_type: p.row.mediaType,
+        permalink: p.row.permalink,
+        caption: p.row.caption,
+        published_at: p.publishedAt,
+        ...metricsOf(p.row),
+        engagement_rate: engagementRate({ ...metricsOf(p.row) }),
+        metrics_updated_at: now.toISOString(),
+      } as never)
+      .eq("id", existingIdByExternal.get(p.externalId)!);
+    if (!error) updated++;
+  }
+
+  // Satu titik deret waktu per hari penempelan. Slot 'manual:<tanggal>'
+  // membuat menempel dua kali di hari yang sama memperbarui, bukan
+  // menggandakan — dan tetap membentuk deret kalau ditempel tiap minggu.
+  const metricRows = prepared
+    .map((p) => {
+      const postId = existingIdByExternal.get(p.externalId);
+      if (!postId) return null;
+      return {
+        post_id: postId,
+        captured_at: now.toISOString(),
+        age_minutes: p.ageMinutes,
+        slot: `manual:${capturedDate}`,
+        ...metricsOf(p.row),
+        source: "manual",
+        raw: {},
+      };
+    })
+    .filter(Boolean) as Record<string, unknown>[];
+
+  let metricCount = 0;
+  for (let i = 0; i < metricRows.length; i += 500) {
+    const chunk = metricRows.slice(i, i + 500);
+    const { error } = await db
+      .from("social_post_metrics" as never)
+      .upsert(chunk as never, { onConflict: "post_id,slot" });
+    if (!error) metricCount += chunk.length;
+  }
+
+  revalidateSocial();
+  return { parsed: rows.length, inserted, updated, metricRows: metricCount, errors };
+}
+
+/**
+ * Catat jumlah follower pada suatu tanggal.
+ *
+ * Terpisah dari konten karena inilah satu-satunya sumber grafik pertumbuhan
+ * follower, dan angkanya cuma satu per hari — memaksanya lewat importer
+ * konten hanya akan menyulitkan.
+ */
+export async function saveManualAccountSnapshot(input: {
+  accountId: string;
+  capturedDate: string;
+  followerCount?: number | null;
+  profileViews?: number | null;
+  reach?: number | null;
+}): Promise<ActionResult> {
+  const gate = await requireSocialAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.capturedDate)) {
+    return { ok: false, error: "Tanggal tidak valid." };
+  }
+  const db = createAdminClient();
+  const { error } = await db.from("social_account_metrics" as never).upsert(
+    {
+      account_id: input.accountId,
+      captured_date: input.capturedDate,
+      follower_count: input.followerCount ?? null,
+      profile_views: input.profileViews ?? null,
+      reach: input.reach ?? null,
+      source: "manual",
+      raw: {},
+    } as never,
+    { onConflict: "account_id,captured_date" }
+  );
+  if (error) return { ok: false, error: error.message };
+
+  // Cermin ke kartu akun supaya daftar akun tidak perlu join.
+  if (input.followerCount != null) {
+    await db
+      .from("social_accounts" as never)
+      .update({ follower_count_cache: input.followerCount } as never)
+      .eq("id", input.accountId);
+  }
+  revalidateSocial();
+  return { ok: true };
 }
 
 // ─── Target KPI ────────────────────────────────────────────────────────────
