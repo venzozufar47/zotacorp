@@ -37,6 +37,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { applyDiscount, type RoundingMode } from "@/lib/pos/discount";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
 import { validateReceiptImage } from "@/lib/pos/receipt-file";
+import { compressReceiptFile } from "@/lib/pos/receipt-upload";
 import {
   buildReceiptBytes,
   formatReceiptDateTime,
@@ -1110,7 +1111,13 @@ export function POSClient({
                     e.target.value = "";
                     return;
                   }
-                  setQrisReceipt(f);
+                  if (!f) {
+                    setQrisReceipt(null);
+                    return;
+                  }
+                  // Kompres sekarang, bukan saat submit — lihat
+                  // lib/pos/receipt-upload.ts.
+                  void compressReceiptFile(f).then(setQrisReceipt);
                 }}
               />
               <Camera size={16} className="text-foreground shrink-0" />

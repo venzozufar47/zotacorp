@@ -43,6 +43,22 @@ export async function attachPosQrisReceipt(
     if (file.size > MAX_SIZE)
       return { ok: false, error: "File maksimal 5MB" };
 
+    // Klien mengompres foto saat kasir memilihnya (lib/pos/receipt-upload.ts),
+    // jadi bukti yang wajar mendarat di ~85–250 KB. File gambar yang jauh di
+    // atas itu berarti kompresi TIDAK jalan — biasanya shell PWA basi atau
+    // `createImageBitmap` gagal di perangkat tertentu. Sengaja hanya dicatat,
+    // bukan ditolak: foto bukti QRIS wajib secara compliance, dan menolaknya
+    // akan mengunci kasir di tengah transaksi yang sudah dibayar customer.
+    // Kalau log ini sepi setelah beberapa minggu, ambangnya boleh dinaikkan
+    // jadi penolakan.
+    if (file.type.startsWith("image/") && file.size > 600_000) {
+      console.warn("[attachPosQrisReceipt] foto tidak terkompres", {
+        saleId,
+        bytes: file.size,
+        type: file.type,
+      });
+    }
+
     const supabase = await createClient();
     const { data: sale } = await supabase
       .from("pos_sales")

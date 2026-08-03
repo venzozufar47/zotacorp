@@ -7,6 +7,7 @@ import {
   attachPosQrisReceipt,
   getPosQrisReceiptUrl,
 } from "@/lib/actions/pos-receipt.actions";
+import { compressReceiptFile } from "@/lib/pos/receipt-upload";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -192,7 +193,16 @@ function ReceiptDialog({
           <input
             type="file"
             accept="image/*,application/pdf"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              if (!f) {
+                setFile(null);
+                return;
+              }
+              // Kompres saat dipilih supaya ukuran yang tampil di bawah
+              // = ukuran yang benar-benar diunggah. PDF lewat apa adanya.
+              void compressReceiptFile(f).then(setFile);
+            }}
             className="block w-full text-xs text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground file:text-xs file:font-semibold"
           />
           {file && (
