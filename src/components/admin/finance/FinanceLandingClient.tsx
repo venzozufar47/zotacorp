@@ -73,6 +73,7 @@ const BANK_LABELS: Record<BankCode, string> = {
   bri: "BRI",
   bni: "BNI",
   cash: "Cash",
+  mayar: "Mayar",
   other: "Bank lainnya",
 };
 

@@ -7,6 +7,10 @@
       "schedule": "0 18 * * *"
     },
     {
+      "path": "/api/cron/sync-mayar",
+      "schedule": "30 18 * * *"
+    },
+    {
       "path": "/api/cron/backup-database",
       "schedule": "0 17 * * *"
     },

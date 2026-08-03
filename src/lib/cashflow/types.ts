@@ -11,6 +11,9 @@ export type BankCode =
   | "bri"
   | "bni"
   | "cash"
+  // Payment gateway, bukan bank — tapi diperlakukan sebagai rekening
+  // supaya pendapatannya ikut jalur cashflow/PnL yang sama.
+  | "mayar"
   | "other";
 
 export interface ParsedTransaction {

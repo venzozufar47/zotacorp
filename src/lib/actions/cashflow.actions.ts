@@ -22,6 +22,7 @@ const SUPPORTED_BANKS = [
   "bri",
   "bni",
   "cash",
+  "mayar",
   "other",
 ] as const;
 
@@ -1302,6 +1303,248 @@ export async function syncCashSheet(
       added: newTxs.length,
       skipped: txs.length - newTxs.length,
       statementId,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Mayar-sourced rekening sync
+// ─────────────────────────────────────────────────────────────────────
+
+import { fetchAndParseMayar } from "@/lib/cashflow/mayar";
+import { makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
+
+/**
+ * Nama env var yang menyimpan API key Mayar. Read-only key; disimpan di
+ * Vercel + .env.local, tidak pernah masuk repo.
+ */
+const MAYAR_API_KEY_ENV = "YEOBO_SPACE_ID_MAYAR_API";
+
+/**
+ * Dedupe Mayar memakai occurrence key, bukan `makeDedupeKey`.
+ *
+ * Alasan: `makeDedupeKey` memasukkan description + running_balance ke
+ * fingerprint. Rekening Mayar tidak punya saldo, dan description-nya
+ * bisa diedit admin lewat editor cashflow — dua-duanya bikin key
+ * bergeser lalu baris lama ke-insert ulang. Dengan ignoreBalance +
+ * ignoreDescription, fingerprint tinggal (tanggal + debit + credit)
+ * yang dibuat unik per baris oleh indeks kemunculan. Aman untuk dua
+ * pembayaran ber-nominal sama di hari yang sama, dan stabil karena
+ * angka net tidak pernah berubah setelah transaksi settle.
+ *
+ * Pola ini sama persis dengan rekening BCA Yeobo Space.
+ */
+const MAYAR_DEDUPE_OPTS = {
+  ignoreBalance: true,
+  ignoreDescription: true,
+} as const;
+
+/**
+ * Tarik transaksi Mayar lalu simpan sebagai baris cashflow.
+ *
+ * Hanya transaksi `settled` yang masuk (lihat catatan di
+ * `lib/cashflow/mayar.ts`), dengan `credit` = net setelah biaya
+ * platform + channel. Idempotent: aman dijalankan berkali-kali, dan
+ * transaksi yang baru settle akan menyusul di sync berikutnya dengan
+ * tanggal aslinya.
+ *
+ * `skipAuth` dipakai cron (tidak punya sesi user).
+ */
+export async function syncMayar(
+  bankAccountId: string,
+  opts: { skipAuth?: boolean } = {}
+): Promise<
+  ActionResult<{
+    fetched: number;
+    added: number;
+    skipped: number;
+    skippedUnsettled: number;
+    warnings: string[];
+  }>
+> {
+  if (!opts.skipAuth) {
+    const gate = await requireAdmin();
+    if (!gate.ok) return { ok: false, error: gate.error };
+  }
+
+  const apiKey = process.env[MAYAR_API_KEY_ENV];
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: `${MAYAR_API_KEY_ENV} belum di-set di environment.`,
+    };
+  }
+
+  // Cron tidak punya cookie sesi, jadi client ber-RLS (anon) akan
+  // melihat NOL baris — semua policy bank_accounts mensyaratkan role
+  // `authenticated`. Saat dipanggil cron kita pakai service-role;
+  // gate-nya sudah dilakukan `checkCronAuth` di route.
+  const supabase = opts.skipAuth ? createAdminClient() : await createClient();
+
+  const { data: account } = await supabase
+    .from("bank_accounts")
+    .select("id, bank, business_unit, default_branch")
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  if (!account) return { ok: false, error: "Rekening tidak ditemukan" };
+  if (account.bank !== "mayar") {
+    return { ok: false, error: "Rekening ini bukan rekening Mayar." };
+  }
+
+  let parsed;
+  try {
+    parsed = await fetchAndParseMayar(apiKey, {
+      defaultBranch: account.default_branch,
+      category: "Revenue",
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const txs = parsed.transactions;
+
+  // Dedupe terhadap baris yang sudah ada. Paginate — PostgREST
+  // membatasi satu SELECT di 1000 baris, dan riwayat Mayar akan
+  // melewati angka itu dalam beberapa bulan.
+  type ExistingRow = {
+    transaction_date: string;
+    description: string;
+    debit: string | number;
+    credit: string | number;
+  };
+  const existingRows: ExistingRow[] = [];
+  {
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase
+        .from("cashflow_transactions")
+        .select(
+          "transaction_date, description, debit, credit, cashflow_statements!inner(bank_account_id)"
+        )
+        .eq("cashflow_statements.bank_account_id", bankAccountId)
+        .range(offset, offset + PAGE - 1);
+      if (error) return { ok: false, error: error.message };
+      const rows = (data ?? []) as ExistingRow[];
+      existingRows.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+  }
+
+  const existingKeys = new Set(
+    makeOccurrenceKeys(
+      existingRows.map((t) => ({
+        transaction_date: t.transaction_date,
+        description: t.description,
+        debit: Number(t.debit),
+        credit: Number(t.credit),
+      })),
+      MAYAR_DEDUPE_OPTS
+    )
+  );
+  const candidateKeys = makeOccurrenceKeys(txs, MAYAR_DEDUPE_OPTS);
+  const newTxs = txs.filter((_, i) => !existingKeys.has(candidateKeys[i]));
+
+  if (newTxs.length > 0) {
+    // Kelompokkan per (tahun, bulan) — tiap statement punya urutan
+    // sort_order sendiri.
+    const byMonth = new Map<string, typeof newTxs>();
+    for (const t of newTxs) {
+      const key = t.date.slice(0, 7); // YYYY-MM
+      const bucket = byMonth.get(key) ?? [];
+      bucket.push(t);
+      byMonth.set(key, bucket);
+    }
+
+    for (const [monthKey, bucket] of byMonth) {
+      const periodYear = Number(monthKey.slice(0, 4));
+      const periodMonth = Number(monthKey.slice(5, 7));
+
+      const { data: existing } = await supabase
+        .from("cashflow_statements")
+        .select("id")
+        .eq("bank_account_id", bankAccountId)
+        .eq("period_year", periodYear)
+        .eq("period_month", periodMonth)
+        .maybeSingle();
+
+      let stmtId: string;
+      if (existing) {
+        stmtId = existing.id;
+      } else {
+        const { data: inserted, error: insertErr } = await supabase
+          .from("cashflow_statements")
+          .insert({
+            bank_account_id: bankAccountId,
+            period_month: periodMonth,
+            period_year: periodYear,
+            opening_balance: 0,
+            closing_balance: 0,
+            status: "confirmed",
+          })
+          .select("id")
+          .single();
+        if (insertErr || !inserted) {
+          return {
+            ok: false,
+            error: insertErr?.message ?? "Gagal membuat statement",
+          };
+        }
+        stmtId = inserted.id;
+      }
+
+      const { data: maxRow } = await supabase
+        .from("cashflow_transactions")
+        .select("sort_order")
+        .eq("statement_id", stmtId)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      let nextSort = (maxRow?.sort_order ?? -1) + 1;
+
+      const rows = bucket.map((t) => ({
+        statement_id: stmtId,
+        transaction_date: t.date,
+        transaction_time: t.time ?? null,
+        source_destination: t.sourceDestination ?? null,
+        transaction_details: t.transactionDetails ?? null,
+        notes: t.notes ?? null,
+        description: t.description,
+        debit: t.debit,
+        credit: t.credit,
+        category: t.category ?? null,
+        branch: t.branch ?? null,
+        sort_order: nextSort++,
+      }));
+
+      const INSERT_BATCH = 500;
+      for (let i = 0; i < rows.length; i += INSERT_BATCH) {
+        const { error: insertError } = await supabase
+          .from("cashflow_transactions")
+          .insert(rows.slice(i, i + INSERT_BATCH));
+        if (insertError) return { ok: false, error: insertError.message };
+      }
+    }
+  }
+
+  // Stempel waktu sync walau tidak ada baris baru — menandakan cron
+  // benar-benar jalan dan berhasil menghubungi Mayar.
+  await supabase
+    .from("bank_accounts")
+    .update({ last_synced_at: new Date().toISOString() })
+    .eq("id", bankAccountId);
+
+  revalidatePath("/admin/finance", "layout");
+  return {
+    ok: true,
+    data: {
+      fetched: txs.length,
+      added: newTxs.length,
+      skipped: txs.length - newTxs.length,
+      skippedUnsettled: parsed.skippedUnsettled,
+      warnings: parsed.warnings,
     },
   };
 }

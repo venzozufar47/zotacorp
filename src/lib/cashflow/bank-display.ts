@@ -13,6 +13,7 @@ export const BANK_LABELS: Record<BankCode, string> = {
   bri: "BRI",
   bni: "BNI",
   cash: "Cash",
+  mayar: "Mayar",
   other: "Bank lainnya",
 };
 
@@ -25,5 +26,6 @@ export const BANK_COLORS: Record<BankCode, string> = {
   bni: "#005d8f",
   jago: "#f7941d",
   cash: "#5b6873",
+  mayar: "#0f9d8f",
   other: "#475569",
 };
