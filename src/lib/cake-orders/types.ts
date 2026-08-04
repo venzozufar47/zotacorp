@@ -166,6 +166,20 @@ export interface CakeOrder {
   status: CakeOrderStatus;
   archived_at: string | null;
 
+  /**
+   * Jejak penyerahan kue ke customer. `status='done'` hanya bilang
+   * pesanan selesai — kolom ini yang menjawab siapa/kapan/lewat mana.
+   *
+   * Diisi kasir POS cabang lewat `markCakePickedUpAtPos`. NULL untuk
+   * order delivery (yang ditutup staf lewat "Terkirim & diterima").
+   * Order pickup lama punya `picked_up_via='staff_board'` tapi
+   * `picked_up_at=null` — tidak ada timestamp jujur untuk itu, dan
+   * mengarangnya lebih buruk daripada mengosongkannya.
+   */
+  picked_up_at: string | null;
+  picked_up_by: string | null;
+  picked_up_via: "pos" | "staff_board" | null;
+
   /** Klaim gratis karyawan (perk / giveaway). Saat true: total_idr = 0 &
    *  payment_status 'paid' tanpa payment leg. Lihat setCakeOrderFreeClaim. */
   free_claim: boolean;

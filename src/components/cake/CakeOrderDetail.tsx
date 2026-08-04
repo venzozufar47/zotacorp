@@ -30,7 +30,12 @@ import {
   setCakeOrderStatus,
 } from "@/lib/actions/cake-orders.actions";
 import { formatIDR } from "@/lib/cashflow/format";
-import { makeLabelFor } from "@/lib/cake-orders/helpers";
+import { makeIsPickup, makeLabelFor } from "@/lib/cake-orders/helpers";
+import {
+  summarizeFromLedger,
+  summarizeFromOrder,
+  type CakePaymentState,
+} from "@/lib/cake-orders/payment-summary";
 import { ImagePopup } from "./ImagePopup";
 import { ImageDropField } from "./ImageDropField";
 import { NotesText } from "./NotesText";
@@ -134,9 +139,9 @@ export function CakeOrderDetail({
 
   const labelFor = makeLabelFor(optionsByKind);
   // Pickup → ongkir dipaksa 0 (tidak ditampilkan di billing editor).
-  const isPickup = labelFor("delivery", order.delivery_option_id)
-    .toLowerCase()
-    .includes("pickup");
+  // Berbasis needs_address, bukan cocok-string label: label bisa
+  // diubah admin kapan saja lewat /admin/cake-orders/options.
+  const isPickup = makeIsPickup(optionsByKind)(order.delivery_option_id);
 
   // Billing edit (3 field) selalu boleh selama order belum void — bahkan
   // saat spesifikasi sudah terkunci pasca-produksi. Free-claim ikut aturan
@@ -162,17 +167,13 @@ export function CakeOrderDetail({
     return m;
   }, [attachments]);
 
-  const totals = useMemo(() => {
-    const paid = payments
-      .filter((p) => p.kind !== "refund")
-      .reduce((s, p) => s + p.amount_idr, 0);
-    const refunded = payments
-      .filter((p) => p.kind === "refund")
-      .reduce((s, p) => s + p.amount_idr, 0);
-    const net = paid - refunded;
-    const remaining = order.total_idr - net;
-    return { paid, refunded, net, remaining };
-  }, [payments, order.total_idr]);
+  // Dihitung dari ledger (bukan snapshot paid_idr) karena panel ini
+  // memang sudah memuat legs-nya. Aturannya sendiri hidup di
+  // payment-summary.ts — satu tempat dengan chip kanban.
+  const totals = useMemo(
+    () => summarizeFromLedger(order.total_idr, payments, order.free_claim),
+    [payments, order.total_idr, order.free_claim]
+  );
 
   // Status transitions live on the kanban card next-step button —
   // duplicating them here was confusing for admin. The detail-panel
@@ -513,7 +514,10 @@ export function CakeOrderDetail({
               total={order.total_idr}
               paid={totals.paid}
               refunded={totals.refunded}
-              remaining={totals.remaining}
+              // rawRemaining (bisa negatif), bukan remaining yang
+              // dibatasi 0 — panel ini membedakan "Lebih bayar" dari
+              // "Lunas".
+              remaining={totals.rawRemaining}
             />
             {payments.length > 0 && (
               <ul className="space-y-1 mt-1">
@@ -1098,32 +1102,20 @@ function SpecWithPhotos({
   );
 }
 
+/** Kelas warna per state; teks + aturannya dari `payment-summary.ts`
+ *  supaya badge ini tidak bisa lagi berbeda dari chip kanban. */
+const PAYMENT_BADGE_CLASS: Record<CakePaymentState, string> = {
+  refund: "bg-destructive/15 text-foreground border-foreground",
+  partial_refund: "bg-pop-pink/20 text-foreground border-foreground",
+  lunas: "bg-pop-emerald/20 text-foreground border-foreground",
+  dp: "bg-tertiary/40 text-foreground border-foreground",
+  belum: "bg-muted text-muted-foreground border-border",
+};
+
 function PaymentStatusBadge({ order }: { order: CakeOrder }) {
-  // Mirrors the kanban PaymentChip — keeps the two surfaces in sync
-  // when a DP is recorded: chip shows "DP Rp X" rather than the
-  // ambiguous "Belum dibayar".
-  const { payment_status, paid_idr, total_idr } = order;
-  const fmtRp = (n: number) =>
-    n >= 1_000_000
-      ? `Rp ${(n / 1_000_000).toFixed(1)}jt`
-      : n >= 1_000
-        ? `Rp ${(n / 1_000).toFixed(0)}rb`
-        : `Rp ${n.toLocaleString("id-ID")}`;
-  let label = "Belum dibayar";
-  let cls = "bg-muted text-muted-foreground border-border";
-  if (payment_status === "refunded") {
-    label = "Refund";
-    cls = "bg-destructive/15 text-foreground border-foreground";
-  } else if (payment_status === "partial_refund") {
-    label = "Refund sebagian";
-    cls = "bg-pop-pink/20 text-foreground border-foreground";
-  } else if (payment_status === "paid") {
-    label = "Lunas";
-    cls = "bg-pop-emerald/20 text-foreground border-foreground";
-  } else if (paid_idr > 0 && paid_idr < total_idr) {
-    label = `DP ${fmtRp(paid_idr)}`;
-    cls = "bg-tertiary/40 text-foreground border-foreground";
-  }
+  const pay = summarizeFromOrder(order);
+  const label = pay.label;
+  const cls = PAYMENT_BADGE_CLASS[pay.state];
   return (
     <span
       className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-medium shrink-0 ${cls}`}

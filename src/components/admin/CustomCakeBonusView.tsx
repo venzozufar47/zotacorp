@@ -166,6 +166,7 @@ export function CustomCakeBonusView({
                     "Jago",
                     "Mandiri",
                     "− Pare QRIS",
+                    "+ Cake kasir",
                     "Semarang",
                     "Total",
                     "Bonus",
@@ -187,7 +188,7 @@ export function CustomCakeBonusView({
                   <DayRow key={d.date} day={d} />
                 ))}
                 <tr className="bg-muted/20 font-bold">
-                  <td colSpan={6} className="px-2 py-2 text-right">
+                  <td colSpan={7} className="px-2 py-2 text-right">
                     Total bonus
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">
@@ -245,6 +246,14 @@ function DayRow({ day }: { day: DayBreakdown }) {
             ? `− ${formatRp(day.pareQrisDeduction)}`
             : <span className="text-muted-foreground/40">—</span>}
         </td>
+        {/* Pelunasan cake tunai yang diterima kasir Pare. Rekeningnya
+            sama dengan kolom di kiri, tapi tandanya berlawanan —
+            makanya dipisah, bukan dijumlahkan diam-diam. */}
+        <td className="px-2 py-1.5 align-top text-right tabular-nums">
+          {day.pareCakeSettlement > 0
+            ? `+ ${formatRp(day.pareCakeSettlement)}`
+            : <span className="text-muted-foreground/40">—</span>}
+        </td>
         <td className="px-2 py-1.5 align-top text-right tabular-nums">
           {day.semarang > 0 ? formatRp(day.semarang) : <span className="text-muted-foreground/40">—</span>}
         </td>
@@ -257,7 +266,7 @@ function DayRow({ day }: { day: DayBreakdown }) {
       </tr>
       {expanded && (
         <tr className="bg-muted/10">
-          <td colSpan={8} className="px-3 py-2">
+          <td colSpan={9} className="px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
               Detail transaksi {formatDate(day.date)} ({day.transactions.length})
             </p>

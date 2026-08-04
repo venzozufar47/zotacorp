@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import {
+  CAKE_SETTLEMENT_CASH_CATEGORY,
   HAENGBOCAKE_NON_OPERATING_CATEGORIES,
   normalizePnLCategory,
 } from "@/lib/cashflow/categories";
@@ -204,6 +205,9 @@ export interface DayBreakdown {
   jago: number;
   mandiri: number;
   pareQrisDeduction: number; // negative contribution
+  /** Pelunasan cake tunai di kasir Pare — kontribusi POSITIF. Beda
+   *  ember dari pareQrisDeduction meski rekeningnya sama. */
+  pareCakeSettlement: number;
   semarang: number;
   total: number;
   bonus: number;
@@ -342,7 +346,16 @@ export async function getCustomCakeBonusMonth(
       // Only QRIS-flavored entries are deductions; rest is Pare local
       // cash (irrelevant to bonus). Matches POS-generated rows + manual
       // "Penjualan Qris" journal entries.
-      if (!desc.includes("qris")) continue;
+      //
+      // KECUALI pelunasan cake tunai yang diterima kasir: itu omset
+      // custom cake asli, bukan setelmen QRIS. Tanpa pengecualian ini
+      // baris tersebut terbuang di sini — SEBELUM `custom_cake_included`
+      // sempat dibaca — sehingga omset Pare hilang dari basis bonus
+      // sementara baris setara di Semarang terhitung. Penjumlahannya di
+      // bawah menambah, bukan mengurangi.
+      const isCakeSettlement =
+        r.category === CAKE_SETTLEMENT_CASH_CATEGORY;
+      if (!desc.includes("qris") && !isCakeSettlement) continue;
     }
     if (bankKey === "jago") {
       // Internal pocket / Mandiri-to-Jago movements are not sales.
@@ -378,15 +391,23 @@ export async function getCustomCakeBonusMonth(
     let jago = 0;
     let mandiri = 0;
     let pareQrisDeduction = 0;
+    let pareCakeSettlement = 0;
     let semarang = 0;
     for (const tx of txs) {
       if (!tx.effectiveIncluded) continue;
       if (tx.bankKey === "jago") jago += tx.credit;
       else if (tx.bankKey === "mandiri") mandiri += tx.credit;
-      else if (tx.bankKey === "cashPare") pareQrisDeduction += tx.credit;
-      else if (tx.bankKey === "cashSemarang") semarang += tx.credit;
+      else if (tx.bankKey === "cashPare") {
+        // Satu rekening, dua makna. Setelmen QRIS = pengurang (omset
+        // aslinya sudah dihitung di Mandiri); pelunasan cake tunai =
+        // omset baru yang belum dihitung di mana pun.
+        if (tx.category === CAKE_SETTLEMENT_CASH_CATEGORY)
+          pareCakeSettlement += tx.credit;
+        else pareQrisDeduction += tx.credit;
+      } else if (tx.bankKey === "cashSemarang") semarang += tx.credit;
     }
-    const total = jago + mandiri - pareQrisDeduction + semarang;
+    const total =
+      jago + mandiri - pareQrisDeduction + pareCakeSettlement + semarang;
     const bonus =
       total < 550_000
         ? 0
@@ -398,6 +419,7 @@ export async function getCustomCakeBonusMonth(
       jago,
       mandiri,
       pareQrisDeduction,
+      pareCakeSettlement,
       semarang,
       total,
       bonus,

@@ -22,7 +22,11 @@ import {
   setCakeOrderStatus,
 } from "@/lib/actions/cake-orders.actions";
 import { formatIDR } from "@/lib/cashflow/format";
-import { makeLabelFor } from "@/lib/cake-orders/helpers";
+import { makeIsPickup, makeLabelFor } from "@/lib/cake-orders/helpers";
+import {
+  summarizeFromOrder,
+  type CakePaymentState,
+} from "@/lib/cake-orders/payment-summary";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { CakeOrderDetailLoader } from "./CakeOrderDetailLoader";
 import { UrgencyLegend as DesignUrgencyLegend } from "./parts/UrgencyLegend";
@@ -133,13 +137,23 @@ const COLUMNS: Column[] = [
  *    produksi men-set `production_status='done'`. Admin/orders staff
  *    TIDAK boleh menandai siap manual karena itu menyembunyikan apakah
  *    kue benar-benar sudah selesai dipanggang.
+ *  - `ready → done` UNTUK PICKUP: ditandai kasir POS cabang di
+ *    /pospare/pesanan atau /possemarang/pesanan. Yang tahu kue
+ *    benar-benar diserahkan adalah orang yang berhadapan dengan
+ *    customer, bukan staf di kota lain — memindahkannya ke sana yang
+ *    menghapus miskom pengambilan. Order delivery tidak berubah.
+ *
+ *  CATATAN: mengembalikan null di sini HANYA menghilangkan tombolnya.
+ *  Drag-and-drop ke kolom "Selesai" memakai jalur `moveTo` yang sama
+ *  dan tetap tembus — penjagaannya ada di sana, plus penolakan
+ *  sisi server di `setCakeOrderStatus`. Ketiganya harus tetap ada.
  */
 function nextAction(
   order: CakeOrder,
   isPickup: boolean
 ): { label: string; target: CakeOrderStatus } | null {
   if (order.status === "ready") {
-    if (isPickup) return { label: "Sudah diambil", target: "done" };
+    if (isPickup) return null;
     return { label: "Kirim sekarang", target: "delivering" };
   }
   if (order.status === "delivering")
@@ -203,6 +217,7 @@ export function CakeOrdersBoard({
   }, [orders]);
 
   const labelFor = makeLabelFor(optionsByKind);
+  const isPickupFor = makeIsPickup(optionsByKind);
 
   // Search: jangan filter (sembunyikan) card lain — admin sering perlu
   // konteks kanban tetap utuh. Sebagai gantinya hitung set id yang
@@ -297,6 +312,22 @@ export function CakeOrdersBoard({
       toast.error("Hanya bagian produksi yang bisa menandai pesanan Siap");
       return;
     }
+    // LAPIS 2 dari tiga. `nextAction` sudah menghilangkan tombol "Sudah
+    // diambil" untuk pickup, tapi tombol dan drag-and-drop bermuara ke
+    // fungsi yang SAMA ini — tanpa penjagaan di sini, menyeret kartu ke
+    // kolom "Selesai" tetap menutup pesanan dan miskom-nya kembali.
+    // Lapis 3 (penolakan di setCakeOrderStatus) tetap wajib karena
+    // action-nya endpoint publik.
+    if (
+      target === "done" &&
+      order.status === "ready" &&
+      isPickupFor(order.delivery_option_id)
+    ) {
+      toast.error(
+        "Pesanan pickup ditandai selesai oleh kasir di POS cabang"
+      );
+      return;
+    }
     startTransition(async () => {
       const res = await setCakeOrderStatus(orderId, target);
       if (!res.ok) {
@@ -388,6 +419,7 @@ export function CakeOrdersBoard({
                   key={o.id}
                   order={o}
                   labelFor={labelFor}
+                  isPickup={isPickupFor(o.delivery_option_id)}
                   canMove={false}
                   onToggleArchive={toggleArchive}
                   onSelect={setSelectedOrderId}
@@ -522,6 +554,7 @@ export function CakeOrdersBoard({
                       key={o.id}
                       order={o}
                       labelFor={labelFor}
+                      isPickup={isPickupFor(o.delivery_option_id)}
                       canMove={canMove}
                       onMoveTo={moveTo}
                       onToggleArchive={toggleArchive}
@@ -573,6 +606,7 @@ export function CakeOrdersBoard({
                       key={o.id}
                       order={o}
                       labelFor={labelFor}
+                      isPickup={isPickupFor(o.delivery_option_id)}
                       dimmed
                       canMove={canMove}
                       onMoveTo={moveTo}
@@ -619,6 +653,7 @@ export function CakeOrdersBoard({
                       key={o.id}
                       order={o}
                       labelFor={labelFor}
+                      isPickup={isPickupFor(o.delivery_option_id)}
                       dimmed
                       canMove={canMove}
                       onMoveTo={moveTo}
@@ -693,6 +728,7 @@ export function CakeOrdersBoard({
 function Card({
   order,
   labelFor,
+  isPickup,
   draggable,
   onDragStart,
   onDragEnd,
@@ -709,6 +745,9 @@ function Card({
 }: {
   order: CakeOrder;
   labelFor: (kind: keyof CakeOptionsByKind, id: string | null) => string;
+  /** Dihitung induk lewat `makeIsPickup` (berbasis needs_address),
+   *  bukan dari label — lihat helpers.ts. */
+  isPickup: boolean;
   draggable?: boolean;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -731,8 +770,11 @@ function Card({
       : format(dt, "EEE, d MMM · HH:mm", { locale: idLocale });
 
   const deliveryLabel = labelFor("delivery", order.delivery_option_id);
-  const isPickup = deliveryLabel.toLowerCase().includes("pickup");
   const next = nextAction(order, isPickup);
+  // Pickup yang sudah siap: tombolnya sengaja tidak ada (kasir cabang
+  // yang menandai). Tanpa penanda ini kartu terlihat mati dan staf
+  // akan melapor board-nya rusak.
+  const awaitingPosPickup = order.status === "ready" && isPickup;
 
   // Urgency (calendar-day diff, Jakarta TZ).
   const urgency = (() => {
@@ -899,6 +941,19 @@ function Card({
         </button>
       )}
 
+      {awaitingPosPickup && canMove && (
+        <div
+          className="mx-3 mb-2.5 flex items-center justify-center h-8 rounded-[10px] text-[11px] font-medium border border-dashed"
+          style={{
+            borderColor: "var(--cake-fg)",
+            color: "var(--cake-fg)",
+            opacity: 0.55,
+          }}
+        >
+          Menunggu diambil — ditandai kasir cabang
+        </div>
+      )}
+
       {order.status === "done" &&
         showArchiveButton &&
         !order.archived_at &&
@@ -989,59 +1044,25 @@ function CardRow({
  */
 const CHIP_BASE = "inline-flex items-center px-2 h-[20px] rounded-full text-[10.5px] font-semibold tabular-nums";
 
+/** Warna per state. Teks + aturannya sendiri hidup di
+ *  `payment-summary.ts` supaya chip ini dan panel detail tidak bisa
+ *  lagi menampilkan cerita berbeda tentang order yang sama. */
+const PAYMENT_CHIP_STYLE: Record<
+  CakePaymentState,
+  { background: string; color: string }
+> = {
+  refund: { background: "var(--cake-unpaid-soft)", color: "var(--cake-unpaid-fg)" },
+  partial_refund: { background: "var(--cake-sem-soft)", color: "var(--cake-sem-fg)" },
+  lunas: { background: "var(--cake-paid-soft)", color: "var(--cake-paid-fg)" },
+  dp: { background: "var(--cake-dp-soft)", color: "var(--cake-dp-fg)" },
+  belum: { background: "var(--cake-unpaid-soft)", color: "var(--cake-unpaid-fg)" },
+};
+
 function PaymentChip({ order }: { order: CakeOrder }) {
-  const { payment_status, paid_idr, total_idr } = order;
-  const formatRp = (n: number) => {
-    if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)}jt`;
-    if (n >= 1_000) return `Rp ${(n / 1_000).toFixed(0)}rb`;
-    return `Rp ${n.toLocaleString("id-ID")}`;
-  };
-  if (payment_status === "refunded") {
-    return (
-      <span
-        className={CHIP_BASE}
-        style={{ background: "var(--cake-unpaid-soft)", color: "var(--cake-unpaid-fg)" }}
-      >
-        Refund
-      </span>
-    );
-  }
-  if (payment_status === "partial_refund") {
-    return (
-      <span
-        className={CHIP_BASE}
-        style={{ background: "var(--cake-sem-soft)", color: "var(--cake-sem-fg)" }}
-      >
-        Refund sebagian
-      </span>
-    );
-  }
-  if (payment_status === "paid") {
-    return (
-      <span
-        className={CHIP_BASE}
-        style={{ background: "var(--cake-paid-soft)", color: "var(--cake-paid-fg)" }}
-      >
-        ● Lunas
-      </span>
-    );
-  }
-  if (paid_idr > 0 && paid_idr < total_idr) {
-    return (
-      <span
-        className={CHIP_BASE}
-        style={{ background: "var(--cake-dp-soft)", color: "var(--cake-dp-fg)" }}
-      >
-        DP {formatRp(paid_idr)}
-      </span>
-    );
-  }
+  const pay = summarizeFromOrder(order);
   return (
-    <span
-      className={CHIP_BASE}
-      style={{ background: "var(--cake-unpaid-soft)", color: "var(--cake-unpaid-fg)" }}
-    >
-      Belum dibayar
+    <span className={CHIP_BASE} style={PAYMENT_CHIP_STYLE[pay.state]}>
+      {pay.state === "lunas" ? `● ${pay.label}` : pay.label}
     </span>
   );
 }

@@ -182,6 +182,27 @@ export const YEOBO_SPACE_NON_OPERATING_CATEGORIES = [
 export const POS_CASH_CATEGORY = "Sales" as const;
 export const POS_QRIS_CATEGORY = "QRIS (non-operasional)" as const;
 
+/**
+ * Pelunasan custom cake yang diterima TUNAI di kasir cabang.
+ *
+ * Uangnya benar-benar masuk laci, jadi harus tercatat di kas cabang —
+ * kalau tidak, tutup shift selalu selisih lebih dan terlihat seperti
+ * salah hitung. Tapi pendapatannya SUDAH diakui lewat akrual cake
+ * (dari `cake_orders.scheduled_at`, lihat pnl.ts), jadi menghitungnya
+ * lagi di sini akan menggandakan revenue.
+ *
+ * Karena itu kategori ini masuk daftar NON-OPERASIONAL: nominalnya
+ * tetap menggerakkan saldo kas, tapi tidak pernah masuk PnL. Persis
+ * pola yang sudah dipakai "QRIS (non-operasional)" untuk alasan yang
+ * sama.
+ *
+ * Agar tetap terhitung sebagai omset custom cake (untuk bonus admin),
+ * barisnya ditulis dengan `custom_cake_included = true` — lihat
+ * `markCakePickedUpAtPos`.
+ */
+export const CAKE_SETTLEMENT_CASH_CATEGORY =
+  "Pelunasan Cake (non-operasional)" as const;
+
 export const HAENGBOCAKE_CASH_CATEGORIES = [
   "Sales",
   "QRIS (non-operasional)",
@@ -192,6 +213,7 @@ export const HAENGBOCAKE_CASH_CATEGORIES = [
   "Slice Haengbo",
   "Penyesuaian",
   "Diambil mas Venzo",
+  CAKE_SETTLEMENT_CASH_CATEGORY,
 ] as const;
 
 /**
@@ -214,6 +236,10 @@ export const HAENGBOCAKE_NON_OPERATING_CATEGORIES = [
   // settlement for the same QRIS money lands on the Mandiri rekening
   // as "Sales" — counting both sides would double-book revenue.
   "QRIS (non-operasional)",
+  // Pelunasan cake tunai di kasir: uangnya masuk laci (jadi harus
+  // tercatat di kas supaya tutup shift cocok), tapi pendapatannya
+  // sudah diakui lewat akrual cake dari scheduled_at.
+  CAKE_SETTLEMENT_CASH_CATEGORY,
 ] as const;
 
 export function getNonOperatingCategories(bu: string): readonly string[] {

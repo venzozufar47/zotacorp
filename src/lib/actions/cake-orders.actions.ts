@@ -22,6 +22,7 @@ import type {
   CreateCakeOrderInput,
 } from "@/lib/cake-orders/types";
 import { isSlipFrozen } from "@/lib/cake-orders/helpers";
+import { insertCakePaymentLeg } from "@/lib/cake-orders/payment-write";
 import { resolveBasePrice } from "@/lib/cake-orders/pricing";
 import {
   parseCakeBranch,
@@ -1037,6 +1038,51 @@ export async function setCakeOrderStatus(
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
+
+  // Baris dibaca SEKALI di depan — dulu hanya dibaca di dalam cabang
+  // submitted/in_progress/ready, sehingga transisi ke 'done' tidak
+  // punya validasi apa pun.
+  const { data: rowRaw } = await supabase
+    .from("cake_orders" as never)
+    .select("status, delivery_option_id")
+    .eq("id", id)
+    .maybeSingle();
+  const row = rowRaw as unknown as {
+    status?: string;
+    delivery_option_id?: string | null;
+  } | null;
+  const current = row?.status;
+  if (!current) return { ok: false, error: "Order tidak ditemukan" };
+
+  // LAPIS 3 dari tiga — dan satu-satunya yang mengikat.
+  //
+  // Board staf sudah menghilangkan tombolnya (nextAction) dan menolak
+  // drag-nya (moveTo), tapi file ini "use server": setiap export di
+  // sini endpoint publik yang bisa dipanggil langsung dari konsol
+  // browser tanpa menyentuh UI sama sekali. Tanpa penolakan di titik
+  // ini, dua lapis sebelumnya hanya kosmetik.
+  //
+  // Pengambilan pickup ditandai kasir POS cabang lewat
+  // `markCakePickedUpAtPos`, yang menulis status + jejak picked_up_*
+  // sekaligus. `delivering → done` sengaja TETAP terbuka supaya alur
+  // Maxim tidak terganggu, dan supaya order pickup yang terlanjur
+  // nyangkut di 'delivering' masih bisa ditutup staf.
+  if (status === "done" && current === "ready") {
+    const { data: optRaw } = await supabase
+      .from("cake_options" as never)
+      .select("needs_address")
+      .eq("id", row?.delivery_option_id ?? "")
+      .maybeSingle();
+    const opt = optRaw as unknown as { needs_address?: boolean } | null;
+    if (opt?.needs_address === false) {
+      return {
+        ok: false,
+        error:
+          "Pesanan pickup ditandai 'sudah diambil' oleh kasir di POS cabang",
+      };
+    }
+  }
+
   // Kolom "Baru" & "Dikerjakan" auto-only — admin / orders staff tidak
   // boleh memindah card ke sana manual.
   //  - submitted: hanya entry-point order baru via form input.
@@ -1049,13 +1095,6 @@ export async function setCakeOrderStatus(
     status === "in_progress" ||
     status === "ready"
   ) {
-    const { data: row } = await supabase
-      .from("cake_orders" as never)
-      .select("status")
-      .eq("id", id)
-      .maybeSingle();
-    const current = (row as unknown as { status?: string } | null)?.status;
-    if (!current) return { ok: false, error: "Order tidak ditemukan" };
     if (status === "submitted" && current !== "submitted") {
       return {
         ok: false,
@@ -1078,9 +1117,20 @@ export async function setCakeOrderStatus(
     // — drag-back dari kolom yang lebih maju dianggap koreksi
     // operasional yang sah.
   }
+  // Keluar dari 'done' (koreksi staf lewat drag-back) harus ikut
+  // menghapus jejak pengambilan. Tanpa ini, order yang dibuka kembali
+  // tetap membawa picked_up_at/by/via lama — bukti penyerahan untuk
+  // kue yang menurut papan belum diserahkan.
+  const patch: Record<string, unknown> = { status };
+  if (current === "done" && status !== "done") {
+    patch.picked_up_at = null;
+    patch.picked_up_by = null;
+    patch.picked_up_via = null;
+  }
+
   const { error } = await supabase
     .from("cake_orders" as never)
-    .update({ status } as never)
+    .update(patch as never)
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/cake-orders");
@@ -1233,126 +1283,18 @@ export async function addCakeOrderPayment(
 ): Promise<ActionResult<{ paymentId: string }>> {
   const gate = await requireCakeOrderAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
-  const supabase = adminClient();
 
-  const amount = Math.max(0, Math.round(input.amountIdr));
-  if (amount <= 0) return { ok: false, error: "Nominal harus > 0" };
-
-  // Verify order exists + cap refund to remaining balance.
-  const { data: rowRaw } = await supabase
-    .from("cake_orders" as never)
-    .select("id, total_idr, refund_idr")
-    .eq("id", input.orderId)
-    .maybeSingle();
-  if (!rowRaw) return { ok: false, error: "Order tidak ditemukan" };
-  const order = rowRaw as unknown as {
-    id: string;
-    total_idr: number;
-    refund_idr: number;
-  };
-
-  // Validate payment option exists + correct kind.
-  const { data: optRaw } = await supabase
-    .from("cake_options" as never)
-    .select("id, kind")
-    .eq("id", input.paymentOptionId)
-    .maybeSingle();
-  const opt = optRaw as unknown as { id: string; kind: string } | null;
-  if (!opt || opt.kind !== "payment_method")
-    return { ok: false, error: "Metode pembayaran tidak valid" };
-
-  // Cap refund so triggers don't have to defend against over-refund.
-  if (input.kind === "refund") {
-    // Sum existing payments to know remaining refundable.
-    const { data: existingRaw } = await supabase
-      .from("cake_order_payments" as never)
-      .select("kind, amount_idr")
-      .eq("cake_order_id", order.id);
-    type R = { kind: string; amount_idr: number };
-    const existing = (existingRaw ?? []) as unknown as R[];
-    const paid = existing
-      .filter((r) => r.kind !== "refund")
-      .reduce((s, r) => s + r.amount_idr, 0);
-    const refunded = existing
-      .filter((r) => r.kind === "refund")
-      .reduce((s, r) => s + r.amount_idr, 0);
-    const refundable = paid - refunded;
-    if (amount > refundable)
-      return {
-        ok: false,
-        error: `Refund maksimum Rp ${refundable.toLocaleString("id-ID")}`,
-      };
-  }
-
-  // Auto-number DP label if not provided.
-  let label = input.label?.trim() ?? "";
-  if (!label) {
-    if (input.kind === "dp") {
-      const { count } = await supabase
-        .from("cake_order_payments" as never)
-        .select("id", { count: "exact", head: true })
-        .eq("cake_order_id", order.id)
-        .eq("kind", "dp");
-      label = `DP ${(count ?? 0) + 1}`;
-    } else if (input.kind === "pelunasan") {
-      label = "Pelunasan";
-    } else {
-      label = "Refund";
-    }
-  }
-
-  // Insert proof attachment first (if provided) so we can link its id.
-  let attachmentId: string | null = null;
-  if (input.proofPath) {
-    const { data: att, error: attErr } = await supabase
-      .from("cake_order_attachments" as never)
-      .insert({
-        cake_order_id: order.id,
-        field: "payment_proof",
-        storage_path: input.proofPath,
-        mime_type: input.proofMimeType ?? null,
-        size_bytes: input.proofSizeBytes ?? null,
-        uploaded_by: gate.userId,
-      } as never)
-      .select("id")
-      .single();
-    if (attErr || !att)
-      return { ok: false, error: attErr?.message ?? "Gagal simpan bukti" };
-    attachmentId = (att as unknown as { id: string }).id;
-  }
-
-  const { data: payRow, error: payErr } = await supabase
-    .from("cake_order_payments" as never)
-    .insert({
-      cake_order_id: order.id,
-      kind: input.kind,
-      label,
-      amount_idr: amount,
-      payment_option_id: input.paymentOptionId,
-      notes: input.notes?.trim() || null,
-      attachment_id: attachmentId,
-      created_by: gate.userId,
-    } as never)
-    .select("id")
-    .single();
-  if (payErr || !payRow) {
-    // Roll back the attachment if we wrote one.
-    if (attachmentId) {
-      await supabase
-        .from("cake_order_attachments" as never)
-        .delete()
-        .eq("id", attachmentId);
-    }
-    return { ok: false, error: payErr?.message ?? "Gagal simpan pembayaran" };
-  }
+  // Inti insert-nya tinggal di `lib/cake-orders/payment-write.ts` —
+  // modul biasa TANPA "use server" — supaya kasir POS bisa memakainya
+  // di belakang gerbangnya sendiri. Kasir tidak punya
+  // cake_access_assignments sehingga pasti gagal di gate di atas.
+  const res = await insertCakePaymentLeg(adminClient(), input, gate.userId);
+  if (!res.ok) return { ok: false, error: res.error };
 
   revalidatePath("/cake-orders");
   revalidatePath("/admin/cake-orders");
   revalidatePath("/cake-orders/slip");
-  return {
-    ok: true,
-    data: { paymentId: (payRow as unknown as { id: string }).id },
-  };
+  return { ok: true, data: { paymentId: res.paymentId } };
 }
 
 export async function deleteCakeOrderPayment(
