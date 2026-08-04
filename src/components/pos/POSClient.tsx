@@ -1299,6 +1299,16 @@ export function POSClient({
           //   single-SKU). Card greyed + disabled.
           // - "low"   => 1..3 sisa, hanya hint warna.
           const stockState = computeStockState(p, stockByKey, cart);
+          // Varian yang sudah tidak bisa dijual lagi. Dipakai untuk memberi
+          // tahu kasir dari LUAR kartu — tanpa ini "Dubai Chewy Cookies (23)"
+          // terlihat aman padahal Grade A sudah nol, dan kasir baru tahu
+          // setelah membuka dialog varian di depan pembeli.
+          // remaining null = produk tidak melacak stok → bukan habis.
+          const soldOutVariants = hasVariants
+            ? p.variants.filter(
+                (v) => variantRemainingStock(p, v.id, stockByKey, cart) === 0
+              )
+            : [];
           return (
             <div key={p.id} className="relative">
               {stockState.kind === "habis" && (
@@ -1356,6 +1366,17 @@ export function POSClient({
                 {stockState.kind === "low" && (
                   <div className="mt-0.5 text-[10px] font-semibold tabular-nums text-pop-pink">
                     Sisa {stockState.remaining}
+                  </div>
+                )}
+                {/* Keterangan varian habis — DITURUNKAN dari stok, bukan
+                    diketik. Sengaja baris tersendiri (bukan disisipkan ke
+                    p.notes) karena catatan manual bisa diedit/ditimpa kasir,
+                    sedangkan ini harus selalu mengikuti stok sebenarnya.
+                    Disembunyikan saat SEMUA varian habis: kartunya sudah
+                    kelabu + badge "Habis", jadi baris ini hanya mengulang. */}
+                {stockState.kind !== "habis" && soldOutVariants.length > 0 && (
+                  <div className="mt-1 rounded-md border border-dashed border-foreground/25 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground line-clamp-2">
+                    Habis: {soldOutVariants.map((v) => v.name).join(", ")}
                   </div>
                 )}
                 {p.notes ? (
