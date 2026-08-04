@@ -33,13 +33,16 @@ export function makeLabelFor(opts: CakeOptionsByKind | null) {
  * tombol yang lalu error, bukan pesanan pickup yang lolos ditutup dari
  * board staf.
  */
+export function isPickupOption(
+  opt: { kind: string; needs_address: boolean } | null | undefined
+): boolean {
+  return opt?.kind === "delivery" && opt.needs_address === false;
+}
+
 export function makeIsPickup(opts: CakeOptionsByKind | null) {
   return (deliveryOptionId: string | null): boolean => {
     if (!deliveryOptionId || !opts) return false;
-    return (
-      opts.delivery.find((o) => o.id === deliveryOptionId)?.needs_address ===
-      false
-    );
+    return isPickupOption(opts.delivery.find((o) => o.id === deliveryOptionId));
   };
 }
 

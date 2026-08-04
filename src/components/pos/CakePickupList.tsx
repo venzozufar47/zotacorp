@@ -19,39 +19,32 @@ import { toast } from "sonner";
 import { CakeSlice, Phone, TriangleAlert } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import { markCakePickedUpAtPos } from "@/lib/actions/pos-cake-pickup.actions";
-import type { CakePickupOrder } from "@/lib/pos/cake-pickup-types";
-
-interface PaymentMethodOption {
-  id: string;
-  label: string;
-}
+import type {
+  CakePickupOrder,
+  CakePickupPaymentMethod,
+} from "@/lib/actions/pos-cake-pickup.actions";
+import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 
 const CARD =
   "rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)]";
 const EYEBROW =
   "text-[10px] uppercase tracking-wider text-muted-foreground font-semibold";
 
-function scheduleLabel(iso: string): string {
+/** Dibangun sekali di module scope: konstruksi Intl (resolve locale +
+ *  timezone) jauh lebih mahal daripada `.format()`, dan tiap membuka
+ *  atau menutup dialog me-render ulang SEMUA kartu. */
+const DAY_FMT = new Intl.DateTimeFormat("id-ID", {
+  timeZone: "Asia/Jakarta",
+  day: "numeric",
+  month: "short",
+});
+
+/** `todayWib` dihitung sekali per render di induk, bukan per kartu. */
+function scheduleLabel(iso: string, todayWib: string): string {
   const d = new Date(iso);
-  const fmt = new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    day: "numeric",
-    month: "short",
-  });
-  const time = new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-  }).format(new Date());
-  const that = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-  }).format(d);
-  if (today === that) return `Hari ini · ${time}`;
-  return `${fmt.format(d)} · ${time}`;
+  const time = jakartaHHMM(d);
+  if (jakartaDateString(d) === todayWib) return `Hari ini · ${time}`;
+  return `${DAY_FMT.format(d)} · ${time}`;
 }
 
 function specLine(o: CakePickupOrder): string {
@@ -67,9 +60,10 @@ export function CakePickupList({
   paymentMethods,
 }: {
   pickups: CakePickupOrder[];
-  paymentMethods: PaymentMethodOption[];
+  paymentMethods: CakePickupPaymentMethod[];
 }) {
   const [active, setActive] = useState<CakePickupOrder | null>(null);
+  const todayWib = useMemo(() => jakartaDateString(new Date()), []);
 
   return (
     <section>
@@ -92,7 +86,12 @@ export function CakePickupList({
       ) : (
         <div className="space-y-3">
           {pickups.map((o) => (
-            <PickupCard key={o.id} order={o} onOpen={() => setActive(o)} />
+            <PickupCard
+              key={o.id}
+              order={o}
+              todayWib={todayWib}
+              onOpen={() => setActive(o)}
+            />
           ))}
         </div>
       )}
@@ -110,16 +109,21 @@ export function CakePickupList({
 
 function PickupCard({
   order,
+  todayWib,
   onOpen,
 }: {
   order: CakePickupOrder;
+  todayWib: string;
   onOpen: () => void;
 }) {
+  const outstanding = order.remainingIdr > 0;
   return (
     <div className={CARD}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className={EYEBROW}>{scheduleLabel(order.scheduledAt)}</div>
+          <div className={EYEBROW}>
+            {scheduleLabel(order.scheduledAt, todayWib)}
+          </div>
           <h3 className="text-base font-bold text-foreground truncate">
             {order.customerName}
           </h3>
@@ -162,7 +166,7 @@ function PickupCard({
           <span className="inline-flex items-center rounded-full bg-tertiary/40 border border-foreground px-2 py-0.5 text-[11px] font-semibold">
             GRATIS (klaim karyawan)
           </span>
-        ) : order.hasOutstanding ? (
+        ) : outstanding ? (
           <div className="flex items-center gap-1.5 rounded-lg border-2 border-foreground bg-destructive/15 px-2.5 py-1.5 text-[12px] font-bold text-foreground">
             <TriangleAlert size={13} />
             KURANG BAYAR {formatRp(order.remainingIdr)}
@@ -191,12 +195,13 @@ function PickupDialog({
   onClose,
 }: {
   order: CakePickupOrder;
-  paymentMethods: PaymentMethodOption[];
+  paymentMethods: CakePickupPaymentMethod[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [takeSettlement, setTakeSettlement] = useState(order.hasOutstanding);
+  const outstanding = order.remainingIdr > 0;
+  const [takeSettlement, setTakeSettlement] = useState(outstanding);
   const [amountRaw, setAmountRaw] = useState(String(order.remainingIdr));
   const [methodId, setMethodId] = useState(paymentMethods[0]?.id ?? "");
   const [acknowledged, setAcknowledged] = useState(false);
@@ -206,14 +211,11 @@ function PickupDialog({
     return Math.min(Math.max(0, n), order.remainingIdr);
   }, [amountRaw, order.remainingIdr]);
 
-  const willRecord = order.hasOutstanding && takeSettlement && amount > 0;
-  const remainingAfter = Math.max(
-    0,
-    order.remainingIdr - (willRecord ? amount : 0)
-  );
+  // `amount` sudah dibatasi <= remainingIdr oleh memo di atas, jadi
+  // selisihnya tidak pernah negatif.
+  const willRecord = takeSettlement && amount > 0;
+  const remainingAfter = order.remainingIdr - (willRecord ? amount : 0);
   const needsAck = remainingAfter > 0;
-  const blocked = needsAck && !acknowledged;
-  const noMethod = willRecord && !methodId;
 
   const submit = () => {
     startTransition(async () => {
@@ -222,7 +224,7 @@ function PickupDialog({
         settlement: willRecord
           ? { amountIdr: amount, paymentOptionId: methodId }
           : null,
-        acknowledgeUnpaid: needsAck ? acknowledged : undefined,
+        acknowledgeUnpaid: acknowledged,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -254,7 +256,7 @@ function PickupDialog({
           {specLine(order)} · {formatRp(order.totalIdr)}
         </p>
 
-        {order.hasOutstanding && (
+        {outstanding && (
           <div className="mt-3 rounded-lg border-2 border-foreground bg-destructive/15 p-2.5">
             <div className="flex items-center gap-1.5 text-[13px] font-bold text-foreground">
               <TriangleAlert size={14} />
@@ -322,7 +324,11 @@ function PickupDialog({
         <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
           <button
             type="button"
-            disabled={pending || blocked || noMethod}
+            disabled={
+              pending ||
+              (needsAck && !acknowledged) ||
+              (willRecord && !methodId)
+            }
             onClick={submit}
             className="h-11 rounded-xl bg-primary text-primary-foreground text-sm font-bold disabled:opacity-40"
           >

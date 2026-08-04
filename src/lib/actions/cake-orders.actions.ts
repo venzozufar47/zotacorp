@@ -1090,33 +1090,24 @@ export async function setCakeOrderStatus(
   //    produksi dikirim.
   //  - ready: dipicu otomatis oleh `setOrderProductionStatus` saat
   //    bagian produksi menyelesaikan dekorasi.
-  if (
-    status === "submitted" ||
-    status === "in_progress" ||
-    status === "ready"
-  ) {
-    if (status === "submitted" && current !== "submitted") {
-      return {
-        ok: false,
-        error: "Card tidak bisa dipindah ke kolom Baru",
-      };
-    }
-    if (status === "in_progress" && current !== "in_progress") {
-      return {
-        ok: false,
-        error: "Status Dikerjakan hanya bisa diubah lewat kirim slip produksi",
-      };
-    }
-    if (status === "ready" && current === "in_progress") {
-      return {
-        ok: false,
-        error: "Status Siap hanya bisa diubah oleh bagian produksi",
-      };
-    }
-    // Selain itu (mis. revert dari delivering/done → ready), lolos
-    // — drag-back dari kolom yang lebih maju dianggap koreksi
-    // operasional yang sah.
+  if (status === "submitted" && current !== "submitted") {
+    return { ok: false, error: "Card tidak bisa dipindah ke kolom Baru" };
   }
+  if (status === "in_progress" && current !== "in_progress") {
+    return {
+      ok: false,
+      error: "Status Dikerjakan hanya bisa diubah lewat kirim slip produksi",
+    };
+  }
+  if (status === "ready" && current === "in_progress") {
+    return {
+      ok: false,
+      error: "Status Siap hanya bisa diubah oleh bagian produksi",
+    };
+  }
+  // Selain itu (mis. revert dari delivering/done → ready), lolos —
+  // drag-back dari kolom yang lebih maju dianggap koreksi operasional
+  // yang sah.
   // Keluar dari 'done' (koreksi staf lewat drag-back) harus ikut
   // menghapus jejak pengambilan. Tanpa ini, order yang dibuka kembali
   // tetap membawa picked_up_at/by/via lama — bukti penyerahan untuk

@@ -15,7 +15,7 @@
  * alasan tambahan kenapa ia tidak boleh punya dua versi.
  */
 
-import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
+import { formatRpCompact } from "@/lib/cashflow/format";
 import type { CakeOrder, CakeOrderPayment } from "./types";
 
 export type CakePaymentState =
@@ -48,7 +48,7 @@ export interface CakePaymentSummary {
   hasOutstanding: boolean;
 }
 
-function labelFor(state: CakePaymentState, s: Omit<CakePaymentSummary, "state" | "label" | "hasOutstanding">): string {
+function labelFor(state: CakePaymentState, net: number): string {
   switch (state) {
     case "refund":
       return "Refund";
@@ -57,7 +57,7 @@ function labelFor(state: CakePaymentState, s: Omit<CakePaymentSummary, "state" |
     case "lunas":
       return "Lunas";
     case "dp":
-      return `DP Rp ${formatRpCompact(s.net)}`;
+      return `DP Rp ${formatRpCompact(net)}`;
     case "belum":
       return "Belum dibayar";
   }
@@ -98,7 +98,7 @@ export function summarizeCakePayment(input: {
     return {
       ...base,
       state,
-      label: input.freeClaim ? "Gratis" : labelFor(state, base),
+      label: input.freeClaim ? "Gratis" : labelFor(state, net),
       hasOutstanding: false,
     };
   }
@@ -117,7 +117,7 @@ export function summarizeCakePayment(input: {
   return {
     ...withRemaining,
     state,
-    label: labelFor(state, withRemaining),
+    label: labelFor(state, net),
     hasOutstanding: remaining > 0,
   };
 }
@@ -162,9 +162,4 @@ export function summarizeFromLedger(
     refundIdr: refunded,
     freeClaim,
   });
-}
-
-/** Teks sisa tagihan lengkap (bukan compact) untuk dialog & peringatan. */
-export function formatOutstanding(s: CakePaymentSummary): string {
-  return formatRp(s.remaining);
 }

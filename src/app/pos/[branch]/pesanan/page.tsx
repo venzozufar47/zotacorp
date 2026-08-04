@@ -5,7 +5,6 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { findPosAccount } from "@/lib/actions/pos.actions";
 import { listPendingPesanan } from "@/lib/actions/pos-pesanan.actions";
 import { listCakePickupsForPos } from "@/lib/actions/pos-cake-pickup.actions";
-import { listCakeOptions } from "@/lib/actions/cake-options.actions";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { PosShell } from "@/components/pos/PosShell";
 import { PesananList } from "@/components/pos/PesananList";
@@ -32,24 +31,14 @@ export default async function PesananPage({
   const account = await findPosAccount(branch);
   if (!account) redirect("/");
 
-  const [role, pesanan, cakePickups, cakeOptions] = await Promise.all([
+  // Metode bayar ikut dari action yang sama: daftarnya diturunkan dari
+  // penyaring yang dipakai server saat memvalidasi, jadi chip yang
+  // tampil dan metode yang diterima tidak bisa berbeda.
+  const [role, pesanan, cakeBoard] = await Promise.all([
     getCurrentRole(),
     listPendingPesanan(account.id),
     listCakePickupsForPos(account.id),
-    listCakeOptions(),
   ]);
-
-  // Hanya QRIS & Tunai. Bank Jago sengaja tidak ditawarkan: transfer
-  // bank tidak terjadi di konter, dan pencatatannya tetap lewat staf
-  // cake. Server menolak metode lain juga, ini cuma cermin UI-nya.
-  const cakePaymentMethods = (
-    cakeOptions.ok ? (cakeOptions.data?.payment_method ?? []) : []
-  )
-    .filter((m) => {
-      const s = m.label.toLowerCase();
-      return s.includes("qris") || s.includes("cash") || s.includes("tunai");
-    })
-    .map((m) => ({ id: m.id, label: m.label }));
 
   return (
     <PosShell
@@ -64,8 +53,8 @@ export default async function PesananPage({
           sementara pesanan tertunda bisa menunggu. */}
       <div className="max-w-3xl mx-auto px-3 sm:px-5 py-5 space-y-6">
         <CakePickupList
-          pickups={cakePickups}
-          paymentMethods={cakePaymentMethods}
+          pickups={cakeBoard.pickups}
+          paymentMethods={cakeBoard.paymentMethods}
         />
         <section>
           <h2 className="text-sm font-bold text-foreground mb-2">

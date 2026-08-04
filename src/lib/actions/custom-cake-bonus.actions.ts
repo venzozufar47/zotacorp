@@ -84,6 +84,13 @@ function isNonSalesCategory(
 ): boolean {
   if (bankKey === "cashPare") return false;
   if (!category) return false;
+  // Pelunasan cake tunai di kasir: kategorinya ADA di daftar
+  // non-operasional (supaya tidak dobel di PnL — pendapatannya sudah
+  // diakui lewat akrual cake), tapi untuk bonus ia penjualan custom
+  // cake asli. Dikecualikan di sini supaya aturannya terbaca di
+  // klasifikator, bukan menumpang kolom override `custom_cake_included`
+  // yang disediakan untuk keputusan manual manusia.
+  if (category === CAKE_SETTLEMENT_CASH_CATEGORY) return false;
   // Normalisasi dulu supaya label kas ikut terbaca: "Diambil mas Venzo"
   // → "Dividend" (non-operasional), "Haengbo Cust"/"Slice Haengbo" →
   // "Sales" (tetap dihitung).
@@ -182,6 +189,10 @@ function autoIncludeRule(
       // the cashPare bucket below — don't filter Mandiri itself.
       return true;
     case "cashPare":
+      // Pelunasan cake tunai bukan setelmen QRIS — itu omset baru yang
+      // belum dihitung di rekening mana pun, jadi ikut sebagai
+      // penjualan (penjumlahannya menambah, lihat pareCakeSettlement).
+      if (tx.category === CAKE_SETTLEMENT_CASH_CATEGORY) return true;
       // QRIS-flavored Pare entries count as the Mandiri-QRIS deduction.
       // Matches both "POS QRIS: ..." (POSClient-generated) and manual
       // "Penjualan Qris" / similar journal entries entered by admin.

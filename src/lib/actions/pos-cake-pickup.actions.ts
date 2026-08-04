@@ -34,40 +34,85 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
-import { requireAdminOrPosAssignee } from "@/lib/actions/_gates";
+import {
+  requireAdminOrPosAssignee,
+  type ActionResult,
+} from "@/lib/actions/_gates";
+import { isPickupOption } from "@/lib/cake-orders/helpers";
 import { insertCakePaymentLeg } from "@/lib/cake-orders/payment-write";
-import { summarizeCakePayment } from "@/lib/cake-orders/payment-summary";
+import {
+  summarizeCakePayment,
+  type CakePaymentState,
+} from "@/lib/cake-orders/payment-summary";
 import { CAKE_SETTLEMENT_CASH_CATEGORY } from "@/lib/cashflow/categories";
+import { formatRp } from "@/lib/cashflow/format";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
-import type { CakeBranch } from "@/lib/cake-orders/types";
-// Tipe tinggal di modul terpisah — file ini "use server", dan repo ini
-// pernah kehilangan build gara-gara export tipe dari file semacam itu.
-import type {
-  CakePickupOrder,
-  MarkPickupInput,
-} from "@/lib/pos/cake-pickup-types";
+import { CAKE_BRANCH_LABELS, type CakeBranch } from "@/lib/cake-orders/types";
 
-type ActionResult<T = undefined> =
-  | { ok: true; data?: T }
-  | { ok: false; error: string };
+export interface CakePickupOrder {
+  id: string;
+  customerName: string;
+  customerPhone: string | null;
+  scheduledAt: string;
+  baseLabel: string;
+  shapeLabel: string;
+  shapeCustom: string | null;
+  dimensionCm: number | null;
+  fillingLabel: string | null;
+  greetingCard: string | null;
+  totalIdr: number;
+  /** Sisa tagihan; 0 berarti lunas. Kartu menurunkan tampilannya dari sini. */
+  remainingIdr: number;
+  paymentState: CakePaymentState;
+  freeClaim: boolean;
+}
+
+/** Metode bayar yang boleh diterima kasir, sudah tersaring di server. */
+export interface CakePickupPaymentMethod {
+  id: string;
+  label: string;
+}
+
+export interface CakePickupBoard {
+  pickups: CakePickupOrder[];
+  paymentMethods: CakePickupPaymentMethod[];
+}
+
+export interface MarkPickupInput {
+  orderId: string;
+  /** Pelunasan opsional yang diterima kasir saat serah-terima. */
+  settlement?: {
+    amountIdr: number;
+    /** id `cake_options` berjenis payment_method (QRIS / Cash). */
+    paymentOptionId: string;
+    notes?: string | null;
+  } | null;
+  /** Wajib true kalau setelah settlement masih ada sisa tagihan. */
+  acknowledgeUnpaid?: boolean;
+}
 
 /** `bank_accounts.default_branch` ("Pare") → `cake_orders.branch` ("pare"). */
 function posBranchToCakeBranch(v: string | null): CakeBranch | null {
   const s = (v ?? "").trim().toLowerCase();
-  if (s === "pare") return "pare";
-  if (s === "semarang") return "semarang";
-  return null;
-}
-
-/** `cake_orders.branch` ("pare") → `bank_accounts.default_branch` ("Pare"). */
-function cakeBranchToPosBranch(b: CakeBranch): string {
-  return b === "pare" ? "Pare" : "Semarang";
+  return (
+    (Object.keys(CAKE_BRANCH_LABELS) as CakeBranch[]).find(
+      (b) => CAKE_BRANCH_LABELS[b].toLowerCase() === s
+    ) ?? null
+  );
 }
 
 /**
  * Metode pembayaran yang boleh diterima kasir saat serah-terima.
  * Bank Jago sengaja TIDAK termasuk — transfer bank tidak terjadi di
  * konter dan pencatatannya tetap lewat staf cake.
+ *
+ * Dicocokkan lewat label karena `cake_options` belum punya kolom
+ * struktural untuk kanal setelmen (bandingkan `needs_address` yang
+ * dipakai mendeteksi pickup). Konsekuensinya opsi bernama mengandung
+ * "cash" akan diperlakukan tunai dan menulis ke kas cabang — kalau
+ * daftar metode bertambah, kolom struktural jadi pilihan yang lebih
+ * benar. Daftar chip di UI diturunkan dari fungsi ini juga, lewat
+ * `listCakePickupsForPos`, supaya server dan UI tidak bisa berbeda.
  */
 function classifyPaymentMethod(label: string): "cash" | "qris" | null {
   const s = label.trim().toLowerCase();
@@ -76,9 +121,15 @@ function classifyPaymentMethod(label: string): "cash" | "qris" | null {
   return null;
 }
 
-type OrderRow = {
+type OptionRow = {
   id: string;
-  branch: string;
+  kind: string;
+  label: string;
+  needs_address: boolean;
+};
+
+type ListRow = {
+  id: string;
   customer_name: string;
   customer_phone: string | null;
   scheduled_at: string;
@@ -92,71 +143,86 @@ type OrderRow = {
   paid_idr: number;
   refund_idr: number;
   free_claim: boolean;
-  delivery_option_id: string | null;
+};
+
+/** Kolom yang benar-benar dibaca jalur penandaan — sengaja lebih sempit
+ *  dari ListRow supaya tidak ada field yang "ada di tipe, undefined di
+ *  runtime". */
+type MarkRow = {
+  id: string;
+  branch: string;
+  customer_name: string;
   status: string;
+  delivery_option_id: string | null;
+  total_idr: number;
+  paid_idr: number;
+  refund_idr: number;
+  free_claim: boolean;
   picked_up_at: string | null;
 };
 
-type OptionRow = {
-  id: string;
-  kind: string;
-  label: string;
-  needs_address: boolean;
-};
-
-/** Semua opsi (termasuk yang non-aktif) — order lama bisa menunjuk
- *  opsi yang sudah dinonaktifkan, dan itu tetap harus resolve. */
-async function loadOptions(
-  db: ReturnType<typeof createAdminClient>
-): Promise<OptionRow[]> {
-  const { data } = await db
-    .from("cake_options" as never)
-    .select("id, kind, label, needs_address");
-  return (data ?? []) as unknown as OptionRow[];
-}
-
 /**
- * Kue pickup yang siap diambil di cabang rekening POS ini.
+ * Kue pickup yang siap diambil di cabang rekening POS ini, plus daftar
+ * metode bayar yang boleh diterima kasir.
  *
- * Mengikuti konvensi baca POS: gerbang gagal → array kosong, bukan
+ * Keduanya dikembalikan bersama karena berasal dari tabel `cake_options`
+ * yang sama — memisahkannya berarti halaman menarik tabel itu dua kali
+ * per render, dan menyisakan dua tempat yang harus sepakat soal metode
+ * mana yang boleh.
+ *
+ * Mengikuti konvensi baca POS: gerbang gagal → hasil kosong, bukan
  * lempar error. Halaman tetap render, sekadar tanpa kartu.
  */
 export async function listCakePickupsForPos(
   bankAccountId: string
-): Promise<CakePickupOrder[]> {
+): Promise<CakePickupBoard> {
+  const empty: CakePickupBoard = { pickups: [], paymentMethods: [] };
+
   const gate = await requireAdminOrPosAssignee(bankAccountId);
-  if (!gate.ok) return [];
+  if (!gate.ok) return empty;
 
   const db = createAdminClient();
 
-  const { data: accRaw } = await db
-    .from("bank_accounts")
-    .select("id, business_unit, default_branch, pos_enabled, is_active")
-    .eq("id", bankAccountId)
-    .maybeSingle();
-  const acc = accRaw as unknown as {
+  // Rekening dan daftar opsi tidak saling bergantung — ditarik bareng.
+  const [accRes, optRes] = await Promise.all([
+    db
+      .from("bank_accounts")
+      .select("business_unit, default_branch, pos_enabled, is_active")
+      .eq("id", bankAccountId)
+      .maybeSingle(),
+    db.from("cake_options" as never).select("id, kind, label, needs_address"),
+  ]);
+
+  const acc = accRes.data as unknown as {
     business_unit: string;
     default_branch: string | null;
     pos_enabled: boolean | null;
     is_active: boolean | null;
   } | null;
-  if (!acc || acc.business_unit !== "Haengbocake") return [];
-  if (!acc.pos_enabled || !acc.is_active) return [];
+  if (!acc || acc.business_unit !== "Haengbocake") return empty;
+  if (!acc.pos_enabled || !acc.is_active) return empty;
   const branch = posBranchToCakeBranch(acc.default_branch);
-  if (!branch) return [];
+  if (!branch) return empty;
 
-  const options = await loadOptions(db);
-  const pickupIds = options
-    .filter((o) => o.kind === "delivery" && o.needs_address === false)
-    .map((o) => o.id);
-  if (pickupIds.length === 0) return [];
-  const labelOf = (id: string | null) =>
-    (id && options.find((o) => o.id === id)?.label) || null;
+  // Semua opsi (termasuk non-aktif): order lama bisa menunjuk opsi yang
+  // sudah dinonaktifkan, dan itu tetap harus resolve jadi label.
+  const options = (optRes.data ?? []) as unknown as OptionRow[];
+  const byId = new Map(options.map((o) => [o.id, o]));
+  const pickupIds = options.filter(isPickupOption).map((o) => o.id);
+
+  const paymentMethods: CakePickupPaymentMethod[] = options
+    .filter(
+      (o) =>
+        o.kind === "payment_method" && classifyPaymentMethod(o.label) !== null
+    )
+    .map((o) => ({ id: o.id, label: o.label }));
+
+  if (pickupIds.length === 0) return { pickups: [], paymentMethods };
 
   const { data: rowsRaw } = await db
     .from("cake_orders" as never)
     .select(
-      "id, branch, customer_name, customer_phone, scheduled_at, base_cake_option_id, shape_option_id, shape_custom, dimension_cm, filling_option_id, greeting_card, total_idr, paid_idr, refund_idr, free_claim, delivery_option_id, status, picked_up_at"
+      "id, customer_name, customer_phone, scheduled_at, base_cake_option_id, shape_option_id, shape_custom, dimension_cm, filling_option_id, greeting_card, total_idr, paid_idr, refund_idr, free_claim"
     )
     .eq("branch", branch)
     .eq("status", "ready")
@@ -164,8 +230,10 @@ export async function listCakePickupsForPos(
     .in("delivery_option_id", pickupIds)
     .order("scheduled_at", { ascending: true });
 
-  const rows = (rowsRaw ?? []) as unknown as OrderRow[];
-  return rows.map((r) => {
+  const labelOf = (id: string | null) => (id && byId.get(id)?.label) || null;
+  const rows = (rowsRaw ?? []) as unknown as ListRow[];
+
+  const pickups = rows.map((r) => {
     const pay = summarizeCakePayment({
       totalIdr: r.total_idr,
       netPaidIdr: r.paid_idr,
@@ -174,7 +242,6 @@ export async function listCakePickupsForPos(
     });
     return {
       id: r.id,
-      branch: (r.branch as CakeBranch) ?? branch,
       customerName: r.customer_name,
       customerPhone: r.customer_phone,
       scheduledAt: r.scheduled_at,
@@ -185,15 +252,13 @@ export async function listCakePickupsForPos(
       fillingLabel: labelOf(r.filling_option_id),
       greetingCard: r.greeting_card,
       totalIdr: r.total_idr,
-      netPaidIdr: r.paid_idr,
-      refundIdr: r.refund_idr,
       remainingIdr: pay.remaining,
-      paymentLabel: pay.label,
       paymentState: pay.state,
       freeClaim: r.free_claim,
-      hasOutstanding: pay.hasOutstanding,
     };
   });
+
+  return { pickups, paymentMethods };
 }
 
 export async function markCakePickedUpAtPos(
@@ -213,34 +278,47 @@ export async function markCakePickedUpAtPos(
   const { data: rowRaw } = await db
     .from("cake_orders" as never)
     .select(
-      "id, branch, customer_name, status, archived_at, delivery_option_id, total_idr, paid_idr, refund_idr, free_claim, picked_up_at"
+      "id, branch, customer_name, status, delivery_option_id, total_idr, paid_idr, refund_idr, free_claim, picked_up_at"
     )
     .eq("id", input.orderId)
     .maybeSingle();
-  const order = rowRaw as unknown as OrderRow | null;
+  const order = rowRaw as unknown as MarkRow | null;
   if (!order) return { ok: false, error: "Pesanan tidak ditemukan" };
 
-  const options = await loadOptions(db);
-  const delivery = options.find((o) => o.id === order.delivery_option_id);
-  if (!delivery || delivery.needs_address !== false) {
+  // Hanya dua opsi yang relevan di jalur ini — jangan tarik seluruh tabel.
+  const wantedOptionIds = [
+    order.delivery_option_id,
+    input.settlement?.paymentOptionId ?? null,
+  ].filter((v): v is string => !!v);
+  const { data: optRaw } = await db
+    .from("cake_options" as never)
+    .select("id, kind, label, needs_address")
+    .in("id", wantedOptionIds);
+  const options = (optRaw ?? []) as unknown as OptionRow[];
+
+  if (!isPickupOption(options.find((o) => o.id === order.delivery_option_id))) {
     return { ok: false, error: "Pesanan ini pengiriman, bukan pickup" };
   }
 
   const cakeBranch = posBranchToCakeBranch(order.branch);
   if (!cakeBranch) return { ok: false, error: "Cabang pesanan tidak dikenal" };
+  const branchLabel = CAKE_BRANCH_LABELS[cakeBranch];
 
   // Akun POS diturunkan dari cabang order — BUKAN dari klien.
   const { data: accRaw } = await db
     .from("bank_accounts")
     .select("id, default_branch")
     .eq("business_unit", "Haengbocake")
-    .eq("default_branch", cakeBranchToPosBranch(cakeBranch))
+    .eq("default_branch", branchLabel)
     .eq("pos_enabled", true)
     .eq("is_active", true)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  const account = accRaw as unknown as { id: string; default_branch: string | null } | null;
+  const account = accRaw as unknown as {
+    id: string;
+    default_branch: string | null;
+  } | null;
   if (!account) {
     return { ok: false, error: "Rekening POS cabang ini belum disiapkan" };
   }
@@ -249,18 +327,13 @@ export async function markCakePickedUpAtPos(
   if (!gate.ok) return { ok: false, error: gate.error };
 
   // Status: pesan spesifik supaya kasir tahu harus berbuat apa.
-  if (order.picked_up_at) {
+  if (order.picked_up_at || order.status === "done") {
     return { ok: false, error: "Pesanan sudah ditandai diambil" };
   }
   if (order.status !== "ready") {
-    if (order.status === "done")
-      return { ok: false, error: "Pesanan sudah ditandai diambil" };
     if (order.status === "cancelled" || order.status === "discarded")
       return { ok: false, error: "Pesanan sudah dibatalkan" };
-    return {
-      ok: false,
-      error: "Kue belum ditandai siap oleh bagian produksi",
-    };
+    return { ok: false, error: "Kue belum ditandai siap oleh bagian produksi" };
   }
 
   const before = summarizeCakePayment({
@@ -272,7 +345,6 @@ export async function markCakePickedUpAtPos(
 
   let recordedIdr = 0;
   let settleMethod: "cash" | "qris" | null = null;
-  let paymentId: string | null = null;
 
   if (input.settlement) {
     const amount = Math.round(input.settlement.amountIdr || 0);
@@ -280,11 +352,13 @@ export async function markCakePickedUpAtPos(
     if (amount > before.remaining) {
       return {
         ok: false,
-        error: `Nominal melebihi sisa tagihan Rp ${before.remaining.toLocaleString("id-ID")}`,
+        error: `Nominal melebihi sisa tagihan ${formatRp(before.remaining)}`,
       };
     }
     const opt = options.find(
-      (o) => o.id === input.settlement!.paymentOptionId && o.kind === "payment_method"
+      (o) =>
+        o.id === input.settlement!.paymentOptionId &&
+        o.kind === "payment_method"
     );
     if (!opt) return { ok: false, error: "Metode pembayaran tidak valid" };
     settleMethod = classifyPaymentMethod(opt.label);
@@ -301,14 +375,14 @@ export async function markCakePickedUpAtPos(
   if (remainingAfter > 0 && !input.acknowledgeUnpaid) {
     return {
       ok: false,
-      error: `Masih kurang Rp ${remainingAfter.toLocaleString("id-ID")} — centang konfirmasi dulu`,
+      error: `Masih kurang ${formatRp(remainingAfter)} — centang konfirmasi dulu`,
     };
   }
 
   // Pembayaran DULU, status BELAKANGAN. Kalau status berhasil lalu
   // pembayaran gagal, uang riil hilang catatan. Urutan sebaliknya
-  // jinak: pembayaran tercatat tapi status belum pindah, dan sync
-  // berikutnya / kasir bisa mengulang tanpa kehilangan apa pun.
+  // jinak: pembayaran tercatat tapi status belum pindah, dan kasir
+  // bisa mengulang tanpa kehilangan apa pun.
   if (input.settlement && recordedIdr > 0) {
     const res = await insertCakePaymentLeg(
       db,
@@ -317,13 +391,12 @@ export async function markCakePickedUpAtPos(
         kind: "pelunasan",
         amountIdr: recordedIdr,
         paymentOptionId: input.settlement.paymentOptionId,
-        label: `Pelunasan (Kasir ${cakeBranchToPosBranch(cakeBranch)})`,
+        label: `Pelunasan (Kasir ${branchLabel})`,
         notes: input.settlement.notes?.trim() || null,
       },
       gate.userId
     );
     if (!res.ok) return { ok: false, error: res.error };
-    paymentId = res.paymentId;
 
     // Tunai masuk laci fisik → wajib tercatat di kas cabang, kalau
     // tidak tutup shift selalu selisih lebih. QRIS TIDAK menulis baris
@@ -331,21 +404,22 @@ export async function markCakePickedUpAtPos(
     if (settleMethod === "cash") {
       const cashRes = await recordCakeCashSettlement({
         bankAccountId: account.id,
-        branchLabel: account.default_branch ?? cakeBranchToPosBranch(cakeBranch),
+        branchLabel: account.default_branch ?? branchLabel,
         amountIdr: recordedIdr,
         customerName: order.customer_name,
         orderId: order.id,
-        paymentId,
+        paymentId: res.paymentId,
         userId: gate.userId,
       });
       if (!cashRes.ok) {
         // Pembayaran cake sudah tercatat; yang gagal cuma cermin
         // kasnya. Dilaporkan supaya bisa dibetulkan manual, TIDAK
         // di-rollback — menghapus leg pembayaran yang sah lebih
-        // berbahaya daripada satu baris kas yang hilang.
+        // berbahaya daripada satu baris kas yang hilang. Kasir JANGAN
+        // mengulang: pengulangan akan menggandakan pembayaran.
         return {
           ok: false,
-          error: `Pelunasan tercatat, tapi gagal menulis kas cabang: ${cashRes.error}. Catat manual di rekening kas.`,
+          error: `Pelunasan tercatat, tapi gagal menulis kas cabang: ${cashRes.error}. Jangan ulangi — catat manual di rekening kas.`,
         };
       }
     }
@@ -384,11 +458,12 @@ export async function markCakePickedUpAtPos(
 /**
  * Cermin pelunasan tunai ke rekening kas cabang.
  *
- * Kategori non-operasional supaya TIDAK dobel di PnL (pendapatannya
- * sudah diakui lewat akrual cake dari scheduled_at), tapi
- * `custom_cake_included = true` supaya TETAP terhitung sebagai omset
- * custom cake untuk bonus admin. Dua sasaran itu lewat dua mekanisme
- * berbeda — jangan disatukan.
+ * Kategorinya non-operasional supaya TIDAK dobel di PnL (pendapatannya
+ * sudah diakui lewat akrual cake dari scheduled_at). Klasifikasi bonus
+ * cake mengenali kategori ini sendiri — lihat `isNonSalesCategory` dan
+ * `autoIncludeRule` di custom-cake-bonus.actions.ts — jadi baris ini
+ * TIDAK perlu menumpang kolom override `custom_cake_included`, yang
+ * memang disediakan untuk keputusan manual manusia.
  *
  * Statement bulanan find-or-create: bulan yang ada pelunasan tapi
  * belum ada transaksi kas lain belum tentu punya statement.
@@ -405,7 +480,6 @@ async function recordCakeCashSettlement(args: {
   const supabase = await createClient();
   const now = new Date();
   const date = jakartaDateString(now);
-  const time = jakartaHHMM(now);
   const [yStr, mStr] = date.split("-");
   const periodYear = Number(yStr);
   const periodMonth = Number(mStr);
@@ -451,19 +525,15 @@ async function recordCakeCashSettlement(args: {
   const { error: txErr } = await supabase.from("cashflow_transactions").insert({
     statement_id: statementId,
     transaction_date: date,
-    transaction_time: time,
+    transaction_time: jakartaHHMM(now),
     description: `Pelunasan cake — ${args.customerName}`,
     debit: 0,
     credit: args.amountIdr,
     running_balance: null,
     category: CAKE_SETTLEMENT_CASH_CATEGORY,
     branch: args.branchLabel,
-    // Penanda telusur + idempotensi kalau nanti perlu rekonsiliasi.
+    // Penanda telusur kalau nanti perlu rekonsiliasi manual.
     notes: `Pelunasan custom cake diterima kasir · cake:${args.orderId}:${args.paymentId}`,
-    // Non-operasional (keluar dari PnL) TAPI tetap omset custom cake:
-    // override ini yang memaksa masuk basis bonus, karena kategorinya
-    // sendiri otomatis dikecualikan oleh isNonSalesCategory.
-    custom_cake_included: true,
     sort_order: (maxRow?.sort_order ?? -1) + 1,
   });
   if (txErr) return { ok: false, error: txErr.message };
