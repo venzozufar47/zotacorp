@@ -827,13 +827,33 @@ function collapseGatewayByDay(list: DetailTx[]): DetailTx[] {
 
   const grouped: DetailTx[] = [...byDay.entries()].map(([date, txs]) => {
     const amount = txs.reduce((s, t) => s + t.amount, 0);
+    // Bawa naik status "dibagi rata" dari anggota ke barisan rekap.
+    //
+    // Tanpa ini, penanda bagi-rata (*) HILANG begitu transaksi Mayar
+    // direkap harian — padahal justru di situ verifikasinya dibutuhkan.
+    // Satu hari bisa berisi campuran: sebagian sudah punya cabang pasti,
+    // sebagian masih dibagi rata 1/3. Kalau tidak dibedakan, hari itu
+    // terlihat bersih padahal separuhnya belum teralokasi.
+    const splitMembers = txs.filter((t) => t.branchShare);
+    const fullAmount = txs.reduce((s, t) => s + (t.fullAmount ?? t.amount), 0);
+    const label =
+      splitMembers.length === 0
+        ? `Mayar · ${txs.length} transaksi`
+        : splitMembers.length === txs.length
+          ? `Mayar · ${txs.length} transaksi · semua dibagi rata`
+          : `Mayar · ${txs.length} transaksi · ${splitMembers.length} dibagi rata`;
     return {
       // Prefiks supaya tidak pernah bentrok dengan uuid transaksi asli.
       txId: `mayar-day-${date}`,
       date,
-      description: `Mayar · ${txs.length} transaksi`,
+      description: label,
       amount,
-      fullAmount: amount,
+      fullAmount,
+      // Diisi hanya kalau ADA anggota yang dibagi rata — itulah yang
+      // memicu penanda * di sel, memakai logika yang sama dengan baris biasa.
+      branchShare: splitMembers.length
+        ? { n: splitMembers.length, origin: "All" }
+        : undefined,
       dayGroup: txs.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
     };
   });
@@ -1252,6 +1272,18 @@ function DayGroupModal({
             <div key={r.txId} className="flex gap-3 px-4 py-2 text-xs">
               <span className="min-w-0 flex-1 break-words">
                 {r.description}
+                {/* Verifikasi per transaksi: mana yang cabangnya sudah pasti,
+                    mana yang masih porsi bagi-rata. Tanpa ini rekap harian
+                    menyembunyikan campuran keduanya. */}
+                {r.branchShare ? (
+                  <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">
+                    dibagi {r.branchShare.n}
+                  </span>
+                ) : (
+                  <span className="ml-1 rounded bg-emerald-100 px-1 text-[10px] font-semibold text-emerald-700">
+                    cabang pasti
+                  </span>
+                )}
                 {r.notes && (
                   <span className="block text-[11px] text-muted-foreground">
                     {r.notes}
