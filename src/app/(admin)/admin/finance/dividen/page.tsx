@@ -7,6 +7,8 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { getDividendConsoleData } from "@/lib/actions/yeobo-dividend-console.actions";
 import { DividendConsoleClient } from "@/components/admin/finance/dividend-console/DividendConsoleClient";
+import { getDividendReconciliation } from "@/lib/actions/yeobo-dividend-reconcile.actions";
+import { DividendReconcilePanel } from "@/components/admin/finance/dividend-console/DividendReconcilePanel";
 
 interface SearchParams {
   month?: string; // YYYY-MM
@@ -66,10 +68,13 @@ export default async function DividenConsolePage({
   if (r < minR) target = { ...MIN_YM };
   if (r > maxR) target = { year: curY, month: curM };
 
-  const res = await getDividendConsoleData({
-    year: target.year,
-    month: target.month,
-  });
+  // Rekonsiliasi lintas bulan — sengaja TIDAK terikat bulan yang dipilih,
+  // karena pertanyaannya "bulan mana yang meleset", bukan "bulan ini
+  // bagaimana". Gagal di sini tidak boleh menjatuhkan konsolnya.
+  const [res, recon] = await Promise.all([
+    getDividendConsoleData({ year: target.year, month: target.month }),
+    getDividendReconciliation(),
+  ]);
 
   return (
     <div>
@@ -104,6 +109,9 @@ export default async function DividenConsolePage({
           minYm={ymStr(MIN_YM.year, MIN_YM.month)}
           maxYm={ymStr(curY, curM)}
         />
+      )}
+      {recon.ok && recon.data && (
+        <DividendReconcilePanel periods={recon.data} />
       )}
     </div>
   );
