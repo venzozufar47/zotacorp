@@ -60,6 +60,16 @@ export interface Rule {
    * one. Empty array = single-condition rule (legacy / default).
    */
   extraConditions: RuleCondition[];
+  /**
+   * `YYYY-MM-DD`. Rule hanya berlaku untuk transaksi pada/atau setelah
+   * tanggal ini. NULL = semua tanggal (perilaku lama).
+   *
+   * Dipakai saat aturan bisnis berubah di tengah jalan dan data lama
+   * TIDAK boleh ikut berubah — lihat migrasi 125 untuk kasus setor tunai
+   * Yeobo. Tanpa ini, satu klik retro-apply bisa mengubah pembukuan
+   * bulan-bulan yang sudah ditutup.
+   */
+  effectiveFrom: string | null;
 }
 
 /**
@@ -76,6 +86,14 @@ export interface RuleTargetFields {
   /** Used by the `sideFilter` check — presence of positive values. */
   debit?: number;
   credit?: number;
+  /**
+   * `YYYY-MM-DD` tanggal transaksi, dipakai cek `effectiveFrom`.
+   * Sengaja dinamai `date` agar `ParsedTransaction` cocok apa adanya.
+   * Kalau tidak diisi, rule ber-`effectiveFrom` TIDAK akan cocok —
+   * fail-closed: lebih baik transaksi tidak terkategori (kelihatan, bisa
+   * dibetulkan) daripada salah kategori (senyap, merusak laporan).
+   */
+  date?: string | null;
 }
 
 /** Narrowed check — the ParsedTransaction type already satisfies this. */
@@ -87,6 +105,7 @@ export function txToRuleTarget(tx: ParsedTransaction): RuleTargetFields {
     description: tx.description,
     debit: tx.debit,
     credit: tx.credit,
+    date: tx.date,
   };
 }
 
@@ -121,14 +140,16 @@ export function getColumnValues(
 /**
  * True iff this rule should fire on this tx. Checks in order:
  *   1. Rule must be active.
- *   2. Side filter must match (any / debit-only / credit-only).
- *   3. Primary condition (columnScope/matchType/matchValue) matches.
- *   4. Every extra condition also matches (AND).
+ *   2. Tanggal transaksi >= effectiveFrom (kalau rule punya batas).
+ *   3. Side filter must match (any / debit-only / credit-only).
+ *   4. Primary condition (columnScope/matchType/matchValue) matches.
+ *   5. Every extra condition also matches (AND).
  *
  * Short-circuits — first failing check returns false immediately.
  */
 export function ruleMatches(rule: Rule, tx: RuleTargetFields): boolean {
   if (!rule.active) return false;
+  if (!effectiveFromMatches(rule.effectiveFrom, tx.date)) return false;
   if (!sideFilterMatches(rule.sideFilter, tx)) return false;
   if (!conditionMatches(
     {
@@ -195,6 +216,26 @@ export function joinKeywords(chips: string[]): string {
   return chips.filter(Boolean).join("\n");
 }
 
+/**
+ * Rule tanpa `effectiveFrom` berlaku untuk semua tanggal (perilaku lama).
+ *
+ * Kalau rule PUNYA batas tapi transaksinya tidak membawa tanggal, hasilnya
+ * `false` — sengaja fail-closed. Transaksi yang tidak terkategori akan
+ * terlihat jelas di UI dan bisa dibetulkan; transaksi yang salah kategori
+ * diam-diam masuk laporan keuangan dan tidak ada yang tahu.
+ *
+ * Perbandingan string aman karena keduanya `YYYY-MM-DD` (leksikografis =
+ * kronologis), jadi tidak perlu parsing Date dan tidak ada jebakan zona waktu.
+ */
+function effectiveFromMatches(
+  effectiveFrom: string | null,
+  txDate: string | null | undefined
+): boolean {
+  if (!effectiveFrom) return true;
+  if (!txDate) return false;
+  return txDate >= effectiveFrom;
+}
+
 function sideFilterMatches(
   filter: RuleSideFilter,
   tx: RuleTargetFields
@@ -224,6 +265,7 @@ export function ruleFromRow(r: {
   side_filter: string;
   is_fallback: boolean;
   extra_conditions: unknown;
+  effective_from?: string | null;
 }): Rule {
   return {
     id: r.id,
@@ -239,6 +281,7 @@ export function ruleFromRow(r: {
     sideFilter: r.side_filter as RuleSideFilter,
     isFallback: r.is_fallback,
     extraConditions: parseExtraConditions(r.extra_conditions),
+    effectiveFrom: r.effective_from ?? null,
   };
 }
 

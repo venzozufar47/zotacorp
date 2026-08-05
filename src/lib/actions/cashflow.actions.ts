@@ -847,7 +847,7 @@ import type {
   RuleCondition,
   Rule,
 } from "@/lib/cashflow/rules";
-import { parseExtraConditions } from "@/lib/cashflow/rules";
+import { ruleFromRow } from "@/lib/cashflow/rules";
 
 const RULE_COLUMN_SCOPES: readonly RuleColumnScope[] = [
   "any",
@@ -962,27 +962,14 @@ export async function listCashflowRules(
   const { data, error } = await supabase
     .from("cashflow_rules")
     .select(
-      "id, bank_account_id, priority, column_scope, match_type, match_value, case_sensitive, set_category, set_branch, active, side_filter, is_fallback, extra_conditions"
+      "id, bank_account_id, priority, column_scope, match_type, match_value, case_sensitive, set_category, set_branch, active, side_filter, is_fallback, extra_conditions, effective_from"
     )
     .eq("bank_account_id", bankAccountId)
     .order("active", { ascending: false })
     .order("priority", { ascending: true });
   if (error) return { ok: false, error: error.message };
-  const rules: Rule[] = (data ?? []).map((r) => ({
-    id: r.id,
-    bankAccountId: r.bank_account_id,
-    priority: r.priority,
-    columnScope: r.column_scope as RuleColumnScope,
-    matchType: r.match_type as RuleMatchType,
-    matchValue: r.match_value,
-    caseSensitive: r.case_sensitive,
-    setCategory: r.set_category,
-    setBranch: r.set_branch,
-    active: r.active,
-    sideFilter: r.side_filter as RuleSideFilter,
-    isFallback: r.is_fallback,
-    extraConditions: parseExtraConditions(r.extra_conditions),
-  }));
+  // Lewat ruleFromRow (lihat catatan yang sama di categorize.ts).
+  const rules: Rule[] = (data ?? []).map(ruleFromRow);
   return { ok: true, data: rules };
 }
 

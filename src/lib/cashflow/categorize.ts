@@ -25,7 +25,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import type { ParsedTransaction } from "./types";
-import { parseExtraConditions, ruleMatches, type Rule } from "./rules";
+import { ruleFromRow, ruleMatches, type Rule } from "./rules";
 import { getCategoryPresets, type CategoryPresets } from "./categories";
 import { extractEffectivePeriod } from "./effective-period";
 
@@ -382,27 +382,15 @@ export async function fetchRules(
   const { data, error } = await supabase
     .from("cashflow_rules")
     .select(
-      "id, bank_account_id, priority, column_scope, match_type, match_value, case_sensitive, set_category, set_branch, active, side_filter, is_fallback, extra_conditions"
+      "id, bank_account_id, priority, column_scope, match_type, match_value, case_sensitive, set_category, set_branch, active, side_filter, is_fallback, extra_conditions, effective_from"
     )
     .eq("bank_account_id", bankAccountId)
     .eq("active", true)
     .order("priority", { ascending: true });
   if (error || !data) return [];
-  return data.map((r) => ({
-    id: r.id,
-    bankAccountId: r.bank_account_id,
-    priority: r.priority,
-    columnScope: r.column_scope as Rule["columnScope"],
-    matchType: r.match_type as Rule["matchType"],
-    matchValue: r.match_value,
-    caseSensitive: r.case_sensitive,
-    setCategory: r.set_category,
-    setBranch: r.set_branch,
-    active: r.active,
-    sideFilter: r.side_filter as Rule["sideFilter"],
-    isFallback: r.is_fallback,
-    extraConditions: parseExtraConditions(r.extra_conditions),
-  }));
+  // Lewat ruleFromRow, bukan memetakan manual — supaya menambah kolom rule
+  // cukup diubah di satu tempat (dulu tersebar dan sempat terlewat).
+  return data.map(ruleFromRow);
 }
 
 /** Resolve preset helper (thin re-export to keep one import path in callers). */

@@ -1376,6 +1376,7 @@ export type Database = {
           case_sensitive: boolean
           column_scope: string
           created_at: string
+          effective_from: string | null
           extra_conditions: Json
           id: string
           is_fallback: boolean
@@ -1393,6 +1394,7 @@ export type Database = {
           case_sensitive?: boolean
           column_scope: string
           created_at?: string
+          effective_from?: string | null
           extra_conditions?: Json
           id?: string
           is_fallback?: boolean
@@ -1410,6 +1412,7 @@ export type Database = {
           case_sensitive?: boolean
           column_scope?: string
           created_at?: string
+          effective_from?: string | null
           extra_conditions?: Json
           id?: string
           is_fallback?: boolean
