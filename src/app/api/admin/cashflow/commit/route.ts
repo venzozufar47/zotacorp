@@ -190,6 +190,10 @@ export async function POST(req: Request) {
           "transaction_date, transaction_time, sort_order, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
         )
         .eq("cashflow_statements.bank_account_id", body.bankAccountId)
+        // ORDER BY wajib: tanpa itu .range() bisa melewatkan baris, dan
+        // baris yang terlewat = existingKeys bocor = tx lama dianggap
+        // baru lalu di-insert ulang. Kunci harus unik.
+        .order("id", { ascending: true })
         .range(offset, offset + PAGE - 1);
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

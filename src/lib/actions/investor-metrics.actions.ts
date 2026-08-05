@@ -88,6 +88,10 @@ export async function getBuMetrics(input: {
     .gte("sale_date", startIso)
     .lt("sale_date", endIso)
     .is("voided_at", null)
+    // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+    // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+    // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+    .order("id", { ascending: true })
     .range(0, 199_999);
   const { data: accRaw } = await supabase
     .from("bank_accounts")

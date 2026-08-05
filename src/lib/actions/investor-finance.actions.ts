@@ -36,6 +36,10 @@ export async function getBankAccountBalance(accId: string): Promise<number> {
         "transaction_date, transaction_time, debit, credit, running_balance, sort_order"
       )
       .in("statement_id", stmtIds)
+      // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+      // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+      // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error || !data || data.length === 0) break;
     for (const t of data) {
@@ -82,6 +86,10 @@ export async function getCashAccountBalance(
         "transaction_date, transaction_time, debit, credit, running_balance, category, sort_order"
       )
       .in("statement_id", stmtIds)
+      // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+      // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+      // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error || !data || data.length === 0) break;
     for (const t of data) {
@@ -126,6 +134,10 @@ export async function getTxCountsForStatements(
       .from("cashflow_transactions")
       .select("statement_id")
       .in("statement_id", stmtIds)
+      // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+      // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+      // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error || !data || data.length === 0) break;
     for (const row of data) {
@@ -281,6 +293,10 @@ export async function getStatementSummaryForInvestor(
         )
         .eq("cashflow_statements.bank_account_id", stmt.bank_account_id)
         .lt("transaction_date", periodStart)
+        // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+        // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+        // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+        .order("id", { ascending: true })
         .range(offset, offset + PAGE_PRIOR - 1);
       if (!priorRows || priorRows.length === 0) break;
       for (const r of priorRows) {

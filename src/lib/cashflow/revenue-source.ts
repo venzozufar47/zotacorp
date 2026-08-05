@@ -86,6 +86,10 @@ export async function fetchRevenueBySource(
       .gt("credit", 0)
       .gte("transaction_date", startDate)
       .lte("transaction_date", endDate)
+      // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+      // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+      // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) return empty;
     const rows = (data ?? []) as unknown as Row[];

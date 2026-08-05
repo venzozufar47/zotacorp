@@ -255,6 +255,20 @@ export async function fetchYeoboPnL(
       .eq("cashflow_statements.bank_accounts.business_unit", "Yeobo Space")
       .gte("effective_period", periodStart)
       .lt("effective_period", periodEndExcl)
+      // ORDER BY WAJIB sebelum .range(). Postgres tidak menjamin urutan
+      // baris tanpa ORDER BY, jadi OFFSET/LIMIT lintas halaman bisa
+      // melewatkan sebagian baris DAN menggandakan sebagian lain —
+      // hasilnya berbeda tiap kali dipanggil.
+      //
+      // Nyata terjadi 2026-08-05: konsol dividen menarik rentang seumur
+      // hidup (2.361 baris = 3 halaman) dan operating profit Juli
+      // berubah-ubah tiap refresh, sampai belasan juta. Bug ini lama
+      // tertidur karena tabelnya diam; begitu ada delete/update/insert,
+      // urutan fisik heap bergeser dan langsung terlihat.
+      //
+      // Kuncinya harus UNIK — `transaction_date` saja tidak cukup karena
+      // banyak baris berbagi tanggal yang sama.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) throw error;
     const rows = (data ?? []) as unknown as TxRow[];

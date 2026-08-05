@@ -1563,6 +1563,10 @@ export async function getPosShiftSummary(
       )
       .in("statement_id", stmtIds)
       .lte("transaction_date", today)
+      // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+      // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+      // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error || !data || data.length === 0) break;
     allRows.push(...(data as Row[]));

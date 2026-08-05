@@ -45,6 +45,10 @@ async function refSet(
         .from(table)
         .select(col)
         .not(col, "is", null)
+        // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+        // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+        // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+        .order("id", { ascending: true })
         .range(from, from + 999);
       if (error) throw new Error(`${table}.${col}: ${error.message}`);
       const rows = (data ?? []) as unknown as Record<string, string | null>[];

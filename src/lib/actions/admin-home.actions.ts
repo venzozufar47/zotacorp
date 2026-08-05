@@ -132,7 +132,12 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       if (range.eqDate) q = q.eq("sale_date", range.eqDate);
       if (range.gte) q = q.gte("sale_date", range.gte);
       if (range.lt) q = q.lt("sale_date", range.lt);
-      const { data } = await q.range(offset, offset + PAGE - 1);
+      // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+      // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+      // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+      const { data } = await q
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE - 1);
       const rows = (data ?? []) as { total: number | null }[];
       total += rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
       if (rows.length < PAGE) break;

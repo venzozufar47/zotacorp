@@ -312,6 +312,10 @@ export async function POST(req: Request) {
           "transaction_date, transaction_time, sort_order, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
         )
         .eq("cashflow_statements.bank_account_id", bankAccountId)
+        // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+        // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+        // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+        .order("id", { ascending: true })
         .range(offset, offset + PAGE - 1);
       const rows = (data ?? []) as ExistingRow[];
       existingRows.push(...rows);

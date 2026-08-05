@@ -298,6 +298,10 @@ export async function fetchPnL(
       .eq("cashflow_statements.bank_accounts.business_unit", businessUnit)
       .gte("effective_period", periodStart)
       .lt("effective_period", periodEndExcl)
+      // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+      // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+      // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) throw error;
     const rows = (page ?? []) as PnLTxRow[];
@@ -313,6 +317,10 @@ export async function fetchPnL(
     .eq("business_unit", businessUnit)
     .gte("period_year", from.year)
     .lte("period_year", to.year)
+    // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+    // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+    // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+    .order("id", { ascending: true })
     .range(0, 99999);
 
   // allocs keyed by "year-month|side|category"
@@ -366,6 +374,10 @@ export async function fetchPnL(
         )
         .gte("scheduled_at", startIso)
         .lt("scheduled_at", endIso)
+        // ORDER BY wajib sebelum .range(): tanpa kunci unik, Postgres tidak
+        // menjamin urutan, sehingga paginasi bisa melewatkan sebagian baris
+        // DAN menggandakan sebagian lain — hasilnya beda tiap pemanggilan.
+        .order("id", { ascending: true })
         .range(offset, offset + CAKE_PAGE - 1);
       if (error) break; // advisory only — never fail the report over the hint
       // `free_claim` (migration 094) belum ada di generated types — cast
