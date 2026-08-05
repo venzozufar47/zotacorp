@@ -72,6 +72,15 @@ export interface MayarBranchSyncResult {
   unmatched: number;
   /** Ada kandidat, tapi cabangnya berbeda-beda → sengaja dilewati. */
   conflicting: number;
+  /**
+   * Tidak ketemu lewat booking, lalu ditetapkan mengikuti proporsi Mayar
+   * bulan itu sendiri (lihat `assignByMonthlyProportion`). Angka ini
+   * sengaja dipisah dari `assigned` supaya taksiran tidak menyamar
+   * sebagai kepastian saat dibaca di log cron.
+   */
+  proportional: number;
+  /** Benar-benar dibiarkan "All": bulan itu belum punya dasar proporsi. */
+  leftAll: number;
   perBranch: Record<string, number>;
   /** Diisi saat dryRun — contoh yang gagal cocok, untuk ditelusuri admin. */
   samples: Array<{ date: string; name: string; gross: number; reason: string }>;
@@ -137,6 +146,8 @@ export async function syncMayarBranches(
     assigned: 0,
     unmatched: 0,
     conflicting: 0,
+    proportional: 0,
+    leftAll: 0,
     perBranch: {},
     samples: [],
   };
@@ -168,7 +179,9 @@ export async function syncMayarBranches(
   // ditetapkan — otomatis maupun manual oleh admin — tidak disentuh lagi.
   const { data: txs } = await admin
     .from("cashflow_transactions")
-    .select("id, transaction_date, transaction_time, source_destination, notes")
+    .select(
+      "id, transaction_date, transaction_time, source_destination, notes, credit"
+    )
     .in("statement_id", stmtIds)
     .gt("credit", 0)
     .eq("branch", "All");
@@ -180,6 +193,7 @@ export async function syncMayarBranches(
       minute: hhmmToMinute(t.transaction_time),
       name: norm(t.source_destination),
       gross: parseGross(t.notes),
+      net: Number(t.credit) || 0,
     }))
     .filter((t) => t.name && t.gross !== null);
 
@@ -370,6 +384,8 @@ export async function syncMayarBranches(
   };
 
   const updates: Array<{ id: string; branch: string }> = [];
+  /** Yang gagal dicocokkan ke booking — ditangani proporsional di bawah. */
+  const leftovers: Array<{ id: string; date: string; net: number }> = [];
   for (const tx of pending) {
     // Berjenjang dari bukti terkuat ke terlemah; berhenti di tingkat
     // pertama yang menghasilkan tepat satu cabang. Urutannya penting:
@@ -440,6 +456,7 @@ export async function syncMayarBranches(
       const reason = found.size === 0 ? "tanpa booking cocok" : "cabang berbeda";
       if (found.size === 0) result.unmatched += 1;
       else result.conflicting += 1;
+      leftovers.push({ id: tx.id, date: tx.date, net: tx.net });
       if (result.samples.length < 20) {
         result.samples.push({
           date: tx.date,
@@ -448,6 +465,74 @@ export async function syncMayarBranches(
           reason,
         });
       }
+    }
+  }
+
+  // ── Cadangan terakhir: ikut proporsi Mayar bulan itu sendiri ──────────
+  //
+  // Perilaku lama membiarkan yang tak cocok tetap "All", yang berarti ia
+  // ikut dibagi rata 1/3 bersama revenue rekening lain. Itu keputusan yang
+  // masuk akal ketika Mayar memang belum punya cabang sama sekali; setelah
+  // 98% transaksinya ter-cabang, menyisakan sebagian kecil di pot bagi-rata
+  // justru mencampur dua mekanisme dan membuat panel alokasi memuat angka
+  // Mayar yang seharusnya sudah selesai.
+  //
+  // Dasarnya proporsi Mayar BULAN ITU yang berhasil dicocokkan — bukan 1/3
+  // rata, dan bukan tebakan dari luar data.
+  //
+  // BATAS YANG JUJUR: satu baris transaksi hanya punya SATU kolom `branch`;
+  // tidak ada sentinel untuk proporsi kustom. Jadi nominalnya tidak benar-
+  // benar dipecah — tiap baris jatuh utuh ke cabang yang saat itu paling
+  // jauh di bawah target proporsinya. Untuk banyak baris hasilnya menuju
+  // proporsi; untuk satu baris ia hanya mendekati. Nilainya kecil
+  // (Juli 2026: Rp61.617 dari Rp48,6 juta) sehingga selisihnya tidak
+  // material, tapi ini taksiran dan dihitung terpisah di `proportional`.
+  if (leftovers.length > 0) {
+    const basis = new Map<string, Map<string, number>>(); // bulan → cabang → nominal
+    const { data: assignedRows } = await admin
+      .from("cashflow_transactions")
+      .select("transaction_date, branch, credit")
+      .in("statement_id", stmtIds)
+      .gt("credit", 0)
+      .in("branch", Object.values(BRANCH_MAP));
+    for (const r of assignedRows ?? []) {
+      const key = (r.transaction_date as string).slice(0, 7);
+      const m = basis.get(key) ?? new Map<string, number>();
+      m.set(r.branch as string, (m.get(r.branch as string) ?? 0) + Number(r.credit || 0));
+      basis.set(key, m);
+    }
+
+    // Terbesar dulu: baris besar paling menentukan bentuk akhirnya.
+    for (const lo of [...leftovers].sort((a, b) => b.net - a.net)) {
+      const monthKey = lo.date.slice(0, 7);
+      const running = basis.get(monthKey);
+      const total = [...(running?.values() ?? [])].reduce((s, v) => s + v, 0);
+      if (!running || total <= 0) {
+        // Bulan itu belum punya satu pun Mayar ber-cabang — tidak ada dasar
+        // apa pun. Dibiarkan "All" (terlihat, bisa dikoreksi) daripada
+        // ditebak dari bulan lain.
+        result.leftAll += 1;
+        continue;
+      }
+      // Cabang yang paling tertinggal dari target proporsinya.
+      let pick: string | null = null;
+      let worst = -Infinity;
+      for (const [branch, amount] of running) {
+        const share = amount / total;
+        const deficit = share * (total + lo.net) - amount;
+        if (deficit > worst) {
+          worst = deficit;
+          pick = branch;
+        }
+      }
+      if (!pick) {
+        result.leftAll += 1;
+        continue;
+      }
+      updates.push({ id: lo.id, branch: pick });
+      running.set(pick, (running.get(pick) ?? 0) + lo.net);
+      result.proportional += 1;
+      result.perBranch[pick] = (result.perBranch[pick] ?? 0) + 1;
     }
   }
 

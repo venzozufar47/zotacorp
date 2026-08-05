@@ -148,25 +148,39 @@ function MonthRow({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  // The input box holds the FULL per-branch revenue (cash + bank),
-  // because that's the data the admin has. The stored allocation is the
-  // branch="All" portion = full − cash-already-tagged, so the PnL
-  // aggregator (which only splits branch=All) never double-counts the
-  // cash that's already attributed to a branch.
-  const cashOf = (b: string) => summary.branchSpecificByBranch[b] ?? 0;
+  // Kotak input berisi PEMBAGIAN POT saja — revenue branch="All" yang
+  // memang belum punya cabang. Bagian yang sudah ter-atribusi ditampilkan
+  // di sebelahnya sebagai konteks, tidak untuk diketik ulang.
+  //
+  // Model lama meminta TOTAL PENUH per cabang (sudah-ter-cabang + bagian
+  // pot) lalu memotong bagian yang sudah ter-cabang saat simpan. Itu
+  // masuk akal ketika nyaris tidak ada yang pre-assigned. Setelah
+  // penetapan cabang Mayar berjalan (~90% revenue Yeobo Juli 2026 sudah
+  // punya cabang sendiri), model itu punya dua masalah:
+  //
+  //   1. Admin harus mengetik ulang puluhan juta yang sudah selesai untuk
+  //      membagi beberapa juta yang tersisa.
+  //   2. "Bagi rata" jadi TIDAK BISA DISIMPAN. Ia mengisi grandTotal/3;
+  //      cabang yang porsi Mayar-nya sudah di atas sepertiga menghasilkan
+  //      angka negatif setelah pemotongan, dan server menolaknya
+  //      ("Nominal tidak boleh negatif"). Juli 2026: Tlogosari sudah
+  //      Rp21,8 jt dari sepertiga Rp18,8 jt → −Rp2,99 jt.
+  //
+  // Yang disimpan tetap sama persis (porsi pot per cabang), jadi
+  // aggregator PnL tidak berubah sama sekali — hanya cara memintanya.
+  const assignedOf = (b: string) => summary.branchSpecificByBranch[b] ?? 0;
 
-  // Seed: existing stored alloc + add back cash to show full per-branch;
-  // else even split of the full grand total as a starting point.
+  // Seed: alokasi tersimpan apa adanya; kalau belum ada, bagi rata POT.
   const seed = (): Record<string, string> => {
     const out: Record<string, string> = {};
     if (summary.allocations.length > 0) {
       for (const b of branches) {
         const found = summary.allocations.find((a) => a.branch === b);
-        out[b] = String((found ? found.amount : 0) + cashOf(b));
+        out[b] = String(found ? found.amount : 0);
       }
     } else {
-      const per = Math.floor(summary.grandTotal / branches.length);
-      const rem = summary.grandTotal - per * branches.length;
+      const per = Math.floor(summary.totalAll / branches.length);
+      const rem = summary.totalAll - per * branches.length;
       branches.forEach((b, i) => {
         out[b] = String(per + (i < rem ? 1 : 0));
       });
@@ -175,8 +189,8 @@ function MonthRow({
   };
   const [amounts, setAmounts] = useState<Record<string, string>>(seed);
 
-  // Target = FULL revenue (allocatable branch=All + already-tagged cash).
-  const target = summary.grandTotal;
+  // Target = pot yang dibagi saja.
+  const target = summary.totalAll;
   const allocatedTotal = branches.reduce(
     (s, b) => s + (parseFloat(amounts[b]) || 0),
     0
@@ -198,15 +212,15 @@ function MonthRow({
   };
 
   const handleSave = () => {
-    // Store the admin's input AS-IS (only stripping each branch's
-    // already-tagged cash, floored at 0). We deliberately do NOT
-    // auto-spread the gap to hit target: the aggregator stores these as
-    // PROPORTIONS and distributes the actual branch=All revenue by ratio,
-    // so the admin's numbers only need the right ratio — and the admin
-    // wants their entered figures preserved exactly so they can verify.
+    // Disimpan APA ADANYA — tidak ada lagi pemotongan, karena yang
+    // diketik memang sudah porsi pot. Gap ke target sengaja TIDAK
+    // ditambal otomatis: aggregator menyimpannya sebagai PROPORSI lalu
+    // membagi revenue branch="All" yang sebenarnya menurut rasio itu,
+    // jadi angka admin cukup benar rasionya — dan admin ingin angkanya
+    // tersimpan persis seperti yang ia ketik supaya bisa diperiksa.
     const allocations = branches.map((b) => ({
       branch: b,
-      amount: Math.max(0, (parseFloat(amounts[b]) || 0) - cashOf(b)),
+      amount: Math.max(0, parseFloat(amounts[b]) || 0),
     }));
     startTransition(async () => {
       const res = await upsertRevenueMonthAllocation(
@@ -270,7 +284,7 @@ function MonthRow({
             {summary.branchSpecificTotal > 0 && (
               <>
                 {" "}
-                (rekening {formatIDR(summary.totalAll)} + cash{" "}
+                (perlu dibagi {formatIDR(summary.totalAll)} · sudah ber-cabang{" "}
                 {formatIDR(summary.branchSpecificTotal)})
               </>
             )}
@@ -299,54 +313,54 @@ function MonthRow({
       </div>
       {expanded && (
         <div className="px-4 py-3 border-t border-border/60 space-y-2 bg-muted/20">
-          {/* Isi total revenue PENUH per cabang (cash + rekening). Sistem
-              otomatis kurangi cash yang sudah ter-cabang sebelum simpan,
-              supaya cash tidak terhitung dua kali di PnL. Target = total
-              revenue penuh bulan ini. */}
+          {/* Yang diminta HANYA pembagian pot. Bagian yang sudah punya
+              cabang ditampilkan sebagai konteks — bukan untuk diketik
+              ulang. Lihat catatan panjang di dekat `assignedOf`. */}
           <div className="rounded-lg border border-border bg-card/60 p-2.5 text-[11px] space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">
-                Revenue rekening (branch=All, dibagi)
-              </span>
-              <span className="font-mono tabular-nums">
-                {formatIDR(summary.totalAll)}
-              </span>
-            </div>
             {summary.branchSpecificTotal > 0 && (
               <div className="flex items-center justify-between text-muted-foreground">
-                <span>+ Revenue cash (sudah ter-cabang)</span>
+                <span>Sudah punya cabang sendiri (tidak dibagi)</span>
                 <span className="font-mono tabular-nums">
-                  + {formatIDR(summary.branchSpecificTotal)}
+                  {formatIDR(summary.branchSpecificTotal)}
                 </span>
               </div>
             )}
-            <div className="flex items-center justify-between border-t border-border/60 pt-1 font-medium">
-              <span>= Target total revenue cabang</span>
+            <div className="flex items-center justify-between font-medium">
+              <span>Perlu kamu bagi</span>
               <span className="font-mono tabular-nums">
                 {formatIDR(target)}
               </span>
             </div>
+            {summary.branchSpecificTotal > 0 && (
+              <div className="flex items-center justify-between border-t border-border/60 pt-1 text-muted-foreground">
+                <span>Total revenue bulan ini</span>
+                <span className="font-mono tabular-nums">
+                  {formatIDR(summary.grandTotal)}
+                </span>
+              </div>
+            )}
             <p className="text-[10px] text-muted-foreground pt-0.5">
-              Isi <strong>total penuh per cabang (cash + rekening)</strong> agar
-              pas dengan <strong>{formatIDR(target)}</strong>. Cash tiap cabang
-              otomatis dipotong saat simpan supaya tidak dobel hitung.
+              Isi pembagian <strong>{formatIDR(target)}</strong> saja. Revenue
+              yang cabangnya sudah pasti — misalnya transaksi Mayar yang
+              tercocokkan ke booking — tidak perlu diketik dan tidak akan
+              terhitung dua kali.
             </p>
           </div>
           {branches.map((b) => {
             const amt = parseFloat(amounts[b]) || 0;
             const pct =
               allocatedTotal > 0 ? (amt / allocatedTotal) * 100 : 0;
-            const cash = cashOf(b);
+            const assigned = assignedOf(b);
             return (
               <div key={b} className="flex items-center gap-2">
-                <span className="text-xs w-24 shrink-0">
+                <span className="text-xs w-28 shrink-0">
                   {b}
-                  {cash > 0 && (
+                  {assigned > 0 && (
                     <span
                       className="block text-[9px] text-muted-foreground/70 tabular-nums"
-                      title="Termasuk cash yang sudah ter-cabang; otomatis dipotong saat simpan"
+                      title="Sudah punya cabang sendiri — di luar pot yang kamu bagi"
                     >
-                      cash {formatIDR(cash)}
+                      sudah {formatIDR(assigned)}
                     </span>
                   )}
                 </span>
@@ -357,8 +371,13 @@ function MonthRow({
                   className="flex-1 text-sm h-8 text-right font-mono tabular-nums"
                   min={0}
                 />
-                <span className="text-[10px] text-muted-foreground w-12 text-right tabular-nums">
+                <span className="text-[10px] text-muted-foreground w-28 text-right tabular-nums">
                   {pct.toFixed(1)}%
+                  {assigned > 0 && (
+                    <span className="block text-[9px] text-muted-foreground/70">
+                      total {formatIDR(assigned + amt)}
+                    </span>
+                  )}
                 </span>
               </div>
             );
