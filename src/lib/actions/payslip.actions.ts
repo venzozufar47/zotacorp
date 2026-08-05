@@ -1518,9 +1518,27 @@ export async function bulkCalculatePayslips(
   //    every row we built.
   if (finalUpserts.length > 0) {
     const rows = finalUpserts as unknown as Database["public"]["Tables"]["payslips"]["Insert"][];
+    // `defaultToNull: false` (Prefer: missing=default) WAJIB di sini.
+    //
+    // Baris payslip BARU sengaja tidak membawa `id` supaya default kolom
+    // gen_random_uuid() yang mengisinya, sedangkan baris LAMA membawa
+    // `id` hasil lookup. Key set-nya jadi berbeda dalam satu array — dan
+    // pada bulk insert PostgREST menyatukan kolom lalu mengisi yang
+    // hilang dengan NULL EKSPLISIT, yang menimpa default kolom. Hasilnya
+    // 23502 "null value in column id violates not-null constraint",
+    // padahal kolomnya jelas punya default.
+    //
+    // Jadi jalur cepat ini GAGAL setiap kali satu run mencampur payslip
+    // baru dan lama — persis kasus paling lumrah. Fallback per-baris di
+    // bawah menyelamatkan datanya, jadi tidak pernah ada yang hilang;
+    // yang terjadi cuma N+1 round-trip diam-diam plus log yang terbaca
+    // seperti kerusakan serius. Terpantau 2 Ags 2026.
     const { error: upsertErr } = await supabase
       .from("payslips")
-      .upsert(rows, { onConflict: "user_id,month,year" });
+      .upsert(rows, {
+        onConflict: "user_id,month,year",
+        defaultToNull: false,
+      });
     if (upsertErr) {
       // Batch upsert is all-or-nothing: a single bad row (e.g. an
       // out-of-range/NaN numeric, or one row tripping a constraint) would

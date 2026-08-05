@@ -26,11 +26,64 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // `getUser()` MELEMPAR (bukan mengembalikan { error }) saat refresh token
+  // di cookie tidak dikenal server auth — mis. token sudah dirotasi, sesi
+  // dicabut, atau cookie tertinggal dari project Supabase lain. Tanpa
+  // tangkapan ini, middleware meneruskan AuthApiError ke Next dan user
+  // mendapat 500.
+  //
+  // Yang membuatnya buntu: cookie basinya TETAP ada, jadi memuat ulang
+  // menghasilkan 500 lagi. User tidak punya jalan keluar selain
+  // membersihkan cookie sendiri — sesuatu yang tidak bisa diharapkan.
+  // Terpantau 20 kali di produksi (17 Jun - 3 Ags 2026), semuanya pada
+  // satu user yang berarti memang mentok, bukan sesekali.
+  //
+  // Ditangani seperti "belum login": lanjut dengan user null, dan cookie
+  // auth-nya dihapus supaya percobaan berikutnya bersih.
+  let user: Awaited<
+    ReturnType<typeof supabase.auth.getUser>
+  >["data"]["user"] = null;
+  let authCookiesStale = false;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    authCookiesStale = true;
+  }
 
   const { pathname } = request.nextUrl;
+
+  if (authCookiesStale) {
+    // Hapus cookie sesi Supabase (`sb-<ref>-auth-token`, bisa terpecah
+    // jadi `.0`, `.1`, … untuk token panjang). Dihapus by-name dari yang
+    // benar-benar dikirim browser, bukan menebak namanya.
+    for (const c of request.cookies.getAll()) {
+      if (c.name.startsWith("sb-") && c.name.includes("auth-token")) {
+        supabaseResponse.cookies.delete(c.name);
+      }
+    }
+    // Rute publik tetap dilayani — kalau tidak, landing page ikut 500 dan
+    // user tetap tidak bisa login.
+    const publicish =
+      pathname === "/" ||
+      pathname === "/privacy" ||
+      pathname === "/set-password" ||
+      pathname === "/reset-password" ||
+      pathname.startsWith("/login") ||
+      pathname.startsWith("/register") ||
+      pathname.startsWith("/api");
+    if (publicish) return supabaseResponse;
+
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    const redirect = NextResponse.redirect(url);
+    for (const c of request.cookies.getAll()) {
+      if (c.name.startsWith("sb-") && c.name.includes("auth-token")) {
+        redirect.cookies.delete(c.name);
+      }
+    }
+    return redirect;
+  }
 
   // Auth-action pages (invite "buat password" + recovery "reset password")
   // menerima token lewat URL hash dan membangun sesi di sisi CLIENT. Saat
