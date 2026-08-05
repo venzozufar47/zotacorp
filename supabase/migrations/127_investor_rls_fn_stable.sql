@@ -1,0 +1,35 @@
+-- is_investor_for_business_unit: VOLATILE -> STABLE.
+--
+-- Menyebabkan halaman PnL & detail rekening gagal dengan Postgres 57014
+-- ("canceling statement due to statement timeout", batas 8 detik untuk
+-- role `authenticated`). Terlihat pertama 2026-07-30, 7 kejadian, 2 user.
+--
+-- Empat fungsi RLS lain (is_admin, is_admin_or_assignee,
+-- is_admin_or_pos_assignee, is_service_level_owner) sudah STABLE; yang
+-- ini tertinggal. Default volatilitas Postgres adalah VOLATILE, jadi
+-- kemungkinan besar hanya lupa ditulis, bukan keputusan.
+--
+-- Akibatnya fatal karena fungsi ini dipanggil dari dalam policy
+-- `cashflow_transactions_investor_select`, yang berbentuk EXISTS
+-- berkorelasi. VOLATILE membuat planner tidak boleh mengangkat atau
+-- meng-cache pemanggilannya, sehingga fungsi — yang SECURITY DEFINER dan
+-- menembak dua tabel — dieksekusi ULANG UNTUK SETIAP BARIS.
+--
+-- Terukur pada bentuk query yang sama persis dengan policy-nya:
+--
+--   VOLATILE  Seq Scan 12.215 baris, SubPlan loops=12215 ...  487 ms
+--   STABLE    Nested Loop + Memoize (81 hit / 10 miss) ......  2,4 ms
+--
+--   205x, dan itu batas BAWAH: pengukuran dijalankan sebagai service_role
+--   sehingga auth.uid() null dan fungsinya korslet lebih awal. Sesi login
+--   sungguhan mengerjakan lebih banyak per pemanggilan.
+--
+-- Halaman PnL menjalankan belasan query semacam ini per render, dan ada
+-- EMPAT policy SELECT yang di-OR pada tabel yang sama — masing-masing
+-- membawa subquery sendiri. Itu yang menembus 8 detik.
+--
+-- STABLE aman dan TIDAK melemahkan pemeriksaan apa pun: badan fungsinya
+-- murni `SELECT EXISTS (...)` tanpa efek samping, dan STABLE hanya
+-- menyatakan hasilnya konsisten dalam satu statement — yang memang benar.
+
+ALTER FUNCTION public.is_investor_for_business_unit(text) STABLE;
