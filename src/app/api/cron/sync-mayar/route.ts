@@ -23,6 +23,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { syncMayar } from "@/lib/actions/cashflow.actions";
 import { checkCronAuth } from "@/lib/utils/cron-auth";
+import { syncMayarBranches } from "@/lib/yeobospace/mayar-branch-sync";
 
 export async function GET(req: Request) {
   const denied = checkCronAuth(req);
@@ -86,10 +87,28 @@ export async function GET(req: Request) {
     }
   }
 
+  // Setelah transaksi masuk, tetapkan cabangnya dari booking yeobospace.
+  // Dijalankan di sini (bukan cron terpisah) supaya urutannya pasti: tidak
+  // ada gunanya mencari cabang untuk transaksi yang belum diimpor.
+  //
+  // Best-effort: kegagalan di langkah ini TIDAK menggagalkan impor Mayar
+  // yang sudah sukses. Transaksi tanpa cabang tetap aman — ia jatuh ke
+  // bagi rata seperti perilaku lama, dan run berikutnya mencoba lagi.
+  let branchSync:
+    | Awaited<ReturnType<typeof syncMayarBranches>>
+    | { error: string };
+  try {
+    branchSync = await syncMayarBranches(adminClient);
+  } catch (e) {
+    branchSync = { error: e instanceof Error ? e.message : String(e) };
+    console.error("[cron/sync-mayar] penetapan cabang gagal", e);
+  }
+
   return NextResponse.json({
     ok: true,
     ranAt: new Date().toISOString(),
     count: results.length,
     results,
+    branchSync,
   });
 }
