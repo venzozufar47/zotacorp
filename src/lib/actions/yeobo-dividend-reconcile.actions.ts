@@ -36,9 +36,10 @@
  *
  * CAKUPAN
  * Mulai Mei 2026. Sebelum itu baris Dividend di PnL tidak dibaca dari
- * ledger sama sekali: Jan–Apr 2026 diganti `YEOBO_DIVIDEND_OVERRIDE` dan
+ * ledger sama sekali: Jan–Apr 2026 dilayani tabel
+ * `yeobo_dividend_pnl_override` (angka kesepakatan, tanpa entri konsol) dan
  * sebelum 2026 diganti hardcode penuh. Membandingkannya hanya akan
- * menghasilkan alarm palsu.
+ * menghasilkan alarm palsu "tanpa keputusan konsol".
  */
 
 import { createAdminClient } from "./_supabase-admin";
