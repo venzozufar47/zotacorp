@@ -53,6 +53,16 @@ const DAY_WINDOW = 1;
  */
 const FALLBACK_DAY_WINDOW = 2;
 
+/**
+ * Jendela terakhir, dipakai hanya kalau semua tingkat sebelumnya gagal.
+ *
+ * Sesi tidak selalu dibayar di hari yang sama — ada yang melunasi beberapa
+ * hari SETELAH sesi (mis. sesi 28 Juni dibayar 3 Juli). Selebar ini
+ * pencocokan nominal sudah tidak dipakai, jadi keamanannya bertumpu penuh
+ * pada syarat "semua kandidat satu cabang".
+ */
+const LAST_RESORT_DAY_WINDOW = 10;
+
 export interface MayarBranchSyncResult {
   /** Transaksi Mayar tanpa cabang yang diperiksa. */
   candidates: number;
@@ -164,55 +174,93 @@ export async function syncMayarBranches(
   // Ke depan dilebarkan jauh (sesi bisa dipesan berbulan-bulan sebelumnya),
   // ke belakang cukup sempit karena sesi tidak pernah mendahului bayar.
   const dates = pending.map((p) => p.date).sort();
-  const from = shiftDate(dates[0], -FALLBACK_DAY_WINDOW);
+  const from = shiftDate(dates[0], -30);
   const to = shiftDate(dates[dates.length - 1], 120);
 
-  // SEMUA booking terkonfirmasi, bukan hanya `payment_method='online'`.
+  // SEMUA booking, tanpa filter metode pembayaran MAUPUN status.
   //
-  // Batasan "online" dulu membuat 6% transaksi gagal dicocokkan, dan
-  // penyebabnya ternyata masuk akal: pelanggan memesan dengan voucher atau
-  // cash, lalu menambah cetak/waktu dan MEMBAYAR TAMBAHANNYA lewat Mayar.
-  // Booking-nya ada dan cabangnya jelas — hanya metode pembayaran utamanya
-  // yang bukan online, sehingga tak pernah ikut terbaca.
+  // Batasan "online" dulu membuang kasus yang paling mudah: pelanggan
+  // memesan dengan voucher/cash lalu menambah cetak dan membayar
+  // tambahannya lewat Mayar — booking-nya ada, cabangnya jelas.
   //
-  // Difilter ke booking_date karena booking non-online tidak punya payload
-  // pembayaran; tanggal sesi jadi satu-satunya penanda waktu yang tersedia.
+  // Batasan "confirmed" ternyata sama merugikannya. Booking bisa berstatus
+  // `expired` atau `cancelled` sementara uangnya SUDAH masuk ke Mayar;
+  // statusnya cuma menandakan alur konfirmasi di aplikasi booking tidak
+  // tuntas. Adanya pembayaran Mayar justru bukti sesinya terjadi. Karena
+  // itu status dipakai sebagai PRIORITAS (confirmed lebih dulu), bukan
+  // sebagai penyaring.
+  //
+  // WAJIB paginasi. PostgREST memotong hasil di 1.000 baris tanpa error,
+  // dan rentang ini bisa memuat ribuan booking. Truncation di sini tidak
+  // sekadar membuat transaksi gagal dicocokkan — jauh lebih berbahaya: satu
+  // kasus yang sebenarnya AMBIGU bisa tampak pasti karena booking
+  // pembandingnya kebetulan tidak ikut terambil, lalu cabangnya ditulis
+  // dengan yakin ke data keuangan. Persis itu yang terjadi pada `elisa`
+  // (dua booking hari sama, Jebres & Tlogosari) sebelum paginasi dipasang.
   const yeobo = createClient(yUrl, yKey);
-  const { data: bookings, error } = await yeobo
-    .from("bookings")
-    .select("branch_id, name, booking_date, provider_payload")
-    .eq("status", "confirmed")
-    .gte("booking_date", from)
-    .lte("booking_date", to);
-  if (error) throw new Error(`baca bookings yeobospace: ${error.message}`);
+  type BookingRow = {
+    branch_id?: string;
+    name?: string;
+    booking_date?: string;
+    status?: string;
+    provider_payload?: { data?: Record<string, unknown> };
+  };
+  const bookings: BookingRow[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await yeobo
+      .from("bookings")
+      .select("branch_id, name, booking_date, status, provider_payload")
+      .gte("booking_date", from)
+      .lte("booking_date", to)
+      .order("booking_date", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(`baca bookings yeobospace: ${error.message}`);
+    const rows = (data ?? []) as unknown as BookingRow[];
+    bookings.push(...rows);
+    if (rows.length < PAGE) break;
+  }
 
   // Tiga index, dipakai berjenjang dari yang paling meyakinkan:
   //   exact      nama + bruto + tanggal BAYAR   (booking online)
   //   byPayDate  nama + tanggal BAYAR           (top-up di booking online)
   //   byBookDate nama + tanggal SESI            (top-up di booking voucher/cash)
-  const exact = new Map<string, Set<string>>();
-  const byPayDate = new Map<string, Set<string>>();
-  const byBookDate = new Map<string, Set<string>>();
+  // Tiap index dibuat dua kali: satu hanya dari booking `confirmed`, satu
+  // dari SEMUA status. Yang confirmed selalu dicoba lebih dulu, sehingga
+  // booking expired/cancelled hanya dipakai kalau tidak ada bukti yang
+  // lebih kuat — persis seperti `melly dwi`, yang punya satu booking
+  // confirmed di Tembalang dan satu expired di Tlogosari.
+  type Idx = {
+    exact: Map<string, Set<string>>;
+    byPayDate: Map<string, Set<string>>;
+    byBookDate: Map<string, Set<string>>;
+  };
+  const mk = (): Idx => ({
+    exact: new Map(),
+    byPayDate: new Map(),
+    byBookDate: new Map(),
+  });
+  const confirmedIdx = mk();
+  const anyIdx = mk();
+
   const add = (map: Map<string, Set<string>>, key: string, branch: string) => {
     const set = map.get(key) ?? new Set<string>();
     set.add(branch);
     map.set(key, set);
   };
 
-  for (const b of bookings ?? []) {
-    const row = b as {
-      branch_id?: string;
-      name?: string;
-      booking_date?: string;
-      provider_payload?: { data?: Record<string, unknown> };
-    };
+  for (const row of bookings) {
     const branch = BRANCH_MAP[norm(row.branch_id)];
     if (!branch) continue;
+    const targets: Idx[] =
+      norm(row.status) === "confirmed" ? [confirmedIdx, anyIdx] : [anyIdx];
 
     // Nama pemesan selalu ada, termasuk pada booking non-online.
     const bookingName = norm(row.name);
     if (bookingName && row.booking_date) {
-      add(byBookDate, `${bookingName}|${row.booking_date}`, branch);
+      for (const t of targets) {
+        add(t.byBookDate, `${bookingName}|${row.booking_date}`, branch);
+      }
     }
 
     // Nama & waktu dari payload pembayaran — hanya ada di booking online,
@@ -224,10 +272,12 @@ export async function syncMayarBranches(
     const createdAt = payload.createdAt as string | undefined;
     if (!payName || !createdAt) continue;
     const day = wibDate(createdAt);
-    if (Number.isFinite(amount)) {
-      add(exact, `${payName}|${amount}|${day}`, branch);
+    for (const t of targets) {
+      if (Number.isFinite(amount)) {
+        add(t.exact, `${payName}|${amount}|${day}`, branch);
+      }
+      add(t.byPayDate, `${payName}|${day}`, branch);
     }
-    add(byPayDate, `${payName}|${day}`, branch);
   }
 
   /** Kumpulkan cabang dari satu index dalam jendela ±`window` hari. */
@@ -246,29 +296,29 @@ export async function syncMayarBranches(
 
   const updates: Array<{ id: string; branch: string }> = [];
   for (const tx of pending) {
-    // Berjenjang: berhenti pada tingkat pertama yang membuahkan hasil,
-    // supaya pencocokan longgar tidak pernah melangkahi yang presisi.
-    let found = lookup(
-      exact,
-      (day) => `${tx.name}|${tx.gross}|${day}`,
-      tx.date,
-      DAY_WINDOW
-    );
-    if (found.size === 0) {
-      found = lookup(
-        byPayDate,
-        (day) => `${tx.name}|${day}`,
-        tx.date,
-        FALLBACK_DAY_WINDOW
-      );
-    }
-    if (found.size === 0) {
-      found = lookup(
-        byBookDate,
-        (day) => `${tx.name}|${day}`,
-        tx.date,
-        FALLBACK_DAY_WINDOW
-      );
+    // Berjenjang dari bukti terkuat ke terlemah; berhenti di tingkat
+    // pertama yang menghasilkan tepat satu cabang. Urutannya penting:
+    // booking confirmed selalu dihabiskan dulu sebelum menyentuh yang
+    // expired/cancelled, dan pencocokan bernominal sebelum yang tanpa.
+    const tiers: Array<() => Set<string>> = [
+      () => lookup(confirmedIdx.exact, (d) => `${tx.name}|${tx.gross}|${d}`, tx.date, DAY_WINDOW),
+      () => lookup(confirmedIdx.byPayDate, (d) => `${tx.name}|${d}`, tx.date, FALLBACK_DAY_WINDOW),
+      () => lookup(confirmedIdx.byBookDate, (d) => `${tx.name}|${d}`, tx.date, FALLBACK_DAY_WINDOW),
+      () => lookup(anyIdx.exact, (d) => `${tx.name}|${tx.gross}|${d}`, tx.date, DAY_WINDOW),
+      () => lookup(anyIdx.byPayDate, (d) => `${tx.name}|${d}`, tx.date, FALLBACK_DAY_WINDOW),
+      () => lookup(anyIdx.byBookDate, (d) => `${tx.name}|${d}`, tx.date, FALLBACK_DAY_WINDOW),
+      // Pamungkas: nama saja, jendela lebar, apa pun statusnya.
+      () => lookup(anyIdx.byBookDate, (d) => `${tx.name}|${d}`, tx.date, LAST_RESORT_DAY_WINDOW),
+      () => lookup(anyIdx.byPayDate, (d) => `${tx.name}|${d}`, tx.date, LAST_RESORT_DAY_WINDOW),
+    ];
+    let found = new Set<string>();
+    for (const tier of tiers) {
+      const hit = tier();
+      // Tepat satu cabang = pasti. Lebih dari satu = tingkat ini ambigu,
+      // tapi tingkat berikutnya lebih longgar sehingga tak akan menolong —
+      // hentikan dan laporkan sebagai bentrok.
+      if (hit.size === 1) { found = hit; break; }
+      if (hit.size > 1) { found = hit; break; }
     }
     if (found.size === 1) {
       const branch = [...found][0];
