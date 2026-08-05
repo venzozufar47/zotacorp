@@ -212,6 +212,74 @@ function inDividendOverrideRange(year: number, month: number): boolean {
   );
 }
 
+/**
+ * Bulan pertama yang baris Dividend-nya diambil dari konsol dividen.
+ * Sengaja tepat setelah rentang override Jan–Apr 2026, supaya kedua
+ * overlay disjoint dan tidak ada bulan yang ditulis dua kali.
+ */
+const DIVIDEND_FROM_CONSOLE = { year: 2026, month: 5 } as const;
+
+/**
+ * Ganti baris Dividend satu cabang di satu bulan dengan angka otoritatif
+ * dari luar rekening koran.
+ *
+ * Dipakai dua overlay — override Jan–Apr 2026 (konstanta di source) dan
+ * konsol dividen (Mei 2026 dst). Keduanya butuh urutan langkah yang sama
+ * persis, dan dulu disalin dua kali; disatukan supaya tidak bisa
+ * menyimpang diam-diam.
+ *
+ * Selalu menyisipkan, TERMASUK saat 0. Nilai 0 itu bermakna: bulan ini
+ * memang tidak ada dividen — sekaligus menekan baris bank supaya tidak
+ * ikut terhitung. Nilai negatif diizinkan (bulan rugi, investor chip in).
+ */
+function overrideDividendRow(
+  data: YeoboBranchPnL,
+  branch: string,
+  amt: number,
+  mo: { year: number; month: number },
+  txIdPrefix: string,
+  description: string
+): void {
+  // 1) Cabut baris Dividend live (apa pun isinya) + koreksi total non-op.
+  const existing = data.byCategory.find((c) => c.category === "Dividend");
+  if (existing) {
+    data.nonOpRevenue -= existing.credit;
+    data.nonOpExpense -= existing.debit;
+    data.byCategory = data.byCategory.filter((c) => c !== existing);
+  }
+
+  // 2) Sisip baris pengganti.
+  data.byCategory.push({
+    category: "Dividend",
+    credit: 0,
+    debit: amt,
+    kind: "nonop",
+    directCredit: 0,
+    directDebit: amt,
+    allSplitCredit: 0,
+    allSplitDebit: 0,
+    allocationCredit: 0,
+    allocationDebit: 0,
+    details: [
+      {
+        txId: `${txIdPrefix}-${branch}-${mo.year}-${mo.month}`,
+        date: `${mo.year}-${String(mo.month).padStart(2, "0")}-01`,
+        description,
+        branch,
+        amount: -amt,
+        fullAmount: -amt,
+      },
+    ],
+  });
+  data.nonOpExpense += amt;
+
+  // Pertahankan urutan byCategory (operating dulu, lalu magnitude desc).
+  data.byCategory.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === "operating" ? -1 : 1;
+    return Math.max(b.credit, b.debit) - Math.max(a.credit, a.debit);
+  });
+}
+
 export async function fetchYeoboPnL(
   supabase: SupabaseClient<Database>,
   from: { year: number; month: number },
@@ -824,49 +892,96 @@ export async function fetchYeoboPnL(
     for (const branch of PHYSICAL_BRANCHES) {
       const data = mo.byBranch[branch];
       if (!data) continue;
-      const amt = Math.round(bm?.get(branch) ?? 0);
+      overrideDividendRow(
+        data,
+        branch,
+        Math.round(bm?.get(branch) ?? 0),
+        mo,
+        "divhc",
+        "Override dividen (input langsung, Jan–Apr 2026) — menggantikan rekening koran"
+      );
+    }
+  }
 
-      // 1) Cabut baris Dividend live (apa pun isinya) + koreksi total non-op.
-      const existing = data.byCategory.find((c) => c.category === "Dividend");
-      if (existing) {
-        data.nonOpRevenue -= existing.credit;
-        data.nonOpExpense -= existing.debit;
-        data.byCategory = data.byCategory.filter((c) => c !== existing);
+  // ── Overlay 3: Mei 2026 dst, baris Dividend diambil dari KONSOL
+  //    (`yeobo_dividend_allocations`), bukan dari rekening koran. ──
+  //
+  //    Alasannya: pembagian dividen per cabang adalah keputusan bisnis
+  //    (operating profit + kas bergulir), dan mustahil disimpulkan dari
+  //    mutasi bank. Selama ini baris bank ber-`branch` sentinel dibagi
+  //    RATA oleh `expandBranchAllSplits`, padahal proporsi sebenarnya
+  //    tidak rata — Mei 2026 misalnya 65:35 (8.552.606 : 4.540.578),
+  //    tapi tampil 50:50. Konsol menyimpan angka per cabang langsung,
+  //    jadi overlay ini justru MENGHAPUS kebutuhan logika split, bukan
+  //    menambahnya.
+  //
+  //    Efek sampingnya disengaja: cabang yang tidak ada di konsol dapat
+  //    0. Jebres tidak pernah dibagi dividen, dan sebelum ini kebocoran
+  //    dari baris ber-branch "All" membuatnya kebagian 3.237.215 di Juni
+  //    2026. Sekarang mustahil terjadi lagi.
+  //
+  //    Uang yang keluar di bank TIDAK hilang dari sistem — ia tetap ada
+  //    di ledger, dan selisihnya (termasuk biaya transfer yang ikut
+  //    terbawa) ditampilkan panel rekonsiliasi di /admin/finance/dividen.
+  {
+    // `ym()` menghasilkan kunci string ("2026-05") — bagus untuk indeks,
+    // tapi tidak bisa dibandingkan sebagai urutan. Perbandingan rentang
+    // pakai peringkat numerik sendiri.
+    const rank = (y: number, m: number) => y * 100 + m;
+    const fromRank = Math.max(
+      rank(from.year, from.month),
+      rank(DIVIDEND_FROM_CONSOLE.year, DIVIDEND_FROM_CONSOLE.month)
+    );
+    const toRank = rank(to.year, to.month);
+    if (fromRank <= toRank) {
+      /** `${ym}|${branch}` → total alokasi tersimpan. */
+      const consoleIdx = new Map<string, number>();
+      const PAGE = 1000;
+      for (let offset = 0; ; offset += PAGE) {
+        const { data, error } = await supabase
+          .from("yeobo_dividend_allocations")
+          .select(
+            "period_year, period_month, amount_idr, yeobo_dividend_recipients!inner(branch)"
+          )
+          .order("id", { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        const rows = (data ?? []) as unknown as Array<{
+          period_year: number;
+          period_month: number;
+          amount_idr: string | number;
+          yeobo_dividend_recipients: { branch: string } | null;
+        }>;
+        for (const r of rows) {
+          const branch = r.yeobo_dividend_recipients?.branch;
+          if (!branch) continue;
+          const k = `${ym(r.period_year, r.period_month)}|${branch}`;
+          consoleIdx.set(k, (consoleIdx.get(k) ?? 0) + Number(r.amount_idr));
+        }
+        if (rows.length < PAGE) break;
       }
 
-      // 2) Sisip baris override (selalu, termasuk 0 → menandai overridden
-      //    & menekan baris bank). Negatif diizinkan (chip in), konsisten
-      //    dengan overlay hardcode lama.
-      data.byCategory.push({
-        category: "Dividend",
-        credit: 0,
-        debit: amt,
-        kind: "nonop",
-        directCredit: 0,
-        directDebit: amt,
-        allSplitCredit: 0,
-        allSplitDebit: 0,
-        allocationCredit: 0,
-        allocationDebit: 0,
-        details: [
-          {
-            txId: `divhc-${branch}-${mo.year}-${mo.month}`,
-            date: `${mo.year}-${String(mo.month).padStart(2, "0")}-01`,
-            description:
-              "Override dividen (input langsung, Jan–Apr 2026) — menggantikan rekening koran",
+      for (const mo of months) {
+        if (
+          rank(mo.year, mo.month) < fromRank ||
+          rank(mo.year, mo.month) > toRank
+        ) {
+          continue;
+        }
+        const key = ym(mo.year, mo.month);
+        for (const branch of PHYSICAL_BRANCHES) {
+          const data = mo.byBranch[branch];
+          if (!data) continue;
+          overrideDividendRow(
+            data,
             branch,
-            amount: -amt,
-            fullAmount: -amt,
-          },
-        ],
-      });
-      data.nonOpExpense += amt;
-
-      // Pertahankan urutan byCategory (operating dulu, lalu magnitude desc).
-      data.byCategory.sort((a, b) => {
-        if (a.kind !== b.kind) return a.kind === "operating" ? -1 : 1;
-        return Math.max(b.credit, b.debit) - Math.max(a.credit, a.debit);
-      });
+            Math.round(consoleIdx.get(`${key}|${branch}`) ?? 0),
+            mo,
+            "divkonsol",
+            "Dividen dari konsol — angka bank ada di panel rekonsiliasi"
+          );
+        }
+      }
     }
   }
 
