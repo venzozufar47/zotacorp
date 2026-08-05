@@ -160,56 +160,108 @@ export async function syncMayarBranches(
   const from = shiftDate(dates[0], -FALLBACK_DAY_WINDOW);
   const to = shiftDate(dates[dates.length - 1], FALLBACK_DAY_WINDOW);
 
+  // SEMUA booking terkonfirmasi, bukan hanya `payment_method='online'`.
+  //
+  // Batasan "online" dulu membuat 6% transaksi gagal dicocokkan, dan
+  // penyebabnya ternyata masuk akal: pelanggan memesan dengan voucher atau
+  // cash, lalu menambah cetak/waktu dan MEMBAYAR TAMBAHANNYA lewat Mayar.
+  // Booking-nya ada dan cabangnya jelas — hanya metode pembayaran utamanya
+  // yang bukan online, sehingga tak pernah ikut terbaca.
+  //
+  // Difilter ke booking_date karena booking non-online tidak punya payload
+  // pembayaran; tanggal sesi jadi satu-satunya penanda waktu yang tersedia.
   const yeobo = createClient(yUrl, yKey);
   const { data: bookings, error } = await yeobo
     .from("bookings")
-    .select("branch_id, provider_payload")
-    .eq("payment_method", "online")
-    .not("provider_payload", "is", null)
-    .gte("created_at", `${from}T00:00:00Z`)
-    .lte("created_at", `${to}T23:59:59Z`);
+    .select("branch_id, name, booking_date, provider_payload")
+    .eq("status", "confirmed")
+    .gte("booking_date", from)
+    .lte("booking_date", to);
   if (error) throw new Error(`baca bookings yeobospace: ${error.message}`);
 
-  // Dua index: yang presisi (nama+bruto+tanggal) dan yang longgar
-  // (nama+tanggal) untuk pembayaran tambahan.
-  const index = new Map<string, Set<string>>();
-  const byNameDate = new Map<string, Set<string>>();
+  // Tiga index, dipakai berjenjang dari yang paling meyakinkan:
+  //   exact      nama + bruto + tanggal BAYAR   (booking online)
+  //   byPayDate  nama + tanggal BAYAR           (top-up di booking online)
+  //   byBookDate nama + tanggal SESI            (top-up di booking voucher/cash)
+  const exact = new Map<string, Set<string>>();
+  const byPayDate = new Map<string, Set<string>>();
+  const byBookDate = new Map<string, Set<string>>();
   const add = (map: Map<string, Set<string>>, key: string, branch: string) => {
     const set = map.get(key) ?? new Set<string>();
     set.add(branch);
     map.set(key, set);
   };
+
   for (const b of bookings ?? []) {
-    const payload = (b as { provider_payload?: { data?: Record<string, unknown> } })
-      .provider_payload?.data;
+    const row = b as {
+      branch_id?: string;
+      name?: string;
+      booking_date?: string;
+      provider_payload?: { data?: Record<string, unknown> };
+    };
+    const branch = BRANCH_MAP[norm(row.branch_id)];
+    if (!branch) continue;
+
+    // Nama pemesan selalu ada, termasuk pada booking non-online.
+    const bookingName = norm(row.name);
+    if (bookingName && row.booking_date) {
+      add(byBookDate, `${bookingName}|${row.booking_date}`, branch);
+    }
+
+    // Nama & waktu dari payload pembayaran — hanya ada di booking online,
+    // tapi paling akurat karena mencerminkan kapan uangnya benar-benar masuk.
+    const payload = row.provider_payload?.data;
     if (!payload) continue;
-    const name = norm(payload.customerName as string);
+    const payName = norm(payload.customerName as string);
     const amount = Number(payload.amount);
     const createdAt = payload.createdAt as string | undefined;
-    const branch = BRANCH_MAP[norm((b as { branch_id?: string }).branch_id)];
-    if (!name || !Number.isFinite(amount) || !createdAt || !branch) continue;
+    if (!payName || !createdAt) continue;
     const day = wibDate(createdAt);
-    add(index, `${name}|${amount}|${day}`, branch);
-    add(byNameDate, `${name}|${day}`, branch);
+    if (Number.isFinite(amount)) {
+      add(exact, `${payName}|${amount}|${day}`, branch);
+    }
+    add(byPayDate, `${payName}|${day}`, branch);
   }
+
+  /** Kumpulkan cabang dari satu index dalam jendela ±`window` hari. */
+  const lookup = (
+    map: Map<string, Set<string>>,
+    key: (day: string) => string,
+    date: string,
+    window: number
+  ): Set<string> => {
+    const out = new Set<string>();
+    for (let d = -window; d <= window; d++) {
+      for (const b of map.get(key(shiftDate(date, d))) ?? []) out.add(b);
+    }
+    return out;
+  };
 
   const updates: Array<{ id: string; branch: string }> = [];
   for (const tx of pending) {
-    let found = new Set<string>();
-    for (let d = -DAY_WINDOW; d <= DAY_WINDOW; d++) {
-      const key = `${tx.name}|${tx.gross}|${shiftDate(tx.date, d)}`;
-      for (const b of index.get(key) ?? []) found.add(b);
-    }
-    // Cadangan untuk pembayaran tambahan: cocokkan nama saja. Hanya dipakai
-    // kalau pencocokan presisi gagal, supaya tidak pernah melangkahi hasil
-    // yang lebih meyakinkan.
+    // Berjenjang: berhenti pada tingkat pertama yang membuahkan hasil,
+    // supaya pencocokan longgar tidak pernah melangkahi yang presisi.
+    let found = lookup(
+      exact,
+      (day) => `${tx.name}|${tx.gross}|${day}`,
+      tx.date,
+      DAY_WINDOW
+    );
     if (found.size === 0) {
-      const loose = new Set<string>();
-      for (let d = -FALLBACK_DAY_WINDOW; d <= FALLBACK_DAY_WINDOW; d++) {
-        const key = `${tx.name}|${shiftDate(tx.date, d)}`;
-        for (const b of byNameDate.get(key) ?? []) loose.add(b);
-      }
-      found = loose;
+      found = lookup(
+        byPayDate,
+        (day) => `${tx.name}|${day}`,
+        tx.date,
+        FALLBACK_DAY_WINDOW
+      );
+    }
+    if (found.size === 0) {
+      found = lookup(
+        byBookDate,
+        (day) => `${tx.name}|${day}`,
+        tx.date,
+        FALLBACK_DAY_WINDOW
+      );
     }
     if (found.size === 1) {
       const branch = [...found][0];
