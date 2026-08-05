@@ -153,12 +153,19 @@ export async function syncMayarBranches(
   const result: MayarBranchSyncResult = { ...empty, candidates: pending.length };
 
   // Booking online yeobospace dalam rentang tanggal yang relevan saja.
-  // Pakai jendela TERLEBAR yang mungkin dipakai pencocokan — kalau hanya
-  // selebar DAY_WINDOW, aturan cadangan akan mencari di data yang tidak
-  // pernah diambil dan gagal tanpa sebab yang jelas.
+  // Jendela pengambilan booking sengaja TIDAK simetris.
+  //
+  // Filternya `booking_date` (tanggal SESI), sedangkan yang dicocokkan
+  // adalah tanggal BAYAR — dan orang memesan jauh hari. Nanik Marsela
+  // membayar 1 Agustus untuk sesi 8 Agustus; dengan jendela simetris
+  // ±2 hari, booking-nya tidak pernah ikut terambil dan transaksinya
+  // dilaporkan "tanpa pasangan" padahal pasangannya jelas ada.
+  //
+  // Ke depan dilebarkan jauh (sesi bisa dipesan berbulan-bulan sebelumnya),
+  // ke belakang cukup sempit karena sesi tidak pernah mendahului bayar.
   const dates = pending.map((p) => p.date).sort();
   const from = shiftDate(dates[0], -FALLBACK_DAY_WINDOW);
-  const to = shiftDate(dates[dates.length - 1], FALLBACK_DAY_WINDOW);
+  const to = shiftDate(dates[dates.length - 1], 120);
 
   // SEMUA booking terkonfirmasi, bukan hanya `payment_method='online'`.
   //
