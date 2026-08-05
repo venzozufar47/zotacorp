@@ -292,6 +292,7 @@ export function PnLYeoboSpreadsheet({
             branchShare: d.branchShare,
             fullAmount: d.fullAmount,
             amount: d.amount,
+            sourceBank: d.sourceBank,
           });
           continue;
         }
@@ -306,6 +307,7 @@ export function PnLYeoboSpreadsheet({
             branchShare: d.branchShare,
             fullAmount: d.fullAmount,
             amount: d.amount,
+            sourceBank: d.sourceBank,
           });
         } else {
           cur.amount += d.amount; // accumulate branch portion
@@ -320,7 +322,9 @@ export function PnLYeoboSpreadsheet({
       );
       const out = [...list, ...extra];
       out.sort((a, b) => a.date.localeCompare(b.date));
-      return out;
+      // Rekap gateway (Mayar) jadi per hari — dilakukan setelah dedupe
+      // split-cabang supaya yang dijumlahkan sudah nominal tx penuh.
+      return collapseGatewayByDay(out);
     });
   };
 
@@ -785,7 +789,57 @@ type DetailTx = {
   branchShare?: { n: number; origin: string };
   fullAmount?: number;
   amount: number;
+  /** Kode bank rekening asal — dipakai mengenali transaksi gateway. */
+  sourceBank?: string;
+  /**
+   * Terisi HANYA untuk baris rekap harian Mayar: transaksi asli yang
+   * dirangkum baris ini. Baris rekap tidak bisa diedit (bukan satu tx),
+   * tapi bisa dibuka untuk melihat isinya.
+   */
+  dayGroup?: DetailTx[];
 };
+
+/** Kode bank rekening payment gateway yang transaksinya direkap per hari. */
+const GATEWAY_BANK = "mayar";
+
+/**
+ * Rekap transaksi gateway (Mayar) jadi satu baris per hari.
+ *
+ * Mayar menyumbang ~589 transaksi kecil dalam beberapa bulan — ditampilkan
+ * satu-satu, drill-down Revenue jadi ratusan baris dan justru tidak
+ * terbaca. Transaksi dari rekening lain TIDAK disentuh dan tetap tampil
+ * per transaksi, karena jumlahnya wajar dan detail per barisnya berguna.
+ *
+ * Urutan hasil tetap mengikuti tanggal supaya baris rekap menyatu wajar
+ * dengan transaksi non-gateway di bulan yang sama.
+ */
+function collapseGatewayByDay(list: DetailTx[]): DetailTx[] {
+  const gateway = list.filter((t) => t.sourceBank === GATEWAY_BANK);
+  if (gateway.length === 0) return list;
+  const rest = list.filter((t) => t.sourceBank !== GATEWAY_BANK);
+
+  const byDay = new Map<string, DetailTx[]>();
+  for (const t of gateway) {
+    const bucket = byDay.get(t.date) ?? [];
+    bucket.push(t);
+    byDay.set(t.date, bucket);
+  }
+
+  const grouped: DetailTx[] = [...byDay.entries()].map(([date, txs]) => {
+    const amount = txs.reduce((s, t) => s + t.amount, 0);
+    return {
+      // Prefiks supaya tidak pernah bentrok dengan uuid transaksi asli.
+      txId: `mayar-day-${date}`,
+      date,
+      description: `Mayar · ${txs.length} transaksi`,
+      amount,
+      fullAmount: amount,
+      dayGroup: txs.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
+    };
+  });
+
+  return [...rest, ...grouped].sort((a, b) => a.date.localeCompare(b.date));
+}
 
 function TotalRow({
   label,
@@ -946,6 +1000,11 @@ function DrillDownRows({
     tx: DetailTx;
     period: { year: number; month: number };
   } | null>(null);
+  // Isi satu baris rekap harian Mayar, dibuka sebagai modal. Sengaja TIDAK
+  // memakai baris tabel bersarang: grid ini menyejajarkan baris ke-r dari
+  // SEMUA bulan, jadi menyisipkan baris untuk satu kolom akan menggeser
+  // kolom bulan lainnya.
+  const [dayDetail, setDayDetail] = useState<DetailTx | null>(null);
 
   const isEmpty = grid.every((list) => list.length === 0);
   if (isEmpty) {
@@ -1010,30 +1069,50 @@ function DrillDownRows({
               tx.branchShare &&
               tx.fullAmount != null &&
               Math.abs(tx.fullAmount) !== Math.abs(tx.amount);
-            const canEdit = editable && !!tx.txId;
+            // Baris rekap harian Mayar bukan satu transaksi — tidak bisa
+            // diedit, tapi bisa dibuka untuk melihat isinya.
+            const isDayGroup = !!tx.dayGroup;
+            const canEdit = editable && !!tx.txId && !isDayGroup;
             return (
               <td
                 key={mi}
                 onMouseEnter={(e) => showTip(e, tx)}
                 onMouseLeave={() => setTip(null)}
                 onClick={
-                  canEdit ? () => openEdit(tx, monthCells[mi].month) : undefined
+                  isDayGroup
+                    ? () => setDayDetail(tx)
+                    : canEdit
+                      ? () => openEdit(tx, monthCells[mi].month)
+                      : undefined
                 }
-                title={canEdit ? "Klik untuk edit kategori & cabang" : undefined}
+                title={
+                  isDayGroup
+                    ? "Klik untuk lihat transaksi hari ini"
+                    : canEdit
+                      ? "Klik untuk edit kategori & cabang"
+                      : undefined
+                }
                 className={
                   "border-t border-border/30 px-3 py-1 text-right font-mono tabular-nums text-[11px] whitespace-nowrap hover:bg-muted/40 " +
-                  (canEdit ? "cursor-pointer" : "cursor-help")
+                  (canEdit || isDayGroup ? "cursor-pointer" : "cursor-help")
                 }
               >
                 <span
                   className={
                     (tx.amount > 0 ? "text-emerald-600" : "text-destructive") +
-                    (canEdit ? " underline decoration-dotted underline-offset-2" : "")
+                    (canEdit || isDayGroup
+                      ? " underline decoration-dotted underline-offset-2"
+                      : "")
                   }
                 >
                   {tx.amount > 0 ? "+" : "−"}
                   {formatIDR(Math.abs(tx.amount))}
                 </span>
+                {isDayGroup && (
+                  <span className="ml-1 text-[9px] text-muted-foreground">
+                    ×{tx.dayGroup!.length}
+                  </span>
+                )}
                 {split && <span className="ml-0.5 text-amber-500">*</span>}
               </td>
             );
@@ -1124,7 +1203,85 @@ function DrillDownRows({
           onSaved={onSaved}
         />
       )}
+
+      {dayDetail && (
+        <DayGroupModal tx={dayDetail} onClose={() => setDayDetail(null)} />
+      )}
     </>
+  );
+}
+
+/**
+ * Isi satu baris rekap harian Mayar. Dipakai supaya rekap per hari tetap
+ * bisa "dibuka" untuk cek harian tanpa mengembalikan ratusan baris ke
+ * spreadsheet.
+ */
+function DayGroupModal({
+  tx,
+  onClose,
+}: {
+  tx: DetailTx;
+  onClose: () => void;
+}) {
+  const rows = tx.dayGroup ?? [];
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border-2 border-foreground bg-card shadow-hard"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-border bg-muted/40 px-4 py-3">
+          <p className="text-sm font-semibold">{txDateFull(tx.date)}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Mayar · {rows.length} transaksi · total{" "}
+            <span
+              className={
+                tx.amount > 0 ? "text-emerald-600" : "text-destructive"
+              }
+            >
+              {tx.amount > 0 ? "+" : "−"}
+              {formatIDR(Math.abs(tx.amount))}
+            </span>
+          </p>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto divide-y divide-border/50">
+          {rows.map((r) => (
+            <div key={r.txId} className="flex gap-3 px-4 py-2 text-xs">
+              <span className="min-w-0 flex-1 break-words">
+                {r.description}
+                {r.notes && (
+                  <span className="block text-[11px] text-muted-foreground">
+                    {r.notes}
+                  </span>
+                )}
+              </span>
+              <span
+                className={
+                  "shrink-0 font-mono tabular-nums " +
+                  (r.amount > 0 ? "text-emerald-600" : "text-destructive")
+                }
+              >
+                {r.amount > 0 ? "+" : "−"}
+                {formatIDR(Math.abs(r.amount))}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-border px-4 py-2 text-right">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 rounded-lg border-2 border-foreground bg-card px-3 text-xs font-semibold"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

@@ -58,6 +58,11 @@ export interface YeoboTxDetail {
    *  di-split ("All"/sentinel/alokasi gaji) ini hanya bagian cabang
    *  tersebut, bukan nominal penuh. */
   amount: number;
+  /** Kode bank rekening asal (mis. "mayar", "mandiri", "cash"). Dipakai
+   *  drill-down untuk merekap payment gateway per hari — Mayar sendiri
+   *  menyumbang ratusan transaksi kecil per bulan yang tidak terbaca
+   *  kalau ditampilkan satu-satu. */
+  sourceBank?: string;
   /** Nominal transaksi PENUH (signed) sebelum di-split. Sama dengan
    *  `amount` untuk tx direct. Dipakai di drill-down audit agar admin
    *  lihat "porsi X dari total Y". Optional → konsumen lama aman. */
@@ -223,6 +228,9 @@ export async function fetchYeoboPnL(
     branch: string | null;
     description: string | null;
     notes: string | null;
+    /** Join rekening asal — dipakai untuk mengenali transaksi payment
+     *  gateway (bank='mayar') yang jumlahnya ratusan per bulan. */
+    cashflow_statements?: { bank_accounts?: { bank?: string | null } | null } | null;
   };
 
   // Bound the scan to the requested period at the DB level via the
@@ -242,7 +250,7 @@ export async function fetchYeoboPnL(
     const { data, error } = await supabase
       .from("cashflow_transactions")
       .select(
-        "id, transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, notes, cashflow_statements!inner(bank_accounts!inner(business_unit))"
+        "id, transaction_date, effective_period_year, effective_period_month, debit, credit, category, branch, description, notes, cashflow_statements!inner(bank_accounts!inner(business_unit, bank))"
       )
       .eq("cashflow_statements.bank_accounts.business_unit", "Yeobo Space")
       .gte("effective_period", periodStart)
@@ -388,6 +396,8 @@ export async function fetchYeoboPnL(
     if (credit === 0 && debit === 0) continue;
 
     const fullSigned = credit > 0 ? credit : -debit;
+    const sourceBank =
+      t.cashflow_statements?.bank_accounts?.bank?.trim() || undefined;
     const detail: YeoboTxDetail = {
       txId: t.id,
       date: t.transaction_date,
@@ -396,6 +406,7 @@ export async function fetchYeoboPnL(
       branch: branchRaw || undefined,
       amount: fullSigned,
       fullAmount: fullSigned,
+      sourceBank,
     };
 
     // Build a per-branch detail for a split tx: same date/description but
@@ -416,6 +427,7 @@ export async function fetchYeoboPnL(
       amount: portionCredit > 0 ? portionCredit : -portionDebit,
       fullAmount: fullSigned,
       branchShare: { n, origin },
+      sourceBank,
     });
 
     // Track Needs Assignment per month
