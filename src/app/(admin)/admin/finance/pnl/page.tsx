@@ -22,8 +22,6 @@ import { RevenueAllocationSection } from "@/components/admin/finance/RevenueAllo
 import { listArchivedKeys } from "@/lib/actions/allocation-archives.actions";
 import { listRevenueMonthAllocations } from "@/lib/actions/revenue-allocations.actions";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
-import { fetchRevenueBySource } from "@/lib/cashflow/revenue-source";
-import { RevenueSourceSection } from "@/components/admin/finance/RevenueSourceSection";
 
 interface SearchParams {
   bu?: string;
@@ -138,25 +136,6 @@ export default async function PnLPage({
     listArchivedKeys("salary_tx", businessUnit),
     listArchivedKeys("revenue_month", businessUnit),
   ]);
-  // Rincian revenue per rekening asal — memisahkan payment gateway
-  // (Mayar) dari rekening bank/cash. Pakai rentang tanggal yang sama
-  // dengan alokasi gaji di atas.
-  const revenueSource = await fetchRevenueBySource(
-    supabase,
-    businessUnit,
-    startDate,
-    endDate
-  );
-  const monthName = (y: number, m: number) =>
-    new Date(y, m - 1, 1).toLocaleDateString("id-ID", {
-      month: "long",
-      year: "numeric",
-    });
-  const periodLabel =
-    from.year === to.year && from.month === to.month
-      ? monthName(from.year, from.month)
-      : `${monthName(from.year, from.month)} — ${monthName(to.year, to.month)}`;
-
   const empRes = await listEmployeeBranchMap(businessUnit);
   const employeeSuggestions =
     empRes.ok && empRes.data
@@ -233,8 +212,6 @@ export default async function PnLPage({
           />
         )
       )}
-
-      <RevenueSourceSection report={revenueSource} periodLabel={periodLabel} />
 
       {isYeobo && (
         <SalaryAllocationSection

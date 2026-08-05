@@ -51,7 +51,27 @@ export function SalaryAllocationSection({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  const archivedSet = useMemo(() => new Set(archivedIds), [archivedIds]);
+  // Disimpan sebagai state (bukan langsung dari props) supaya baris bisa
+  // hilang SEKETIKA saat diarsipkan. Halaman PnL menjalankan belasan query
+  // per render, jadi menunggu router.refresh() terasa seperti kliknya
+  // tidak masuk. Di-sinkronkan lagi begitu server mengirim data baru.
+  const [archivedSet, setArchivedSet] = useState<Set<string>>(
+    () => new Set(archivedIds)
+  );
+  const serverKey = [...archivedIds].sort().join(",");
+  const [syncedKey, setSyncedKey] = useState(serverKey);
+  if (syncedKey !== serverKey) {
+    setSyncedKey(serverKey);
+    setArchivedSet(new Set(archivedIds));
+  }
+  const markArchived = (id: string, next: boolean) =>
+    setArchivedSet((prev) => {
+      const n = new Set(prev);
+      if (next) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+
   const archivedCount = useMemo(
     () => summaries.filter((s) => archivedSet.has(s.id)).length,
     [summaries, archivedSet]
@@ -105,6 +125,7 @@ export function SalaryAllocationSection({
               employeeSuggestions={employeeSuggestions}
               businessUnit={businessUnit}
               archived={archivedSet.has(s.id)}
+              onArchivedChange={(next) => markArchived(s.id, next)}
               expanded={expandedId === s.id}
               onToggle={() => setExpandedId(expandedId === s.id ? null : s.id)}
             />
@@ -121,6 +142,7 @@ function SalaryRow({
   employeeSuggestions,
   businessUnit,
   archived,
+  onArchivedChange,
   expanded,
   onToggle,
 }: {
@@ -129,6 +151,7 @@ function SalaryRow({
   employeeSuggestions: Array<{ name: string; branch: string }>;
   businessUnit: string;
   archived: boolean;
+  onArchivedChange: (next: boolean) => void;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -249,6 +272,7 @@ function SalaryRow({
           refKey={summary.id}
           businessUnit={businessUnit}
           archived={archived}
+          onOptimistic={onArchivedChange}
         />
       </div>
 

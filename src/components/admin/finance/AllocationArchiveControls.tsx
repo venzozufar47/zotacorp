@@ -25,11 +25,21 @@ export function ArchiveRowButton({
   refKey,
   businessUnit,
   archived,
+  onOptimistic,
 }: {
   kind: AllocationArchiveKind;
   refKey: string;
   businessUnit: string;
   archived: boolean;
+  /**
+   * Dipanggil SEKETIKA saat diklik, sebelum server menjawab, lalu sekali
+   * lagi dengan nilai semula kalau ternyata gagal.
+   *
+   * Perlu karena halaman PnL menjalankan belasan query per render —
+   * menunggu `router.refresh()` selesai membuat baris terlihat "tidak
+   * bereaksi" beberapa detik, dan admin mengira kliknya tidak masuk.
+   */
+  onOptimistic?: (nextArchived: boolean) => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -45,6 +55,7 @@ export function ArchiveRowButton({
         // ikut membuka/menutup detailnya.
         e.stopPropagation();
         e.preventDefault();
+        onOptimistic?.(!archived);
         start(async () => {
           const res = await setAllocationArchived({
             kind,
@@ -53,6 +64,7 @@ export function ArchiveRowButton({
             archived: !archived,
           });
           if (!res.ok) {
+            onOptimistic?.(archived); // gagal → kembalikan tampilan
             toast.error(res.error);
             return;
           }

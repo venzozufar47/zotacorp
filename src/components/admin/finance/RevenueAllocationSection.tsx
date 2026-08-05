@@ -48,7 +48,25 @@ export function RevenueAllocationSection({
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  const archivedSet = useMemo(() => new Set(archivedKeys), [archivedKeys]);
+  // State lokal supaya baris hilang seketika saat diarsipkan — lihat
+  // catatan yang sama di SalaryAllocationSection.
+  const [archivedSet, setArchivedSet] = useState<Set<string>>(
+    () => new Set(archivedKeys)
+  );
+  const serverKey = [...archivedKeys].sort().join(",");
+  const [syncedKey, setSyncedKey] = useState(serverKey);
+  if (syncedKey !== serverKey) {
+    setSyncedKey(serverKey);
+    setArchivedSet(new Set(archivedKeys));
+  }
+  const markArchived = (key: string, next: boolean) =>
+    setArchivedSet((prev) => {
+      const n = new Set(prev);
+      if (next) n.add(key);
+      else n.delete(key);
+      return n;
+    });
+
   const archivedCount = useMemo(
     () => summaries.filter((s) => archivedSet.has(s.monthKey)).length,
     [summaries, archivedSet]
@@ -97,6 +115,7 @@ export function RevenueAllocationSection({
               summary={s}
               branches={branches}
               archived={archivedSet.has(s.monthKey)}
+              onArchivedChange={(next) => markArchived(s.monthKey, next)}
               expanded={expandedKey === s.monthKey}
               onToggle={() =>
                 setExpandedKey(expandedKey === s.monthKey ? null : s.monthKey)
@@ -114,6 +133,7 @@ function MonthRow({
   summary,
   branches,
   archived,
+  onArchivedChange,
   expanded,
   onToggle,
 }: {
@@ -121,6 +141,7 @@ function MonthRow({
   summary: RevenueMonthSummary;
   branches: string[];
   archived: boolean;
+  onArchivedChange: (next: boolean) => void;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -273,6 +294,7 @@ function MonthRow({
           refKey={summary.monthKey}
           businessUnit={businessUnit}
           archived={archived}
+          onOptimistic={onArchivedChange}
         />
       </div>
       {expanded && (
