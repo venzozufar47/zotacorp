@@ -100,6 +100,29 @@ function parseGross(notes: string | null): number | null {
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
+/** "18:06" → 1086 (menit sejak tengah malam). Null kalau bukan HH:mm. */
+function hhmmToMinute(hhmm: string | null | undefined): number | null {
+  const m = hhmm?.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const v = Number(m[1]) * 60 + Number(m[2]);
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Timestamp ISO → menit-dalam-hari menurut WIB. */
+function wibMinute(iso: string): number {
+  const d = new Date(new Date(iso).getTime() + 7 * 3600 * 1000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
+/**
+ * Toleransi menit saat mencocokkan jam bayar.
+ *
+ * `paid_at` di booking dan `transaction_time` di laporan Mayar berasal dari
+ * sistem berbeda; pembulatan dan jeda pencatatan bisa menggeser semenit-dua.
+ * Terbukti pada `melly dwi`: paid_at 18:06:44 vs laporan Mayar 18:06.
+ */
+const MINUTE_TOLERANCE = 2;
+
 /**
  * @param admin  client service-role project Zota
  * @param dryRun hitung saja, tanpa menulis apa pun
@@ -145,7 +168,7 @@ export async function syncMayarBranches(
   // ditetapkan — otomatis maupun manual oleh admin — tidak disentuh lagi.
   const { data: txs } = await admin
     .from("cashflow_transactions")
-    .select("id, transaction_date, source_destination, notes")
+    .select("id, transaction_date, transaction_time, source_destination, notes")
     .in("statement_id", stmtIds)
     .gt("credit", 0)
     .eq("branch", "All");
@@ -154,6 +177,7 @@ export async function syncMayarBranches(
     .map((t) => ({
       id: t.id,
       date: t.transaction_date,
+      minute: hhmmToMinute(t.transaction_time),
       name: norm(t.source_destination),
       gross: parseGross(t.notes),
     }))
@@ -203,6 +227,9 @@ export async function syncMayarBranches(
     name?: string;
     booking_date?: string;
     status?: string;
+    paid_at?: string | null;
+    start_min?: number | null;
+    duration_min?: number | null;
     provider_payload?: { data?: Record<string, unknown> };
   };
   const bookings: BookingRow[] = [];
@@ -210,7 +237,9 @@ export async function syncMayarBranches(
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await yeobo
       .from("bookings")
-      .select("branch_id, name, booking_date, status, provider_payload")
+      .select(
+        "branch_id, name, booking_date, status, paid_at, start_min, duration_min, provider_payload"
+      )
       .gte("booking_date", from)
       .lte("booking_date", to)
       .order("booking_date", { ascending: true })
@@ -231,14 +260,20 @@ export async function syncMayarBranches(
   // lebih kuat — persis seperti `melly dwi`, yang punya satu booking
   // confirmed di Tembalang dan satu expired di Tlogosari.
   type Idx = {
+    /** nama|tanggal|menit-bayar — bukti terkuat, lihat catatan di bawah. */
+    byPaidMinute: Map<string, Set<string>>;
     exact: Map<string, Set<string>>;
     byPayDate: Map<string, Set<string>>;
     byBookDate: Map<string, Set<string>>;
+    /** nama|tanggal-sesi → jendela waktu sesi tiap cabang. */
+    sessions: Map<string, Array<{ branch: string; from: number; to: number }>>;
   };
   const mk = (): Idx => ({
+    byPaidMinute: new Map(),
     exact: new Map(),
     byPayDate: new Map(),
     byBookDate: new Map(),
+    sessions: new Map(),
   });
   const confirmedIdx = mk();
   const anyIdx = mk();
@@ -260,6 +295,46 @@ export async function syncMayarBranches(
     if (bookingName && row.booking_date) {
       for (const t of targets) {
         add(t.byBookDate, `${bookingName}|${row.booking_date}`, branch);
+      }
+    }
+
+    // JAM PEMBAYARAN — bukti terkuat yang tersedia.
+    //
+    // `paid_at` di booking dan `transaction_time` di laporan Mayar merujuk
+    // peristiwa yang sama: detik uang diterima. Cocok sampai ke menit dan
+    // kebal terhadap nama kembar — satu-satunya sumber ambiguitas yang
+    // tersisa di tingkat lain.
+    //
+    // Terbukti pada `elisa` 28 Juli: DUA pelanggan berbeda dengan nama
+    // sama, sesi 11:00 di Tlogosari dan 15:00 di Jebres. Semua tingkat
+    // berbasis tanggal menyerah; jam bayar 11:01 langsung menunjuk
+    // Tlogosari tanpa ragu.
+    if (bookingName && row.paid_at) {
+      const day = wibDate(row.paid_at);
+      const minute = wibMinute(row.paid_at);
+      for (const t of targets) {
+        add(t.byPaidMinute, `${bookingName}|${day}|${minute}`, branch);
+      }
+    }
+
+    // JENDELA SESI — untuk top-up pada booking yang dibayar cash/voucher.
+    //
+    // Booking seperti itu `paid_at`-nya kosong, jadi tingkat jam-bayar tidak
+    // menolong. Tapi pembayaran tambahan (tambah cetak/waktu) terjadi SAAT
+    // sesi berlangsung, jadi jam bayar Mayar jatuh di dalam rentang sesi.
+    //
+    // Inilah yang memisahkan dua `elisa` pada 28 Juli: sesi 11:00 di
+    // Tlogosari dan 15:00 di Jebres, top-up dibayar 11:01.
+    if (bookingName && row.booking_date && row.start_min != null) {
+      const start = row.start_min;
+      const dur = row.duration_min ?? 60;
+      const key = `${bookingName}|${row.booking_date}`;
+      for (const t of targets) {
+        const list = t.sessions.get(key) ?? [];
+        // Sedikit longgar di kedua ujung: top-up bisa dibayar tepat sebelum
+        // mulai atau beberapa saat setelah sesi selesai.
+        list.push({ branch, from: start - 15, to: start + dur + 45 });
+        t.sessions.set(key, list);
       }
     }
 
@@ -300,7 +375,43 @@ export async function syncMayarBranches(
     // pertama yang menghasilkan tepat satu cabang. Urutannya penting:
     // booking confirmed selalu dihabiskan dulu sebelum menyentuh yang
     // expired/cancelled, dan pencocokan bernominal sebelum yang tanpa.
+    /** Jam bayar: cocokkan menit persis, dengan toleransi kecil. */
+    const byMinute = (idx: Idx): Set<string> => {
+      const out = new Set<string>();
+      if (tx.minute === null) return out;
+      for (let dd = -1; dd <= 1; dd++) {
+        const day = shiftDate(tx.date, dd);
+        for (let m = -MINUTE_TOLERANCE; m <= MINUTE_TOLERANCE; m++) {
+          for (const b of idx.byPaidMinute.get(
+            `${tx.name}|${day}|${tx.minute + m}`
+          ) ?? []) {
+            out.add(b);
+          }
+        }
+      }
+      return out;
+    };
+
+    /** Jam bayar jatuh di dalam rentang sesi mana? */
+    const bySession = (idx: Idx): Set<string> => {
+      const out = new Set<string>();
+      if (tx.minute === null) return out;
+      for (let dd = -1; dd <= 1; dd++) {
+        const key = `${tx.name}|${shiftDate(tx.date, dd)}`;
+        for (const s of idx.sessions.get(key) ?? []) {
+          if (tx.minute >= s.from && tx.minute <= s.to) out.add(s.branch);
+        }
+      }
+      return out;
+    };
+
     const tiers: Array<() => Set<string>> = [
+      // Jam pembayaran lebih dulu dari apa pun — hanya ini yang bisa
+      // memisahkan dua pelanggan bernama sama di hari yang sama.
+      () => byMinute(confirmedIdx),
+      () => byMinute(anyIdx),
+      () => bySession(confirmedIdx),
+      () => bySession(anyIdx),
       () => lookup(confirmedIdx.exact, (d) => `${tx.name}|${tx.gross}|${d}`, tx.date, DAY_WINDOW),
       () => lookup(confirmedIdx.byPayDate, (d) => `${tx.name}|${d}`, tx.date, FALLBACK_DAY_WINDOW),
       () => lookup(confirmedIdx.byBookDate, (d) => `${tx.name}|${d}`, tx.date, FALLBACK_DAY_WINDOW),
