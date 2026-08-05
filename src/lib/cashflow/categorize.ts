@@ -217,7 +217,8 @@ export function applyCategorization(
   rules: Rule[],
   historical: HistoricalMap,
   presets: CategoryPresets,
-  employeeMap?: EmployeeBranchMap
+  employeeMap?: EmployeeBranchMap,
+  businessUnit?: string
 ): { transactions: ParsedTransaction[]; summary: CategorizationSummary } {
   const summary: CategorizationSummary = {
     ruleMatched: 0,
@@ -298,6 +299,33 @@ export function applyCategorization(
       if (detected) {
         effectivePeriodMonth = detected.month;
         effectivePeriodYear = detected.year;
+      }
+    }
+
+    // Dividen Yeobo SELALU ditransfer di bulan BERIKUTNYA (dibagikan
+    // setelah tutup buku), jadi periode akuntansinya = bulan sebelum
+    // tanggal transfer. Aturan deterministik, jauh lebih andal daripada
+    // menebak dari teks memo — tapi hanya dipakai sebagai cadangan: memo
+    // yang menyebut bulan secara eksplisit tetap menang.
+    //
+    // Kenapa perlu: memo "Div 8 IvstrYeosariYeotem Mei2026" tidak
+    // tertangkap MONTH_REGEX (butuh batas kata di KEDUA sisi, sedangkan
+    // "Mei2026" menempel ke angka tahun), sehingga Rp 13.115.711 dividen
+    // Mei 2026 jatuh ke bucket Juni — Mei tampak kosong, Juni kelebihan.
+    //
+    // Sengaja TIDAK berlaku untuk BU lain. Haengbocake punya 224 baris
+    // Dividend yang tidak satu pun ber-periode efektif; menggesernya
+    // berarti memindahkan ~249 juta antar bulan di laporan mereka, dan
+    // itu keputusan bisnis, bukan urusan fungsi ini.
+    if (
+      effectivePeriodMonth === null &&
+      category === "Dividend" &&
+      businessUnit === "Yeobo Space"
+    ) {
+      const [y, m] = tx.date.split("-").map(Number);
+      if (Number.isFinite(y) && Number.isFinite(m)) {
+        effectivePeriodMonth = m === 1 ? 12 : m - 1;
+        effectivePeriodYear = m === 1 ? y - 1 : y;
       }
     }
 

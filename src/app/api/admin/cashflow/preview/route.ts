@@ -405,7 +405,8 @@ export async function POST(req: Request) {
     rules,
     historical,
     presets,
-    employeeMap
+    employeeMap,
+    bu
   );
   // Merge back preserving original chronological order: duplicates
   // passthrough tanpa categorization, non-dup ambil versi yang sudah

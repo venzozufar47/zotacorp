@@ -170,7 +170,14 @@ export async function POST(req: Request) {
       scope === "all" ? null : r.effective_period_year,
   }));
 
-  const result = applyCategorization(txs, rules, historical, presets, employeeMap);
+  const result = applyCategorization(
+    txs,
+    rules,
+    historical,
+    presets,
+    employeeMap,
+    bu
+  );
 
   // Map each target row → Suggestion with before/after. hasChange lets
   // the UI hide rows that ended up with the same value (e.g. no rule

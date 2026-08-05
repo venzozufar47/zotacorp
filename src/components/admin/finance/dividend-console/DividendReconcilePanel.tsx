@@ -126,6 +126,16 @@ export function DividendReconcilePanel({
             </summary>
 
             <div className="border-t border-border px-3 py-2.5">
+              {/* Transfer dilakukan borongan lewat satu-dua kiriman, tidak
+                  dipecah per cabang — jadi baris per cabang di bawah sering
+                  tidak sejajar meski totalnya benar. Status bulan sengaja
+                  dihitung dari TOTAL, bukan dari baris-baris ini. */}
+              <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">
+                Rincian per cabang hanya informatif — transfer dikirim
+                borongan, tidak terpisah per cabang, jadi wajar bila per
+                barisnya tidak sejajar. Yang menentukan status adalah total
+                bulanan di atas.
+              </p>
               <table className="w-full text-[12px]">
                 <thead>
                   <tr className="text-left text-muted-foreground">
