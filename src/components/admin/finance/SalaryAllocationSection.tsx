@@ -6,7 +6,7 @@
  * per karyawan→cabang→nominal. Tanpa alokasi, PnL fallback ke auto-split.
  */
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2, ChevronDown, ChevronRight, Save } from "lucide-react";
@@ -16,9 +16,12 @@ import { formatDateID } from "@/lib/utils/date-formats";
 import {
   upsertSalaryAllocations,
   type SalaryTxSummary,
-  type SalaryAllocationRow,
 } from "@/lib/actions/salary-allocations.actions";
 import { formatIDR } from "@/lib/cashflow/format";
+import {
+  ArchiveRowButton,
+  ArchiveVisibilityToggle,
+} from "./AllocationArchiveControls";
 
 /** Display label for a branch dropdown value. The "All" sentinel stores
  *  as "All" (resolved to a 3-cabang split rata in the PnL aggregator)
@@ -33,21 +36,36 @@ interface Props {
   branches: string[];
   /** Optional preset employee names (dari employee_branch_map) untuk autocomplete. */
   employeeSuggestions?: Array<{ name: string; branch: string }>;
+  /** Id transaksi yang sudah diarsipkan admin (lihat allocation_archives). */
+  archivedIds?: string[];
+  businessUnit: string;
 }
 
 export function SalaryAllocationSection({
   summaries,
   branches,
   employeeSuggestions = [],
+  archivedIds = [],
+  businessUnit,
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const archivedSet = useMemo(() => new Set(archivedIds), [archivedIds]);
+  const archivedCount = useMemo(
+    () => summaries.filter((s) => archivedSet.has(s.id)).length,
+    [summaries, archivedSet]
+  );
+  const visible = showArchived
+    ? summaries
+    : summaries.filter((s) => !archivedSet.has(s.id));
 
   if (summaries.length === 0) {
     return (
       <section className="rounded-xl border border-border bg-card p-4">
         <h2 className="text-sm font-semibold mb-2">Alokasi gaji (bulk)</h2>
         <p className="text-xs text-muted-foreground">
-          Tidak ada transaksi Salaries & Wages cabang "All" dalam rentang
+          Tidak ada transaksi Salaries &amp; Wages cabang &quot;All&quot; dalam rentang
           yang dipilih. Tx gaji per-orang dengan cabang spesifik tidak
           perlu di-breakdown.
         </p>
@@ -57,25 +75,42 @@ export function SalaryAllocationSection({
 
   return (
     <section className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/40">
-        <h2 className="text-sm font-semibold">Alokasi gaji per karyawan (bulk)</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {summaries.length} transaksi gaji bulk. Tanpa alokasi, PnL
-          fallback bagi rata ke {branches.length} cabang.
+      <div className="px-4 py-3 border-b border-border bg-muted/40 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold">
+            Alokasi gaji per karyawan (bulk)
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {visible.length} dari {summaries.length} transaksi gaji bulk.
+            Tanpa alokasi, PnL fallback bagi rata ke {branches.length} cabang.
+          </p>
+        </div>
+        <ArchiveVisibilityToggle
+          archivedCount={archivedCount}
+          showArchived={showArchived}
+          onToggle={() => setShowArchived((v) => !v)}
+        />
+      </div>
+      {visible.length === 0 ? (
+        <p className="px-4 py-4 text-xs text-muted-foreground">
+          Semua transaksi gaji sudah diarsipkan.
         </p>
-      </div>
-      <div className="divide-y divide-border/60">
-        {summaries.map((s) => (
-          <SalaryRow
-            key={s.id}
-            summary={s}
-            branches={branches}
-            employeeSuggestions={employeeSuggestions}
-            expanded={expandedId === s.id}
-            onToggle={() => setExpandedId(expandedId === s.id ? null : s.id)}
-          />
-        ))}
-      </div>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {visible.map((s) => (
+            <SalaryRow
+              key={s.id}
+              summary={s}
+              branches={branches}
+              employeeSuggestions={employeeSuggestions}
+              businessUnit={businessUnit}
+              archived={archivedSet.has(s.id)}
+              expanded={expandedId === s.id}
+              onToggle={() => setExpandedId(expandedId === s.id ? null : s.id)}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -84,12 +119,16 @@ function SalaryRow({
   summary,
   branches,
   employeeSuggestions,
+  businessUnit,
+  archived,
   expanded,
   onToggle,
 }: {
   summary: SalaryTxSummary;
   branches: string[];
   employeeSuggestions: Array<{ name: string; branch: string }>;
+  businessUnit: string;
+  archived: boolean;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -166,11 +205,14 @@ function SalaryRow({
   };
 
   return (
-    <div>
+    <div className={archived ? "opacity-55" : undefined}>
+      {/* Tombol arsip HARUS sibling, bukan anak: <button> di dalam
+          <button> itu HTML tidak valid dan klik-nya jadi ambigu. */}
+      <div className="flex items-center gap-1 pr-2 hover:bg-muted/40">
       <button
         type="button"
         onClick={onToggle}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-muted/40 text-left"
+        className="flex-1 min-w-0 px-4 py-3 flex items-center gap-3 text-left"
       >
         {expanded ? (
           <ChevronDown className="size-4 text-muted-foreground shrink-0" />
@@ -202,6 +244,13 @@ function SalaryRow({
           </div>
         </div>
       </button>
+        <ArchiveRowButton
+          kind="salary_tx"
+          refKey={summary.id}
+          businessUnit={businessUnit}
+          archived={archived}
+        />
+      </div>
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2 bg-muted/20">

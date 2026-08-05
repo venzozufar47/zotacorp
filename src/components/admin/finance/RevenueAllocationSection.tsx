@@ -9,7 +9,7 @@
  * proporsional (ratio) ke revenue aktual bulan itu.
  */
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronRight, Save, CheckCircle2, Scale } from "lucide-react";
@@ -20,6 +20,10 @@ import {
   type RevenueMonthSummary,
 } from "@/lib/actions/revenue-allocations.actions";
 import { formatIDR } from "@/lib/cashflow/format";
+import {
+  ArchiveRowButton,
+  ArchiveVisibilityToggle,
+} from "./AllocationArchiveControls";
 
 const MONTH_LABELS = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -31,24 +35,46 @@ interface Props {
   summaries: RevenueMonthSummary[];
   /** Cabang fisik (Tlogosari/Tembalang/Jebres). */
   branches: string[];
+  /** monthKey ("YYYY-MM") yang sudah diarsipkan admin. */
+  archivedKeys?: string[];
 }
 
 export function RevenueAllocationSection({
   businessUnit,
   summaries,
   branches,
+  archivedKeys = [],
 }: Props) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const archivedSet = useMemo(() => new Set(archivedKeys), [archivedKeys]);
+  const archivedCount = useMemo(
+    () => summaries.filter((s) => archivedSet.has(s.monthKey)).length,
+    [summaries, archivedSet]
+  );
+  const visible = showArchived
+    ? summaries
+    : summaries.filter((s) => !archivedSet.has(s.monthKey));
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/30">
-        <h2 className="text-sm font-semibold">Alokasi revenue per cabang (bulanan)</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Bagi total revenue cabang &quot;All&quot; tiap bulan ke{" "}
-          {branches.length} cabang. Tanpa alokasi, PnL bagi rata otomatis.
-          Disimpan sebagai proporsi — selalu pas walau ada transaksi baru.
-        </p>
+      <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold">
+            Alokasi revenue per cabang (bulanan)
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Bagi total revenue cabang &quot;All&quot; tiap bulan ke{" "}
+            {branches.length} cabang. Tanpa alokasi, PnL bagi rata otomatis.
+            Disimpan sebagai proporsi — selalu pas walau ada transaksi baru.
+          </p>
+        </div>
+        <ArchiveVisibilityToggle
+          archivedCount={archivedCount}
+          showArchived={showArchived}
+          onToggle={() => setShowArchived((v) => !v)}
+        />
       </div>
       {summaries.length === 0 ? (
         <div className="px-4 py-4">
@@ -56,14 +82,21 @@ export function RevenueAllocationSection({
             Tidak ada revenue cabang &quot;All&quot; dalam rentang ini.
           </p>
         </div>
+      ) : visible.length === 0 ? (
+        <div className="px-4 py-4">
+          <p className="text-xs text-muted-foreground">
+            Semua bulan sudah diarsipkan.
+          </p>
+        </div>
       ) : (
         <div className="divide-y divide-border/60">
-          {summaries.map((s) => (
+          {visible.map((s) => (
             <MonthRow
               key={s.monthKey}
               businessUnit={businessUnit}
               summary={s}
               branches={branches}
+              archived={archivedSet.has(s.monthKey)}
               expanded={expandedKey === s.monthKey}
               onToggle={() =>
                 setExpandedKey(expandedKey === s.monthKey ? null : s.monthKey)
@@ -80,12 +113,14 @@ function MonthRow({
   businessUnit,
   summary,
   branches,
+  archived,
   expanded,
   onToggle,
 }: {
   businessUnit: string;
   summary: RevenueMonthSummary;
   branches: string[];
+  archived: boolean;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -188,11 +223,14 @@ function MonthRow({
   };
 
   return (
-    <div>
+    <div className={archived ? "opacity-55" : undefined}>
+      {/* Tombol arsip sibling, bukan anak — <button> bersarang itu HTML
+          tidak valid dan klik-nya jadi ambigu. */}
+      <div className="flex items-center gap-1 pr-2 hover:bg-muted/40">
       <button
         type="button"
         onClick={onToggle}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-muted/40 text-left"
+        className="flex-1 min-w-0 px-4 py-3 flex items-center gap-3 text-left"
       >
         <ChevronRight
           className={`size-4 text-muted-foreground shrink-0 transition-transform ${
@@ -230,6 +268,13 @@ function MonthRow({
           </span>
         )}
       </button>
+        <ArchiveRowButton
+          kind="revenue_month"
+          refKey={summary.monthKey}
+          businessUnit={businessUnit}
+          archived={archived}
+        />
+      </div>
       {expanded && (
         <div className="px-4 py-3 border-t border-border/60 space-y-2 bg-muted/20">
           {/* Isi total revenue PENUH per cabang (cash + rekening). Sistem

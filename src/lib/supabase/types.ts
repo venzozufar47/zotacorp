@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      allocation_archives: {
+        Row: {
+          archived_at: string
+          archived_by: string | null
+          business_unit: string
+          kind: string
+          ref_key: string
+        }
+        Insert: {
+          archived_at?: string
+          archived_by?: string | null
+          business_unit: string
+          kind: string
+          ref_key: string
+        }
+        Update: {
+          archived_at?: string
+          archived_by?: string | null
+          business_unit?: string
+          kind?: string
+          ref_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "allocation_archives_archived_by_fkey"
+            columns: ["archived_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_locations: {
         Row: {
           created_at: string

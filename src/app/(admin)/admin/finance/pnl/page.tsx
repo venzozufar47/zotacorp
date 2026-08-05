@@ -19,6 +19,7 @@ import { PnLClient } from "@/components/admin/finance/PnLClient";
 import { PnLYeoboClient } from "@/components/admin/finance/PnLYeoboClient";
 import { SalaryAllocationSection } from "@/components/admin/finance/SalaryAllocationSection";
 import { RevenueAllocationSection } from "@/components/admin/finance/RevenueAllocationSection";
+import { listArchivedKeys } from "@/lib/actions/allocation-archives.actions";
 import { listRevenueMonthAllocations } from "@/lib/actions/revenue-allocations.actions";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
 import { fetchRevenueBySource } from "@/lib/cashflow/revenue-source";
@@ -131,6 +132,12 @@ export default async function PnLPage({
   });
   const revenueAllocations =
     revenueRes.ok && revenueRes.data ? revenueRes.data : [];
+  // Baris alokasi yang disembunyikan admin karena sudah selesai. Murni
+  // preferensi tampilan — tidak memengaruhi angka PnL mana pun.
+  const [archivedSalaryIds, archivedRevenueKeys] = await Promise.all([
+    listArchivedKeys("salary_tx", businessUnit),
+    listArchivedKeys("revenue_month", businessUnit),
+  ]);
   // Rincian revenue per rekening asal — memisahkan payment gateway
   // (Mayar) dari rekening bank/cash. Pakai rentang tanggal yang sama
   // dengan alokasi gaji di atas.
@@ -234,6 +241,8 @@ export default async function PnLPage({
           summaries={salaryAllocations}
           branches={allocBranches}
           employeeSuggestions={employeeSuggestions}
+          businessUnit={businessUnit}
+          archivedIds={[...archivedSalaryIds]}
         />
       )}
 
@@ -244,6 +253,7 @@ export default async function PnLPage({
           branches={allocBranches.filter(
             (b) => b !== "All" && b !== "Needs Assignment" && !b.includes("+")
           )}
+          archivedKeys={[...archivedRevenueKeys]}
         />
       )}
     </div>
