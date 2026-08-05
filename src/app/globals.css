@@ -39,6 +39,12 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
+  /* Sempat TERLEWAT: --warning sudah ada nilainya sejak lama, tapi tanpa
+     token --color-* ini Tailwind v4 tidak pernah membangkitkan utility-nya,
+     sehingga `bg-warning`/`text-warning` di ~30 berkas diam-diam tidak
+     menghasilkan apa pun — bar hilang, teks jatuh ke warna bawaan. Tidak ada
+     error, hanya sinyal visual yang lenyap. */
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
