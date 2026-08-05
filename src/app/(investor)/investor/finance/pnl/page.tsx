@@ -126,7 +126,6 @@ export default async function InvestorPnLPage({
             to={to}
             report={yeoboReport}
             allowedBranches={allowedBranches ?? undefined}
-            hideBuTotal
             photoSessions={photoSessions}
           />
         )
