@@ -24,32 +24,64 @@ export interface CashDashboardDef {
   branch: string;
   /** Pengeluaran wajib lampir foto bukti? (Yeobo: ya; Semarang: tidak.) */
   requireExpenseProof: boolean;
+  /**
+   * Arsip: halaman tetap bisa dibuka untuk melihat riwayat, tapi tidak
+   * menerima input/ubah/hapus lagi. Angka lama TETAP dihitung di PnL —
+   * yang dimatikan hanya pintu masuknya.
+   */
+  readOnly?: boolean;
 }
 
 export const CASH_DASHBOARDS = {
+  // Tiga kas Yeobo diarsipkan Agustus 2026 — entri terakhir 4-15 Juli dan
+  // sejak itu penjualan tunai hanya terlihat saat disetor ke bank (lihat
+  // rule setor-tunai di migrasi 125). Dibiarkan terbuka untuk review.
   cash_yeosari: {
     businessUnit: "Yeobo Space",
     branch: "Tlogosari",
     requireExpenseProof: true,
+    readOnly: true,
   },
   cash_yeotem: {
     businessUnit: "Yeobo Space",
     branch: "Tembalang",
     requireExpenseProof: true,
+    readOnly: true,
   },
   cash_yeosol: {
     businessUnit: "Yeobo Space",
     branch: "Jebres",
     requireExpenseProof: true,
+    readOnly: true,
   },
   cash_semarang: {
     businessUnit: "Haengbocake",
     branch: "Semarang",
     requireExpenseProof: false,
+    // Ditulis eksplisit, bukan dibiarkan undefined: `as const` membuat tiap
+    // entri jadi tipe literalnya sendiri, sehingga properti yang absen di
+    // salah satu entri tidak bisa dibaca dari union-nya.
+    readOnly: false,
   },
 } as const satisfies Record<string, CashDashboardDef>;
 
 export type CashBranchSlug = keyof typeof CASH_DASHBOARDS;
+
+/**
+ * Apakah kas (BU + cabang) ini sudah diarsipkan?
+ *
+ * Dipakai DUA kali dengan sengaja: di UI untuk menyembunyikan form, dan di
+ * server action untuk menolak tulisan. Menyembunyikan tombol saja tidak
+ * menutup apa pun — server action bisa dipanggil langsung.
+ */
+export function isCashDashboardReadOnly(
+  businessUnit: string,
+  branch: string | null | undefined
+): boolean {
+  const slug = cashSlugForAccount(businessUnit, branch);
+  if (!slug) return false;
+  return CASH_DASHBOARDS[slug].readOnly === true;
+}
 
 /** Slug halaman kas untuk sebuah akun (BU + cabang); null = tanpa dashboard. */
 export function cashSlugForAccount(

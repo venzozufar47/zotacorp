@@ -69,6 +69,7 @@ export function CashDashboardClient({
   viewYear,
   atCurrentMonth,
   requireExpenseProof,
+  readOnly = false,
 }: {
   accountId: string;
   businessUnit: string;
@@ -84,6 +85,12 @@ export function CashDashboardClient({
   atCurrentMonth: boolean;
   /** Pengeluaran wajib lampir foto bukti (per dashboard, dari registry). */
   requireExpenseProof: boolean;
+  /**
+   * Kas diarsipkan: riwayat tetap tampil, tapi tombol tambah/ubah/hapus
+   * disembunyikan. Penegakan sebenarnya ada di server action — ini murni
+   * supaya UI tidak menawarkan aksi yang pasti ditolak.
+   */
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -321,23 +328,36 @@ export function CashDashboardClient({
           </div>
         </section>
 
-        {/* Tombol input */}
-        <section className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => openNew("income")}
-            className="press-feedback inline-flex h-16 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm hover:bg-emerald-700 transition"
-          >
-            <Plus size={20} strokeWidth={2.6} /> Pemasukan
-          </button>
-          <button
-            type="button"
-            onClick={() => openNew("expense")}
-            className="press-feedback inline-flex h-16 items-center justify-center gap-2 rounded-2xl bg-destructive text-base font-bold text-white shadow-sm hover:opacity-90 transition"
-          >
-            <Minus size={20} strokeWidth={2.6} /> Pengeluaran
-          </button>
-        </section>
+        {/* Tombol input — hilang saat kas diarsipkan */}
+        {readOnly ? (
+          <section className="rounded-2xl border border-border bg-muted/40 px-4 py-3">
+            <p className="text-sm font-semibold text-foreground">
+              Kas ini sudah diarsipkan
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Riwayatnya tetap bisa dibuka dan tetap terhitung di laporan.
+              Pencatatan baru tidak lagi lewat sini — penjualan tunai masuk
+              saat disetor ke bank.
+            </p>
+          </section>
+        ) : (
+          <section className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => openNew("income")}
+              className="press-feedback inline-flex h-16 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+            >
+              <Plus size={20} strokeWidth={2.6} /> Pemasukan
+            </button>
+            <button
+              type="button"
+              onClick={() => openNew("expense")}
+              className="press-feedback inline-flex h-16 items-center justify-center gap-2 rounded-2xl bg-destructive text-base font-bold text-white shadow-sm hover:opacity-90 transition"
+            >
+              <Minus size={20} strokeWidth={2.6} /> Pengeluaran
+            </button>
+          </section>
+        )}
 
         {/* Daftar transaksi */}
         <section className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -401,21 +421,27 @@ export function CashDashboardClient({
                             <Paperclip size={11} /> Lihat bukti
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => openEdit(t)}
-                          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil size={11} /> Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDelete(t)}
-                          disabled={pending}
-                          className="inline-flex items-center gap-1 text-muted-foreground hover:text-destructive disabled:opacity-50"
-                        >
-                          <Trash2 size={11} /> Hapus
-                        </button>
+                        {/* Bukti tetap bisa dilihat saat diarsipkan —
+                            yang dimatikan hanya yang mengubah data. */}
+                        {!readOnly && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(t)}
+                              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                            >
+                              <Pencil size={11} /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDelete(t)}
+                              disabled={pending}
+                              className="inline-flex items-center gap-1 text-muted-foreground hover:text-destructive disabled:opacity-50"
+                            >
+                              <Trash2 size={11} /> Hapus
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                     <p

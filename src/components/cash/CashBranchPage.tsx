@@ -111,6 +111,7 @@ export async function CashBranchPage({
       viewYear={y}
       atCurrentMonth={atCurrentMonth}
       requireExpenseProof={def.requireExpenseProof}
+      readOnly={def.readOnly === true}
     />
   );
 }

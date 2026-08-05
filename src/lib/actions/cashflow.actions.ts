@@ -9,6 +9,7 @@ import { makeDedupeKey } from "@/lib/cashflow/dedupe";
 import { computeLatestBalance } from "@/lib/cashflow/balance";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
+import { isCashDashboardReadOnly } from "@/lib/cashflow/cash-branches";
 
 type BankAccountUpdate = Database["public"]["Tables"]["bank_accounts"]["Update"];
 type CashflowStatementUpdate = Database["public"]["Tables"]["cashflow_statements"]["Update"];
@@ -365,6 +366,32 @@ export async function createBlankStatement(input: {
  * (month, year). Dedupe still runs: same (date|desc|debit|credit|
  * runningBalance) key means we reject so admin doesn't double-enter.
  */
+/**
+ * Tolak tulisan ke rekening kas yang sudah diarsipkan.
+ *
+ * Sengaja ditegakkan di server, bukan cuma menyembunyikan form: server
+ * action bisa dipanggil langsung, jadi tombol yang hilang tidak menutup
+ * apa pun. Return pesan error, atau null kalau boleh menulis.
+ *
+ * Hanya berlaku untuk rekening `bank='cash'` — rekening bank sungguhan
+ * tidak pernah punya dashboard kas dan tidak boleh ikut terkunci.
+ */
+async function cashArchivedError(
+  supabase: SupabaseClient<Database>,
+  bankAccountId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("bank_accounts")
+    .select("bank, business_unit, default_branch")
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  if (!data || data.bank !== "cash") return null;
+  if (!isCashDashboardReadOnly(data.business_unit, data.default_branch)) {
+    return null;
+  }
+  return "Kas cabang ini sudah diarsipkan — riwayatnya masih bisa dilihat, tapi tidak menerima input, ubah, atau hapus lagi.";
+}
+
 export async function createManualTransaction(input: {
   bankAccountId: string;
   date: string; // YYYY-MM-DD
@@ -405,6 +432,9 @@ export async function createManualTransaction(input: {
       .join(" · ") || "Transaksi";
 
   const supabase = await createClient();
+
+  const archived = await cashArchivedError(supabase, input.bankAccountId);
+  if (archived) return { ok: false, error: archived };
 
   // Branch fallback: rekening per-cabang (Cash Pare/Semarang, Cash Yeobo
   // tiap cabang, bank Yeobo "All") menyimpan `default_branch`. Entri
@@ -583,6 +613,8 @@ export async function updateCashflowTransactions(
   for (const accountId of uniqueAccounts) {
     const gate = await requireAdminOrAssignee(accountId);
     if (!gate.ok) return { ok: false, error: gate.error };
+    const archived = await cashArchivedError(supabase, accountId);
+    if (archived) return { ok: false, error: archived };
   }
 
   let updatedCount = 0;
@@ -675,6 +707,9 @@ export async function deleteCashflowTransaction(id: string): Promise<ActionResul
   if (!stmt) return { ok: false, error: "Statement tidak ditemukan" };
   const gate = await requireAdminOrAssignee(stmt.bank_account_id);
   if (!gate.ok) return { ok: false, error: gate.error };
+
+  const archived = await cashArchivedError(supabase, stmt.bank_account_id);
+  if (archived) return { ok: false, error: archived };
 
   const { error } = await supabase
     .from("cashflow_transactions")
