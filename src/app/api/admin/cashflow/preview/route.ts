@@ -30,8 +30,9 @@ import {
   fetchRules,
   presetsFor,
 } from "@/lib/cashflow/categorize";
-import { sortChronologicalAsc } from "@/lib/cashflow/chronological";
-import { makeDedupeKey, makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
+import { sortChronologicalAsc, type ChronoRow } from "@/lib/cashflow/chronological";
+import { makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
+import { auditLedger, describeLedgerAudit } from "@/lib/cashflow/ledger-integrity";
 import type { BankCode } from "@/lib/cashflow/types";
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -294,6 +295,8 @@ export async function POST(req: Request) {
   // walau sebenarnya duplikat.
   type ExistingRow = {
     transaction_date: string;
+    transaction_time: string | null;
+    sort_order: number | null;
     description: string;
     debit: string | number;
     credit: string | number;
@@ -306,7 +309,7 @@ export async function POST(req: Request) {
       const { data } = await supabase
         .from("cashflow_transactions")
         .select(
-          "transaction_date, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
+          "transaction_date, transaction_time, sort_order, description, debit, credit, running_balance, cashflow_statements!inner(bank_account_id)"
         )
         .eq("cashflow_statements.bank_account_id", bankAccountId)
         .range(offset, offset + PAGE - 1);
@@ -316,14 +319,21 @@ export async function POST(req: Request) {
     }
   }
 
-  // BCA Yeobo Space: saldo per-baris sintetik + deskripsi kadang
-  // di-anotasi manual ([PENDING], dll.) → dedupe klasik (yang ikut
-  // menyertakan saldo + deskripsi) gagal mengenali re-upload. Pakai
-  // dedupe berbasis kemunculan: date + debit + credit + occurrence.
-  // Bank/rekening lain tidak berubah.
-  const useOccurrenceDedupe =
+  // Dedupe berbasis kemunculan, tanpa description — deskripsi bisa
+  // disunting admin, dan begitu disunting baris lama tidak lagi cocok
+  // dengan dirinya sendiri saat file yang sama diunggah ulang. Saldo
+  // tetap ikut kecuali memang sintetik (BCA Yeobo Space). Penjelasan
+  // lengkap + insidennya ada di /commit; kedua sisi HARUS sama.
+  const hasSyntheticBalance =
     bankAccount.bank === "bca" && bankAccount.business_unit === "Yeobo Space";
-  const OCC_OPTS = { ignoreBalance: true, ignoreDescription: true } as const;
+  const OCC_OPTS = {
+    ignoreBalance: hasSyntheticBalance,
+    ignoreDescription: true,
+  } as const;
+  const hasAuthoritativeBalance =
+    !hasSyntheticBalance &&
+    bankAccount.bank !== "cash" &&
+    bankAccount.bank !== "mayar";
 
   const toKeyable = (t: ExistingRow) => ({
     transaction_date: t.transaction_date,
@@ -338,21 +348,41 @@ export async function POST(req: Request) {
   // render semuanya di preview table — supaya sum di panel verifikasi
   // (pakai SEMUA tx) konsisten dengan angka yang user lihat di row
   // table. Commit endpoint filter ulang berdasarkan flag `duplicate`.
-  let dupFlags: boolean[];
-  if (useOccurrenceDedupe) {
-    const existingKeys = new Set(
-      makeOccurrenceKeys(existingRows.map(toKeyable), OCC_OPTS)
-    );
-    const candKeys = makeOccurrenceKeys(parsed.transactions, OCC_OPTS);
-    dupFlags = candKeys.map((k) => existingKeys.has(k));
-  } else {
-    const existingKeys = new Set(
-      existingRows.map((t) => makeDedupeKey(toKeyable(t)))
-    );
-    dupFlags = parsed.transactions.map((t) => existingKeys.has(makeDedupeKey(t)));
-  }
+  const existingKeys = new Set(
+    makeOccurrenceKeys(existingRows.map(toKeyable), OCC_OPTS)
+  );
+  const candKeys = makeOccurrenceKeys(parsed.transactions, OCC_OPTS);
+  const dupFlags = candKeys.map((k) => existingKeys.has(k));
   const newTransactions = parsed.transactions.filter((_, i) => !dupFlags[i]);
   const skippedCount = dupFlags.filter(Boolean).length;
+
+  // Peringatan dini: tunjukkan kerusakan ledger di preview, bukan
+  // menunggu commit menolaknya. Perhitungannya sama persis dengan gate
+  // di /commit supaya tidak ada kejutan di langkah terakhir.
+  {
+    const merged: ChronoRow[] = [
+      ...existingRows.map((t) => ({
+        date: t.transaction_date,
+        time: t.transaction_time,
+        debit: Number(t.debit),
+        credit: Number(t.credit),
+        runningBalance:
+          t.running_balance !== null ? Number(t.running_balance) : null,
+        sortOrder: t.sort_order,
+      })),
+      ...newTransactions.map((t) => ({
+        date: t.date,
+        time: t.time ?? null,
+        debit: t.debit,
+        credit: t.credit,
+        runningBalance: t.runningBalance ?? null,
+      })),
+    ];
+    const problem = describeLedgerAudit(
+      auditLedger(merged, { trustBankBalance: hasAuthoritativeBalance })
+    );
+    if (problem) parsed.warnings.push(problem);
+  }
 
   // Auto-categorize + auto-branch using admin-owned rule engine +
   // historical exact-match. Rules are scoped per bank account (each
