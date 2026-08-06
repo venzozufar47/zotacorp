@@ -53,7 +53,18 @@ export default function RegisterPage() {
     const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
+    const confirmPassword = formData.get("confirm_password") as string;
     const fullName = formData.get("full_name") as string;
+
+    // Dicek SEBELUM akun dibuat. Salah ketik password di sini tidak
+    // pernah terlihat karena inputnya tersembunyi, dan akibatnya baru
+    // terasa saat login pertama gagal — dengan akun yang terlanjur ada
+    // dan hanya bisa dipulihkan lewat reset.
+    if (password !== confirmPassword) {
+      setError(t.resetPassword.errMismatch);
+      setLoading(false);
+      return;
+    }
 
     try {
       // Step 1: create user + profile entirely server-side (no Supabase email sent)
@@ -178,6 +189,20 @@ export default function RegisterPage() {
             <PasswordInput
               id="password"
               name="password"
+              placeholder={tr.passwordPlaceholder}
+              required
+              minLength={8}
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm_password">
+              {t.resetPassword.confirmPassword}
+            </Label>
+            <PasswordInput
+              id="confirm_password"
+              name="confirm_password"
               placeholder={tr.passwordPlaceholder}
               required
               minLength={8}

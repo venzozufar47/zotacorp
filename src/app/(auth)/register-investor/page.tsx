@@ -38,6 +38,7 @@ export default function RegisterInvestorPage() {
     const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
+    const confirmPassword = formData.get("confirm_password") as string;
     const fullName = formData.get("full_name") as string;
     const company = formData.get("company") as string;
     // Claim token dari link pendaftaran placeholder (?claim=...) — dibaca
@@ -46,6 +47,15 @@ export default function RegisterInvestorPage() {
       typeof window !== "undefined"
         ? new URLSearchParams(window.location.search).get("claim")
         : null;
+
+    // Dicek SEBELUM akun dibuat — salah ketik pada input tersembunyi
+    // baru ketahuan saat login pertama gagal, dengan akun yang terlanjur
+    // ada dan hanya bisa dipulihkan lewat reset.
+    if (password !== confirmPassword) {
+      setError(t.resetPassword.errMismatch);
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/profile/create-investor", {
@@ -161,6 +171,20 @@ export default function RegisterInvestorPage() {
             <PasswordInput
               id="password"
               name="password"
+              placeholder={tl.passwordPlaceholder}
+              required
+              minLength={8}
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm_password">
+              {t.resetPassword.confirmPassword}
+            </Label>
+            <PasswordInput
+              id="confirm_password"
+              name="confirm_password"
               placeholder={tl.passwordPlaceholder}
               required
               minLength={8}

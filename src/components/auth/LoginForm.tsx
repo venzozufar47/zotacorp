@@ -21,6 +21,7 @@ export function LoginForm() {
   const tl = t.login;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   // Investor invite / password-recovery links dari Supabase mendarat di "/"
   // dengan token di URL hash (mis. #access_token=...&type=invite) karena
@@ -87,6 +88,10 @@ export function LoginForm() {
         <CardDescription>{tl.subtitle}</CardDescription>
       </CardHeader>
       <CardContent>
+        {forgotOpen ? (
+          <ForgotPanel tl={tl} onBack={() => setForgotOpen(false)} />
+        ) : (
+        <>
         {notice && !error && (
           <p className="text-sm text-amber-800 bg-amber-100 border-2 border-amber-600 rounded-xl px-3 py-2 font-medium mb-4">
             {notice}
@@ -126,6 +131,19 @@ export function LoginForm() {
           </Button>
         </form>
 
+        {/* Pintu masuk "lupa password". Ditaruh tepat di bawah tombol
+            masuk karena di situlah orang berada saat password-nya
+            ditolak — bukan di footer bersama tautan pendaftaran. */}
+        <div className="text-center mt-3">
+          <button
+            type="button"
+            onClick={() => setForgotOpen(true)}
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            {tl.forgotCta}
+          </button>
+        </div>
+
         <p className="text-center text-sm text-muted-foreground mt-5 font-medium">
           {tl.noAccount}{" "}
           <Link href="/register" className="font-display font-bold text-primary hover:underline underline-offset-4">
@@ -141,7 +159,98 @@ export function LoginForm() {
             {tl.investorCta}
           </Link>
         </p>
+        </>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Form "lupa password" anonim.
+ *
+ * Sengaja TIDAK memberi tahu apakah emailnya terdaftar — pesan sukses
+ * dari server selalu sama persis untuk email dikenal maupun tidak.
+ * Menampilkan "email tidak ditemukan" akan mengubah halaman login jadi
+ * alat memeriksa siapa saja yang punya akun di sini.
+ */
+function ForgotPanel({
+  tl,
+  onBack,
+}: {
+  tl: ReturnType<typeof useTranslation>["t"]["login"];
+  onBack: () => void;
+}) {
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSending(true);
+    setErr(null);
+    const email = new FormData(e.currentTarget).get("email") as string;
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = (await res.json()) as { message?: string; error?: string };
+      if (!res.ok) {
+        setErr(json.error ?? tl.errGeneric);
+        return;
+      }
+      setDone(json.message ?? tl.forgotSubmit);
+    } catch {
+      setErr(tl.errGeneric);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="font-display text-lg font-bold">{tl.forgotTitle}</h2>
+        <p className="text-sm text-muted-foreground">{tl.forgotDesc}</p>
+      </div>
+
+      {done ? (
+        <p className="text-sm bg-pop-emerald/15 border-2 border-foreground rounded-xl px-3 py-2 font-medium">
+          {done}
+        </p>
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="forgot-email">{tl.emailLabel}</Label>
+            <Input
+              id="forgot-email"
+              name="email"
+              type="email"
+              placeholder={tl.emailPlaceholder}
+              required
+              autoComplete="email"
+            />
+          </div>
+          {err && (
+            <p className="text-sm text-destructive bg-destructive/10 border-2 border-destructive rounded-xl px-3 py-2 font-medium">
+              {err}
+            </p>
+          )}
+          <Button type="submit" size="lg" className="w-full" disabled={sending}>
+            {sending ? tl.forgotSubmitting : tl.forgotSubmit}
+          </Button>
+        </form>
+      )}
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="block w-full text-center text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+      >
+        {tl.forgotBack}
+      </button>
+    </div>
   );
 }

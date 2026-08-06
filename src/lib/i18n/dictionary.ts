@@ -137,6 +137,13 @@ export const dictionary = {
       investorPrompt: "Investor?",
       investorCta: "Register via investor portal",
       errGeneric: "An unexpected error occurred.",
+      forgotCta: "Forgot password?",
+      forgotTitle: "Reset your password",
+      forgotDesc:
+        "Enter your registered email. We'll send a link to set a new password.",
+      forgotSubmit: "Send reset link",
+      forgotSubmitting: "Sending…",
+      forgotBack: "Back to sign in",
     },
     register: {
       title: "Create account",
@@ -847,6 +854,13 @@ export const dictionary = {
       investorPrompt: "Investor?",
       investorCta: "Daftar via investor portal",
       errGeneric: "Ada yang salah. Coba lagi ya",
+      forgotCta: "Lupa password?",
+      forgotTitle: "Reset password",
+      forgotDesc:
+        "Masukkan email yang terdaftar. Kami kirim link untuk membuat password baru.",
+      forgotSubmit: "Kirim link reset",
+      forgotSubmitting: "Mengirim…",
+      forgotBack: "Kembali ke halaman masuk",
     },
     register: {
       title: "Buat akun",
