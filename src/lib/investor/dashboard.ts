@@ -96,9 +96,15 @@ export interface HeroBranchPerformance {
  * semua field "Lifetime" jadi null → UI render "—".
  */
 export interface InvestorHeroPerformance {
-  /** Tahun + bulan kalender saat dashboard di-render. */
+  /** Periode yang DISOROT di hero — bulan terakhir yang sudah tutup, bukan
+   *  bulan berjalan (lihat closedMonthSeries). Nama field dipertahankan
+   *  supaya konsumen lama tidak perlu diubah. */
   currentYear: number;
   currentMonth: number;
+  /** true = periode di atas adalah bulan yang sudah selesai penuh. false
+   *  hanya terjadi pada kontrak yang baru dimulai bulan ini, saat belum ada
+   *  satu pun bulan tutup — UI memakai ini untuk memilih label yang jujur. */
+  isClosedMonth: boolean;
   revenueThisMonth: number;
   revenueLifetimeAvg: number | null;
   revenueDeltaVsAvgPct: number | null;
@@ -202,6 +208,19 @@ export async function fetchInvestorDashboardData(input: {
     year: Math.floor((idx - 1) / 12),
     month: ((idx - 1) % 12) + 1,
   });
+  // Metrik operasional & payout tidak bergantung pada laporan P&L; keduanya
+  // dilepas lebih dulu supaya latensinya bertumpuk dengan fetchPnL alih-alih
+  // antre di belakangnya. Fungsi async mulai berjalan saat dipanggil, jadi
+  // cukup menunda `await`-nya ke titik pemakaian di bawah.
+  const metricsPromise = getBuMetrics({
+    businessUnit: input.businessUnit,
+    from: input.from,
+    to: input.to,
+  });
+  const payoutsPromise = contract
+    ? listPayoutsForContract(contract.id)
+    : Promise.resolve([]);
+
   const bigReport = (await fetchPnL(
     input.supabase as never,
     input.businessUnit,
@@ -292,12 +311,9 @@ export async function fetchInvestorDashboardData(input: {
     0
   );
 
-  // Operational metrics — overlay ke rows.
-  const metrics = await getBuMetrics({
-    businessUnit: input.businessUnit,
-    from: input.from,
-    to: input.to,
-  });
+  // Operational metrics — overlay ke rows. (Permintaannya sudah dilepas
+  // sebelum fetchPnL di atas; di sini tinggal menunggu hasilnya.)
+  const metrics = await metricsPromise;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const mm = metrics.find(
@@ -311,9 +327,7 @@ export async function fetchInvestorDashboardData(input: {
     NON_OP_BUT_OPERATIONAL_EXCLUDE.has(""); // touch to keep lint happy
   }
 
-  const payouts = contract
-    ? await listPayoutsForContract(contract.id)
-    : [];
+  const payouts = await payoutsPromise;
   const totalCashback = payouts.reduce((s, p) => s + p.amountIdr, 0);
 
   const bepCurrent = totalCashback;
@@ -408,9 +422,13 @@ export async function fetchInvestorDashboardData(input: {
           branch: { Semarang: sem, Pare: par },
         };
       });
-      const last = lifeRows[lifeRows.length - 1];
-      const prev = lifeRows.length >= 2 ? lifeRows[lifeRows.length - 2] : null;
-      const priorMonths = lifeRows.slice(0, -1);
+      // Hero menyorot bulan terakhir yang sudah TUTUP; bulan berjalan
+      // dibuang supaya "vs rata-rata" tidak selalu minus di awal bulan.
+      const heroSeries = closedMonthSeries(lifeRows, currentYear, currentMonth);
+      const heroRows = heroSeries.rows;
+      const last = heroRows[heroRows.length - 1];
+      const prev = heroRows.length >= 2 ? heroRows[heroRows.length - 2] : null;
+      const priorMonths = heroRows.slice(0, -1);
       const avgOf = (sel: (r: LifeRow) => number) =>
         priorMonths.length
           ? priorMonths.reduce((s, r) => s + sel(r), 0) / priorMonths.length
@@ -451,8 +469,9 @@ export async function fetchInvestorDashboardData(input: {
         };
       };
       heroPerformance = {
-        currentYear,
-        currentMonth,
+        currentYear: heroSeries.year,
+        currentMonth: heroSeries.month,
+        isClosedMonth: heroSeries.isClosed,
         revenueThisMonth: last?.revenue ?? 0,
         revenueLifetimeAvg: avgRev,
         revenueDeltaVsAvgPct: pctDelta(last?.revenue ?? 0, avgRev),
@@ -463,7 +482,7 @@ export async function fetchInvestorDashboardData(input: {
         profitDeltaVsAvgPct: pctDelta(last?.profit ?? 0, avgProfit),
         profitPrevMonth: prev?.profit ?? null,
         profitDeltaMoMPct: pctDelta(last?.profit ?? 0, prev?.profit ?? null),
-        monthsObserved: lifeRows.length,
+        monthsObserved: heroRows.length,
         byBranch: {
           Semarang: buildBranchPerf("Semarang"),
           Pare: buildBranchPerf("Pare"),
@@ -483,6 +502,8 @@ export async function fetchInvestorDashboardData(input: {
       heroPerformance = {
         currentYear,
         currentMonth,
+        // Belum ada data sama sekali → tidak ada bulan tutup untuk disorot.
+        isClosedMonth: false,
         revenueThisMonth: 0,
         revenueLifetimeAvg: null,
         revenueDeltaVsAvgPct: null,
@@ -634,10 +655,47 @@ function computeContractProgress(
 }
 
 /** Hero dari deret bulanan {revenue,profit} (tanpa byBranch). */
+/**
+ * Buang bulan BERJALAN dari deret hero.
+ *
+ * Bulan berjalan baru terisi sebagian — pada tanggal 7 ia hanya memuat
+ * seminggu transaksi — sehingga hero selalu menampilkan "turun 90% vs
+ * rata-rata" setiap awal bulan. Itu bukan kabar buruk, itu artefak kalender,
+ * dan investor tidak punya cara membedakannya. Maka hero memakai bulan
+ * terakhir yang sudah TUTUP: angkanya bisa dibandingkan apa adanya.
+ *
+ * Bulan berjalan tidak hilang dari mana pun — tabel bulanan dan grafik di
+ * bawah hero tetap menampilkannya; yang dipindah hanya sorotan di kartu atas.
+ *
+ * Fallback: kalau setelah dibuang tidak tersisa satu bulan pun (kontrak baru
+ * dimulai bulan ini), deret aslinya dikembalikan — lebih baik menampilkan
+ * bulan berjalan dengan label jujur daripada kartu kosong.
+ */
+function closedMonthSeries<T extends { year: number; month: number }>(
+  rows: T[],
+  currentYear: number,
+  currentMonth: number
+): { rows: T[]; year: number; month: number; isClosed: boolean } {
+  const idx = (y: number, m: number) => y * 12 + m;
+  const cutoff = idx(currentYear, currentMonth);
+  const closed = rows.filter((r) => idx(r.year, r.month) < cutoff);
+  if (closed.length === 0) {
+    return { rows, year: currentYear, month: currentMonth, isClosed: false };
+  }
+  const lastRow = closed[closed.length - 1];
+  return {
+    rows: closed,
+    year: lastRow.year,
+    month: lastRow.month,
+    isClosed: true,
+  };
+}
+
 function buildHeroFromSeries(
   lifeRows: Array<{ revenue: number; profit: number }>,
   currentYear: number,
-  currentMonth: number
+  currentMonth: number,
+  isClosedMonth = false
 ): InvestorHeroPerformance {
   const last = lifeRows[lifeRows.length - 1] ?? null;
   const prev = lifeRows.length >= 2 ? lifeRows[lifeRows.length - 2] : null;
@@ -651,6 +709,7 @@ function buildHeroFromSeries(
   return {
     currentYear,
     currentMonth,
+    isClosedMonth,
     revenueThisMonth: last?.revenue ?? 0,
     revenueLifetimeAvg: avgRev,
     revenueDeltaVsAvgPct: pctDeltaStandalone(last?.revenue ?? 0, avgRev),
@@ -740,27 +799,26 @@ export async function fetchYeoboInvestorDashboard(input: {
     year: Math.floor((idx - 1) / 12),
     month: ((idx - 1) % 12) + 1,
   });
-  const bigReport = await fetchYeoboPnL(
-    input.supabase as never,
-    idxToYm(loIdx),
-    idxToYm(hiIdx)
-  );
-  const selectedMonths = bigReport.months.filter(
-    (m) => mIdx(m.year, m.month) >= selLo && mIdx(m.year, m.month) <= selHi
-  );
-  const lifetimeReport = anyStarted ? bigReport : null;
-
-  // Batch every contract's payouts into one query (was N round-trips).
-  const payoutsByContract = await listPayoutsForContracts(
-    contracts.map((c) => c.id)
-  );
-
   // Konfigurasi dividen per cabang (mgmt %, total modal cabang) — untuk BEP
   // "modal terbalik" hybrid yang konsisten dengan konsol dividen admin.
   const branchList = Array.from(
     new Set(contracts.map((c) => c.branch).filter((b): b is string => !!b))
   );
-  const branchConfigs = await Promise.all(branchList.map((b) => getDividendBranchConfig(b)));
+
+  // Ketiganya hanya bergantung pada `contracts`, TIDAK satu sama lain, tapi
+  // dulu dijalankan antre sehingga latensinya dijumlah. Halaman ini adalah
+  // yang paling lambat di aplikasi (BEP hybrid menuntut riwayat sejak Jan
+  // 2023), jadi setiap perjalanan bolak-balik yang bisa ditumpuk berarti.
+  const [bigReport, payoutsByContract, branchConfigs] = await Promise.all([
+    fetchYeoboPnL(input.supabase as never, idxToYm(loIdx), idxToYm(hiIdx)),
+    listPayoutsForContracts(contracts.map((c) => c.id)),
+    Promise.all(branchList.map((b) => getDividendBranchConfig(b))),
+  ]);
+
+  const selectedMonths = bigReport.months.filter(
+    (m) => mIdx(m.year, m.month) >= selLo && mIdx(m.year, m.month) <= selHi
+  );
+  const lifetimeReport = anyStarted ? bigReport : null;
   const configByBranch = new Map(branchList.map((b, i) => [b, branchConfigs[i]]));
 
   const blocks: InvestorBranchDashboardBlock[] = [];
@@ -819,8 +877,19 @@ export async function fetchYeoboInvestorDashboard(input: {
             mIdx(m.year, m.month) >= mIdx(startY, startM) &&
             mIdx(m.year, m.month) <= mIdx(currentYear, currentMonth)
         )
-        .map((m) => yeoboBranchProfit(m.byBranch[b] ?? ZERO_BRANCH_PNL));
-      heroPerformance = buildHeroFromSeries(lifeRows, currentYear, currentMonth);
+        .map((m) => ({
+          year: m.year,
+          month: m.month,
+          ...yeoboBranchProfit(m.byBranch[b] ?? ZERO_BRANCH_PNL),
+        }));
+      // Sorot bulan terakhir yang sudah tutup, bukan bulan berjalan.
+      const heroSeries = closedMonthSeries(lifeRows, currentYear, currentMonth);
+      heroPerformance = buildHeroFromSeries(
+        heroSeries.rows,
+        heroSeries.year,
+        heroSeries.month,
+        heroSeries.isClosed
+      );
     } else {
       heroPerformance = buildHeroFromSeries([], currentYear, currentMonth);
     }

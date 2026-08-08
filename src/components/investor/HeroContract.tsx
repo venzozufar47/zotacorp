@@ -219,7 +219,15 @@ export function HeroContract({
           }}
         >
           <PerformanceKpi
-            label="Revenue bulan ini"
+            // Hero menyorot bulan terakhir yang sudah TUTUP — bulan berjalan
+            // baru terisi sebagian dan selalu tampak anjlok di awal bulan.
+            // Label ikut periodenya supaya tidak pernah berbohong: "bulan ini"
+            // hanya muncul pada kontrak yang baru mulai bulan ini.
+            label={
+              heroPerformance?.isClosedMonth === false
+                ? "Revenue bulan ini"
+                : "Revenue bulan lalu"
+            }
             kind="revenue"
             periodLabel={
               heroPerformance
@@ -240,7 +248,11 @@ export function HeroContract({
             byBranch={heroPerformance?.byBranch ?? null}
           />
           <PerformanceKpi
-            label="Profit bulan ini"
+            label={
+              heroPerformance?.isClosedMonth === false
+                ? "Profit bulan ini"
+                : "Profit bulan lalu"
+            }
             kind="profit"
             periodLabel={
               heroPerformance

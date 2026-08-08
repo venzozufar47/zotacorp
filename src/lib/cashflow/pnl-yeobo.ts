@@ -273,6 +273,20 @@ export async function fetchYeoboPnL(
   const endY = to.month === 12 ? to.year + 1 : to.year;
   const endM = to.month === 12 ? 1 : to.month + 1;
   const periodEndExcl = `${endY}-${String(endM).padStart(2, "0")}-01`;
+  // Alokasi revenue bulanan TIDAK bergantung pada baris transaksi, jadi
+  // permintaannya dilepas duluan dan baru ditunggu setelah paging selesai —
+  // latensinya bertumpuk dengan paging, bukan ditambahkan sesudahnya.
+  //
+  // `.then()` di sini WAJIB, bukan gaya penulisan: query builder Supabase
+  // bersifat malas dan baru berjalan saat di-await atau di-then. Tanpa itu
+  // baris ini hanya membuat objek, dan paralelisasinya diam-diam tidak
+  // terjadi sama sekali.
+  const monthAllocsPromise = supabase
+    .from("revenue_month_allocations")
+    .select("period_year, period_month, branch, amount")
+    .eq("business_unit", "Yeobo Space")
+    .then((r) => r);
+
   const txs: TxRow[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
@@ -333,10 +347,7 @@ export async function fetchYeoboPnL(
   // (drift-proof; selalu pas dengan revenue aktual).
   const revenueRatioByMonth = new Map<string, Map<string, number>>();
   {
-    const { data: monthAllocs } = await supabase
-      .from("revenue_month_allocations")
-      .select("period_year, period_month, branch, amount")
-      .eq("business_unit", "Yeobo Space");
+    const { data: monthAllocs } = await monthAllocsPromise;
     const rawByMonth = new Map<string, Array<{ branch: string; amount: number }>>();
     for (const a of monthAllocs ?? []) {
       const key = ym(a.period_year, a.period_month);
