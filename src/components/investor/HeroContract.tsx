@@ -68,7 +68,10 @@ export function HeroContract({
   };
   bepProgress: { current: number; target: number; pct: number };
   heroPerformance: InvestorHeroPerformance | null;
-  /** Total dividen yang sudah diterima investor (sum semua payouts).
+  /** Total dividen yang sudah DIALOKASIKAN ke investor — jumlah seluruh
+   *  payout tanpa memandang `paid_at`, jadi yang masih berstatus
+   *  "Dijadwalkan" pun ikut terhitung. Jangan dibaca sebagai uang yang
+   *  sudah berpindah rekening.
    *  Dipakai untuk kartu "Total dividen kumulatif" pada kontrak
    *  permanen (menggantikan BEP yang tidak relevan untuk permanen). */
   totalCashback: number;

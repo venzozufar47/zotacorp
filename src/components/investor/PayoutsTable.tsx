@@ -37,8 +37,16 @@ export function PayoutsTable({
     <section className="rounded-2xl bg-card border border-border">
       <div className="px-6 py-4 flex items-baseline justify-between border-b border-border flex-wrap gap-2">
         <div>
+          {/*
+            "dialokasikan", bukan "diterima". `totalCashback` menjumlahkan
+            SELURUH payout tanpa melihat `paid_at` (lihat dashboard.ts),
+            sehingga bagi hasil yang masih berstatus "Dijadwalkan" ikut
+            terhitung. Label lama menyatakan uangnya sudah berpindah,
+            padahal di tabel yang sama barisnya bertanda belum — kartu ini
+            membantah dirinya sendiri dalam satu layar.
+          */}
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Bagi hasil yang sudah diterima
+            Bagi hasil yang sudah dialokasikan
           </p>
           <h3 className="mt-1 text-xl font-semibold text-foreground">
             {formatRp(totalCashback)}{" "}
