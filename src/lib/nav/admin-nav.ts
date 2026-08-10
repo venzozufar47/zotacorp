@@ -242,6 +242,7 @@ export function buildAdminNav({
           icon: TrendingUp,
           label: "Investor",
           color: "bg-quaternary",
+          children: [{ href: "/admin/investors/mom", label: "Notulen Rapat" }],
         },
       ],
     },

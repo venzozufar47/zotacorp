@@ -1,6 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, LineChart, UserCircle2, LogOut } from "lucide-react";
+import {
+  LayoutDashboard,
+  LineChart,
+  FileText,
+  UserCircle2,
+  LogOut,
+} from "lucide-react";
 import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { signOut } from "@/lib/actions/auth.actions";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
@@ -26,6 +32,7 @@ export default async function InvestorLayout({
   const NAV = [
     { href: "/investor", label: "Beranda", icon: LayoutDashboard },
     { href: "/investor/finance", label: "Keuangan", icon: LineChart },
+    { href: "/investor/mom", label: "MoM", icon: FileText },
     { href: "/investor/profile", label: "Profil", icon: UserCircle2 },
   ];
 
