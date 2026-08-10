@@ -112,6 +112,11 @@ export async function upsertYeoboPhotoSession(input: {
       period_month: input.periodMonth,
       sessions: Math.round(input.sessions),
       sort_order: input.sortOrder ?? 0,
+      // Sekali disentuh admin, sel ini jadi milik admin: cron sinkronisasi
+      // booking (`session-sync.ts`) tidak akan pernah menimpanya lagi.
+      // Tanpa penanda ini koreksi manual akan hilang diam-diam pada run
+      // berikutnya.
+      source: "manual",
       updated_at: new Date().toISOString(),
       updated_by: gate.userId,
     },
