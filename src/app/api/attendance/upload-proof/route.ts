@@ -3,7 +3,10 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "application/pdf"];
+// image/webp wajib ada: klien mengompresi gambar lewat compressImageFile()
+// sebelum unggah, dan sejak Agustus 2026 keluarannya WebP. Tanpa entri ini
+// setiap bukti keterlambatan berupa foto akan ditolak di sini.
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(request: Request) {
@@ -92,6 +95,7 @@ export async function POST(request: Request) {
       "image/jpeg": "jpg",
       "image/jpg": "jpg",
       "image/png": "png",
+      "image/webp": "webp",
       "application/pdf": "pdf",
     };
     const ext = MIME_EXT[file.type] ?? "bin";

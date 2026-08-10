@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SelfieCaptureDialog } from "@/components/attendance/SelfieCaptureDialog";
+import { extensionFor } from "@/lib/images/compress-image";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cleaningRefUrl } from "@/lib/utils/cleaning-refs";
 import {
@@ -134,10 +135,10 @@ export function CleaningChecklistCard({ initial }: Props) {
       }
       const today = new Date().toISOString().slice(0, 10);
       const slot = target.photoReqId ?? "main";
-      const path = `${uid}/${today}/${target.itemId}-${slot}-${crypto.randomUUID()}.jpg`;
+      const path = `${uid}/${today}/${target.itemId}-${slot}-${crypto.randomUUID()}.${extensionFor(blob)}`;
       const { error: upErr } = await supabase.storage
         .from("cleaning-photos")
-        .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+        .upload(path, blob, { contentType: blob.type, upsert: false });
       if (upErr) {
         toast.error("Gagal mengunggah foto.");
         setBusyKey(null);

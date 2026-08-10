@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { checkIn, checkOut, breakOut, breakIn } from "@/lib/actions/attendance.actions";
 import { CheckoutConfirmDialog } from "./CheckoutConfirmDialog";
 import { activeBreakWindow } from "@/lib/utils/break-windows";
+import { extensionFor } from "@/lib/images/compress-image";
 
 /**
  * The password-confirm modal pulls in @base-ui/react's Dialog, Input,
@@ -287,11 +288,11 @@ export function CheckInButton({
       const today = new Date().toISOString().slice(0, 10);
       // Unique per-day-per-user. If a browser re-tries, upsert overwrites
       // rather than accumulating stale frames.
-      const path = `${uid}/${today}-${crypto.randomUUID()}.jpg`;
+      const path = `${uid}/${today}-${crypto.randomUUID()}.${extensionFor(blob)}`;
 
       const { error: uploadErr } = await supabase.storage
         .from("attendance-selfies")
-        .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+        .upload(path, blob, { contentType: blob.type, upsert: false });
       if (uploadErr) {
         toast.error(t.checkIn.selfieUploadFailed);
         return;

@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { encodeCanvas, MAX_EDGE_PHOTO } from "@/lib/images/compress-image";
 
 interface Props {
   open: boolean;
@@ -128,8 +129,14 @@ export function SelfieCaptureDialog({
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
 
-    const maxW = 800;
-    const scale = Math.min(1, maxW / video.videoWidth);
+    // Batasi sisi TERPANJANG, bukan lebar. Versi sebelumnya membatasi
+    // `videoWidth` ke 800, dan karena kamera HP merekam potret (720×1280)
+    // syarat itu tidak pernah terpenuhi — foto tersimpan utuh 720×1280.
+    // Itulah kenapa bucket foto tumbuh jauh lebih cepat dari dugaan.
+    const scale = Math.min(
+      1,
+      MAX_EDGE_PHOTO / Math.max(video.videoWidth, video.videoHeight)
+    );
     const w = Math.round(video.videoWidth * scale);
     const h = Math.round(video.videoHeight * scale);
 
@@ -140,10 +147,10 @@ export function SelfieCaptureDialog({
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, w, h);
 
-    // q0.72: ~30% lebih kecil dari 0.8, masih jelas untuk verifikasi wajah.
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.72)
-    );
+    // WebP q0.7, mundur ke JPEG kalau peramban tidak bisa meng-encode-nya.
+    // Pemanggil WAJIB menurunkan ekstensi dan contentType dari `blob.type`,
+    // bukan mengasumsikan .jpg — lihat CheckInButton & CleaningChecklistCard.
+    const blob = await encodeCanvas(canvas);
     if (!blob) return;
 
     // Stop the live stream while the still is on screen — saves battery
