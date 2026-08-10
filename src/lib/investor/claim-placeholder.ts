@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import { loadBranchPaidDates, periodKey } from "./payout-backfill";
 
 /**
  * Sambungkan PLACEHOLDER investor ke akun yang baru saja mendaftar.
@@ -89,11 +90,17 @@ export async function claimPlaceholderInvestor(
 
     // 3. Backfill riwayat alokasi → investor_payouts (sama seperti
     //    linkDividendRecipient) supaya investor lihat histori penuh.
+    //    `paid_at` dipulihkan dari baris saudara di cabang & periode yang
+    //    sama: transfer dividen berjalan per batch, jadi periode yang sudah
+    //    ditransfer untuk investor lain juga sudah ditransfer untuk yang ini.
+    //    Tanpa ini riwayat masuk sebagai "Dijadwalkan" selamanya.
     const { data: allocs } = await db
       .from("yeobo_dividend_allocations")
       .select("period_year, period_month, amount_idr")
       .eq("recipient_id", slot.id);
+    const paidDates = await loadBranchPaidDates(db, slot.branch);
     for (const a of (allocs ?? []) as any[]) {
+      const paidAt = paidDates.get(periodKey(a.period_year, a.period_month));
       await db.from("investor_payouts").upsert(
         {
           contract_id: contractId,
@@ -103,6 +110,10 @@ export async function claimPlaceholderInvestor(
           ref: "yeobo-dividend",
           notes: `Bagi hasil dividen ${slot.branch}`,
           created_by: userId,
+          // Hanya disertakan bila ketemu — payload upsert ini juga dipakai
+          // saat konflik, jadi menulis `paid_at: null` akan MENGHAPUS
+          // tanggal transfer yang sudah benar bila slot disambung ulang.
+          ...(paidAt ? { paid_at: paidAt } : {}),
         },
         { onConflict: "contract_id,period_year,period_month" }
       );

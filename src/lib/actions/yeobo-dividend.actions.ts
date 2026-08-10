@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
+import { loadBranchPaidDates, periodKey } from "@/lib/investor/payout-backfill";
 
 // ── DTOs ──────────────────────────────────────────────────────────────
 export interface DividendRecipient {
@@ -231,7 +232,12 @@ export async function linkDividendRecipient(input: {
       .from("yeobo_dividend_allocations")
       .select("period_year, period_month, amount_idr")
       .eq("recipient_id", input.recipientId);
+    // `paid_at` dipulihkan dari baris saudara di cabang & periode yang sama —
+    // transfer dividen berjalan per batch. Tanpa ini riwayat yang di-backfill
+    // tampil "Dijadwalkan" padahal uangnya sudah ditransfer.
+    const paidDates = await loadBranchPaidDates(supabase, rec.branch);
     for (const a of (allocs ?? []) as any[]) {
+      const paidAt = paidDates.get(periodKey(a.period_year, a.period_month));
       await supabase.from("investor_payouts").upsert(
         {
           contract_id: input.contractId,
@@ -241,6 +247,10 @@ export async function linkDividendRecipient(input: {
           ref: "yeobo-dividend",
           notes: `Bagi hasil dividen ${rec.branch}`,
           created_by: gate.userId,
+          // Hanya disertakan bila ketemu — payload ini juga dipakai saat
+          // konflik, jadi `paid_at: null` akan MENGHAPUS tanggal transfer
+          // yang sudah benar bila slot disambung ulang.
+          ...(paidAt ? { paid_at: paidAt } : {}),
         },
         { onConflict: "contract_id,period_year,period_month" }
       );
