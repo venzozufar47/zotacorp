@@ -8,7 +8,6 @@ import {
   STOCK_BRANCH_IDS,
   STOCK_BRANCH_LABEL,
   STOCK_GATE_FAIL_OPEN,
-  STOCK_STATUS_ENDPOINT,
   STUDIO_LOCATION_IDS,
   type StockBranchId,
   type StockOpnameStatus,
@@ -16,6 +15,7 @@ import {
   isGatedJobRole,
   isStockGateConfigured,
   resolveStockGateBranchFromLocation,
+  stockGateSourceLabel,
 } from "@/lib/attendance/stock-opname-gate";
 
 /**
@@ -173,7 +173,15 @@ export async function getStockGateMonitor(): Promise<
       config: {
         apiKeySet: isStockGateConfigured(),
         failOpen: STOCK_GATE_FAIL_OPEN,
-        endpoint: STOCK_STATUS_ENDPOINT,
+        // stockGateSourceLabel(), BUKAN STOCK_STATUS_ENDPOINT. Konstanta itu
+        // hardcoded, jadi panel menampilkan URL yeobospace.id apa pun mode yang
+        // sedang berjalan — termasuk saat gate sudah membaca schema yeobo
+        // secara lokal dan tidak menyentuh jaringan sama sekali. Pada 11
+        // Agustus 2026 itu memakan waktu berjam-jam: env sudah benar, gate
+        // sudah lokal, tapi satu-satunya permukaan yang seharusnya menunjukkan
+        // hal itu menampilkan teks tetap dan meyakinkan semua orang bahwa
+        // konfigurasinya gagal.
+        endpoint: stockGateSourceLabel(),
         gatedRoles: GATED_JOB_ROLE_LABELS,
         studioLocationCount: STUDIO_LOCATION_IDS.length,
       },
