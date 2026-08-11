@@ -730,6 +730,10 @@ export async function saveDividendConsoleMonth(input: {
             paid_at: input.paidAt,
             ref: refValue,
             notes: `Bagi hasil dividen ${b.branch}`,
+            // Konsol adalah penulisnya — tanpa ini kolomnya jatuh ke default
+            // 'manual' dan tiap payout hasil konsol tampak seperti catatan
+            // tangan admin di riwayat investor.
+            source: "distribusi",
             created_by: gate.userId,
           },
           { onConflict: "contract_id,period_year,period_month" }

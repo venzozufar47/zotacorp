@@ -1,212 +1,32 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition, useEffect } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Edit2, HandCoins, Layers, Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import {
   upsertPayout,
   bulkUpsertPayouts,
   deletePayout,
-  listPayoutsForContract,
   type InvestorPayout,
 } from "@/lib/actions/investor-payouts.actions";
 import type { InvestorContract } from "@/lib/actions/investor.actions";
 import { formatRp } from "@/lib/cashflow/format";
-import { MONTH_NAMES, formatDateID } from "@/lib/utils/date-formats";
+import { MONTH_NAMES } from "@/lib/utils/date-formats";
 
-interface Investor {
+/**
+ * Form payout manual — satuan dan massal. Dipisah dari bekas
+ * `InvestorPayoutsManager` saat tabnya dilebur ke Daftar Investor.
+ *
+ * Jalur ini menulis `source = 'manual'` (lihat aksi upsertPayout): ia untuk
+ * KOREKSI dan catatan di luar konsol. Bagi hasil bulanan yang normal lahir di
+ * tab Distribusi Bulanan, bukan di sini.
+ */
+
+export interface PayoutFormInvestor {
   userId: string;
   fullName: string | null;
   email: string | null;
-}
-
-
-export function InvestorPayoutsManager({
-  contracts,
-  investors,
-}: {
-  contracts: InvestorContract[];
-  investors: Investor[];
-}) {
-  const [selectedContract, setSelectedContract] = useState(
-    contracts[0]?.id ?? ""
-  );
-  const [payouts, setPayouts] = useState<InvestorPayout[]>([]);
-  const [editing, setEditing] = useState<InvestorPayout | "new" | null>(null);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const router = useRouter();
-
-  const contract = useMemo(
-    () => contracts.find((c) => c.id === selectedContract),
-    [contracts, selectedContract]
-  );
-  const investorName = useMemo(() => {
-    if (!contract) return "";
-    const i = investors.find((x) => x.userId === contract.userId);
-    return i?.fullName ?? i?.email ?? contract.userId.slice(0, 8);
-  }, [contract, investors]);
-
-  useEffect(() => {
-    if (!selectedContract) return;
-    listPayoutsForContract(selectedContract).then(setPayouts);
-  }, [selectedContract]);
-
-  if (contracts.length === 0) {
-    return (
-      <div className="rounded-2xl border-2 border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-        Buat kontrak dulu di tab &ldquo;Kontrak&rdquo; sebelum bisa input payouts.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <label className="text-xs flex items-center gap-2">
-          <span className="text-muted-foreground">Kontrak:</span>
-          <select
-            value={selectedContract}
-            onChange={(e) => setSelectedContract(e.target.value)}
-            className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
-          >
-            {contracts.map((c) => {
-              const i = investors.find((x) => x.userId === c.userId);
-              const name = i?.fullName ?? i?.email ?? c.userId.slice(0, 8);
-              return (
-                <option key={c.id} value={c.id}>
-                  {name} — {c.businessUnit}
-                  {c.branch ? ` · ${c.branch}` : ""}
-                </option>
-              );
-            })}
-          </select>
-        </label>
-        <div className="flex items-center gap-2">
-          <a
-            href="/admin/finance/dividen"
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-primary/40 bg-primary/5 text-sm font-semibold text-primary hover:bg-primary/10"
-          >
-            <HandCoins size={14} /> Buka Dividen Console
-          </a>
-          <button
-            type="button"
-            onClick={() => setBulkOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border text-sm font-semibold hover:bg-muted"
-          >
-            <Layers size={14} /> Input massal
-          </button>
-          {contract && (
-            <button
-              type="button"
-              onClick={() => setEditing("new")}
-              className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
-            >
-              <Plus size={14} /> Tambah payout
-            </button>
-          )}
-        </div>
-      </div>
-
-      {contract && (
-        <p className="text-xs text-muted-foreground">
-          {investorName} · {contract.businessUnit}
-          {contract.branch ? ` · Cabang ${contract.branch}` : ""} · Bagi hasil{" "}
-          {contract.bagiHasilPct}% / bulan · Total investasi{" "}
-          {formatRp(contract.totalInvestIdr)}
-        </p>
-      )}
-
-      <div className="rounded-2xl border border-border bg-card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40">
-            <tr className="text-left">
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Periode laba
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                Jumlah
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Tanggal transfer
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Referensi
-              </th>
-              <th className="px-3 py-2 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {payouts.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-3 py-8 text-center text-muted-foreground"
-                >
-                  Belum ada payout.
-                </td>
-              </tr>
-            ) : (
-              payouts.map((p) => (
-                <tr key={p.id} className="border-t border-border">
-                  <td className="px-3 py-2 font-medium">
-                    {MONTH_NAMES[p.periodMonth - 1]} {p.periodYear}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                    {formatRp(p.amountIdr)}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {p.paidAt ? formatDateID(p.paidAt) : "—"}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                    {p.ref ?? "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditing(p)}
-                      className="text-muted-foreground hover:text-foreground p-1"
-                      aria-label="Edit"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {editing && contract && (
-        <PayoutForm
-          payout={editing === "new" ? null : editing}
-          contract={contract}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            listPayoutsForContract(selectedContract).then(setPayouts);
-            router.refresh();
-          }}
-        />
-      )}
-
-      {bulkOpen && (
-        <BulkPayoutForm
-          contracts={contracts}
-          investors={investors}
-          onClose={() => setBulkOpen(false)}
-          onSaved={() => {
-            setBulkOpen(false);
-            if (selectedContract)
-              listPayoutsForContract(selectedContract).then(setPayouts);
-            router.refresh();
-          }}
-        />
-      )}
-    </div>
-  );
 }
 
 const YEOBO_BU_P = "Yeobo Space";
@@ -221,14 +41,14 @@ const BRANCH_RANK_P: Record<string, number> = {
  * year/month/transfer-date/ref; per-contract amount. Rows left blank are
  * skipped. Contracts grouped by BU (Yeobo per branch) for fast scanning.
  */
-function BulkPayoutForm({
+export function BulkPayoutForm({
   contracts,
   investors,
   onClose,
   onSaved,
 }: {
   contracts: InvestorContract[];
-  investors: Investor[];
+  investors: PayoutFormInvestor[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -291,7 +111,7 @@ function BulkPayoutForm({
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Portal hanya boleh dipasang setelah mount — document belum ada saat SSR.
     setMounted(true);
   }, []);
 
@@ -307,7 +127,9 @@ function BulkPayoutForm({
         <h3 className="text-lg font-semibold">Input payout massal</h3>
         <p className="text-xs text-muted-foreground -mt-1">
           Isi nominal bagi hasil untuk banyak investor sekaligus pada satu
-          periode. Yang dikosongkan dilewati.
+          periode. Yang dikosongkan dilewati. Tercatat sebagai koreksi{" "}
+          <b>manual</b> — bagi hasil bulanan yang normal dijalankan dari tab
+          Distribusi Bulanan.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -441,14 +263,18 @@ function BulkPayoutForm({
   return createPortal(modal, document.body);
 }
 
-function PayoutForm({
+export function PayoutForm({
   payout,
   contract,
+  scopeLabel,
   onClose,
   onSaved,
 }: {
   payout: InvestorPayout | null;
   contract: InvestorContract;
+  /** "Yeobo Space · Tlogosari" — panel detail punya banyak kontrak, jadi
+   *  judul form harus menyebut kontrak mana yang sedang dicatat. */
+  scopeLabel?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -515,9 +341,23 @@ function PayoutForm({
         className="w-full max-w-md rounded-2xl bg-card border border-border p-5 space-y-3 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold">
-          {isNew ? "Tambah payout" : "Edit payout"}
-        </h3>
+        <div>
+          <h3 className="text-lg font-semibold">
+            {isNew ? "Tambah payout" : "Edit payout"}
+          </h3>
+          {scopeLabel && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {scopeLabel} · dicatat sebagai koreksi manual
+            </p>
+          )}
+        </div>
+        {payout?.source === "distribusi" && (
+          <p className="rounded-lg border border-amber-400/60 bg-amber-50/70 dark:bg-amber-500/10 px-3 py-2 text-[11.5px] leading-snug text-amber-800 dark:text-amber-300">
+            Baris ini lahir dari konsol Distribusi Bulanan. Menyimpan di sini
+            menandainya <b>manual</b> — angkanya tidak lagi cocok dengan hasil
+            hitung konsol, dan rekonsiliasi akan menampilkan selisihnya.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <label className="text-xs">
             <span className="text-muted-foreground">Tahun</span>

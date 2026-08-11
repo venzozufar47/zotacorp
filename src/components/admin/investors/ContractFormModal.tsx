@@ -1,17 +1,9 @@
 "use client";
 
-import {
-  Fragment,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Copy, Edit2, Layers, Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import {
   upsertInvestorContract,
   bulkCreateInvestorContracts,
@@ -20,14 +12,25 @@ import {
 } from "@/lib/actions/investor.actions";
 import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { formatRp } from "@/lib/cashflow/format";
-import { formatDateID } from "@/lib/utils/date-formats";
+
+/**
+ * Form kontrak investor — satuan (termasuk duplikat) dan batch.
+ *
+ * Dipisah dari bekas `InvestorContractsManager` saat tab Akun/Kontrak/Payouts
+ * dilebur jadi satu tab master-detail: form-nya tidak berubah sama sekali,
+ * hanya pemanggilnya yang pindah ke panel detail investor. Kontrak adalah
+ * satu-satunya tempat nominal modal & porsi disimpan (SSOT), jadi form ini
+ * adalah SATU-SATUNYA jalan mengubah angka itu.
+ */
 
 const YEOBO_BU = "Yeobo Space";
-const YEOBO_BRANCH_RANK: Record<string, number> = {
-  Tlogosari: 0,
-  Tembalang: 1,
-  Jebres: 2,
-};
+
+export interface ContractFormInvestor {
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  businessUnits: string[];
+}
 
 /**
  * Parse a bagi-hasil input into a percentage number. Accepts either a
@@ -38,7 +41,7 @@ const YEOBO_BRANCH_RANK: Record<string, number> = {
  *   "50/360" → 13.88889
  *   "25"     → 25
  */
-function parseBagiHasil(raw: string): number | null {
+export function parseBagiHasil(raw: string): number | null {
   const s = raw.trim();
   if (!s) return null;
   const frac = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
@@ -50,237 +53,6 @@ function parseBagiHasil(raw: string): number | null {
   }
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
-}
-
-/** Group contracts by business unit; Yeobo Space split further per branch. */
-function buildContractGroups(contracts: InvestorContract[]) {
-  const buNames = [...new Set(contracts.map((c) => c.businessUnit))].sort((a, b) =>
-    a === YEOBO_BU ? -1 : b === YEOBO_BU ? 1 : a.localeCompare(b)
-  );
-  const groups: { key: string; label: string; rows: InvestorContract[] }[] = [];
-  for (const bu of buNames) {
-    const buRows = contracts.filter((c) => c.businessUnit === bu);
-    if (bu === YEOBO_BU) {
-      const branches = [...new Set(buRows.map((c) => c.branch ?? ""))].sort(
-        (a, b) =>
-          (YEOBO_BRANCH_RANK[a] ?? 99) - (YEOBO_BRANCH_RANK[b] ?? 99) ||
-          a.localeCompare(b)
-      );
-      for (const br of branches) {
-        groups.push({
-          key: `${bu}|${br}`,
-          label: `${bu} — ${br || "(tanpa cabang)"}`,
-          rows: buRows.filter((c) => (c.branch ?? "") === br),
-        });
-      }
-    } else {
-      groups.push({ key: bu, label: bu, rows: buRows });
-    }
-  }
-  return groups;
-}
-
-interface Investor {
-  userId: string;
-  fullName: string | null;
-  email: string | null;
-  businessUnits: string[];
-}
-
-export function InvestorContractsManager({
-  contracts,
-  investors,
-  businessUnits,
-}: {
-  contracts: InvestorContract[];
-  investors: Investor[];
-  businessUnits: string[];
-}) {
-  const router = useRouter();
-  // `contract` = prefill source (null for blank). `isNew` = create vs edit.
-  // Duplicate = prefill from an existing contract but isNew=true.
-  const [form, setForm] = useState<{
-    contract: InvestorContract | null;
-    isNew: boolean;
-  } | null>(null);
-  const [batchOpen, setBatchOpen] = useState(false);
-
-  const investorNameById = new Map(
-    investors.map((i) => [i.userId, i.fullName ?? i.email ?? "—"])
-  );
-  const groups = useMemo(() => buildContractGroups(contracts), [contracts]);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Kontrak investor per (investor × unit bisnis). Bagi hasil
-          dihitung dari net profit bulanan.
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setBatchOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border text-sm font-semibold hover:bg-muted"
-          >
-            <Layers size={14} /> Batch tambah
-          </button>
-          <button
-            type="button"
-            onClick={() => setForm({ contract: null, isNew: true })}
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
-          >
-            <Plus size={14} /> Tambah kontrak
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40">
-            <tr className="text-left">
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Investor
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Cabang
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                Investasi
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                Bagi hasil
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                Durasi
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Start
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                BEP target
-              </th>
-              <th className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Ref / Rekening
-              </th>
-              <th className="px-3 py-2 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {contracts.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={9}
-                  className="px-3 py-8 text-center text-muted-foreground"
-                >
-                  Belum ada kontrak.
-                </td>
-              </tr>
-            ) : (
-              groups.map((g) => (
-                <Fragment key={g.key}>
-                  <tr className="bg-muted/60 border-t border-border">
-                    <td colSpan={9} className="px-3 py-1.5">
-                      <span className="text-xs font-semibold text-foreground">
-                        {g.label}
-                      </span>
-                      <span className="text-[11px] font-normal text-muted-foreground">
-                        {" "}
-                        · {g.rows.length} kontrak ·{" "}
-                        {formatRp(
-                          g.rows.reduce((s, c) => s + c.totalInvestIdr, 0)
-                        )}
-                      </span>
-                    </td>
-                  </tr>
-                  {g.rows.map((c) => (
-                <tr key={c.id} className="border-t border-border align-top">
-                  <td className="px-3 py-2 font-medium">
-                    {investorNameById.get(c.userId) ?? c.userId.slice(0, 8)}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {c.branch ?? "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {formatRp(c.totalInvestIdr)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {c.bagiHasilPct}%
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {c.durasiBulan === null ? "Permanen" : `${c.durasiBulan} bln`}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {formatDateID(c.startDate)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {formatRp(c.bepTargetIdr)}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    <div>{c.contractRef ?? "—"}</div>
-                    <div>
-                      {c.payoutBankName || c.payoutRekeningNumber
-                        ? `${c.payoutBankName ?? "—"} • ${c.payoutRekeningNumber ?? "—"}`
-                        : c.payoutRekeningLabel ?? "—"}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => setForm({ contract: c, isNew: false })}
-                      className="text-muted-foreground hover:text-foreground p-1"
-                      aria-label="Edit"
-                      title="Edit"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setForm({ contract: c, isNew: true })}
-                      className="text-muted-foreground hover:text-foreground p-1"
-                      aria-label="Duplikat"
-                      title="Duplikat kontrak"
-                    >
-                      <Copy size={14} />
-                    </button>
-                  </td>
-                </tr>
-                  ))}
-                </Fragment>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {form && (
-        <ContractForm
-          contract={form.contract}
-          isNew={form.isNew}
-          investors={investors}
-          businessUnits={businessUnits}
-          onClose={() => setForm(null)}
-          onSaved={() => {
-            setForm(null);
-            router.refresh();
-          }}
-        />
-      )}
-
-      {batchOpen && (
-        <BatchContractForm
-          investors={investors}
-          businessUnits={businessUnits}
-          contracts={contracts}
-          onClose={() => setBatchOpen(false)}
-          onSaved={() => {
-            setBatchOpen(false);
-            router.refresh();
-          }}
-        />
-      )}
-    </div>
-  );
 }
 
 interface BatchRow {
@@ -297,33 +69,17 @@ interface BatchRow {
   ref: string;
 }
 
-/**
- * Batch add contracts: each row is a FULLY independent contract — unit
- * bisnis, cabang, bagi hasil %, durasi, start, investasi, BEP target and
- * ref are all editable per row. Adding a new row prefills the term fields
- * from the previous one (fast entry when terms repeat). Investors already
- * contracted for a row's BU+branch, or already picked in another row with
- * the same BU+branch, are filtered out of that row's dropdown.
- */
-function BatchContractForm({
-  investors,
-  businessUnits,
-  contracts,
-  onClose,
-  onSaved,
-}: {
-  investors: Investor[];
-  businessUnits: string[];
-  contracts: InvestorContract[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const idRef = useRef(0);
-  const yeoboBranches = getAutoSplitBranches(YEOBO_BU) ?? [];
-  const mkRow = (prefill?: Partial<BatchRow>): BatchRow => ({
-    id: ++idRef.current,
+/** Baris batch kosong. Pure + id eksplisit supaya baris pertama bisa dibuat di
+ *  inisialisasi useState tanpa membaca ref saat render. */
+function blankBatchRow(
+  id: number,
+  defaultBu: string,
+  prefill?: Partial<BatchRow>
+): BatchRow {
+  return {
+    id,
     userId: "",
-    businessUnit: prefill?.businessUnit ?? businessUnits[0] ?? "",
+    businessUnit: prefill?.businessUnit ?? defaultBu,
     branch: prefill?.branch ?? "",
     bagiHasil: prefill?.bagiHasil ?? "25",
     durasi: prefill?.durasi ?? "36",
@@ -332,8 +88,36 @@ function BatchContractForm({
     invest: "",
     bep: "",
     ref: "",
-  });
-  const [rows, setRows] = useState<BatchRow[]>(() => [mkRow()]);
+  };
+}
+
+/**
+ * Batch add contracts: each row is a FULLY independent contract — unit
+ * bisnis, cabang, bagi hasil %, durasi, start, investasi, BEP target and
+ * ref are all editable per row. Adding a new row prefills the term fields
+ * from the previous one (fast entry when terms repeat). Investors already
+ * contracted for a row's BU+branch, or already picked in another row with
+ * the same BU+branch, are filtered out of that row's dropdown.
+ */
+export function BatchContractForm({
+  investors,
+  businessUnits,
+  contracts,
+  onClose,
+  onSaved,
+}: {
+  investors: ContractFormInvestor[];
+  businessUnits: string[];
+  contracts: InvestorContract[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const idRef = useRef(1);
+  const yeoboBranches = getAutoSplitBranches(YEOBO_BU) ?? [];
+  const defaultBu = businessUnits[0] ?? "";
+  const [rows, setRows] = useState<BatchRow[]>(() => [
+    blankBatchRow(1, defaultBu),
+  ]);
   const [pending, startTransition] = useTransition();
 
   const setRow = (id: number, patch: Partial<BatchRow>) =>
@@ -347,7 +131,9 @@ function BatchContractForm({
       const last = rs[rs.length - 1];
       return [
         ...rs,
-        mkRow(
+        blankBatchRow(
+          ++idRef.current,
+          defaultBu,
           last && {
             businessUnit: last.businessUnit,
             branch: last.branch,
@@ -413,6 +199,7 @@ function BatchContractForm({
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    // Portal hanya boleh dipasang setelah mount — document belum ada saat SSR.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
@@ -674,11 +461,12 @@ function BatchContractForm({
   return createPortal(modal, document.body);
 }
 
-function ContractForm({
+export function ContractForm({
   contract,
   isNew,
   investors,
   businessUnits,
+  lockInvestor,
   onClose,
   onSaved,
 }: {
@@ -686,13 +474,21 @@ function ContractForm({
    *  isNew=true → saved as a brand-new contract (no id). */
   contract: InvestorContract | null;
   isNew: boolean;
-  investors: Investor[];
+  investors: ContractFormInvestor[];
   businessUnits: string[];
+  /**
+   * Investor yang sudah ditentukan pemanggil (panel detail selalu tahu
+   * siapa). Dropdown investor dikunci ke orang ini supaya "Tambah kontrak"
+   * dari panel Budi tidak diam-diam membuat kontrak milik Rina.
+   */
+  lockInvestor?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isDuplicate = isNew && !!contract;
-  const [userId, setUserId] = useState(contract?.userId ?? investors[0]?.userId ?? "");
+  const [userId, setUserId] = useState(
+    lockInvestor ?? contract?.userId ?? investors[0]?.userId ?? ""
+  );
   const [businessUnit, setBusinessUnit] = useState(
     contract?.businessUnit ?? businessUnits[0] ?? ""
   );
@@ -807,7 +603,7 @@ function ContractForm({
             <select
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
-              disabled={!isNew}
+              disabled={!isNew || !!lockInvestor}
               className="block mt-1 w-full rounded-lg border border-border bg-background px-2 py-2 text-sm disabled:opacity-60"
             >
               {investors.map((i) => (

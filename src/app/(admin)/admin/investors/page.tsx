@@ -7,14 +7,16 @@ import {
   listInvestorsForAdmin,
   listInvestorContracts,
 } from "@/lib/actions/investor.actions";
+import { listAllPayoutsByContract } from "@/lib/actions/investor-payouts.actions";
 import { listYeoboPhotoSessions } from "@/lib/actions/yeobo-photo-sessions.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { InvestorAccountsList } from "@/components/admin/InvestorAccountsList";
-import { InvestorContractsManager } from "@/components/admin/InvestorContractsManager";
-import { InvestorPayoutsManager } from "@/components/admin/InvestorPayoutsManager";
+import {
+  InvestorRoster,
+  type RosterBep,
+} from "@/components/admin/investors/InvestorRoster";
+import { AturanBagiHasilDrawer } from "@/components/admin/investors/AturanBagiHasilDrawer";
 import { YeoboPhotoSessionsManager } from "@/components/admin/YeoboPhotoSessionsManager";
-import { YeoboDividendStructureManager } from "@/components/admin/YeoboDividendStructureManager";
 import {
   listDividendRecipients,
   getDividendBranchConfig,
@@ -25,6 +27,8 @@ import { getDividendConsoleData } from "@/lib/actions/yeobo-dividend-console.act
 import { getDividendReconciliation } from "@/lib/actions/yeobo-dividend-reconcile.actions";
 import { DividendConsoleClient } from "@/components/admin/finance/dividend-console/DividendConsoleClient";
 import { DividendReconcilePanel } from "@/components/admin/finance/dividend-console/DividendReconcilePanel";
+import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
+import { MONTH_NAMES } from "@/lib/utils/date-formats";
 
 const YEOBO_DIVIDEND_BRANCHES = ["Tlogosari", "Tembalang", "Jebres"] as const;
 
@@ -35,21 +39,38 @@ interface SearchParams {
 }
 
 /**
- * Konsol "Dividen & Payout" yang dulu berdiri sendiri di Keuangan kini jadi
- * tab di sini — orang, kontrak, dan distribusi bagi hasil dalam satu halaman.
+ * Halaman Investor — orang, kontrak, dan distribusi bagi hasil.
+ *
+ * Rombakan Ags 2026: tab Akun + Kontrak + Payouts dilebur jadi SATU tab
+ * master-detail. Ketiganya menjawab pertanyaan yang sama ("bagaimana kondisi
+ * investor ini") lewat tiga halaman terpisah, dan tab Kontrak/Payouts memaksa
+ * admin mengingat nama investor sambil menyeberang tab. "Aturan bagi hasil"
+ * ikut turun jadi drawer di tab Distribusi karena ia setelan, bukan alur
+ * kerja bulanan.
  *
  * Tab Distribusi memakai ULANG DividendConsoleClient apa adanya, bukan versi
  * tulis-ulang. Konsol itu menghitung transfer nyata ke 20 investor; memindah
  * lokasinya tidak boleh sekaligus mengganti mesin hitungnya.
  */
 const TABS = [
-  { id: "accounts", label: "Akun" },
-  { id: "contracts", label: "Kontrak" },
-  { id: "payouts", label: "Payouts" },
+  { id: "list", label: "Daftar Investor" },
   { id: "distribusi", label: "Distribusi Bulanan" },
-  { id: "dividen", label: "Aturan bagi hasil" },
   { id: "sesi", label: "Sesi Foto" },
 ] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+/**
+ * Tab lama → tab baru. Redirect, bukan diam-diam jatuh ke default: ketiga id
+ * ini tersebar di bookmark, dan mendarat di tab lain tanpa penjelasan
+ * membuat admin mengira datanya hilang.
+ */
+const LEGACY_TABS: Record<string, TabId> = {
+  accounts: "list",
+  contracts: "list",
+  payouts: "list",
+  dividen: "distribusi",
+};
 
 const ymRank = (y: number, m: number) => y * 100 + m;
 const ymStr = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;
@@ -74,22 +95,88 @@ export default async function AdminInvestorsPage({
   if (role !== "admin") redirect("/dashboard");
 
   const sp = await searchParams;
-  const tab = (TABS.find((t) => t.id === sp.tab)?.id ?? "accounts") as
-    | "accounts"
-    | "contracts"
-    | "payouts"
-    | "distribusi"
-    | "dividen"
-    | "sesi";
+  if (sp.tab && LEGACY_TABS[sp.tab]) {
+    const to = LEGACY_TABS[sp.tab];
+    redirect(
+      `/admin/investors?tab=${to}${
+        to === "distribusi" && sp.month ? `&month=${sp.month}` : ""
+      }`
+    );
+  }
+  const tab = (TABS.find((t) => t.id === sp.tab)?.id ?? "list") as TabId;
 
-  const [investorsRes, businessUnits, contractsRes] = await Promise.all([
-    listInvestorsForAdmin(),
-    listBusinessUnits(),
-    listInvestorContracts(),
-  ]);
+  // Bulan acuan. Default = bulan kalender SEBELUMNYA, karena bagi hasil
+  // dibagikan setelah tutup buku. Clamp ke [2023-07 .. bulan berjalan] persis
+  // seperti halaman dividen lamanya.
+  const now = new Date();
+  const curY = now.getFullYear();
+  const curM = now.getMonth() + 1;
+  let defY = curY;
+  let defM = curM - 1;
+  if (defM < 1) {
+    defM = 12;
+    defY -= 1;
+  }
+  let target = parseYM(sp.month) ?? { year: defY, month: defM };
+  const r = ymRank(target.year, target.month);
+  if (r < ymRank(MIN_YM.year, MIN_YM.month)) target = { ...MIN_YM };
+  if (r > ymRank(curY, curM)) target = { year: curY, month: curM };
+
+  const [investorsRes, businessUnits, contractsRes, payoutsRes, consoleData] =
+    await Promise.all([
+      listInvestorsForAdmin(),
+      listBusinessUnits(),
+      listInvestorContracts(),
+      listAllPayoutsByContract(),
+      // Satu pemanggilan untuk seluruh halaman: kartu statistik, progres BEP
+      // di tab Daftar Investor, dan konsol di tab Distribusi memakai angka
+      // yang SAMA. Menghitungnya dua kali dengan bulan berbeda akan membuat
+      // kartu dan tabel saling membantah di halaman yang sama.
+      getDividendConsoleData({ year: target.year, month: target.month }),
+    ]);
   const investors = investorsRes.ok ? investorsRes.data ?? [] : [];
   const contracts = contractsRes.ok ? contractsRes.data ?? [] : [];
+  const payoutsByContract = payoutsRes.ok ? payoutsRes.data ?? {} : {};
   const buNames = businessUnits.map((b) => b.name);
+  const console_ = consoleData.ok ? consoleData.data ?? null : null;
+  const consoleError = consoleData.ok ? null : consoleData.error;
+
+  // Progres BEP per kontrak — diambil dari konsol, TIDAK dihitung ulang.
+  const bepByContract: Record<string, RosterBep> = {};
+  for (const inv of console_?.investors ?? [])
+    for (const s of inv.slices)
+      bepByContract[s.contractId] = {
+        cumulative: s.cumulativePayout,
+        target: s.bepTargetIdr,
+      };
+
+  // ── Kartu statistik ────────────────────────────────────────────────
+  const totalModal = contracts.reduce((s, c) => s + c.totalInvestIdr, 0);
+  const nScopes = new Set(
+    contracts.map((c) => (c.branch ? `${c.businessUnit}|${c.branch}` : c.businessUnit))
+  ).size;
+  const nActive = investors.filter((i) => i.isActive).length;
+  const contractedUsers = new Set(contracts.map((c) => c.userId));
+  // "Perlu tindakan" = akun yang belum bisa dipakai untuk apa pun: belum
+  // aktif (tidak bisa login) atau tanpa kontrak (tidak dapat bagi hasil).
+  const perluAksi = investors.filter(
+    (i) => !i.isActive || !contractedUsers.has(i.userId)
+  ).length;
+  const periodLabel = `${MONTH_NAMES[target.month - 1]} ${target.year}`;
+  const poolPeriod = (console_?.branches ?? []).reduce(
+    (s, b) => s + b.operatingProfit,
+    0
+  );
+  const nRecipients = (console_?.branches ?? []).reduce(
+    (s, b) => s + b.rows.length,
+    0
+  );
+  const nPaid = Object.values(payoutsByContract).filter((rows) =>
+    rows.some(
+      (p) => p.periodYear === target.year && p.periodMonth === target.month
+    )
+  ).length;
+  const periodSettled = nPaid > 0;
 
   // Sesi Foto tab — preload all Yeobo photo sessions (per studio/month).
   let photoSessions: Awaited<ReturnType<typeof listYeoboPhotoSessions>> = [];
@@ -97,66 +184,90 @@ export default async function AdminInvestorsPage({
     photoSessions = await listYeoboPhotoSessions();
   }
 
-  // Distribusi tab — konsol dividen bulanan. Default bulan = bulan kalender
-  // SEBELUMNYA, karena bagi hasil dibagikan setelah tutup buku. Clamp ke
-  // [2023-07 .. bulan berjalan] persis seperti halaman lamanya.
-  let consoleData: Awaited<ReturnType<typeof getDividendConsoleData>> | null = null;
+  // Tab Distribusi — rekonsiliasi + setelan aturan (drawer).
   let recon: Awaited<ReturnType<typeof getDividendReconciliation>> | null = null;
-  let target = { year: 0, month: 0 };
-  const now = new Date();
-  const curY = now.getFullYear();
-  const curM = now.getMonth() + 1;
-  if (tab === "distribusi") {
-    let defY = curY;
-    let defM = curM - 1;
-    if (defM < 1) {
-      defM = 12;
-      defY -= 1;
-    }
-    target = parseYM(sp.month) ?? { year: defY, month: defM };
-    const r = ymRank(target.year, target.month);
-    if (r < ymRank(MIN_YM.year, MIN_YM.month)) target = { ...MIN_YM };
-    if (r > ymRank(curY, curM)) target = { year: curY, month: curM };
-    // Rekonsiliasi sengaja tidak terikat bulan terpilih — pertanyaannya
-    // "bulan mana yang meleset". Kegagalannya tidak menjatuhkan konsol.
-    [consoleData, recon] = await Promise.all([
-      getDividendConsoleData({ year: target.year, month: target.month }),
-      getDividendReconciliation(),
-    ]);
-  }
-
-  // Dividen tab — preload dividend recipients + config per Yeobo branch.
   let divRecipientsByBranch: Record<string, DividendRecipient[]> = {};
   let divConfigByBranch: Record<string, DividendBranchConfig> = {};
-  if (tab === "dividen") {
-    const results = await Promise.all(
-      YEOBO_DIVIDEND_BRANCHES.map(async (b) => ({
+  if (tab === "distribusi") {
+    const results = await Promise.all([
+      // Rekonsiliasi sengaja tidak terikat bulan terpilih — pertanyaannya
+      // "bulan mana yang meleset". Kegagalannya tidak menjatuhkan konsol.
+      getDividendReconciliation(),
+      ...YEOBO_DIVIDEND_BRANCHES.map(async (b) => ({
         b,
         recipients: await listDividendRecipients(b),
         config: await getDividendBranchConfig(b),
-      }))
-    );
+      })),
+    ]);
+    recon = results[0] as Awaited<ReturnType<typeof getDividendReconciliation>>;
+    const branchResults = results.slice(1) as Array<{
+      b: string;
+      recipients: DividendRecipient[];
+      config: DividendBranchConfig;
+    }>;
     divRecipientsByBranch = Object.fromEntries(
-      results.map((r) => [r.b, r.recipients])
+      branchResults.map((x) => [x.b, x.recipients])
     );
-    divConfigByBranch = Object.fromEntries(results.map((r) => [r.b, r.config]));
+    divConfigByBranch = Object.fromEntries(
+      branchResults.map((x) => [x.b, x.config])
+    );
   }
 
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="Investor"
-        subtitle="Kelola investor: assignment, kontrak, payouts, dan metrik operasional BU."
+        subtitle="Orang, kontrak, dan distribusi bagi hasil dalam satu halaman. Konsol Dividen & Payout yang dulu berdiri sendiri di Keuangan sekarang jadi tab Distribusi Bulanan di sini."
       />
+
+      {/* Kartu statistik */}
+      <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Modal investor"
+          value={formatRpCompact(totalModal)}
+          hint={`${contracts.length} kontrak · ${nScopes} unit/cabang`}
+          title={formatRp(totalModal)}
+        />
+        <StatCard
+          label="Akun investor"
+          value={String(investors.length)}
+          hint={`${nActive} aktif · ${investors.length - nActive} menunggu aktivasi`}
+        />
+        <StatCard
+          label={`Distribusi ${periodLabel}`}
+          value={formatRpCompact(Math.max(0, poolPeriod))}
+          hint={
+            console_
+              ? periodSettled
+                ? `Ditransfer ke ${nPaid} investor`
+                : `Belum ditransfer · ${nRecipients} penerima`
+              : "Konsol tidak termuat"
+          }
+          tone={console_ && !periodSettled ? "warn" : undefined}
+          href={`/admin/investors?tab=distribusi&month=${ymStr(target.year, target.month)}`}
+          title={`Operating profit 3 cabang ${periodLabel}: ${formatRp(poolPeriod)}`}
+        />
+        <StatCard
+          label="Perlu tindakan"
+          value={String(perluAksi)}
+          hint="Belum di-assign / menunggu aktivasi"
+          tone={perluAksi > 0 ? "warn" : undefined}
+          href="/admin/investors?tab=list"
+        />
+      </div>
 
       {/* Tab nav */}
       <div className="flex gap-1 border-b border-border overflow-x-auto">
         {TABS.map((t) => {
           const active = t.id === tab;
+          const href =
+            t.id === "distribusi"
+              ? `/admin/investors?tab=distribusi&month=${ymStr(target.year, target.month)}`
+              : `/admin/investors?tab=${t.id}`;
           return (
             <Link
               key={t.id}
-              href={`/admin/investors?tab=${t.id}`}
+              href={href}
               className={`press-feedback px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${
                 active
                   ? "border-primary text-primary"
@@ -164,37 +275,45 @@ export default async function AdminInvestorsPage({
               }`}
             >
               {t.label}
+              {t.id === "list" && (
+                <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                  {investors.length}
+                </span>
+              )}
             </Link>
           );
         })}
       </div>
 
-      {tab === "accounts" && (
-        <InvestorAccountsList investors={investors} contracts={contracts} />
-      )}
-
-      {tab === "contracts" && (
-        <InvestorContractsManager
-          contracts={contracts}
+      {tab === "list" && (
+        <InvestorRoster
           investors={investors}
+          contracts={contracts}
           businessUnits={buNames}
+          payoutsByContract={payoutsByContract}
+          bepByContract={bepByContract}
+          period={target}
         />
-      )}
-
-      {tab === "payouts" && (
-        <InvestorPayoutsManager contracts={contracts} investors={investors} />
       )}
 
       {tab === "distribusi" && (
         <div className="space-y-4">
-          {!consoleData?.ok ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <AturanBagiHasilDrawer
+              recipientsByBranch={divRecipientsByBranch}
+              configByBranch={divConfigByBranch}
+              investors={investors}
+              contracts={contracts}
+            />
+          </div>
+          {!console_ ? (
             <div className="rounded-2xl border border-destructive/40 bg-destructive/5 px-5 py-4 text-sm text-destructive">
-              {consoleData?.error ?? "Gagal memuat konsol distribusi."}
+              {consoleError ?? "Gagal memuat konsol distribusi."}
             </div>
           ) : (
             <DividendConsoleClient
               key={ymStr(target.year, target.month)}
-              data={consoleData.data!}
+              data={console_}
               minYm={ymStr(MIN_YM.year, MIN_YM.month)}
               maxYm={ymStr(curY, curM)}
               basePath="/admin/investors?tab=distribusi&"
@@ -206,18 +325,56 @@ export default async function AdminInvestorsPage({
         </div>
       )}
 
-      {tab === "dividen" && (
-        <YeoboDividendStructureManager
-          recipientsByBranch={divRecipientsByBranch}
-          configByBranch={divConfigByBranch}
-          investors={investors}
-          contracts={contracts}
-        />
-      )}
+      {tab === "sesi" && <YeoboPhotoSessionsManager sessions={photoSessions} />}
+    </div>
+  );
+}
 
-      {tab === "sesi" && (
-        <YeoboPhotoSessionsManager sessions={photoSessions} />
-      )}
+function StatCard({
+  label,
+  value,
+  hint,
+  tone,
+  href,
+  title,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "warn";
+  href?: string;
+  title?: string;
+}) {
+  const body = (
+    <>
+      <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1.5 font-display text-xl font-bold tabular-nums">
+        {value}
+      </div>
+      <div
+        className={
+          "mt-0.5 text-[11.5px] " +
+          (tone === "warn"
+            ? "text-amber-700 dark:text-amber-400 font-semibold"
+            : "text-muted-foreground")
+        }
+      >
+        {hint}
+      </div>
+    </>
+  );
+  const cls =
+    "block rounded-2xl border border-border bg-card px-4 py-3 text-left" +
+    (href ? " press-feedback hover:border-primary/50 transition" : "");
+  return href ? (
+    <Link href={href} className={cls} title={title}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls} title={title}>
+      {body}
     </div>
   );
 }

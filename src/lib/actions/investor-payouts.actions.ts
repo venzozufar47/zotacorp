@@ -9,6 +9,11 @@ import {
 } from "./_gates";
 import { isValidMoney } from "./_validate";
 
+/** Asal tulisan payout (SSOT langkah 1). Koreksi manual atas baris konsol
+ *  meng-UPDATE baris yang sama dan ikut mengubah source jadi 'manual', jadi
+ *  nilai ini selalu menyebut siapa yang terakhir menulis nominalnya. */
+export type PayoutSource = "distribusi" | "manual";
+
 export interface InvestorPayout {
   id: string;
   contractId: string;
@@ -18,6 +23,7 @@ export interface InvestorPayout {
   paidAt: string | null;
   ref: string | null;
   notes: string | null;
+  source: PayoutSource;
   createdAt: string;
 }
 
@@ -30,6 +36,7 @@ interface PayoutRow {
   paid_at: string | null;
   ref: string | null;
   notes: string | null;
+  source: string | null;
   created_at: string;
 }
 
@@ -43,6 +50,7 @@ function mapPayout(r: PayoutRow): InvestorPayout {
     paidAt: r.paid_at,
     ref: r.ref,
     notes: r.notes,
+    source: r.source === "distribusi" ? "distribusi" : "manual",
     createdAt: r.created_at,
   };
 }
@@ -116,6 +124,37 @@ export async function listPayoutsForContracts(
   return out;
 }
 
+/**
+ * SEMUA payout, dikelompokkan per kontrak — untuk tab Daftar Investor yang
+ * merender riwayat payout tiap investor dalam satu render.
+ *
+ * Berbeda dari {@link listPayoutsForContracts}: gate-nya SATU kali
+ * (admin-only) alih-alih owner-or-admin per kontrak. Versi per-kontrak
+ * menjalankan `requireSelfOrAdmin` untuk tiap id, dan pada ~23 kontrak itu
+ * jadi 23 pemeriksaan berurutan hanya untuk mendapat jawaban yang sama.
+ * Objek biasa (bukan Map) supaya bisa diserialkan ke komponen klien.
+ */
+export async function listAllPayoutsByContract(): Promise<
+  ActionResult<Record<string, InvestorPayout[]>>
+> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = adminClient() as any;
+  const { data, error } = await supabase
+    .from("investor_payouts")
+    .select("*")
+    .order("period_year", { ascending: false })
+    .order("period_month", { ascending: false });
+  if (error) return { ok: false, error: error.message };
+  const out: Record<string, InvestorPayout[]> = {};
+  for (const r of (data ?? []) as PayoutRow[]) {
+    const p = mapPayout(r);
+    (out[p.contractId] ??= []).push(p);
+  }
+  return { ok: true, data: out };
+}
+
 export async function upsertPayout(input: {
   id?: string;
   contractId: string;
@@ -144,6 +183,11 @@ export async function upsertPayout(input: {
     paid_at: input.paidAt ?? null,
     ref: input.ref ?? null,
     notes: input.notes ?? null,
+    // Jalur ini SELALU manual, termasuk saat mengoreksi baris yang lahir dari
+    // konsol Distribusi: begitu nominalnya disentuh tangan, menyebutnya
+    // 'distribusi' membuat pill asal berbohong dan rekonsiliasi mencari
+    // selisih di konsol yang tidak menulisnya.
+    source: "manual",
     created_by: gate.userId,
   };
   if (input.id) {
@@ -206,6 +250,7 @@ export async function bulkUpsertPayouts(input: {
         amount_idr: r.amountIdr,
         paid_at: input.paidAt ?? null,
         ref: input.ref ?? null,
+        source: "manual",
         created_by: gate.userId,
       },
       { onConflict: "contract_id,period_year,period_month" }
