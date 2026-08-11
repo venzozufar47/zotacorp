@@ -75,12 +75,20 @@ function mapConfig(r: any, branch: string): DividendBranchConfig {
 }
 
 // ── Structure: recipients ─────────────────────────────────────────────
+/**
+ * Baca dari VIEW, bukan tabel fisik (SSOT langkah 2, migration 129).
+ *
+ * `invest_idr` dan `pool_pct` yang keluar dari sini adalah TURUNAN kontrak,
+ * bukan salinan yang bisa melenceng. Konsekuensinya Σ pool_pct selalu tepat
+ * 100% per cabang, dan menambah/mengubah kontrak langsung tercermin di sini
+ * tanpa ada langkah "sinkronkan" yang bisa terlupa.
+ */
 export async function listDividendRecipients(
   branch: string
 ): Promise<DividendRecipient[]> {
   const supabase = adminClient() as any;
   const { data } = await supabase
-    .from("yeobo_dividend_recipients")
+    .from("yeobo_dividend_recipients_v")
     .select("*")
     .eq("branch", branch)
     .order("sort_order", { ascending: true });
@@ -102,12 +110,20 @@ export async function upsertDividendRecipient(input: {
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!input.branch || !input.label.trim())
     return { ok: false, error: "Branch & label wajib" };
-  if (
-    input.kind === "investor" &&
-    (input.poolPct == null || input.poolPct < 0) &&
-    (input.investIdr == null || input.investIdr < 0)
-  )
-    return { ok: false, error: "Investor wajib punya pool % atau nominal investasi" };
+
+  // SSOT langkah 3: jalur tulis nominal DITUTUP. Modal dan porsi hanya hidup
+  // di kontrak investor; menerimanya di sini akan menciptakan salinan kedua
+  // yang bisa melenceng — persis masalah yang migration 129 hapus.
+  //
+  // Ditolak keras, bukan diabaikan diam-diam: pemanggil yang masih mengirim
+  // nominal harus tahu datanya tidak tersimpan, bukan mengira sudah.
+  if (input.poolPct != null || input.investIdr != null) {
+    return {
+      ok: false,
+      error:
+        "Nominal & porsi tidak lagi disimpan di sini. Ubah lewat kontrak investor — porsinya dihitung otomatis dari modal ÷ Σ modal cabang.",
+    };
+  }
 
   const supabase = adminClient() as any;
   const payload: Record<string, unknown> = {
@@ -115,8 +131,6 @@ export async function upsertDividendRecipient(input: {
     label: input.label.trim(),
     kind: input.kind,
     sort_order: input.sortOrder ?? 0,
-    pool_pct: input.kind === "management" ? null : input.poolPct ?? 0,
-    invest_idr: input.kind === "management" ? null : input.investIdr ?? null,
     active: input.active ?? true,
     notes: input.notes ?? null,
     updated_at: new Date().toISOString(),
@@ -160,16 +174,33 @@ export async function deleteDividendRecipient(id: string): Promise<ActionResult>
 }
 
 // ── Structure: branch config ──────────────────────────────────────────
+/**
+ * Kebijakan cabang dari tabel config, TAPI total modal dari agregat kontrak
+ * (SSOT langkah 2). Kolom `total_investment_idr` di tabel masih ada — akan
+ * di-drop di langkah 5 — dan sengaja TIDAK dipakai lagi di sini supaya angka
+ * basi di kolom itu tidak bisa lagi mempengaruhi porsi maupun status BEP.
+ */
 export async function getDividendBranchConfig(
   branch: string
 ): Promise<DividendBranchConfig> {
   const supabase = adminClient() as any;
-  const { data } = await supabase
-    .from("yeobo_dividend_branch_config")
-    .select("*")
-    .eq("branch", branch)
-    .maybeSingle();
-  return mapConfig(data, branch);
+  const [{ data }, { data: agg }] = await Promise.all([
+    supabase
+      .from("yeobo_dividend_branch_config")
+      .select("*")
+      .eq("branch", branch)
+      .maybeSingle(),
+    supabase
+      .from("yeobo_branch_investment_v")
+      .select("total_investment_idr")
+      .eq("business_unit", "Yeobo Space")
+      .eq("branch", branch)
+      .maybeSingle(),
+  ]);
+  const cfg = mapConfig(data, branch);
+  cfg.totalInvestmentIdr =
+    agg?.total_investment_idr == null ? null : Number(agg.total_investment_idr);
+  return cfg;
 }
 
 export async function upsertDividendBranchConfig(input: {
@@ -183,11 +214,15 @@ export async function upsertDividendBranchConfig(input: {
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!input.branch) return { ok: false, error: "Branch wajib" };
   const supabase = adminClient() as any;
+  // SSOT langkah 3: total modal cabang tidak lagi diinput. Ia agregat Σ
+  // kontrak, dan menerimanya di sini akan menghidupkan lagi angka ketiga yang
+  // bisa bertentangan dengan dua lainnya. `totalInvestmentIdr` sengaja
+  // dibiarkan di signature supaya pemanggil lama tetap type-safe, tapi
+  // nilainya diabaikan dan kolomnya tidak ikut ditulis.
   const payload = {
     branch: input.branch,
     mgmt_pct_before_bep: input.mgmtPctBeforeBep,
     mgmt_pct_after_bep: input.mgmtPctAfterBep,
-    total_investment_idr: input.totalInvestmentIdr ?? null,
     bep_reached_ym: input.bepReachedYm?.trim() || null,
     updated_at: new Date().toISOString(),
     updated_by: gate.userId,

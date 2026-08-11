@@ -27,13 +27,23 @@ export interface DivRecipient {
   contractId: string | null;
 }
 
-/** Fraksi investor i terhadap pool investor (pakai nominal investasi
- *  bila ada, jika tidak pakai poolPct). */
+/**
+ * Fraksi investor terhadap pool investor: nominal kontrak ÷ total modal
+ * cabang. SATU jalur, tanpa fallback (SSOT langkah 2).
+ *
+ * Fallback ke `poolPct` sengaja DIHAPUS. Selama ia ada, dua baris data yang
+ * saling bertentangan tetap menghasilkan angka tanpa error — itulah yang
+ * menyembunyikan drift selama ini. Sekarang keduanya berasal dari view
+ * `yeobo_dividend_recipients_v` yang menurunkan keduanya dari kontrak yang
+ * sama, sehingga tidak mungkin lagi berbeda.
+ *
+ * Mengembalikan 0 bila data tidak lengkap — bukan diam-diam memakai angka
+ * lain. Nol terlihat di UI sebagai anomali dan bisa ditelusuri; tebakan yang
+ * masuk akal tidak.
+ */
 export function investorFrac(r: DivRecipient, totalInvestment: number | null): number {
-  if (r.investIdr != null && totalInvestment && totalInvestment > 0) {
-    return r.investIdr / totalInvestment;
-  }
-  return (r.poolPct ?? 0) / 100;
+  if (r.investIdr == null || !totalInvestment || totalInvestment <= 0) return 0;
+  return r.investIdr / totalInvestment;
 }
 
 export interface DivBranchConfig {
