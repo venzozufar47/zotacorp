@@ -261,9 +261,6 @@ function ConfigCard({
 }) {
   const [before, setBefore] = useState(config?.mgmtPctBeforeBep ?? 35);
   const [after, setAfter] = useState(config?.mgmtPctAfterBep ?? 50);
-  const [totalInv, setTotalInv] = useState<string>(
-    config?.totalInvestmentIdr != null ? String(config.totalInvestmentIdr) : ""
-  );
   const [reachedYm, setReachedYm] = useState(config?.bepReachedYm ?? "");
 
   return (
@@ -288,14 +285,22 @@ function ConfigCard({
             className="num-input"
           />
         </Field>
+        {/* Σ kontrak, bukan input. Dulu ini kotak angka yang bisa diketik,
+            padahal upsertDividendBranchConfig sudah berhenti menulis kolomnya
+            (SSOT langkah 3): admin mengetik, menekan Simpan, melihat toast
+            sukses, lalu angkanya kembali sendiri. */}
         <Field label="Total investasi cabang (Rp)">
-          <input
-            type="number"
-            value={totalInv}
-            onChange={(e) => setTotalInv(e.target.value)}
-            placeholder="mis. 110000000"
-            className="num-input"
-          />
+          <div
+            className="num-input flex items-center justify-between gap-2 border-dashed bg-muted/40 text-muted-foreground"
+            title="Σ modal kontrak aktif cabang ini — ubah lewat tab Daftar Investor › Kontrak"
+          >
+            <span className="tabular-nums">
+              {config?.totalInvestmentIdr != null
+                ? config.totalInvestmentIdr.toLocaleString("id-ID")
+                : "—"}
+            </span>
+            <span className="text-[9px] uppercase">Σ kontrak</span>
+          </div>
         </Field>
         <Field label="Override bulan BEP (YYYY-MM)">
           <input
@@ -320,7 +325,7 @@ function ConfigCard({
             branch,
             mgmtPctBeforeBep: before,
             mgmtPctAfterBep: after,
-            totalInvestmentIdr: totalInv.trim() === "" ? null : Number(totalInv),
+            totalInvestmentIdr: null,
             bepReachedYm: reachedYm.trim() || null,
           })
         }
@@ -409,22 +414,20 @@ function RecipientRow({
     setCopying(false);
     router.refresh();
   }
-  const [pct, setPct] = useState<string>(r.poolPct != null ? String(r.poolPct) : "");
-  const [invest, setInvest] = useState<string>(
-    r.investIdr != null ? String(r.investIdr) : ""
-  );
-  // Amount mode (edit investasi Rp; BEP = exact amount; % derived) only
-  // when this recipient already has an invest amount. Recipients that use
-  // % directly (e.g. Tembalang) stay in % mode even if a total is set.
+  // Modal & porsi DITURUNKAN dari kontrak (SSOT langkah 2) — di sini hanya
+  // ditampilkan. Dulu keduanya input, dan sejak jalur tulisnya ditutup tombol
+  // Simpan slot investor SELALU gagal: ia tetap mengirim poolPct, dan
+  // upsertDividendRecipient menolak poolPct non-null. Akibatnya label pun tak
+  // bisa diubah — kontrol yang tidak mungkin berhasil.
   const amountMode = totalInvestment != null && r.investIdr != null;
   const derivedPct =
     amountMode && totalInvestment
-      ? ((Number(invest) || 0) / totalInvestment) * 100
-      : Number(pct) || 0;
+      ? ((r.investIdr as number) / totalInvestment) * 100
+      : r.poolPct ?? 0;
   const bepNominal = amountMode
-    ? Number(invest) || 0
+    ? (r.investIdr as number)
     : totalInvestment != null
-      ? Math.round(((Number(pct) || 0) / 100) * totalInvestment)
+      ? Math.round(((r.poolPct ?? 0) / 100) * totalInvestment)
       : null;
 
   // Investors who hold a Yeobo contract for THIS branch → linkable.
@@ -472,28 +475,16 @@ function RecipientRow({
         onChange={(e) => setLabel(e.target.value)}
         className="w-32 rounded-md border border-input bg-background px-2 py-1"
       />
-      {r.kind === "investor" && amountMode && (
-        <label className="inline-flex items-center gap-1 text-muted-foreground">
-          Rp
-          <input
-            type="number"
-            value={invest}
-            onChange={(e) => setInvest(e.target.value)}
-            className="w-28 rounded-md border border-input bg-background px-2 py-1 text-right"
-            placeholder="investasi"
-          />
-        </label>
-      )}
-      {r.kind === "investor" && !amountMode && (
-        <label className="inline-flex items-center gap-1 text-muted-foreground">
-          <input
-            type="number"
-            value={pct}
-            onChange={(e) => setPct(e.target.value)}
-            className="w-16 rounded-md border border-input bg-background px-2 py-1 text-right"
-          />
-          % pool
-        </label>
+      {r.kind === "investor" && (
+        <span
+          className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-muted/40 px-2 py-1 tabular-nums text-muted-foreground"
+          title="Diturunkan dari kontrak investor — ubah di tab Daftar Investor › Kontrak"
+        >
+          {amountMode
+            ? `Rp ${(r.investIdr as number).toLocaleString("id-ID")}`
+            : `${derivedPct.toLocaleString("id-ID", { maximumFractionDigits: 3 })}% pool`}
+          <span className="text-[9px] uppercase">dari kontrak</span>
+        </span>
       )}
       {r.kind === "investor" && bepNominal != null && (
         <span className="text-[10px] text-muted-foreground">
@@ -511,14 +502,10 @@ function RecipientRow({
             label,
             kind: r.kind,
             sortOrder: r.sortOrder,
-            poolPct:
-              r.kind === "investor"
-                ? Math.round(derivedPct * 1000) / 1000
-                : null,
-            investIdr:
-              r.kind === "investor" && amountMode
-                ? Number(invest || 0)
-                : null,
+            // Nominal & porsi TIDAK dikirim — keduanya turunan kontrak, dan
+            // mengirimnya membuat aksi ini menolak seluruh penyimpanan.
+            poolPct: null,
+            investIdr: null,
           })
         }
         className="rounded-md border border-input px-2 py-1 font-semibold hover:bg-muted"

@@ -156,6 +156,47 @@ export function InvestorRoster({
 
   const periodLabel = `${MONTH_NAMES[period.month - 1]} ${period.year}`;
 
+  /**
+   * Progres per kontrak, dipakai baris daftar DAN kartu kontrak di panel —
+   * satu perhitungan, supaya keduanya tidak bisa berbeda.
+   *
+   * Kontrak NON-Yeobo tidak terwakili di `bepByContract` — konsol dividen
+   * hanya memuat kontrak Yeobo Space. Sebelumnya jatuh ke 0, sehingga
+   * investor Haengbocake yang sudah tiga kali menerima transfer (Rp 3,4jt)
+   * tampil "Modal terbalik Rp 0".
+   *
+   * Fallback-nya BUKAN rumus baru: konsol sendiri memakai aturan ini untuk
+   * kontrak tanpa slot dividen (`realContractThrough` di
+   * yeobo-dividend-console.actions.ts) — Σ payout real s/d periode acuan.
+   * Yang kurang cuma cakupan datanya, bukan aturannya.
+   *
+   * `target` dipakai apa adanya dari kontrak. bep_target_idr = 0 TIDAK
+   * ditambal jadi "= investasi" di sini: portal investor dan konsol
+   * memperlakukan 0 sebagai "tanpa target" dan menyembunyikan barnya, jadi
+   * menambalnya cuma di layar ini akan membuat satu halaman menyebut angka
+   * yang dibantah dua halaman lain. 0 ditampilkan sebagai "belum diisi" —
+   * kalau memang harusnya = investasi, yang perlu dibetulkan datanya.
+   */
+  const progressByContract = useMemo(() => {
+    const targetRank = period.year * 100 + period.month;
+    const out = new Map<string, RosterBep>();
+    for (const c of contracts) {
+      const bep = bepByContract[c.id];
+      const cumulative = bep
+        ? bep.cumulative
+        : (payoutsByContract[c.id] ?? []).reduce(
+            (s, p) =>
+              s +
+              (p.periodYear * 100 + p.periodMonth <= targetRank
+                ? p.amountIdr
+                : 0),
+            0
+          );
+      out.set(c.id, { cumulative, target: bep?.target ?? c.bepTargetIdr });
+    }
+    return out;
+  }, [contracts, bepByContract, payoutsByContract, period]);
+
   // Per-investor agregat: kontrak, modal, BEP, payout periode acuan.
   const statsByUser = useMemo(() => {
     const map = new Map<
@@ -181,16 +222,16 @@ export function InvestorRoster({
       if (!s) continue; // kontrak milik profil non-investor — tidak dirender
       s.contracts.push(c);
       s.invest += c.totalInvestIdr;
-      const bep = bepByContract[c.id];
-      s.recoup += bep?.cumulative ?? 0;
-      s.target += bep?.target ?? c.bepTargetIdr;
+      const prog = progressByContract.get(c.id);
+      s.recoup += prog?.cumulative ?? 0;
+      s.target += prog?.target ?? 0;
       for (const p of payoutsByContract[c.id] ?? [])
         if (p.periodYear === period.year && p.periodMonth === period.month)
           s.periodPayout += p.amountIdr;
     }
     for (const s of map.values()) s.contracts.sort(rankContract);
     return map;
-  }, [investors, contracts, bepByContract, payoutsByContract, period]);
+  }, [investors, contracts, progressByContract, payoutsByContract, period]);
 
   // Chip filter dibangun dari data, bukan daftar tetap: cabang Yeobo yang
   // benar-benar punya kontrak, lalu unit bisnis non-Yeobo.
@@ -295,7 +336,11 @@ export function InvestorRoster({
         </div>
       </div>
 
-      <div className="flex gap-4 items-start">
+      {/* Kolom kanan di layar lebar, tumpuk di bawah daftar kalau tidak ada
+          ruang. SATU instans panel — versi sebelumnya merender dua (satu
+          `hidden xl:block`, satu `xl:hidden`), jadi tiap investor terpilih
+          membangun dua salinan panel beserta state modalnya. */}
+      <div className="flex flex-col xl:flex-row gap-4 xl:items-start">
         {/* Master list */}
         <div className="flex-1 min-w-0 rounded-2xl border border-border bg-card overflow-hidden">
           <div className="hidden lg:grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,0.8fr)] gap-3 px-4 py-2 bg-muted/40 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -362,7 +407,11 @@ export function InvestorRoster({
                       </div>
 
                       <div className="min-w-0">
-                        {s.invest ? (
+                        {!s.invest ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            —
+                          </span>
+                        ) : s.target > 0 ? (
                           <>
                             <BepBar value={progress} />
                             <div className="mt-1 text-[10.5px] text-muted-foreground tabular-nums truncate">
@@ -371,9 +420,13 @@ export function InvestorRoster({
                             </div>
                           </>
                         ) : (
-                          <span className="text-[11px] text-muted-foreground">
-                            —
-                          </span>
+                          /* Target BEP belum diisi di kontrak — persen tanpa
+                             pembagi adalah 0% yang menyesatkan, jadi yang
+                             ditampilkan nominal terbaliknya saja. */
+                          <div className="text-[10.5px] text-muted-foreground tabular-nums truncate">
+                            {formatRpCompact(s.recoup)} terbalik · target BEP
+                            belum diisi
+                          </div>
                         )}
                       </div>
 
@@ -400,14 +453,13 @@ export function InvestorRoster({
           )}
         </div>
 
-        {/* Detail: kolom kanan in-flow di desktop lebar */}
         {active && (
-          <aside className="hidden xl:block w-[420px] shrink-0 sticky top-4 self-start">
+          <aside className="w-full xl:w-[420px] xl:shrink-0 xl:sticky xl:top-4 xl:self-start">
             <DetailPane
               investor={active}
               stats={statsByUser.get(active.userId)!}
               payoutsByContract={payoutsByContract}
-              bepByContract={bepByContract}
+              progressByContract={progressByContract}
               investors={investors}
               contracts={contracts}
               businessUnits={businessUnits}
@@ -417,23 +469,6 @@ export function InvestorRoster({
           </aside>
         )}
       </div>
-
-      {/* Detail: overlay di layar sempit — tidak ada ruang untuk kolom kedua */}
-      {active && (
-        <div className="xl:hidden">
-          <DetailPane
-            investor={active}
-            stats={statsByUser.get(active.userId)!}
-            payoutsByContract={payoutsByContract}
-            bepByContract={bepByContract}
-            investors={investors}
-            contracts={contracts}
-            businessUnits={businessUnits}
-            periodLabel={periodLabel}
-            onRefresh={() => router.refresh()}
-          />
-        </div>
-      )}
 
       {inviteOpen && <InviteInvestorModal onClose={() => setInviteOpen(false)} />}
       {batchOpen && (
@@ -475,7 +510,7 @@ function DetailPane({
   investor,
   stats,
   payoutsByContract,
-  bepByContract,
+  progressByContract,
   investors,
   contracts,
   businessUnits,
@@ -485,7 +520,7 @@ function DetailPane({
   investor: InvestorSummary;
   stats: RosterStats;
   payoutsByContract: Record<string, InvestorPayout[]>;
-  bepByContract: Record<string, RosterBep>;
+  progressByContract: Map<string, RosterBep>;
   investors: InvestorSummary[];
   contracts: InvestorContract[];
   businessUnits: string[];
@@ -603,7 +638,9 @@ function DetailPane({
         </div>
       </div>
 
-      <div className="max-h-[calc(100vh-13rem)] overflow-y-auto px-4 py-3 space-y-4">
+      {/* Scroll internal hanya saat panel jadi kolom sticky; ditumpuk di bawah
+          daftar ia ikut alur halaman, bukan kotak scroll di dalam scroll. */}
+      <div className="px-4 py-3 space-y-4 xl:max-h-[calc(100vh-13rem)] xl:overflow-y-auto">
         {/* Ringkasan */}
         <section className="space-y-2">
           <h4 className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -619,10 +656,20 @@ function DetailPane({
             />
             {stats.invest > 0 && (
               <div className="pt-2">
-                <BepBar value={progress} />
-                <p className="mt-1 text-[10.5px] text-muted-foreground tabular-nums">
-                  {pctS(progress * 100)} dari target BEP {formatRp(stats.target)}
-                </p>
+                {stats.target > 0 ? (
+                  <>
+                    <BepBar value={progress} />
+                    <p className="mt-1 text-[10.5px] text-muted-foreground tabular-nums">
+                      {pctS(progress * 100)} dari target BEP{" "}
+                      {formatRp(stats.target)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[10.5px] text-amber-700 dark:text-amber-400">
+                    Target BEP belum diisi di kontrak — progres tidak bisa
+                    dihitung. Isi lewat Edit kontrak.
+                  </p>
+                )}
               </div>
             )}
           </dl>
@@ -653,8 +700,8 @@ function DetailPane({
             </p>
           ) : (
             stats.contracts.map((c) => {
-              const bep = bepByContract[c.id];
-              const target = bep?.target ?? c.bepTargetIdr;
+              const bep = progressByContract.get(c.id);
+              const target = bep?.target ?? 0;
               const cum = bep?.cumulative ?? 0;
               const prog = target > 0 ? cum / target : 0;
               return (
@@ -721,10 +768,19 @@ function DetailPane({
                     <Row label="Ref" value={c.contractRef ?? "—"} mono last />
                   </dl>
                   <div>
-                    <BepBar value={prog} />
-                    <p className="mt-1 text-[10.5px] text-muted-foreground tabular-nums">
-                      BEP {pctS(prog * 100)} · {formatRp(cum)} / {formatRp(target)}
-                    </p>
+                    {target > 0 ? (
+                      <>
+                        <BepBar value={prog} />
+                        <p className="mt-1 text-[10.5px] text-muted-foreground tabular-nums">
+                          BEP {pctS(prog * 100)} · {formatRp(cum)} /{" "}
+                          {formatRp(target)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[10.5px] text-muted-foreground tabular-nums">
+                        {formatRp(cum)} terbalik · target BEP belum diisi
+                      </p>
+                    )}
                   </div>
                 </div>
               );

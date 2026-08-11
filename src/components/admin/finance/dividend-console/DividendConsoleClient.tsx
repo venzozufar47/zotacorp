@@ -97,7 +97,7 @@ export function DividendConsoleClient({
   data,
   minYm,
   maxYm,
-  basePath = "/admin/finance/dividen?",
+  basePath,
 }: {
   data: DividendConsoleData;
   minYm: string;
@@ -105,13 +105,13 @@ export function DividendConsoleClient({
   /**
    * Awalan URL untuk navigasi bulan, HARUS berakhir dengan `?` atau `&`.
    *
-   * Konsol ini kini dirender di dua tempat: halaman lamanya dan tab
-   * Distribusi di /admin/investors. Tanpa prop ini, mengganti bulan dari
-   * dalam tab akan melempar pengguna ke halaman lain — dan query `tab`
-   * hilang, jadi ia mendarat di tab Akun tanpa penjelasan apa pun.
-   * Default sengaja jalur lama supaya pemanggil lama tidak perlu diubah.
+   * WAJIB, tanpa default. Sebelumnya default-nya "/admin/finance/dividen?" —
+   * dan rute itu sekarang cuma redirect ke tab Distribusi, jadi pemanggil yang
+   * lupa mengisi prop ini akan mengirim pengguna memantul lewat redirect tiap
+   * kali mengganti bulan. Konsolnya hanya punya satu tempat render sekarang;
+   * default yang menunjuk pintu lama tidak punya pengguna sah lagi.
    */
-  basePath?: string;
+  basePath: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();

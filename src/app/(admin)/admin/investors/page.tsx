@@ -34,7 +34,6 @@ const YEOBO_DIVIDEND_BRANCHES = ["Tlogosari", "Tembalang", "Jebres"] as const;
 
 interface SearchParams {
   tab?: string;
-  bu?: string;
   month?: string; // YYYY-MM, khusus tab Distribusi
 }
 
@@ -76,6 +75,16 @@ const ymRank = (y: number, m: number) => y * 100 + m;
 const ymStr = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;
 /** Cabang Yeobo paling awal buka Jul 2023 (Tlogosari). */
 const MIN_YM = { year: 2023, month: 7 };
+
+/**
+ * Rupiah ringkas yang tidak pecah pada angka negatif. `formatRpCompact`
+ * menyingkat 1jt+ saja; nilai negatif lolos ke `String(n)` dan keluar sebagai
+ * "-2665876". Operating profit gabungan BISA negatif (bulan rugi), dan itu
+ * justru bulan yang paling perlu terbaca.
+ */
+function compactSigned(n: number): string {
+  return (n < 0 ? "-" : "") + formatRpCompact(Math.abs(n));
+}
 
 function parseYM(s: string | undefined): { year: number; month: number } | null {
   const m = s ? /^(\d{4})-(\d{1,2})$/.exec(s) : null;
@@ -171,11 +180,23 @@ export default async function AdminInvestorsPage({
     (s, b) => s + b.rows.length,
     0
   );
-  const nPaid = Object.values(payoutsByContract).filter((rows) =>
-    rows.some(
-      (p) => p.periodYear === target.year && p.periodMonth === target.month
+  // Penerima terhitung per ORANG, bukan per kontrak. Mei & Juni 2026 punya 10
+  // baris payout milik 7 investor — investor multi-cabang menerima satu
+  // transfer per kontrak. Menghitung baris membuat kartunya mengklaim
+  // "10 investor" untuk 7 orang.
+  const userOfContract = new Map(contracts.map((c) => [c.id, c.userId]));
+  const paidUsers = new Set<string>();
+  for (const [contractId, rows] of Object.entries(payoutsByContract)) {
+    if (
+      !rows.some(
+        (p) => p.periodYear === target.year && p.periodMonth === target.month
+      )
     )
-  ).length;
+      continue;
+    const uid = userOfContract.get(contractId);
+    if (uid) paidUsers.add(uid);
+  }
+  const nPaid = paidUsers.size;
   const periodSettled = nPaid > 0;
 
   // Sesi Foto tab — preload all Yeobo photo sessions (per studio/month).
@@ -235,7 +256,7 @@ export default async function AdminInvestorsPage({
         />
         <StatCard
           label={`Distribusi ${periodLabel}`}
-          value={formatRpCompact(Math.max(0, poolPeriod))}
+          value={compactSigned(poolPeriod)}
           hint={
             console_
               ? periodSettled

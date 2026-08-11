@@ -133,7 +133,16 @@ export async function listPayoutsForContracts(
  * menjalankan `requireSelfOrAdmin` untuk tiap id, dan pada ~23 kontrak itu
  * jadi 23 pemeriksaan berurutan hanya untuk mendapat jawaban yang sama.
  * Objek biasa (bukan Map) supaya bisa diserialkan ke komponen klien.
+ *
+ * Dibaca per halaman karena PostgREST memotong hasil di `max-rows` (default
+ * 1000 di Supabase) TANPA error. Sekali jumlah payout melewati batas itu,
+ * satu query akan mengembalikan sebagian data sambil tetap terlihat sukses —
+ * riwayat investor jadi bolong dan "modal terbalik" kontrak non-Yeobo
+ * (yang dihitung dari Σ payout ini) ikut mengecil tanpa tanda apa pun.
+ * Sekarang ~23 baris; 21 kontrak × 12 bulan menabraknya dalam beberapa tahun.
  */
+const PAYOUT_PAGE_SIZE = 1000;
+
 export async function listAllPayoutsByContract(): Promise<
   ActionResult<Record<string, InvestorPayout[]>>
 > {
@@ -141,16 +150,25 @@ export async function listAllPayoutsByContract(): Promise<
   if (!gate.ok) return { ok: false, error: gate.error };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
-  const { data, error } = await supabase
-    .from("investor_payouts")
-    .select("*")
-    .order("period_year", { ascending: false })
-    .order("period_month", { ascending: false });
-  if (error) return { ok: false, error: error.message };
   const out: Record<string, InvestorPayout[]> = {};
-  for (const r of (data ?? []) as PayoutRow[]) {
-    const p = mapPayout(r);
-    (out[p.contractId] ??= []).push(p);
+  for (let from = 0; ; from += PAYOUT_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("investor_payouts")
+      .select("*")
+      .order("period_year", { ascending: false })
+      .order("period_month", { ascending: false })
+      // `id` sebagai pemecah seri: dua kolom periode saja tidak unik, dan
+      // urutan yang tidak deterministik membuat paging melewatkan/menggandakan
+      // baris di batas halaman.
+      .order("id", { ascending: true })
+      .range(from, from + PAYOUT_PAGE_SIZE - 1);
+    if (error) return { ok: false, error: error.message };
+    const rows = (data ?? []) as PayoutRow[];
+    for (const r of rows) {
+      const p = mapPayout(r);
+      (out[p.contractId] ??= []).push(p);
+    }
+    if (rows.length < PAYOUT_PAGE_SIZE) break;
   }
   return { ok: true, data: out };
 }

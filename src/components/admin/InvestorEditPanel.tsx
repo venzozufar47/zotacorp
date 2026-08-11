@@ -2,9 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { toast } from "sonner";
-import { X, Mail, Building2, FileText, Wallet, ArrowRight, Trash2 } from "lucide-react";
+import { X, Mail, Building2, FileText, Wallet, Trash2 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -181,12 +180,6 @@ export function InvestorEditPanel({ investor, contracts, onClose }: Props) {
             <Wallet size={12} /> Rp {formatIDR(totalInvest)}
           </span>
         </div>
-        <Link
-          href="/admin/investors?tab=contracts"
-          className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
-        >
-          Kelola kontrak & payout <ArrowRight size={12} />
-        </Link>
       </div>
 
       {/* Belum aktivasi → kirim ulang undangan (link mungkin kedaluwarsa). */}
