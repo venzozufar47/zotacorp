@@ -6,6 +6,7 @@ import { createAdminClient as adminClient } from "./_supabase-admin";
 import { getAutoSplitBranches } from "@/lib/cashflow/branch-split";
 import { orderYeoboBranches } from "@/lib/cashflow/categories";
 import { renderInviteInvestorEmail } from "@/lib/email/invite-investor-template";
+import { APP_MARKER } from "@/lib/auth/app-marker";
 import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
 import { isValidMoney, isValidPct, isValidYmd } from "./_validate";
 
@@ -233,7 +234,7 @@ export async function inviteInvestor(input: {
       email,
       options: {
         redirectTo: `${appUrl}/set-password`,
-        data: { full_name: fullName, role: "investor" },
+        data: { full_name: fullName, role: "investor", ...APP_MARKER },
       },
     });
   if (
@@ -353,7 +354,7 @@ export async function resendInvestorInvite(
       email,
       options: {
         redirectTo: `${appUrl}/set-password`,
-        data: { full_name: fullName, role: "investor" },
+        data: { full_name: fullName, role: "investor", ...APP_MARKER },
       },
     });
   if (linkError || !linkData?.properties?.action_link) {

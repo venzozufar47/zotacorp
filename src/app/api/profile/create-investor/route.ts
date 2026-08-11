@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { claimPlaceholderInvestor } from "@/lib/investor/claim-placeholder";
+import { APP_MARKER } from "@/lib/auth/app-marker";
 
 /**
  * Self-serve registrasi investor. Buat auth user + profile dengan
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
         email,
         password,
         email_confirm: true,
-        user_metadata: { full_name, role: "investor", company },
+        user_metadata: { full_name, role: "investor", company, ...APP_MARKER },
       });
 
     if (authError) {

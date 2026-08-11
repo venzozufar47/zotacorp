@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { APP_MARKER } from "@/lib/auth/app-marker";
 
 export async function POST(request: Request) {
   try {
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name, role },
+      user_metadata: { full_name, role, ...APP_MARKER },
     });
 
     if (authError) {
