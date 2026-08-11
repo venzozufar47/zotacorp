@@ -97,10 +97,21 @@ export function DividendConsoleClient({
   data,
   minYm,
   maxYm,
+  basePath = "/admin/finance/dividen?",
 }: {
   data: DividendConsoleData;
   minYm: string;
   maxYm: string;
+  /**
+   * Awalan URL untuk navigasi bulan, HARUS berakhir dengan `?` atau `&`.
+   *
+   * Konsol ini kini dirender di dua tempat: halaman lamanya dan tab
+   * Distribusi di /admin/investors. Tanpa prop ini, mengganti bulan dari
+   * dalam tab akan melempar pengguna ke halaman lain — dan query `tab`
+   * hilang, jadi ia mendarat di tab Akun tanpa penjelasan apa pun.
+   * Default sengaja jalur lama supaya pemanggil lama tidak perlu diubah.
+   */
+  basePath?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -128,7 +139,7 @@ export function DividendConsoleClient({
   const canNext = curR < ymRank(maxYm);
   const monthLabel = `${MONTH_FULL_NAMES[data.month - 1]} ${data.year}`;
   const go = (y: number, m: number) =>
-    router.push(`/admin/finance/dividen?month=${ymStr(y, m)}`);
+    router.push(`${basePath}month=${ymStr(y, m)}`);
 
   // Σ transfer per cabang (live).
   const branchSum = useMemo(() => {
