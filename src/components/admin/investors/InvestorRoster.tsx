@@ -15,6 +15,8 @@ import {
   UserPlus,
 } from "lucide-react";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { yeoboBranchRank } from "@/lib/cashflow/categories";
 import {
   inviteInvestor,
   type InvestorSummary,
@@ -44,11 +46,6 @@ import { BulkPayoutForm, PayoutForm } from "./PayoutFormModal";
  */
 
 const YEOBO_BU = "Yeobo Space";
-const BRANCH_RANK: Record<string, number> = {
-  Tlogosari: 0,
-  Tembalang: 1,
-  Jebres: 2,
-};
 
 /** Progres BEP per kontrak, dihitung server-side oleh konsol dividen. Dipakai
  *  APA ADANYA — jangan hitung ulang di sini, dua rumus untuk satu metrik
@@ -57,6 +54,15 @@ export interface RosterBep {
   /** Kumulatif "modal terbalik" s/d periode acuan (basis hybrid konsol). */
   cumulative: number;
   target: number;
+}
+
+/** Agregat per investor untuk baris daftar & panel detail. */
+interface RosterStats {
+  contracts: InvestorContract[];
+  invest: number;
+  recoup: number;
+  target: number;
+  periodPayout: number;
 }
 
 interface Props {
@@ -80,7 +86,7 @@ function rankContract(a: InvestorContract, b: InvestorContract) {
   return (
     ra - rb ||
     a.businessUnit.localeCompare(b.businessUnit) ||
-    (BRANCH_RANK[a.branch ?? ""] ?? 99) - (BRANCH_RANK[b.branch ?? ""] ?? 99)
+    yeoboBranchRank(a.branch ?? "") - yeoboBranchRank(b.branch ?? "")
   );
 }
 
@@ -165,10 +171,18 @@ export function InvestorRoster({
    * investor Haengbocake yang sudah tiga kali menerima transfer (Rp 3,4jt)
    * tampil "Modal terbalik Rp 0".
    *
-   * Fallback-nya BUKAN rumus baru: konsol sendiri memakai aturan ini untuk
-   * kontrak tanpa slot dividen (`realContractThrough` di
-   * yeobo-dividend-console.actions.ts) — Σ payout real s/d periode acuan.
-   * Yang kurang cuma cakupan datanya, bukan aturannya.
+   * Fallback-nya Σ payout real s/d periode acuan — aturan yang SAMA dengan
+   * yang dilihat investornya sendiri di portal (`bepCurrent = totalCashback`
+   * untuk kontrak tanpa cabang, src/lib/investor/dashboard.ts), jadi admin dan
+   * investor tidak bisa menyebut angka berbeda untuk orang yang sama.
+   *
+   * Sengaja BUKAN aturan konsol untuk kontrak tanpa slot dividen: yang itu
+   * membuang payout sebelum Mei 2026 (`realContractThrough` melewati periode
+   * < KAS_START_RANK) karena untuk kontrak Yeobo periode tersebut sudah
+   * terwakili baseline estimasi PnL. Kontrak non-Yeobo tidak punya baseline
+   * itu, jadi memakai aturan konsol di sini akan menghapus tiga transfer nyata
+   * (Rp 3,4jt) dan mengembalikan "Modal terbalik Rp 0" yang justru sedang
+   * diperbaiki.
    *
    * `target` dipakai apa adanya dari kontrak. bep_target_idr = 0 TIDAK
    * ditambal jadi "= investasi" di sini: portal investor dan konsol
@@ -199,16 +213,7 @@ export function InvestorRoster({
 
   // Per-investor agregat: kontrak, modal, BEP, payout periode acuan.
   const statsByUser = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        contracts: InvestorContract[];
-        invest: number;
-        recoup: number;
-        target: number;
-        periodPayout: number;
-      }
-    >();
+    const map = new Map<string, RosterStats>();
     for (const inv of investors)
       map.set(inv.userId, {
         contracts: [],
@@ -242,7 +247,7 @@ export function InvestorRoster({
           .filter((c) => c.businessUnit === YEOBO_BU && c.branch)
           .map((c) => c.branch as string)
       ),
-    ].sort((a, b) => (BRANCH_RANK[a] ?? 99) - (BRANCH_RANK[b] ?? 99));
+    ].sort((a, b) => yeoboBranchRank(a) - yeoboBranchRank(b));
     const otherBus = [
       ...new Set(
         contracts
@@ -350,11 +355,16 @@ export function InvestorRoster({
             <span>Progres BEP</span>
             <span className="text-right">{periodLabel}</span>
           </div>
-          {list.length === 0 ? (
+          {investors.length === 0 ? (
+            <div className="p-4">
+              <EmptyState
+                title="Belum ada investor"
+                description="Undang investor lewat tombol di atas — mereka akan menerima email untuk membuat password sendiri."
+              />
+            </div>
+          ) : list.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-              {investors.length === 0
-                ? "Belum ada investor. Undang lewat tombol di atas — mereka menerima email untuk membuat password sendiri."
-                : "Tidak ada investor yang cocok dengan pencarian/filter ini."}
+              Tidak ada investor yang cocok dengan pencarian/filter ini.
             </p>
           ) : (
             <ul className="divide-y divide-border">
@@ -496,14 +506,6 @@ export function InvestorRoster({
       )}
     </div>
   );
-}
-
-interface RosterStats {
-  contracts: InvestorContract[];
-  invest: number;
-  recoup: number;
-  target: number;
-  periodPayout: number;
 }
 
 function DetailPane({

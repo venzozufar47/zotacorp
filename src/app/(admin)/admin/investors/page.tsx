@@ -76,16 +76,6 @@ const ymStr = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;
 /** Cabang Yeobo paling awal buka Jul 2023 (Tlogosari). */
 const MIN_YM = { year: 2023, month: 7 };
 
-/**
- * Rupiah ringkas yang tidak pecah pada angka negatif. `formatRpCompact`
- * menyingkat 1jt+ saja; nilai negatif lolos ke `String(n)` dan keluar sebagai
- * "-2665876". Operating profit gabungan BISA negatif (bulan rugi), dan itu
- * justru bulan yang paling perlu terbaca.
- */
-function compactSigned(n: number): string {
-  return (n < 0 ? "-" : "") + formatRpCompact(Math.abs(n));
-}
-
 function parseYM(s: string | undefined): { year: number; month: number } | null {
   const m = s ? /^(\d{4})-(\d{1,2})$/.exec(s) : null;
   if (!m) return null;
@@ -131,24 +121,32 @@ export default async function AdminInvestorsPage({
   if (r < ymRank(MIN_YM.year, MIN_YM.month)) target = { ...MIN_YM };
   if (r > ymRank(curY, curM)) target = { year: curY, month: curM };
 
+  // Konsol dividen adalah panggilan TERBERAT di halaman ini: PnL Yeobo
+  // sepanjang sejarah (2023-01 →), seluruh alokasi, plus slice BEP tiap
+  // investor. Tab Daftar Investor memakainya (progres BEP) dan tab Distribusi
+  // jelas memakainya — tapi Sesi Foto tidak menyentuh satu angka pun darinya,
+  // jadi tab itu tidak ikut membayar.
+  //
+  // Yang memakai tetap SATU pemanggilan dengan bulan yang sama: kartu
+  // statistik, progres BEP, dan konsol harus menyebut angka yang sama, dan
+  // menghitungnya dua kali akan membuat mereka saling membantah.
+  const needsConsole = tab !== "sesi";
   const [investorsRes, businessUnits, contractsRes, payoutsRes, consoleData] =
     await Promise.all([
       listInvestorsForAdmin(),
       listBusinessUnits(),
       listInvestorContracts(),
       listAllPayoutsByContract(),
-      // Satu pemanggilan untuk seluruh halaman: kartu statistik, progres BEP
-      // di tab Daftar Investor, dan konsol di tab Distribusi memakai angka
-      // yang SAMA. Menghitungnya dua kali dengan bulan berbeda akan membuat
-      // kartu dan tabel saling membantah di halaman yang sama.
-      getDividendConsoleData({ year: target.year, month: target.month }),
+      needsConsole
+        ? getDividendConsoleData({ year: target.year, month: target.month })
+        : null,
     ]);
   const investors = investorsRes.ok ? investorsRes.data ?? [] : [];
   const contracts = contractsRes.ok ? contractsRes.data ?? [] : [];
   const payoutsByContract = payoutsRes.ok ? payoutsRes.data ?? {} : {};
   const buNames = businessUnits.map((b) => b.name);
-  const console_ = consoleData.ok ? consoleData.data ?? null : null;
-  const consoleError = consoleData.ok ? null : consoleData.error;
+  const console_ = consoleData?.ok ? consoleData.data ?? null : null;
+  const consoleError = !consoleData || consoleData.ok ? null : consoleData.error;
 
   // Progres BEP per kontrak — diambil dari konsol, TIDAK dihitung ulang.
   const bepByContract: Record<string, RosterBep> = {};
@@ -198,6 +196,18 @@ export default async function AdminInvestorsPage({
   }
   const nPaid = paidUsers.size;
   const periodSettled = nPaid > 0;
+  // Status transfer diketahui dari payout (tersedia di semua tab); pool-nya
+  // hanya dari konsol. Di tab tanpa konsol kartunya menyebut yang ia tahu dan
+  // diam soal yang tidak — bukan menampilkan "Rp 0" yang terbaca sebagai
+  // "tidak ada pembagian bulan ini".
+  const poolValue = console_ ? formatRpCompact(poolPeriod) : "—";
+  const poolHint = periodSettled
+    ? `Ditransfer ke ${nPaid} investor`
+    : console_
+      ? `Belum ditransfer · ${nRecipients} penerima`
+      : consoleError
+        ? "Konsol tidak termuat"
+        : "Buka tab Distribusi untuk pool bulan ini";
 
   // Sesi Foto tab — preload all Yeobo photo sessions (per studio/month).
   let photoSessions: Awaited<ReturnType<typeof listYeoboPhotoSessions>> = [];
@@ -256,14 +266,8 @@ export default async function AdminInvestorsPage({
         />
         <StatCard
           label={`Distribusi ${periodLabel}`}
-          value={compactSigned(poolPeriod)}
-          hint={
-            console_
-              ? periodSettled
-                ? `Ditransfer ke ${nPaid} investor`
-                : `Belum ditransfer · ${nRecipients} penerima`
-              : "Konsol tidak termuat"
-          }
+          value={poolValue}
+          hint={poolHint}
           tone={console_ && !periodSettled ? "warn" : undefined}
           href={`/admin/investors?tab=distribusi&month=${ymStr(target.year, target.month)}`}
           title={`Operating profit 3 cabang ${periodLabel}: ${formatRp(poolPeriod)}`}

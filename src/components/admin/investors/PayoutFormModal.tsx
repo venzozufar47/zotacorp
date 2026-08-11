@@ -12,6 +12,7 @@ import {
 } from "@/lib/actions/investor-payouts.actions";
 import type { InvestorContract } from "@/lib/actions/investor.actions";
 import { formatRp } from "@/lib/cashflow/format";
+import { yeoboBranchRank } from "@/lib/cashflow/categories";
 import { MONTH_NAMES } from "@/lib/utils/date-formats";
 
 /**
@@ -30,11 +31,6 @@ export interface PayoutFormInvestor {
 }
 
 const YEOBO_BU_P = "Yeobo Space";
-const BRANCH_RANK_P: Record<string, number> = {
-  Tlogosari: 0,
-  Tembalang: 1,
-  Jebres: 2,
-};
 
 /**
  * Bulk payout input — one period, many investors at once. Shared
@@ -76,8 +72,7 @@ export function BulkPayoutForm({
       return (
         ra - rb ||
         a.businessUnit.localeCompare(b.businessUnit) ||
-        (BRANCH_RANK_P[a.branch ?? ""] ?? 99) -
-          (BRANCH_RANK_P[b.branch ?? ""] ?? 99) ||
+        yeoboBranchRank(a.branch ?? "") - yeoboBranchRank(b.branch ?? "") ||
         (a.branch ?? "").localeCompare(b.branch ?? "") ||
         nameOf(a).localeCompare(nameOf(b))
       );

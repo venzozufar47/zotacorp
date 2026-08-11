@@ -105,7 +105,7 @@ const YEOBO_BRANCH_RANK = new Map<string, number>(
 );
 
 /** Rank kanonik sebuah branch; unknown → besar (taruh di akhir). */
-function yeoboBranchRank(branch: string): number {
+export function yeoboBranchRank(branch: string): number {
   const r = YEOBO_BRANCH_RANK.get(branch);
   return r === undefined ? Number.MAX_SAFE_INTEGER : r;
 }

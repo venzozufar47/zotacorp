@@ -27,9 +27,16 @@ export function formatRp(n: number): string {
 }
 
 /** Compact rupiah untuk axis label / chart — "1.250.000" → "1.2jt",
- *  "15.000" → "15rb". */
+ *  "15.000" → "15rb", "-2.665.876" → "-2.7jt".
+ *
+ *  Angka negatif diringkas lewat nilai mutlaknya lalu diberi tanda kembali.
+ *  Sebelumnya tidak ada cabang yang cocok untuk n < 0, jadi ia jatuh ke
+ *  `String(Math.round(n))` dan tercetak mentah ("-2665876") di tempat yang
+ *  mengharapkan bentuk ringkas — dan bulan rugi justru bulan yang paling
+ *  perlu terbaca. */
 export function formatRpCompact(n: number): string {
   if (n === 0) return "0";
+  if (n < 0) return `-${formatRpCompact(-n)}`;
   if (n >= 1_000_000) {
     const v = n / 1_000_000;
     return `${v >= 10 ? Math.round(v) : v.toFixed(1)}jt`;
