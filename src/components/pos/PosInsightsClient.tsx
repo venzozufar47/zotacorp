@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { TrendingUp, Trophy, Clock, Calendar, Download } from "lucide-react";
 import { PosShell } from "./PosShell";
+import { PosDateRangePicker } from "./PosDateRangePicker";
 import type { PosInsights } from "@/lib/actions/pos-insights.actions";
 import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
 import {
@@ -25,6 +26,16 @@ const PERIOD_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 7, label: "7 hari" },
   { value: 30, label: "30 hari" },
   { value: 90, label: "90 hari" },
+];
+
+/** Preset di dalam kalender. Sengaja TIDAK mengulang Hari ini/Kemarin/N-hari
+ *  yang sudah jadi chip di baris atas — yang di sini adalah rentang kalender
+ *  yang repot dipilih manual. */
+const CALENDAR_PRESETS = [
+  { id: "thisWeek" as const, label: "Minggu ini" },
+  { id: "thisMonth" as const, label: "Bulan ini" },
+  { id: "lastMonth" as const, label: "Bulan lalu" },
+  { id: "ytd" as const, label: "Tahun berjalan" },
 ];
 
 function daysBetweenInclusive(from: string, to: string): number {
@@ -112,19 +123,21 @@ export function PosInsightsClient({
   const isCustom = activePreset == null;
 
   const [customOpen, setCustomOpen] = useState(false);
-  const [customFrom, setCustomFrom] = useState(range.from);
-  const [customTo, setCustomTo] = useState(range.to);
 
+  // `basePath` WAJIB dipakai. URL internal `/pos/insights` tidak punya segmen
+  // cabang, jadi guard [branch] membacanya sebagai cabang bernama "insights",
+  // menolaknya, lalu melempar ke /pospare — setiap ganti periode berakhir di
+  // halaman utama POS dan pilihan tanggalnya hilang.
   function applyPreset(value: number) {
     setCustomOpen(false);
-    router.push(`/pos/insights?period=${value}`);
+    router.push(`${basePath}/insights?period=${value}`);
   }
 
   function applyCustom(from: string, to: string) {
     if (!from || !to) return;
     if (from > to) [from, to] = [to, from];
     setCustomOpen(false);
-    router.push(`/pos/insights?from=${from}&to=${to}`);
+    router.push(`${basePath}/insights?from=${from}&to=${to}`);
   }
 
   type Shortcut =
@@ -172,8 +185,6 @@ export function PosInsightsClient({
 
   function applyShortcut(kind: Shortcut) {
     const [from, to] = SHORTCUT_RANGES[kind]();
-    setCustomFrom(from);
-    setCustomTo(to);
     applyCustom(from, to);
   }
 
@@ -283,69 +294,19 @@ export function PosInsightsClient({
         </button>
 
         {customOpen && (
-          <div className="rounded-2xl border border-border bg-card p-3 space-y-3 max-w-sm shadow-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-[11px] font-medium text-muted-foreground">
-                Dari
-                <input
-                  type="date"
-                  value={customFrom}
-                  max={customTo || today}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                />
-              </label>
-              <label className="text-[11px] font-medium text-muted-foreground">
-                Sampai
-                <input
-                  type="date"
-                  value={customTo}
-                  min={customFrom}
-                  max={today}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                />
-              </label>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { id: "thisWeek" as const, label: "Minggu ini" },
-                { id: "thisMonth" as const, label: "Bulan ini" },
-                { id: "lastMonth" as const, label: "Bulan lalu" },
-                { id: "ytd" as const, label: "Tahun berjalan" },
-              ].map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => applyShortcut(s.id)}
-                  className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted active:scale-95 transition-transform"
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomFrom(range.from);
-                  setCustomTo(range.to);
-                  setCustomOpen(false);
-                }}
-                className="text-xs text-muted-foreground hover:text-foreground px-2 py-1"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => applyCustom(customFrom, customTo)}
-                disabled={!customFrom || !customTo || customFrom > customTo}
-                className="rounded-lg bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold hover:opacity-90 disabled:opacity-50"
-              >
-                Terapkan
-              </button>
-            </div>
-          </div>
+          <PosDateRangePicker
+            key={`${range.from}|${range.to}`}
+            from={range.from}
+            to={range.to}
+            today={today}
+            presets={CALENDAR_PRESETS.map((p) => ({
+              id: p.id,
+              label: p.label,
+              range: SHORTCUT_RANGES[p.id],
+            }))}
+            onApply={applyCustom}
+            onCancel={() => setCustomOpen(false)}
+          />
         )}
       </div>
 
