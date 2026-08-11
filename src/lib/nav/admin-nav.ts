@@ -8,7 +8,6 @@ import {
   Database,
   FileSignature,
   Gauge,
-  HandCoins,
   Home as HomeIcon,
   MapPin,
   Megaphone,
@@ -228,21 +227,19 @@ export function buildAdminNav({
             { href: "/admin/costing/pengadaan", label: "Pengadaan" },
           ],
         },
-        // Sits at /admin/finance/dividen but stays top-level: it's a
-        // high-traffic workflow of its own, and longest-href matching
-        // keeps it from lighting up its URL parent.
-        {
-          href: "/admin/finance/dividen",
-          icon: HandCoins,
-          label: "Dividen",
-          color: "bg-pop-emerald",
-        },
+        // "Dividen" DIHAPUS dari sini: konsolnya melebur jadi tab
+        // "Distribusi Bulanan" di halaman Investor, karena orang, kontrak,
+        // dan bagi hasil adalah satu alur kerja — bukan dua menu di grup
+        // yang berbeda. /admin/finance/dividen kini redirect ke tab itu.
         {
           href: "/admin/investors",
           icon: TrendingUp,
           label: "Investor",
           color: "bg-quaternary",
-          children: [{ href: "/admin/investors/mom", label: "Notulen Rapat" }],
+          children: [
+            { href: "/admin/investors?tab=distribusi", label: "Distribusi Bulanan" },
+            { href: "/admin/investors/mom", label: "Notulen Rapat" },
+          ],
         },
       ],
     },
