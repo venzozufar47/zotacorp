@@ -2,13 +2,19 @@
  * Panel rekonsiliasi dividen: keputusan konsol vs uang yang benar-benar
  * keluar di rekening koran.
  *
- * Read-only dan sengaja tidak mengoreksi apa pun. Keduanya memang boleh
- * berbeda — nominal bank ikut memuat biaya transfer — jadi tugas panel
- * ini menampakkan selisihnya, bukan meniadakannya. Lihat
+ * Angka selisihnya sendiri TIDAK dikoreksi — keduanya memang boleh berbeda
+ * (nominal bank ikut memuat biaya transfer), jadi tugas panel ini menampakkan
+ * selisihnya, bukan meniadakannya. Lihat
  * `yeobo-dividend-reconcile.actions.ts` untuk alasan lengkapnya.
  *
- * Server component: tidak ada state, detail per bulan pakai <details>
- * bawaan browser supaya tidak perlu JS di klien.
+ * Yang bisa disunting adalah baris rekening korannya, lewat
+ * `ReconcileLedgerRows`: panel ini yang menemukan barisnya salah tag cabang
+ * atau salah bucket periode, jadi perbaikannya masuk akal dilakukan di sini
+ * ketimbang menyuruh admin menyeberang ke halaman rekening dan mencari lagi
+ * baris yang sama.
+ *
+ * Tetap server component: ringkasan & detail per bulan pakai <details> bawaan
+ * browser, tanpa JS. Hanya daftar baris ledger yang jadi pulau klien.
  */
 
 import { AlertTriangle, Check, Info } from "lucide-react";
@@ -18,6 +24,7 @@ import type {
   ReconcilePeriod,
   ReconcileStatus,
 } from "@/lib/actions/yeobo-dividend-reconcile.actions";
+import { ReconcileLedgerRows } from "./ReconcileLedgerRows";
 
 const STATUS_LABEL: Record<ReconcileStatus, string> = {
   cocok: "Cocok",
@@ -174,35 +181,18 @@ export function DividendReconcilePanel({
 
               {p.ledgerRows.length > 0 && (
                 <div className="mt-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Baris rekening koran di bulan ini
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Baris rekening koran di bulan ini
+                    </div>
+                    <span className="text-[10.5px] text-muted-foreground">
+                      Arahkan kursor ke baris untuk mengoreksinya di sini
+                    </span>
                   </div>
-                  <ul className="mt-1 space-y-1">
-                    {p.ledgerRows.map((r) => (
-                      <li key={r.id} className="text-[11.5px] leading-snug">
-                        <span className="tabular-nums text-foreground">
-                          {formatRp(r.amount)}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {" · "}
-                          {r.date}
-                          {" · cabang "}
-                          {r.branchTag ?? "—"}
-                        </span>
-                        {r.bucketFromTxDate && (
-                          <span
-                            className="ml-1 rounded px-1 py-px text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10"
-                            title="Periode efektif kosong — bulan diambil dari tanggal transaksi, bisa salah bucket"
-                          >
-                            periode dari tanggal transaksi
-                          </span>
-                        )}
-                        <div className="text-muted-foreground">
-                          {r.description}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <ReconcileLedgerRows
+                    rows={p.ledgerRows}
+                    period={{ year: p.year, month: p.month }}
+                  />
                 </div>
               )}
             </div>

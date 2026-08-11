@@ -94,6 +94,11 @@ export interface ReconcileLedgerRow {
   bucketFromTxDate: boolean;
   branchTag: string | null;
   amount: number;
+  /** Debit & credit MENTAH. `amount` adalah net (debit − credit), jadi ia
+   *  tidak bisa ditulis balik apa adanya — editor inline butuh kolom aslinya
+   *  supaya koreksi tidak mendarat di kolom yang salah. */
+  debit: number;
+  credit: number;
   description: string;
 }
 
@@ -213,6 +218,8 @@ export async function getDividendReconciliation(): Promise<
       bucketFromTxDate: fromTxDate,
       branchTag: t.branch,
       amount,
+      debit,
+      credit,
       description: t.description,
     });
     rowsByYm.set(ym, list);

@@ -896,39 +896,95 @@ function BepBar({ pct, small }: { pct: number; small?: boolean }) {
 }
 
 // ── Payout history ─────────────────────────────────────────────────────
+/**
+ * Riwayat payout per periode.
+ *
+ * Versi sebelumnya menuang semua entri sebagai satu paragraf
+ * "Nama (Cabang): nominal · tanggal" yang membungkus baris. Tiga hal membuatnya
+ * tidak bisa dibaca: tanggal transfer diulang di SETIAP entri padahal satu
+ * batch = satu tanggal (sepuluh kali "15 Jul 2026"), nominalnya mengalir di
+ * tengah teks sehingga tidak bisa dibandingkan antar penerima, dan dua belas
+ * periode terbuka sekaligus.
+ *
+ * Jadi: tanggal naik ke header periode (turun ke baris HANYA kalau batchnya
+ * memang beda-beda tanggal), nominal jadi kolom rata kanan yang bisa disusuri
+ * mata, dan tiap periode bisa dilipat — periode terbaru terbuka.
+ *
+ * Dipakai <details>, bukan useState: panel ini tetap bisa dibuka-tutup walau
+ * JS-nya belum sampai/hidrasi gagal.
+ */
 function PayoutHistory({ data }: { data: DividendConsoleData }) {
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border">
-        <span className="text-sm font-bold text-foreground">
-          Riwayat payout (bulan sebelumnya)
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-4 py-3 border-b border-border">
+        <span className="text-sm font-bold text-foreground">Riwayat payout</span>
+        <span className="text-[11px] text-muted-foreground">
+          {data.history.length} periode sebelum{" "}
+          {MONTH_FULL_NAMES[data.month - 1]} {data.year}
         </span>
       </div>
       <div className="divide-y divide-border/60">
-        {data.history.map((h) => (
-          <div key={`${h.year}-${h.month}`} className="px-4 py-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[13px] font-semibold text-foreground">
-                {MONTH_FULL_NAMES[h.month - 1]} {h.year}
-              </span>
-              <span className="font-mono tabular-nums text-[13px] font-semibold text-foreground">
-                {formatRp(h.total)}
-              </span>
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
-              {h.entries.map((e, i) => (
-                <span key={i}>
-                  {e.investorName}
-                  {e.branch ? ` (${e.branch})` : ""}:{" "}
-                  <span className="font-mono tabular-nums text-foreground">
-                    {formatIDR(e.amountIdr)}
-                  </span>
-                  {e.paidAt ? ` · ${formatDateID(e.paidAt)}` : ""}
+        {data.history.map((h, idx) => {
+          // Satu batch transfer umumnya satu tanggal untuk semua penerima —
+          // kalau begitu tanggalnya milik PERIODE, bukan tiap baris.
+          const dates = [...new Set(h.entries.map((e) => e.paidAt ?? ""))];
+          const commonDate = dates.length === 1 && dates[0] ? dates[0] : null;
+          // Investor multi-cabang menerima satu transfer per kontrak, jadi
+          // jumlah baris > jumlah orang. Keduanya disebut supaya sepuluh baris
+          // untuk tujuh orang tidak terbaca sebagai sepuluh orang.
+          const people = new Set(h.entries.map((e) => e.investorName)).size;
+          const rows = [...h.entries].sort(
+            (a, b) =>
+              a.investorName.localeCompare(b.investorName) ||
+              (a.branch ?? "").localeCompare(b.branch ?? "")
+          );
+          return (
+            <details key={`${h.year}-${h.month}`} open={idx === 0} className="group">
+              <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-0.5 px-4 py-2.5 hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+                <ChevronRight
+                  size={14}
+                  className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+                />
+                <span className="text-[13px] font-semibold text-foreground">
+                  {MONTH_FULL_NAMES[h.month - 1]} {h.year}
                 </span>
-              ))}
-            </div>
-          </div>
-        ))}
+                <span className="text-[11px] text-muted-foreground">
+                  {people} investor
+                  {rows.length !== people ? ` · ${rows.length} transfer` : ""}
+                  {commonDate ? ` · ditransfer ${formatDateID(commonDate)}` : ""}
+                </span>
+                <span className="ml-auto font-mono tabular-nums text-[13px] font-semibold text-foreground">
+                  {formatRp(h.total)}
+                </span>
+              </summary>
+              <div className="pb-2">
+                {rows.map((e, i) => (
+                  <div
+                    key={i}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 py-1 pl-10 pr-4 text-[12px] hover:bg-muted/30"
+                  >
+                    <span className="min-w-0 truncate text-foreground">
+                      {e.investorName}
+                      {e.branch && (
+                        <span className="ml-1.5 rounded border border-border bg-muted px-1 py-px align-middle text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {e.branch}
+                        </span>
+                      )}
+                      {!commonDate && e.paidAt && (
+                        <span className="ml-1.5 text-[10.5px] text-muted-foreground">
+                          {formatDateID(e.paidAt)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono tabular-nums text-muted-foreground">
+                      {formatIDR(e.amountIdr)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          );
+        })}
       </div>
     </div>
   );
