@@ -102,11 +102,26 @@ export function isStockGateConfigured(): boolean {
   return !!process.env.STOCK_STATUS_API_KEY;
 }
 
-/** Sumber yang sedang dipakai — untuk ditampilkan di panel monitor admin. */
+/**
+ * Sumber yang sedang dipakai — untuk ditampilkan di panel monitor admin.
+ *
+ * Pada mode remote, label ikut menyebutkan APA yang sebenarnya terbaca dari
+ * `STOCK_GATE_SOURCE`. Tanpa itu, panel hanya menampilkan URL endpoint, dan
+ * "env belum sampai ke runtime" tidak bisa dibedakan dari "env sengaja remote"
+ * — persis kebingungan yang memakan waktu pada malam cutover 11 Agustus 2026,
+ * ketika nilai sudah diisi di dashboard tapi panel tak pernah berubah dan tidak
+ * ada satu pun permukaan yang bisa menunjukkan alasannya.
+ *
+ * Nilainya bukan rahasia: ia hanya penanda mode, bukan kunci.
+ */
 export function stockGateSourceLabel(): string {
-  return stockGateSource() === "local"
-    ? "lokal (schema yeobo)"
-    : STOCK_STATUS_ENDPOINT;
+  if (stockGateSource() === "local") return "lokal (schema yeobo)";
+  const mentah = process.env.STOCK_GATE_SOURCE;
+  const catatan =
+    mentah === undefined
+      ? "STOCK_GATE_SOURCE tidak terbaca di runtime"
+      : `STOCK_GATE_SOURCE = ${JSON.stringify(mentah)}`;
+  return `${STOCK_STATUS_ENDPOINT} — ${catatan}`;
 }
 
 /** Host endpoint yang dipanggil — konteks non-rahasia untuk panel monitor. */
@@ -157,7 +172,16 @@ export type StockOpnameStatus =
  */
 type StockGateSource = "remote" | "local";
 function stockGateSource(): StockGateSource {
-  return process.env.STOCK_GATE_SOURCE === "local" ? "local" : "remote";
+  // Dinormalisasi, bukan dibandingkan mentah. Perbandingan ketat `=== "local"`
+  // gagal DIAM-DIAM untuk "Local", " local", atau nilai yang terlanjur tersimpan
+  // dengan tanda kutip — dan gagalnya tidak terlihat di mana pun, karena mode
+  // remote tetap menjawab benar. Kegagalan senyap seperti itu yang membuat
+  // konfigurasi terlihat benar padahal tidak berlaku.
+  return normalizedGateSource() === "local" ? "local" : "remote";
+}
+
+function normalizedGateSource(): string {
+  return (process.env.STOCK_GATE_SOURCE ?? "").trim().toLowerCase().replace(/^["']|["']$/g, "");
 }
 
 /** Tanggal "hari ini" menurut WIB, apa pun zona waktu server. */
