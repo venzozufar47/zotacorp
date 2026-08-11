@@ -93,7 +93,20 @@ export const GATED_JOB_ROLE_LABELS = [
  * tidak pernah dikembalikan supaya aman dipakai di panel admin.
  */
 export function isStockGateConfigured(): boolean {
+  // Jalur lokal tidak memakai API key sama sekali; yang dibutuhkan hanya
+  // service-role client yang memang selalu ada di sisi server. Tanpa cabang
+  // ini, panel monitor akan melaporkan "belum dikonfigurasi" padahal gate-nya
+  // sehat — persis jenis peringatan palsu yang membuat orang berhenti percaya
+  // pada panelnya.
+  if (stockGateSource() === "local") return true;
   return !!process.env.STOCK_STATUS_API_KEY;
+}
+
+/** Sumber yang sedang dipakai — untuk ditampilkan di panel monitor admin. */
+export function stockGateSourceLabel(): string {
+  return stockGateSource() === "local"
+    ? "lokal (schema yeobo)"
+    : STOCK_STATUS_ENDPOINT;
 }
 
 /** Host endpoint yang dipanggil — konteks non-rahasia untuk panel monitor. */
@@ -131,13 +144,89 @@ export type StockOpnameStatus =
     };
 
 /**
- * Panggil API eksternal untuk satu cabang. `date` sengaja TIDAK dikirim —
- * API memakai "hari ini" zona WIB sebagai default. Autentikasi via header
- * Authorization: Bearer <key> (server-side saja).
+ * Sumber kebenaran status opname.
+ *
+ *  "remote" — memanggil https://yeobospace.id/api/stock/status (perilaku lama).
+ *  "local"  — membaca schema `yeobo` di database yang sama, setelah database
+ *             yeobospace dipindahkan ke project Supabase ini.
+ *
+ * Default sengaja "remote": selama env belum di-flip, perilakunya persis
+ * seperti sebelumnya. Membaca lokal SEBELUM cutover akan salah — schema
+ * `yeobo` baru berisi salinan, dan opname hari ini masih ditulis ke database
+ * yeobospace yang lama.
+ */
+type StockGateSource = "remote" | "local";
+function stockGateSource(): StockGateSource {
+  return process.env.STOCK_GATE_SOURCE === "local" ? "local" : "remote";
+}
+
+/** Tanggal "hari ini" menurut WIB, apa pun zona waktu server. */
+function todayWib(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/**
+ * Baca status opname langsung dari `yeobo.stock_opname` — tanpa jaringan.
+ *
+ * Setara dengan API lama: satu baris untuk (cabang, tanggal hari ini) yang
+ * `submitted_at`-nya terisi berarti opname sudah selesai. Tabel sumbernya unik
+ * per pasangan itu, jadi keberadaan baris sudah cukup; `submitted_at` diperiksa
+ * sebagai pengaman kalau kelak ada baris draf.
+ *
+ * Ragam kegagalannya sengaja dipetakan ke reason yang sama dengan jalur remote,
+ * supaya keputusan fail-closed di `decideCheckoutGate` tidak perlu tahu bedanya.
+ */
+async function checkStockOpnameLocal(
+  branchId: StockBranchId,
+): Promise<StockOpnameStatus> {
+  try {
+    // Klien TANPA generic `Database`: tipe hasil generate hanya mencakup schema
+    // `public`, sehingga .schema("yeobo") menyempit ke never dan menolak setiap
+    // nama tabel. Meregenerasi tipe untuk dua schema akan mengubah berkas
+    // generate yang besar demi satu kueri; batasnya dikurung di sini saja.
+    const { createClient } = await import("@supabase/supabase-js");
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { db: { schema: "yeobo" } },
+    );
+    const { data, error } = await admin
+      .from("stock_opname")
+      .select("id")
+      .eq("branch_id", branchId)
+      .eq("opname_date", todayWib())
+      .not("submitted_at", "is", null)
+      .limit(1);
+
+    if (error) return { ok: false, reason: "http_error", detail: error.message };
+    return { ok: true, submitted: (data?.length ?? 0) > 0 };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: "network",
+      detail: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/**
+ * Cek status opname satu cabang. Menjembatani dua sumber; bentuk hasilnya
+ * identik sehingga pemanggil tidak perlu tahu sumbernya yang mana.
+ *
+ * Pada jalur remote, `date` sengaja TIDAK dikirim — API memakai "hari ini"
+ * zona WIB sebagai default. Autentikasi via header Authorization: Bearer <key>
+ * (server-side saja).
  */
 export async function checkStockOpnameDone(
   branchId: StockBranchId,
 ): Promise<StockOpnameStatus> {
+  if (stockGateSource() === "local") return checkStockOpnameLocal(branchId);
+
   const key = process.env.STOCK_STATUS_API_KEY;
   if (!key) return { ok: false, reason: "not_configured", detail: "STOCK_STATUS_API_KEY belum di-set" };
 
