@@ -1734,6 +1734,10 @@ export async function getCleaningPhotoHistory(input: {
   to: string;
   checklist_id?: string | null;
   user_id?: string | null;
+  /** Satu titik saja (cleaning_checklist_items.id). Checklist bisa punya 10+
+   *  titik, jadi "buka foto Toilet" sebelumnya berarti menyisir seluruh
+   *  checklist dengan mata. */
+  item_id?: string | null;
   limit?: number;
   offset?: number;
 }): Promise<{ rows: PhotoHistoryRow[]; hasMore: boolean } | { error: string }> {
@@ -1758,6 +1762,7 @@ export async function getCleaningPhotoHistory(input: {
     .range(offset, offset + limit); // +1 row to detect "more"
 
   if (input.checklist_id) q = q.eq("item.checklist_id", input.checklist_id);
+  if (input.item_id) q = q.eq("item_id", input.item_id);
   if (input.user_id) q = q.eq("user_id", input.user_id);
 
   const { data, error } = await q;

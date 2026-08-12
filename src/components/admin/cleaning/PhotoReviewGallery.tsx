@@ -13,7 +13,7 @@ import {
   type PhotoHistoryRow,
   type CleaningChecklist,
 } from "@/lib/actions/cleaning.actions";
-import type { CleaningEmployee } from "./CleaningAdmin";
+import type { CleaningEmployee } from "./types";
 
 const PAGE = 60;
 
@@ -34,13 +34,25 @@ function daysAgo(n: number): string {
 export function PhotoReviewGallery({
   checklists,
   employees,
+  items = [],
+  initialItemId,
 }: {
   checklists: CleaningChecklist[];
   employees: CleaningEmployee[];
+  /** Titik yang bisa disaring. Satu checklist bisa punya 10+ titik, jadi
+   *  "buka foto Toilet" tanpa ini berarti menyisir seluruh checklist. */
+  items?: Array<{ id: string; title: string; checklistId: string }>;
+  /** Dibuka langsung tersaring ke satu titik (dari kartu titik / antrean). */
+  initialItemId?: string;
 }) {
-  const [from, setFrom] = useState(() => daysAgo(7));
+  // Dibuka dari satu titik → rentangnya dilebarkan ke 30 hari. Titik yang
+  // ditinjau justru yang lama tak tersentuh; 7 hari sering kosong sama sekali.
+  const [from, setFrom] = useState(() => daysAgo(initialItemId ? 30 : 7));
   const [to, setTo] = useState(() => jakartaDateString(new Date()));
-  const [checklistId, setChecklistId] = useState("");
+  const [checklistId, setChecklistId] = useState(
+    () => items.find((i) => i.id === initialItemId)?.checklistId ?? ""
+  );
+  const [itemId, setItemId] = useState(initialItemId ?? "");
   const [userId, setUserId] = useState("");
 
   const [rows, setRows] = useState<PhotoHistoryRow[]>([]);
@@ -56,6 +68,7 @@ export function PhotoReviewGallery({
           from,
           to,
           checklist_id: checklistId || null,
+          item_id: itemId || null,
           user_id: userId || null,
           limit: PAGE,
           offset,
@@ -69,7 +82,7 @@ export function PhotoReviewGallery({
         setLoaded(true);
       });
     },
-    [from, to, checklistId, userId]
+    [from, to, checklistId, itemId, userId]
   );
 
   // First paint only; afterwards the user drives it with "Tampilkan".
@@ -127,7 +140,12 @@ export function PhotoReviewGallery({
             </span>
             <select
               value={checklistId}
-              onChange={(e) => setChecklistId(e.target.value)}
+              onChange={(e) => {
+                setChecklistId(e.target.value);
+                // Titik terikat checklist-nya; menyisakan pilihan titik dari
+                // checklist lain akan menghasilkan filter yang tak mungkin cocok.
+                setItemId("");
+              }}
               className="mt-1 w-full h-10 rounded-xl border border-border bg-card px-3 text-[13px]"
             >
               <option value="">Semua checklist</option>
@@ -138,6 +156,27 @@ export function PhotoReviewGallery({
               ))}
             </select>
           </label>
+          {items.length > 0 && (
+            <label className="block">
+              <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                Titik
+              </span>
+              <select
+                value={itemId}
+                onChange={(e) => setItemId(e.target.value)}
+                className="mt-1 w-full h-10 rounded-xl border border-border bg-card px-3 text-[13px]"
+              >
+                <option value="">Semua titik</option>
+                {items
+                  .filter((i) => !checklistId || i.checklistId === checklistId)
+                  .map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.title}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           <label className="block">
             <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
               Karyawan

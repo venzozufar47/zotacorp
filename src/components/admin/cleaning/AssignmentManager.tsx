@@ -42,7 +42,7 @@ import {
   type CleaningChecklist,
   type CleaningAssignmentRow,
 } from "@/lib/actions/cleaning.actions";
-import type { CleaningEmployee } from "./CleaningAdmin";
+import type { CleaningEmployee } from "./types";
 import type { HolidayRow } from "@/lib/actions/holidays.actions";
 import { useRunAction } from "./useRunAction";
 
