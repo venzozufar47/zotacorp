@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   CleaningOverview,
   type CleaningRangeKey,
+  type CleaningViewKey,
 } from "@/components/admin/cleaning/CleaningOverview";
 import {
   listChecklists,
@@ -51,7 +52,7 @@ function ymdMinus(ymd: string, n: number): string {
 export default async function AdminCleaningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; view?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -63,6 +64,7 @@ export default async function AdminCleaningPage({
     sp.range === "7" || sp.range === "30" || sp.range === "hari"
       ? sp.range
       : "hari";
+  const view: CleaningViewKey = sp.view === "karyawan" ? "karyawan" : "ringkasan";
 
   const today = jakartaDateString(new Date());
   const from = ymdMinus(today, Math.max(RANGE_DAYS[range], MIN_FETCH_DAYS) - 1);
@@ -117,6 +119,7 @@ export default async function AdminCleaningPage({
         <CleaningOverview
           report={reportRes.data!}
           range={range}
+          view={view}
           checklists={checklists}
           assignments={assignments}
           branchDuties={branchDuties}

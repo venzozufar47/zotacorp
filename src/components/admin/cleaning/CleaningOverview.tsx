@@ -56,6 +56,23 @@ const RANGES = [
 
 export type CleaningRangeKey = (typeof RANGES)[number]["key"];
 
+/**
+ * Dua tab, bukan lima.
+ *
+ * Desainnya satu halaman tanpa tab, dan itu benar untuk penyusunan SOP (yang
+ * turun ke drawer). Tapi "kerajinan karyawan" menjawab pertanyaan yang berbeda
+ * dari dua zona di atasnya — bukan "ruangan mana yang kotor" melainkan "siapa
+ * yang perlu dibina" — dan sebagai zona ketiga ia selalu berada di bawah dua
+ * blok besar, jadi praktis tak pernah terlihat. Tab-nya ber-URL supaya bisa
+ * di-bookmark dan dibagikan.
+ */
+const VIEWS = [
+  { key: "ringkasan", label: "Hasil kebersihan" },
+  { key: "karyawan", label: "Kerajinan karyawan" },
+] as const;
+
+export type CleaningViewKey = (typeof VIEWS)[number]["key"];
+
 const STATUS_LABEL: Record<CleaningDayStatus, string> = {
   ok: "Lengkap",
   late: "Telat",
@@ -161,6 +178,7 @@ function reviewQueue(points: PointReport[]) {
 export function CleaningOverview({
   report,
   range,
+  view,
   checklists,
   assignments,
   branchDuties,
@@ -170,6 +188,7 @@ export function CleaningOverview({
 }: {
   report: CleaningRangeReportWithNames;
   range: CleaningRangeKey;
+  view: CleaningViewKey;
   checklists: CleaningChecklist[];
   assignments: CleaningAssignmentRow[];
   branchDuties: BranchDutyRow[];
@@ -217,7 +236,7 @@ export function CleaningOverview({
           {RANGES.map((r) => (
             <Link
               key={r.key}
-              href={`/admin/cleaning?range=${r.key}`}
+              href={`/admin/cleaning?view=${view}&range=${r.key}`}
               className={
                 "rounded-full px-3 py-1 text-xs font-semibold transition " +
                 (range === r.key
@@ -247,6 +266,33 @@ export function CleaningOverview({
         </div>
       </div>
 
+      {/* Tab */}
+      <div className="flex gap-1 border-b border-border overflow-x-auto">
+        {VIEWS.map((v) => {
+          const on = v.key === view;
+          return (
+            <Link
+              key={v.key}
+              href={`/admin/cleaning?view=${v.key}&range=${range}`}
+              className={`press-feedback -mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold ${
+                on
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {v.label}
+              {v.key === "ringkasan" && queue.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-destructive/10 px-1.5 text-[11px] font-bold text-destructive">
+                  {queue.length}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+
+      {view === "ringkasan" ? (
+        <>
       {/* Zona 1 — Perlu ditinjau */}
       <section className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-2">
@@ -383,24 +429,19 @@ export function CleaningOverview({
           </>
         )}
       </section>
-
-      {/* Zona 3 — kerajinan karyawan */}
+        </>
+      ) : (
+      /* Tab kerajinan karyawan */
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-display text-[15px] font-bold">Kerajinan karyawan</h2>
-          <div className="ml-auto flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setAllBranches(false)}
-              className={
-                "rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold " +
-                (!allBranches
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border text-muted-foreground hover:bg-muted")
-              }
-            >
-              {activeBranch?.name ?? "Cabang aktif"}
-            </button>
+          <span className="text-[11.5px] text-muted-foreground">
+            Kepatuhan {scopeLabel}
+          </span>
+          {/* Pemilih cabang sendiri: di tab ini kartu cabang tidak terlihat,
+              jadi menumpang pilihan dari tab sebelah akan terasa seperti filter
+              yang berubah sendiri tanpa sebab yang kelihatan. */}
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => setAllBranches(true)}
@@ -413,6 +454,24 @@ export function CleaningOverview({
             >
               Semua cabang
             </button>
+            {report.branches.map((b) => (
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => {
+                  setAllBranches(false);
+                  setBranchKey(b.key);
+                }}
+                className={
+                  "rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold " +
+                  (!allBranches && branchKey === b.key
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted")
+                }
+              >
+                {b.name}
+              </button>
+            ))}
           </div>
         </div>
         <p className="text-[11.5px] text-muted-foreground">
@@ -510,6 +569,7 @@ export function CleaningOverview({
           </table>
         </div>
       </section>
+      )}
 
       {/* Drawer: Pengaturan SOP — 3 manager lama dipakai apa adanya */}
       {setupOpen && (
