@@ -133,12 +133,15 @@ export async function getCleaningRangeReport(input: {
       .lte("date", to),
     supabase.from("national_holidays").select("holiday_date, name"),
     supabase.from("cleaning_duty_pool").select("location_id, user_id, sort_order"),
+    // Dua kebutuhan berbeda dari satu tabel, jadi satu query saja:
+    //   * `matched_location_id` → siapa yang hadir DI CABANG (resolusi duty).
+    //   * ada/tidaknya baris   → orangnya masuk kerja hari itu, lepas lokasi
+    //     (supaya hari cuti tidak ditagihkan sebagai kelalaian).
     supabase
       .from("attendance_logs")
       .select("user_id, matched_location_id, date")
       .gte("date", from)
-      .lte("date", to)
-      .not("matched_location_id", "is", null),
+      .lte("date", to),
     // Cabang = attendance_locations (tidak ada tabel cleaning_locations —
     // lokasi absensi sekaligus jadi cabang yang bisa dipasangi duty).
     supabase.from("attendance_locations").select("id, name"),
@@ -252,11 +255,16 @@ export async function getCleaningRangeReport(input: {
       userId: p.user_id,
       sortOrder: p.sort_order,
     })),
-    presence: (presenceRes.data ?? []).map((p) => ({
-      locationId: p.matched_location_id as string,
-      userId: p.user_id,
-      date: p.date,
-    })),
+    presence: (presenceRes.data ?? [])
+      .filter((p) => !!p.matched_location_id)
+      .map((p) => ({
+        locationId: p.matched_location_id as string,
+        userId: p.user_id,
+        date: p.date,
+      })),
+    attendance: new Set(
+      (presenceRes.data ?? []).map((p) => `${p.user_id}|${p.date}`)
+    ),
     locationNames: new Map(
       (locationRes.data ?? []).map((l) => [l.id as string, l.name as string])
     ),

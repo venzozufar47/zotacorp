@@ -92,6 +92,10 @@ export interface RangePresenceInput {
   date: string;
 }
 
+/** Hari kerja seseorang, tanpa peduli lokasi: `${userId}|${ymd}`. Dipakai untuk
+ *  memisahkan "tidak dikerjakan" dari "orangnya memang tidak masuk". */
+export type AttendanceDaySet = ReadonlySet<string>;
+
 export interface RangeDay {
   ymd: string;
   /** 0=Min .. 6=Sab, zona Jakarta. */
@@ -228,6 +232,16 @@ export interface BuildRangeReportInput {
   completions: RangeCompletionInput[];
   pool: RangePoolMemberInput[];
   presence: RangePresenceInput[];
+  /**
+   * Hari kerja tiap orang (`${userId}|${ymd}`), lepas dari lokasi.
+   *
+   * Rotasi per-orang berbasis KALENDER: `isOnDutyToday` tidak tahu apa-apa soal
+   * cuti. Tanpa data ini, hari saat orangnya tidak masuk tetap tercatat sebagai
+   * kelalaiannya — halaman menuduh orang yang sedang tidak bekerja. Skor cabang
+   * TETAP menghitungnya terlewat (ruangannya memang tidak dibersihkan); yang
+   * tidak boleh adalah menagihnya ke seseorang.
+   */
+  attendance: AttendanceDaySet;
   /** locationId → nama cabang. */
   locationNames: ReadonlyMap<string, string>;
   /** userId → business_unit, untuk mengelompokkan assignment per-orang. */
@@ -253,6 +267,7 @@ export function buildCleaningRangeReport(
     completions,
     pool,
     presence,
+    attendance,
     locationNames,
     userUnits,
   } = input;
@@ -440,6 +455,11 @@ export function buildCleaningRangeReport(
         // tetap terhitung sebagai titik terlewat, tapi tidak ada orang yang
         // pantas ditagih.
         if (!performer) continue;
+        // Terlewat pada hari orangnya tidak masuk BUKAN kelalaiannya. Selnya
+        // tetap `miss` untuk skor cabang di atas; yang dilewati hanya
+        // penagihannya ke orang, sehingga harinya jadi `off` di heatmap-nya.
+        if (status === "miss" && !attendance.has(`${performer}|${day.ymd}`))
+          continue;
         const perUser = empDays.get(performer) ?? new Map<string, EmployeeDay>();
         const ed =
           perUser.get(day.ymd) ??
