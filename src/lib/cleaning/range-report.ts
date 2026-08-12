@@ -214,6 +214,13 @@ export interface BuildRangeReportInput {
   days: RangeDay[];
   /** Hari "sekarang" (Jakarta) — hanya hari ini yang boleh berstatus pending. */
   today: string;
+  /**
+   * Berapa hari TERAKHIR yang dihitung ke skor cabang. Strip di kartu selalu 14
+   * hari, jadi rentang selalu diambil ≥14 hari — tanpa pemisahan ini, memilih
+   * "Hari ini" tetap menghasilkan skor 14 hari sementara labelnya bilang hari
+   * ini. Default: seluruh rentang.
+   */
+  scoreDays?: number;
   /** Menit-dalam-hari saat ini, untuk memutuskan pending vs miss hari ini. */
   nowMinutes: number;
   tzOffsetMinutes: number;
@@ -252,11 +259,21 @@ export function buildCleaningRangeReport(
 
   const holidaySet = new Set(days.filter((d) => d.holiday).map((d) => d.ymd));
 
-  // Completion diindeks per (user|item|date). Kunci menyertakan user karena satu
-  // item bisa dikerjakan orang berbeda pada hari berbeda (rotasi).
+  // Completion diindeks per (item|date) — TANPA user.
+  //
+  // Ini bukan detail teknis, ini definisi: pertanyaan halaman ini adalah
+  // "apakah titik ini dikerjakan hari itu", dan jawabannya tidak boleh
+  // bergantung pada SIAPA yang mengerjakan. Rotasi menentukan siapa yang
+  // bertanggung jawab, bukan apakah ruangannya bersih.
+  //
+  // Versi pertama modul ini mengunci per (user|item|date) memakai pelaksana
+  // hasil hitungan rotasi. Akibatnya fatal dan senyap: pada rotasi 2 orang,
+  // hari yang dikerjakan rekannya tidak pernah cocok, seluruh completion
+  // dibuang, dan Haengbocake tampil 0% padahal ada 2.024 completion dalam 30
+  // hari. Angka nol itu terlihat masuk akal — itu yang membuatnya berbahaya.
   const compByKey = new Map<string, RangeCompletionInput>();
   for (const c of completions) {
-    const k = `${c.userId}|${c.itemId}|${c.date}`;
+    const k = `${c.itemId}|${c.date}`;
     const prev = compByKey.get(k);
     // Satu item bisa punya banyak baris (satu per slot foto). Yang dipakai
     // sebagai penanda waktu adalah yang PALING AKHIR — telat/tidaknya sebuah
@@ -332,7 +349,16 @@ export function buildCleaningRangeReport(
   for (const a of assignments) windowEndMin.set(a.id, hhmmToMinutes(a.windowEnd));
 
   // ── Perluasan utama: satu sel per (item × hari) ───────────────────────────
-  const points: PointReport[] = [];
+  //
+  // Titik dikunci per (cabang, item), BUKAN per assignment. Rotasi 2 orang atas
+  // satu checklist adalah DUA assignment yang berbagi item yang sama; kalau
+  // titiknya dibuat per assignment, "Matikan AC" muncul dua kali di grid dan
+  // rentetan miss-nya terpecah dua. Satu ruangan tetap satu ruangan berapa pun
+  // banyak orang yang bergilir mengurusnya.
+  const pointAcc = new Map<
+    string,
+    { base: Omit<PointReport, "cells" | "current" | "missStreak" | "lastGoodYmd" | "ageDays">; byDay: Map<string, PointCell> }
+  >();
   const empDays = new Map<string, Map<string, EmployeeDay>>();
 
   for (const a of assignments) {
@@ -340,14 +366,43 @@ export function buildCleaningRangeReport(
     const limit = windowEndMin.get(a.id) ?? null;
 
     for (const item of a.items) {
-      const cells: PointCell[] = [];
+      const pointKey = `${branchKey}|${item.id}`;
+      const acc =
+        pointAcc.get(pointKey) ??
+        {
+          base: {
+            itemId: item.id,
+            title: item.title,
+            checklistId: a.checklistId,
+            checklistName: a.checklistName,
+            branchKey,
+            photoSlots: item.photoSlots,
+          },
+          byDay: new Map<string, PointCell>(),
+        };
+      pointAcc.set(pointKey, acc);
       for (const day of days) {
-        const performer = performerOn(a, day);
-        if (!performer) {
-          cells.push({ ymd: day.ymd, status: "off", userId: null, completedAt: null });
+        const expected = performerOn(a, day);
+        const done = compByKey.get(`${item.id}|${day.ymd}`);
+        // Tidak terjadwal DAN tidak dikerjakan → hari itu memang bukan urusan
+        // siapa pun. Tidak terjadwal TAPI dikerjakan tetap dihitung bersih:
+        // ruangannya nyata-nyata dibersihkan, dan membuangnya justru
+        // meremehkan kebersihan yang benar-benar terjadi.
+        if (!expected && !done) {
+          // Hanya tulis `off` kalau assignment lain belum mengisi hari ini —
+          // pada rotasi, hari ini bisa jadi milik assignment pasangannya.
+          if (!acc.byDay.has(day.ymd))
+            acc.byDay.set(day.ymd, {
+              ymd: day.ymd,
+              status: "off",
+              userId: null,
+              completedAt: null,
+            });
           continue;
         }
-        const done = compByKey.get(`${performer}|${item.id}|${day.ymd}`);
+        // Kredit jatuh ke yang BENAR-BENAR mengerjakan; kalau terlewat, ke yang
+        // seharusnya bertugas — itulah orang yang perlu dibina.
+        const performer = done?.userId ?? expected;
         let status: CleaningDayStatus;
         if (done) {
           const at = minutesOfDay(done.completedAt, tzOffsetMinutes);
@@ -362,14 +417,29 @@ export function buildCleaningRangeReport(
         } else {
           status = "miss";
         }
-        cells.push({
-          ymd: day.ymd,
-          status,
-          userId: performer,
-          completedAt: done?.completedAt ?? null,
-        });
+        // Merge antar assignment yang berbagi titik (rotasi): hari yang sudah
+        // tercatat dikerjakan tidak boleh ditimpa `off`/`miss` oleh assignment
+        // pasangannya. Aturannya satu baris: status NYATA mengalahkan `off`,
+        // dan di antara dua status nyata yang paling ringan yang menang —
+        // ruangannya bersih walau bukan orang yang dijadwalkan yang mengerjakan.
+        const prev = acc.byDay.get(day.ymd);
+        const better =
+          !prev || prev.status === "off"
+            ? true
+            : SEVERITY[status] > SEVERITY[prev.status];
+        if (better)
+          acc.byDay.set(day.ymd, {
+            ymd: day.ymd,
+            status,
+            userId: performer,
+            completedAt: done?.completedAt ?? null,
+          });
 
-        // Rekap per karyawan — hanya hari yang benar-benar ia pegang.
+        // Rekap per karyawan — hanya hari yang benar-benar ia pegang. Bisa
+        // tanpa pemilik: duty cabang yang tidak ada anggota pool hadir hari itu
+        // tetap terhitung sebagai titik terlewat, tapi tidak ada orang yang
+        // pantas ditagih.
+        if (!performer) continue;
         const perUser = empDays.get(performer) ?? new Map<string, EmployeeDay>();
         const ed =
           perUser.get(day.ymd) ??
@@ -385,35 +455,48 @@ export function buildCleaningRangeReport(
         empDays.set(performer, perUser);
       }
 
-      // Riwayat terbaru → terlama, hanya hari yang terjadwal.
-      const rev = [...cells].reverse().filter((c) => c.status !== "off");
-      let missStreak = 0;
-      for (const c of rev) {
-        if (c.status === "miss") missStreak++;
-        else if (c.status === "pending") continue;
-        else break;
-      }
-      const lastGood = rev.find((c) => c.status === "ok" || c.status === "late");
-      const scheduledYmds = rev.map((c) => c.ymd);
-      const ageDays = lastGood ? scheduledYmds.indexOf(lastGood.ymd) : null;
-
-      points.push({
-        itemId: item.id,
-        title: item.title,
-        checklistId: a.checklistId,
-        checklistName: a.checklistName,
-        branchKey,
-        photoSlots: item.photoSlots,
-        cells,
-        current: cells[cells.length - 1]?.status ?? "off",
-        missStreak,
-        lastGoodYmd: lastGood?.ymd ?? null,
-        ageDays,
-      });
     }
   }
 
+  // Titik jadi bentuk akhir setelah SEMUA assignment tergabung — turunan
+  // (rentetan miss, umur bukti terakhir) hanya benar di atas sel yang lengkap.
+  const points: PointReport[] = [];
+  for (const acc of pointAcc.values()) {
+    const cells = days.map(
+      (d) =>
+        acc.byDay.get(d.ymd) ?? {
+          ymd: d.ymd,
+          status: "off" as CleaningDayStatus,
+          userId: null,
+          completedAt: null,
+        }
+    );
+    // Riwayat terbaru → terlama, hanya hari yang terjadwal.
+    const rev = [...cells].reverse().filter((c) => c.status !== "off");
+    let missStreak = 0;
+    for (const c of rev) {
+      if (c.status === "miss") missStreak++;
+      else if (c.status === "pending") continue;
+      else break;
+    }
+    const lastGood = rev.find((c) => c.status === "ok" || c.status === "late");
+    const scheduledYmds = rev.map((c) => c.ymd);
+    const ageDays = lastGood ? scheduledYmds.indexOf(lastGood.ymd) : null;
+
+    points.push({
+      ...acc.base,
+      cells,
+      current: cells[cells.length - 1]?.status ?? "off",
+      missStreak,
+      lastGoodYmd: lastGood?.ymd ?? null,
+      ageDays,
+    });
+  }
+
   // ── Ringkasan per cabang ─────────────────────────────────────────────────
+  // Skor hanya menghitung `scoreDays` hari terakhir; STRIP tetap seluruh
+  // rentang supaya kartunya punya konteks walau skornya cuma hari ini.
+  const scoreFrom = Math.max(0, days.length - (input.scoreDays ?? days.length));
   const branchMap = new Map<string, BranchReport>();
   for (const p of points) {
     let b = branchMap.get(p.branchKey);
@@ -440,6 +523,7 @@ export function buildCleaningRangeReport(
       branchMap.set(p.branchKey, b);
     }
     p.cells.forEach((c, i) => {
+      if (i < scoreFrom) return; // di luar rentang skor yang dipilih
       if (c.status === "off") return;
       b!.scheduled++;
       if (c.status === "ok") b!.done++;

@@ -79,6 +79,9 @@ export interface CleaningRangeReportWithNames extends CleaningRangeReport {
 export async function getCleaningRangeReport(input: {
   from: string;
   to: string;
+  /** Hari terakhir yang masuk skor. Rentang selalu diambil ≥14 hari untuk
+   *  strip; tanpa ini "Hari ini" akan menampilkan skor 14 hari. */
+  scoreDays?: number;
 }): Promise<ActionResult<CleaningRangeReportWithNames>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -230,6 +233,7 @@ export async function getCleaningRangeReport(input: {
   const report = buildCleaningRangeReport({
     days,
     today,
+    scoreDays: input.scoreDays,
     nowMinutes: hhmm ? Number(hhmm[1]) * 60 + Number(hhmm[2]) : 0,
     // Jakarta tidak punya DST, jadi offsetnya tetap. Dititipkan sebagai angka
     // supaya modul agregasi tidak perlu tahu apa pun soal zona waktu.

@@ -81,7 +81,13 @@ export default async function AdminCleaningPage({
     listAssignments(),
     listBranchDuties(),
     listCleaningLocations(),
-    getCleaningRangeReport({ from, to: today }),
+    getCleaningRangeReport({
+      from,
+      to: today,
+      // Skor mengikuti rentang yang DIPILIH, walau datanya diambil ≥14 hari
+      // demi strip. Tanpa ini "Hari ini" menampilkan skor 14 hari.
+      scoreDays: RANGE_DAYS[range],
+    }),
     supabase
       .from("profiles")
       .select("id, full_name, business_unit")
