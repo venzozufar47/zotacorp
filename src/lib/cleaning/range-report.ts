@@ -33,11 +33,12 @@ import { resolveBranchDuty } from "@/lib/utils/cleaning-branch-duty";
 /**
  * Status satu titik pada satu hari.
  *
- * `flag` ("perlu ulang") sengaja TIDAK ada: verdict admin atas foto butuh kolom
- * review di `cleaning_task_completions` yang belum dibuat. Menyediakan nilainya
- * sekarang berarti UI punya cabang yang tidak mungkin tercapai.
+ * `redo` = admin menandai fotonya perlu diulang (migrasi 130). Ia berdiri
+ * sendiri, bukan varian `miss`: pekerjaannya DILAKUKAN dan buktinya ada, hanya
+ * tidak diterima — orangnya sudah datang, jadi memperlakukannya sama dengan
+ * tidak dikerjakan akan salah menghukum.
  */
-export type CleaningDayStatus = "ok" | "late" | "miss" | "pending" | "off";
+export type CleaningDayStatus = "ok" | "late" | "redo" | "miss" | "pending" | "off";
 
 export interface RangeItemInput {
   id: string;
@@ -77,6 +78,8 @@ export interface RangeCompletionInput {
   completedAt: string;
   photoPath: string | null;
   photoReqId: string | null;
+  /** Verdict admin (migrasi 130). 'redo' membuat harinya jadi "Perlu ulang". */
+  reviewStatus: "unreviewed" | "ok" | "redo";
 }
 
 export interface RangePoolMemberInput {
@@ -140,6 +143,9 @@ export interface BranchReport {
   pending: number;
   miss: number;
   late: number;
+  /** Difoto tapi ditolak admin. TIDAK dihitung `done`: pekerjaannya belum
+   *  diterima, walau orangnya sudah datang. */
+  redo: number;
   /** Satu status per hari rentang — status TERBURUK di antara titiknya. */
   series: CleaningDayStatus[];
   needsAttention: number;
@@ -160,6 +166,7 @@ export interface EmployeeReport {
   dutyDays: number;
   ok: number;
   late: number;
+  redo: number;
   miss: number;
   pct: number;
   /** Hari duty `ok` berturut-turut paling baru. */
@@ -178,10 +185,11 @@ export interface CleaningRangeReport {
 /** Urutan keparahan — dipakai memilih status "terburuk" & mengurutkan kartu. */
 const SEVERITY: Record<CleaningDayStatus, number> = {
   miss: 0,
-  late: 1,
-  pending: 2,
-  ok: 3,
-  off: 4,
+  redo: 1,
+  late: 2,
+  pending: 3,
+  ok: 4,
+  off: 5,
 };
 
 function worst(list: readonly CleaningDayStatus[]): CleaningDayStatus {
@@ -286,6 +294,11 @@ export function buildCleaningRangeReport(
   // hari yang dikerjakan rekannya tidak pernah cocok, seluruh completion
   // dibuang, dan Haengbocake tampil 0% padahal ada 2.024 completion dalam 30
   // hari. Angka nol itu terlihat masuk akal — itu yang membuatnya berbahaya.
+  // Satu titik bisa punya beberapa baris (satu per slot foto). Kalau SATU saja
+  // ditolak, titiknya perlu diulang — verdict tidak bisa dirata-rata.
+  const redoKeys = new Set<string>();
+  for (const c of completions)
+    if (c.reviewStatus === "redo") redoKeys.add(`${c.itemId}|${c.date}`);
   const compByKey = new Map<string, RangeCompletionInput>();
   for (const c of completions) {
     const k = `${c.itemId}|${c.date}`;
@@ -420,8 +433,13 @@ export function buildCleaningRangeReport(
         const performer = done?.userId ?? expected;
         let status: CleaningDayStatus;
         if (done) {
-          const at = minutesOfDay(done.completedAt, tzOffsetMinutes);
-          status = limit != null && at != null && at > limit ? "late" : "ok";
+          // Verdict mengalahkan jam: foto yang ditolak tetap perlu diulang
+          // walau dikirim tepat waktu.
+          if (redoKeys.has(`${item.id}|${day.ymd}`)) status = "redo";
+          else {
+            const at = minutesOfDay(done.completedAt, tzOffsetMinutes);
+            status = limit != null && at != null && at > limit ? "late" : "ok";
+          }
         } else if (day.ymd > today) {
           status = "pending";
         } else if (day.ymd === today) {
@@ -537,6 +555,7 @@ export function buildCleaningRangeReport(
         pending: 0,
         miss: 0,
         late: 0,
+        redo: 0,
         series: days.map(() => "off" as CleaningDayStatus),
         needsAttention: 0,
       };
@@ -550,7 +569,8 @@ export function buildCleaningRangeReport(
       else if (c.status === "late") {
         b!.done++;
         b!.late++;
-      } else if (c.status === "miss") b!.miss++;
+      } else if (c.status === "redo") b!.redo++;
+      else if (c.status === "miss") b!.miss++;
       else if (c.status === "pending") b!.pending++;
       if (SEVERITY[c.status] < SEVERITY[b!.series[i]]) b!.series[i] = c.status;
     });
@@ -575,6 +595,7 @@ export function buildCleaningRangeReport(
     const duty = rows.filter((r) => r.status !== "off" && r.status !== "pending");
     const ok = duty.filter((r) => r.status === "ok").length;
     const late = duty.filter((r) => r.status === "late").length;
+    const redo = duty.filter((r) => r.status === "redo").length;
     const miss = duty.filter((r) => r.status === "miss").length;
     let streak = 0;
     for (const r of [...rows].reverse()) {
@@ -593,6 +614,7 @@ export function buildCleaningRangeReport(
       dutyDays: duty.length,
       ok,
       late,
+      redo,
       miss,
       pct: duty.length ? Math.round(((ok + late) / duty.length) * 100) : 100,
       streak,

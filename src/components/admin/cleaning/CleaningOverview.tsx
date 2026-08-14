@@ -1,17 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   AlertTriangle,
+  RotateCcw,
   Check,
   ChevronRight,
   Clock,
   Eye,
   Images,
+  Loader2,
+  MessageSquarePlus,
   Settings,
   X,
 } from "lucide-react";
+import { createCoachingNote } from "@/lib/actions/cleaning-review.actions";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { ChecklistManager } from "./ChecklistManager";
 import { AssignmentManager } from "./AssignmentManager";
@@ -76,6 +82,7 @@ export type CleaningViewKey = (typeof VIEWS)[number]["key"];
 const STATUS_LABEL: Record<CleaningDayStatus, string> = {
   ok: "Lengkap",
   late: "Telat",
+  redo: "Perlu ulang",
   miss: "Belum dikerjakan",
   pending: "Menunggu jadwal",
   off: "Tidak terjadwal",
@@ -85,6 +92,9 @@ const STATUS_LABEL: Record<CleaningDayStatus, string> = {
 const CELL_CLASS: Record<CleaningDayStatus, string> = {
   ok: "bg-emerald-500",
   late: "bg-amber-500",
+  // Oranye, bukan merah: pekerjaannya dilakukan dan buktinya ada, hanya belum
+  // diterima — beda derajat dengan tidak dikerjakan sama sekali.
+  redo: "bg-orange-500",
   miss: "bg-destructive",
   pending: "bg-primary/25",
   off: "bg-muted",
@@ -93,6 +103,7 @@ const CELL_CLASS: Record<CleaningDayStatus, string> = {
 const PILL_CLASS: Record<CleaningDayStatus, string> = {
   ok: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
   late: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  redo: "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-400",
   miss: "border-destructive/40 bg-destructive/10 text-destructive",
   pending: "border-border bg-muted text-muted-foreground",
   off: "border-border bg-muted text-muted-foreground",
@@ -158,15 +169,119 @@ const ageLabel = (n: number | null) =>
   n == null ? "belum pernah" : n === 0 ? "hari ini" : n === 1 ? "kemarin" : `${n} hari lalu`;
 
 /** Titik yang butuh mata manajer. Diurut: belum dikerjakan → lama tak terpantau. */
+/**
+ * Kirim catatan pembinaan ke satu karyawan.
+ *
+ * Rentang yang sedang dilihat ikut disimpan, supaya catatannya bisa dibaca
+ * ulang bersama angka yang memicunya alih-alih menggantung tanpa konteks.
+ * Karyawan membacanya di dashboard-nya sendiri — tidak ada notifikasi WA.
+ */
+function CoachingDialog({
+  userId,
+  name,
+  periodFrom,
+  periodTo,
+  onClose,
+}: {
+  userId: string;
+  name: string;
+  periodFrom: string;
+  periodTo: string;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [body, setBody] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    if (!body.trim()) {
+      toast.error("Catatan tidak boleh kosong");
+      return;
+    }
+    startTransition(async () => {
+      const res = await createCoachingNote({
+        userId,
+        body: body.trim(),
+        context: "cleaning",
+        periodFrom,
+        periodTo,
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal mengirim");
+        return;
+      }
+      toast.success(`Catatan terkirim ke ${name.split(" ")[0]}`);
+      onClose();
+      router.refresh();
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md space-y-3 rounded-2xl border border-border bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="font-display text-base font-bold">
+            Catatan pembinaan — {name}
+          </h3>
+          <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+            Tampil di dashboard {name.split(" ")[0]} saat ia masuk. Tidak
+            dikirim lewat WhatsApp.
+          </p>
+        </div>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={5}
+          maxLength={2000}
+          placeholder="Apa yang perlu diperbaiki, dan apa yang diharapkan minggu depan?"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+        />
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="h-9 rounded-lg border border-border px-3 text-sm font-semibold"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending || !body.trim()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            {pending && <Loader2 size={14} className="animate-spin" />}
+            Kirim catatan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function reviewQueue(points: PointReport[]) {
   const out = points
     .map((p) => {
       if (p.missStreak >= 1) return { p, kind: "miss" as const };
+      // Foto yang ditolak menunggu tindakan orang lain, jadi ia antre walau
+      // titiknya tidak "terlewat" — dan diletakkan di atas `stale` karena ada
+      // orang yang sedang menunggu jawaban.
+      if (p.cells.some((c) => c.status === "redo"))
+        return { p, kind: "redo" as const };
       if (p.ageDays == null || p.ageDays >= 4) return { p, kind: "stale" as const };
       return null;
     })
-    .filter((x): x is { p: PointReport; kind: "miss" | "stale" } => x !== null);
-  const w = { miss: 0, stale: 1 };
+    .filter(
+      (x): x is { p: PointReport; kind: "miss" | "redo" | "stale" } => x !== null
+    );
+  const w = { miss: 0, redo: 1, stale: 2 };
   return out.sort(
     (a, b) =>
       w[a.kind] - w[b.kind] ||
@@ -203,6 +318,10 @@ export function CleaningOverview({
   );
   const [setupOpen, setSetupOpen] = useState(false);
   const [gallery, setGallery] = useState<{ itemId?: string } | null>(null);
+  const [coaching, setCoaching] = useState<{
+    userId: string;
+    name: string;
+  } | null>(null);
   const [person, setPerson] = useState<EmployeeReport | null>(null);
   const [allBranches, setAllBranches] = useState(false);
 
@@ -338,10 +457,18 @@ export function CleaningOverview({
                     "grid size-7 shrink-0 place-items-center rounded-full " +
                     (kind === "miss"
                       ? "bg-destructive/10 text-destructive"
-                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400")
+                      : kind === "redo"
+                        ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                        : "bg-amber-500/10 text-amber-600 dark:text-amber-400")
                   }
                 >
-                  {kind === "miss" ? <AlertTriangle size={15} /> : <Clock size={14} />}
+                  {kind === "miss" ? (
+                    <AlertTriangle size={15} />
+                  ) : kind === "redo" ? (
+                    <RotateCcw size={14} />
+                  ) : (
+                    <Clock size={14} />
+                  )}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-semibold">
@@ -353,7 +480,9 @@ export function CleaningOverview({
                   <div className="text-[11px] text-muted-foreground">
                     {kind === "miss"
                       ? `Belum dikerjakan ${p.missStreak} hari kerja · terakhir bersih ${ageLabel(p.ageDays)}`
-                      : `Tidak ada bukti ${ageLabel(p.ageDays)} · ${p.checklistName}`}
+                      : kind === "redo"
+                        ? `Foto ditandai perlu ulang · ${p.checklistName}`
+                        : `Tidak ada bukti ${ageLabel(p.ageDays)} · ${p.checklistName}`}
                   </div>
                 </div>
                 <button
@@ -490,6 +619,7 @@ export function CleaningOverview({
                 <th className="px-3 py-2 text-right font-semibold">Telat</th>
                 <th className="px-3 py-2 text-right font-semibold">Terlewat</th>
                 <th className="px-3 py-2 text-right font-semibold">Beres berturut</th>
+                <th className="px-3 py-2 text-right font-semibold sr-only">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -562,6 +692,20 @@ export function CleaningOverview({
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                       {e.streak} hari
                     </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCoaching({
+                            userId: e.userId,
+                            name: report.names[e.userId] ?? "—",
+                          })
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <MessageSquarePlus size={12} /> Bina
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -569,6 +713,16 @@ export function CleaningOverview({
           </table>
         </div>
       </section>
+      )}
+
+      {coaching && (
+        <CoachingDialog
+          userId={coaching.userId}
+          name={coaching.name}
+          periodFrom={report.from}
+          periodTo={report.to}
+          onClose={() => setCoaching(null)}
+        />
       )}
 
       {/* Drawer: Pengaturan SOP — 3 manager lama dipakai apa adanya */}

@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, ImageOff, X, Search, CalendarDays } from "lucide-react";
+import {
+  Loader2,
+  ImageOff,
+  X,
+  Search,
+  CalendarDays,
+  RotateCcw,
+  Check,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -13,9 +21,139 @@ import {
   type PhotoHistoryRow,
   type CleaningChecklist,
 } from "@/lib/actions/cleaning.actions";
+import { setCleaningPhotoVerdict } from "@/lib/actions/cleaning-review.actions";
 import type { CleaningEmployee } from "./types";
 
 const PAGE = 60;
+
+/**
+ * Verdict admin atas satu foto: Oke / Minta ulang.
+ *
+ * "Minta ulang" MEWAJIBKAN alasan, dan alasannya diketik di sini alih-alih
+ * lewat `prompt()`: karyawan membaca teks ini di dashboard-nya, jadi ia harus
+ * ditulis dengan tenang dan terlihat sebelum dikirim. Meminta orang mengulang
+ * pekerjaan tanpa memberi tahu apa yang kurang bukan instruksi, hanya
+ * penolakan.
+ */
+function VerdictBar({
+  row,
+  onDone,
+}: {
+  row: PhotoHistoryRow;
+  onDone: (next: Pick<PhotoHistoryRow, "review_status" | "review_note">) => void;
+}) {
+  const [redoOpen, setRedoOpen] = useState(false);
+  const [note, setNote] = useState(row.review_note ?? "");
+  const [pending, startTransition] = useTransition();
+
+  function send(verdict: "ok" | "redo" | "unreviewed") {
+    if (verdict === "redo" && !note.trim()) {
+      toast.error("Tulis alasannya dulu");
+      return;
+    }
+    startTransition(async () => {
+      const res = await setCleaningPhotoVerdict({
+        completionId: row.completion_id,
+        verdict,
+        note: verdict === "redo" ? note.trim() : null,
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal menyimpan");
+        return;
+      }
+      toast.success(
+        verdict === "redo"
+          ? "Ditandai perlu ulang"
+          : verdict === "ok"
+            ? "Ditandai oke"
+            : "Verdict dibatalkan"
+      );
+      setRedoOpen(false);
+      onDone({
+        review_status: verdict,
+        review_note: verdict === "redo" ? note.trim() : null,
+      });
+    });
+  }
+
+  return (
+    <div className="rounded-xl bg-white/10 p-2.5 text-white space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11.5px] text-white/70">
+          {row.review_status === "redo"
+            ? "Ditandai perlu ulang"
+            : row.review_status === "ok"
+              ? "Sudah ditandai oke"
+              : "Belum ditinjau"}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          {row.review_status !== "unreviewed" && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => send("unreviewed")}
+              className="rounded-lg px-2 py-1 text-[11.5px] font-semibold text-white/70 hover:text-white disabled:opacity-50"
+            >
+              Batalkan
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => setRedoOpen((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-2.5 py-1 text-[11.5px] font-semibold hover:bg-white/25 disabled:opacity-50"
+          >
+            <RotateCcw size={12} /> Minta ulang
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => send("ok")}
+            className="inline-flex items-center gap-1 rounded-lg bg-emerald-500 px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+          >
+            {pending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+            Oke
+          </button>
+        </div>
+      </div>
+      {row.review_status === "redo" && row.review_note && !redoOpen && (
+        <p className="text-[11.5px] text-white/80">
+          Alasan: {row.review_note}
+        </p>
+      )}
+      {redoOpen && (
+        <div className="space-y-2">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="Apa yang harus diulang? Karyawan membaca ini."
+            className="w-full rounded-lg bg-black/40 px-2.5 py-2 text-[12.5px] text-white placeholder:text-white/40"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setRedoOpen(false)}
+              className="px-2 py-1 text-[11.5px] text-white/70 hover:text-white"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              disabled={pending || !note.trim()}
+              onClick={() => send("redo")}
+              className="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-2.5 py-1 text-[11.5px] font-semibold hover:bg-orange-600 disabled:opacity-50"
+            >
+              {pending && <Loader2 size={12} className="animate-spin" />}
+              Kirim permintaan ulang
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function daysAgo(n: number): string {
   return jakartaDateString(new Date(Date.now() - n * 24 * 3600 * 1000));
@@ -338,7 +476,23 @@ export function PhotoReviewGallery({
             <img
               src={lightbox.url}
               alt={lightbox.label ?? lightbox.item_title}
-              className="w-full max-h-[75vh] object-contain rounded-xl bg-black"
+              className="w-full max-h-[65vh] object-contain rounded-xl bg-black"
+            />
+            <VerdictBar
+              row={lightbox}
+              onDone={(next) => {
+                // Perbarui baris di grid TANPA menutup lightbox: admin biasanya
+                // menilai beberapa foto berturut-turut, dan menutup paksa tiap
+                // kali membuat ia kehilangan tempatnya.
+                setRows((rs) =>
+                  rs.map((r) =>
+                    r.completion_id === lightbox.completion_id
+                      ? { ...r, ...next }
+                      : r
+                  )
+                );
+                setLightbox((l) => (l ? { ...l, ...next } : l));
+              }}
             />
           </div>
         </div>

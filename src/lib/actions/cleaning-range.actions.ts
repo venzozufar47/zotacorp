@@ -128,7 +128,9 @@ export async function getCleaningRangeReport(input: {
       .order("duty_slot", { ascending: true }),
     supabase
       .from("cleaning_task_completions")
-      .select("item_id, user_id, date, completed_at, photo_path, photo_req_id")
+      .select(
+        "item_id, user_id, date, completed_at, photo_path, photo_req_id, review_status"
+      )
       .gte("date", from)
       .lte("date", to),
     supabase.from("national_holidays").select("holiday_date, name"),
@@ -242,13 +244,26 @@ export async function getCleaningRangeReport(input: {
     // supaya modul agregasi tidak perlu tahu apa pun soal zona waktu.
     tzOffsetMinutes: 7 * 60,
     assignments,
-    completions: (completionRes.data ?? []).map((c) => ({
+    // Cast: `review_status` baru ada sejak migrasi 130, belum di types.ts.
+    completions: ((completionRes.data ?? []) as unknown as Array<{
+      item_id: string;
+      user_id: string;
+      date: string;
+      completed_at: string;
+      photo_path: string | null;
+      photo_req_id: string | null;
+      review_status: string | null;
+    }>).map((c) => ({
       itemId: c.item_id,
       userId: c.user_id,
       date: c.date,
       completedAt: c.completed_at,
       photoPath: c.photo_path,
       photoReqId: c.photo_req_id,
+      reviewStatus:
+        c.review_status === "redo" || c.review_status === "ok"
+          ? c.review_status
+          : "unreviewed",
     })),
     pool: (poolRes.data ?? []).map((p) => ({
       locationId: p.location_id,

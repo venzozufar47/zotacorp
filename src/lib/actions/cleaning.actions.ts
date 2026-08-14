@@ -1716,6 +1716,10 @@ export interface PhotoHistoryRow {
   url: string | null;
   /** True when the image was deleted by the 90-day retention sweep. */
   purged: boolean;
+  /** Verdict admin (migrasi 130). */
+  review_status: "unreviewed" | "ok" | "redo";
+  /** Alasan diminta ulang — dibaca karyawan, jadi ditampilkan apa adanya. */
+  review_note: string | null;
 }
 
 /**
@@ -1751,7 +1755,7 @@ export async function getCleaningPhotoHistory(input: {
   let q = supabase
     .from("cleaning_task_completions")
     .select(
-      "id, date, completed_at, photo_path, photo_purged_at, user_id, photo_req_id, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles(full_name)"
+      "id, date, completed_at, photo_path, photo_purged_at, user_id, photo_req_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles(full_name)"
     )
     .gte("date", input.from)
     .lte("date", input.to)
@@ -1768,7 +1772,23 @@ export async function getCleaningPhotoHistory(input: {
   const { data, error } = await q;
   if (error) return { error: error.message };
 
-  const all = data ?? [];
+  // Cast sekali di sini: `review_status`/`review_note` baru ada sejak migrasi
+  // 130 dan belum masuk types.ts hasil generate, sehingga generic-nya
+  // menganggap SELURUH baris tidak dikenal. Satu cast di sumbernya lebih jujur
+  // daripada belasan tambalan di tiap pembacaan field.
+  const all = (data ?? []) as unknown as Array<{
+    id: string;
+    date: string;
+    completed_at: string;
+    photo_path: string | null;
+    photo_purged_at: string | null;
+    user_id: string;
+    photo_req_id: string | null;
+    review_status: string | null;
+    review_note: string | null;
+    item: unknown;
+    profile: unknown;
+  }>;
   const hasMore = all.length > limit;
   const page = hasMore ? all.slice(0, limit) : all;
 
@@ -1814,6 +1834,14 @@ export async function getCleaningPhotoHistory(input: {
       label: r.photo_req_id ? labelById.get(r.photo_req_id) ?? null : null,
       url: r.photo_path ? urlByPath.get(r.photo_path) ?? null : null,
       purged: !r.photo_path && !!r.photo_purged_at,
+      review_status:
+        (r as unknown as { review_status?: string }).review_status === "redo"
+          ? ("redo" as const)
+          : (r as unknown as { review_status?: string }).review_status === "ok"
+            ? ("ok" as const)
+            : ("unreviewed" as const),
+      review_note:
+        (r as unknown as { review_note?: string | null }).review_note ?? null,
     };
   });
 

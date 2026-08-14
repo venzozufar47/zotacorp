@@ -19,6 +19,8 @@ import { CheckInButton } from "@/components/attendance/CheckInButton";
 import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
+import { CoachingNotesCard } from "@/components/dashboard/CoachingNotesCard";
+import { listMyCoachingNotes } from "@/lib/actions/cleaning-review.actions";
 import { DashboardHero } from "@/components/dashboard/DashboardHero";
 import { FloorTodayCard } from "@/components/dashboard/FloorTodayCard";
 import { SelfCelebrationHero } from "@/components/dashboard/SelfCelebrationHero";
@@ -110,6 +112,7 @@ export default async function DashboardPage() {
     studioQueueCount,
     isHeadOfStudio,
     serviceLevelOutlets,
+    coachingNotes,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -143,6 +146,7 @@ export default async function DashboardPage() {
     getStudioQueueCount(),
     isStudioHead(),
     listMyServiceLevelOutlets(),
+    listMyCoachingNotes(),
   ]);
   const pendingContract = myPendingContract;
 
@@ -210,6 +214,11 @@ export default async function DashboardPage() {
       )}
 
       <ProfileCompletionCard missingSections={missingSections} />
+
+      {/* Catatan pembinaan dari admin. Diletakkan tinggi: kalau ada, ia hal
+          pertama yang perlu dibaca hari itu. Komponennya sendiri yang
+          menghilang saat kosong. */}
+      <CoachingNotesCard notes={coachingNotes} />
 
       {pendingContract && (
         <Link
