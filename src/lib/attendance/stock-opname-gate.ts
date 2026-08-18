@@ -209,16 +209,8 @@ async function checkStockOpnameLocal(
   branchId: StockBranchId,
 ): Promise<StockOpnameStatus> {
   try {
-    // Klien TANPA generic `Database`: tipe hasil generate hanya mencakup schema
-    // `public`, sehingga .schema("yeobo") menyempit ke never dan menolak setiap
-    // nama tabel. Meregenerasi tipe untuk dua schema akan mengubah berkas
-    // generate yang besar demi satu kueri; batasnya dikurung di sini saja.
-    const { createClient } = await import("@supabase/supabase-js");
-    const admin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { db: { schema: "yeobo" } },
-    );
+    const { yeoboAdminClient } = await import("@/lib/supabase/yeobo-admin");
+    const admin = yeoboAdminClient();
     const { data, error } = await admin
       .from("stock_opname")
       .select("id")

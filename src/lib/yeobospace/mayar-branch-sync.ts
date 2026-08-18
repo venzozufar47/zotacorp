@@ -23,9 +23,9 @@
  * dikoreksi) daripada ditebak diam-diam.
  */
 
-import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { yeoboAdminClient } from "@/lib/supabase/yeobo-admin";
 
 /** branch_id di yeobospace → nama cabang di Zota. */
 const BRANCH_MAP: Record<string, string> = {
@@ -152,14 +152,6 @@ export async function syncMayarBranches(
     samples: [],
   };
 
-  const yUrl = process.env.YEOBOSPACE_SUPABASE_URL;
-  const yKey = process.env.YEOBOSPACE_SERVICE_ROLE_KEY;
-  if (!yUrl || !yKey) {
-    throw new Error(
-      "YEOBOSPACE_SUPABASE_URL / YEOBOSPACE_SERVICE_ROLE_KEY belum diset"
-    );
-  }
-
   // Rekening Mayar di Zota.
   const { data: accounts } = await admin
     .from("bank_accounts")
@@ -235,7 +227,7 @@ export async function syncMayarBranches(
   // pembandingnya kebetulan tidak ikut terambil, lalu cabangnya ditulis
   // dengan yakin ke data keuangan. Persis itu yang terjadi pada `elisa`
   // (dua booking hari sama, Jebres & Tlogosari) sebelum paginasi dipasang.
-  const yeobo = createClient(yUrl, yKey);
+  const yeobo = yeoboAdminClient();
   type BookingRow = {
     branch_id?: string;
     name?: string;

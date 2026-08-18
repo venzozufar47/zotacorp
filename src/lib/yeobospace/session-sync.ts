@@ -2,10 +2,10 @@
  * Menurunkan jumlah sesi foto Yeobo Space dari database booking
  * yeobospace.id, menggantikan penyalinan manual dari spreadsheet.
  *
- * Kenapa bisa tanpa API apa pun: proyek Supabase yeobospace ada di
- * organisasi yang sama dan kredensialnya sudah dipakai produksi oleh
- * `mayar-branch-sync.ts` di direktori ini. Jadi ini query biasa, bukan
- * scraping dan bukan integrasi pihak ketiga.
+ * Kenapa bisa tanpa API apa pun: sejak database yeobospace.id pindah ke
+ * schema `yeobo` di project ini (Agustus 2026), ini query biasa ke schema
+ * lokal lewat `yeoboAdminClient()` — bukan scraping, bukan integrasi pihak
+ * ketiga, dan bukan lagi koneksi ke project terpisah.
  *
  * Definisi "sesi" di sini bukan pilihan selera — ia diuji terhadap angka
  * spreadsheet owner: `status='confirmed'`, difilter pada `booking_date`
@@ -21,9 +21,9 @@
  */
 
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { yeoboAdminClient } from "@/lib/supabase/yeobo-admin";
 
 /** branch_id di yeobospace → nama cabang di Zota. */
 const BRANCH_MAP: Record<string, string> = {
@@ -179,14 +179,7 @@ export async function syncYeoboPhotoSessions(
   const now = opts?.now ?? new Date();
   const monthCount = Math.max(1, opts?.months ?? 2);
 
-  const yUrl = process.env.YEOBOSPACE_SUPABASE_URL;
-  const yKey = process.env.YEOBOSPACE_SERVICE_ROLE_KEY;
-  if (!yUrl || !yKey) {
-    throw new Error(
-      "YEOBOSPACE_SUPABASE_URL / YEOBOSPACE_SERVICE_ROLE_KEY belum diset"
-    );
-  }
-  const yeobo = createClient(yUrl, yKey);
+  const yeobo = yeoboAdminClient();
   // Tabel ini belum ada di Database types (lihat yeobo-photo-sessions.actions.ts,
   // yang memakai cast serupa).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
