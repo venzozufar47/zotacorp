@@ -129,6 +129,10 @@ export async function insertCakePaymentLeg(
       notes: input.notes?.trim() || null,
       attachment_id: attachmentId,
       created_by: actorUserId,
+      // Nama orang, terpisah dari `created_by` yang untuk kasir POS cuma
+      // menunjuk akun perangkat. Hanya jalur POS mengisinya, dan hanya
+      // dari PIN yang sudah lolos — lihat migrasi 133.
+      recorded_by_name: input.recordedByName?.trim() || null,
     } as never)
     .select("id")
     .single();

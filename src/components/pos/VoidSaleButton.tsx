@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Ban, X } from "lucide-react";
 import { toast } from "sonner";
 import { voidPosSale, type PosSaleSummary } from "@/lib/actions/pos.actions";
-import { resolveCashierName } from "@/lib/pos/cashier-schedule";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   authorizerNames,
@@ -17,44 +16,31 @@ import { PosPinAuthDialog } from "./PosPinAuthDialog";
 /**
  * Tombol + dialog pembatalan transaksi di Riwayat.
  *
- * Nama kasir di-prefill dari jadwal shift SAAT INI (bukan jam transaksi) —
- * yang membatalkan adalah orang yang sedang jaga sekarang, belum tentu yang
- * melayani transaksinya. Tetap bisa diedit kalau ada yang menggantikan;
- * field ini ada justru karena akun login POS menunjuk perangkat, bukan orang.
+ * TIDAK ADA lagi kolom "nama kasir". Dulu ada karena akun login tablet
+ * menunjuk perangkat, bukan orang — tapi nama yang diketik sendiri oleh
+ * orang yang membatalkan tidak membuktikan apa pun. Sejak migrasi 133
+ * namanya diambil server dari authorizer yang PIN-nya lolos.
  *
- * Nama kasir dan PIN authorizer menjawab dua pertanyaan berbeda dan
- * keduanya tetap diminta: yang pertama SIAPA YANG MENGERJAKAN (diketik,
- * tidak dibuktikan), yang kedua SIAPA YANG MENYETUJUI (dibuktikan PIN).
+ * Outlet yang belum punya authorizer `sale_void` tidak diminta PIN sama
+ * sekali; dialog mengatakannya terus terang supaya "tidak ada nama yang
+ * tercatat" jadi keputusan sadar admin, bukan kejutan di laporan.
  */
 export function VoidSaleButton({
   sale,
-  branch,
   authorizers,
 }: {
   sale: PosSaleSummary;
-  branch: string | null;
-  /** Kosong = pembatalan tidak butuh PIN. */
+  /** Kosong = pembatalan tidak butuh PIN, dan tidak ada nama tercatat. */
   authorizers: PosAuthorizerRef[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [cashier, setCashier] = useState("");
   const [pinOpen, setPinOpen] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
-  /** True kalau nama terisi otomatis dari jadwal shift — cuma cabang Pare
-   *  yang punya jadwal, jadi hint-nya tidak boleh mengklaim sebaliknya. */
-  const [prefilled, setPrefilled] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  // Prefill dihitung saat tombol ditekan, bukan di effect: namanya harus
-  // mengikuti shift pada detik dialog dibuka (tablet POS jarang di-reload,
-  // jadi waktu render tidak bisa dipercaya), dan menghitungnya di sini
-  // menghindari render berantai.
   function openDialog() {
-    const fromSchedule = resolveCashierName(branch, new Date(), null);
-    setCashier(fromSchedule ?? "");
-    setPrefilled(Boolean(fromSchedule));
     setReason("");
     setOpen(true);
   }
@@ -72,8 +58,7 @@ export function VoidSaleButton({
   }, [open, pinOpen, pending]);
 
   const reasonOk = reason.trim().length >= 3;
-  const cashierOk = cashier.trim().length > 0;
-  const canSubmit = reasonOk && cashierOk && !pending;
+  const canSubmit = reasonOk && !pending;
 
   /** Tombol "Batalkan": minta PIN dulu kalau outlet punya authorizer. */
   function start() {
@@ -87,12 +72,11 @@ export function VoidSaleButton({
   }
 
   function submit(pin?: string) {
-    if (!reasonOk || !cashierOk) return;
+    if (!reasonOk) return;
     startTransition(async () => {
       const res = await voidPosSale({
         saleId: sale.id,
         reason: reason.trim(),
-        cashierName: cashier.trim(),
         pin,
       });
       if (!res.ok) {
@@ -193,22 +177,25 @@ export function VoidSaleButton({
                 />
               </label>
 
-              <label className="block">
-                <span className="text-xs font-semibold text-foreground">
-                  Nama kasir <span className="text-destructive">*</span>
-                </span>
-                <input
-                  value={cashier}
-                  onChange={(e) => setCashier(e.target.value)}
-                  placeholder="Nama yang membatalkan"
-                  className="mt-1 w-full h-9 rounded-lg border-2 border-foreground bg-card px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-                <span className="mt-1 block text-[10.5px] text-muted-foreground">
-                  {prefilled
-                    ? "Terisi dari jadwal shift — ganti kalau yang jaga bukan kamu."
-                    : "Tulis nama kamu."}
-                </span>
-              </label>
+              {/* Siapa yang akan tercatat — dinyatakan sebelum tombol
+                  ditekan, bukan setelahnya. */}
+              {authorizers.length > 0 ? (
+                <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                  Tercatat atas nama pemilik PIN yang dimasukkan di langkah
+                  berikutnya
+                  {authorizerNames(authorizers).length > 0
+                    ? ` (${authorizerNames(authorizers).join(", ")})`
+                    : ""}
+                  .
+                </p>
+              ) : (
+                <p className="text-[11.5px] leading-relaxed rounded-lg bg-pop-amber/20 border border-pop-amber/50 px-2.5 py-2">
+                  Outlet ini belum punya penanggung jawab pembatalan, jadi
+                  tidak ada PIN yang diminta dan{" "}
+                  <strong>tidak ada nama yang tercatat</strong>. Minta admin
+                  mengaturnya di Otorisasi POS.
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2 px-4 pb-4 pt-1">

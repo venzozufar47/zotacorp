@@ -68,6 +68,11 @@ export interface CakeOrderPayment {
   attachment_id: string | null;
   paid_at: string;
   created_by: string;
+  /** Nama authorizer yang PIN-nya lolos saat pelunasan diterima kasir
+   *  POS. Null untuk leg dari dashboard staf cake (di sana `created_by`
+   *  sudah menunjuk orang yang benar) dan untuk outlet tanpa authorizer
+   *  `cake_pickup`. Lihat migrasi 133. */
+  recorded_by_name: string | null;
   created_at: string;
 }
 
@@ -83,6 +88,10 @@ export interface AddCakePaymentInput {
   proofPath?: string | null;
   proofMimeType?: string | null;
   proofSizeBytes?: number | null;
+  /** Diisi HANYA oleh jalur kasir POS, dari authorizer yang PIN-nya
+   *  terverifikasi. Jangan pernah diisi dari input pengguna — seluruh
+   *  gunanya adalah menjadi nama yang tidak bisa diketik sendiri. */
+  recordedByName?: string | null;
 }
 
 export type CakeProductionStatus =

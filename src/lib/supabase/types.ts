@@ -953,6 +953,7 @@ export type Database = {
           notes: string | null
           paid_at: string
           payment_option_id: string
+          recorded_by_name: string | null
         }
         Insert: {
           amount_idr: number
@@ -966,6 +967,7 @@ export type Database = {
           notes?: string | null
           paid_at?: string
           payment_option_id: string
+          recorded_by_name?: string | null
         }
         Update: {
           amount_idr?: number
@@ -979,6 +981,7 @@ export type Database = {
           notes?: string | null
           paid_at?: string
           payment_option_id?: string
+          recorded_by_name?: string | null
         }
         Relationships: [
           {

@@ -776,6 +776,10 @@ function PaymentRow({
         {format(new Date(payment.paid_at), "d MMM · HH:mm", {
           locale: idLocale,
         })}
+        {/* Terisi hanya untuk pelunasan yang diterima kasir POS, dan
+            hanya dari PIN yang lolos — jadi ini nama yang bisa dipegang,
+            bukan ketikan. */}
+        {payment.recorded_by_name ? ` · oleh ${payment.recorded_by_name}` : ""}
         {payment.notes ? ` · ${payment.notes}` : ""}
       </span>
       <span

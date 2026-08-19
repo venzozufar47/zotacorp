@@ -342,9 +342,12 @@ export default async function PosRiwayatPage({
                       Alasan: {s.voidReason}
                     </span>
                   )}
+                  {/* Nama ini adalah pemilik PIN yang menyetujui (migrasi
+                      133), bukan sekadar yang menekan tombol — kata
+                      kerjanya diselaraskan supaya tidak menyesatkan. */}
                   {s.voidedByName && (
                     <span className="block mt-0.5">
-                      Dibatalkan oleh {s.voidedByName}
+                      Diotorisasi oleh {s.voidedByName}
                     </span>
                   )}
                 </li>
@@ -362,7 +365,6 @@ export default async function PosRiwayatPage({
                 <li>
                   <VoidSaleButton
                     sale={s}
-                    branch={account.branch}
                     authorizers={authorizers.sale_void}
                   />
                 </li>

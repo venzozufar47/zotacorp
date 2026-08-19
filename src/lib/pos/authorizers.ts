@@ -133,7 +133,7 @@ export async function listAuthorizersFor(
 }
 
 export type PinVerdict =
-  | { ok: true; authorizerId: string | null }
+  | { ok: true; authorizerId: string | null; authorizerName: string | null }
   | { ok: false; error: string };
 
 /**
@@ -143,8 +143,11 @@ export type PinVerdict =
  * gerbang yang berjalan setengah jalan meninggalkan pembayaran tercatat
  * dengan status yang belum pindah, dan itu lebih buruk daripada ditolak.
  *
- * `authorizerId` dikembalikan supaya pemanggil bisa mencatat SIAPA yang
- * mengotorisasi; null berarti operasi ini memang tidak butuh PIN.
+ * Identitas yang cocok dikembalikan supaya pemanggil bisa MENCATAT siapa
+ * yang mengotorisasi. Ini satu-satunya sumber nama pelaku yang dipercaya
+ * di POS: akun login tablet menunjuk perangkat, dan nama ketikan tidak
+ * dibuktikan apa pun. Keduanya null berarti operasi ini memang tidak
+ * butuh PIN — pemanggil harus menyimpan null, bukan menebak nama.
  */
 export async function verifyOperationPin(
   bankAccountId: string,
@@ -152,7 +155,8 @@ export async function verifyOperationPin(
   pin: string | undefined
 ): Promise<PinVerdict> {
   const refs = (await loadRefs(bankAccountId, operation)).get(operation) ?? [];
-  if (refs.length === 0) return { ok: true, authorizerId: null };
+  if (refs.length === 0)
+    return { ok: true, authorizerId: null, authorizerName: null };
 
   const usable = refs.filter((r) => r.pinHash);
   if (usable.length === 0) {
@@ -175,7 +179,11 @@ export async function verifyOperationPin(
   // satuan sehingga biaya terburuknya masih jauh di bawah satu detik.
   for (const ref of usable) {
     if (verifyPin(pin, ref.pinHash!)) {
-      return { ok: true, authorizerId: ref.userId };
+      return {
+        ok: true,
+        authorizerId: ref.userId,
+        authorizerName: ref.fullName,
+      };
     }
   }
 

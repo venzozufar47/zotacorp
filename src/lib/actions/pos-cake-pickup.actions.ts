@@ -421,6 +421,10 @@ export async function markCakePickedUpAtPos(
         paymentOptionId: input.settlement.paymentOptionId,
         label: `Pelunasan (Kasir ${branchLabel})`,
         notes: input.settlement.notes?.trim() || null,
+        // Nama diambil dari PIN yang barusan lolos, tidak pernah dari
+        // klien. Null kalau cabang ini belum punya authorizer
+        // `cake_pickup` — lihat migrasi 133.
+        recordedByName: auth.authorizerName,
       },
       gate.userId
     );
@@ -438,6 +442,7 @@ export async function markCakePickedUpAtPos(
         orderId: order.id,
         paymentId: res.paymentId,
         userId: gate.userId,
+        authorizerName: auth.authorizerName,
       });
       if (!cashRes.ok) {
         // Pembayaran cake sudah tercatat; yang gagal cuma cermin
@@ -504,6 +509,8 @@ async function recordCakeCashSettlement(args: {
   orderId: string;
   paymentId: string;
   userId: string;
+  /** Authorizer yang PIN-nya lolos; null kalau cabang tanpa authorizer. */
+  authorizerName: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createClient();
   const now = new Date();
@@ -560,8 +567,13 @@ async function recordCakeCashSettlement(args: {
     running_balance: null,
     category: CAKE_SETTLEMENT_CASH_CATEGORY,
     branch: args.branchLabel,
-    // Penanda telusur kalau nanti perlu rekonsiliasi manual.
-    notes: `Pelunasan custom cake diterima kasir · cake:${args.orderId}:${args.paymentId}`,
+    // Penanda telusur kalau nanti perlu rekonsiliasi manual. Nama
+    // authorizer ikut di sini, bukan di `description`: deskripsi dibaca
+    // aturan kategorisasi kas, dan menyisipkan nama orang ke dalamnya
+    // bisa mengubah kategori baris secara tak sengaja.
+    notes: `Pelunasan custom cake diterima kasir${
+      args.authorizerName ? ` · otorisasi ${args.authorizerName}` : ""
+    } · cake:${args.orderId}:${args.paymentId}`,
     sort_order: (maxRow?.sort_order ?? -1) + 1,
   });
   if (txErr) return { ok: false, error: txErr.message };

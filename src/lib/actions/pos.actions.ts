@@ -1647,9 +1647,15 @@ export async function getPosShiftSummary(
 /**
  * Batalkan transaksi POS yang sudah lunas, dari halaman Riwayat.
  *
- * Alasan dan nama kasir WAJIB — nama diisi manual (bukan diambil dari akun
- * login) karena tablet POS login permanen sebagai satu akun, sehingga
- * `created_by`/`voided_by` menunjuk perangkat, bukan orangnya.
+ * Alasan WAJIB. Nama pelaku TIDAK diketik lagi (migrasi 133): ia diambil
+ * dari authorizer yang PIN-nya lolos. Sebelumnya nama diisi manual karena
+ * `voided_by` cuma menunjuk akun perangkat — tapi teks bebas yang diisi
+ * sendiri oleh orang yang membatalkan bukan pertanggungjawaban, cuma
+ * penampilannya. PIN memberi nama yang benar-benar dibuktikan.
+ *
+ * Konsekuensi yang disengaja: outlet tanpa authorizer `sale_void` tidak
+ * diminta PIN, jadi `voided_by_name` null. Kosong lebih jujur daripada
+ * nama yang tidak dibuktikan apa pun.
  *
  * Efeknya dibuat supaya transaksi benar-benar "seolah tidak pernah ada":
  *
@@ -1675,16 +1681,13 @@ export async function getPosShiftSummary(
 export async function voidPosSale(input: {
   saleId: string;
   reason: string;
-  cashierName: string;
   /** PIN salah satu authorizer `sale_void`. */
   pin?: string;
 }): Promise<ActionResult<{ saleId: string }>> {
   const reason = input.reason?.trim() ?? "";
-  const cashierName = input.cashierName?.trim() ?? "";
   if (!input.saleId) return { ok: false, error: "saleId wajib" };
   if (reason.length < 3)
     return { ok: false, error: "Alasan pembatalan wajib diisi (minimal 3 karakter)." };
-  if (!cashierName) return { ok: false, error: "Nama kasir wajib diisi." };
 
   const supabase = await createClient();
   const { data: sale } = await supabase
@@ -1766,10 +1769,13 @@ export async function voidPosSale(input: {
   // nama) duluan aman: kalau proses mati setelahnya, yang tersisa hanya
   // penjualan normal dengan kolom catatan terisi — tak terlihat di UI dan
   // tertimpa sendiri saat dicoba ulang.
+  // `voided_by` tetap akun yang menekan tombol (jejak teknis perangkat);
+  // `voided_by_name` adalah orang yang MENYETUJUI, dan hanya terisi kalau
+  // PIN-nya benar-benar lolos. Lihat migrasi 133 untuk invariannya.
   const annotation = {
     void_reason: reason,
     voided_by: gate.userId,
-    voided_by_name: cashierName,
+    voided_by_name: auth.authorizerName,
   };
 
   if (sale.cashflow_transaction_id) {
