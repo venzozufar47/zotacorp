@@ -19,27 +19,13 @@ interface Props {
   candidates: RekeningAuthorizerCandidate[];
 }
 
-const ROWS: Record<PosOperation, { label: string; description: string }> = {
-  production: {
-    label: "Produksi",
-    description: "Otorisasi setiap entry produksi.",
-  },
-  withdrawal: {
-    label: "Penarikan",
-    description: "Otorisasi setiap penarikan stok.",
-  },
-  opname: {
-    label: "Opname",
-    description: "Otorisasi submit stock opname.",
-  },
-  cake_pickup: {
-    label: "Serah terima kue",
-    description: "Otorisasi penyelesaian pesanan custom cake di kasir.",
-  },
-  sale_void: {
-    label: "Pembatalan transaksi",
-    description: "Otorisasi pembatalan transaksi dari Riwayat.",
-  },
+/** Header kolom pendek + label penuh untuk tooltip/summary. */
+const COLS: Record<PosOperation, { short: string; label: string }> = {
+  production: { short: "Produksi", label: "Produksi — otorisasi setiap entry produksi." },
+  withdrawal: { short: "Penarikan", label: "Penarikan — otorisasi setiap penarikan stok." },
+  opname: { short: "Opname", label: "Opname — otorisasi submit stock opname." },
+  cake_pickup: { short: "Kue", label: "Serah terima kue — otorisasi penyelesaian pesanan custom cake di kasir." },
+  sale_void: { short: "Batal", label: "Pembatalan transaksi — otorisasi pembatalan dari Riwayat." },
 };
 
 /** Urutan stabil supaya perbandingan `dirty` tidak terganggu urutan klik. */
@@ -58,9 +44,12 @@ function sameSet(a: string[] | undefined, b: string[] | undefined): boolean {
  * non-penjualan. Banyak orang per operasi (migrasi 132): satu penanggung
  * jawab tunggal berarti operasinya mati begitu dia libur.
  *
- * Dropdown hanya memuat assignee rekening ini supaya admin tidak bisa
- * menunjuk orang yang tak ada hubungannya dengan outlet. Yang belum punya
- * PIN ditandai — mereka terdaftar tapi belum bisa mengotorisasi apa pun.
+ * Matriks karyawan × operasi, bukan lima daftar chip yang mengulang nama
+ * yang sama — bentuk chip-per-operasi tadinya membuat kartu ini jauh
+ * lebih tinggi daripada isinya (sembilan karyawan × lima operasi = 45
+ * chip, padahal cuma 9 orang dan 5 kolom). Dropdown hanya memuat
+ * assignee rekening ini supaya admin tidak bisa menunjuk orang yang tak
+ * ada hubungannya dengan outlet.
  */
 export function RekeningAuthorizersCard({
   bankAccountId,
@@ -125,16 +114,15 @@ export function RekeningAuthorizersCard({
 
   const dirty = POS_OPERATIONS.some((op) => !sameSet(values[op], initial[op]));
 
-  const candidateById = new Map(candidates.map((c) => [c.userId, c]));
   const firstName = (id: string) =>
-    candidateById.get(id)?.fullName?.split(/\s+/)[0] ?? "✓";
+    candidates.find((c) => c.userId === id)?.fullName?.split(/\s+/)[0] ?? "✓";
 
   // Ringkasan saat terlipat — sekilas pandang tanpa membuka form.
   const summary = POS_OPERATIONS.map((op) => {
     const ids = initial[op] ?? [];
-    if (ids.length === 0) return `${ROWS[op].label}: —`;
-    if (ids.length === 1) return `${ROWS[op].label}: ${firstName(ids[0])}`;
-    return `${ROWS[op].label}: ${ids.length} orang`;
+    if (ids.length === 0) return `${COLS[op].short}: —`;
+    if (ids.length === 1) return `${COLS[op].short}: ${firstName(ids[0])}`;
+    return `${COLS[op].short}: ${ids.length} orang`;
   }).join(" · ");
 
   return (
@@ -170,117 +158,92 @@ export function RekeningAuthorizersCard({
       </button>
 
       {open && (
-        <div className="px-5 pb-5 pt-1 border-t border-border/60">
-          <p className="text-[12.5px] text-muted-foreground mb-4 mt-3">
-            Pilih siapa saja yang PIN-nya diterima untuk tiap operasi
-            non-penjualan — cukup satu dari mereka yang memasukkan PIN.
-            Kosongkan kalau operasi itu tidak butuh otorisasi.
-          </p>
-
+        <div className="px-5 pb-4 pt-1 border-t border-border/60">
           {candidates.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground italic">
+            <p className="text-[13px] text-muted-foreground italic mt-3">
               Belum ada karyawan yang ditugaskan ke rekening ini. Tambahkan
               dulu di tombol &ldquo;Atur akses&rdquo; di atas.
             </p>
           ) : (
-            <div className="space-y-4">
-              {POS_OPERATIONS.map((op) => {
-                const selected = values[op] ?? [];
-                const noneUsable =
-                  selected.length > 0 &&
-                  selected.every((id) => !candidateById.get(id)?.hasPin);
-                return (
-                  <div key={op} className="space-y-1.5">
-                    <div>
-                      <div className="text-[12.5px] font-medium text-foreground">
-                        {ROWS[op].label}
-                        {selected.length > 0 && (
-                          <span className="ml-1.5 text-[11px] font-normal text-muted-foreground tabular-nums">
-                            {selected.length} dipilih
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {ROWS[op].description}
-                      </div>
-                    </div>
+            <div className="space-y-2.5">
+              <p className="text-[11px] text-muted-foreground mt-2.5">
+                Centang siapa saja yang PIN-nya diterima per operasi — cukup
+                satu yang memasukkan PIN. Kosong = operasi itu tanpa PIN.
+              </p>
 
-                    <div className="flex flex-wrap gap-1.5">
-                      {candidates.map((c) => {
-                        const on = selected.includes(c.userId);
-                        return (
-                          <button
-                            key={c.userId}
-                            type="button"
-                            role="checkbox"
-                            aria-checked={on}
-                            onClick={() => toggle(op, c.userId)}
-                            disabled={pending}
-                            className={cn(
-                              "inline-flex items-center gap-1.5 h-8 pl-2 pr-2.5 rounded-full border text-[12px] font-medium transition disabled:opacity-50",
-                              on
-                                ? "border-[var(--teal-600)] bg-[var(--teal-600)]/10 text-foreground"
-                                : "border-border/70 bg-card text-muted-foreground hover:bg-muted/50"
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "grid place-items-center size-4 rounded-full border shrink-0",
-                                on
-                                  ? "border-[var(--teal-600)] bg-[var(--teal-600)] text-white"
-                                  : "border-border"
-                              )}
-                            >
-                              {on && <Check size={11} strokeWidth={3} />}
-                            </span>
-                            {c.fullName}
-                            {!c.hasPin && (
-                              <span className="text-warning text-[10.5px]">
-                                (belum set PIN)
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {noneUsable && (
-                      <p className="text-[11px] text-warning font-medium">
-                        Belum ada yang punya PIN — operasi ini akan tertolak
-                        sampai salah satu mengaturnya di /profile.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Reset PIN dikelompokkan sendiri: sifatnya per-orang, bukan
-                  per-operasi, dan menempelkannya di tiap baris membuat
-                  tombol yang sama muncul lima kali. */}
-              {candidates.some((c) => c.hasPin) && (
-                <div className="pt-1 border-t border-border/60">
-                  <div className="text-[11px] text-muted-foreground mt-2 mb-1.5">
-                    Lupa PIN? Reset di sini — karyawan set PIN baru di
-                    /profile.
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {candidates
-                      .filter((c) => c.hasPin)
-                      .map((c) => (
-                        <button
-                          key={c.userId}
-                          type="button"
-                          onClick={() => resetPin(c.userId, c.fullName)}
-                          disabled={resetPending}
-                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive transition disabled:opacity-50 border border-border/70 rounded-full h-7 px-2.5"
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full border-collapse text-[12px] min-w-[420px]">
+                  <thead>
+                    <tr>
+                      <th className="text-left font-medium text-muted-foreground py-1 px-1 sticky left-0 bg-card">
+                        Karyawan
+                      </th>
+                      {POS_OPERATIONS.map((op) => (
+                        <th
+                          key={op}
+                          title={COLS[op].label}
+                          className="font-medium text-muted-foreground py-1 px-1 text-center whitespace-nowrap"
                         >
-                          <KeyRound size={11} />
-                          {c.fullName}
-                        </button>
+                          {COLS[op].short}
+                        </th>
                       ))}
-                  </div>
-                </div>
-              )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {candidates.map((c) => (
+                      <tr key={c.userId} className="border-t border-border/50">
+                        <td className="py-1.5 px-1 sticky left-0 bg-card">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="truncate text-foreground">
+                              {c.fullName}
+                            </span>
+                            {!c.hasPin && (
+                              <span
+                                title="Belum set PIN POS"
+                                className="size-1.5 rounded-full bg-warning shrink-0"
+                              />
+                            )}
+                            {c.hasPin && (
+                              <button
+                                type="button"
+                                onClick={() => resetPin(c.userId, c.fullName)}
+                                disabled={resetPending}
+                                title={`Reset PIN ${c.fullName}`}
+                                className="shrink-0 text-muted-foreground/60 hover:text-destructive transition disabled:opacity-40"
+                              >
+                                <KeyRound size={11} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        {POS_OPERATIONS.map((op) => {
+                          const on = (values[op] ?? []).includes(c.userId);
+                          return (
+                            <td key={op} className="text-center px-1">
+                              <button
+                                type="button"
+                                role="checkbox"
+                                aria-checked={on}
+                                aria-label={`${COLS[op].short} — ${c.fullName}`}
+                                onClick={() => toggle(op, c.userId)}
+                                disabled={pending}
+                                className={cn(
+                                  "grid place-items-center size-5 rounded-full border transition disabled:opacity-50",
+                                  on
+                                    ? "border-[var(--teal-600)] bg-[var(--teal-600)] text-white"
+                                    : "border-border hover:border-muted-foreground/50"
+                                )}
+                              >
+                                {on && <Check size={11} strokeWidth={3} />}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               <div className="pt-1 flex justify-end">
                 <button
