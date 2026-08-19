@@ -7,6 +7,12 @@ import { toast } from "sonner";
 import { voidPosSale, type PosSaleSummary } from "@/lib/actions/pos.actions";
 import { resolveCashierName } from "@/lib/pos/cashier-schedule";
 import { formatRp } from "@/lib/cashflow/format";
+import {
+  authorizerNames,
+  POS_OPERATION_LABEL_ID,
+  type PosAuthorizerRef,
+} from "@/lib/pos-pin-format";
+import { PosPinAuthDialog } from "./PosPinAuthDialog";
 
 /**
  * Tombol + dialog pembatalan transaksi di Riwayat.
@@ -15,18 +21,27 @@ import { formatRp } from "@/lib/cashflow/format";
  * yang membatalkan adalah orang yang sedang jaga sekarang, belum tentu yang
  * melayani transaksinya. Tetap bisa diedit kalau ada yang menggantikan;
  * field ini ada justru karena akun login POS menunjuk perangkat, bukan orang.
+ *
+ * Nama kasir dan PIN authorizer menjawab dua pertanyaan berbeda dan
+ * keduanya tetap diminta: yang pertama SIAPA YANG MENGERJAKAN (diketik,
+ * tidak dibuktikan), yang kedua SIAPA YANG MENYETUJUI (dibuktikan PIN).
  */
 export function VoidSaleButton({
   sale,
   branch,
+  authorizers,
 }: {
   sale: PosSaleSummary;
   branch: string | null;
+  /** Kosong = pembatalan tidak butuh PIN. */
+  authorizers: PosAuthorizerRef[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [cashier, setCashier] = useState("");
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
   /** True kalau nama terisi otomatis dari jadwal shift — cuma cabang Pare
    *  yang punya jadwal, jadi hint-nya tidak boleh mengklaim sebaliknya. */
   const [prefilled, setPrefilled] = useState(false);
@@ -44,32 +59,50 @@ export function VoidSaleButton({
     setOpen(true);
   }
 
+  // `!pinOpen`: modal PIN punya handler Escape sendiri. Tanpa penjaga
+  // ini satu ketukan Escape menutup keduanya, dan kasir kehilangan
+  // alasan yang sudah diketik hanya karena salah tekan PIN.
   useEffect(() => {
-    if (!open) return;
+    if (!open || pinOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && !pending) setOpen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, pending]);
+  }, [open, pinOpen, pending]);
 
   const reasonOk = reason.trim().length >= 3;
   const cashierOk = cashier.trim().length > 0;
   const canSubmit = reasonOk && cashierOk && !pending;
 
-  function submit() {
+  /** Tombol "Batalkan": minta PIN dulu kalau outlet punya authorizer. */
+  function start() {
     if (!canSubmit) return;
+    if (authorizers.length > 0) {
+      setPinError(null);
+      setPinOpen(true);
+      return;
+    }
+    submit();
+  }
+
+  function submit(pin?: string) {
+    if (!reasonOk || !cashierOk) return;
     startTransition(async () => {
       const res = await voidPosSale({
         saleId: sale.id,
         reason: reason.trim(),
         cashierName: cashier.trim(),
+        pin,
       });
       if (!res.ok) {
-        toast.error(res.error);
+        // PIN salah tetap di modal PIN; kegagalan lain jadi toast.
+        if (pin !== undefined) setPinError(res.error);
+        else toast.error(res.error);
         return;
       }
       toast.success("Transaksi dibatalkan. Kas dan stok sudah dikembalikan.");
+      setPinOpen(false);
       setOpen(false);
       // Halaman ini force-dynamic, jadi revalidatePath di server tidak
       // menyegarkan apa pun — tanpa ini baris yang sudah dibatalkan tetap
@@ -189,7 +222,7 @@ export function VoidSaleButton({
               </button>
               <button
                 type="button"
-                onClick={submit}
+                onClick={start}
                 disabled={!canSubmit}
                 className="flex-1 h-10 rounded-xl border-2 border-foreground bg-destructive text-sm font-bold text-white disabled:opacity-40"
               >
@@ -197,6 +230,24 @@ export function VoidSaleButton({
               </button>
             </div>
           </div>
+
+          <PosPinAuthDialog
+            open={pinOpen}
+            authorizerNames={authorizerNames(authorizers)}
+            operationLabel={POS_OPERATION_LABEL_ID.sale_void}
+            preview={`Batalkan ${formatRp(sale.total)}${
+              sale.customerName ? ` · ${sale.customerName}` : ""
+            } — ${reason.trim()}`}
+            pending={pending}
+            error={pinError}
+            onSubmit={(pin) => submit(pin)}
+            onClose={() => {
+              if (!pending) {
+                setPinOpen(false);
+                setPinError(null);
+              }
+            }}
+          />
         </>
       )}
     </>

@@ -18,6 +18,7 @@ import { getActiveDiscount } from "./pos-discount.actions";
 import { applyDiscount } from "@/lib/pos/discount";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
+import { verifyOperationPin } from "@/lib/pos/authorizers";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -1666,11 +1667,17 @@ export async function getPosShiftSummary(
  * Kasir hanya boleh membatalkan transaksi hari ini; hari sebelumnya
  * terkunci supaya rekap yang sudah dilaporkan tidak berubah diam-diam.
  * Admin tidak kena batas ini.
+ *
+ * OTORISASI PIN (migrasi 132). Kalau rekening punya authorizer untuk
+ * operasi `sale_void`, salah satu dari mereka harus memasukkan PIN.
+ * Rekening tanpa authorizer berjalan seperti sebelumnya — tanpa PIN.
  */
 export async function voidPosSale(input: {
   saleId: string;
   reason: string;
   cashierName: string;
+  /** PIN salah satu authorizer `sale_void`. */
+  pin?: string;
 }): Promise<ActionResult<{ saleId: string }>> {
   const reason = input.reason?.trim() ?? "";
   const cashierName = input.cashierName?.trim() ?? "";
@@ -1734,6 +1741,16 @@ export async function voidPosSale(input: {
         "Hanya transaksi hari ini yang bisa dibatalkan kasir. Untuk transaksi lama, minta bantuan admin.",
     };
   }
+
+  // PIN diverifikasi PALING AKHIR di antara pemeriksaan, tapi tetap
+  // sebelum tulisan pertama: percuma menyuruh authorizer datang ke
+  // tablet untuk transaksi yang ternyata sudah dibatalkan orang lain.
+  const auth = await verifyOperationPin(
+    sale.bank_account_id,
+    "sale_void",
+    input.pin
+  );
+  if (!auth.ok) return { ok: false, error: auth.error };
 
   const adminDb = createAdminClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

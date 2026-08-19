@@ -9,20 +9,71 @@ export function isValidPinFormat(pin: string): boolean {
   return /^\d{4,6}$/.test(pin);
 }
 
-/** The three operations gated by PIN. Sales (penjualan) is excluded. */
-export type PosOperation = "production" | "withdrawal" | "opname";
+/**
+ * Operasi POS yang bisa digerbang PIN. Penjualan biasa sengaja TIDAK
+ * termasuk — memaksa PIN tiap transaksi melumpuhkan antrean.
+ *
+ * `cake_pickup` dan `sale_void` menyusul di migrasi 132: keduanya
+ * mengeluarkan barang atau uang tanpa penjualan tandingan, kelas risiko
+ * yang sama dengan penarikan stok.
+ */
+export type PosOperation =
+  | "production"
+  | "withdrawal"
+  | "opname"
+  | "cake_pickup"
+  | "sale_void";
 
-export const POS_OPERATION_AUTHORIZER_COLUMN: Record<
-  PosOperation,
-  "production_authorizer_id" | "withdrawal_authorizer_id" | "opname_authorizer_id"
-> = {
-  production: "production_authorizer_id",
-  withdrawal: "withdrawal_authorizer_id",
-  opname: "opname_authorizer_id",
-};
+/** Urutan tampil di kartu admin; juga dipakai server untuk validasi. */
+export const POS_OPERATIONS: readonly PosOperation[] = [
+  "production",
+  "withdrawal",
+  "opname",
+  "cake_pickup",
+  "sale_void",
+] as const;
+
+export function isPosOperation(v: string): v is PosOperation {
+  return (POS_OPERATIONS as readonly string[]).includes(v);
+}
 
 export const POS_OPERATION_LABEL_ID: Record<PosOperation, string> = {
   production: "Produksi",
   withdrawal: "Penarikan",
   opname: "Opname",
+  cake_pickup: "Serah terima kue",
+  sale_void: "Pembatalan transaksi",
 };
+
+/** Satu orang yang boleh mengotorisasi. `hasPin=false` = terdaftar tapi
+ *  belum bisa dipakai; UI menandainya, server menolaknya dengan pesan
+ *  yang menyebut namanya. */
+export interface PosAuthorizerRef {
+  userId: string;
+  fullName: string;
+  hasPin: boolean;
+}
+
+/** Daftar authorizer per operasi. Array kosong = operasi bebas PIN. */
+export type PosAuthorizerMap = Record<PosOperation, PosAuthorizerRef[]>;
+
+export function emptyPosAuthorizerMap(): PosAuthorizerMap {
+  return {
+    production: [],
+    withdrawal: [],
+    opname: [],
+    cake_pickup: [],
+    sale_void: [],
+  };
+}
+
+/**
+ * Nama yang ditawarkan di modal PIN. Yang belum set PIN dibuang — kasir
+ * tidak boleh disuruh meminta PIN kepada orang yang belum punya. Kalau
+ * TIDAK ADA satu pun yang punya PIN, daftar lengkap dikembalikan supaya
+ * modal tetap bisa menyebut ke siapa harus mengadu.
+ */
+export function authorizerNames(refs: PosAuthorizerRef[]): string[] {
+  const usable = refs.filter((r) => r.hasPin);
+  return (usable.length > 0 ? usable : refs).map((r) => r.fullName);
+}

@@ -48,6 +48,11 @@ import { CAKE_SETTLEMENT_CASH_CATEGORY } from "@/lib/cashflow/categories";
 import { formatRp } from "@/lib/cashflow/format";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { CAKE_BRANCH_LABELS, type CakeBranch } from "@/lib/cake-orders/types";
+import {
+  listAuthorizersFor,
+  verifyOperationPin,
+} from "@/lib/pos/authorizers";
+import type { PosAuthorizerRef } from "@/lib/pos-pin-format";
 
 export interface CakePickupOrder {
   id: string;
@@ -76,6 +81,10 @@ export interface CakePickupPaymentMethod {
 export interface CakePickupBoard {
   pickups: CakePickupOrder[];
   paymentMethods: CakePickupPaymentMethod[];
+  /** Siapa saja yang PIN-nya diterima untuk serah terima. Kosong = tanpa
+   *  PIN. Ikut di sini, bukan di-fetch terpisah oleh halaman, supaya
+   *  tombol dan gerbang server tidak bisa berbeda pendapat. */
+  authorizers: PosAuthorizerRef[];
 }
 
 export interface MarkPickupInput {
@@ -89,6 +98,9 @@ export interface MarkPickupInput {
   } | null;
   /** Wajib true kalau setelah settlement masih ada sisa tagihan. */
   acknowledgeUnpaid?: boolean;
+  /** PIN salah satu authorizer `cake_pickup` di rekening POS cabang
+   *  pesanan ini. Diabaikan kalau cabangnya tidak punya authorizer. */
+  pin?: string;
 }
 
 /** `bank_accounts.default_branch` ("Pare") → `cake_orders.branch` ("pare"). */
@@ -176,21 +188,27 @@ type MarkRow = {
 export async function listCakePickupsForPos(
   bankAccountId: string
 ): Promise<CakePickupBoard> {
-  const empty: CakePickupBoard = { pickups: [], paymentMethods: [] };
+  const empty: CakePickupBoard = {
+    pickups: [],
+    paymentMethods: [],
+    authorizers: [],
+  };
 
   const gate = await requireAdminOrPosAssignee(bankAccountId);
   if (!gate.ok) return empty;
 
   const db = createAdminClient();
 
-  // Rekening dan daftar opsi tidak saling bergantung — ditarik bareng.
-  const [accRes, optRes] = await Promise.all([
+  // Rekening, daftar opsi, dan authorizer tidak saling bergantung —
+  // ditarik bareng.
+  const [accRes, optRes, authorizers] = await Promise.all([
     db
       .from("bank_accounts")
       .select("business_unit, default_branch, pos_enabled, is_active")
       .eq("id", bankAccountId)
       .maybeSingle(),
     db.from("cake_options" as never).select("id, kind, label, needs_address"),
+    listAuthorizersFor(bankAccountId, "cake_pickup"),
   ]);
 
   const acc = accRes.data as unknown as {
@@ -217,7 +235,8 @@ export async function listCakePickupsForPos(
     )
     .map((o) => ({ id: o.id, label: o.label }));
 
-  if (pickupIds.length === 0) return { pickups: [], paymentMethods };
+  if (pickupIds.length === 0)
+    return { pickups: [], paymentMethods, authorizers };
 
   const { data: rowsRaw } = await db
     .from("cake_orders" as never)
@@ -258,7 +277,7 @@ export async function listCakePickupsForPos(
     };
   });
 
-  return { pickups, paymentMethods };
+  return { pickups, paymentMethods, authorizers };
 }
 
 export async function markCakePickedUpAtPos(
@@ -378,6 +397,15 @@ export async function markCakePickedUpAtPos(
       error: `Masih kurang ${formatRp(remainingAfter)} — centang konfirmasi dulu`,
     };
   }
+
+  // PIN diverifikasi di sini: setelah SEMUA validasi (supaya authorizer
+  // tidak dipanggil ke tablet untuk pesanan yang ternyata sudah diambil
+  // atau nominalnya salah), tapi sebelum tulisan pertama. Rekeningnya
+  // yang diperiksa adalah `account.id` — hasil turunan dari cabang
+  // pesanan, bukan dari klien — jadi kasir Semarang tidak bisa memakai
+  // authorizer Pare untuk melepas kue Pare.
+  const auth = await verifyOperationPin(account.id, "cake_pickup", input.pin);
+  if (!auth.ok) return { ok: false, error: auth.error };
 
   // Pembayaran DULU, status BELAKANGAN. Kalau status berhasil lalu
   // pembayaran gagal, uang riil hilang catatan. Urutan sebaliknya

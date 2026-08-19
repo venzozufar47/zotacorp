@@ -12,12 +12,13 @@ import {
   jakartaHHMM,
 } from "@/lib/utils/jakarta";
 import {
-  verifyPin,
-  isValidPinFormat,
-  POS_OPERATION_AUTHORIZER_COLUMN,
-  POS_OPERATION_LABEL_ID,
-  type PosOperation,
-} from "@/lib/pos-pin";
+  listOperationAuthorizers,
+  verifyOperationPin,
+} from "@/lib/pos/authorizers";
+import {
+  emptyPosAuthorizerMap,
+  type PosAuthorizerMap,
+} from "@/lib/pos-pin-format";
 // Primitif mesin stok tinggal di modul biasa supaya cron (tanpa sesi)
 // bisa memakainya juga — file ini "use server" dan tidak boleh
 // mengekspor fungsi non-async. Lihat header stock-engine.ts.
@@ -33,53 +34,6 @@ import {
   type Sku,
   type SkuKey,
 } from "@/lib/pos/stock-engine";
-
-/**
- * Authorization gate. If the rekening has an authorizer assigned for
- * this operation, the submitter must provide that authorizer's PIN.
- * If no authorizer is set, the operation runs without a PIN (back-compat).
- */
-async function verifyAuthorization(
-  bankAccountId: string,
-  op: PosOperation,
-  pin: string | undefined
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const column = POS_OPERATION_AUTHORIZER_COLUMN[op];
-  const supabase = await createClient();
-  const { data: ba } = await supabase
-    .from("bank_accounts")
-    .select(column)
-    .eq("id", bankAccountId)
-    .maybeSingle();
-  const authorizerId = (ba as Record<string, string | null> | null)?.[column];
-  if (!authorizerId) return { ok: true };
-  if (!pin) {
-    return { ok: false, error: "PIN authorization required" };
-  }
-  if (!isValidPinFormat(pin)) {
-    return { ok: false, error: "PIN harus 4–6 digit angka." };
-  }
-  const { data: prof } = await supabase
-    .from("profiles")
-    .select("pos_pin_hash, full_name")
-    .eq("id", authorizerId)
-    .maybeSingle();
-  if (!prof?.pos_pin_hash) {
-    const who = prof?.full_name?.trim() || "Authorizer";
-    return {
-      ok: false,
-      error: `${who} belum set PIN POS — minta dia buka halaman profil dulu.`,
-    };
-  }
-  if (!verifyPin(pin, prof.pos_pin_hash)) {
-    const opLabel = POS_OPERATION_LABEL_ID[op];
-    return {
-      ok: false,
-      error: `PIN ${opLabel} salah.`,
-    };
-  }
-  return { ok: true };
-}
 
 /**
  * POS stock opname subsystem.
@@ -374,7 +328,7 @@ export async function createStockMovements(input: {
       return { ok: false, error: "Qty harus bilangan bulat > 0" };
   }
 
-  const auth = await verifyAuthorization(
+  const auth = await verifyOperationPin(
     input.bankAccountId,
     input.type,
     input.pin
@@ -431,49 +385,21 @@ export async function createStockMovements(input: {
 }
 
 /**
- * Resolve the per-operation authorizer config for a rekening. The
- * stock landing page passes this to the StockMovementDialog +
- * StockOpnameForm so they know whether to surface the PIN modal.
+ * Daftar authorizer per operasi untuk satu rekening. Halaman POS
+ * meneruskannya ke StockMovementDialog / StockOpnameForm supaya mereka
+ * tahu perlu-tidaknya membuka modal PIN dan nama siapa yang disebut.
+ *
+ * Digerbang (audit 2026-08): daftar ini berisi nama karyawan, dan
+ * membacanya lewat service-role di `listOperationAuthorizers` berarti
+ * RLS tidak lagi menyaring. Array kosong untuk caller yang tidak berhak,
+ * mengikuti konvensi baca POS lain di file ini.
  */
-export interface PosAuthorizerInfo {
-  production: { userId: string; fullName: string } | null;
-  withdrawal: { userId: string; fullName: string } | null;
-  opname: { userId: string; fullName: string } | null;
-}
-
 export async function getPosAuthorizers(
   bankAccountId: string
-): Promise<PosAuthorizerInfo> {
-  const supabase = await createClient();
-  const { data: ba } = await supabase
-    .from("bank_accounts")
-    .select(
-      "production_authorizer_id, withdrawal_authorizer_id, opname_authorizer_id"
-    )
-    .eq("id", bankAccountId)
-    .maybeSingle();
-  const ids = [
-    ba?.production_authorizer_id,
-    ba?.withdrawal_authorizer_id,
-    ba?.opname_authorizer_id,
-  ].filter((v): v is string => !!v);
-  if (ids.length === 0) {
-    return { production: null, withdrawal: null, opname: null };
-  }
-  const { data: profs } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .in("id", ids);
-  const byId = new Map(
-    (profs ?? []).map((p) => [p.id, p.full_name?.trim() || "Authorizer"])
-  );
-  const resolve = (id: string | null | undefined) =>
-    id ? { userId: id, fullName: byId.get(id) ?? "Authorizer" } : null;
-  return {
-    production: resolve(ba?.production_authorizer_id),
-    withdrawal: resolve(ba?.withdrawal_authorizer_id),
-    opname: resolve(ba?.opname_authorizer_id),
-  };
+): Promise<PosAuthorizerMap> {
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return emptyPosAuthorizerMap();
+  return listOperationAuthorizers(bankAccountId);
 }
 
 /**
@@ -541,7 +467,7 @@ export async function createStockOpname(input: {
     if (!Number.isInteger(it.physicalCount) || it.physicalCount < 0)
       return { ok: false, error: "Jumlah fisik harus bilangan bulat ≥ 0" };
   }
-  const auth = await verifyAuthorization(input.bankAccountId, "opname", input.pin);
+  const auth = await verifyOperationPin(input.bankAccountId, "opname", input.pin);
   if (!auth.ok) return { ok: false, error: auth.error };
 
   const supabase = await createClient();

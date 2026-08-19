@@ -5,7 +5,11 @@ import { Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { createStockMovements } from "@/lib/actions/pos-stock.actions";
-import { POS_OPERATION_LABEL_ID } from "@/lib/pos-pin-format";
+import {
+  authorizerNames,
+  POS_OPERATION_LABEL_ID,
+  type PosAuthorizerRef,
+} from "@/lib/pos-pin-format";
 import { useRouter } from "next/navigation";
 import { PosPinAuthDialog } from "./PosPinAuthDialog";
 
@@ -13,8 +17,8 @@ interface Props {
   bankAccountId: string;
   products: PosProduct[];
   type: "production" | "withdrawal";
-  /** Designated PIN authorizer for this op. Null = no PIN gate. */
-  authorizer: { userId: string; fullName: string } | null;
+  /** Siapa saja yang PIN-nya diterima. Kosong = tanpa gerbang PIN. */
+  authorizers: PosAuthorizerRef[];
   onClose: () => void;
 }
 
@@ -38,7 +42,7 @@ export function StockMovementDialog({
   bankAccountId,
   products,
   type,
-  authorizer,
+  authorizers,
   onClose,
 }: Props) {
   const router = useRouter();
@@ -156,7 +160,7 @@ export function StockMovementDialog({
     if (halfFilled)
       return toast.error("Lengkapi produk & qty di setiap baris");
     if (validLines.length === 0) return toast.error("Pilih produk dulu");
-    if (authorizer) {
+    if (authorizers.length > 0) {
       setPinError(null);
       setPinOpen(true);
       return;
@@ -285,7 +289,7 @@ export function StockMovementDialog({
 
       <PosPinAuthDialog
         open={pinOpen}
-        authorizerName={authorizer?.fullName ?? null}
+        authorizerNames={authorizerNames(authorizers)}
         operationLabel={opLabel}
         preview={previewLabel}
         pending={pending}

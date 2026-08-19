@@ -3119,6 +3119,30 @@ export type Database = {
         }
         Relationships: []
       }
+      pos_operation_authorizers: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          bank_account_id: string
+          operation: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id: string
+          operation: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id?: string
+          operation?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       pos_service_level_owners: {
         Row: {
           assigned_at: string

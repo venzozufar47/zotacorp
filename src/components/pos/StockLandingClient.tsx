@@ -9,11 +9,11 @@ import { toast } from "sonner";
 import { formatRp } from "@/lib/cashflow/format";
 import type {
   ExcludedStockProduct,
-  PosAuthorizerInfo,
   StockMovementRow,
   StockOnHand,
   StockOpnameSummary,
 } from "@/lib/actions/pos-stock.actions";
+import type { PosAuthorizerMap } from "@/lib/pos-pin-format";
 import {
   deleteStockMovement,
   setProductStockTracking,
@@ -33,7 +33,7 @@ interface Props {
   opnames: StockOpnameSummary[];
   products: PosProduct[];
   excluded: ExcludedStockProduct[];
-  authorizers: PosAuthorizerInfo;
+  authorizers: PosAuthorizerMap;
   isAdmin: boolean;
 }
 
@@ -158,7 +158,7 @@ export function StockLandingClient({
           bankAccountId={bankAccountId}
           products={products}
           type={dialog}
-          authorizer={
+          authorizers={
             dialog === "production"
               ? authorizers.production
               : authorizers.withdrawal

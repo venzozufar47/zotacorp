@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
-  /** Display name of the designated authorizer (e.g. "Mas Boles"). */
-  authorizerName: string | null;
+  /** Nama authorizer yang PIN-nya diterima. Boleh lebih dari satu —
+   *  cukup satu yang memasukkan PIN. Kosong = tanpa nama. */
+  authorizerNames: string[];
   /** Operation label shown in the modal header (e.g. "Produksi"). */
   operationLabel: string;
   /** One-line summary of what's being submitted (e.g. "BCB +10"). */
@@ -32,7 +33,7 @@ const PIN_MAX = 6;
  */
 export function PosPinAuthDialog({
   open,
-  authorizerName,
+  authorizerNames,
   operationLabel,
   preview,
   pending,
@@ -156,10 +157,15 @@ export function PosPinAuthDialog({
               {preview}
             </div>
           </div>
+          {/* Banyak nama = PIN salah satu saja sudah cukup. Dikatakan
+              eksplisit supaya kasir tidak mengira harus mengumpulkan
+              semuanya. */}
           <div className="text-[12px] text-muted-foreground">
-            {authorizerName
-              ? `Masukkan PIN dari ${authorizerName}`
-              : "Masukkan PIN"}
+            {authorizerNames.length === 0
+              ? "Masukkan PIN"
+              : authorizerNames.length === 1
+                ? `Masukkan PIN dari ${authorizerNames[0]}`
+                : `Masukkan PIN dari salah satu: ${authorizerNames.join(", ")}`}
           </div>
         </div>
 

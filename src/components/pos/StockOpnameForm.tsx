@@ -7,6 +7,10 @@ import { ArrowLeft, ClipboardCheck, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { OpnameFormSku } from "@/lib/actions/pos-stock.actions";
 import { createStockOpname } from "@/lib/actions/pos-stock.actions";
+import {
+  authorizerNames,
+  type PosAuthorizerRef,
+} from "@/lib/pos-pin-format";
 import { PosPinAuthDialog } from "./PosPinAuthDialog";
 
 interface Props {
@@ -14,8 +18,8 @@ interface Props {
   accountName: string;
   basePath: string;
   skus: OpnameFormSku[];
-  /** Designated PIN authorizer for opname. Null = no PIN gate. */
-  authorizer: { userId: string; fullName: string } | null;
+  /** Siapa saja yang PIN-nya diterima untuk opname. Kosong = tanpa PIN. */
+  authorizers: PosAuthorizerRef[];
 }
 
 function skuKey(s: OpnameFormSku) {
@@ -31,7 +35,7 @@ export function StockOpnameForm({
   accountName,
   basePath,
   skus,
-  authorizer,
+  authorizers,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -148,7 +152,7 @@ export function StockOpnameForm({
     e.preventDefault();
     if (includedSkus.length === 0)
       return toast.error("Minimal satu SKU harus disertakan");
-    if (authorizer) {
+    if (authorizers.length > 0) {
       setPinError(null);
       setPinOpen(true);
       return;
@@ -313,7 +317,7 @@ export function StockOpnameForm({
 
       <PosPinAuthDialog
         open={pinOpen}
-        authorizerName={authorizer?.fullName ?? null}
+        authorizerNames={authorizerNames(authorizers)}
         operationLabel="Opname"
         preview={`Opname ${includedSkus.length} SKU`}
         pending={pending}

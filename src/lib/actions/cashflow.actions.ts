@@ -10,6 +10,11 @@ import { computeLatestBalance } from "@/lib/cashflow/balance";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { isCashDashboardReadOnly } from "@/lib/cashflow/cash-branches";
+import {
+  isPosOperation,
+  POS_OPERATIONS,
+  type PosOperation,
+} from "@/lib/pos-pin-format";
 
 type BankAccountUpdate = Database["public"]["Tables"]["bank_accounts"]["Update"];
 type CashflowStatementUpdate = Database["public"]["Tables"]["cashflow_statements"]["Update"];
@@ -2198,6 +2203,19 @@ export async function setBankAccountAssignees(
       .eq("bank_account_id", bankAccountId)
       .in("user_id", toRemove);
     if (error) return { ok: false, error: error.message };
+
+    // Otorisasi POS ikut dicabut. FK `pos_operation_authorizers` menunjuk
+    // profiles + bank_accounts, bukan tabel assignee ini, jadi tanpa
+    // pembersihan eksplisit orang yang aksesnya baru saja dicabut tetap
+    // bisa membuka penarikan stok atau membatalkan transaksi dengan
+    // PIN-nya — dan `setRekeningAuthorizers` tidak akan pernah
+    // menampilkannya lagi untuk dihapus manual.
+    const { error: authErr } = await supabase
+      .from("pos_operation_authorizers")
+      .delete()
+      .eq("bank_account_id", bankAccountId)
+      .in("user_id", toRemove);
+    if (authErr) return { ok: false, error: authErr.message };
   }
   if (toAdd.length > 0) {
     const { error } = await supabase.from("bank_account_assignees").insert(
@@ -2350,70 +2368,117 @@ export async function listPosAuthorizerCandidates(
   }));
 }
 
-export interface RekeningAuthorizers {
-  productionUserId: string | null;
-  withdrawalUserId: string | null;
-  opnameUserId: string | null;
+/** userId per operasi. Array kosong = operasi itu tidak butuh PIN. */
+export type RekeningAuthorizers = Record<PosOperation, string[]>;
+
+function emptyAuthorizerSelection(): RekeningAuthorizers {
+  return {
+    production: [],
+    withdrawal: [],
+    opname: [],
+    cake_pickup: [],
+    sale_void: [],
+  };
 }
 
 export async function getRekeningAuthorizers(
   bankAccountId: string
 ): Promise<RekeningAuthorizers> {
+  const gate = await requireAdmin();
+  const out = emptyAuthorizerSelection();
+  if (!gate.ok) return out;
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bank_accounts")
-    .select(
-      "production_authorizer_id, withdrawal_authorizer_id, opname_authorizer_id"
-    )
-    .eq("id", bankAccountId)
-    .maybeSingle();
-  return {
-    productionUserId: data?.production_authorizer_id ?? null,
-    withdrawalUserId: data?.withdrawal_authorizer_id ?? null,
-    opnameUserId: data?.opname_authorizer_id ?? null,
-  };
+    .from("pos_operation_authorizers")
+    .select("operation, user_id")
+    .eq("bank_account_id", bankAccountId);
+  for (const row of data ?? []) {
+    if (isPosOperation(row.operation)) out[row.operation].push(row.user_id);
+  }
+  return out;
 }
 
+/**
+ * Ganti seluruh penugasan authorizer satu rekening dalam satu simpanan.
+ *
+ * Ditulis sebagai hapus-lalu-sisipkan, bukan diff: daftarnya berukuran
+ * satuan, dan diff-nya harus benar untuk lima operasi sekaligus — sebuah
+ * bug diam-diam di sana akan meninggalkan orang yang sudah dicabut tetap
+ * bisa mengotorisasi. Kalau insert gagal setelah delete, rekening jatuh
+ * ke "tanpa authorizer" (operasi tetap jalan, tanpa PIN) — dan itu
+ * dilaporkan sebagai error supaya admin tahu harus menyimpan ulang.
+ */
 export async function setRekeningAuthorizers(input: {
   bankAccountId: string;
-  productionUserId: string | null;
-  withdrawalUserId: string | null;
-  opnameUserId: string | null;
+  assignments: Partial<RekeningAuthorizers>;
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
+  if (!input.bankAccountId)
+    return { ok: false, error: "Rekening tidak valid" };
   const supabase = await createClient();
-  // Validate any non-null assignees actually belong to this rekening.
-  const candidates = [
-    input.productionUserId,
-    input.withdrawalUserId,
-    input.opnameUserId,
-  ].filter((v): v is string => !!v);
-  if (candidates.length > 0) {
+
+  // Normalisasi: operasi tak dikenal dibuang, duplikat dalam satu
+  // operasi dilipat (PK akan menolaknya, tapi lebih baik tidak
+  // mengandalkan error DB untuk sesuatu yang wajar dikirim UI).
+  const rows: Array<{ operation: PosOperation; user_id: string }> = [];
+  const everyone = new Set<string>();
+  for (const op of POS_OPERATIONS) {
+    const ids = Array.from(new Set(input.assignments[op] ?? [])).filter(
+      (v): v is string => typeof v === "string" && v.length > 0
+    );
+    for (const id of ids) {
+      rows.push({ operation: op, user_id: id });
+      everyone.add(id);
+    }
+  }
+
+  // Semua yang dipilih harus benar-benar assignee rekening ini. Tanpa
+  // ini admin bisa menunjuk karyawan mana pun sebagai pemegang kunci
+  // outlet yang tak ada hubungannya dengan dia.
+  if (everyone.size > 0) {
     const { data: assignees } = await supabase
       .from("bank_account_assignees")
       .select("user_id")
       .eq("bank_account_id", input.bankAccountId)
-      .in("user_id", candidates);
+      .in("user_id", [...everyone]);
     const valid = new Set((assignees ?? []).map((a) => a.user_id));
-    for (const id of candidates) {
+    for (const id of everyone) {
       if (!valid.has(id)) {
         return {
           ok: false,
-          error: "Authorizer harus ditugaskan dulu sebagai POS-assignee rekening ini.",
+          error:
+            "Authorizer harus ditugaskan dulu sebagai POS-assignee rekening ini.",
         };
       }
     }
   }
-  const { error } = await supabase
-    .from("bank_accounts")
-    .update({
-      production_authorizer_id: input.productionUserId,
-      withdrawal_authorizer_id: input.withdrawalUserId,
-      opname_authorizer_id: input.opnameUserId,
-    })
-    .eq("id", input.bankAccountId);
-  if (error) return { ok: false, error: error.message };
+
+  const { error: delErr } = await supabase
+    .from("pos_operation_authorizers")
+    .delete()
+    .eq("bank_account_id", input.bankAccountId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  if (rows.length > 0) {
+    const { error: insErr } = await supabase
+      .from("pos_operation_authorizers")
+      .insert(
+        rows.map((r) => ({
+          bank_account_id: input.bankAccountId,
+          operation: r.operation,
+          user_id: r.user_id,
+          assigned_by: gate.userId,
+        }))
+      );
+    if (insErr) {
+      return {
+        ok: false,
+        error: `Otorisasi lama terhapus tapi yang baru gagal disimpan (${insErr.message}). Simpan ulang — sementara ini operasi POS berjalan tanpa PIN.`,
+      };
+    }
+  }
+
   revalidatePath("/admin/finance", "layout");
   revalidatePath("/pos", "layout");
   return { ok: true };

@@ -15,6 +15,7 @@ import {
   listRecentPosSales,
 } from "@/lib/actions/pos.actions";
 import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
+import { getPosAuthorizers } from "@/lib/actions/pos-stock.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { formatRp } from "@/lib/cashflow/format";
@@ -102,15 +103,13 @@ export default async function PosRiwayatPage({
   const prevDate = idx < dates.length - 1 ? dates[idx + 1] : null; // older
   const nextDate = idx > 0 ? dates[idx - 1] : null; // newer
 
-  const sales = await listRecentPosSales(
-    account.id,
-    null,
-    0,
-    requestedDate
-  ).catch((e) => {
-    console.error("[PosRiwayatPage] listRecentPosSales failed", e);
-    return [] as Awaited<ReturnType<typeof listRecentPosSales>>;
-  });
+  const [sales, authorizers] = await Promise.all([
+    listRecentPosSales(account.id, null, 0, requestedDate).catch((e) => {
+      console.error("[PosRiwayatPage] listRecentPosSales failed", e);
+      return [] as Awaited<ReturnType<typeof listRecentPosSales>>;
+    }),
+    getPosAuthorizers(account.id),
+  ]);
 
   const dayTotal = sales.reduce(
     (a, b) => (b.voidedAt ? a : a + b.total),
@@ -361,7 +360,11 @@ export default async function PosRiwayatPage({
               )}
               {canVoid(s) && (
                 <li>
-                  <VoidSaleButton sale={s} branch={account.branch} />
+                  <VoidSaleButton
+                    sale={s}
+                    branch={account.branch}
+                    authorizers={authorizers.sale_void}
+                  />
                 </li>
               )}
             </ul>

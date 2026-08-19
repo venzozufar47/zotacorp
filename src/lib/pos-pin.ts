@@ -31,7 +31,10 @@ export function verifyPin(pin: string, stored: string): boolean {
 
 export {
   isValidPinFormat,
-  POS_OPERATION_AUTHORIZER_COLUMN,
+  POS_OPERATIONS,
   POS_OPERATION_LABEL_ID,
+  isPosOperation,
   type PosOperation,
+  type PosAuthorizerRef,
+  type PosAuthorizerMap,
 } from "./pos-pin-format";

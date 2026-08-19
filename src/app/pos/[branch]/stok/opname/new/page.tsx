@@ -37,7 +37,7 @@ export default async function PosStockOpnameNewPage({
       accountName={account.accountName}
       basePath={basePath}
       skus={skus}
-      authorizer={authorizers.opname}
+      authorizers={authorizers.opname}
     />
   );
 }

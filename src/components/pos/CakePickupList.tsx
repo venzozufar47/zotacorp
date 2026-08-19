@@ -23,6 +23,12 @@ import type {
   CakePickupOrder,
   CakePickupPaymentMethod,
 } from "@/lib/actions/pos-cake-pickup.actions";
+import {
+  authorizerNames,
+  POS_OPERATION_LABEL_ID,
+  type PosAuthorizerRef,
+} from "@/lib/pos-pin-format";
+import { PosPinAuthDialog } from "./PosPinAuthDialog";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 
 const CARD =
@@ -58,9 +64,12 @@ function specLine(o: CakePickupOrder): string {
 export function CakePickupList({
   pickups,
   paymentMethods,
+  authorizers,
 }: {
   pickups: CakePickupOrder[];
   paymentMethods: CakePickupPaymentMethod[];
+  /** Kosong = serah terima tidak butuh PIN. */
+  authorizers: PosAuthorizerRef[];
 }) {
   const [active, setActive] = useState<CakePickupOrder | null>(null);
   const todayWib = useMemo(() => jakartaDateString(new Date()), []);
@@ -100,6 +109,7 @@ export function CakePickupList({
         <PickupDialog
           order={active}
           paymentMethods={paymentMethods}
+          authorizers={authorizers}
           onClose={() => setActive(null)}
         />
       )}
@@ -192,10 +202,12 @@ function PickupCard({
 function PickupDialog({
   order,
   paymentMethods,
+  authorizers,
   onClose,
 }: {
   order: CakePickupOrder;
   paymentMethods: CakePickupPaymentMethod[];
+  authorizers: PosAuthorizerRef[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -205,6 +217,8 @@ function PickupDialog({
   const [amountRaw, setAmountRaw] = useState(String(order.remainingIdr));
   const [methodId, setMethodId] = useState(paymentMethods[0]?.id ?? "");
   const [acknowledged, setAcknowledged] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const amount = useMemo(() => {
     const n = Math.round(Number(amountRaw.replace(/[^\d]/g, "")) || 0);
@@ -217,7 +231,7 @@ function PickupDialog({
   const remainingAfter = order.remainingIdr - (willRecord ? amount : 0);
   const needsAck = remainingAfter > 0;
 
-  const submit = () => {
+  const submit = (pin?: string) => {
     startTransition(async () => {
       const res = await markCakePickedUpAtPos({
         orderId: order.id,
@@ -225,11 +239,16 @@ function PickupDialog({
           ? { amountIdr: amount, paymentOptionId: methodId }
           : null,
         acknowledgeUnpaid: acknowledged,
+        pin,
       });
       if (!res.ok) {
-        toast.error(res.error);
+        // Kegagalan PIN dibiarkan di dalam modal PIN (goyang + pesan);
+        // kegagalan lain jadi toast supaya modalnya bisa ditutup.
+        if (pin !== undefined) setPinError(res.error);
+        else toast.error(res.error);
         return;
       }
+      setPinOpen(false);
       if (res.data?.alreadyPickedUp) {
         toast.info(`${order.customerName} — sudah ditandai perangkat lain`);
       } else {
@@ -244,6 +263,26 @@ function PickupDialog({
       router.refresh();
     });
   };
+
+  /** Tombol utama: buka modal PIN dulu kalau cabang ini punya authorizer. */
+  const start = () => {
+    if (authorizers.length > 0) {
+      setPinError(null);
+      setPinOpen(true);
+      return;
+    }
+    submit();
+  };
+
+  // Ringkasan untuk modal PIN — authorizer harus tahu apa yang dia
+  // setujui, terutama kalau kue dilepas sementara tagihannya kurang.
+  const pinPreview = [
+    order.customerName,
+    willRecord ? `pelunasan ${formatRp(amount)}` : null,
+    remainingAfter > 0 ? `SISA KURANG ${formatRp(remainingAfter)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
@@ -329,7 +368,7 @@ function PickupDialog({
               (needsAck && !acknowledged) ||
               (willRecord && !methodId)
             }
-            onClick={submit}
+            onClick={start}
             className="h-11 rounded-xl bg-primary text-primary-foreground text-sm font-bold disabled:opacity-40"
           >
             {pending
@@ -348,6 +387,22 @@ function PickupDialog({
           </button>
         </div>
       </div>
+
+      <PosPinAuthDialog
+        open={pinOpen}
+        authorizerNames={authorizerNames(authorizers)}
+        operationLabel={POS_OPERATION_LABEL_ID.cake_pickup}
+        preview={pinPreview}
+        pending={pending}
+        error={pinError}
+        onSubmit={(pin) => submit(pin)}
+        onClose={() => {
+          if (!pending) {
+            setPinOpen(false);
+            setPinError(null);
+          }
+        }}
+      />
     </div>
   );
 }

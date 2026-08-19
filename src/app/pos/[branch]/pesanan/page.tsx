@@ -55,6 +55,7 @@ export default async function PesananPage({
         <CakePickupList
           pickups={cakeBoard.pickups}
           paymentMethods={cakeBoard.paymentMethods}
+          authorizers={cakeBoard.authorizers}
         />
         <section>
           <h2 className="text-sm font-bold text-foreground mb-2">
