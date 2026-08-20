@@ -16,12 +16,24 @@ import {
 } from "@/lib/actions/pos.actions";
 import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
 import { getPosAuthorizers } from "@/lib/actions/pos-stock.actions";
+import {
+  listCakePickupHistory,
+  listCakePickupHistoryDates,
+  type CakePickupHistoryRow,
+} from "@/lib/actions/pos-cake-pickup.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
+
+/** "HH:mm" → menit sejak tengah malam, untuk mengurutkan sale + cake
+ *  pickup dalam satu timeline kronologis. */
+function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
 
 function formatDateLong(iso: string): string {
   const d = new Date(iso + "T00:00:00");
@@ -70,10 +82,19 @@ export default async function PosRiwayatPage({
   const sp = await searchParams;
 
   // Daftar tanggal aktif (DESC) — dipakai untuk navigasi prev/next.
-  const dates = await listPosSaleDates(account.id).catch((e) => {
-    console.error("[PosRiwayatPage] listPosSaleDates failed", e);
-    return [] as string[];
-  });
+  // Digabung dengan tanggal pickup kue supaya hari yang cuma ada
+  // pengambilan kue (tanpa penjualan reguler) tetap terjangkau nav.
+  const [saleDates, cakeDates] = await Promise.all([
+    listPosSaleDates(account.id).catch((e) => {
+      console.error("[PosRiwayatPage] listPosSaleDates failed", e);
+      return [] as string[];
+    }),
+    listCakePickupHistoryDates(account.id).catch((e) => {
+      console.error("[PosRiwayatPage] listCakePickupHistoryDates failed", e);
+      return [] as string[];
+    }),
+  ]);
+  const dates = [...new Set([...saleDates, ...cakeDates])].sort().reverse();
 
   if (dates.length === 0) {
     return (
@@ -88,7 +109,7 @@ export default async function PosRiwayatPage({
         <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
           <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
             <p className="text-sm text-muted-foreground">
-              Belum ada penjualan.
+              Belum ada transaksi.
             </p>
           </div>
         </div>
@@ -103,13 +124,34 @@ export default async function PosRiwayatPage({
   const prevDate = idx < dates.length - 1 ? dates[idx + 1] : null; // older
   const nextDate = idx > 0 ? dates[idx - 1] : null; // newer
 
-  const [sales, authorizers] = await Promise.all([
+  const [sales, authorizers, cakePickups] = await Promise.all([
     listRecentPosSales(account.id, null, 0, requestedDate).catch((e) => {
       console.error("[PosRiwayatPage] listRecentPosSales failed", e);
       return [] as Awaited<ReturnType<typeof listRecentPosSales>>;
     }),
     getPosAuthorizers(account.id),
+    listCakePickupHistory(account.id, requestedDate).catch((e) => {
+      console.error("[PosRiwayatPage] listCakePickupHistory failed", e);
+      return [] as CakePickupHistoryRow[];
+    }),
   ]);
+
+  // Timeline gabungan, urut waktu terbaru dulu — sama seperti urutan
+  // `sales` sendiri. Pickup kue TIDAK ikut `dayTotal`/`activeCount` di
+  // bawah: uangnya (kalau cash) sudah tercatat terpisah sebagai baris
+  // kas non-operasional, dan pendapatannya diakui via akrual cake.
+  // Ikut menghitungnya di sini akan dobel.
+  type TimelineEntry =
+    | { kind: "sale"; time: string; sale: (typeof sales)[number] }
+    | { kind: "cake"; time: string; cake: CakePickupHistoryRow };
+  const timeline: TimelineEntry[] = [
+    ...sales.map((s) => ({ kind: "sale" as const, time: s.saleTime, sale: s })),
+    ...cakePickups.map((c) => ({
+      kind: "cake" as const,
+      time: formatTime(c.pickedUpAt),
+      cake: c,
+    })),
+  ].sort((a, b) => hhmmToMinutes(b.time) - hhmmToMinutes(a.time));
 
   const dayTotal = sales.reduce(
     (a, b) => (b.voidedAt ? a : a + b.total),
@@ -183,6 +225,9 @@ export default async function PosRiwayatPage({
           </p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {voidedCount > 0 ? `${voidedCount} dibatalkan` : "Tidak ada void"}
+            {cakePickups.length > 0
+              ? ` · ${cakePickups.length} kue diambil`
+              : ""}
           </p>
         </div>
         <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)]">
@@ -203,7 +248,17 @@ export default async function PosRiwayatPage({
       {nav}
 
       <div className="space-y-2">
-        {sales.map((s) => (
+        {timeline.map((entry) => {
+          if (entry.kind === "cake") {
+            return (
+              <CakePickupHistoryCard
+                key={`cake-${entry.cake.id}`}
+                cake={entry.cake}
+              />
+            );
+          }
+          const s = entry.sale;
+          return (
           <details
             key={s.id}
             className={`rounded-2xl border-2 bg-card shadow-[2px_2px_0_0_var(--foreground)] ${
@@ -371,12 +426,78 @@ export default async function PosRiwayatPage({
               )}
             </ul>
           </details>
-        ))}
+          );
+        })}
       </div>
 
       {nav}
       </div>
     </PosShell>
+  );
+}
+
+/**
+ * Kartu pickup kue di timeline Riwayat — bentuknya sengaja mirip kartu
+ * sale (badge + waktu + nama, ringkasan di bawah, total di kanan) supaya
+ * timeline gabungan terasa satu sistem, bukan dua widget yang ditempel.
+ * Tidak collapsible seperti sale: isinya sudah pendek, dan tidak ada
+ * baris item untuk disembunyikan.
+ */
+function CakePickupHistoryCard({ cake }: { cake: CakePickupHistoryRow }) {
+  return (
+    <div className="rounded-2xl border-2 border-foreground bg-card shadow-[2px_2px_0_0_var(--foreground)] p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-pop-amber/30 text-foreground">
+              🎂 Kue
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {formatTime(cake.pickedUpAt)}
+            </span>
+            <span className="text-xs font-medium text-foreground">
+              · {cake.customerName}
+            </span>
+            {cake.freeClaim ? (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-pop-emerald/20 border border-foreground uppercase tracking-wider">
+                Gratis
+              </span>
+            ) : cake.hasOutstanding ? (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive uppercase tracking-wider">
+                {cake.paymentLabel}
+              </span>
+            ) : null}
+          </div>
+          {cake.spec && (
+            <div className="text-xs text-muted-foreground mt-0.5 truncate">
+              {cake.spec}
+            </div>
+          )}
+        </div>
+        <span className="font-semibold tabular-nums whitespace-nowrap text-foreground shrink-0">
+          {formatRp(cake.totalIdr)}
+        </span>
+      </div>
+
+      {cake.settlement && (
+        <div className="mt-2 pt-2 border-t border-dashed border-border flex items-center justify-between gap-3 text-xs">
+          <span className="text-muted-foreground truncate">
+            Diterima saat pickup
+            {cake.settlement.recordedByName
+              ? ` · oleh ${cake.settlement.recordedByName}`
+              : ""}
+          </span>
+          <span className="font-medium text-foreground tabular-nums shrink-0">
+            {cake.settlement.method === "qris"
+              ? "QRIS "
+              : cake.settlement.method === "cash"
+                ? "Cash "
+                : ""}
+            {formatRp(cake.settlement.amountIdr)}
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 

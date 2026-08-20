@@ -46,7 +46,12 @@ import {
 } from "@/lib/cake-orders/payment-summary";
 import { CAKE_SETTLEMENT_CASH_CATEGORY } from "@/lib/cashflow/categories";
 import { formatRp } from "@/lib/cashflow/format";
-import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
+import {
+  jakartaDateString,
+  jakartaDateMinusDays,
+  jakartaHHMM,
+} from "@/lib/utils/jakarta";
+import { jakartaHourIso } from "@/lib/pos/stock-engine";
 import { CAKE_BRANCH_LABELS, type CakeBranch } from "@/lib/cake-orders/types";
 import {
   listAuthorizersFor,
@@ -111,6 +116,33 @@ function posBranchToCakeBranch(v: string | null): CakeBranch | null {
       (b) => CAKE_BRANCH_LABELS[b].toLowerCase() === s
     ) ?? null
   );
+}
+
+/**
+ * Rekening POS → cabang cake, dengan pemeriksaan yang sama dipakai di
+ * `listCakePickupsForPos` (business_unit Haengbocake, POS aktif). Diambil
+ * jadi helper supaya dua fungsi baca-riwayat di bawah tidak menduplikasi
+ * tiga baris pemeriksaan yang gampang diam-diam berbeda kalau ditulis
+ * ulang.
+ */
+async function resolveCakeBranch(
+  db: ReturnType<typeof createAdminClient>,
+  bankAccountId: string
+): Promise<CakeBranch | null> {
+  const { data } = await db
+    .from("bank_accounts")
+    .select("business_unit, default_branch, pos_enabled, is_active")
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  const acc = data as unknown as {
+    business_unit: string;
+    default_branch: string | null;
+    pos_enabled: boolean | null;
+    is_active: boolean | null;
+  } | null;
+  if (!acc || acc.business_unit !== "Haengbocake") return null;
+  if (!acc.pos_enabled || !acc.is_active) return null;
+  return posBranchToCakeBranch(acc.default_branch);
 }
 
 /**
@@ -278,6 +310,234 @@ export async function listCakePickupsForPos(
   });
 
   return { pickups, paymentMethods, authorizers };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Riwayat — pengambilan kue muncul di timeline harian POS (2026-08-20)
+// ─────────────────────────────────────────────────────────────────────
+//
+// SEBELUM INI: `markCakePickedUpAtPos` sudah menulis `picked_up_at` +
+// `picked_up_via='pos'` ke `cake_orders` sejak migrasi 125, tapi tidak
+// ada satu pun halaman yang membacanya balik — jadi kasir/admin tidak
+// bisa menelusuri "kue apa saja yang keluar hari ini" dari Riwayat.
+// Datanya sudah lengkap sejak hari pertama fitur ini jalan; yang dua
+// fungsi di bawah lakukan murni MEMBACA yang sudah ada. Tidak ada baris
+// baru ditulis, tidak ada migrasi backfill — begitu halaman Riwayat
+// memanggilnya, seluruh riwayat lama otomatis "muncul kembali".
+//
+// SENGAJA TIDAK masuk ke `dayTotal`/`activeCount` di KPI penjualan
+// Riwayat: uang pelunasan cake (kalau cash) sudah tercatat terpisah di
+// `cashflow_transactions` kategori non-operasional (lihat
+// `recordCakeCashSettlement`), dan pendapatannya sudah diakui via akrual
+// cake dari `scheduled_at`. Menambahkannya ke total penjualan POS akan
+// menghitung omset yang sama dua kali di dua tempat berbeda.
+
+export interface CakePickupHistoryRow {
+  id: string;
+  /** ISO. Dipakai halaman untuk urutan kronologis gabungan dengan sale. */
+  pickedUpAt: string;
+  customerName: string;
+  /** "Base · Bentuk · Filling", bagian yang kosong dibuang. */
+  spec: string;
+  totalIdr: number;
+  freeClaim: boolean;
+  /** Label siap tampil dari `summarizeCakePayment` — "Lunas" / "DP Rp …"
+   *  / dst. Satu sumber kebenaran yang sama dipakai board & detail. */
+  paymentLabel: string;
+  hasOutstanding: boolean;
+  /** Pelunasan yang tercatat PAS saat pickup ini (window ±5 menit dari
+   *  `picked_up_at`), bukan DP lama atau pelunasan lain di hari yang
+   *  sama. Null kalau order sudah lunas/gratis sebelum diambil. */
+  settlement: {
+    amountIdr: number;
+    method: "cash" | "qris" | null;
+    /** Authorizer yang PIN-nya lolos — null untuk pickup dari sebelum
+     *  migrasi 133, atau cabang tanpa authorizer `cake_pickup`. */
+    recordedByName: string | null;
+  } | null;
+}
+
+/**
+ * Tanggal (WIB) yang punya pengambilan kue via kasir POS di rekening
+ * ini. Digabung dengan `listPosSaleDates` di halaman Riwayat supaya
+ * navigasi tanggal juga menjangkau hari yang cuma ada pickup kue tanpa
+ * penjualan reguler.
+ */
+export async function listCakePickupHistoryDates(
+  bankAccountId: string
+): Promise<string[]> {
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return [];
+  const db = createAdminClient();
+  const branch = await resolveCakeBranch(db, bankAccountId);
+  if (!branch) return [];
+
+  const dates = new Set<string>();
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from("cake_orders" as never)
+      .select("picked_up_at")
+      .eq("branch", branch)
+      .eq("picked_up_via", "pos")
+      .not("picked_up_at", "is", null)
+      .order("picked_up_at", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) return [];
+    const batch = (data ?? []) as unknown as { picked_up_at: string }[];
+    for (const r of batch) dates.add(jakartaDateString(new Date(r.picked_up_at)));
+    if (batch.length < PAGE) break;
+    from += PAGE;
+  }
+  return [...dates].sort().reverse();
+}
+
+/**
+ * Pengambilan kue via kasir POS pada satu tanggal WIB, untuk digabung
+ * ke timeline Riwayat.
+ */
+export async function listCakePickupHistory(
+  bankAccountId: string,
+  date: string
+): Promise<CakePickupHistoryRow[]> {
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return [];
+  const db = createAdminClient();
+  const branch = await resolveCakeBranch(db, bankAccountId);
+  if (!branch) return [];
+
+  const fromIso = jakartaHourIso(date, 0);
+  const toIso = jakartaHourIso(jakartaDateMinusDays(date, -1), 0);
+
+  const { data: rowsRaw } = await db
+    .from("cake_orders" as never)
+    .select(
+      "id, customer_name, base_cake_option_id, shape_option_id, shape_custom, filling_option_id, total_idr, paid_idr, refund_idr, free_claim, picked_up_at"
+    )
+    .eq("branch", branch)
+    .eq("picked_up_via", "pos")
+    .gte("picked_up_at", fromIso)
+    .lt("picked_up_at", toIso)
+    .order("picked_up_at", { ascending: false });
+
+  type Row = {
+    id: string;
+    customer_name: string;
+    base_cake_option_id: string | null;
+    shape_option_id: string | null;
+    shape_custom: string | null;
+    filling_option_id: string | null;
+    total_idr: number;
+    paid_idr: number;
+    refund_idr: number;
+    free_claim: boolean;
+    picked_up_at: string;
+  };
+  const rows = (rowsRaw ?? []) as unknown as Row[];
+  if (rows.length === 0) return [];
+
+  // Label spec: satu query cake_options untuk base/bentuk/filling.
+  const optionIds = new Set<string>();
+  for (const r of rows) {
+    if (r.base_cake_option_id) optionIds.add(r.base_cake_option_id);
+    if (r.shape_option_id) optionIds.add(r.shape_option_id);
+    if (r.filling_option_id) optionIds.add(r.filling_option_id);
+  }
+  const { data: specOptRaw } =
+    optionIds.size > 0
+      ? await db
+          .from("cake_options" as never)
+          .select("id, label")
+          .in("id", [...optionIds])
+      : { data: [] };
+  const specLabelOf = new Map(
+    ((specOptRaw ?? []) as unknown as { id: string; label: string }[]).map(
+      (o) => [o.id, o.label]
+    )
+  );
+
+  // Pelunasan pas pickup: window ±5 menit dari `picked_up_at` — jendela
+  // rapat yang cocok dengan penulisan sinkron di `markCakePickedUpAtPos`
+  // (payment leg ditulis tepat sebelum status di-set), sekaligus
+  // mengecualikan DP lama atau pelunasan yang dicatat staf cake di jam
+  // lain hari yang sama.
+  const { data: payRaw } = await db
+    .from("cake_order_payments" as never)
+    .select(
+      "cake_order_id, amount_idr, payment_option_id, recorded_by_name, paid_at"
+    )
+    .in(
+      "cake_order_id",
+      rows.map((r) => r.id)
+    )
+    .eq("kind", "pelunasan");
+  type PayRow = {
+    cake_order_id: string;
+    amount_idr: number;
+    payment_option_id: string;
+    recorded_by_name: string | null;
+    paid_at: string;
+  };
+  const payments = (payRaw ?? []) as unknown as PayRow[];
+
+  const methodOptionIds = new Set(payments.map((p) => p.payment_option_id));
+  const { data: methodOptRaw } =
+    methodOptionIds.size > 0
+      ? await db
+          .from("cake_options" as never)
+          .select("id, label")
+          .in("id", [...methodOptionIds])
+      : { data: [] };
+  const methodLabelOf = new Map(
+    ((methodOptRaw ?? []) as unknown as { id: string; label: string }[]).map(
+      (o) => [o.id, o.label]
+    )
+  );
+
+  const FIVE_MIN_MS = 5 * 60 * 1000;
+  const settlementFor = (r: Row) => {
+    const pickedMs = new Date(r.picked_up_at).getTime();
+    const leg = payments.find(
+      (p) =>
+        p.cake_order_id === r.id &&
+        Math.abs(new Date(p.paid_at).getTime() - pickedMs) <= FIVE_MIN_MS
+    );
+    if (!leg) return null;
+    return {
+      amountIdr: leg.amount_idr,
+      method: classifyPaymentMethod(methodLabelOf.get(leg.payment_option_id) ?? ""),
+      recordedByName: leg.recorded_by_name,
+    };
+  };
+
+  return rows.map((r) => {
+    const pay = summarizeCakePayment({
+      totalIdr: r.total_idr,
+      netPaidIdr: r.paid_idr,
+      refundIdr: r.refund_idr,
+      freeClaim: r.free_claim,
+    });
+    const spec = [
+      r.base_cake_option_id ? specLabelOf.get(r.base_cake_option_id) : null,
+      r.shape_custom?.trim() ||
+        (r.shape_option_id ? specLabelOf.get(r.shape_option_id) : null),
+      r.filling_option_id ? specLabelOf.get(r.filling_option_id) : null,
+    ]
+      .filter((v): v is string => !!v)
+      .join(" · ");
+    return {
+      id: r.id,
+      pickedUpAt: r.picked_up_at,
+      customerName: r.customer_name,
+      spec,
+      totalIdr: r.total_idr,
+      freeClaim: r.free_claim,
+      paymentLabel: pay.label,
+      hasOutstanding: pay.hasOutstanding,
+      settlement: settlementFor(r),
+    };
+  });
 }
 
 export async function markCakePickedUpAtPos(
