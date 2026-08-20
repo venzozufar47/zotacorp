@@ -16,13 +16,17 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CakeSlice, Phone, TriangleAlert } from "lucide-react";
+import { Camera, CakeSlice, Loader2, Phone, TriangleAlert, X } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
-import { markCakePickedUpAtPos } from "@/lib/actions/pos-cake-pickup.actions";
+import {
+  markCakePickedUpAtPos,
+  uploadCakePickupPaymentProof,
+} from "@/lib/actions/pos-cake-pickup.actions";
 import type {
   CakePickupOrder,
   CakePickupPaymentMethod,
 } from "@/lib/actions/pos-cake-pickup.actions";
+import { classifyPaymentMethod } from "@/lib/cake-orders/payment-method";
 import {
   authorizerNames,
   POS_OPERATION_LABEL_ID,
@@ -219,6 +223,20 @@ function PickupDialog({
   const [acknowledged, setAcknowledged] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
+  // Verifikasi per metode — supaya kasir tidak "asal tekan" chip Cash/
+  // QRIS. Sama prinsip dengan checkout POS biasa: cash wajib mengetik
+  // uang diterima (bukan menerima nominal bawaan begitu saja), QRIS
+  // wajib foto nota sebagai bukti. Direset tiap ganti metode supaya
+  // nilai dari metode sebelumnya tidak nyangkut dan mengelabui gerbang.
+  const [cashReceived, setCashReceived] = useState<number | null>(null);
+  const [proof, setProof] = useState<{
+    path: string;
+    mimeType: string;
+    sizeBytes: number;
+    previewUrl: string;
+    fileName: string;
+  } | null>(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
 
   const amount = useMemo(() => {
     const n = Math.round(Number(amountRaw.replace(/[^\d]/g, "")) || 0);
@@ -231,12 +249,67 @@ function PickupDialog({
   const remainingAfter = order.remainingIdr - (willRecord ? amount : 0);
   const needsAck = remainingAfter > 0;
 
+  const methodKind = methodId
+    ? classifyPaymentMethod(
+        paymentMethods.find((m) => m.id === methodId)?.label ?? ""
+      )
+    : null;
+  const cashVerified =
+    methodKind !== "cash" || (cashReceived != null && cashReceived >= amount);
+  const qrisVerified = methodKind !== "qris" || proof != null;
+
+  function selectMethod(id: string) {
+    setMethodId(id);
+    setCashReceived(null);
+    if (proof) URL.revokeObjectURL(proof.previewUrl);
+    setProof(null);
+  }
+
+  async function handleProofPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!f) return;
+    setUploadingProof(true);
+    try {
+      const { compressImageFile } = await import(
+        "@/lib/images/compress-image"
+      );
+      const toUpload = await compressImageFile(f);
+      const fd = new FormData();
+      fd.append("orderId", order.id);
+      fd.append("file", toUpload);
+      const res = await uploadCakePickupPaymentProof(fd);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      if (proof) URL.revokeObjectURL(proof.previewUrl);
+      setProof({
+        path: res.data!.path,
+        mimeType: res.data!.mimeType,
+        sizeBytes: res.data!.sizeBytes,
+        previewUrl: URL.createObjectURL(f),
+        fileName: f.name,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal upload foto");
+    } finally {
+      setUploadingProof(false);
+    }
+  }
+
   const submit = (pin?: string) => {
     startTransition(async () => {
       const res = await markCakePickedUpAtPos({
         orderId: order.id,
         settlement: willRecord
-          ? { amountIdr: amount, paymentOptionId: methodId }
+          ? {
+              amountIdr: amount,
+              paymentOptionId: methodId,
+              proofPath: proof?.path ?? null,
+              proofMimeType: proof?.mimeType ?? null,
+              proofSizeBytes: proof?.sizeBytes ?? null,
+            }
           : null,
         acknowledgeUnpaid: acknowledged,
         pin,
@@ -326,7 +399,7 @@ function PickupDialog({
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => setMethodId(m.id)}
+                      onClick={() => selectMethod(m.id)}
                       className={`h-8 px-3 rounded-lg border-2 border-foreground text-xs font-semibold ${
                         methodId === m.id
                           ? "bg-primary text-primary-foreground"
@@ -337,6 +410,29 @@ function PickupDialog({
                     </button>
                   ))}
                 </div>
+
+                {/* Verifikasi per metode — mengetik uang tunai / memotret
+                    nota QRIS adalah tindakan sadar, bukan satu ketukan
+                    yang bisa salah pencet tanpa disadari. */}
+                {methodKind === "cash" && (
+                  <CashVerifyField
+                    amount={amount}
+                    value={cashReceived}
+                    onChange={setCashReceived}
+                  />
+                )}
+                {methodKind === "qris" && (
+                  <QrisProofField
+                    proof={proof}
+                    uploading={uploadingProof}
+                    onPick={handleProofPick}
+                    onRemove={() => {
+                      if (proof) URL.revokeObjectURL(proof.previewUrl);
+                      setProof(null);
+                    }}
+                  />
+                )}
+
                 {amount > 0 && amount < order.remainingIdr && (
                   <p className="text-[11px] text-muted-foreground">
                     Sisa setelah ini: {formatRp(remainingAfter)}
@@ -365,8 +461,10 @@ function PickupDialog({
             type="button"
             disabled={
               pending ||
+              uploadingProof ||
               (needsAck && !acknowledged) ||
-              (willRecord && !methodId)
+              (willRecord &&
+                (!methodId || !cashVerified || !qrisVerified))
             }
             onClick={start}
             className="h-11 rounded-xl bg-primary text-primary-foreground text-sm font-bold disabled:opacity-40"
@@ -403,6 +501,150 @@ function PickupDialog({
           }
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Verifikasi cash: kasir mengetik nominal yang BENAR-BENAR diterima
+ * (bukan menerima nominal tagihan begitu saja), sama seperti
+ * `CashReceivedField` di checkout POS biasa. Kembaliannya murni info —
+ * yang dikirim ke server tetap `amount` (nominal yang mengurangi
+ * tagihan), bukan nilai di sini.
+ */
+function CashVerifyField({
+  amount,
+  value,
+  onChange,
+}: {
+  amount: number;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const change = value == null ? null : value - amount;
+  const bumps = [20_000, 50_000, 100_000];
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-2 space-y-1.5">
+      <label className="block">
+        <span className="text-[11px] font-medium text-foreground">
+          Uang tunai diterima <span className="text-destructive">*</span>
+        </span>
+        <div className="mt-1 flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Rp
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={value == null ? "" : String(value)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^\d]/g, "");
+              onChange(raw === "" ? null : Math.round(Number(raw)));
+            }}
+            placeholder="0"
+            className="flex-1 min-w-0 bg-transparent text-sm font-semibold tabular-nums focus:outline-none"
+          />
+        </div>
+      </label>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(amount)}
+          className="h-7 px-2 rounded-lg border border-foreground text-[11px] font-semibold bg-card hover:bg-muted"
+        >
+          Uang pas
+        </button>
+        {bumps.map((b) => (
+          <button
+            key={b}
+            type="button"
+            onClick={() => onChange((value ?? 0) + b)}
+            className="h-7 px-2 rounded-lg border border-foreground text-[11px] font-semibold bg-card hover:bg-muted"
+          >
+            +{formatRp(b)}
+          </button>
+        ))}
+      </div>
+      {value != null && change != null && (
+        <p
+          className={`text-[11px] font-medium ${
+            change < 0 ? "text-destructive" : "text-muted-foreground"
+          }`}
+        >
+          {change < 0
+            ? `Kurang ${formatRp(-change)}`
+            : `Kembalian: ${formatRp(change)}`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Verifikasi QRIS: foto nota WAJIB sebelum tombol "Tandai sudah diambil"
+ * aktif — meniru satu-per-satu perilaku `QRIS_RECEIPT_AT_CHECKOUT` di
+ * checkout POS biasa (bukti audit, dan memaksa kasir benar-benar
+ * melihat layar customer alih-alih menekan chip QRIS secara refleks).
+ */
+function QrisProofField({
+  proof,
+  uploading,
+  onPick,
+  onRemove,
+}: {
+  proof: { previewUrl: string; fileName: string } | null;
+  uploading: boolean;
+  onPick: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium text-foreground mb-1">
+        Foto nota QRIS dari customer{" "}
+        <span className="text-destructive">*</span>
+      </p>
+      <label
+        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 cursor-pointer transition ${
+          proof
+            ? "border-success/50 bg-success/10"
+            : "border-dashed border-border bg-background hover:bg-muted"
+        } ${uploading ? "opacity-50 pointer-events-none" : ""}`}
+      >
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={onPick}
+        />
+        {uploading ? (
+          <Loader2 size={14} className="text-foreground shrink-0 animate-spin" />
+        ) : (
+          <Camera size={14} className="text-foreground shrink-0" />
+        )}
+        <span className="text-xs text-foreground truncate flex-1">
+          {uploading
+            ? "Mengunggah…"
+            : proof
+              ? proof.fileName
+              : "Ambil foto / pilih gambar"}
+        </span>
+        {proof && !uploading && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              onRemove();
+            }}
+            className="shrink-0 text-muted-foreground hover:text-destructive"
+            aria-label="Hapus foto"
+          >
+            <X size={13} />
+          </button>
+        )}
+      </label>
+      <p className="mt-1 text-[10.5px] text-muted-foreground">
+        Wajib sebagai bukti audit.
+      </p>
     </div>
   );
 }

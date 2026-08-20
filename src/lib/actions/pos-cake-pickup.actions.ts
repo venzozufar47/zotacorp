@@ -52,6 +52,7 @@ import {
   jakartaHHMM,
 } from "@/lib/utils/jakarta";
 import { jakartaHourIso } from "@/lib/pos/stock-engine";
+import { classifyPaymentMethod } from "@/lib/cake-orders/payment-method";
 import { CAKE_BRANCH_LABELS, type CakeBranch } from "@/lib/cake-orders/types";
 import {
   listAuthorizersFor,
@@ -100,6 +101,15 @@ export interface MarkPickupInput {
     /** id `cake_options` berjenis payment_method (QRIS / Cash). */
     paymentOptionId: string;
     notes?: string | null;
+    /** Bukti foto — client mewajibkannya untuk QRIS (tombol disabled
+     *  tanpa foto, sama seperti checkout POS). Server SENGAJA tidak
+     *  menolak kalau kosong: uang sudah diterima customer, mengunci
+     *  kasir gara-gara upload gagal lebih berbahaya daripada satu
+     *  pembayaran tanpa lampiran — sama seperti perlakuan
+     *  `attachPosQrisReceipt` di checkout POS biasa. */
+    proofPath?: string | null;
+    proofMimeType?: string | null;
+    proofSizeBytes?: number | null;
   } | null;
   /** Wajib true kalau setelah settlement masih ada sisa tagihan. */
   acknowledgeUnpaid?: boolean;
@@ -115,6 +125,36 @@ function posBranchToCakeBranch(v: string | null): CakeBranch | null {
     (Object.keys(CAKE_BRANCH_LABELS) as CakeBranch[]).find(
       (b) => CAKE_BRANCH_LABELS[b].toLowerCase() === s
     ) ?? null
+  );
+}
+
+/**
+ * Rekening POS untuk SATU cake order, diturunkan dari `branch` order-nya
+ * — BUKAN dari input klien. Sama prinsipnya dengan `markCakePickedUpAtPos`
+ * (lihat header file): kasir Semarang mustahil menunjuk rekening Pare
+ * secara konstruksi, bukan sekadar karena ada perbandingan yang bisa
+ * keliru. Dipakai `uploadCakePickupPaymentProof` di bawah, yang cuma
+ * punya `orderId` dari klien.
+ */
+async function resolveAccountForCakeOrderBranch(
+  db: ReturnType<typeof createAdminClient>,
+  orderBranch: string
+): Promise<{ id: string; default_branch: string | null } | null> {
+  const cakeBranch = posBranchToCakeBranch(orderBranch);
+  if (!cakeBranch) return null;
+  const branchLabel = CAKE_BRANCH_LABELS[cakeBranch];
+  const { data } = await db
+    .from("bank_accounts")
+    .select("id, default_branch")
+    .eq("business_unit", "Haengbocake")
+    .eq("default_branch", branchLabel)
+    .eq("pos_enabled", true)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (
+    (data as { id: string; default_branch: string | null } | null) ?? null
   );
 }
 
@@ -150,20 +190,12 @@ async function resolveCakeBranch(
  * Bank Jago sengaja TIDAK termasuk — transfer bank tidak terjadi di
  * konter dan pencatatannya tetap lewat staf cake.
  *
- * Dicocokkan lewat label karena `cake_options` belum punya kolom
- * struktural untuk kanal setelmen (bandingkan `needs_address` yang
- * dipakai mendeteksi pickup). Konsekuensinya opsi bernama mengandung
- * "cash" akan diperlakukan tunai dan menulis ke kas cabang — kalau
- * daftar metode bertambah, kolom struktural jadi pilihan yang lebih
- * benar. Daftar chip di UI diturunkan dari fungsi ini juga, lewat
- * `listCakePickupsForPos`, supaya server dan UI tidak bisa berbeda.
+ * `classifyPaymentMethod` sendiri sekarang tinggal di
+ * `@/lib/cake-orders/payment-method` (dep-free) supaya client
+ * (`CakePickupList`) bisa memakai KLASIFIKASI YANG SAMA untuk
+ * memutuskan kapan menampilkan verifikasi uang tunai vs bukti foto
+ * QRIS — bukan menebak sendiri dan berisiko berbeda dari server.
  */
-function classifyPaymentMethod(label: string): "cash" | "qris" | null {
-  const s = label.trim().toLowerCase();
-  if (s.includes("qris")) return "qris";
-  if (s.includes("cash") || s.includes("tunai")) return "cash";
-  return null;
-}
 
 type OptionRow = {
   id: string;
@@ -540,6 +572,88 @@ export async function listCakePickupHistory(
   });
 }
 
+const PICKUP_PROOF_BUCKET = "cake-order-attachments";
+const PICKUP_PROOF_ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+];
+const PICKUP_PROOF_MAX_SIZE = 5 * 1024 * 1024; // 5 MB — sama dengan /api/cake-orders/upload.
+const PICKUP_PROOF_MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heif",
+};
+
+/**
+ * Upload bukti foto pelunasan (QRIS/cash) SAAT serah-terima kue di
+ * kasir POS — permintaan eksplisit supaya kasir tidak "asal tekan"
+ * metode bayar, meniru pola nota QRIS wajib di checkout POS biasa
+ * (`attachPosQrisReceipt`).
+ *
+ * KENAPA ACTION TERPISAH, BUKAN `/api/cake-orders/upload`. Endpoint itu
+ * digerbang `cake_access_assignments` (staf cake) — kasir POS TIDAK
+ * punya baris itu, jadi request mereka akan 403 persis seperti
+ * `requireCakeOrderAccess` menolak mereka di jalur lain (lihat header
+ * file). Gerbangnya di sini `requireAdminOrPosAssignee`, dan rekening
+ * yang diperiksa diturunkan dari `orderId` → cabang order, bukan dari
+ * klien — pola yang sama dengan `markCakePickedUpAtPos`.
+ *
+ * Return path saja (belum ditautkan ke payment leg manapun) — client
+ * meneruskannya sebagai `settlement.proofPath` ke `markCakePickedUpAtPos`,
+ * yang baru menautkannya lewat `insertCakePaymentLeg`. Dua langkah
+ * (upload dulu, tautkan belakangan) supaya form besar (foto) tidak ikut
+ * naik di request submit utama.
+ */
+export async function uploadCakePickupPaymentProof(
+  formData: FormData
+): Promise<
+  ActionResult<{ path: string; mimeType: string; sizeBytes: number }>
+> {
+  const orderId = formData.get("orderId");
+  const file = formData.get("file");
+  if (typeof orderId !== "string" || !orderId)
+    return { ok: false, error: "orderId wajib" };
+  if (!(file instanceof File)) return { ok: false, error: "File wajib" };
+  if (!PICKUP_PROOF_ALLOWED_TYPES.includes(file.type))
+    return { ok: false, error: "Hanya JPG / PNG / WEBP / HEIC" };
+  if (file.size > PICKUP_PROOF_MAX_SIZE)
+    return { ok: false, error: "Ukuran file maks 5 MB" };
+
+  const db = createAdminClient();
+  const { data: orderRaw } = await db
+    .from("cake_orders" as never)
+    .select("branch")
+    .eq("id", orderId)
+    .maybeSingle();
+  const order = orderRaw as unknown as { branch: string } | null;
+  if (!order) return { ok: false, error: "Pesanan tidak ditemukan" };
+
+  const account = await resolveAccountForCakeOrderBranch(db, order.branch);
+  if (!account)
+    return { ok: false, error: "Rekening POS cabang ini belum disiapkan" };
+
+  const gate = await requireAdminOrPosAssignee(account.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const ext = PICKUP_PROOF_MIME_EXT[file.type] ?? "bin";
+  const path = `payment-proof/${orderId}/${crypto.randomUUID()}.${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const { error: upErr } = await db.storage
+    .from(PICKUP_PROOF_BUCKET)
+    .upload(path, buffer, { contentType: file.type, upsert: false });
+  if (upErr) return { ok: false, error: upErr.message };
+
+  return {
+    ok: true,
+    data: { path, mimeType: file.type, sizeBytes: file.size },
+  };
+}
+
 export async function markCakePickedUpAtPos(
   input: MarkPickupInput
 ): Promise<
@@ -685,6 +799,9 @@ export async function markCakePickedUpAtPos(
         // klien. Null kalau cabang ini belum punya authorizer
         // `cake_pickup` — lihat migrasi 133.
         recordedByName: auth.authorizerName,
+        proofPath: input.settlement.proofPath ?? null,
+        proofMimeType: input.settlement.proofMimeType ?? null,
+        proofSizeBytes: input.settlement.proofSizeBytes ?? null,
       },
       gate.userId
     );
