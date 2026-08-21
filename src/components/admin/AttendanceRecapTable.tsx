@@ -301,6 +301,15 @@ export function AttendanceRecapTable({
     });
   }
 
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectMessage, setRejectMessage] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [proofPreview, setProofPreview] = useState<{ url: string; name: string } | null>(null);
+  const [loadingProof, setLoadingProof] = useState<string | null>(null);
+  const [rejectingProofId, setRejectingProofId] = useState<string | null>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [proofRejectMessage, setProofRejectMessage] = useState("");
+
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -312,15 +321,6 @@ export function AttendanceRecapTable({
   }
 
   const totalPages = Math.ceil(count / pageSize);
-
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectMessage, setRejectMessage] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [proofPreview, setProofPreview] = useState<{ url: string; name: string } | null>(null);
-  const [loadingProof, setLoadingProof] = useState<string | null>(null);
-  const [rejectingProofId, setRejectingProofId] = useState<string | null>(null);
-  const [editingRowId, setEditingRowId] = useState<string | null>(null);
-  const [proofRejectMessage, setProofRejectMessage] = useState("");
 
   function handleLateProofReview(logId: string, decision: "approved" | "rejected", note?: string) {
     startTransition(async () => {
