@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProgressRouter } from "@/lib/route-progress";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Bell, CheckCircle, XCircle, MessageSquare, Pencil, Trash2, Paperclip, X, ExternalLink } from "lucide-react";
+import { Bell, CheckCircle, XCircle, MessageSquare, Pencil, Trash2, Paperclip, X, ExternalLink, AlertTriangle } from "lucide-react";
 import { AdminEditAttendanceDialog } from "./AdminEditAttendanceDialog";
 import {
   AttendanceDayDrawer,
@@ -68,6 +68,10 @@ interface AttendanceRow {
   checkout_latitude: number | null;
   checkout_longitude: number | null;
   selfie_path: string | null;
+  /** Hasil pemeriksaan Gemini atas selfie_path — 'anomaly' | 'ok' | null
+   *  (belum diperiksa). Murni penanda, lihat migrasi 134. */
+  selfie_ai_flag: string | null;
+  selfie_ai_note: string | null;
   is_early_arrival: boolean;
   extra_work?: { kind: string }[];
   is_overtime: boolean;
@@ -212,7 +216,12 @@ export function AttendanceRecapTable({
   const { t } = useTranslation();
   const tl = t.adminLocations;
   // Selfie preview — shared across all rows; null = closed.
-  const [selfieLog, setSelfieLog] = useState<{ id: string; title: string } | null>(null);
+  const [selfieLog, setSelfieLog] = useState<{
+    id: string;
+    title: string;
+    aiFlag: string | null;
+    aiNote: string | null;
+  } | null>(null);
   const [drawerSubject, setDrawerSubject] = useState<AttendanceDaySubject | null>(null);
 
   function openDrawer(row: AttendanceRow) {
@@ -233,6 +242,8 @@ export function AttendanceRecapTable({
       lateProofReason: row.late_proof_reason,
       lateProofStatus: row.late_proof_status,
       selfiePath: row.selfie_path,
+      selfieAiFlag: row.selfie_ai_flag,
+      selfieAiNote: row.selfie_ai_note,
       bonusDay: row.bonus_day ?? false,
     });
   }
@@ -560,6 +571,8 @@ export function AttendanceRecapTable({
                             setSelfieLog({
                               id: row.id,
                               title: `${row.profiles.full_name} — ${formatLocalDate(row.date)}`,
+                              aiFlag: row.selfie_ai_flag,
+                              aiNote: row.selfie_ai_note,
                             })
                           }
                           className="font-medium tabular-nums text-primary underline-offset-2 hover:underline"
@@ -568,6 +581,16 @@ export function AttendanceRecapTable({
                         </button>
                       ) : (
                         <span className="font-medium tabular-nums">{formatTime(row.checked_in_at, timezone)}</span>
+                      )}
+                      {/* Penanda Gemini — bukan gerbang, cuma ajakan admin
+                          untuk melihat fotonya. Lihat migrasi 134. */}
+                      {row.selfie_ai_flag === "anomaly" && (
+                        <span
+                          title={row.selfie_ai_note ?? "Foto selfie ditandai tidak biasa"}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-warning"
+                        >
+                          <AlertTriangle size={11} /> AI: cek foto
+                        </span>
                       )}
                       {row.is_early_arrival && <EarlyArrivalPill />}
                     </div>
@@ -894,6 +917,8 @@ export function AttendanceRecapTable({
       <SelfiePreviewDialog
         logId={selfieLog?.id ?? null}
         title={selfieLog?.title ?? ""}
+        aiFlag={selfieLog?.aiFlag ?? null}
+        aiNote={selfieLog?.aiNote ?? null}
         onOpenChange={(o) => !o && setSelfieLog(null)}
       />
 

@@ -100,6 +100,8 @@ export type Database = {
           matched_location_id: string | null
           overtime_minutes: number
           overtime_status: string | null
+          selfie_ai_flag: string | null
+          selfie_ai_note: string | null
           selfie_path: string | null
           status: string
           total_break_minutes: number
@@ -129,6 +131,8 @@ export type Database = {
           matched_location_id?: string | null
           overtime_minutes?: number
           overtime_status?: string | null
+          selfie_ai_flag?: string | null
+          selfie_ai_note?: string | null
           selfie_path?: string | null
           status?: string
           total_break_minutes?: number
@@ -158,6 +162,8 @@ export type Database = {
           matched_location_id?: string | null
           overtime_minutes?: number
           overtime_status?: string | null
+          selfie_ai_flag?: string | null
+          selfie_ai_note?: string | null
           selfie_path?: string | null
           status?: string
           total_break_minutes?: number

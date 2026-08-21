@@ -30,6 +30,7 @@ import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import { getBlockingCleaning } from "@/lib/actions/cleaning.actions";
 import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
+import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -275,6 +276,11 @@ export async function checkIn(payload: CheckInPayload) {
   // never blocks check-in. Guarded against double-firing via
   // `streak_last_milestone` on profiles.
   after(() => updateStreakAfterCheckIn(user.id));
+
+  // Tanda anomali foto (migrasi 134) — murni penanda untuk admin, tidak
+  // pernah menggagalkan check-in. Post-response sama seperti dua after()
+  // di atas: Gemini lambat/down tidak boleh ikut memperlambat absen.
+  after(() => runSelfieAiCheck({ logId: data.id, selfiePath: payload.selfie_path }));
 
   revalidatePath("/dashboard");
   revalidatePath("/attendance");

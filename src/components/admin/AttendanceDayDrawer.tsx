@@ -12,6 +12,7 @@ import {
   Loader2,
   MapPin,
   Camera,
+  AlertTriangle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -47,6 +48,10 @@ export interface AttendanceDaySubject {
   lateProofReason: string | null;
   lateProofStatus: string | null;
   selfiePath: string | null;
+  /** Gemini's read on selfiePath — 'anomaly' | 'ok' | null (not checked
+   *  yet). Purely informational, see migration 134. */
+  selfieAiFlag?: string | null;
+  selfieAiNote?: string | null;
   /** True when the row is classified as a non-workday (no late penalty). */
   bonusDay?: boolean;
 }
@@ -338,6 +343,17 @@ export function AttendanceDayDrawer({
                 <LogRow
                   tag={<Camera size={11} aria-hidden />}
                   primary="Selfie verified"
+                  trailing={
+                    subject.selfieAiFlag === "anomaly" ? (
+                      <span
+                        title={subject.selfieAiNote ?? "Foto ditandai tidak biasa"}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-warning"
+                      >
+                        <AlertTriangle size={12} aria-label="AI flagged" />
+                        AI: cek foto
+                      </span>
+                    ) : null
+                  }
                 />
               )}
             </div>

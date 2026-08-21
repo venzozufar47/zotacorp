@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { AlertTriangle, Loader2, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,13 +17,25 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** Displayed above the photo — e.g. "Budi — 15 Apr 2026". */
   title: string;
+  /** Gemini's read on this selfie — 'anomaly' | 'ok' | null (not checked).
+   *  Purely informational; see migration 134. Optional so other callers
+   *  (e.g. AttendanceHistoryTable, an employee viewing their own photo)
+   *  don't need to thread it through. */
+  aiFlag?: string | null;
+  aiNote?: string | null;
 }
 
 /**
  * Read-only selfie viewer. Fetches a 60-second signed URL via our API
  * route (ownership/admin-gated server-side) and renders the image.
  */
-export function SelfiePreviewDialog({ logId, onOpenChange, title }: Props) {
+export function SelfiePreviewDialog({
+  logId,
+  onOpenChange,
+  title,
+  aiFlag,
+  aiNote,
+}: Props) {
   const { t } = useTranslation();
   const ts = t.attendanceTable;
   const [url, setUrl] = useState<string | null>(null);
@@ -85,6 +97,16 @@ export function SelfiePreviewDialog({ logId, onOpenChange, title }: Props) {
             <img src={url} alt="Selfie" className="w-full h-full object-cover" />
           )}
         </div>
+
+        {aiFlag === "anomaly" && (
+          <div className="flex items-start gap-2 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 text-xs text-foreground">
+            <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" />
+            <span>
+              <strong className="font-semibold">Ditandai AI:</strong>{" "}
+              {aiNote || "foto ini terlihat tidak biasa — mohon dicek manual."}
+            </span>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
