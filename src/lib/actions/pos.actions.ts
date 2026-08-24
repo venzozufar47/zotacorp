@@ -858,7 +858,14 @@ export async function createPosSale(input: {
       subtotal,
     };
   });
-  if (total <= 0) return { ok: false, error: "Total harus > 0" };
+  // `< 0` bukan `<= 0`: tiap unitPrice sudah divalidasi >= 0 di atas,
+  // jadi total (jumlah subtotal non-negatif) SECARA MATEMATIS tidak
+  // pernah bisa negatif — baris ini murni jaring pengaman kalkulasi,
+  // bukan aturan bisnis. Menolak total===0 dulu menutup jalan cart yang
+  // isinya 100% diskon (mis. preset "Gratis" di DiscountDialog) sama
+  // sekali tidak bisa checkout — padahal stoknya tetap harus berkurang
+  // dan transaksinya tetap perlu tercatat di Riwayat.
+  if (total < 0) return { ok: false, error: "Total tidak valid" };
   const grossTotal = total;
 
   // 3. Ambil default_branch rekening (untuk tag branch di cashflow tx).
