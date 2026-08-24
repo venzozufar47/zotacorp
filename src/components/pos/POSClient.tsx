@@ -2424,12 +2424,28 @@ function DiscountDialog({
   // Preset cepat — dibulatkan ke 500 supaya nominalnya wajar di kasir.
   // `keep` = porsi harga yang DIBAYAR; dipakai pecahan (bukan persen
   // bulat) supaya potongan ⅓ jatuh pas (15.000 → 10.000).
-  // Untuk saat ini hanya potongan ⅓ yang dipakai di kasir; nominal lain
-  // tetap bisa diketik manual di bawah.
-  const presets = [{ label: "−⅓", keep: 2 / 3 }].map((p) => ({
-    label: p.label,
-    value: Math.round((listPrice * p.keep) / 500) * 500,
-  }));
+  //
+  // "Gratis" SENGAJA bukan hasil `keep: 0` yang dilewatkan ke rumus
+  // pembulatan sama seperti −⅓ — kalaupun kebetulan hasilnya sama-sama
+  // Rp0, tombol −⅓ pada produk yang sudah murah (listPrice kecil) harus
+  // tetap disabled (angkanya cuma kebetulan menyentuh 0 akibat
+  // pembulatan, bukan diskon ⅓ yang sungguhan), sementara "Gratis"
+  // adalah 100% off yang memang dimaksud dan harus selalu bisa ditekan.
+  // apply()/server sudah menerima 0 sejak awal (hanya menolak >= harga
+  // normal) — yang hilang cuma jalan pintas satu-tap untuk mencapainya.
+  const oneThirdValue = Math.round((listPrice * (2 / 3)) / 500) * 500;
+  const presets = [
+    {
+      label: "−⅓",
+      value: oneThirdValue,
+      disabled: oneThirdValue <= 0 || oneThirdValue >= listPrice,
+    },
+    {
+      label: "Gratis",
+      value: 0,
+      disabled: listPrice <= 0,
+    },
+  ];
 
   return (
     <div
@@ -2443,8 +2459,8 @@ function DiscountDialog({
         <div>
           <h2 className="font-semibold text-foreground">{name}</h2>
           <p className="text-xs text-muted-foreground">
-            Harga normal {formatRp(listPrice)}. Isi harga diskon — stok tetap
-            berkurang seperti penjualan biasa.
+            Harga normal {formatRp(listPrice)}. Isi harga diskon (boleh sampai
+            Rp0 untuk gratis) — stok tetap berkurang seperti penjualan biasa.
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -2453,7 +2469,7 @@ function DiscountDialog({
               key={p.label}
               type="button"
               onClick={() => apply(p.value)}
-              disabled={p.value <= 0 || p.value >= listPrice}
+              disabled={p.disabled}
               className="h-8 px-2.5 rounded-lg border border-border bg-background text-xs font-semibold hover:border-foreground disabled:opacity-40"
             >
               {p.label} · {formatRp(p.value)}
