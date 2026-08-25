@@ -11,6 +11,10 @@ import {
   listCakeBasePrices,
 } from "@/lib/actions/cake-options.actions";
 import { getCakeFinanceRecapMonth } from "@/lib/actions/cake-finance.actions";
+import {
+  listMySlips,
+  getSlipForProduction,
+} from "@/lib/actions/cake-slips.actions";
 import { formatMonthYear } from "@/lib/payslip/formatters";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RefreshButton } from "@/components/shared/RefreshButton";
@@ -20,11 +24,14 @@ import {
   type CakeOrdersTab,
 } from "@/components/cake/CakeOrdersTabsNav";
 import { CakeFinanceView } from "@/components/cake/CakeFinanceView";
+import { ProductionLobby } from "@/components/cake/ProductionLobby";
 
 interface SearchParams {
   tab?: string;
   month?: string;
   year?: string;
+  /** Selected slip id — only meaningful on the "production" tab. */
+  slip?: string;
 }
 
 /**
@@ -49,7 +56,9 @@ export default async function AdminCakeOrdersPage({
       ? "finance"
       : sp.tab === "archive"
         ? "archive"
-        : "orders";
+        : sp.tab === "production"
+          ? "production"
+          : "orders";
   const today = new Date();
   const month = parseInt(sp.month ?? String(today.getMonth() + 1), 10);
   const year = parseInt(sp.year ?? String(today.getFullYear()), 10);
@@ -79,6 +88,50 @@ export default async function AdminCakeOrdersPage({
       }
     />
   );
+
+  // Produksi tab — kanban produksi + slip checklist yang sama dengan
+  // /cake-production (dipakai tim "orders"-scope Haengbocake), reused
+  // di sini persis apa adanya untuk superadmin. Read-only: superadmin
+  // melihat status yang sama, tapi mengubahnya tetap employee-only
+  // (product decision yang sama dengan tab Order di atas — canMove
+  // {false}). listMySlips/getSlipForProduction sudah menerima role
+  // admin (lihat komentar di cake-slips.actions.ts).
+  if (tab === "production") {
+    const selectedSlipId = sp.slip ?? null;
+    const [slipsRes, detailRes] = await Promise.all([
+      listMySlips(),
+      selectedSlipId
+        ? getSlipForProduction(selectedSlipId)
+        : Promise.resolve(null),
+    ]);
+    const slips = slipsRes.ok ? slipsRes.data ?? [] : [];
+    return (
+      <div className="space-y-5 animate-fade-up">
+        {header}
+        <CakeOrdersTabsNav current="production" />
+        <ProductionLobby
+          slips={slips}
+          isAdmin
+          readOnly
+          showHeader={false}
+          selectedSlipId={selectedSlipId}
+          buildSlipHref={(slipId) =>
+            `/admin/cake-orders?tab=production&slip=${slipId}`
+          }
+          detail={
+            detailRes && detailRes.ok && detailRes.data
+              ? {
+                  slip: detailRes.data.slip,
+                  items: detailRes.data.items,
+                  myProductionRole: detailRes.data.myProductionRole,
+                }
+              : null
+          }
+          detailError={detailRes && !detailRes.ok ? detailRes.error : null}
+        />
+      </div>
+    );
+  }
 
   // Finance tab — recap keyed by pickup month. Skip the board data
   // fetches entirely.

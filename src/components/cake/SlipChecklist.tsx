@@ -50,6 +50,14 @@ interface Props {
   /** Sub-role caller (null = boleh kedua / scope orders). UI hide
    *  tombol yang tidak match role. Server-side gate jadi backstop. */
   myProductionRole: "baker" | "decorator" | null;
+  /** Zota superadmin embed (lihat ProductionLobby): sembunyikan semua
+   *  tombol tulis (advance/undo status, ack diff) dan link "Kembali" ke
+   *  /cake-production yang tidak relevan di split-view — server juga
+   *  sudah menolak baker/decorator/diff-ack actions untuk role admin
+   *  (`requireCakeProductionRole`/`requireCakeProductionAccess`), jadi
+   *  ini murni supaya tombolnya tidak tampil gagal, bukan gerbang
+   *  keamanan (backstop-nya di server). */
+  readOnly?: boolean;
 }
 
 /**
@@ -61,7 +69,12 @@ interface Props {
  * `pending_diff` drives a big warning banner with field-level
  * before/after; production team taps "Saya sudah lihat" to ack.
  */
-export function SlipChecklist({ slip, items, myProductionRole }: Props) {
+export function SlipChecklist({
+  slip,
+  items,
+  myProductionRole,
+  readOnly = false,
+}: Props) {
   const router = useRouter();
 
   // Optimistic per-item production_status so toggles feel instant.
@@ -114,13 +127,15 @@ export function SlipChecklist({ slip, items, myProductionRole }: Props) {
   return (
     <div className="space-y-3 pb-12">
       <div className="flex items-center gap-2">
-        <Link
-          href="/cake-production"
-          className="rounded-full p-2 hover:bg-muted text-muted-foreground"
-          aria-label="Kembali"
-        >
-          <ArrowLeft size={18} strokeWidth={2.5} />
-        </Link>
+        {!readOnly && (
+          <Link
+            href="/cake-production"
+            className="rounded-full p-2 hover:bg-muted text-muted-foreground"
+            aria-label="Kembali"
+          >
+            <ArrowLeft size={18} strokeWidth={2.5} />
+          </Link>
+        )}
         <div className="min-w-0 flex-1">
           <h1 className="text-lg sm:text-xl font-semibold text-foreground leading-tight flex items-center gap-2 flex-wrap">
             Slip{" "}
@@ -142,6 +157,7 @@ export function SlipChecklist({ slip, items, myProductionRole }: Props) {
           slipId={slip.id}
           diff={slip.pending_diff}
           onAcknowledged={() => router.refresh()}
+          readOnly={readOnly}
         />
       )}
 
@@ -172,6 +188,7 @@ export function SlipChecklist({ slip, items, myProductionRole }: Props) {
               }
               myProductionRole={myProductionRole}
               adminLocked={it.adminLocked}
+              readOnly={readOnly}
               onChange={(next) => {
                 setStatusById((prev) => {
                   const map = new Map(prev);
@@ -194,10 +211,12 @@ function DiffBanner({
   slipId,
   diff,
   onAcknowledged,
+  readOnly = false,
 }: {
   slipId: string;
   diff: CakeSlipDiff;
   onAcknowledged: () => void;
+  readOnly?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const onAck = () =>
@@ -290,14 +309,16 @@ function DiffBanner({
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onAck}
-        disabled={pending}
-        className="w-full rounded-xl bg-foreground text-background border-2 border-foreground px-3 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
-      >
-        {pending ? "Menyimpan…" : "Saya sudah lihat"}
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={onAck}
+          disabled={pending}
+          className="w-full rounded-xl bg-foreground text-background border-2 border-foreground px-3 py-2 text-sm font-semibold hover:opacity-90 active:scale-95 transition-transform disabled:opacity-50"
+        >
+          {pending ? "Menyimpan…" : "Saya sudah lihat"}
+        </button>
+      )}
     </div>
   );
 }
@@ -309,12 +330,14 @@ function ProductionCard({
   productionStatus,
   myProductionRole,
   adminLocked,
+  readOnly = false,
   onChange,
 }: {
   snapshot: CakeSlipSnapshotItem;
   productionStatus: CakeProductionStatus;
   myProductionRole: "baker" | "decorator" | null;
   adminLocked: boolean;
+  readOnly?: boolean;
   onChange: (next: CakeProductionStatus) => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -417,6 +440,7 @@ function ProductionCard({
           pending={pending}
           myProductionRole={myProductionRole}
           adminLocked={adminLocked}
+          readOnly={readOnly}
           onAdvance={setStatus}
         />
       </div>
@@ -477,14 +501,26 @@ function ProductionAction({
   pending,
   myProductionRole,
   adminLocked,
+  readOnly = false,
   onAdvance,
 }: {
   status: CakeProductionStatus;
   pending: boolean;
   myProductionRole: "baker" | "decorator" | null;
   adminLocked: boolean;
+  readOnly?: boolean;
   onAdvance: (next: CakeProductionStatus) => void;
 }) {
+  // Superadmin embed: cuma lihat status, tidak bisa memajukan/undo —
+  // perubahan status produksi tetap employee-only (server juga menolak
+  // role admin di requireCakeProductionRole/requireCakeProductionAccess).
+  if (readOnly) {
+    return (
+      <div className="flex justify-center">
+        <ProductionStatusPill status={status} />
+      </div>
+    );
+  }
   // Admin lock: kalau admin sudah pindahkan card ke kanban
   // pengiriman/selesai atau arsipkan, semua tombol di sisi produksi
   // hilang — pekerjaan dianggap diserahkan.

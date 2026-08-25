@@ -40,12 +40,31 @@ export function ProductionLobby({
   selectedSlipId,
   detail,
   detailError,
+  buildSlipHref = (slipId: string) => `/cake-production?slip=${slipId}`,
+  showHeader = true,
+  readOnly = false,
 }: {
   slips: CakeProductionSlip[];
   isAdmin: boolean;
   selectedSlipId: string | null;
   detail: DetailData | null;
   detailError: string | null;
+  /** Builds the href for a slip card in the admin split-view. Defaults
+   *  to the standalone /cake-production route. Callers embedding this
+   *  lobby inside another page's own tab (e.g. the Zota superadmin
+   *  "Produksi" tab under /admin/cake-orders) pass their own builder so
+   *  selecting a slip stays inside that tab instead of navigating away. */
+  buildSlipHref?: (slipId: string) => string;
+  /** False when embedded inside a page that already renders its own
+   *  title + back-link (e.g. the admin tab has its own PageHeader). */
+  showHeader?: boolean;
+  /** True for the Zota superadmin embed: superadmin sees the same
+   *  board/checklist as the cake business's own "orders"-scope admin,
+   *  but per the product decision already applied to the Order/Finance/
+   *  Archive tabs on that same page (`canMove={false}`), production
+   *  status changes stay employee-only — superadmin gets read-only
+   *  status pills instead of the advance/undo buttons. */
+  readOnly?: boolean;
 }) {
   // Non-admin: single column lobby, click navigasi ke full-screen
   // detail page seperti sebelumnya. Layout split tidak relevan
@@ -53,7 +72,7 @@ export function ProductionLobby({
   if (!isAdmin) {
     return (
       <div className="space-y-4">
-        <LobbyHeader />
+        {showHeader && <LobbyHeader />}
         {slips.length === 0 ? (
           <EmptyState />
         ) : (
@@ -76,18 +95,20 @@ export function ProductionLobby({
 
   return (
     <div className="space-y-4">
-      <LobbyHeader />
+      {showHeader && <LobbyHeader />}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_2fr] gap-3">
         <Column
           title="Pare"
           slips={pareSlips}
           selectedSlipId={selectedSlipId}
+          buildSlipHref={buildSlipHref}
         />
         <Column
           title="Semarang"
           slips={semarangSlips}
           selectedSlipId={selectedSlipId}
+          buildSlipHref={buildSlipHref}
         />
 
         {/* Detail pane — lg+ render in-place, mobile/tablet fallback
@@ -99,6 +120,7 @@ export function ProductionLobby({
                 slip={detail.slip}
                 items={detail.items}
                 myProductionRole={detail.myProductionRole}
+                readOnly={readOnly}
               />
             </div>
           ) : detailError ? (
@@ -155,10 +177,12 @@ function Column({
   title,
   slips,
   selectedSlipId,
+  buildSlipHref,
 }: {
   title: string;
   slips: CakeProductionSlip[];
   selectedSlipId: string | null;
+  buildSlipHref: (slipId: string) => string;
 }) {
   return (
     <div className="min-w-0">
@@ -180,7 +204,7 @@ function Column({
               <li key={s.id}>
                 <SlipCard
                   slip={s}
-                  href={`/cake-production?slip=${s.id}`}
+                  href={buildSlipHref(s.id)}
                   selected={selected}
                 />
               </li>

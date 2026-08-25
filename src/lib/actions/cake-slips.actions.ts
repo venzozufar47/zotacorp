@@ -5,9 +5,10 @@ import { createAdminClient as adminClient } from "./_supabase-admin";
 import {
   requireCakeOrderAccess,
   requireCakeProductionAccess,
+  requireAdminOrCakeProductionAccess,
   type ActionResult,
 } from "./_gates";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentRole } from "@/lib/supabase/cached";
 import { getMyCakeAccess } from "@/lib/cake-orders/access";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
@@ -666,8 +667,17 @@ export async function acknowledgeSlipDiff(
 export async function listMySlips(): Promise<
   ActionResult<CakeProductionSlip[]>
 > {
+  const role = await getCurrentRole();
   const access = await getMyCakeAccess();
-  if (!access.hasOrders && !access.hasProduction) {
+  // Zota superadmin melihat semua cabang lewat role, sama seperti
+  // scope 'orders' — konsisten dengan RLS `cake_production_slips_read`
+  // (`is_admin() OR ...`) yang sudah menganggap admin setara. Sebelum
+  // ini `getMyCakeAccess()` (murni cake_access_assignments) tidak tahu
+  // soal role, jadi superadmin tanpa baris assignment ditolak "Not
+  // signed in" — read-only viewing untuk superadmin, lihat komentar di
+  // `getSlipForProduction`.
+  const seesAllBranches = role === "admin" || access.hasOrders;
+  if (!seesAllBranches && !access.hasProduction) {
     return { ok: false, error: "Not signed in" };
   }
   // Production lobby shows slips that have been (re-)sent at least
@@ -676,14 +686,14 @@ export async function listMySlips(): Promise<
   // last_sent_snapshot.
   //
   // Filter by branch: tim produksi cuma lihat slip cabangnya. User
-  // dengan scope 'orders' (admin-equivalent) lihat semua.
+  // dengan scope 'orders' atau role admin (admin-equivalent) lihat semua.
   const supabase = await createServerClient();
   let q = supabase
     .from("cake_production_slips" as never)
     .select("*")
     .in("status", ["sent", "received", "reopened", "closed"])
     .not("last_sent_snapshot", "is", null);
-  if (!access.hasOrders) {
+  if (!seesAllBranches) {
     if (access.productionBranches.length === 0) {
       return { ok: true, data: [] };
     }
@@ -715,8 +725,17 @@ export async function getSlipForProduction(slipId: string): Promise<
     myProductionRole: "baker" | "decorator" | null;
   }>
 > {
-  const gate = await requireCakeProductionAccess();
+  // "OR admin" — ini pembacaan, bukan tulisan. Menu Produksi di
+  // /admin/cake-orders (tab superadmin, view-only — lihat komentar di
+  // component) memanggil fungsi ini persis seperti tim produksi;
+  // `requireCakeProductionAccess` (dipakai `setOrderProductionStatus`
+  // dkk untuk MENULIS status) sengaja menolak admin, tapi menolaknya
+  // di sini juga cuma menyembunyikan slip dari superadmin tanpa alasan
+  // keamanan apa pun — RLS `cake_production_slips_read` sendiri sudah
+  // `is_admin() OR ...`.
+  const gate = await requireAdminOrCakeProductionAccess();
   if (!gate.ok) return { ok: false, error: gate.error };
+  const role = await getCurrentRole();
   const supabase = adminClient();
 
   // Resolve role + slip paralel — keduanya hanya butuh userId / slipId.
@@ -738,7 +757,10 @@ export async function getSlipForProduction(slipId: string): Promise<
     branch: "pare" | "semarang" | null;
   };
   const rows = (roleRes.data ?? []) as unknown as RoleRow[];
-  const hasOrders = rows.some((r) => r.scope === "orders");
+  // Superadmin tidak selalu punya baris cake_access_assignments — role
+  // saja sudah cukup dianggap setara scope 'orders' (lihat komentar di
+  // gate di atas).
+  const hasOrders = role === "admin" || rows.some((r) => r.scope === "orders");
 
   const slipRaw = slipRes.data;
   if (!slipRaw) return { ok: false, error: "Slip tidak ditemukan" };
