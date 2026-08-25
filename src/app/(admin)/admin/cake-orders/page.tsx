@@ -115,9 +115,7 @@ export default async function AdminCakeOrdersPage({
           readOnly
           showHeader={false}
           selectedSlipId={selectedSlipId}
-          buildSlipHref={(slipId) =>
-            `/admin/cake-orders?tab=production&slip=${slipId}`
-          }
+          slipHrefBase="/admin/cake-orders?tab=production"
           detail={
             detailRes && detailRes.ok && detailRes.data
               ? {

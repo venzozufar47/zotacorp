@@ -40,7 +40,7 @@ export function ProductionLobby({
   selectedSlipId,
   detail,
   detailError,
-  buildSlipHref = (slipId: string) => `/cake-production?slip=${slipId}`,
+  slipHrefBase = "/cake-production",
   showHeader = true,
   readOnly = false,
 }: {
@@ -49,12 +49,18 @@ export function ProductionLobby({
   selectedSlipId: string | null;
   detail: DetailData | null;
   detailError: string | null;
-  /** Builds the href for a slip card in the admin split-view. Defaults
-   *  to the standalone /cake-production route. Callers embedding this
-   *  lobby inside another page's own tab (e.g. the Zota superadmin
-   *  "Produksi" tab under /admin/cake-orders) pass their own builder so
-   *  selecting a slip stays inside that tab instead of navigating away. */
-  buildSlipHref?: (slipId: string) => string;
+  /** Base URL a slip card's `?slip=<id>` query is appended to (`&slip=`
+   *  if `slipHrefBase` already has a `?`). Defaults to the standalone
+   *  /cake-production route. Callers embedding this lobby inside another
+   *  page's own tab (e.g. the Zota superadmin "Produksi" tab under
+   *  /admin/cake-orders) pass their own base so selecting a slip stays
+   *  inside that tab instead of navigating away.
+   *
+   *  A STRING, not a function — this component is "use client" and a
+   *  function prop coming from the server page would cross the RSC
+   *  boundary un-serialised ("Functions cannot be passed directly to
+   *  Client Components"). */
+  slipHrefBase?: string;
   /** False when embedded inside a page that already renders its own
    *  title + back-link (e.g. the admin tab has its own PageHeader). */
   showHeader?: boolean;
@@ -92,6 +98,8 @@ export function ProductionLobby({
   // re-render dengan detail di pane kanan.
   const pareSlips = slips.filter((s) => s.branch === "pare");
   const semarangSlips = slips.filter((s) => s.branch === "semarang");
+  const buildSlipHref = (slipId: string) =>
+    `${slipHrefBase}${slipHrefBase.includes("?") ? "&" : "?"}slip=${slipId}`;
 
   return (
     <div className="space-y-4">
