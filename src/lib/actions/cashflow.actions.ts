@@ -1931,23 +1931,37 @@ export async function savePusatAllocation(input: {
     const nextY = input.periodMonth === 12 ? input.periodYear + 1 : input.periodYear;
     const nextM = input.periodMonth === 12 ? 1 : input.periodMonth + 1;
     const periodEnd = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
-    const { data: qrisRows } = await supabase
-      .from("cashflow_transactions")
-      .select(
-        "credit, transaction_date, effective_period_year, effective_period_month, cashflow_statements!inner(bank_accounts!inner(business_unit, account_name))"
-      )
-      .eq("cashflow_statements.bank_accounts.business_unit", "Haengbocake")
-      .eq("cashflow_statements.bank_accounts.account_name", "Cash Haengbocake Pare")
-      .eq("category", "QRIS (non-operasional)")
-      .gte("transaction_date", periodStart)
-      .lt("transaction_date", periodEnd);
     type QRow = {
       credit: number | string | null;
       transaction_date: string;
       effective_period_year: number | null;
       effective_period_month: number | null;
     };
-    for (const r of (qrisRows ?? []) as unknown as QRow[]) {
+    const qrisRows: QRow[] = [];
+    // Paginate: sama seperti pusatRows di atas — `db-max-rows` bisa
+    // membatasi satu query ke 1000 baris, dan bulan-bulan dengan
+    // banyak transaksi QRIS retail bisa jauh melebihi itu. Tanpa ini,
+    // total ter-undercount dan admin gagal save split yang sebenarnya
+    // sudah pas dengan angka di editor (yang query-nya dipaginasi).
+    for (let offset = 0; ; offset += PAGE) {
+      const { data: page, error: qrisErr } = await supabase
+        .from("cashflow_transactions")
+        .select(
+          "credit, transaction_date, effective_period_year, effective_period_month, cashflow_statements!inner(bank_accounts!inner(business_unit, account_name))"
+        )
+        .eq("cashflow_statements.bank_accounts.business_unit", "Haengbocake")
+        .eq("cashflow_statements.bank_accounts.account_name", "Cash Haengbocake Pare")
+        .eq("category", "QRIS (non-operasional)")
+        .gte("transaction_date", periodStart)
+        .lt("transaction_date", periodEnd)
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (qrisErr) return { ok: false, error: qrisErr.message };
+      const rows = (page ?? []) as unknown as QRow[];
+      qrisRows.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+    for (const r of qrisRows) {
       // Hormati effective_period_year/month override sama persis
       // dengan fetchPnL — kalau set, override date-based bucket.
       let y: number;
