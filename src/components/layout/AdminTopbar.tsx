@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
+import { AdminBackButton } from "./AdminBackButton";
 import { QuickActionsMenu } from "@/components/admin/QuickActionsMenu";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 
@@ -41,6 +42,8 @@ export function AdminTopbar({
         WebkitBackdropFilter: "blur(20px)",
       }}
     >
+      <AdminBackButton />
+
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-2 text-[12.5px] font-medium text-muted-foreground">
         {crumbs.map((c, i) => (

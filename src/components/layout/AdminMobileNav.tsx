@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
+import { AdminBackButton } from "./AdminBackButton";
 import {
   MOBILE_PRIMARY_HREFS,
   MOBILE_PRIMARY_HREFS_YEOBO,
@@ -125,6 +126,7 @@ export function AdminMobileNav({
       {/* Top bar — logo + admin badge + bell. Thin context strip. */}
       <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between h-14 px-4 bg-background border-b-2 border-foreground md:hidden">
         <div className="flex items-center gap-2 min-w-0">
+          <AdminBackButton variant="mobile" />
           <img
             src="/zota-corp-logo-tosca.png"
             alt="Zota Corp"
