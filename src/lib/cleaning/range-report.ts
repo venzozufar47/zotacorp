@@ -309,11 +309,29 @@ export function buildCleaningRangeReport(
     if (!prev || c.completedAt > prev.completedAt) compByKey.set(k, c);
   }
 
-  // Kehadiran per (lokasi, hari) → daftar userId, diurut pangkat pool.
+  // Kehadiran per (lokasi, hari) → daftar userId ANGGOTA POOL cabang itu,
+  // diurut pangkat pool.
+  //
+  // Disaring ke pool WAJIB, bukan opsional: attendance_logs mencatat SIAPA
+  // PUN yang check-in di lokasi itu — kasir, admin, siapa saja yang lokasi
+  // absennya kebetulan sama — bukan cuma anggota pool kebersihan. Sebelum
+  // saringan ini ada, resolveBranchDuty memperlakukan mereka sebagai
+  // kandidat duty yang sah dan bisa mengambil slot checklist dari anggota
+  // pool yang sesungguhnya; checklist-nya lalu tidak pernah dikerjakan
+  // karena orang itu tidak tahu dirinya "ditugaskan". Pola (pool ∩ present)
+  // yang sama sudah dipakai getCleaningMonitor / buildBranchDutyMonitorRows
+  // (monitor satu-hari) — di jalur rentang inilah pola itu sempat terlewat.
   const poolRank = new Map<string, number>();
-  for (const p of pool) poolRank.set(`${p.locationId}|${p.userId}`, p.sortOrder);
+  const poolMembersByLoc = new Map<string, Set<string>>();
+  for (const p of pool) {
+    poolRank.set(`${p.locationId}|${p.userId}`, p.sortOrder);
+    const set = poolMembersByLoc.get(p.locationId) ?? new Set<string>();
+    set.add(p.userId);
+    poolMembersByLoc.set(p.locationId, set);
+  }
   const presentByLocDay = new Map<string, string[]>();
   for (const p of presence) {
+    if (!poolMembersByLoc.get(p.locationId)?.has(p.userId)) continue;
     const k = `${p.locationId}|${p.date}`;
     const list = presentByLocDay.get(k) ?? [];
     list.push(p.userId);

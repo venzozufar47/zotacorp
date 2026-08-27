@@ -1752,10 +1752,15 @@ export async function getCleaningPhotoHistory(input: {
   const offset = Math.max(input.offset ?? 0, 0);
   const supabase = await createClient();
 
+  // FK profiles DISEBUT EKSPLISIT: migrasi 130 menambah reviewed_by (juga FK ke
+  // profiles) di tabel ini, jadi tabel sekarang punya DUA jalur ke profiles.
+  // `profile:profiles(...)` tanpa nama FK jadi ambigu dan PostgREST menolak
+  // seluruh query — ini yang membuat panel Review Foto gagal total, bukan cuma
+  // kolom reviewer yang kosong.
   let q = supabase
     .from("cleaning_task_completions")
     .select(
-      "id, date, completed_at, photo_path, photo_purged_at, user_id, photo_req_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles(full_name)"
+      "id, date, completed_at, photo_path, photo_purged_at, user_id, photo_req_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles!cleaning_task_completions_user_id_fkey(full_name)"
     )
     .gte("date", input.from)
     .lte("date", input.to)
