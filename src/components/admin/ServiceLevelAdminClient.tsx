@@ -2,7 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Ban, Check, Clock, Users, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  CalendarDays,
+  Check,
+  Clock,
+  TrendingDown,
+  Users,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   addServiceLevelExclusion,
@@ -14,6 +23,7 @@ import {
   type ServiceLevelOwnerRow,
   type ServiceLevelSummary,
 } from "@/lib/actions/pos-service-level.actions";
+import type { ServiceLevelResult } from "@/lib/pos/service-level";
 
 interface Outlet {
   id: string;
@@ -23,6 +33,8 @@ interface Outlet {
   openHour: number;
   closeHour: number;
   summary: ServiceLevelSummary | null;
+  /** Rincian LIVE (penyebab terbesar + per-hari) — sama seperti di POS. */
+  live: ServiceLevelResult | null;
   owners: ServiceLevelOwnerRow[];
   exclusions: ServiceLevelExclusionRow[];
   skus: Array<{ productId: string; variantId: string | null; label: string }>;
@@ -142,10 +154,115 @@ function OutletPanel({
         </span>
       </div>
 
+      <WorstSkusSection outlet={outlet} />
+      <DailyBreakdownSection outlet={outlet} />
       <HoursSection outlet={outlet} />
       <OwnersSection outlet={outlet} employees={employees} />
       <ExclusionsSection outlet={outlet} />
     </div>
+  );
+}
+
+/**
+ * Produk yang paling sering kosong — persis kartu "Penyebab terbesar" di
+ * halaman POS, supaya superadmin tidak perlu login sebagai kasir untuk
+ * lihat SKU mana yang menekan angkanya.
+ */
+function WorstSkusSection({ outlet }: { outlet: Outlet }) {
+  if (!outlet.live || outlet.live.worstSkus.length === 0) return null;
+  return (
+    <section className="space-y-2">
+      <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <TrendingDown size={12} /> Penyebab terbesar (30 hari)
+      </h3>
+      <p className="text-[11px] text-muted-foreground">
+        Produk yang paling sering kosong. 100% artinya selalu kosong dalam
+        30 hari kebelakang.
+      </p>
+      <ul className="space-y-1.5">
+        {outlet.live.worstSkus.slice(0, 10).map((w) => (
+          <li
+            key={`${w.productId}|${w.variantId ?? ""}`}
+            className="flex items-center gap-3 text-xs"
+          >
+            <span className="min-w-0 flex-1 truncate" title={w.label}>
+              {w.label}
+            </span>
+            <span
+              className="h-2 w-24 shrink-0 overflow-hidden rounded-full bg-muted sm:w-40"
+              role="img"
+              aria-label={`${w.label} kosong ${(w.percentOut * 100).toFixed(0)} persen waktu`}
+            >
+              <span
+                className="block h-full rounded-full bg-destructive"
+                style={{ width: `${Math.max(2, w.percentOut * 100)}%` }}
+              />
+            </span>
+            <span className="w-10 shrink-0 text-right font-bold tabular-nums text-destructive">
+              {(w.percentOut * 100).toFixed(0)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Rincian per-hari — dikumpulkan di <details> supaya panel tidak melar
+ * kalau ada banyak outlet; superadmin buka sesuai kebutuhan, sama seperti
+ * grup kategori di editor alokasi Pusat.
+ */
+function DailyBreakdownSection({ outlet }: { outlet: Outlet }) {
+  if (!outlet.live || outlet.live.days.length === 0) return null;
+  const days = outlet.live.days.slice().reverse();
+  return (
+    <details className="group space-y-2">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <CalendarDays size={12} /> Per hari (30 hari)
+        <span className="text-muted-foreground/60 normal-case tracking-normal">
+          — klik untuk buka
+        </span>
+      </summary>
+      <ul className="mt-2 space-y-1.5">
+        {days.map((d) => (
+          <li
+            key={d.date}
+            className="flex items-center gap-3 text-xs tabular-nums"
+          >
+            <span className="w-[5.5rem] shrink-0 text-muted-foreground">
+              {d.date}
+            </span>
+            <span
+              className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
+              role="img"
+              aria-label={
+                d.percent === null
+                  ? `${d.date} tidak dihitung`
+                  : `${d.date}: ${(d.percent * 100).toFixed(0)} persen`
+              }
+            >
+              {d.percent !== null && (
+                <span
+                  className="block h-full rounded-full bg-primary"
+                  style={{ width: `${Math.max(2, d.percent * 100)}%` }}
+                />
+              )}
+            </span>
+            <span className="w-10 shrink-0 text-right font-semibold">
+              {d.percent === null ? "—" : `${(d.percent * 100).toFixed(0)}%`}
+            </span>
+            <span className="w-4 shrink-0 text-center text-warning">
+              {d.partialOpname && (
+                <span title="Opname parsial — SKU yang tidak dihitung terbaca habis">
+                  ⚠
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

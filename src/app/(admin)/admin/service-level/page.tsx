@@ -6,11 +6,13 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ServiceLevelAdminClient } from "@/components/admin/ServiceLevelAdminClient";
 import {
+  getServiceLevel,
   getServiceLevelSummary,
   listServiceLevelOwners,
   listServiceLevelExclusions,
   listServiceLevelSkus,
 } from "@/lib/actions/pos-service-level.actions";
+import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
 
 /**
  * Pusat pengaturan + pemantauan metrik Service Level.
@@ -48,13 +50,21 @@ export default async function ServiceLevelAdminPage() {
 
   // Satu putaran per outlet — jumlah outlet POS segelintir, jadi ini
   // masih jauh lebih murah daripada memecah halaman jadi banyak request.
+  const today = jakartaDateString(new Date());
+  const fromDate = jakartaDateMinusDays(today, 29); // 30 hari, sama seperti summary
   const outlets = await Promise.all(
     (accounts ?? []).map(async (a) => {
-      const [summary, owners, exclusions, skus] = await Promise.all([
+      const [summary, owners, exclusions, skus, live] = await Promise.all([
         getServiceLevelSummary(a.id, 30),
         listServiceLevelOwners(a.id),
         listServiceLevelExclusions(a.id),
         listServiceLevelSkus(a.id),
+        // Rincian penyebab (worst SKU + per-hari) sama seperti yang
+        // dilihat kasir di POS — dihitung LIVE, jadi hanya untuk outlet
+        // yang aktif supaya tidak buang waktu query di outlet mati.
+        a.service_level_enabled
+          ? getServiceLevel(a.id, { fromDate, toDate: today }).catch(() => null)
+          : Promise.resolve(null),
       ]);
       return {
         id: a.id,
@@ -64,6 +74,7 @@ export default async function ServiceLevelAdminPage() {
         openHour: a.service_level_open_hour,
         closeHour: a.service_level_close_hour,
         summary: summary.ok ? (summary.data ?? null) : null,
+        live: live && live.ok ? (live.data ?? null) : null,
         owners,
         exclusions,
         skus,
