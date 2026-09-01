@@ -3,6 +3,7 @@
 import Link, { useLinkStatus } from "next/link";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
+import { serviceLevelTone } from "@/lib/pos/service-level";
 
 /**
  * Kartu Service Level — dipakai di layar kasir (`compact`) dan di
@@ -41,22 +42,25 @@ function CompactLinkPending() {
   );
 }
 
-function tone(pct: number | null): {
+function tone(pct: number | null, target: number): {
   text: string;
   border: string;
   bg: string;
 } {
-  if (pct === null)
-    return { text: "text-muted-foreground", border: "border-border", bg: "bg-card" };
-  if (pct >= 0.95)
-    return { text: "text-success", border: "border-success/40", bg: "bg-success/10" };
-  if (pct >= 0.85)
-    return { text: "text-warning", border: "border-warning/40", bg: "bg-warning/10" };
-  return {
-    text: "text-destructive",
-    border: "border-destructive/40",
-    bg: "bg-destructive/10",
-  };
+  switch (serviceLevelTone(pct, target)) {
+    case "success":
+      return { text: "text-success", border: "border-success/40", bg: "bg-success/10" };
+    case "warning":
+      return { text: "text-warning", border: "border-warning/40", bg: "bg-warning/10" };
+    case "destructive":
+      return {
+        text: "text-destructive",
+        border: "border-destructive/40",
+        bg: "bg-destructive/10",
+      };
+    default:
+      return { text: "text-muted-foreground", border: "border-border", bg: "bg-card" };
+  }
 }
 
 export function ServiceLevelHero({
@@ -71,8 +75,9 @@ export function ServiceLevelHero({
   days?: number;
 }) {
   const pct = summary.percent;
-  const t = tone(pct);
+  const t = tone(pct, summary.target);
   const label = pct === null ? "—" : `${(pct * 100).toFixed(1)}%`;
+  const targetLabel = `${(summary.target * 100).toFixed(0)}%`;
   const belum = summary.daysCounted === 0;
 
   if (size === "compact") {
@@ -94,7 +99,7 @@ export function ServiceLevelHero({
             "belum ada data"
           ) : (
             <>
-              target 100%
+              target {targetLabel}
               <br />
               {summary.lostSkuHours.toLocaleString("id-ID")} SKU-jam kosong
             </>
@@ -126,7 +131,7 @@ export function ServiceLevelHero({
           "Belum ada data terhitung — snapshot berjalan tiap jam."
         ) : (
           <>
-            Target 100% · {summary.daysCounted} hari terhitung ·{" "}
+            Target {targetLabel} · {summary.daysCounted} hari terhitung ·{" "}
             {summary.lostSkuHours.toLocaleString("id-ID")} SKU-jam kosong
           </>
         )}

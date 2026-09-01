@@ -23,7 +23,7 @@ import {
   type ServiceLevelOwnerRow,
   type ServiceLevelSummary,
 } from "@/lib/actions/pos-service-level.actions";
-import type { ServiceLevelResult } from "@/lib/pos/service-level";
+import { serviceLevelTone, type ServiceLevelResult } from "@/lib/pos/service-level";
 
 interface Outlet {
   id: string;
@@ -32,6 +32,8 @@ interface Outlet {
   enabled: boolean;
   openHour: number;
   closeHour: number;
+  /** Pecahan 0-1. Lihat migrasi 135. */
+  target: number;
   summary: ServiceLevelSummary | null;
   /** Rincian LIVE (penyebab terbesar + per-hari) — sama seperti di POS. */
   live: ServiceLevelResult | null;
@@ -40,12 +42,18 @@ interface Outlet {
   skus: Array<{ productId: string; variantId: string | null; label: string }>;
 }
 
-/** Ambang warna terhadap target 100%. Token semantik, bukan hex. */
-function toneOf(pct: number | null): string {
-  if (pct === null) return "text-muted-foreground";
-  if (pct >= 0.95) return "text-success";
-  if (pct >= 0.85) return "text-warning";
-  return "text-destructive";
+/** Ambang warna relatif ke target outlet. Token semantik, bukan hex. */
+function toneOf(pct: number | null, target: number): string {
+  switch (serviceLevelTone(pct, target)) {
+    case "success":
+      return "text-success";
+    case "warning":
+      return "text-warning";
+    case "destructive":
+      return "text-destructive";
+    default:
+      return "text-muted-foreground";
+  }
 }
 
 function pctLabel(pct: number | null): string {
@@ -89,7 +97,8 @@ export function ServiceLevelAdminClient({
                 </p>
                 <p
                   className={`font-display text-4xl font-extrabold tabular-nums leading-none mt-1 ${toneOf(
-                    o.summary?.percent ?? null
+                    o.summary?.percent ?? null,
+                    o.target
                   )}`}
                 >
                   {pctLabel(o.summary?.percent ?? null)}
@@ -102,13 +111,15 @@ export function ServiceLevelAdminClient({
               )}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
+              Target {(o.target * 100).toFixed(0)}%
               {o.summary && o.summary.daysCounted > 0 ? (
                 <>
-                  {o.summary.daysCounted} hari terhitung ·{" "}
+                  {" "}
+                  · {o.summary.daysCounted} hari terhitung ·{" "}
                   {o.summary.lostSkuHours.toLocaleString("id-ID")} SKU-jam kosong
                 </>
               ) : (
-                "Belum ada data snapshot — cron berjalan tiap 22:30 WIB."
+                " · belum ada data snapshot — cron berjalan tiap 22:30 WIB."
               )}
             </p>
             {o.summary?.hasPartialOpname && (
@@ -271,12 +282,14 @@ function HoursSection({ outlet }: { outlet: Outlet }) {
   const [enabled, setEnabled] = useState(outlet.enabled);
   const [open, setOpen] = useState(String(outlet.openHour));
   const [close, setClose] = useState(String(outlet.closeHour));
+  const [target, setTarget] = useState(String(Math.round(outlet.target * 100)));
   const [pending, start] = useTransition();
 
   const dirty =
     enabled !== outlet.enabled ||
     Number(open) !== outlet.openHour ||
-    Number(close) !== outlet.closeHour;
+    Number(close) !== outlet.closeHour ||
+    Number(target) !== Math.round(outlet.target * 100);
 
   function save() {
     start(async () => {
@@ -285,6 +298,7 @@ function HoursSection({ outlet }: { outlet: Outlet }) {
         enabled,
         openHour: Number(open),
         closeHour: Number(close),
+        target: Number(target) / 100,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -328,6 +342,17 @@ function HoursSection({ outlet }: { outlet: Outlet }) {
             max={24}
             value={close}
             onChange={(e) => setClose(e.target.value)}
+            className="mt-0.5 h-9 w-20 rounded-lg border-2 border-foreground bg-card px-2 text-sm tabular-nums"
+          />
+        </label>
+        <label className="text-xs">
+          <span className="block text-muted-foreground">Target %</span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
             className="mt-0.5 h-9 w-20 rounded-lg border-2 border-foreground bg-card px-2 text-sm tabular-nums"
           />
         </label>

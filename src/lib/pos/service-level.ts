@@ -10,7 +10,8 @@ import {
 
 /**
  * Metrik Service Level POS — berapa persen produk ready stock,
- * dirata-rata sepanjang jam buka. Target 100%.
+ * dirata-rata sepanjang jam buka. Target per outlet (`service_level_target`
+ * di migrasi 135) — default 100%, Pare 80%.
  *
  * Modul biasa (bukan "use server") supaya dipakai DUA jalur: server
  * action ber-gate dan cron tanpa sesi. Lihat header stock-engine.ts.
@@ -40,13 +41,31 @@ export interface ServiceLevelConfig {
   openHour: number;
   /** Eksklusif: sampel = [openHour, closeHour). */
   closeHour: number;
+  /** Pecahan 0-1 (mis. 0.8 = 80%). Per outlet — lihat migrasi 135. */
+  target: number;
 }
 
 export const SERVICE_LEVEL_DEFAULTS: ServiceLevelConfig = {
   enabled: false,
   openHour: 9,
   closeHour: 21,
+  target: 1,
 };
+
+export type ServiceLevelTone = "success" | "warning" | "destructive" | "muted";
+
+/**
+ * Ambang warna RELATIF terhadap target outlet, bukan konstanta 95/85.
+ * Gap-nya (5pt / 15pt di bawah target) dipertahankan dari desain lama
+ * yang mengasumsikan target 100% — cuma jangkarnya yang sekarang ikut
+ * target, supaya outlet dengan target 80% tidak selalu tampak merah.
+ */
+export function serviceLevelTone(pct: number | null, target: number): ServiceLevelTone {
+  if (pct === null) return "muted";
+  if (pct >= target - 0.05) return "success";
+  if (pct >= target - 0.15) return "warning";
+  return "destructive";
+}
 
 export interface ServiceLevelDay {
   /** YYYY-MM-DD WIB. */
@@ -82,6 +101,8 @@ export interface ServiceLevelResult {
   toDate: string;
   openHour: number;
   closeHour: number;
+  /** Pecahan 0-1. Diteruskan dari config, bukan dihitung — lihat migrasi 135. */
+  target: number;
   /** Pooled. null kalau tidak ada satu pun hari yang dihitung. */
   percent: number | null;
   readySum: number;
@@ -111,7 +132,7 @@ export async function loadServiceLevelConfig(
   const { data } = await db
     .from("bank_accounts")
     .select(
-      "service_level_enabled, service_level_open_hour, service_level_close_hour"
+      "service_level_enabled, service_level_open_hour, service_level_close_hour, service_level_target"
     )
     .eq("id", bankAccountId)
     .maybeSingle();
@@ -120,6 +141,7 @@ export async function loadServiceLevelConfig(
     enabled: data.service_level_enabled ?? false,
     openHour: data.service_level_open_hour ?? SERVICE_LEVEL_DEFAULTS.openHour,
     closeHour: data.service_level_close_hour ?? SERVICE_LEVEL_DEFAULTS.closeHour,
+    target: data.service_level_target ?? SERVICE_LEVEL_DEFAULTS.target,
   };
 }
 
@@ -167,7 +189,7 @@ export async function computeServiceLevel(
 ): Promise<ServiceLevelResult> {
   const nowIso = opts.nowIso ?? new Date().toISOString();
   const config = opts.config ?? (await loadServiceLevelConfig(db, bankAccountId));
-  const { openHour, closeHour } = config;
+  const { openHour, closeHour, target } = config;
   const dates = dateRange(opts.fromDate, opts.toDate);
 
   const empty = (): ServiceLevelResult => ({
@@ -176,6 +198,7 @@ export async function computeServiceLevel(
     toDate: opts.toDate,
     openHour,
     closeHour,
+    target,
     percent: null,
     readySum: 0,
     totalSkuSamples: 0,
@@ -367,6 +390,7 @@ export async function computeServiceLevel(
     toDate: opts.toDate,
     openHour,
     closeHour,
+    target,
     percent: totalSkuSamples > 0 ? readySum / totalSkuSamples : null,
     readySum,
     totalSkuSamples,

@@ -445,6 +445,7 @@ export type Database = {
           service_level_close_hour: number
           service_level_enabled: boolean
           service_level_open_hour: number
+          service_level_target: number
           source_sheet: string | null
           source_url: string | null
           updated_at: string
@@ -469,6 +470,7 @@ export type Database = {
           service_level_close_hour?: number
           service_level_enabled?: boolean
           service_level_open_hour?: number
+          service_level_target?: number
           source_sheet?: string | null
           source_url?: string | null
           updated_at?: string
@@ -493,6 +495,7 @@ export type Database = {
           service_level_close_hour?: number
           service_level_enabled?: boolean
           service_level_open_hour?: number
+          service_level_target?: number
           source_sheet?: string | null
           source_url?: string | null
           updated_at?: string

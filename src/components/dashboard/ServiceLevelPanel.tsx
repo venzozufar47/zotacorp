@@ -1,5 +1,6 @@
 import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import type { ServiceLevelOutlet } from "@/lib/pos/service-level-access";
+import { serviceLevelTone } from "@/lib/pos/service-level";
 
 /**
  * Panel Service Level di dashboard karyawan, untuk penanggung jawab metrik.
@@ -18,11 +19,17 @@ import type { ServiceLevelOutlet } from "@/lib/pos/service-level-access";
  * juga assignee POS; panel ini untuk sekilas lihat saja.
  */
 
-function tone(pct: number | null): string {
-  if (pct === null) return "text-muted-foreground";
-  if (pct >= 0.95) return "text-success";
-  if (pct >= 0.85) return "text-warning";
-  return "text-destructive";
+function tone(pct: number | null, target: number): string {
+  switch (serviceLevelTone(pct, target)) {
+    case "success":
+      return "text-success";
+    case "warning":
+      return "text-warning";
+    case "destructive":
+      return "text-destructive";
+    default:
+      return "text-muted-foreground";
+  }
 }
 
 export async function ServiceLevelPanel({
@@ -51,7 +58,7 @@ export async function ServiceLevelPanel({
       <div className="panel-sticker p-5 space-y-4">
         <p className="text-xs text-muted-foreground">
           Berapa persen produk ready stock, dirata-rata sepanjang jam buka.
-          Target 100%. Kamu penanggung jawab metrik ini.
+          Kamu penanggung jawab metrik ini.
         </p>
 
         {summaries.map(({ outlet, summary }) => (
@@ -67,14 +74,17 @@ export async function ServiceLevelPanel({
               <div className="flex items-baseline gap-3">
                 <span
                   className={`font-display text-4xl sm:text-5xl font-extrabold tabular-nums leading-none ${tone(
-                    summary.percent
+                    summary.percent,
+                    summary.target
                   )}`}
                 >
                   {summary.percent === null
                     ? "—"
                     : `${(summary.percent * 100).toFixed(1)}%`}
                 </span>
-                <span className="text-xs text-muted-foreground">30 hari</span>
+                <span className="text-xs text-muted-foreground">
+                  30 hari · target {(summary.target * 100).toFixed(0)}%
+                </span>
               </div>
             )}
           </div>

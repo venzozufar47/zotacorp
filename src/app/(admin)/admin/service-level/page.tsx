@@ -30,7 +30,7 @@ export default async function ServiceLevelAdminPage() {
     supabase
       .from("bank_accounts")
       .select(
-        "id, account_name, default_branch, service_level_enabled, service_level_open_hour, service_level_close_hour"
+        "id, account_name, default_branch, service_level_enabled, service_level_open_hour, service_level_close_hour, service_level_target"
       )
       .eq("pos_enabled", true)
       .eq("is_active", true)
@@ -73,6 +73,7 @@ export default async function ServiceLevelAdminPage() {
         enabled: a.service_level_enabled,
         openHour: a.service_level_open_hour,
         closeHour: a.service_level_close_hour,
+        target: a.service_level_target,
         summary: summary.ok ? (summary.data ?? null) : null,
         live: live && live.ok ? (live.data ?? null) : null,
         owners,
@@ -86,7 +87,7 @@ export default async function ServiceLevelAdminPage() {
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="Service Level"
-        subtitle="Berapa persen produk ready stock, dirata-rata sepanjang jam buka. Target 100%."
+        subtitle="Berapa persen produk ready stock, dirata-rata sepanjang jam buka. Target per outlet, lihat kartu masing-masing."
       />
       <ServiceLevelAdminClient outlets={outlets} employees={employees} />
     </div>

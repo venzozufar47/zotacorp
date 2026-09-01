@@ -77,6 +77,8 @@ export interface ServiceLevelSummary {
   bankAccountId: string;
   accountName: string;
   branch: string | null;
+  /** Pecahan 0-1. Per outlet — lihat migrasi 135. */
+  target: number;
   /** Pooled dari baris snapshot. null = belum ada data terhitung. */
   percent: number | null;
   readySum: number;
@@ -114,7 +116,7 @@ export async function getServiceLevelSummary(
   const [{ data: account }, { data: rows }] = await Promise.all([
     supabase
       .from("bank_accounts")
-      .select("account_name, default_branch")
+      .select("account_name, default_branch, service_level_target")
       .eq("id", bankAccountId)
       .maybeSingle(),
     supabase
@@ -157,6 +159,7 @@ export async function getServiceLevelSummary(
       bankAccountId,
       accountName: account?.account_name ?? "",
       branch: account?.default_branch ?? null,
+      target: account?.service_level_target ?? 1,
       percent: totalSkuSamples > 0 ? readySum / totalSkuSamples : null,
       readySum,
       totalSkuSamples,
@@ -178,14 +181,16 @@ export async function setServiceLevelSettings(input: {
   enabled: boolean;
   openHour: number;
   closeHour: number;
+  /** Pecahan 0-1 (mis. 0.8 = 80%). */
+  target: number;
 }): Promise<ActionResult<undefined>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
 
   const open = Math.floor(input.openHour);
   const close = Math.floor(input.closeHour);
-  // Dijaga juga oleh CHECK constraint di migrasi 122; divalidasi di sini
-  // supaya pesannya manusiawi, bukan error Postgres mentah.
+  // Dijaga juga oleh CHECK constraint di migrasi 122/135; divalidasi di
+  // sini supaya pesannya manusiawi, bukan error Postgres mentah.
   if (!Number.isFinite(open) || open < 0 || open > 23) {
     return { ok: false, error: "Jam buka harus 0–23." };
   }
@@ -195,6 +200,9 @@ export async function setServiceLevelSettings(input: {
   if (open >= close) {
     return { ok: false, error: "Jam buka harus lebih awal dari jam tutup." };
   }
+  if (!Number.isFinite(input.target) || input.target <= 0 || input.target > 1) {
+    return { ok: false, error: "Target harus antara 1–100%." };
+  }
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -203,6 +211,7 @@ export async function setServiceLevelSettings(input: {
       service_level_enabled: input.enabled,
       service_level_open_hour: open,
       service_level_close_hour: close,
+      service_level_target: input.target,
     })
     .eq("id", input.bankAccountId);
   if (error) return { ok: false, error: error.message };
