@@ -59,11 +59,22 @@ export type ServiceLevelTone = "success" | "warning" | "destructive" | "muted";
  * Gap-nya (5pt / 15pt di bawah target) dipertahankan dari desain lama
  * yang mengasumsikan target 100% — cuma jangkarnya yang sekarang ikut
  * target, supaya outlet dengan target 80% tidak selalu tampak merah.
+ *
+ * Target sekarang bisa diisi admin ke nilai berapa pun di (0, 1] (lihat
+ * setServiceLevelSettings), jadi gap ABSOLUT saja tidak aman: untuk
+ * target kecil (mis. 5%), `target - 0.05` turun ke 0 atau minus, dan
+ * pct 0% pun lolos sebagai "success" — 0% dibaca hijau. Ambang dipilih
+ * dari yang LEBIH TINGGI antara gap absolut dan gap relatif (10%/30%
+ * dari target) supaya tidak pernah runtuh ke ambang yang trivial
+ * terpenuhi. Untuk target ≥50% (kisaran realistis outlet saat ini),
+ * gap absolut selalu menang dan perilakunya identik dengan sebelumnya.
  */
 export function serviceLevelTone(pct: number | null, target: number): ServiceLevelTone {
   if (pct === null) return "muted";
-  if (pct >= target - 0.05) return "success";
-  if (pct >= target - 0.15) return "warning";
+  const successAt = Math.max(target - 0.05, target * 0.9);
+  const warningAt = Math.max(target - 0.15, target * 0.7);
+  if (pct >= successAt) return "success";
+  if (pct >= warningAt) return "warning";
   return "destructive";
 }
 

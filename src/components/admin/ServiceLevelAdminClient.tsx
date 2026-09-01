@@ -285,6 +285,22 @@ function HoursSection({ outlet }: { outlet: Outlet }) {
   const [target, setTarget] = useState(String(Math.round(outlet.target * 100)));
   const [pending, start] = useTransition();
 
+  // `useState` hanya menyemai sekali, sedangkan `router.refresh()` — dipanggil
+  // section ini DAN OwnersSection/ExclusionsSection di panel yang sama —
+  // mengirim props baru tanpa me-mount ulang. Tanpa sinkronisasi ini field
+  // bisa melenceng dari data server (mis. admin lain mengubah target outlet
+  // yang sama saat tab ini masih terbuka). Pola sama seperti syncedKey di
+  // OwnersSection di bawah.
+  const serverKey = `${outlet.enabled}|${outlet.openHour}|${outlet.closeHour}|${outlet.target}`;
+  const [syncedKey, setSyncedKey] = useState(serverKey);
+  if (syncedKey !== serverKey) {
+    setSyncedKey(serverKey);
+    setEnabled(outlet.enabled);
+    setOpen(String(outlet.openHour));
+    setClose(String(outlet.closeHour));
+    setTarget(String(Math.round(outlet.target * 100)));
+  }
+
   const dirty =
     enabled !== outlet.enabled ||
     Number(open) !== outlet.openHour ||
