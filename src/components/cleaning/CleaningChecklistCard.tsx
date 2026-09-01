@@ -77,6 +77,95 @@ function getCoords(): Promise<{ lat: number | null; lng: number | null }> {
   });
 }
 
+/**
+ * Action control for a single unit (photo button / checkbox / undo).
+ *
+ * Top-level (not defined inside CleaningChecklistCard) on purpose: an inline
+ * component gets a new type identity every parent render, which makes React
+ * remount the whole subtree — including EvidenceThumb — on every busyKey/task
+ * update. That remount storm was refetching signed photo URLs thousands of
+ * times/hour during closing-time checklist submissions.
+ */
+function UnitControls({
+  assignmentId,
+  itemId,
+  unit,
+  windowOpen,
+  checkedIn,
+  busy,
+  onUndo,
+  onStartPhoto,
+  onMarkDone,
+}: {
+  assignmentId: string;
+  itemId: string;
+  unit: TodayUnit;
+  windowOpen: boolean;
+  checkedIn: boolean;
+  busy: boolean;
+  onUndo: (itemId: string, photoReqId: string | null) => void;
+  onStartPhoto: (
+    assignmentId: string,
+    itemId: string,
+    photoReqId: string | null,
+    referencePath: string | null,
+    windowOpen: boolean
+  ) => void;
+  onMarkDone: (assignmentId: string, itemId: string, windowOpen: boolean) => void;
+}) {
+  const done = !!unit.completion;
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      {done && unit.completion?.photo_path && unit.completion.id && (
+        <EvidenceThumb completionId={unit.completion.id} />
+      )}
+      {done ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => onUndo(itemId, unit.photo_req_id)}
+        >
+          {busy ? <Loader2 className="size-4 animate-spin" /> : "Batal"}
+        </Button>
+      ) : unit.requires_photo ? (
+        <Button
+          size="sm"
+          disabled={busy || !checkedIn || !windowOpen}
+          onClick={() =>
+            onStartPhoto(assignmentId, itemId, unit.photo_req_id, unit.reference_photo_path, windowOpen)
+          }
+        >
+          {busy ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <>
+              <Camera className="size-4 mr-1.5" />
+              Foto
+            </>
+          )}
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || !checkedIn || !windowOpen}
+          onClick={() => onMarkDone(assignmentId, itemId, windowOpen)}
+        >
+          {busy ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <>
+              <Check className="size-4 mr-1.5" />
+              Selesai
+            </>
+          )}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function CleaningChecklistCard({ initial }: Props) {
   const [tasks, setTasks] = useState(initial.tasks);
   const [checkedIn] = useState(initial.checked_in);
@@ -210,72 +299,6 @@ export function CleaningChecklistCard({ initial }: Props) {
     });
   }
 
-  /** Action control for a single unit (photo button / checkbox / undo). */
-  function UnitControls({
-    assignmentId,
-    itemId,
-    unit,
-    windowOpen,
-  }: {
-    assignmentId: string;
-    itemId: string;
-    unit: TodayUnit;
-    windowOpen: boolean;
-  }) {
-    const busy = busyKey === unitKey(itemId, unit.photo_req_id) && isPending;
-    const done = !!unit.completion;
-    return (
-      <div className="flex items-center gap-2 shrink-0">
-        {done && unit.completion?.photo_path && unit.completion.id && (
-          <EvidenceThumb completionId={unit.completion.id} />
-        )}
-        {done ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => undo(itemId, unit.photo_req_id)}
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : "Batal"}
-          </Button>
-        ) : unit.requires_photo ? (
-          <Button
-            size="sm"
-            disabled={busy || !checkedIn || !windowOpen}
-            onClick={() =>
-              startPhoto(assignmentId, itemId, unit.photo_req_id, unit.reference_photo_path, windowOpen)
-            }
-          >
-            {busy ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <>
-                <Camera className="size-4 mr-1.5" />
-                Foto
-              </>
-            )}
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy || !checkedIn || !windowOpen}
-            onClick={() => markDoneNoPhoto(assignmentId, itemId, windowOpen)}
-          >
-            {busy ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <>
-                <Check className="size-4 mr-1.5" />
-                Selesai
-              </>
-            )}
-          </Button>
-        )}
-      </div>
-    );
-  }
-
   return (
     <section
       aria-label="Checklist kebersihan"
@@ -383,6 +406,13 @@ export function CleaningChecklistCard({ initial }: Props) {
                             itemId={item.id}
                             unit={item.units[0]}
                             windowOpen={task.window_open}
+                            checkedIn={checkedIn}
+                            busy={
+                              busyKey === unitKey(item.id, item.units[0].photo_req_id) && isPending
+                            }
+                            onUndo={undo}
+                            onStartPhoto={startPhoto}
+                            onMarkDone={markDoneNoPhoto}
                           />
                         )}
                       </div>
@@ -421,6 +451,13 @@ export function CleaningChecklistCard({ initial }: Props) {
                                 itemId={item.id}
                                 unit={unit}
                                 windowOpen={task.window_open}
+                                checkedIn={checkedIn}
+                                busy={
+                                  busyKey === unitKey(item.id, unit.photo_req_id) && isPending
+                                }
+                                onUndo={undo}
+                                onStartPhoto={startPhoto}
+                                onMarkDone={markDoneNoPhoto}
                               />
                             </li>
                           ))}
