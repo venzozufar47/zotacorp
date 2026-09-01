@@ -34,10 +34,12 @@ import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
 import { ServiceLevelPanel } from "@/components/dashboard/ServiceLevelPanel";
 import { listMyServiceLevelOutlets } from "@/lib/pos/service-level-access";
+import { TicketResolutionPanel } from "@/components/dashboard/TicketResolutionPanel";
 import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
 import {
   getMyOpenTicketsSummary,
   getStudioQueueCount,
+  getStudioHeadRecentResolutionKpi,
 } from "@/lib/actions/tickets.actions";
 import { isStudioHead } from "@/lib/tickets/access";
 import Link from "next/link";
@@ -113,6 +115,7 @@ export default async function DashboardPage() {
     isHeadOfStudio,
     serviceLevelOutlets,
     coachingNotes,
+    ticketResolutionKpi,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -147,6 +150,7 @@ export default async function DashboardPage() {
     isStudioHead(),
     listMyServiceLevelOutlets(),
     listMyCoachingNotes(),
+    getStudioHeadRecentResolutionKpi(),
   ]);
   const pendingContract = myPendingContract;
 
@@ -361,6 +365,9 @@ export default async function DashboardPage() {
           kelompok panel substantif, bukan tumpukan banner di atas.
           Render sendiri nol kalau user bukan penanggung jawab. */}
       <ServiceLevelPanel outlets={serviceLevelOutlets} />
+
+      {/* Kartu KPI Kepala Studio — render sendiri nol kalau bukan Kepala Studio. */}
+      <TicketResolutionPanel kpi={ticketResolutionKpi} />
 
       {/* Attendance — magazine-style section with an eyebrow label and a soft
           white panel that floats above the page background. The section

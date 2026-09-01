@@ -24,6 +24,7 @@ import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import {
   TICKET_CATEGORY_LABELS,
+  RECENT_RESOLUTION_SAMPLE_SIZE,
   type Ticket,
   type TicketAttachment,
 } from "@/lib/tickets/types";
@@ -573,6 +574,36 @@ export async function getStudioHeadKpi(): Promise<StudioHeadKpi | null> {
   }
   kpi.avgResolutionMs = durN > 0 ? Math.round(durSum / durN) : null;
   return kpi;
+}
+
+export interface StudioHeadRecentResolutionKpi {
+  avgResolutionMs: number | null;
+  /** Bisa < RECENT_RESOLUTION_SAMPLE_SIZE kalau tiket resolved yg memenuhi syarat belum banyak. */
+  sampleCount: number;
+}
+
+/** KPI "Kecepatan Tiket Studio" (home dashboard) — rata-rata N tiket resolved TERAKHIR, bukan lifetime. */
+export async function getStudioHeadRecentResolutionKpi(): Promise<StudioHeadRecentResolutionKpi | null> {
+  const gate = await requireStudioHeadOrAdmin();
+  if (!gate.ok) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tickets" as never)
+    .select("created_at, resolved_at, owner_decision")
+    .eq("status", "resolved")
+    .order("resolved_at", { ascending: false });
+  const rows = (data ?? [])
+    // exclusion sama persis dgn getStudioHeadKpi(): tiket yg eskalasinya di-ACC
+    // owner (dikerjakan owner, bukan Kepala Studio) tidak dihitung.
+    .filter((r: any) => r.resolved_at && r.owner_decision !== "accepted")
+    .slice(0, RECENT_RESOLUTION_SAMPLE_SIZE);
+  if (rows.length === 0) return { avgResolutionMs: null, sampleCount: 0 };
+  const sum = rows.reduce(
+    (acc: number, r: any) =>
+      acc + (new Date(r.resolved_at).getTime() - new Date(r.created_at).getTime()),
+    0
+  );
+  return { avgResolutionMs: Math.round(sum / rows.length), sampleCount: rows.length };
 }
 
 /** Ringkasan utk kartu dashboard karyawan (pembuat). */

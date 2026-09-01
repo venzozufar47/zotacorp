@@ -143,3 +143,7 @@ export function formatDuration(ms: number): string {
   const remH = hours % 24;
   return remH > 0 ? `${days} hari ${remH} jam` : `${days} hari`;
 }
+
+/** Ukuran sampel & target KPI "Kecepatan Tiket Studio" di home dashboard Kepala Studio. */
+export const RECENT_RESOLUTION_SAMPLE_SIZE = 10;
+export const RECENT_RESOLUTION_TARGET_MS = 7 * 24 * 60 * 60 * 1000; // target: 7 hari
