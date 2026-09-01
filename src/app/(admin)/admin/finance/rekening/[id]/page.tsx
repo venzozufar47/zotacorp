@@ -11,6 +11,7 @@ import { RekeningAuthorizersCard } from "@/components/admin/finance/RekeningAuth
 import {
   getRekeningAuthorizers,
   listPosAuthorizerCandidates,
+  getMayarLiveBalance,
 } from "@/lib/actions/cashflow.actions";
 import { CashflowTable } from "@/components/admin/finance/CashflowTable";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
@@ -221,11 +222,41 @@ export default async function RekeningDetailPage({
     account.bank === "cash"
       ? txList.filter((t) => t.category !== POS_QRIS_CATEGORY)
       : txList;
-  const displayBalance =
-    account.bank === "cash" ? computeLatestBalance(tillRows) : latestBalance;
+  // Ledger balance verification (opening + Σcredit − Σdebit === closing)
+  // stays anchored to the raw cashflow_transactions total — Mayar's
+  // ledger only ever grows (disbursement never posts a debit there),
+  // so this invariant is still meaningful for catching missed/duplicate
+  // rows. It's just not "how much can actually be withdrawn right now".
   const verification = canVerify
     ? verifyBalance(openingBalance, Number(latestBalance), txList)
     : null;
+
+  // Mayar: "Saldo terakhir" dari ledger cuma naik terus (lihat catatan
+  // di getMayarLiveBalance) — tidak pernah mencerminkan dana yang
+  // sudah dicairkan ke rekening bank tujuan. Tarik saldo TERSEDIA
+  // langsung dari API Mayar untuk rekening ini; kalau API gagal,
+  // turun ke saldo ledger apa adanya (dengan label lama) daripada
+  // menampilkan halaman kosong.
+  let mayarBalance: import("@/lib/cashflow/mayar").MayarBalance | null = null;
+  let mayarBalanceError: string | null = null;
+  if (account.bank === "mayar") {
+    const res = await getMayarLiveBalance(account.id);
+    if (res.ok && res.data) mayarBalance = res.data;
+    else mayarBalanceError = !res.ok ? res.error : "Gagal memuat saldo Mayar.";
+  }
+
+  const displayLabel =
+    account.bank === "cash"
+      ? "Saldo kas fisik"
+      : mayarBalance
+        ? "Saldo tersedia"
+        : "Saldo terakhir";
+  const displayBalance =
+    account.bank === "cash"
+      ? computeLatestBalance(tillRows)
+      : mayarBalance
+        ? mayarBalance.balanceActive
+        : latestBalance;
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -258,9 +289,20 @@ export default async function RekeningDetailPage({
           invariant below, just kept off the top summary. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <SummaryCard
-          label={account.bank === "cash" ? "Saldo kas fisik" : "Saldo terakhir"}
+          label={displayLabel}
           value={`Rp ${formatIDR(Number(displayBalance))}`}
         />
+        {mayarBalance && mayarBalance.balancePending > 0 && (
+          <p className="col-span-full -mt-2 text-xs text-muted-foreground">
+            + Rp {formatIDR(mayarBalance.balancePending)} pending (belum bisa dicairkan)
+          </p>
+        )}
+        {mayarBalanceError && (
+          <p className="col-span-full -mt-2 text-xs text-destructive">
+            Gagal ambil saldo real-time Mayar ({mayarBalanceError}) — angka di atas jatuh
+            kembali ke total ledger tercatat, bukan saldo tersedia yang sebenarnya.
+          </p>
+        )}
         {/* Compact verification status — same invariant as before
             (opening + credit − debit === closing) but collapsed to
             a single row. Expands into the detailed breakdown only

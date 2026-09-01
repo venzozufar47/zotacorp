@@ -231,3 +231,40 @@ export async function fetchAndParseMayar(
   const rows = await fetchMayarTransactions(apiKey);
   return mayarToTransactions(rows, opts);
 }
+
+export interface MayarBalance {
+  /** Bisa ditarik/dipakai sekarang — ini yang dipakai sebagai "Saldo tersedia". */
+  balanceActive: number;
+  /** Belum settle, belum bisa ditarik. */
+  balancePending: number;
+  /** balanceActive + balancePending. */
+  balance: number;
+}
+
+/**
+ * Saldo Mayar LANGSUNG dari API (GET /balances), bukan hasil jumlah
+ * baris `cashflow_transactions` (yang cuma mencatat pendapatan masuk,
+ * tidak pernah dikurangi saat dana dicairkan ke rekening bank tujuan —
+ * ledger Mayar didesain "tidak bersaldo", lihat catatan di
+ * `syncMayarWithdrawalFees`). Endpoint ini sumber kebenaran real-time
+ * untuk "berapa yang masih ada di Mayar, siap dicairkan", dan tidak
+ * butuh mencocokkan baris disbursement di rekening tujuan secara manual.
+ */
+export async function fetchMayarBalance(apiKey: string): Promise<MayarBalance> {
+  const res = await fetch(`${MAYAR_BASE}/balances`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Mayar balance API gagal (HTTP ${res.status}). ${body.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as {
+    data?: { balanceActive?: number; balancePending?: number; balance?: number };
+  };
+  return {
+    balanceActive: Number(json.data?.balanceActive) || 0,
+    balancePending: Number(json.data?.balancePending) || 0,
+    balance: Number(json.data?.balance) || 0,
+  };
+}

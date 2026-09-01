@@ -1342,7 +1342,7 @@ export async function syncCashSheet(
 //  Mayar-sourced rekening sync
 // ─────────────────────────────────────────────────────────────────────
 
-import { fetchAndParseMayar } from "@/lib/cashflow/mayar";
+import { fetchAndParseMayar, fetchMayarBalance, type MayarBalance } from "@/lib/cashflow/mayar";
 import { makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -1397,6 +1397,45 @@ const MAYAR_FEE_CATEGORY = "Bank Administration";
 
 /** Prefix penanda idempotensi di kolom notes: `ref:<id tx bank>`. */
 const MAYAR_FEE_REF = "ref:";
+
+/**
+ * Saldo Mayar LANGSUNG dari API (`fetchMayarBalance`) — bukan hasil
+ * jumlah baris `cashflow_transactions`, yang cuma naik saat pendapatan
+ * masuk dan TIDAK PERNAH turun saat dana dicairkan ke rekening bank
+ * (ledger Mayar sengaja "tidak bersaldo", lihat catatan di
+ * `syncMayarWithdrawalFees`). Dipakai halaman rekening untuk
+ * menampilkan "Saldo tersedia" yang benar — real-time, tanpa perlu
+ * mencocokkan baris disbursement di rekening tujuan secara manual.
+ */
+export async function getMayarLiveBalance(
+  bankAccountId: string
+): Promise<ActionResult<MayarBalance>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const apiKey = process.env[MAYAR_API_KEY_ENV];
+  if (!apiKey) {
+    return { ok: false, error: `${MAYAR_API_KEY_ENV} belum di-set di environment.` };
+  }
+
+  const supabase = await createClient();
+  const { data: account } = await supabase
+    .from("bank_accounts")
+    .select("id, bank")
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  if (!account) return { ok: false, error: "Rekening tidak ditemukan" };
+  if (account.bank !== "mayar") {
+    return { ok: false, error: "Rekening ini bukan rekening Mayar." };
+  }
+
+  try {
+    const balance = await fetchMayarBalance(apiKey);
+    return { ok: true, data: balance };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 /**
  * Tarik transaksi Mayar lalu simpan sebagai baris cashflow.
