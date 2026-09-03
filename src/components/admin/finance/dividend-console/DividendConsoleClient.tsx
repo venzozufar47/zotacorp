@@ -9,6 +9,7 @@ import {
   Calculator,
   Eraser,
   HandCoins,
+  Wallet,
   Link2Off,
   Check,
   Send,
@@ -702,15 +703,43 @@ function BranchAllocationTable({
                     {totalHak == null ? "—" : formatRp(totalHak)}
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatIDR(val)}
-                      onChange={(e) =>
-                        setAmount(r.recipientId, parseAmount(e.target.value))
-                      }
-                      className="w-32 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground"
-                    />
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setAmount(r.recipientId, Math.max(0, entitlement ?? 0))}
+                        disabled={entitlement == null}
+                        title="Isi hak bulan ini saja (tanpa tunggakan)"
+                        className="grid size-6 shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <Wallet size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAmount(r.recipientId, Math.max(0, totalHak ?? 0))}
+                        disabled={totalHak == null}
+                        title="Isi total hak (hak bulan ini + tunggakan)"
+                        className="grid size-6 shrink-0 place-items-center rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <HandCoins size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAmount(r.recipientId, 0)}
+                        title="Kosongkan"
+                        className="grid size-6 shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <Eraser size={12} />
+                      </button>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatIDR(val)}
+                        onChange={(e) =>
+                          setAmount(r.recipientId, parseAmount(e.target.value))
+                        }
+                        className="w-28 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground"
+                      />
+                    </div>
                     {totalHak != null && val !== totalHak && (
                       <div className="mt-0.5 text-right text-[10.5px] text-muted-foreground">
                         {val < totalHak
