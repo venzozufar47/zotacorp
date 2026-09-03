@@ -14,6 +14,7 @@ import {
   Check,
   Send,
   TriangleAlert,
+  RotateCcw,
 } from "lucide-react";
 import { formatRp, formatIDR } from "@/lib/cashflow/format";
 import { MONTH_FULL_NAMES, formatDateID } from "@/lib/utils/date-formats";
@@ -163,11 +164,27 @@ export function DividendConsoleClient({
     return earliest ?? new Date().toISOString().slice(0, 10);
   });
   const [ref, setRef] = useState("");
+  // Filter tampilan (tidak memengaruhi total/tombol isi — itu selalu
+  // beroperasi atas SELURUH baris cabang, filter ini murni navigasi).
+  const [showArrearsOnly, setShowArrearsOnly] = useState(false);
 
   const setAmount = (id: string, v: number) =>
     setAmounts((prev) => ({ ...prev, [id]: v }));
   const applyValues = (values: Record<string, number>) =>
     setAmounts((prev) => ({ ...prev, ...values }));
+
+  // Buang semua ketikan/isi yang belum disimpan (nominal transfer + pool),
+  // balik ke persis apa yang sudah tersimpan di database. Jaring pengaman
+  // setelah bereksperimen dengan tombol Isi/Kosongkan sebelum yakin Simpan.
+  const resetToSaved = () => {
+    const initAmounts: Record<string, number> = {};
+    for (const b of data.branches)
+      for (const r of b.rows) initAmounts[r.recipientId] = r.savedAllocation ?? 0;
+    setAmounts(initAmounts);
+    const initPool: Record<string, number | null> = {};
+    for (const b of data.branches) initPool[b.branch] = b.declaredPool;
+    setDeclaredPoolState(initPool);
+  };
 
   const curR = ymRank(ymStr(data.year, data.month));
   const canPrev = curR > ymRank(minYm);
@@ -401,16 +418,34 @@ export function DividendConsoleClient({
       </div>
 
       {/* 3. Per-branch allocation tables */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-foreground">Alokasi per cabang</h3>
+        <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={showArrearsOnly}
+            onChange={(e) => setShowArrearsOnly(e.target.checked)}
+            className="size-3.5 rounded border-border accent-primary"
+          />
+          Hanya tampilkan yang masih ada tunggakan
+        </label>
+      </div>
       <div className="space-y-4">
         {data.branches.map((b) => {
           // Basis STABIL, sama dengan kartu ringkasan di atas — tidak
           // dikurangi transfer bulan ini (lihat komentar di kartu ringkasan).
           const kasIni =
             b.kasLastMonth == null ? null : b.kasLastMonth + b.operatingProfit;
+          // Filter murni tampilan — total/tombol isi di bawah tetap
+          // beroperasi atas `b.rows` (seluruh baris), bukan versi terfilter.
+          const visibleRows = showArrearsOnly
+            ? b.rows.filter((r) => r.arrearsBefore !== 0)
+            : b.rows;
           return (
           <BranchAllocationTable
             key={b.branch}
             branch={b}
+            visibleRows={visibleRows}
             amounts={amounts}
             setAmount={setAmount}
             declaredPool={declaredPool[b.branch] ?? null}
@@ -425,6 +460,13 @@ export function DividendConsoleClient({
               const values: Record<string, number> = {};
               for (const r of b.rows)
                 values[r.recipientId] = Math.max(0, (ent[r.recipientId] ?? 0) + r.arrearsBefore);
+              applyValues(values);
+            }}
+            onFillEntitlementOnlyAll={() => {
+              const ent = liveEntitlement[b.branch] ?? {};
+              const values: Record<string, number> = {};
+              for (const r of b.rows)
+                values[r.recipientId] = Math.max(0, ent[r.recipientId] ?? 0);
               applyValues(values);
             }}
             onClear={() =>
@@ -477,15 +519,26 @@ export function DividendConsoleClient({
               </span>{" "}
               ke investor
             </span>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={!canSave || pending}
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition"
-            >
-              <Send size={15} />
-              {pending ? "Menyimpan…" : "Simpan & tandai tertransfer"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={resetToSaved}
+                disabled={pending}
+                title="Buang semua ketikan yang belum disimpan, balik ke data tersimpan terakhir"
+                className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-2.5 text-[13px] font-medium text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition"
+              >
+                <RotateCcw size={14} /> Reset ke tersimpan
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canSave || pending}
+                className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none transition"
+              >
+                <Send size={15} />
+                {pending ? "Menyimpan…" : "Simpan & tandai tertransfer"}
+              </button>
+            </div>
           </div>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
@@ -537,6 +590,7 @@ function Stat({
 // ── Branch allocation table ────────────────────────────────────────────
 function BranchAllocationTable({
   branch,
+  visibleRows,
   amounts,
   setAmount,
   declaredPool,
@@ -545,9 +599,14 @@ function BranchAllocationTable({
   kasIni,
   onFillPool,
   onFillFull,
+  onFillEntitlementOnlyAll,
   onClear,
 }: {
   branch: ConsoleBranch;
+  /** Baris yang DITAMPILKAN (bisa terfilter oleh toggle tunggakan). Total &
+   *  tombol isi selalu memakai `branch.rows` (seluruh baris) — filter ini
+   *  murni navigasi, tidak boleh mengubah apa yang dihitung/diisi. */
+  visibleRows: ConsoleBranch["rows"];
   amounts: Record<string, number>;
   setAmount: (id: string, v: number) => void;
   declaredPool: number | null;
@@ -556,6 +615,7 @@ function BranchAllocationTable({
   kasIni: number | null;
   onFillPool: () => void;
   onFillFull: () => void;
+  onFillEntitlementOnlyAll: () => void;
   onClear: () => void;
 }) {
   const sum = branch.rows.reduce((s, r) => s + (amounts[r.recipientId] ?? 0), 0);
@@ -609,15 +669,26 @@ function BranchAllocationTable({
               <Eraser size={12} /> Kosongkan transfer
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={onFillFull}
-              disabled={declaredPool == null}
-              className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:opacity-40 disabled:pointer-events-none"
-              title="Isi nominal transfer = hak bulan ini + tunggakan, untuk semua penerima"
-            >
-              <HandCoins size={12} /> Bayar penuh
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onFillEntitlementOnlyAll}
+                disabled={declaredPool == null}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+                title="Isi nominal transfer = hak bulan ini saja (tanpa tunggakan), untuk semua penerima"
+              >
+                <Wallet size={12} /> Bayar hak bulan ini saja
+              </button>
+              <button
+                type="button"
+                onClick={onFillFull}
+                disabled={declaredPool == null}
+                className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:opacity-40 disabled:pointer-events-none"
+                title="Isi nominal transfer = hak bulan ini + tunggakan, untuk semua penerima"
+              >
+                <HandCoins size={12} /> Bayar penuh
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -646,7 +717,14 @@ function BranchAllocationTable({
             </tr>
           </thead>
           <tbody>
-            {branch.rows.map((r) => {
+            {visibleRows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+                  Semua penerima cabang ini sudah lunas — tidak ada tunggakan.
+                </td>
+              </tr>
+            )}
+            {visibleRows.map((r) => {
               const val = amounts[r.recipientId] ?? 0;
               const entitlement = liveEntitlement[r.recipientId] ?? null;
               const totalHak =
