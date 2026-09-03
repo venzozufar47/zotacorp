@@ -299,13 +299,27 @@ export function DividendConsoleClient({
       <div className="grid gap-3 sm:grid-cols-3">
         {data.branches.map((b) => {
           const transferred = branchSum[b.branch] ?? 0;
+          // Sengaja TIDAK dikurangi `transferred` — ini basis tetap untuk
+          // deklarasi pool bulan ini (berapa total tersedia SEBELUM dividen
+          // bulan ini dikeluarkan), bukan "sisa kas setelah sejauh ini
+          // ditransfer". Kalau ikut dikurangi transfer yang sudah
+          // disimpan/diketik, angka ini jadi bergerak turun tiap kali
+          // sebagian penerima sudah dibayar duluan — sehingga kalau admin
+          // kembali lagi untuk membayar sisanya dan menekan "Isi dari kas
+          // bulan ini", pool yang terisi jadi lebih kecil dari yang
+          // seharusnya (persis bug yang dilaporkan: transfer parsial ke
+          // management membuat Kas bulan ini "menyusut", lalu deklarasi
+          // pool berikutnya salah basis).
           const kasIni =
-            b.kasLastMonth == null
-              ? null
-              : b.kasLastMonth + b.operatingProfit - transferred;
+            b.kasLastMonth == null ? null : b.kasLastMonth + b.operatingProfit;
           const pool = declaredPool[b.branch];
+          // Dibandingkan terhadap basis STABIL yang sama (kasIni di atas),
+          // bukan operatingProfit mentah — supaya drift betul-betul berarti
+          // "PnL bergerak sejak deklarasi", bukan selisih semu sebesar
+          // kasLastMonth yang selalu muncul walau tidak ada apa pun yang
+          // berubah.
           const drift =
-            b.declaredPool != null ? b.operatingProfit - b.declaredPool : null;
+            b.declaredPool != null && kasIni != null ? kasIni - b.declaredPool : null;
           return (
             <div
               key={b.branch}
@@ -369,13 +383,11 @@ export function DividendConsoleClient({
                   <span>
                     Pool dideklarasikan {drift > 0 ? "kurang" : "lebih"}{" "}
                     <span className="font-mono tabular-nums">{formatRp(Math.abs(drift))}</span>{" "}
-                    dari op profit sekarang
+                    dari kas bulan ini sekarang
                   </span>
                   <button
                     type="button"
-                    onClick={() =>
-                      setDeclaredPool(b.branch, Math.max(0, Math.round(b.operatingProfit)))
-                    }
+                    onClick={() => setDeclaredPool(b.branch, Math.max(0, Math.round(kasIni ?? 0)))}
                     className="shrink-0 rounded-full border border-amber-600/30 px-2 py-0.5 font-semibold hover:bg-amber-500/10"
                   >
                     Sesuaikan
@@ -390,10 +402,10 @@ export function DividendConsoleClient({
       {/* 3. Per-branch allocation tables */}
       <div className="space-y-4">
         {data.branches.map((b) => {
+          // Basis STABIL, sama dengan kartu ringkasan di atas — tidak
+          // dikurangi transfer bulan ini (lihat komentar di kartu ringkasan).
           const kasIni =
-            b.kasLastMonth == null
-              ? null
-              : b.kasLastMonth + b.operatingProfit - (branchSum[b.branch] ?? 0);
+            b.kasLastMonth == null ? null : b.kasLastMonth + b.operatingProfit;
           return (
           <BranchAllocationTable
             key={b.branch}
