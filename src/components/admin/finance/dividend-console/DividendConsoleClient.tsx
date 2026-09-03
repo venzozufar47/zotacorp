@@ -8,9 +8,11 @@ import {
   ChevronRight,
   Calculator,
   Eraser,
+  HandCoins,
   Link2Off,
   Check,
   Send,
+  TriangleAlert,
 } from "lucide-react";
 import { formatRp, formatIDR } from "@/lib/cashflow/format";
 import { MONTH_FULL_NAMES, formatDateID } from "@/lib/utils/date-formats";
@@ -46,6 +48,12 @@ function parseAmount(s: string): number {
   const digits = s.replace(/[^\d]/g, "");
   return digits ? parseInt(digits, 10) : 0;
 }
+/** Sama seperti parseAmount, tapi input kosong = null (pool "belum
+ *  dideklarasikan"), bukan 0 (pool "sengaja dideklarasikan nol"). */
+function parsePoolInput(s: string): number | null {
+  const digits = s.replace(/[^\d]/g, "");
+  return digits ? parseInt(digits, 10) : null;
+}
 function fmtPct(n: number): string {
   return (Math.round(n * 10) / 10).toLocaleString("id-ID", {
     maximumFractionDigits: 1,
@@ -64,7 +72,10 @@ function investorPoolSharePct(
   return null;
 }
 
-/** Hitung split rumus untuk satu cabang dengan basis tertentu. */
+/** Hitung split rumus untuk satu cabang dengan basis (pool) tertentu —
+ *  dipakai untuk preview LIVE di klien; server menghitung ulang yang sama
+ *  persis saat save (lihat computeRecipientAmounts di
+ *  saveDividendConsoleMonth) supaya keduanya tidak pernah berbeda. */
 function splitForBranch(branch: ConsoleBranch, basis: number): Record<string, number> {
   const recips: DivRecipient[] = branch.rows.map((r) => ({
     id: r.recipientId,
@@ -117,16 +128,39 @@ export function DividendConsoleClient({
   const [pending, startTransition] = useTransition();
 
   // Nominal transfer per recipient (init: allocation tersimpan ?? 0 — tanpa
-  // auto-prefill; admin pakai tombol hitung per cabang).
+  // auto-prefill; admin pakai tombol "Isi dari op profit" / "Bayar penuh").
   const [amounts, setAmounts] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
     for (const b of data.branches)
       for (const r of b.rows) init[r.recipientId] = r.savedAllocation ?? 0;
     return init;
   });
-  const [paidAt, setPaidAt] = useState<string>(() =>
-    new Date().toISOString().slice(0, 10)
+  // Pool dividen yang dideklarasikan per cabang — sumber kebenaran "hak"
+  // (entitlement). null = belum dideklarasikan. Seed dari nilai server bila
+  // bulan ini sudah pernah dideklarasikan.
+  const [declaredPool, setDeclaredPoolState] = useState<Record<string, number | null>>(
+    () => {
+      const init: Record<string, number | null> = {};
+      for (const b of data.branches) init[b.branch] = b.declaredPool;
+      return init;
+    }
   );
+  const setDeclaredPool = (branch: string, v: number | null) =>
+    setDeclaredPoolState((prev) => ({ ...prev, [branch]: v }));
+
+  // Tanggal transfer: seed dari payout PALING AWAL yang sudah tersimpan
+  // bulan ini (bukan selalu hari ini) — supaya membuka & menyimpan ulang
+  // bulan LAMPAU (mis. untuk mendeklarasikan pool susulan) tidak diam-diam
+  // menimpa tanggal transfer asli seluruh payout bulan itu dengan hari ini.
+  const [paidAt, setPaidAt] = useState<string>(() => {
+    let earliest: string | null = null;
+    for (const b of data.branches)
+      for (const r of b.rows) {
+        const d = r.payout?.paidAt?.slice(0, 10);
+        if (d && (earliest == null || d < earliest)) earliest = d;
+      }
+    return earliest ?? new Date().toISOString().slice(0, 10);
+  });
   const [ref, setRef] = useState("");
 
   const setAmount = (id: string, v: number) =>
@@ -149,10 +183,23 @@ export function DividendConsoleClient({
     return m;
   }, [data.branches, amounts]);
 
-  // Cabang yang akan disimpan: ada nominal > 0 ATAU sudah pernah tersimpan
-  // (agar bisa di-nol-kan / dikoreksi).
+  // Hak (entitlement) LIVE per cabang, dari pool yang sedang dideklarasikan
+  // di form (bukan dari nilai beku server) — supaya "Hak bulan ini" &
+  // tombol "Bayar penuh" langsung bereaksi begitu admin mengubah pool.
+  const liveEntitlement = useMemo(() => {
+    const m: Record<string, Record<string, number>> = {};
+    for (const b of data.branches) {
+      const pool = declaredPool[b.branch];
+      m[b.branch] = pool != null ? splitForBranch(b, pool) : {};
+    }
+    return m;
+  }, [data.branches, declaredPool]);
+
+  // Cabang yang akan disimpan: ada nominal transfer > 0, ATAU sudah pernah
+  // tersimpan (agar bisa dikoreksi), ATAU pool baru saja dideklarasikan
+  // (agar skenario "deklarasikan pool, transfer 0 ke semua" bisa disimpan).
   const submittable = data.branches.filter(
-    (b) => branchSum[b.branch] > 0 || b.savedExists
+    (b) => branchSum[b.branch] > 0 || b.savedExists || declaredPool[b.branch] != null
   );
   const canSave = submittable.length > 0;
 
@@ -168,6 +215,7 @@ export function DividendConsoleClient({
     if (!canSave) return;
     const branches = submittable.map((b) => ({
       branch: b.branch,
+      declaredPool: declaredPool[b.branch] ?? null,
       rows: b.rows.map((r) => ({
         recipientId: r.recipientId,
         amount: amounts[r.recipientId] ?? 0,
@@ -185,8 +233,12 @@ export function DividendConsoleClient({
         toast.error(res.error);
         return;
       }
+      const skipped = res.data?.skippedRecipients ?? 0;
       toast.success(
-        `Tersimpan — ${res.data?.savedBranches} cabang, ${res.data?.syncedPayouts} payout investor disinkron.`
+        `Tersimpan — ${res.data?.savedBranches} cabang, ${res.data?.syncedPayouts} payout investor disinkron.` +
+          (skipped > 0
+            ? ` ${skipped} penerima baru dilewati (belum ada saat bulan ini pertama dideklarasikan).`
+            : "")
       );
       router.refresh();
     });
@@ -225,12 +277,35 @@ export function DividendConsoleClient({
         </button>
       </div>
 
+      {data.orphanArrears.length > 0 && (
+        <div className="flex items-start gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-[12.5px] text-amber-700">
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">
+              Ada tunggakan milik penerima yang sudah tidak aktif di roster
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {data.orphanArrears.map((o) => (
+                <li key={o.recipientId}>
+                  {o.label}: <span className="font-mono tabular-nums">{formatRp(o.arrears)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* 2. Branch summary cards */}
       <div className="grid gap-3 sm:grid-cols-3">
         {data.branches.map((b) => {
-          const pool = branchSum[b.branch] ?? 0;
+          const transferred = branchSum[b.branch] ?? 0;
           const kasIni =
-            b.kasLastMonth == null ? null : b.kasLastMonth + b.operatingProfit - pool;
+            b.kasLastMonth == null
+              ? null
+              : b.kasLastMonth + b.operatingProfit - transferred;
+          const pool = declaredPool[b.branch];
+          const drift =
+            b.declaredPool != null ? b.operatingProfit - b.declaredPool : null;
           return (
             <div
               key={b.branch}
@@ -261,7 +336,18 @@ export function DividendConsoleClient({
                   value={formatRp(b.operatingProfit)}
                   tone={b.operatingProfit < 0 ? "neg" : "fg"}
                 />
-                <Stat label="Pool dividen" value={formatRp(pool)} tone="fg" strong />
+                <Stat
+                  label="Pool dividen (deklarasi)"
+                  value={pool == null ? "—" : formatRp(pool)}
+                  tone="fg"
+                  strong
+                />
+                <Stat
+                  label="Tunggakan masuk"
+                  value={b.arrearsBefore === 0 ? "—" : formatRp(b.arrearsBefore)}
+                  tone={b.arrearsBefore > 0 ? "amber" : b.arrearsBefore < 0 ? "muted" : "muted"}
+                />
+                <Stat label="Ditransfer" value={formatRp(transferred)} tone="fg" />
                 <Stat
                   label="Kas bulan ini"
                   value={kasIni == null ? "—" : formatRp(kasIni)}
@@ -278,6 +364,24 @@ export function DividendConsoleClient({
                   />
                 )}
               </dl>
+              {drift != null && drift !== 0 && (
+                <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-700">
+                  <span>
+                    Pool dideklarasikan {drift > 0 ? "kurang" : "lebih"}{" "}
+                    <span className="font-mono tabular-nums">{formatRp(Math.abs(drift))}</span>{" "}
+                    dari op profit sekarang
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeclaredPool(b.branch, Math.max(0, Math.round(b.operatingProfit)))
+                    }
+                    className="shrink-0 rounded-full border border-amber-600/30 px-2 py-0.5 font-semibold hover:bg-amber-500/10"
+                  >
+                    Sesuaikan
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -289,17 +393,21 @@ export function DividendConsoleClient({
           <BranchAllocationTable
             key={b.branch}
             branch={b}
-            sum={branchSum[b.branch] ?? 0}
             amounts={amounts}
             setAmount={setAmount}
+            declaredPool={declaredPool[b.branch] ?? null}
+            onPoolChange={(v) => setDeclaredPool(b.branch, v)}
+            liveEntitlement={liveEntitlement[b.branch] ?? {}}
             onFillOpProfit={() =>
-              applyValues(splitForBranch(b, b.operatingProfit))
+              setDeclaredPool(b.branch, Math.max(0, Math.round(b.operatingProfit)))
             }
-            onFillOpProfitPlusKas={() =>
-              applyValues(
-                splitForBranch(b, b.operatingProfit + (b.kasLastMonth ?? 0))
-              )
-            }
+            onFillFull={() => {
+              const ent = liveEntitlement[b.branch] ?? {};
+              const values: Record<string, number> = {};
+              for (const r of b.rows)
+                values[r.recipientId] = Math.max(0, (ent[r.recipientId] ?? 0) + r.arrearsBefore);
+              applyValues(values);
+            }}
             onClear={() =>
               applyValues(
                 Object.fromEntries(b.rows.map((r) => [r.recipientId, 0]))
@@ -363,8 +471,11 @@ export function DividendConsoleClient({
         <p className="mt-2 text-[11px] text-muted-foreground">
           Nilai ini jadi bagi hasil riil yang memengaruhi BEP investor.{" "}
           <strong>Tidak masuk ke ledger</strong> — Dividend di P&L tetap dari
-          rekening koran. Menyimpan ulang menimpa nominal & tanggal transfer
-          bulan ini.
+          rekening koran. Menyimpan ulang menimpa nominal transfer bulan ini
+          (tanggal transfer tidak ikut tertimpa bila sudah ada sebelumnya).
+          Nominal transfer yang lebih kecil dari hak + tunggakan otomatis
+          tercatat sebagai tunggakan baru dan terbawa ke bulan berikutnya —
+          milik penerima itu sendiri, tidak pernah ke penerima lain.
         </p>
       </div>
 
@@ -382,15 +493,17 @@ function Stat({
 }: {
   label: string;
   value: string;
-  tone?: "fg" | "muted" | "neg";
+  tone?: "fg" | "muted" | "neg" | "amber";
   strong?: boolean;
 }) {
   const toneCls =
     tone === "neg"
       ? "text-destructive"
-      : tone === "muted"
-        ? "text-muted-foreground"
-        : "text-foreground";
+      : tone === "amber"
+        ? "text-amber-600"
+        : tone === "muted"
+          ? "text-muted-foreground"
+          : "text-foreground";
   return (
     <div className="flex justify-between">
       <dt className="text-muted-foreground">{label}</dt>
@@ -404,50 +517,69 @@ function Stat({
 // ── Branch allocation table ────────────────────────────────────────────
 function BranchAllocationTable({
   branch,
-  sum,
   amounts,
   setAmount,
+  declaredPool,
+  onPoolChange,
+  liveEntitlement,
   onFillOpProfit,
-  onFillOpProfitPlusKas,
+  onFillFull,
   onClear,
 }: {
   branch: ConsoleBranch;
-  sum: number;
   amounts: Record<string, number>;
   setAmount: (id: string, v: number) => void;
+  declaredPool: number | null;
+  onPoolChange: (v: number | null) => void;
+  liveEntitlement: Record<string, number>;
   onFillOpProfit: () => void;
-  onFillOpProfitPlusKas: () => void;
+  onFillFull: () => void;
   onClear: () => void;
 }) {
+  const sum = branch.rows.reduce((s, r) => s + (amounts[r.recipientId] ?? 0), 0);
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-border">
-        <span className="text-sm font-bold text-foreground">{branch.branch}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-foreground">{branch.branch}</span>
+          <label className="flex items-center gap-1.5">
+            <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              Pool
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={declaredPool == null ? "" : formatIDR(declaredPool)}
+              onChange={(e) => onPoolChange(parsePoolInput(e.target.value))}
+              placeholder="belum dideklarasikan"
+              className="w-40 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground placeholder:text-[11px] placeholder:font-sans"
+            />
+          </label>
+        </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={onFillOpProfit}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
-            title={`Bagi ${formatRp(Math.max(0, branch.operatingProfit))} sesuai rumus`}
+            title={`Set pool = op profit (${formatRp(Math.max(0, branch.operatingProfit))})`}
           >
-            <Calculator size={12} /> Op profit
+            <Calculator size={12} /> Isi dari op profit
           </button>
           <button
             type="button"
-            onClick={onFillOpProfitPlusKas}
-            className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
-            title={`Bagi ${formatRp(
-              Math.max(0, branch.operatingProfit + (branch.kasLastMonth ?? 0))
-            )} (op profit + sisa Kas lalu)`}
+            onClick={onFillFull}
+            disabled={declaredPool == null}
+            className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:opacity-40 disabled:pointer-events-none"
+            title="Isi nominal transfer = hak bulan ini + tunggakan, untuk semua penerima"
           >
-            <Calculator size={12} /> Op profit + Kas
+            <HandCoins size={12} /> Bayar penuh
           </button>
           <button
             type="button"
             onClick={onClear}
             className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted"
           >
-            <Eraser size={12} /> Kosongkan
+            <Eraser size={12} /> Kosongkan transfer
           </button>
         </div>
       </div>
@@ -457,99 +589,139 @@ function BranchAllocationTable({
         Rumus {branch.afterBep ? "setelah" : "sebelum"} BEP: Manajemen{" "}
         <strong className="text-foreground">{branch.mgmtPct}%</strong> · Investor{" "}
         <strong className="text-foreground">{100 - branch.mgmtPct}%</strong>{" "}
-        (dibagi per porsi modal)
+        (dibagi per porsi modal). Pool yang belum ditransfer penuh tetap di
+        Kas sebagai tunggakan milik penerimanya — bukan pool baru untuk
+        dibagi ulang.
       </div>
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
-            <th className="px-4 py-2 text-left font-semibold">Penerima</th>
-            <th className="px-4 py-2 text-right font-semibold">Porsi rumus</th>
-            <th className="px-4 py-2 text-right font-semibold">% dari pool</th>
-            <th className="px-4 py-2 text-right font-semibold">Nominal transfer</th>
-            <th className="px-4 py-2 text-right font-semibold">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {branch.rows.map((r) => {
-            const val = amounts[r.recipientId] ?? 0;
-            const ofPool = sum > 0 ? (val / sum) * 100 : null;
-            const invShare =
-              r.kind === "investor"
-                ? investorPoolSharePct(
-                    r.investIdr,
-                    r.poolPct,
-                    branch.totalInvestmentIdr
-                  )
-                : null;
-            return (
-              <tr key={r.recipientId} className="border-t border-border/60">
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">
-                      {r.investorName ?? r.label}
-                    </span>
-                    {r.investorName && r.investorName !== r.label && (
-                      <span className="text-[10.5px] text-muted-foreground">
-                        ({r.label})
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              <th className="px-4 py-2 text-left font-semibold">Penerima</th>
+              <th className="px-4 py-2 text-right font-semibold">Porsi rumus</th>
+              <th className="px-4 py-2 text-right font-semibold">Hak bulan ini</th>
+              <th className="px-4 py-2 text-right font-semibold">Tunggakan</th>
+              <th className="px-4 py-2 text-right font-semibold">Total hak</th>
+              <th className="px-4 py-2 text-right font-semibold">Nominal transfer</th>
+              <th className="px-4 py-2 text-right font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {branch.rows.map((r) => {
+              const val = amounts[r.recipientId] ?? 0;
+              const entitlement = liveEntitlement[r.recipientId] ?? null;
+              const totalHak =
+                entitlement != null ? entitlement + r.arrearsBefore : null;
+              const invShare =
+                r.kind === "investor"
+                  ? investorPoolSharePct(
+                      r.investIdr,
+                      r.poolPct,
+                      branch.totalInvestmentIdr
+                    )
+                  : null;
+              return (
+                <tr key={r.recipientId} className="border-t border-border/60">
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">
+                        {r.investorName ?? r.label}
+                      </span>
+                      {r.investorName && r.investorName !== r.label && (
+                        <span className="text-[10.5px] text-muted-foreground">
+                          ({r.label})
+                        </span>
+                      )}
+                      {r.kind === "investor" && !r.contractId && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                          <Link2Off size={11} /> belum tersambung
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-[12px] text-muted-foreground whitespace-nowrap">
+                    {r.kind === "management"
+                      ? `${branch.mgmtPct}% pool`
+                      : invShare != null
+                        ? `${fmtPct(invShare)}% pool investor`
+                        : "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-[12.5px] text-foreground">
+                    {entitlement == null ? "—" : formatRp(entitlement)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-[12.5px]">
+                    {r.arrearsBefore === 0 ? (
+                      <span className="text-muted-foreground/60">—</span>
+                    ) : r.arrearsBefore > 0 ? (
+                      <span className="text-amber-600">{formatRp(r.arrearsBefore)}</span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Lebih bayar {formatRp(Math.abs(r.arrearsBefore))}
                       </span>
                     )}
-                    {r.kind === "investor" && !r.contractId && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                        <Link2Off size={11} /> belum tersambung
-                      </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-[12.5px] font-semibold text-foreground">
+                    {totalHak == null ? "—" : formatRp(totalHak)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatIDR(val)}
+                      onChange={(e) =>
+                        setAmount(r.recipientId, parseAmount(e.target.value))
+                      }
+                      className="w-32 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground"
+                    />
+                    {totalHak != null && val !== totalHak && (
+                      <div className="mt-0.5 text-right text-[10.5px] text-muted-foreground">
+                        {val < totalHak
+                          ? `kurang ${formatRp(totalHak - val)}`
+                          : `lebih ${formatRp(val - totalHak)}`}
+                      </div>
                     )}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5 text-right text-[12px] text-muted-foreground whitespace-nowrap">
-                  {r.kind === "management"
-                    ? `${branch.mgmtPct}% pool`
-                    : invShare != null
-                      ? `${fmtPct(invShare)}% pool investor`
-                      : "—"}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-[12px] text-muted-foreground">
-                  {ofPool == null ? "—" : `${fmtPct(ofPool)}%`}
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatIDR(val)}
-                    onChange={(e) =>
-                      setAmount(r.recipientId, parseAmount(e.target.value))
-                    }
-                    className="w-32 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground"
-                  />
-                </td>
-                <td className="px-4 py-2.5 text-right text-[11.5px]">
-                  {r.payout ? (
-                    <span className="inline-flex items-center gap-1 text-emerald-600">
-                      <Check size={13} />
-                      {r.payout.paidAt ? formatDateID(r.payout.paidAt) : "tersinkron"}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground/60">—</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-        <tfoot>
-          <tr className="border-t border-border bg-muted/30 font-semibold">
-            <td className="px-4 py-2.5">Pool dividen (transfer)</td>
-            <td className="px-4 py-2.5" />
-            <td className="px-4 py-2.5 text-right font-mono tabular-nums text-muted-foreground">
-              {sum > 0 ? "100%" : "—"}
-            </td>
-            <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-              {formatRp(sum)}
-            </td>
-            <td className="px-4 py-2.5" />
-          </tr>
-        </tfoot>
-      </table>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-[11.5px]">
+                    {r.payout ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600">
+                        <Check size={13} />
+                        {r.payout.paidAt ? formatDateID(r.payout.paidAt) : "tersinkron"}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-border bg-muted/30 font-semibold">
+              <td className="px-4 py-2.5">Total</td>
+              <td className="px-4 py-2.5" />
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                {branch.declaredPool == null && declaredPool == null
+                  ? "—"
+                  : formatRp(
+                      branch.rows.reduce(
+                        (s, r) => s + (liveEntitlement[r.recipientId] ?? 0),
+                        0
+                      )
+                    )}
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                {formatRp(branch.arrearsBefore)}
+              </td>
+              <td className="px-4 py-2.5" />
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                {formatRp(sum)}
+              </td>
+              <td className="px-4 py-2.5" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   );
 }
@@ -567,21 +739,24 @@ function InvestorCrossBranchTable({
 
   const grand = data.investors.reduce(
     (acc, inv) => {
-      const due = inv.slices.reduce(
-        (s, sl) => s + liveSliceDue(sl.recipientId, sl.dueThisMonth),
+      const transferred = inv.slices.reduce(
+        (s, sl) => s + liveSliceDue(sl.recipientId, sl.transferredThisMonth),
         0
       );
-      acc.due += due;
+      acc.transferred += transferred;
+      acc.arrears += inv.totalArrears;
       acc.cum += inv.totalCumulative;
       return acc;
     },
-    { due: 0, cum: 0 }
+    { transferred: 0, arrears: 0, cum: 0 }
   );
   // Slot investor yang belum tersambung kontrak ikut masuk grand total.
   for (const u of data.unlinkedRecipients) {
-    grand.due += amounts[u.recipientId] ?? u.due;
+    grand.transferred += amounts[u.recipientId] ?? u.due;
+    grand.arrears += u.arrearsBefore;
     grand.cum += u.cumulative;
   }
+  const mgmtArrears = data.management.slices.reduce((s, sl) => s + sl.arrearsBefore, 0);
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -593,96 +768,107 @@ function InvestorCrossBranchTable({
           satu baris per investor; sub-baris per cabang
         </span>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
-            <th className="px-4 py-2 text-left font-semibold">Investor</th>
-            <th className="px-4 py-2 text-left font-semibold">Cabang</th>
-            <th className="px-4 py-2 text-right font-semibold">Due bulan ini</th>
-            <th className="px-4 py-2 text-right font-semibold">Kumulatif</th>
-            <th className="px-4 py-2 text-right font-semibold">BEP</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.management && (data.management.totalCumulative > 0 ||
-            data.management.totalDue > 0) && (
-            <FragmentInvestor
-              name="Manajemen"
-              multiBranch
-              liveDue={data.management.slices.reduce(
-                (s, sl) => s + liveSliceDue(sl.recipientId, sl.due),
-                0
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              <th className="px-4 py-2 text-left font-semibold">Investor</th>
+              <th className="px-4 py-2 text-left font-semibold">Cabang</th>
+              <th className="px-4 py-2 text-right font-semibold">Tunggakan</th>
+              <th className="px-4 py-2 text-right font-semibold">Ditransfer</th>
+              <th className="px-4 py-2 text-right font-semibold">Kumulatif</th>
+              <th className="px-4 py-2 text-right font-semibold">BEP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.management &&
+              (data.management.totalCumulative > 0 || data.management.totalDue > 0 || mgmtArrears !== 0) && (
+                <FragmentInvestor
+                  name="Manajemen"
+                  multiBranch
+                  liveTransferred={data.management.slices.reduce(
+                    (s, sl) => s + liveSliceDue(sl.recipientId, sl.due),
+                    0
+                  )}
+                  totalArrears={mgmtArrears}
+                  totalCumulative={data.management.totalCumulative}
+                  totalBepTarget={0}
+                  totalBepPct={0}
+                  slices={data.management.slices.map((sl) => ({
+                    branch: sl.branch,
+                    bankName: null,
+                    rekeningNumber: null,
+                    permanent: false,
+                    transferred: liveSliceDue(sl.recipientId, sl.due),
+                    arrearsBefore: sl.arrearsBefore,
+                    cumulativePayout: sl.cumulative,
+                    bepTargetIdr: 0,
+                    bepPct: 0,
+                  }))}
+                />
               )}
-              totalCumulative={data.management.totalCumulative}
-              totalBepTarget={0}
-              totalBepPct={0}
-              slices={data.management.slices.map((sl) => ({
-                branch: sl.branch,
-                bankName: null,
-                rekeningNumber: null,
-                permanent: false,
-                due: liveSliceDue(sl.recipientId, sl.due),
-                cumulativePayout: sl.cumulative,
-                bepTargetIdr: 0,
-                bepPct: 0,
-              }))}
-            />
-          )}
-          {data.investors.map((inv) => {
-            const liveDue = inv.slices.reduce(
-              (s, sl) => s + liveSliceDue(sl.recipientId, sl.dueThisMonth),
-              0
-            );
-            return (
-              <FragmentInvestor
-                key={inv.userId}
-                name={inv.name}
-                multiBranch={inv.multiBranch}
-                liveDue={liveDue}
-                totalCumulative={inv.totalCumulative}
-                totalBepTarget={inv.totalBepTarget}
-                totalBepPct={inv.totalBepPct}
-                slices={inv.slices.map((sl) => ({
-                  branch: sl.branch,
-                  bankName: sl.bankName,
-                  rekeningNumber: sl.rekeningNumber,
-                  permanent: sl.permanent,
-                  due: liveSliceDue(sl.recipientId, sl.dueThisMonth),
-                  cumulativePayout: sl.cumulativePayout,
-                  bepTargetIdr: sl.bepTargetIdr,
-                  bepPct: sl.bepPct,
+            {data.investors.map((inv) => {
+              const liveTransferred = inv.slices.reduce(
+                (s, sl) => s + liveSliceDue(sl.recipientId, sl.transferredThisMonth),
+                0
+              );
+              return (
+                <FragmentInvestor
+                  key={inv.userId}
+                  name={inv.name}
+                  multiBranch={inv.multiBranch}
+                  liveTransferred={liveTransferred}
+                  totalArrears={inv.totalArrears}
+                  totalCumulative={inv.totalCumulative}
+                  totalBepTarget={inv.totalBepTarget}
+                  totalBepPct={inv.totalBepPct}
+                  slices={inv.slices.map((sl) => ({
+                    branch: sl.branch,
+                    bankName: sl.bankName,
+                    rekeningNumber: sl.rekeningNumber,
+                    permanent: sl.permanent,
+                    transferred: liveSliceDue(sl.recipientId, sl.transferredThisMonth),
+                    arrearsBefore: sl.arrearsBefore,
+                    cumulativePayout: sl.cumulativePayout,
+                    bepTargetIdr: sl.bepTargetIdr,
+                    bepPct: sl.bepPct,
+                  }))}
+                />
+              );
+            })}
+            {groupUnlinked(data.unlinkedRecipients).map((g) => (
+              <FragmentUnlinked
+                key={g.key}
+                name={g.name}
+                items={g.items.map((u) => ({
+                  recipientId: u.recipientId,
+                  branch: u.branch,
+                  transferred: amounts[u.recipientId] ?? u.due,
+                  arrearsBefore: u.arrearsBefore,
+                  cumulative: u.cumulative,
                 }))}
               />
-            );
-          })}
-          {groupUnlinked(data.unlinkedRecipients).map((g) => (
-            <FragmentUnlinked
-              key={g.key}
-              name={g.name}
-              items={g.items.map((u) => ({
-                recipientId: u.recipientId,
-                branch: u.branch,
-                due: amounts[u.recipientId] ?? u.due,
-                cumulative: u.cumulative,
-              }))}
-            />
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-border bg-muted/40 font-semibold">
-            <td className="px-4 py-2.5" colSpan={2}>
-              Total semua investor
-            </td>
-            <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-              {formatRp(grand.due)}
-            </td>
-            <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-              {formatRp(grand.cum)}
-            </td>
-            <td className="px-4 py-2.5" />
-          </tr>
-        </tfoot>
-      </table>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-border bg-muted/40 font-semibold">
+              <td className="px-4 py-2.5" colSpan={2}>
+                Total semua investor
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                {formatRp(grand.arrears)}
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                {formatRp(grand.transferred)}
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                {formatRp(grand.cum)}
+              </td>
+              <td className="px-4 py-2.5" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
       {data.unlinkedRecipients.length > 0 && (
         <div className="border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground">
@@ -698,7 +884,8 @@ function InvestorCrossBranchTable({
 function FragmentInvestor({
   name,
   multiBranch,
-  liveDue,
+  liveTransferred,
+  totalArrears,
   totalCumulative,
   totalBepTarget,
   totalBepPct,
@@ -706,7 +893,8 @@ function FragmentInvestor({
 }: {
   name: string;
   multiBranch: boolean;
-  liveDue: number;
+  liveTransferred: number;
+  totalArrears: number;
   totalCumulative: number;
   totalBepTarget: number;
   totalBepPct: number;
@@ -715,7 +903,8 @@ function FragmentInvestor({
     bankName: string | null;
     rekeningNumber: string | null;
     permanent: boolean;
-    due: number;
+    transferred: number;
+    arrearsBefore: number;
     cumulativePayout: number;
     bepTargetIdr: number;
     bepPct: number;
@@ -744,7 +933,18 @@ function FragmentInvestor({
           {multiBranch ? "—" : slices[0]?.branch ?? "—"}
         </td>
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
-          {formatRp(liveDue)}
+          {totalArrears === 0 ? (
+            <span className="text-muted-foreground/60 font-normal">—</span>
+          ) : totalArrears > 0 ? (
+            <span className="text-amber-600">{formatRp(totalArrears)}</span>
+          ) : (
+            <span className="text-muted-foreground font-normal">
+              Lebih {formatRp(Math.abs(totalArrears))}
+            </span>
+          )}
+        </td>
+        <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
+          {formatRp(liveTransferred)}
         </td>
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
           {formatRp(totalCumulative)}
@@ -770,7 +970,16 @@ function FragmentInvestor({
               )}
             </td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
-              {formatRp(sl.due)}
+              {sl.arrearsBefore === 0 ? (
+                <span className="text-muted-foreground/60">—</span>
+              ) : sl.arrearsBefore > 0 ? (
+                <span className="text-amber-600">{formatRp(sl.arrearsBefore)}</span>
+              ) : (
+                formatRp(sl.arrearsBefore)
+              )}
+            </td>
+            <td className="px-4 py-1.5 text-right font-mono tabular-nums">
+              {formatRp(sl.transferred)}
             </td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
               {formatRp(sl.cumulativePayout)}
@@ -817,12 +1026,14 @@ function FragmentUnlinked({
   items: Array<{
     recipientId: string;
     branch: string;
-    due: number;
+    transferred: number;
+    arrearsBefore: number;
     cumulative: number;
   }>;
 }) {
   const multi = items.length > 1;
-  const totalDue = items.reduce((s, x) => s + x.due, 0);
+  const totalTransferred = items.reduce((s, x) => s + x.transferred, 0);
+  const totalArrears = items.reduce((s, x) => s + x.arrearsBefore, 0);
   const totalCum = items.reduce((s, x) => s + x.cumulative, 0);
   return (
     <>
@@ -844,7 +1055,14 @@ function FragmentUnlinked({
           {multi ? "—" : items[0]?.branch ?? "—"}
         </td>
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
-          {formatRp(totalDue)}
+          {totalArrears === 0 ? (
+            <span className="text-muted-foreground/60 font-normal">—</span>
+          ) : (
+            formatRp(totalArrears)
+          )}
+        </td>
+        <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
+          {formatRp(totalTransferred)}
         </td>
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
           {totalCum > 0 ? formatRp(totalCum) : "—"}
@@ -862,7 +1080,14 @@ function FragmentUnlinked({
             <td className="px-4 py-1.5 pl-8 text-muted-foreground">↳</td>
             <td className="px-4 py-1.5 text-muted-foreground">{it.branch}</td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
-              {formatRp(it.due)}
+              {it.arrearsBefore === 0 ? (
+                <span className="text-muted-foreground/60">—</span>
+              ) : (
+                formatRp(it.arrearsBefore)
+              )}
+            </td>
+            <td className="px-4 py-1.5 text-right font-mono tabular-nums">
+              {formatRp(it.transferred)}
             </td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
               {it.cumulative > 0 ? formatRp(it.cumulative) : "—"}

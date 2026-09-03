@@ -8,7 +8,13 @@ import { fetchYeoboPnL } from "@/lib/cashflow/pnl-yeobo";
 import {
   cumulativeDividendPool,
   investorPoolFracBeforeBep,
+  computeRecipientAmounts,
+  type DivRecipient,
 } from "@/lib/investor/dividend-allocation";
+import {
+  branchInvestorRecoupBefore,
+  resolveBranchAfterBep,
+} from "@/lib/investor/dividend-bep";
 import {
   listDividendRecipients,
   getDividendBranchConfig,
@@ -59,6 +65,12 @@ export interface ConsoleRecipientRow {
   contractId: string | null;
   /** Nominal allocation tersimpan (yeobo_dividend_allocations), bila ada. */
   savedAllocation: number | null;
+  /** Hak (entitlement) bulan terpilih, dibekukan saat deklarasi pool.
+   *  null = bulan ini belum dideklarasikan sama sekali. */
+  entitlementThisMonth: number | null;
+  /** Σ(entitlement − amount) periode SEBELUM bulan terpilih. Positif =
+   *  masih ditahan (tunggakan), negatif = lebih bayar (kredit). */
+  arrearsBefore: number;
   /** Baris investor_payouts bulan ini (bila sudah tersinkron). */
   payout: { amountIdr: number; paidAt: string | null; ref: string | null } | null;
   /** Placeholder investor (belum tersambung): nama + token (utk grouping). */
@@ -80,6 +92,14 @@ export interface ConsoleBranch {
   /** Akumulasi bagi hasil investor yang sudah ditransfer (s/d bulan ini). */
   investorRecouped: number;
   savedExists: boolean;
+  /** Σ entitlement bulan terpilih (= pool yang dideklarasikan admin).
+   *  null = belum dideklarasikan. Eksak (management = residual). */
+  declaredPool: number | null;
+  /** Σ tunggakan seluruh penerima cabang ini, SEBELUM bulan terpilih. */
+  arrearsBefore: number;
+  /** Flag after_bep yang tersimpan pada baris bulan terpilih (beku), bila
+   *  ada — dipakai UI untuk menampilkan rumus yang benar-benar berlaku. */
+  savedAfterBep: boolean | null;
   rows: ConsoleRecipientRow[];
 }
 
@@ -87,7 +107,12 @@ export interface ConsoleInvestorSlice {
   contractId: string;
   branch: string | null;
   recipientId: string | null;
-  dueThisMonth: number;
+  /** Yang BENAR-BENAR ditransfer bulan ini (sebelumnya bernama
+   *  `dueThisMonth` — nama itu keliru, ini bukan "yang harus dibayar",
+   *  ini "yang disimpan sebagai transfer"). */
+  transferredThisMonth: number;
+  entitlementThisMonth: number;
+  arrearsBefore: number;
   cumulativePayout: number;
   bepTargetIdr: number;
   bepPct: number;
@@ -100,7 +125,9 @@ export interface ConsoleInvestor {
   userId: string;
   name: string;
   slices: ConsoleInvestorSlice[];
-  totalDue: number;
+  totalTransferred: number;
+  totalEntitlement: number;
+  totalArrears: number;
   totalCumulative: number;
   totalBepTarget: number;
   totalBepPct: number;
@@ -112,6 +139,8 @@ export interface ConsoleUnlinkedRecipient {
   label: string;
   branch: string;
   due: number;
+  entitlementThisMonth: number;
+  arrearsBefore: number;
   /** Akumulasi alokasi dividen slot ini s/d bulan terpilih (histori). */
   cumulative: number;
   /** Identitas placeholder (bila di-set) → dipakai menggabungkan slot 1 orang
@@ -141,12 +170,22 @@ export interface ConsoleManagementSlice {
   branch: string;
   recipientId: string | null;
   due: number;
+  entitlementThisMonth: number;
+  arrearsBefore: number;
   cumulative: number;
 }
 export interface ConsoleManagement {
   slices: ConsoleManagementSlice[];
   totalDue: number;
   totalCumulative: number;
+}
+
+/** Tunggakan milik recipient yang sudah tidak ada di roster aktif (kontrak
+ *  dihapus / slot dinonaktifkan) — tidak boleh hilang diam-diam. */
+export interface OrphanArrears {
+  recipientId: string;
+  label: string;
+  arrears: number;
 }
 
 export interface DividendConsoleData {
@@ -157,6 +196,7 @@ export interface DividendConsoleData {
   management: ConsoleManagement;
   unlinkedRecipients: ConsoleUnlinkedRecipient[];
   history: ConsolePeriodHistory[];
+  orphanArrears: OrphanArrears[];
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -188,32 +228,48 @@ export async function getDividendConsoleData(input: {
     { year, month }
   );
 
-  const [recipientLists, configs, contractsRes] = await Promise.all([
+  const [recipientLists, configs, contractsRes, physicalRecipients] = await Promise.all([
     Promise.all(PHYSICAL_BRANCHES.map((b) => listDividendRecipients(b))),
     Promise.all(PHYSICAL_BRANCHES.map((b) => getDividendBranchConfig(b))),
     listInvestorContracts({ businessUnit: "Yeobo Space" }),
+    client
+      .from("yeobo_dividend_recipients")
+      .select("id, branch, label")
+      .in("branch", PHYSICAL_BRANCHES as unknown as string[])
+      .then((r: any) => (r.data ?? []) as Array<{ id: string; branch: string; label: string }>),
   ]);
   const contracts = contractsRes.ok ? contractsRes.data ?? [] : [];
 
-  // recipientId → branch (semua cabang).
+  // recipientId → branch, dari TABEL FISIK (bukan view yeobo_dividend_recipients_v).
+  // Alasan: allocation.recipient_id ber-FK ke tabel fisik dengan ON DELETE
+  // CASCADE, jadi ini satu-satunya sumber yang dijamin mencakup SEMUA baris
+  // alokasi yang mungkin ada — termasuk recipient yang non-aktif atau yang
+  // baris kontraknya sudah lepas (contract_id di-SET NULL, bukan dihapus).
+  // Memetakan dari view (yang derivasinya lewat kontrak) pernah membuat Kas
+  // roll-forward kurang mengurangi transferred cabang tsb secara permanen &
+  // tanpa peringatan begitu sebuah kontrak dihapus.
   const recipientBranch = new Map<string, string>();
-  PHYSICAL_BRANCHES.forEach((b, i) =>
-    recipientLists[i].forEach((r) => recipientBranch.set(r.id, b))
-  );
+  const recipientLabelById = new Map<string, string>();
+  for (const r of physicalRecipients) {
+    recipientBranch.set(r.id, r.branch);
+    recipientLabelById.set(r.id, r.label);
+  }
   const allRecipientIds = [...recipientBranch.keys()];
 
   // Semua allocation (untuk savedAllocation bulan ini + transferred per bulan
-  // utk running Kas).
+  // utk running Kas + entitlement/tunggakan).
   let allAllocs: Array<{
     recipient_id: string;
     period_year: number;
     period_month: number;
     amount_idr: number | string;
+    entitlement_idr: number | string;
+    after_bep: boolean;
   }> = [];
   if (allRecipientIds.length > 0) {
     const { data } = await client
       .from("yeobo_dividend_allocations")
-      .select("recipient_id, period_year, period_month, amount_idr")
+      .select("recipient_id, period_year, period_month, amount_idr, entitlement_idr, after_bep")
       .in("recipient_id", allRecipientIds);
     allAllocs = (data ?? []) as any[];
   }
@@ -223,21 +279,36 @@ export async function getDividendConsoleData(input: {
   const savedAllocMap = new Map<string, number>(); // recipientId → amount (bulan terpilih)
   // recipientId → Σ alokasi s/d bulan terpilih (histori kumulatif per slot).
   const cumAllocByRecipient = new Map<string, number>();
+  // recipientId → hak (entitlement) bulan terpilih.
+  const entThisMonthByRecipient = new Map<string, number>();
+  // recipientId → Σ(entitlement − amount) periode SEBELUM bulan terpilih.
+  const arrearsBeforeByRecipient = new Map<string, number>();
+  // recipientId → after_bep tersimpan pada baris bulan terpilih (beku).
+  const savedAfterBepByRecipient = new Map<string, boolean>();
   for (const a of allAllocs) {
     const branch = recipientBranch.get(a.recipient_id);
     if (!branch) continue;
     const r = ymRank(a.period_year, a.period_month);
     const amt = Number(a.amount_idr);
+    const ent = Number(a.entitlement_idr);
     transferredByBranchRank.set(
       `${branch}|${r}`,
       (transferredByBranchRank.get(`${branch}|${r}`) ?? 0) + amt
     );
-    if (a.period_year === year && a.period_month === month)
+    if (a.period_year === year && a.period_month === month) {
       savedAllocMap.set(a.recipient_id, amt);
+      entThisMonthByRecipient.set(a.recipient_id, ent);
+      savedAfterBepByRecipient.set(a.recipient_id, a.after_bep);
+    }
     if (r <= selRank)
       cumAllocByRecipient.set(
         a.recipient_id,
         (cumAllocByRecipient.get(a.recipient_id) ?? 0) + amt
+      );
+    if (r < selRank)
+      arrearsBeforeByRecipient.set(
+        a.recipient_id,
+        (arrearsBeforeByRecipient.get(a.recipient_id) ?? 0) + (ent - amt)
       );
   }
 
@@ -347,11 +418,6 @@ export async function getDividendConsoleData(input: {
     );
     totalInvestByBranch.set(branch, configs[i].totalInvestmentIdr);
   });
-  const prevRankOf = (r: number) => {
-    const y = Math.floor(r / 100);
-    const m = r % 100;
-    return m === 1 ? (y - 1) * 100 + 12 : y * 100 + (m - 1);
-  };
   const branchRecoupThrough = (branch: string): number => {
     if (selRank <= APR_2026_RANK)
       return Math.round(
@@ -362,18 +428,22 @@ export async function getDividendConsoleData(input: {
       (oldBaselineThruApr.get(branch) ?? 0) + (realBranchThrough.get(branch) ?? 0)
     );
   };
-  const branchRecoupBefore = (branch: string): number => {
-    if (selRank <= APR_2026_RANK) {
-      const pr = prevRankOf(selRank);
-      return Math.round(
-        (oldFrac.get(branch) ?? 0) *
-          cumulativeDividendPool(report, branch, Math.floor(pr / 100), pr % 100)
-      );
-    }
-    return (
-      (oldBaselineThruApr.get(branch) ?? 0) + (realBranchBefore.get(branch) ?? 0)
-    );
-  };
+  const configByBranch = new Map<string, (typeof configs)[number]>(
+    PHYSICAL_BRANCHES.map((b, i) => [b, configs[i]])
+  );
+  // Dipakai bersama jalur tulis (saveDividendConsoleMonth) lewat
+  // src/lib/investor/dividend-bep.ts — satu implementasi, dua pemanggil,
+  // supaya afterBep (yang sekarang menentukan entitlement beku) tidak
+  // pernah berbeda antara yang ditampilkan dan yang tersimpan.
+  const branchRecoupBefore = (branch: string): number =>
+    branchInvestorRecoupBefore({
+      report,
+      branch,
+      config: configByBranch.get(branch)!,
+      year,
+      month,
+      realPayoutsBefore: realBranchBefore.get(branch) ?? 0,
+    });
 
   // ── Build branch DTOs ──
   const branches: ConsoleBranch[] = PHYSICAL_BRANCHES.map((branch, i) => {
@@ -383,21 +453,35 @@ export async function getDividendConsoleData(input: {
     const cumBefore = branchRecoupBefore(branch);
     const cumThrough = branchRecoupThrough(branch);
 
-    // afterBep dari dividen tertransfer (investor_payouts): override manual
-    // menang; selain itu kumulatif payout investor SEBELUM bulan ini ≥ modal.
-    let afterBep = false;
-    if (config.bepReachedYm) {
-      afterBep =
-        `${year}-${String(month).padStart(2, "0")}` >= config.bepReachedYm;
-    } else if (config.totalInvestmentIdr && config.totalInvestmentIdr > 0) {
-      afterBep = cumBefore >= config.totalInvestmentIdr;
-    }
+    // afterBep: pakai flag yang sudah DIBEKUKAN pada bulan terpilih bila
+    // bulan itu sudah didekelarasikan (menyimpan ulang tidak boleh diam-diam
+    // membalik 35%↔50% dan menggeser entitlement/tunggakan yang sudah
+    // dibayar). Kalau belum pernah dideklarasikan, hitung dari rumus —
+    // via helper yang SAMA dengan yang dipakai saveDividendConsoleMonth.
+    const anyRecipientSavedThisMonth = recips.some((r) => savedAfterBepByRecipient.has(r.id));
+    const afterBep = anyRecipientSavedThisMonth
+      ? (savedAfterBepByRecipient.get(recips[0]?.id ?? "") ?? false)
+      : resolveBranchAfterBep({
+          config,
+          year,
+          month,
+          cumulativeInvestorRecoupBefore: cumBefore,
+        });
     const mgmtPct = afterBep ? config.mgmtPctAfterBep : config.mgmtPctBeforeBep;
 
+    let declaredPool: number | null = null;
+    let branchArrearsBefore = 0;
     const rows: ConsoleRecipientRow[] = recips.map((r) => {
       const pRow = r.contractId
         ? thisMonthPayoutByContract.get(r.contractId)
         : undefined;
+      const entitlementThisMonth = entThisMonthByRecipient.has(r.id)
+        ? (entThisMonthByRecipient.get(r.id) as number)
+        : null;
+      if (entitlementThisMonth != null)
+        declaredPool = (declaredPool ?? 0) + entitlementThisMonth;
+      const arrearsBefore = arrearsBeforeByRecipient.get(r.id) ?? 0;
+      branchArrearsBefore += arrearsBefore;
       return {
         recipientId: r.id,
         label: r.label,
@@ -411,6 +495,8 @@ export async function getDividendConsoleData(input: {
         savedAllocation: savedAllocMap.has(r.id)
           ? (savedAllocMap.get(r.id) as number)
           : null,
+        entitlementThisMonth,
+        arrearsBefore,
         payout: pRow
           ? {
               amountIdr: Number(pRow.amount_idr),
@@ -434,9 +520,28 @@ export async function getDividendConsoleData(input: {
       totalInvestmentIdr: config.totalInvestmentIdr,
       investorRecouped: cumThrough,
       savedExists: recips.some((r) => savedAllocMap.has(r.id)),
+      declaredPool,
+      arrearsBefore: branchArrearsBefore,
+      savedAfterBep: anyRecipientSavedThisMonth
+        ? savedAfterBepByRecipient.get(recips[0]?.id ?? "") ?? null
+        : null,
       rows,
     };
   });
+
+  // ── Tunggakan milik recipient yang tidak lagi ada di roster aktif ──
+  const activeRecipientIds = new Set<string>();
+  for (const b of branches) for (const r of b.rows) activeRecipientIds.add(r.recipientId);
+  const orphanArrears: OrphanArrears[] = [];
+  for (const [recipientId, arrears] of arrearsBeforeByRecipient) {
+    if (arrears === 0) continue;
+    if (activeRecipientIds.has(recipientId)) continue;
+    orphanArrears.push({
+      recipientId,
+      label: recipientLabelById.get(recipientId) ?? recipientId,
+      arrears,
+    });
+  }
 
   // Recipient investor → kontrak, untuk men-attach due ke slice kontrak.
   const recipientByContract = new Map<string, ConsoleRecipientRow>();
@@ -480,14 +585,16 @@ export async function getDividendConsoleData(input: {
   const investorMap = new Map<string, ConsoleInvestor>();
   for (const c of contracts) {
     const rec = recipientByContract.get(c.id) ?? null;
-    const due = rec ? rec.savedAllocation ?? 0 : 0;
+    const transferred = rec ? rec.savedAllocation ?? 0 : 0;
     const cumulative = cumByContract.get(c.id) ?? 0;
     const bepTarget = c.bepTargetIdr;
     const slice: ConsoleInvestorSlice = {
       contractId: c.id,
       branch: c.branch,
       recipientId: rec?.recipientId ?? null,
-      dueThisMonth: due,
+      transferredThisMonth: transferred,
+      entitlementThisMonth: rec?.entitlementThisMonth ?? 0,
+      arrearsBefore: rec?.arrearsBefore ?? 0,
       cumulativePayout: cumulative,
       bepTargetIdr: bepTarget,
       // Angka apa adanya (boleh > 100% bila kumulatif melampaui target BEP);
@@ -503,7 +610,9 @@ export async function getDividendConsoleData(input: {
         userId: c.userId,
         name: nameByUser.get(c.userId) ?? "Investor",
         slices: [],
-        totalDue: 0,
+        totalTransferred: 0,
+        totalEntitlement: 0,
+        totalArrears: 0,
         totalCumulative: 0,
         totalBepTarget: 0,
         totalBepPct: 0,
@@ -514,7 +623,9 @@ export async function getDividendConsoleData(input: {
     inv.slices.push(slice);
   }
   const investors = [...investorMap.values()].map((inv) => {
-    const totalDue = inv.slices.reduce((s, x) => s + x.dueThisMonth, 0);
+    const totalTransferred = inv.slices.reduce((s, x) => s + x.transferredThisMonth, 0);
+    const totalEntitlement = inv.slices.reduce((s, x) => s + x.entitlementThisMonth, 0);
+    const totalArrears = inv.slices.reduce((s, x) => s + x.arrearsBefore, 0);
     const totalCumulative = inv.slices.reduce(
       (s, x) => s + x.cumulativePayout,
       0
@@ -523,7 +634,9 @@ export async function getDividendConsoleData(input: {
     return {
       ...inv,
       slices: orderSlices(inv.slices),
-      totalDue,
+      totalTransferred,
+      totalEntitlement,
+      totalArrears,
       totalCumulative,
       totalBepTarget,
       totalBepPct:
@@ -547,12 +660,27 @@ export async function getDividendConsoleData(input: {
         (s, r) => s + (savedAllocMap.get(r.id) ?? 0),
         0
       );
+      const entitlementThisMonth = mgmtRecs.reduce(
+        (s, r) => s + (entThisMonthByRecipient.get(r.id) ?? 0),
+        0
+      );
+      const arrearsBefore = mgmtRecs.reduce(
+        (s, r) => s + (arrearsBeforeByRecipient.get(r.id) ?? 0),
+        0
+      );
       const cumulative = Math.max(
         0,
         Math.round(cumulativeDividendPool(report, branch, year, month)) -
           branchRecoupThrough(branch)
       );
-      return { branch, recipientId: mgmtRecs[0]?.id ?? null, due, cumulative };
+      return {
+        branch,
+        recipientId: mgmtRecs[0]?.id ?? null,
+        due,
+        entitlementThisMonth,
+        arrearsBefore,
+        cumulative,
+      };
     }
   );
   const management: ConsoleManagement = {
@@ -571,6 +699,8 @@ export async function getDividendConsoleData(input: {
           label: r.label,
           branch: b.branch,
           due: r.savedAllocation ?? 0,
+          entitlementThisMonth: r.entitlementThisMonth ?? 0,
+          arrearsBefore: r.arrearsBefore,
           cumulative: cumAllocByRecipient.get(r.recipientId) ?? 0,
           placeholderName: r.placeholderName,
           claimToken: r.claimToken,
@@ -617,6 +747,7 @@ export async function getDividendConsoleData(input: {
       management,
       unlinkedRecipients,
       history,
+      orphanArrears,
     },
   };
 }
@@ -630,8 +761,22 @@ function orderSlices(slices: ConsoleInvestorSlice[]): ConsoleInvestorSlice[] {
 }
 
 // ── Save: catat dividen tertransfer (allocation snapshot + investor_payouts) ─
-// TIDAK menyentuh ledger (cashflow_transactions). Pool = Σ amount (keputusan
-// admin) — tanpa batasan harus = baris Dividend bank.
+// TIDAK menyentuh ledger (cashflow_transactions).
+//
+// MODEL (sejak migrasi 136 — tunggakan per-penerima):
+//   - `declaredPool` per cabang = keputusan admin "berapa besar pool bulan
+//     ini". Entitlement (hak) tiap penerima DIHITUNG DI SERVER dari angka
+//     ini — tidak pernah dikirim per-baris dari klien — supaya invarian
+//     Σ entitlement === declaredPool mustahil rusak oleh drift/tamper.
+//   - `amount_idr` (nominal transfer) tetap murni keputusan admin per
+//     baris, sama seperti sebelumnya.
+//   - `declaredPool == null` = admin belum mendeklarasikan apa-apa bulan
+//     ini; hanya sah untuk koreksi transfer pada baris yang SUDAH punya
+//     entitlement tersimpan (entitlement_idr tidak disentuh sama sekali).
+//   - Merevisi pool pada bulan yang SUDAH pernah dideklarasikan me-rescale
+//     entitlement lama secara proporsional (rasio antar penerima terjaga),
+//     BUKAN menghitung ulang dari roster — supaya penerima yang baru
+//     bergabung tidak disuntikkan ke bulan lampau (roster guard).
 export async function saveDividendConsoleMonth(input: {
   year: number;
   month: number;
@@ -639,9 +784,14 @@ export async function saveDividendConsoleMonth(input: {
   ref?: string | null;
   branches: Array<{
     branch: string;
+    /** null = tidak mendeklarasikan pool apa pun bulan ini (koreksi
+     *  transfer-only). Kalau ada baris dengan amount > 0, wajib diisi. */
+    declaredPool: number | null;
     rows: Array<{ recipientId: string; amount: number }>;
   }>;
-}): Promise<ActionResult<{ savedBranches: number; syncedPayouts: number }>> {
+}): Promise<
+  ActionResult<{ savedBranches: number; syncedPayouts: number; skippedRecipients: number }>
+> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const { year, month } = input;
@@ -655,9 +805,19 @@ export async function saveDividendConsoleMonth(input: {
   const refValue = input.ref?.trim() || "yeobo-dividend";
   const selRank = ymRank(year, month);
 
-  // Kumulatif payout investor SEBELUM bulan ini per cabang (utk after_bep snapshot).
+  // Report PnL dibatasi s/d Apr 2026 — HANYA dipakai saat sebuah cabang-bulan
+  // belum pernah dideklarasikan sama sekali (afterBep dihitung fresh, lewat
+  // helper yang SAMA dengan jalur baca — lihat src/lib/investor/dividend-bep.ts).
+  // Satu fetch, dipakai lintas cabang dalam satu panggilan save.
+  const report = await fetchYeoboPnL(
+    client,
+    { year: 2023, month: 1 },
+    { year: 2026, month: 4 }
+  );
+
   let savedBranches = 0;
   let syncedPayouts = 0;
+  let skippedRecipients = 0;
 
   for (const b of input.branches) {
     const recipients = (await listDividendRecipients(b.branch)).filter(
@@ -666,61 +826,226 @@ export async function saveDividendConsoleMonth(input: {
     const recById = new Map(recipients.map((r) => [r.id, r]));
     const config = await getDividendBranchConfig(b.branch);
 
-    // Validasi nominal.
-    let poolTotal = 0;
+    // Validasi baris.
     for (const row of b.rows) {
       if (!recById.has(row.recipientId))
         return { ok: false, error: `${b.branch}: recipient tidak dikenal` };
       if (!(row.amount >= 0))
         return { ok: false, error: `${b.branch}: nominal tidak boleh negatif` };
-      poolTotal += Math.round(row.amount);
     }
 
-    // after_bep snapshot dari kumulatif payout investor cabang sebelum bulan ini.
-    const contractIdsBranch = recipients
-      .filter((r) => r.contractId)
-      .map((r) => r.contractId as string);
-    let cumBefore = 0;
-    if (contractIdsBranch.length > 0) {
-      const { data: pr } = await client
-        .from("investor_payouts")
-        .select("period_year, period_month, amount_idr")
-        .in("contract_id", contractIdsBranch);
-      for (const p of (pr ?? []) as any[]) {
-        if (ymRank(p.period_year, p.period_month) < selRank)
-          cumBefore += Number(p.amount_idr);
+    // Pre-flight: recipient harus ada di TABEL FISIK yeobo_dividend_recipients,
+    // bukan cuma di view. View (migrasi 129) memancarkan coalesce(r.id, c.id)
+    // — kontrak tanpa slot fisik lolos recById.has() di atas (karena recById
+    // dibangun dari view yang sama) lalu melanggar FK recipient_id di tengah
+    // upsert, setelah baris-baris sebelumnya di loop ini sudah tertulis
+    // (tidak ada transaksi membungkus loop per-baris).
+    const rowRecipientIds = b.rows.map((r) => r.recipientId);
+    if (rowRecipientIds.length > 0) {
+      const { data: physicalCheck } = await client
+        .from("yeobo_dividend_recipients")
+        .select("id")
+        .in("id", rowRecipientIds);
+      const physicalIds = new Set(((physicalCheck ?? []) as any[]).map((r) => r.id));
+      for (const id of rowRecipientIds) {
+        if (!physicalIds.has(id))
+          return {
+            ok: false,
+            error: `${b.branch}: slot penerima belum tersambung ke tabel fisik — hubungi dev (kontrak tanpa slot dividen).`,
+          };
       }
     }
-    let afterBep = false;
-    if (config.bepReachedYm) {
-      afterBep =
-        `${year}-${String(month).padStart(2, "0")}` >= config.bepReachedYm;
-    } else if (config.totalInvestmentIdr && config.totalInvestmentIdr > 0) {
-      afterBep = cumBefore >= config.totalInvestmentIdr;
+
+    const declaredPool = b.declaredPool != null ? Math.round(b.declaredPool) : null;
+    const transferTotal = b.rows.reduce((s, r) => s + Math.round(r.amount), 0);
+    if (declaredPool == null && transferTotal > 0)
+      return {
+        ok: false,
+        error: `${b.branch}: deklarasikan pool dividen dulu sebelum mentransfer (ada nominal transfer > 0 tanpa pool dideklarasikan).`,
+      };
+
+    // Baris entitlement yang SUDAH ADA bulan ini — dipakai mendeteksi
+    // revisi (vs deklarasi baru) dan reuse flag after_bep beku.
+    const { data: existingRowsRaw } = await client
+      .from("yeobo_dividend_allocations")
+      .select("recipient_id, entitlement_idr, after_bep")
+      .eq("period_year", year)
+      .eq("period_month", month)
+      .in(
+        "recipient_id",
+        recipients.map((r) => r.id)
+      );
+    const existingRows = (existingRowsRaw ?? []) as Array<{
+      recipient_id: string;
+      entitlement_idr: number | string;
+      after_bep: boolean;
+    }>;
+    const existingEntByRecipient = new Map(
+      existingRows.map((r) => [r.recipient_id, Number(r.entitlement_idr)])
+    );
+    const poolLama = existingRows.reduce((s, r) => s + Number(r.entitlement_idr), 0);
+
+    // afterBep: pakai flag beku pada baris yang sudah ada bila bulan ini
+    // sudah pernah dideklarasikan (menyimpan ulang tidak boleh diam-diam
+    // membalik 35%↔50% dan menggeser entitlement yang sudah dibayar).
+    // Kalau belum, hitung fresh — via helper yang SAMA dengan jalur baca,
+    // supaya split yang ditampilkan dan yang tersimpan tidak pernah beda.
+    let afterBep: boolean;
+    if (existingRows.length > 0) {
+      afterBep = existingRows[0].after_bep;
+    } else {
+      const contractIdsBranch = recipients
+        .filter((r) => r.contractId)
+        .map((r) => r.contractId as string);
+      let realPayoutsBefore = 0;
+      if (contractIdsBranch.length > 0) {
+        const { data: pr } = await client
+          .from("investor_payouts")
+          .select("period_year, period_month, amount_idr")
+          .in("contract_id", contractIdsBranch);
+        for (const p of (pr ?? []) as any[]) {
+          const r = ymRank(p.period_year, p.period_month);
+          if (r >= KAS_START_RANK && r < selRank) realPayoutsBefore += Number(p.amount_idr);
+        }
+      }
+      const cumBefore = branchInvestorRecoupBefore({
+        report,
+        branch: b.branch,
+        config,
+        year,
+        month,
+        realPayoutsBefore,
+      });
+      afterBep = resolveBranchAfterBep({
+        config,
+        year,
+        month,
+        cumulativeInvestorRecoupBefore: cumBefore,
+      });
     }
 
+    // Hitung entitlement per recipient (hanya bila pool dideklarasikan).
+    const entitlementByRecipient = new Map<string, number>();
+    const recipientIdsToSkip = new Set<string>();
+    if (declaredPool != null) {
+      if (poolLama > 0) {
+        // Revisi: rescale proporsional dari entitlement lama. HANYA
+        // recipient yang sudah punya baris bulan ini — roster guard,
+        // supaya penerima baru tidak disuntikkan ke bulan lampau.
+        let investorNewTotal = 0;
+        for (const r of recipients) {
+          if (r.kind !== "investor") continue;
+          const old = existingEntByRecipient.get(r.id);
+          if (old == null) {
+            recipientIdsToSkip.add(r.id);
+            continue;
+          }
+          const amt = Math.round((old * declaredPool) / poolLama);
+          entitlementByRecipient.set(r.id, amt);
+          investorNewTotal += amt;
+        }
+        for (const r of recipients) {
+          if (r.kind !== "management") continue;
+          const old = existingEntByRecipient.get(r.id);
+          if (old == null) {
+            recipientIdsToSkip.add(r.id);
+            continue;
+          }
+          entitlementByRecipient.set(r.id, declaredPool - investorNewTotal);
+        }
+      } else {
+        // Deklarasi baru — formula penuh atas seluruh roster aktif cabang.
+        const divRecipients: DivRecipient[] = recipients.map((r) => ({
+          id: r.id,
+          label: r.label,
+          kind: r.kind,
+          poolPct: r.poolPct,
+          investIdr: r.investIdr,
+          sortOrder: r.sortOrder,
+          userId: r.userId,
+          contractId: r.contractId,
+        }));
+        const computed = computeRecipientAmounts({
+          pool: declaredPool,
+          afterBep,
+          config,
+          recipients: divRecipients,
+        });
+        for (const c of computed) entitlementByRecipient.set(c.recipientId, c.amount);
+      }
+
+      // Invarian keras — tidak boleh pernah gagal (management menyerap sisa
+      // pembulatan pada kedua jalur di atas), tapi dicek eksplisit supaya
+      // kegagalan tidak pernah tersimpan diam-diam sebagai data yang salah.
+      let sumEnt = 0;
+      for (const v of entitlementByRecipient.values()) sumEnt += v;
+      if (entitlementByRecipient.size > 0 && sumEnt !== declaredPool)
+        return {
+          ok: false,
+          error: `${b.branch}: Σ hak (${sumEnt}) ≠ pool (${declaredPool}) — batal disimpan, laporkan ke dev.`,
+        };
+      for (const v of entitlementByRecipient.values())
+        if (v < 0)
+          return {
+            ok: false,
+            error: `${b.branch}: hak negatif terhitung untuk salah satu penerima — batal disimpan.`,
+          };
+    }
+    skippedRecipients += recipientIdsToSkip.size;
+
     for (const row of b.rows) {
+      if (recipientIdsToSkip.has(row.recipientId)) continue;
       const amount = Math.round(row.amount);
-      const { error } = await client.from("yeobo_dividend_allocations").upsert(
-        {
-          recipient_id: row.recipientId,
-          period_year: year,
-          period_month: month,
-          amount_idr: amount,
-          pool_idr: poolTotal,
-          after_bep: afterBep,
-          source: "override",
-          updated_at: new Date().toISOString(),
-          created_by: gate.userId,
-        },
-        { onConflict: "recipient_id,period_year,period_month" }
-      );
+      const entitlement = entitlementByRecipient.get(row.recipientId);
+
+      const payload: Record<string, unknown> = {
+        recipient_id: row.recipientId,
+        period_year: year,
+        period_month: month,
+        amount_idr: amount,
+        pool_idr: transferTotal,
+        after_bep: afterBep,
+        source: "override",
+        updated_at: new Date().toISOString(),
+        created_by: gate.userId,
+      };
+      if (entitlement != null) {
+        payload.entitlement_idr = entitlement;
+      } else if (!existingEntByRecipient.has(row.recipientId)) {
+        // Tidak ada baris sebelumnya DAN tidak ada entitlement baru untuk
+        // ditulis (declaredPool null) → tidak ada apa pun yang sah untuk
+        // di-insert (entitlement_idr NOT NULL). amount>0 di sini sudah
+        // mustahil (dicegat guard transferTotal>0 di atas); untuk amount=0
+        // pada baris yang memang belum pernah ada, lewati saja.
+        continue;
+      }
+      // entitlement == null tapi baris SUDAH ada → key entitlement_idr
+      // sengaja tidak disertakan dalam payload, supaya upsert ini murni
+      // koreksi nominal transfer dan hak yang sudah tersimpan tidak
+      // tertimpa/terhapus.
+
+      const { error } = await client
+        .from("yeobo_dividend_allocations")
+        .upsert(payload, { onConflict: "recipient_id,period_year,period_month" });
       if (error) return { ok: false, error: `${b.branch}: ${error.message}` };
 
       // Sinkron porsi investor → investor_payouts (BEP). paid_at = tanggal
       // transfer (konsol). TIDAK menyentuh ledger.
       const rec = recById.get(row.recipientId)!;
       if (rec.contractId) {
+        if (amount === 0) {
+          // Jangan buat baris payout Rp0 baru — itu muncul di riwayat
+          // investor sebagai transfer hantu. Kalau barisnya SUDAH ada
+          // (koreksi ke 0), tetap update supaya koreksi jalan.
+          const { data: existingPayout } = await client
+            .from("investor_payouts")
+            .select("id")
+            .eq("contract_id", rec.contractId)
+            .eq("period_year", year)
+            .eq("period_month", month)
+            .maybeSingle();
+          if (!existingPayout) continue;
+        }
         const { error: pErr } = await client.from("investor_payouts").upsert(
           {
             contract_id: rec.contractId,
@@ -748,5 +1073,5 @@ export async function saveDividendConsoleMonth(input: {
   revalidatePath("/admin/finance/dividen");
   revalidatePath("/admin/investors");
   revalidatePath("/investor", "layout");
-  return { ok: true, data: { savedBranches, syncedPayouts } };
+  return { ok: true, data: { savedBranches, syncedPayouts, skippedRecipients } };
 }
