@@ -389,7 +389,12 @@ export function DividendConsoleClient({
 
       {/* 3. Per-branch allocation tables */}
       <div className="space-y-4">
-        {data.branches.map((b) => (
+        {data.branches.map((b) => {
+          const kasIni =
+            b.kasLastMonth == null
+              ? null
+              : b.kasLastMonth + b.operatingProfit - (branchSum[b.branch] ?? 0);
+          return (
           <BranchAllocationTable
             key={b.branch}
             branch={b}
@@ -398,8 +403,9 @@ export function DividendConsoleClient({
             declaredPool={declaredPool[b.branch] ?? null}
             onPoolChange={(v) => setDeclaredPool(b.branch, v)}
             liveEntitlement={liveEntitlement[b.branch] ?? {}}
-            onFillOpProfit={() =>
-              setDeclaredPool(b.branch, Math.max(0, Math.round(b.operatingProfit)))
+            kasIni={kasIni}
+            onFillPool={() =>
+              setDeclaredPool(b.branch, Math.max(0, Math.round(kasIni ?? 0)))
             }
             onFillFull={() => {
               const ent = liveEntitlement[b.branch] ?? {};
@@ -414,7 +420,8 @@ export function DividendConsoleClient({
               )
             }
           />
-        ))}
+          );
+        })}
       </div>
 
       {/* 4. Cross-branch investor view */}
@@ -522,7 +529,8 @@ function BranchAllocationTable({
   declaredPool,
   onPoolChange,
   liveEntitlement,
-  onFillOpProfit,
+  kasIni,
+  onFillPool,
   onFillFull,
   onClear,
 }: {
@@ -532,11 +540,14 @@ function BranchAllocationTable({
   declaredPool: number | null;
   onPoolChange: (v: number | null) => void;
   liveEntitlement: Record<string, number>;
-  onFillOpProfit: () => void;
+  kasIni: number | null;
+  onFillPool: () => void;
   onFillFull: () => void;
   onClear: () => void;
 }) {
   const sum = branch.rows.reduce((s, r) => s + (amounts[r.recipientId] ?? 0), 0);
+  const poolFilled = declaredPool != null;
+  const transferFilled = sum > 0;
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-border">
@@ -557,30 +568,44 @@ function BranchAllocationTable({
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onFillOpProfit}
-            className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
-            title={`Set pool = op profit (${formatRp(Math.max(0, branch.operatingProfit))})`}
-          >
-            <Calculator size={12} /> Isi dari op profit
-          </button>
-          <button
-            type="button"
-            onClick={onFillFull}
-            disabled={declaredPool == null}
-            className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:opacity-40 disabled:pointer-events-none"
-            title="Isi nominal transfer = hak bulan ini + tunggakan, untuk semua penerima"
-          >
-            <HandCoins size={12} /> Bayar penuh
-          </button>
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted"
-          >
-            <Eraser size={12} /> Kosongkan transfer
-          </button>
+          {poolFilled ? (
+            <button
+              type="button"
+              onClick={() => onPoolChange(null)}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted"
+            >
+              <Eraser size={12} /> Kosongkan pool
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onFillPool}
+              disabled={kasIni == null}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-40 disabled:pointer-events-none"
+              title={kasIni == null ? "Kas belum berlaku (sebelum Mei 2026)" : `Set pool = kas bulan ini (${formatRp(Math.max(0, kasIni))})`}
+            >
+              <Calculator size={12} /> Isi dari kas bulan ini
+            </button>
+          )}
+          {transferFilled ? (
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted"
+            >
+              <Eraser size={12} /> Kosongkan transfer
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onFillFull}
+              disabled={declaredPool == null}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 disabled:opacity-40 disabled:pointer-events-none"
+              title="Isi nominal transfer = hak bulan ini + tunggakan, untuk semua penerima"
+            >
+              <HandCoins size={12} /> Bayar penuh
+            </button>
+          )}
         </div>
       </div>
 
