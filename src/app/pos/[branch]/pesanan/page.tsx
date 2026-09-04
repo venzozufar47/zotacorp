@@ -2,8 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { findPosAccount } from "@/lib/actions/pos.actions";
+import { findPosAccount, listActivePosProducts } from "@/lib/actions/pos.actions";
 import { listPendingPesanan } from "@/lib/actions/pos-pesanan.actions";
+import { getPosAuthorizers } from "@/lib/actions/pos-stock.actions";
 import { listCakePickupsForPos } from "@/lib/actions/pos-cake-pickup.actions";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { PosShell } from "@/components/pos/PosShell";
@@ -34,10 +35,12 @@ export default async function PesananPage({
   // Metode bayar ikut dari action yang sama: daftarnya diturunkan dari
   // penyaring yang dipakai server saat memvalidasi, jadi chip yang
   // tampil dan metode yang diterima tidak bisa berbeda.
-  const [role, pesanan, cakeBoard] = await Promise.all([
+  const [role, pesanan, cakeBoard, authorizers, products] = await Promise.all([
     getCurrentRole(),
     listPendingPesanan(account.id),
     listCakePickupsForPos(account.id),
+    getPosAuthorizers(account.id),
+    listActivePosProducts(account.id),
   ]);
 
   return (
@@ -61,7 +64,11 @@ export default async function PesananPage({
           <h2 className="text-sm font-bold text-foreground mb-2">
             Pesanan tertunda
           </h2>
-          <PesananList pesanan={pesanan} />
+          <PesananList
+            pesanan={pesanan}
+            authorizers={authorizers.sale_void}
+            products={products}
+          />
         </section>
       </div>
     </PosShell>
