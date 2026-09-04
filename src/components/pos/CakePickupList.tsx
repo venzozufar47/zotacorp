@@ -229,6 +229,14 @@ function PickupDialog({
   // wajib foto nota sebagai bukti. Direset tiap ganti metode supaya
   // nilai dari metode sebelumnya tidak nyangkut dan mengelabui gerbang.
   const [cashReceived, setCashReceived] = useState<number | null>(null);
+  // "Cake Konten" / "Lainnya" — alasan melepas sisa tagihan TANPA
+  // pelunasan, alternatif dari chip QRIS/Cash di baris yang sama.
+  // Mutually exclusive dengan methodId (memilih salah satu me-reset
+  // yang lain) — lihat `selectMethod` / `selectWaive`.
+  const [waiveKind, setWaiveKind] = useState<"cake_konten" | "lainnya" | null>(
+    null
+  );
+  const [waiveNote, setWaiveNote] = useState("");
   const [proof, setProof] = useState<{
     path: string;
     mimeType: string;
@@ -245,9 +253,14 @@ function PickupDialog({
 
   // `amount` sudah dibatasi <= remainingIdr oleh memo di atas, jadi
   // selisihnya tidak pernah negatif.
-  const willRecord = takeSettlement && amount > 0;
-  const remainingAfter = order.remainingIdr - (willRecord ? amount : 0);
-  const needsAck = remainingAfter > 0;
+  const isWaiving = takeSettlement && waiveKind !== null;
+  const willRecord = takeSettlement && !isWaiving && amount > 0;
+  // Waive melepas SELURUH sisa tagihan (bukan payment) — tidak ada
+  // nominal parsial di jalur ini, beda dari pelunasan cash/QRIS.
+  const remainingAfter = isWaiving
+    ? 0
+    : order.remainingIdr - (willRecord ? amount : 0);
+  const needsAck = !isWaiving && remainingAfter > 0;
 
   const methodKind = methodId
     ? classifyPaymentMethod(
@@ -260,6 +273,15 @@ function PickupDialog({
 
   function selectMethod(id: string) {
     setMethodId(id);
+    setWaiveKind(null);
+    setCashReceived(null);
+    if (proof) URL.revokeObjectURL(proof.previewUrl);
+    setProof(null);
+  }
+
+  function selectWaive(kind: "cake_konten" | "lainnya") {
+    setWaiveKind(kind);
+    setMethodId("");
     setCashReceived(null);
     if (proof) URL.revokeObjectURL(proof.previewUrl);
     setProof(null);
@@ -311,6 +333,12 @@ function PickupDialog({
               proofSizeBytes: proof?.sizeBytes ?? null,
             }
           : null,
+        waiveReason: isWaiving
+          ? {
+              kind: waiveKind!,
+              note: waiveKind === "lainnya" ? waiveNote.trim() : null,
+            }
+          : null,
         acknowledgeUnpaid: acknowledged,
         pin,
       });
@@ -324,6 +352,12 @@ function PickupDialog({
       setPinOpen(false);
       if (res.data?.alreadyPickedUp) {
         toast.info(`${order.customerName} — sudah ditandai perangkat lain`);
+      } else if (isWaiving) {
+        toast.success(
+          `${order.customerName} — kue diserahkan · dilepas tanpa tagih (${
+            waiveKind === "cake_konten" ? "Cake Konten" : "Lainnya"
+          })`
+        );
       } else {
         toast.success(
           `${order.customerName} — kue diserahkan` +
@@ -352,6 +386,11 @@ function PickupDialog({
   const pinPreview = [
     order.customerName,
     willRecord ? `pelunasan ${formatRp(amount)}` : null,
+    isWaiving
+      ? `dilepas tanpa tagih (${
+          waiveKind === "cake_konten" ? "Cake Konten" : "Lainnya"
+        }) ${formatRp(order.remainingIdr)}`
+      : null,
     remainingAfter > 0 ? `SISA KURANG ${formatRp(remainingAfter)}` : null,
   ]
     .filter(Boolean)
@@ -387,13 +426,15 @@ function PickupDialog({
 
             {takeSettlement && (
               <div className="mt-2 space-y-2">
-                <input
-                  inputMode="numeric"
-                  value={amountRaw}
-                  onChange={(e) => setAmountRaw(e.target.value)}
-                  className="w-full h-10 rounded-xl border-2 border-foreground bg-background px-3 text-sm font-semibold tabular-nums"
-                  placeholder="Nominal diterima"
-                />
+                {!isWaiving && (
+                  <input
+                    inputMode="numeric"
+                    value={amountRaw}
+                    onChange={(e) => setAmountRaw(e.target.value)}
+                    className="w-full h-10 rounded-xl border-2 border-foreground bg-background px-3 text-sm font-semibold tabular-nums"
+                    placeholder="Nominal diterima"
+                  />
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {paymentMethods.map((m) => (
                     <button
@@ -409,6 +450,32 @@ function PickupDialog({
                       {m.label}
                     </button>
                   ))}
+                  {/* Bukan metode bayar — alasan melepas kue tanpa
+                      menagih sisanya. Tidak menulis payment leg apa
+                      pun, jadi otomatis tidak ikut bonus custom cake
+                      Admin Haengbocake. */}
+                  <button
+                    type="button"
+                    onClick={() => selectWaive("cake_konten")}
+                    className={`h-8 px-3 rounded-lg border-2 border-dashed border-foreground text-xs font-semibold ${
+                      waiveKind === "cake_konten"
+                        ? "bg-tertiary/60 text-foreground"
+                        : "bg-background text-foreground"
+                    }`}
+                  >
+                    Cake Konten
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectWaive("lainnya")}
+                    className={`h-8 px-3 rounded-lg border-2 border-dashed border-foreground text-xs font-semibold ${
+                      waiveKind === "lainnya"
+                        ? "bg-tertiary/60 text-foreground"
+                        : "bg-background text-foreground"
+                    }`}
+                  >
+                    Lainnya
+                  </button>
                 </div>
 
                 {/* Verifikasi per metode — mengetik uang tunai / memotret
@@ -433,7 +500,24 @@ function PickupDialog({
                   />
                 )}
 
-                {amount > 0 && amount < order.remainingIdr && (
+                {isWaiving && (
+                  <div className="rounded-lg border border-border bg-muted/30 p-2 space-y-1.5">
+                    <p className="text-[11px] font-medium text-foreground">
+                      Kue dilepas tanpa pelunasan {formatRp(order.remainingIdr)}{" "}
+                      · tidak tercatat sebagai penjualan.
+                    </p>
+                    {waiveKind === "lainnya" && (
+                      <input
+                        value={waiveNote}
+                        onChange={(e) => setWaiveNote(e.target.value)}
+                        placeholder="Alasan (wajib diisi)"
+                        className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-xs"
+                      />
+                    )}
+                  </div>
+                )}
+
+                {!isWaiving && amount > 0 && amount < order.remainingIdr && (
                   <p className="text-[11px] text-muted-foreground">
                     Sisa setelah ini: {formatRp(remainingAfter)}
                   </p>
@@ -464,16 +548,19 @@ function PickupDialog({
               uploadingProof ||
               (needsAck && !acknowledged) ||
               (willRecord &&
-                (!methodId || !cashVerified || !qrisVerified))
+                (!methodId || !cashVerified || !qrisVerified)) ||
+              (isWaiving && waiveKind === "lainnya" && !waiveNote.trim())
             }
             onClick={start}
             className="h-11 rounded-xl bg-primary text-primary-foreground text-sm font-bold disabled:opacity-40"
           >
             {pending
               ? "Menyimpan…"
-              : needsAck
-                ? `Tandai diambil — TETAP KURANG ${formatRp(remainingAfter)}`
-                : "Tandai sudah diambil"}
+              : isWaiving
+                ? "Tandai sudah diambil"
+                : needsAck
+                  ? `Tandai diambil — TETAP KURANG ${formatRp(remainingAfter)}`
+                  : "Tandai sudah diambil"}
           </button>
           <button
             type="button"

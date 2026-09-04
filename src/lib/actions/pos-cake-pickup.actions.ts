@@ -113,6 +113,19 @@ export interface MarkPickupInput {
   } | null;
   /** Wajib true kalau setelah settlement masih ada sisa tagihan. */
   acknowledgeUnpaid?: boolean;
+  /**
+   * Alasan sisa tagihan dilepas TANPA pelunasan — alternatif dari
+   * `acknowledgeUnpaid` generik. Mutually exclusive dengan `settlement`:
+   * kalau diisi, seluruh sisa tagihan (`remainingIdr` sebelum panggilan
+   * ini) dianggap dilepas, tidak ada payment leg / transaksi kas yang
+   * ditulis sama sekali — makanya cake ini otomatis tidak ikut bonus
+   * custom cake Admin Haengbocake (basisnya mutasi rekening).
+   */
+  waiveReason?: {
+    kind: "cake_konten" | "lainnya";
+    /** Wajib diisi (non-kosong) untuk kind "lainnya". Diabaikan untuk "cake_konten". */
+    note?: string | null;
+  } | null;
   /** PIN salah satu authorizer `cake_pickup` di rekening POS cabang
    *  pesanan ini. Diabaikan kalau cabangnya tidak punya authorizer. */
   pin?: string;
@@ -736,6 +749,27 @@ export async function markCakePickedUpAtPos(
     freeClaim: order.free_claim,
   });
 
+  if (input.settlement && input.waiveReason) {
+    return {
+      ok: false,
+      error: "Tidak bisa menerima pelunasan sekaligus melepas tanpa tagihan",
+    };
+  }
+
+  let waiveReason: "cake_konten" | "lainnya" | null = null;
+  let waiveNote: string | null = null;
+  if (input.waiveReason) {
+    if (input.waiveReason.kind !== "cake_konten" && input.waiveReason.kind !== "lainnya") {
+      return { ok: false, error: "Alasan tidak valid" };
+    }
+    waiveReason = input.waiveReason.kind;
+    if (waiveReason === "lainnya") {
+      const note = (input.waiveReason.note ?? "").trim();
+      if (!note) return { ok: false, error: "Alasan wajib diisi untuk Lainnya" };
+      waiveNote = note;
+    }
+  }
+
   let recordedIdr = 0;
   let settleMethod: "cash" | "qris" | null = null;
 
@@ -764,8 +798,12 @@ export async function markCakePickedUpAtPos(
     recordedIdr = amount;
   }
 
-  const remainingAfter = Math.max(0, before.remaining - recordedIdr);
-  if (remainingAfter > 0 && !input.acknowledgeUnpaid) {
+  // Waive: seluruh sisa tagihan dianggap dilepas — bukan payment,
+  // jadi tidak ada leg/transaksi kas yang ditulis untuk sisa itu.
+  const remainingAfter = waiveReason
+    ? 0
+    : Math.max(0, before.remaining - recordedIdr);
+  if (remainingAfter > 0 && !waiveReason && !input.acknowledgeUnpaid) {
     return {
       ok: false,
       error: `Masih kurang ${formatRp(remainingAfter)} — centang konfirmasi dulu`,
@@ -843,6 +881,8 @@ export async function markCakePickedUpAtPos(
       picked_up_at: new Date().toISOString(),
       picked_up_by: gate.userId,
       picked_up_via: "pos",
+      pickup_waive_reason: waiveReason,
+      pickup_waive_note: waiveNote,
     } as never)
     .eq("id", order.id)
     .eq("status", "ready")
