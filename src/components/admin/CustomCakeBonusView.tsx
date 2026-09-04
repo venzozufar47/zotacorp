@@ -25,6 +25,10 @@ interface Props {
   monthLabel: string;
   days: DayBreakdown[];
   totalBonus: number;
+  /** Angka acuan (bukan final) — bonus dihitung dari tanggal bukti
+   *  transaksi diupload, bukan tanggal settlement rekening. Tidak
+   *  mempengaruhi cake_bonus di payslip. */
+  referenceBonus: number;
 }
 
 const MONTHS_ID = [
@@ -47,6 +51,7 @@ export function CustomCakeBonusView({
   monthLabel,
   days,
   totalBonus,
+  referenceBonus,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -91,6 +96,15 @@ export function CustomCakeBonusView({
             </p>
             <p className="font-display text-2xl font-extrabold tabular-nums">
               {formatRp(totalBonus)}
+            </p>
+            <p
+              className="text-[10px] text-muted-foreground mt-1"
+              title="Rumus tier per hari yang sama, tapi dihitung dari tanggal bukti transaksi (pembayaran) diupload — bukan tanggal settlement rekening. Angka pembanding saja, tidak masuk cake_bonus payslip."
+            >
+              Acuan (bukti transaksi diupload):{" "}
+              <span className="font-semibold tabular-nums">
+                {formatRp(referenceBonus)}
+              </span>
             </p>
           </div>
         </div>

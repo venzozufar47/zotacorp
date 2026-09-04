@@ -14,7 +14,10 @@ import {
   DecoratorBonusCards,
   type DecoratorRecipient,
 } from "@/components/admin/DecoratorBonusCards";
-import { getCustomCakeBonusMonth } from "@/lib/actions/custom-cake-bonus.actions";
+import {
+  getCustomCakeBonusMonth,
+  getCustomCakeBonusReferenceByUpload,
+} from "@/lib/actions/custom-cake-bonus.actions";
 import { getDecoratorBonuses } from "@/lib/cake-bonus";
 import { CAKE_BONUS_POSITIONS } from "@/lib/cake-bonus/positions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
@@ -242,9 +245,10 @@ async function CustomCakeBonusViewWrapper({
   monthLabel: string;
 }) {
   const supabase = await createClient();
-  const [data, decorator, recipientsRes] = await Promise.all([
+  const [data, decorator, uploadReference, recipientsRes] = await Promise.all([
     getCustomCakeBonusMonth(month, year),
     getDecoratorBonuses(month, year),
+    getCustomCakeBonusReferenceByUpload(month, year),
     supabase
       .from("profiles")
       .select("full_name, position")
@@ -285,6 +289,7 @@ async function CustomCakeBonusViewWrapper({
         monthLabel={monthLabel}
         days={data.days}
         totalBonus={data.totalBonus}
+        referenceBonus={uploadReference.totalBonus}
       />
     </div>
   );

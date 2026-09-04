@@ -8,6 +8,7 @@ import {
   HAENGBOCAKE_NON_OPERATING_CATEGORIES,
   normalizePnLCategory,
 } from "@/lib/cashflow/categories";
+import { dailyTierBonus } from "@/lib/cake-bonus/tier-formula";
 
 // Hardcoded Haengbocake bank account IDs — derived from a one-time
 // listing query and unlikely to change. Storing as constants avoids
@@ -29,14 +30,9 @@ const BANK_LABEL: Record<BankKey, string> = {
 };
 
 /**
- * Per-day bonus formula derived from spreadsheet:
- *   IF C < 550_000  → 0
- *   IF 550_000 ≤ C ≤ 700_000 → C × 10%
- *   IF C > 700_000 → 70_000 + (C − 700_000) × 5%
- *
- * Inlined in `getCustomCakeBonusMonth` below — kept here as the
- * canonical reference. If you ever need it elsewhere, extract to a
- * non-"use server" helper module so it can stay sync.
+ * Per-day bonus formula — see `dailyTierBonus` in `tier-formula.ts`
+ * for the canonical implementation, shared with
+ * `getCustomCakeBonusReferenceByUpload` below.
  */
 
 /**
@@ -419,12 +415,7 @@ export async function getCustomCakeBonusMonth(
     }
     const total =
       jago + mandiri - pareQrisDeduction + pareCakeSettlement + semarang;
-    const bonus =
-      total < 550_000
-        ? 0
-        : total <= 700_000
-          ? Math.round(total * 0.1)
-          : Math.round(70_000 + (total - 700_000) * 0.05);
+    const bonus = dailyTierBonus(total);
     days.push({
       date,
       jago,
@@ -440,6 +431,85 @@ export async function getCustomCakeBonusMonth(
 
   const totalBonus = days.reduce((s, d) => s + d.bonus, 0);
   return { month, year, days, totalBonus };
+}
+
+export interface UploadBasedBonusReference {
+  totalBonus: number;
+  totalOmset: number;
+}
+
+/**
+ * Angka ACUAN untuk kartu bonus admin — bukan angka final, tidak
+ * mempengaruhi `cake_bonus` di payslip. Rumus tier per hari sama
+ * persis dengan `getCustomCakeBonusMonth`, tapi basis tanggalnya
+ * `cake_order_payments.created_at` (kapan bukti transaksi/pembayaran
+ * diupload/dicatat) alih-alih tanggal settlement di rekening.
+ *
+ * Sumber datanya `cake_order_payments`, bukan `cashflow_transactions`
+ * — jadi omset per hari = jumlah nominal pembayaran (DP/pelunasan
+ * positif, refund negatif) yang order induknya bukan cancelled/
+ * discarded/free_claim. Dikelompokkan per hari kalender WIB, sama
+ * seperti `wibMonthKey` di pnl.ts.
+ */
+export async function getCustomCakeBonusReferenceByUpload(
+  month: number,
+  year: number
+): Promise<UploadBasedBonusReference> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { totalBonus: 0, totalOmset: 0 };
+
+  const supabase = await createClient();
+  const monthStartWib = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endY = month === 12 ? year + 1 : year;
+  const endM = month === 12 ? 1 : month + 1;
+  const monthEndWibExcl = `${endY}-${String(endM).padStart(2, "0")}-01`;
+  const utcStart = `${monthStartWib}T00:00:00+07:00`;
+  const utcEnd = `${monthEndWibExcl}T00:00:00+07:00`;
+
+  type Row = {
+    amount_idr: number;
+    kind: string;
+    created_at: string;
+    cake_orders: { status: string; free_claim: boolean | null };
+  };
+  const rows: Row[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cake_order_payments")
+      .select(
+        "amount_idr, kind, created_at, cake_orders!inner(status, free_claim)"
+      )
+      .gte("created_at", utcStart)
+      .lt("created_at", utcEnd)
+      .neq("cake_orders.status", "cancelled")
+      .neq("cake_orders.status", "discarded")
+      .order("created_at")
+      .range(offset, offset + PAGE - 1);
+    if (error) break;
+    const batch = (data ?? []) as unknown as Row[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+
+  const byDay = new Map<string, number>();
+  for (const r of rows) {
+    if (r.cake_orders.free_claim) continue;
+    const t = Date.parse(r.created_at);
+    if (Number.isNaN(t)) continue;
+    const wib = new Date(t + 7 * 60 * 60 * 1000);
+    const dayKey = `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, "0")}-${String(wib.getUTCDate()).padStart(2, "0")}`;
+    const signed = r.kind === "refund" ? -r.amount_idr : r.amount_idr;
+    byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + signed);
+  }
+
+  let totalBonus = 0;
+  let totalOmset = 0;
+  for (const total of byDay.values()) {
+    totalBonus += dailyTierBonus(total);
+    totalOmset += total;
+  }
+  return { totalBonus, totalOmset };
 }
 
 /** Manual override: null = revert to auto-classification. */
