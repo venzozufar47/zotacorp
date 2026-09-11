@@ -13,6 +13,8 @@ import { PosPinCard } from "@/components/profile/PosPinCard";
 import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCard";
 import { EnablePushButton } from "@/components/shared/EnablePushButton";
 import { TestAttendancePushButton } from "@/components/admin/TestAttendancePushButton";
+import { PushExemptionsCard } from "@/components/admin/PushExemptionsCard";
+import { listPushExemptions } from "@/lib/actions/push.actions";
 import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
 import { ExtraWorkKindsCard } from "@/components/admin/ExtraWorkKindsCard";
@@ -33,7 +35,7 @@ export default async function AdminSettingsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile, holidays] =
+  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile, holidays, pushExemptions] =
     await Promise.all([
       getCachedAttendanceSettings(),
       listWhatsAppRecipients(),
@@ -48,6 +50,7 @@ export default async function AdminSettingsPage() {
         .order("full_name"),
       getCurrentProfile(),
       listHolidays(),
+      listPushExemptions(),
     ]);
   const employees = (employeesRes.data ?? []).map((e) => ({
     id: e.id,
@@ -86,6 +89,7 @@ export default async function AdminSettingsPage() {
           <TestAttendancePushButton />
         </div>
       </div>
+      <PushExemptionsCard initialRows={pushExemptions} />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard
         initialTemplates={waTemplates.map((t) => ({

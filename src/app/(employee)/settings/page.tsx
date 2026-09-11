@@ -2,6 +2,7 @@
 
 import { LanguageCard } from "@/components/settings/LanguageCard";
 import { PasswordResetCard } from "@/components/settings/PasswordResetCard";
+import { EnablePushButton } from "@/components/shared/EnablePushButton";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export default function SettingsPage() {
@@ -13,6 +14,12 @@ export default function SettingsPage() {
         <h1 className="font-heading text-2xl font-semibold">{t.settings.title}</h1>
         <p className="text-sm text-muted-foreground">{t.settings.subtitle}</p>
       </div>
+      <EnablePushButton
+        title="Notifikasi"
+        promptDescription="Aktifkan untuk dapat notifikasi otomatis di HP/browser ini — slip gaji terbit, kontrak kerja, tes DISC, dan lainnya. Wajib aktif untuk bisa absen masuk."
+        activeDescription="Aktif di perangkat ini. Kamu akan diberi tahu untuk slip gaji, kontrak kerja, dan notifikasi lainnya."
+        enabledToast="Notifikasi aktif di perangkat ini!"
+      />
       <LanguageCard />
       <PasswordResetCard />
     </div>

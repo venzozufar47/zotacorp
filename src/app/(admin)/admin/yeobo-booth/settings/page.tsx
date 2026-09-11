@@ -7,6 +7,7 @@ import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
 import {
   listReminderCheckpoints,
   listReminderRecipients,
+  listRecipientCandidates,
 } from "@/lib/actions/yeobo-booth-reminders.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ReminderCheckpointsCard } from "@/components/yeobo-booth/ReminderCheckpointsCard";
@@ -20,9 +21,10 @@ import { ReminderRecipientsCard } from "@/components/yeobo-booth/ReminderRecipie
 export default async function YeoboBoothReminderSettingsPage() {
   if (!(await canAccessYeoboBooth())) redirect("/dashboard");
 
-  const [checkpoints, recipients] = await Promise.all([
+  const [checkpoints, recipients, candidates] = await Promise.all([
     listReminderCheckpoints(),
     listReminderRecipients(),
+    listRecipientCandidates(),
   ]);
 
   return (
@@ -41,7 +43,7 @@ export default async function YeoboBoothReminderSettingsPage() {
         }
       />
       <ReminderCheckpointsCard initialCheckpoints={checkpoints} />
-      <ReminderRecipientsCard initialRecipients={recipients} />
+      <ReminderRecipientsCard initialRecipients={recipients} candidates={candidates} />
     </div>
   );
 }

@@ -3,9 +3,9 @@
  *
  * Dipicu cron `/api/cron/sim-card-reminders` (11.00 WIB). Mengambil semua
  * kartu aktif yang statusnya `grace`/`expired`, lalu:
- *   - kirim WA ke tiap PENANGGUNG JAWAB berisi nomor miliknya sendiri
- *     (WA dari profil bila PIC karyawan terdaftar, atau `pic_phone` bila
- *     PIC manual), dan
+ *   - kirim push ke tiap PENANGGUNG JAWAB (harus akun app terdaftar —
+ *     PIC manual/nomor HP sudah tidak didukung; kartu dengan PIC manual
+ *     legacy di-skip sampai admin sambungkan ke akun lewat /admin/sim-cards), dan
  *   - kirim 1 ringkasan berisi SEMUA nomor ke admin.
  *
  * Berhenti dengan sendirinya: begitu PIC mencatat isi pulsa (yang wajib
@@ -14,11 +14,7 @@
  */
 
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
-import {
-  sendWhatsApp,
-  getAdminWhatsAppRecipients,
-} from "@/lib/whatsapp/fonnte";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
+import { sendPushToUser, sendPushToAdmins } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { isSimOverdue, simStatus, simStatusSummary } from "./types";
@@ -112,43 +108,64 @@ export async function runSimCardReminders(): Promise<SimReminderSummary> {
     };
   });
 
-  // 3. Kelompokkan per penanggung jawab (key: userId, atau nomor WA manual).
-  const byPic = new Map<string, { name: string; phone: string; rows: OverdueRow[] }>();
+  // 3. Kelompokkan per penanggung jawab — HARUS akun terdaftar (pic_user_id).
+  // Kartu dengan PIC manual legacy (tanpa akun) di-skip di sini; masih
+  // masuk ringkasan admin di bawah supaya tidak hilang dari radar.
+  const byPic = new Map<string, { name: string; rows: OverdueRow[] }>();
+  let unassignedCount = 0;
   for (const r of rows) {
-    const phone = normalizePhone(r.picPhone ?? "");
-    if (!phone) continue; // PIC tanpa nomor → hanya masuk ringkasan admin
-    const key = r.picUserId ?? `manual:${phone}`;
-    const entry = byPic.get(key) ?? {
+    if (!r.picUserId) {
+      unassignedCount++;
+      continue;
+    }
+    const entry = byPic.get(r.picUserId) ?? {
       name: r.picName || "Penanggung jawab",
-      phone,
       rows: [],
     };
     entry.rows.push(r);
-    byPic.set(key, entry);
+    byPic.set(r.picUserId, entry);
+  }
+  if (unassignedCount > 0) {
+    console.warn(
+      `[sim-cards] ${unassignedCount} kartu overdue dengan PIC belum terhubung akun — sambungkan di /admin/sim-cards`
+    );
   }
 
   let picSent = 0;
-  for (const [, entry] of byPic) {
-    const message = await renderWaTemplate("sim_expiry_reminder", {
-      name: entry.name,
-      count: entry.rows.length,
-      list: entry.rows.map((r, i) => line(i, r, today)).join("\n"),
-    });
-    const ok = await sendWhatsApp(entry.phone, message);
-    if (ok) picSent++;
+  for (const [userId, entry] of byPic) {
+    try {
+      const message = await renderWaTemplate("sim_expiry_reminder", {
+        name: entry.name,
+        count: entry.rows.length,
+        list: entry.rows.map((r, i) => line(i, r, today)).join("\n"),
+      });
+      await sendPushToUser(userId, {
+        title: "Kartu SIM lewat tenggat",
+        body: message,
+        url: "/sim-cards",
+      });
+      picSent++;
+    } catch (err) {
+      console.error("[sim-cards] push PIC send failed", err);
+    }
   }
 
   // 4. Ringkasan ke admin — semua nomor, lintas unit.
   let adminSent = 0;
-  const adminPhones = await getAdminWhatsAppRecipients();
-  if (adminPhones.length > 0) {
+  try {
     const message = await renderWaTemplate("sim_expiry_reminder", {
       name: "Admin",
       count: rows.length,
       list: rows.map((r, i) => line(i, r, today)).join("\n"),
     });
-    const ok = await sendWhatsApp(adminPhones, message);
-    if (ok) adminSent = adminPhones.length;
+    await sendPushToAdmins({
+      title: "Kartu SIM lewat tenggat",
+      body: message,
+      url: "/admin/sim-cards",
+    });
+    adminSent = 1;
+  } catch (err) {
+    console.error("[sim-cards] push admin summary failed", err);
   }
 
   return { overdue: rows.length, picSent, adminSent };

@@ -25,9 +25,8 @@ import {
   activeBreakWindow,
   localHhmm,
 } from "@/lib/utils/break-windows";
+import { sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import { getBlockingCleaning } from "@/lib/actions/cleaning.actions";
 import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
 import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
@@ -125,6 +124,32 @@ export async function checkIn(payload: CheckInPayload) {
   const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated" };
 
+  const supabase = await createClient();
+
+  // Push notification gate: check-in requires an active push subscription
+  // (or an admin-granted exemption for devices that genuinely can't
+  // support Web Push). Checked first — cheapest gate, no point spending
+  // GPS/selfie effort on a check-in that will be rejected anyway.
+  const [{ data: pushSub }, { data: gateProfile }] = await Promise.all([
+    supabase
+      .from("push_subscriptions")
+      .select("id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("push_notification_exempt")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
+  if (!pushSub && !gateProfile?.push_notification_exempt) {
+    return {
+      error: "Aktifkan notifikasi push dulu sebelum bisa absen masuk.",
+      pushRequired: true as const,
+    };
+  }
+
   if (payload.latitude == null || payload.longitude == null) {
     return { error: "Location is required to check in. Please enable location access in your browser settings." };
   }
@@ -148,7 +173,6 @@ export async function checkIn(payload: CheckInPayload) {
     return { error: decision.error ?? "Tidak diizinkan check in dari lokasi ini." };
   }
 
-  const supabase = await createClient();
   const today = jakartaDateString(new Date());
 
   const { data: existing } = await supabase
@@ -586,37 +610,15 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
       await supabase.from("profiles").update(updates).eq("id", userId);
     }
 
-    if (snapshot.milestoneHitNow > 0 && profile.whatsapp_number) {
-      const phone = normalizePhone(profile.whatsapp_number);
-      if (phone) {
-        const message = await renderWaTemplate("streak_milestone", {
+    if (snapshot.milestoneHitNow > 0) {
+      try {
+        const body = await renderWaTemplate("streak_milestone", {
           name: profile.full_name ?? "teman",
           days: snapshot.milestoneHitNow,
         });
-        let status: "sent" | "failed" = "sent";
-        let errorMessage: string | null = null;
-        try {
-          await sendWhatsApp(phone, message);
-        } catch (err) {
-          status = "failed";
-          errorMessage = err instanceof Error ? err.message : String(err);
-        }
-        // Log ke whatsapp_send_logs supaya muncul di tab admin
-        // monitoring. Pakai service-level Supabase client di sini
-        // bisa, tapi authenticated client (RLS bypass via service)
-        // juga ok karena kita sudah di "use server" + admin gate.
-        try {
-          await supabase.from("whatsapp_send_logs").insert({
-            recipient_profile_id: userId,
-            recipient_phone: phone,
-            event_type: "streak_milestone",
-            message_body: message,
-            status,
-            error_message: errorMessage,
-          });
-        } catch (logErr) {
-          console.error("[streak] WA log insert failed", logErr);
-        }
+        await sendPushToUser(userId, { title: "Streak baru! 🎉", body });
+      } catch (err) {
+        console.error("[streak] push send failed", err);
       }
     }
   } catch (err) {

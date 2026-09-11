@@ -24,7 +24,6 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
 import { sendPushToUser } from "@/lib/push/web-push";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { formatRp } from "@/lib/cashflow/format";
 
@@ -64,11 +63,11 @@ async function notifyPayslipFinalized(
 }
 
 /**
- * Kirim WA "gaji sudah dibayar" + ucapan terima kasih ke karyawan.
- * Best-effort: kegagalan (nomor kosong, Fonnte down, dsb) di-swallow
- * supaya menandai lunas tidak pernah gagal karena WA. Return true bila
- * WA benar-benar terkirim (untuk toast di UI). Teks memakai template
- * editable `payslip_paid_notification`.
+ * Push "gaji sudah dibayar" + ucapan terima kasih ke karyawan. Best-effort:
+ * kegagalan (belum aktifkan notifikasi, dsb) di-swallow supaya menandai
+ * lunas tidak pernah gagal karena push. Return true bila percobaan kirim
+ * dilakukan (untuk toast di UI) — sendPushToUser no-op diam-diam kalau
+ * karyawan belum subscribe, jadi ini bukan konfirmasi benar-benar diterima.
  */
 async function notifyPayslipPaid(payslipId: string): Promise<boolean> {
   try {
@@ -81,24 +80,27 @@ async function notifyPayslipPaid(payslipId: string): Promise<boolean> {
     if (!ps) return false;
     const { data: prof } = await supabase
       .from("profiles")
-      .select("nickname, full_name, whatsapp_number")
+      .select("nickname, full_name")
       .eq("id", ps.user_id)
       .maybeSingle();
-    const wa = prof?.whatsapp_number?.trim();
-    if (!wa) return false;
     const name =
       prof?.nickname?.trim() ||
       prof?.full_name?.trim().split(/\s+/)[0] ||
       "Kak";
     const monthName = ID_MONTHS[ps.month - 1] ?? String(ps.month);
-    const message = await renderWaTemplate("payslip_paid_notification", {
+    const body = await renderWaTemplate("payslip_paid_notification", {
       name,
       month: `${monthName} ${ps.year}`,
       amount: formatRp(Number(ps.net_total ?? 0)),
     });
-    return await sendWhatsApp(wa, message);
+    await sendPushToUser(ps.user_id, {
+      title: "Gaji sudah dibayar 🎉",
+      body,
+      url: "/payslips",
+    });
+    return true;
   } catch (err) {
-    console.error("[payslip] WA paid notify failed:", err);
+    console.error("[payslip] push paid notify failed:", err);
     return false;
   }
 }

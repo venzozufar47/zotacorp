@@ -207,17 +207,14 @@ const cardSchema = z
     phoneNumber: z.string().trim().min(5, "Nomor minimal 5 digit").max(30),
     provider: z.string().trim().max(40).optional().nullable(),
     label: z.string().trim().max(80).optional().nullable(),
-    picUserId: z.string().uuid().optional().nullable(),
-    picName: z.string().trim().max(80).optional().nullable(),
-    picPhone: z.string().trim().max(30).optional().nullable(),
+    // Wajib akun terdaftar — PIC manual (nama+telepon bebas) tidak
+    // didukung lagi karena reminder sekarang push notification, yang
+    // hanya bisa menyasar akun app, bukan nomor telepon.
+    picUserId: z.string().uuid("Penanggung jawab wajib dipilih dari karyawan terdaftar"),
     activeUntil: ymd.optional().nullable(),
     graceUntil: ymd.optional().nullable(),
     notes: z.string().trim().max(500).optional().nullable(),
   })
-  .refine(
-    (v) => Boolean(v.picUserId) || (Boolean(v.picName) && Boolean(v.picPhone)),
-    { message: "Pilih karyawan, atau isi nama + nomor WA penanggung jawab" }
-  )
   // Masa tenggang selalu SESUDAH masa aktif. Kalau terbalik, perhitungan
   // status jadi rancu (kartu terbaca "hangus" padahal masih aktif).
   .refine((v) => !(v.activeUntil && v.graceUntil) || v.graceUntil >= v.activeUntil, {
@@ -227,16 +224,17 @@ const cardSchema = z
 export type SimCardInput = z.infer<typeof cardSchema>;
 
 function toRow(input: SimCardInput) {
-  // PIC terdaftar dan PIC manual saling eksklusif — hindari data rancu.
-  const asUser = Boolean(input.picUserId);
   return {
     business_unit_id: input.businessUnitId,
     phone_number: input.phoneNumber,
     provider: input.provider || null,
     label: input.label || null,
-    pic_user_id: asUser ? input.picUserId : null,
-    pic_name: asUser ? null : input.picName || null,
-    pic_phone: asUser ? null : input.picPhone || null,
+    pic_user_id: input.picUserId,
+    // PIC manual sudah tidak bisa diisi lagi dari form ini — setiap
+    // submit (baik kartu baru maupun edit kartu lama yang masih manual)
+    // otomatis mengosongkan sisa data manual lama.
+    pic_name: null,
+    pic_phone: null,
     active_until: input.activeUntil || null,
     grace_until: input.graceUntil || null,
     notes: input.notes || null,

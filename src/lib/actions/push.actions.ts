@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { notifyAdminAttendance } from "@/lib/whatsapp/attendance-notify";
@@ -40,6 +41,93 @@ export async function subscribeToPush(
     { onConflict: "endpoint" }
   );
   if (error) return { error: error.message };
+  return { ok: true };
+}
+
+/**
+ * Whether the current user is allowed to check in: has a push
+ * subscription, OR an admin granted them an exemption. Used both by the
+ * client-side pre-check (skip wasting GPS/selfie effort) and mirrors the
+ * hard gate re-checked server-side inside `checkIn()` itself.
+ */
+export async function getPushGateStatus(): Promise<{ ready: boolean }> {
+  const user = await getCurrentUser();
+  if (!user) return { ready: false };
+
+  const supabase = createAdminClient();
+  const [{ data: sub }, { data: prof }] = await Promise.all([
+    supabase
+      .from("push_subscriptions")
+      .select("id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("push_notification_exempt")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
+  return { ready: Boolean(sub) || Boolean(prof?.push_notification_exempt) };
+}
+
+export interface PushExemptionRow {
+  id: string;
+  fullName: string;
+  hasSubscription: boolean;
+  exempt: boolean;
+}
+
+/**
+ * Admin view of the check-in push gate: every active employee, whether
+ * they already have a push subscription, and whether an admin exempted
+ * them from the gate (for devices that genuinely can't support Web Push).
+ */
+export async function listPushExemptions(): Promise<PushExemptionRow[]> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return [];
+
+  const supabase = createAdminClient();
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name, push_notification_exempt")
+    .neq("role", "investor")
+    .eq("is_active", true)
+    .order("full_name", { ascending: true });
+  if (!profiles || profiles.length === 0) return [];
+
+  const { data: subs } = await supabase
+    .from("push_subscriptions")
+    .select("user_id")
+    .in(
+      "user_id",
+      profiles.map((p) => p.id)
+    );
+  const subscribed = new Set((subs ?? []).map((s) => s.user_id));
+
+  return profiles.map((p) => ({
+    id: p.id,
+    fullName: p.full_name || "",
+    hasSubscription: subscribed.has(p.id),
+    exempt: p.push_notification_exempt ?? false,
+  }));
+}
+
+/** Admin override: exempt (or un-exempt) one employee from the check-in push gate. */
+export async function setPushExemption(
+  userId: string,
+  exempt: boolean
+): Promise<{ ok: true } | { error: string }> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ push_notification_exempt: exempt })
+    .eq("id", userId);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 

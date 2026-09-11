@@ -8,7 +8,9 @@
  *   - `yeobo_booth_reminder_checkpoints` (enabled, days_before,
  *     message_template). SEMUA checkpoint aktif diproses pada run cron
  *     harian (Vercel Hobby = cron sekali/hari ~11:00 WIB; tak ada per-jam).
- *   - `yeobo_booth_reminder_recipients` (enabled) → daftar nomor penerima.
+ *   - `yeobo_booth_reminder_recipients` (enabled, user_id) → daftar akun
+ *     penerima. Baris legacy tanpa user_id (phone-only, pra-migrasi push)
+ *     diabaikan di sini sampai admin sambungkan ke akun.
  *
  * Untuk tiap checkpoint aktif pada jam ini:
  *   1. target_date = today + days_before.
@@ -16,16 +18,16 @@
  *   3. Skip booking yang sudah ada row di `yeobo_booth_reminder_logs`
  *      (idempotency via UNIQUE (booking_id, checkpoint='H-{days_before}')).
  *   4. Render pesan (template custom checkpoint, kalau ada; selain itu
- *      template generik) lalu kirim ke recipients via Fonnte.
+ *      template generik) lalu kirim push ke tiap akun penerima.
  *   5. Update row log (status='sent'/'failed'/'skipped').
  *
- * Fire-and-forget: error WA / DB tidak boleh crash request — kembalikan
+ * Fire-and-forget: error push / DB tidak boleh crash request — kembalikan
  * summary supaya cron log Vercel bisa diagnose.
  */
 
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
+import { sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate, interpolate } from "@/lib/whatsapp/templates";
 import {
   jakartaDateMinusDays,
@@ -56,17 +58,16 @@ function formatTanggalID(ymd: string): string {
   });
 }
 
-/** Penerima reminder = daftar nomor WA custom (enabled) yang dikelola admin. */
+/** Penerima reminder = akun (user_id, enabled) yang dikelola admin. */
 async function getReminderRecipients(db: Db): Promise<string[]> {
   const { data } = await db
     .from("yeobo_booth_reminder_recipients" as never)
-    .select("phone_e164, enabled");
+    .select("user_id, enabled");
   return (
-    (data ?? []) as unknown as { phone_e164: string; enabled: boolean }[]
+    (data ?? []) as unknown as { user_id: string | null; enabled: boolean }[]
   )
-    .filter((r) => r.enabled)
-    .map((r) => r.phone_e164.trim())
-    .filter(Boolean);
+    .filter((r) => r.enabled && r.user_id)
+    .map((r) => r.user_id as string);
 }
 
 export interface ReminderRunResult {
@@ -230,13 +231,25 @@ export async function runYeoboBoothReminders(): Promise<ReminderRunResult> {
         continue;
       }
 
-      const ok = await sendWhatsApp(recipients, body);
-      if (!ok) {
+      let anySent = false;
+      for (const userId of recipients) {
+        try {
+          await sendPushToUser(userId, {
+            title: `Reminder Booth ${label}`,
+            body,
+            url: "/admin/yeobo-booth",
+          });
+          anySent = true;
+        } catch (err) {
+          console.error("[yeobo-booth] push send failed", userId, err);
+        }
+      }
+      if (!anySent) {
         await db
           .from("yeobo_booth_reminder_logs" as never)
           .update({
             status: "failed",
-            error_message: "Fonnte send returned false",
+            error_message: "push send failed for all recipients",
           } as never)
           .eq("booking_id", b.id)
           .eq("checkpoint", label);

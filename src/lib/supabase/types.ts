@@ -44,150 +44,9 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      attendance_locations: {
-        Row: {
-          created_at: string
-          id: string
-          latitude: number
-          longitude: number
-          name: string
-          radius_m: number
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          latitude: number
-          longitude: number
-          name: string
-          radius_m: number
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          latitude?: number
-          longitude?: number
-          name?: string
-          radius_m?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      attendance_logs: {
-        Row: {
-          bonus_day: boolean
-          checked_in_at: string
-          checked_out_at: string | null
-          checkout_latitude: number | null
-          checkout_longitude: number | null
-          checkout_outside_note: string | null
-          created_at: string
-          date: string
-          id: string
-          is_early_arrival: boolean
-          is_overtime: boolean
-          late_checkout_reason: string | null
-          late_minutes: number
-          late_proof_admin_note: string | null
-          late_proof_reason: string | null
-          late_proof_status: string | null
-          late_proof_url: string | null
-          latitude: number | null
-          longitude: number | null
-          matched_location_id: string | null
-          overtime_minutes: number
-          overtime_status: string | null
-          selfie_ai_flag: string | null
-          selfie_ai_note: string | null
-          selfie_path: string | null
-          status: string
-          total_break_minutes: number
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          bonus_day?: boolean
-          checked_in_at: string
-          checked_out_at?: string | null
-          checkout_latitude?: number | null
-          checkout_longitude?: number | null
-          checkout_outside_note?: string | null
-          created_at?: string
-          date: string
-          id?: string
-          is_early_arrival?: boolean
-          is_overtime?: boolean
-          late_checkout_reason?: string | null
-          late_minutes?: number
-          late_proof_admin_note?: string | null
-          late_proof_reason?: string | null
-          late_proof_status?: string | null
-          late_proof_url?: string | null
-          latitude?: number | null
-          longitude?: number | null
-          matched_location_id?: string | null
-          overtime_minutes?: number
-          overtime_status?: string | null
-          selfie_ai_flag?: string | null
-          selfie_ai_note?: string | null
-          selfie_path?: string | null
-          status?: string
-          total_break_minutes?: number
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          bonus_day?: boolean
-          checked_in_at?: string
-          checked_out_at?: string | null
-          checkout_latitude?: number | null
-          checkout_longitude?: number | null
-          checkout_outside_note?: string | null
-          created_at?: string
-          date?: string
-          id?: string
-          is_early_arrival?: boolean
-          is_overtime?: boolean
-          late_checkout_reason?: string | null
-          late_minutes?: number
-          late_proof_admin_note?: string | null
-          late_proof_reason?: string | null
-          late_proof_status?: string | null
-          late_proof_url?: string | null
-          latitude?: number | null
-          longitude?: number | null
-          matched_location_id?: string | null
-          overtime_minutes?: number
-          overtime_status?: string | null
-          selfie_ai_flag?: string | null
-          selfie_ai_note?: string | null
-          selfie_path?: string | null
-          status?: string
-          total_break_minutes?: number
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
           {
-            foreignKeyName: "attendance_logs_matched_location_id_fkey"
-            columns: ["matched_location_id"]
-            isOneToOne: false
-            referencedRelation: "attendance_locations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "attendance_logs_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "attendance_logs_user_id_fkey"
-            columns: ["user_id"]
+            foreignKeyName: "allocation_archives_archived_by_fkey"
+            columns: ["archived_by"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
@@ -267,10 +126,182 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "attendance_break_logs_break_in_matched_location_id_fkey"
+            columns: ["break_in_matched_location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_break_logs_break_out_matched_location_id_fkey"
+            columns: ["break_out_matched_location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "attendance_break_logs_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_break_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_locations: {
+        Row: {
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          name: string
+          radius_m: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          name: string
+          radius_m: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          name?: string
+          radius_m?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      attendance_logs: {
+        Row: {
+          bonus_day: boolean
+          checked_in_at: string
+          checked_out_at: string | null
+          checkout_latitude: number | null
+          checkout_longitude: number | null
+          checkout_outside_note: string | null
+          created_at: string
+          date: string
+          id: string
+          is_early_arrival: boolean
+          is_overtime: boolean
+          late_checkout_reason: string | null
+          late_minutes: number
+          late_proof_admin_note: string | null
+          late_proof_reason: string | null
+          late_proof_status: string | null
+          late_proof_url: string | null
+          latitude: number | null
+          longitude: number | null
+          matched_location_id: string | null
+          overtime_minutes: number
+          overtime_status: string | null
+          selfie_ai_flag: string | null
+          selfie_ai_note: string | null
+          selfie_path: string | null
+          selfie_purged_at: string | null
+          status: string
+          total_break_minutes: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bonus_day?: boolean
+          checked_in_at: string
+          checked_out_at?: string | null
+          checkout_latitude?: number | null
+          checkout_longitude?: number | null
+          checkout_outside_note?: string | null
+          created_at?: string
+          date: string
+          id?: string
+          is_early_arrival?: boolean
+          is_overtime?: boolean
+          late_checkout_reason?: string | null
+          late_minutes?: number
+          late_proof_admin_note?: string | null
+          late_proof_reason?: string | null
+          late_proof_status?: string | null
+          late_proof_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          matched_location_id?: string | null
+          overtime_minutes?: number
+          overtime_status?: string | null
+          selfie_ai_flag?: string | null
+          selfie_ai_note?: string | null
+          selfie_path?: string | null
+          selfie_purged_at?: string | null
+          status?: string
+          total_break_minutes?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bonus_day?: boolean
+          checked_in_at?: string
+          checked_out_at?: string | null
+          checkout_latitude?: number | null
+          checkout_longitude?: number | null
+          checkout_outside_note?: string | null
+          created_at?: string
+          date?: string
+          id?: string
+          is_early_arrival?: boolean
+          is_overtime?: boolean
+          late_checkout_reason?: string | null
+          late_minutes?: number
+          late_proof_admin_note?: string | null
+          late_proof_reason?: string | null
+          late_proof_status?: string | null
+          late_proof_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          matched_location_id?: string | null
+          overtime_minutes?: number
+          overtime_status?: string | null
+          selfie_ai_flag?: string | null
+          selfie_ai_note?: string | null
+          selfie_path?: string | null
+          selfie_purged_at?: string | null
+          status?: string
+          total_break_minutes?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_logs_matched_location_id_fkey"
+            columns: ["matched_location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -441,6 +472,7 @@ export type Database = {
           opname_authorizer_id: string | null
           pdf_password: string | null
           pos_enabled: boolean
+          pos_receipt_config: Json | null
           production_authorizer_id: string | null
           service_level_close_hour: number
           service_level_enabled: boolean
@@ -466,6 +498,7 @@ export type Database = {
           opname_authorizer_id?: string | null
           pdf_password?: string | null
           pos_enabled?: boolean
+          pos_receipt_config?: Json | null
           production_authorizer_id?: string | null
           service_level_close_hour?: number
           service_level_enabled?: boolean
@@ -491,6 +524,7 @@ export type Database = {
           opname_authorizer_id?: string | null
           pdf_password?: string | null
           pos_enabled?: boolean
+          pos_receipt_config?: Json | null
           production_authorizer_id?: string | null
           service_level_close_hour?: number
           service_level_enabled?: boolean
@@ -901,6 +935,7 @@ export type Database = {
           field: string
           id: string
           mime_type: string | null
+          purged_at: string | null
           size_bytes: number | null
           storage_path: string
           uploaded_by: string | null
@@ -911,6 +946,7 @@ export type Database = {
           field: string
           id?: string
           mime_type?: string | null
+          purged_at?: string | null
           size_bytes?: number | null
           storage_path: string
           uploaded_by?: string | null
@@ -921,6 +957,7 @@ export type Database = {
           field?: string
           id?: string
           mime_type?: string | null
+          purged_at?: string | null
           size_bytes?: number | null
           storage_path?: string
           uploaded_by?: string | null
@@ -1054,12 +1091,20 @@ export type Database = {
           discount_kind: string
           discount_value: number
           filling_option_id: string | null
+          free_claim: boolean
+          free_claim_at: string | null
+          free_claim_by: string | null
           greeting_card: string | null
           id: string
           paid_at: string | null
           paid_idr: number
           payment_option_id: string | null
           payment_status: string
+          picked_up_at: string | null
+          picked_up_by: string | null
+          picked_up_via: string | null
+          pickup_waive_note: string | null
+          pickup_waive_reason: string | null
           production_done_at: string | null
           production_started_at: string | null
           production_status: string
@@ -1097,12 +1142,20 @@ export type Database = {
           discount_kind?: string
           discount_value?: number
           filling_option_id?: string | null
+          free_claim?: boolean
+          free_claim_at?: string | null
+          free_claim_by?: string | null
           greeting_card?: string | null
           id?: string
           paid_at?: string | null
           paid_idr?: number
           payment_option_id?: string | null
           payment_status?: string
+          picked_up_at?: string | null
+          picked_up_by?: string | null
+          picked_up_via?: string | null
+          pickup_waive_note?: string | null
+          pickup_waive_reason?: string | null
           production_done_at?: string | null
           production_started_at?: string | null
           production_status?: string
@@ -1140,12 +1193,20 @@ export type Database = {
           discount_kind?: string
           discount_value?: number
           filling_option_id?: string | null
+          free_claim?: boolean
+          free_claim_at?: string | null
+          free_claim_by?: string | null
           greeting_card?: string | null
           id?: string
           paid_at?: string | null
           paid_idr?: number
           payment_option_id?: string | null
           payment_status?: string
+          picked_up_at?: string | null
+          picked_up_by?: string | null
+          picked_up_via?: string | null
+          pickup_waive_note?: string | null
+          pickup_waive_reason?: string | null
           production_done_at?: string | null
           production_started_at?: string | null
           production_status?: string
@@ -1566,6 +1627,7 @@ export type Database = {
         Row: {
           assigned_to_user_id: string | null
           attachment_path: string | null
+          attachment_purged_at: string | null
           branch: string | null
           category: string | null
           created_at: string
@@ -1573,7 +1635,7 @@ export type Database = {
           custom_cake_included: boolean | null
           debit: number
           description: string
-          effective_period: string
+          effective_period: string | null
           effective_period_month: number | null
           effective_period_year: number | null
           id: string
@@ -1589,6 +1651,7 @@ export type Database = {
         Insert: {
           assigned_to_user_id?: string | null
           attachment_path?: string | null
+          attachment_purged_at?: string | null
           branch?: string | null
           category?: string | null
           created_at?: string
@@ -1596,7 +1659,7 @@ export type Database = {
           custom_cake_included?: boolean | null
           debit?: number
           description: string
-          effective_period?: never
+          effective_period?: string | null
           effective_period_month?: number | null
           effective_period_year?: number | null
           id?: string
@@ -1612,6 +1675,7 @@ export type Database = {
         Update: {
           assigned_to_user_id?: string | null
           attachment_path?: string | null
+          attachment_purged_at?: string | null
           branch?: string | null
           category?: string | null
           created_at?: string
@@ -1619,7 +1683,7 @@ export type Database = {
           custom_cake_included?: boolean | null
           debit?: number
           description?: string
-          effective_period?: never
+          effective_period?: string | null
           effective_period_month?: number | null
           effective_period_year?: number | null
           id?: string
@@ -1746,9 +1810,9 @@ export type Database = {
           updated_at: string
           user_id: string | null
           weekdays: number
+          window_end: string | null
           window_mode: string
           window_start: string | null
-          window_end: string | null
         }
         Insert: {
           block_checkout?: boolean
@@ -1767,9 +1831,9 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
           weekdays?: number
+          window_end?: string | null
           window_mode?: string
           window_start?: string | null
-          window_end?: string | null
         }
         Update: {
           block_checkout?: boolean
@@ -1788,9 +1852,9 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
           weekdays?: number
+          window_end?: string | null
           window_mode?: string
           window_start?: string | null
-          window_end?: string | null
         }
         Relationships: [
           {
@@ -1801,6 +1865,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cleaning_assignments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cleaning_assignments_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -1808,10 +1879,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "cleaning_assignments_location_id_fkey"
-            columns: ["location_id"]
+            foreignKeyName: "cleaning_assignments_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "attendance_locations"
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1921,6 +1992,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cleaning_duty_pool_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       cleaning_item_photos: {
@@ -1972,6 +2050,10 @@ export type Database = {
           photo_path: string | null
           photo_purged_at: string | null
           photo_req_id: string | null
+          review_note: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
           user_id: string
         }
         Insert: {
@@ -1987,6 +2069,10 @@ export type Database = {
           photo_path?: string | null
           photo_purged_at?: string | null
           photo_req_id?: string | null
+          review_note?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           user_id: string
         }
         Update: {
@@ -2002,6 +2088,10 @@ export type Database = {
           photo_path?: string | null
           photo_purged_at?: string | null
           photo_req_id?: string | null
+          review_note?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           user_id?: string
         }
         Relationships: [
@@ -2020,13 +2110,865 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cleaning_task_completions_photo_req_id_fkey"
+            columns: ["photo_req_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_item_photos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_task_completions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_task_completions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cleaning_task_completions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cleaning_task_completions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      costing_hpp_snapshot: {
+        Row: {
+          breakdown_json: Json | null
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          final_price: number | null
+          hpp_unit: number
+          id: string
+          margin_percent: number | null
+          product_id: string
+          snapshot_date: string
+        }
+        Insert: {
+          breakdown_json?: Json | null
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          final_price?: number | null
+          hpp_unit: number
+          id?: string
+          margin_percent?: number | null
+          product_id: string
+          snapshot_date: string
+        }
+        Update: {
+          breakdown_json?: Json | null
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          final_price?: number | null
+          hpp_unit?: number
+          id?: string
+          margin_percent?: number | null
+          product_id?: string
+          snapshot_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_hpp_snapshot_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_hpp_snapshot_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_hpp_snapshot_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "costing_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_material_opname_items: {
+        Row: {
+          expected_qty: number
+          id: string
+          material_id: string
+          material_name_snapshot: string
+          opname_id: string
+          physical_qty: number
+          unit_cost_snapshot: number
+          usage_unit_snapshot: string
+        }
+        Insert: {
+          expected_qty?: number
+          id?: string
+          material_id: string
+          material_name_snapshot: string
+          opname_id: string
+          physical_qty: number
+          unit_cost_snapshot?: number
+          usage_unit_snapshot: string
+        }
+        Update: {
+          expected_qty?: number
+          id?: string
+          material_id?: string
+          material_name_snapshot?: string
+          opname_id?: string
+          physical_qty?: number
+          unit_cost_snapshot?: number
+          usage_unit_snapshot?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_material_opname_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "costing_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_opname_items_opname_id_fkey"
+            columns: ["opname_id"]
+            isOneToOne: false
+            referencedRelation: "costing_material_opnames"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_material_opnames: {
+        Row: {
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          opname_date: string
+          opname_time: string | null
+        }
+        Insert: {
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          opname_date: string
+          opname_time?: string | null
+        }
+        Update: {
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          opname_date?: string
+          opname_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_material_opnames_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_opnames_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_material_price_history: {
+        Row: {
+          content_per_purchase: number
+          created_by: string | null
+          effective_from: string
+          id: string
+          material_id: string
+          purchase_price: number
+        }
+        Insert: {
+          content_per_purchase: number
+          created_by?: string | null
+          effective_from?: string
+          id?: string
+          material_id: string
+          purchase_price: number
+        }
+        Update: {
+          content_per_purchase?: number
+          created_by?: string | null
+          effective_from?: string
+          id?: string
+          material_id?: string
+          purchase_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_material_price_history_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_price_history_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_price_history_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "costing_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_material_procurement: {
+        Row: {
+          avg_daily_usage: number
+          business_unit: string
+          created_at: string
+          is_tracked: boolean
+          lead_time_days: number
+          lead_time_sigma_days: number | null
+          material_id: string
+          moq_purchase_units: number
+          notes: string | null
+          order_multiple_units: number
+          service_level_override: number | null
+          supplier: string | null
+          updated_at: string
+          updated_by: string | null
+          usage_sigma_daily: number | null
+        }
+        Insert: {
+          avg_daily_usage?: number
+          business_unit: string
+          created_at?: string
+          is_tracked?: boolean
+          lead_time_days?: number
+          lead_time_sigma_days?: number | null
+          material_id: string
+          moq_purchase_units?: number
+          notes?: string | null
+          order_multiple_units?: number
+          service_level_override?: number | null
+          supplier?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          usage_sigma_daily?: number | null
+        }
+        Update: {
+          avg_daily_usage?: number
+          business_unit?: string
+          created_at?: string
+          is_tracked?: boolean
+          lead_time_days?: number
+          lead_time_sigma_days?: number | null
+          material_id?: string
+          moq_purchase_units?: number
+          notes?: string | null
+          order_multiple_units?: number
+          service_level_override?: number | null
+          supplier?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          usage_sigma_daily?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_material_procurement_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: true
+            referencedRelation: "costing_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_procurement_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_procurement_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_material_receipts: {
+        Row: {
+          business_unit: string
+          content_per_purchase_snapshot: number
+          created_at: string
+          created_by: string | null
+          id: string
+          material_id: string
+          notes: string | null
+          purchase_url_snapshot: string | null
+          qty_purchase_units: number
+          qty_usage_units: number
+          receipt_date: string
+          receipt_time: string | null
+          supplier: string | null
+          total_paid: number | null
+          unit_price_paid: number | null
+        }
+        Insert: {
+          business_unit: string
+          content_per_purchase_snapshot: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_id: string
+          notes?: string | null
+          purchase_url_snapshot?: string | null
+          qty_purchase_units: number
+          qty_usage_units: number
+          receipt_date: string
+          receipt_time?: string | null
+          supplier?: string | null
+          total_paid?: number | null
+          unit_price_paid?: number | null
+        }
+        Update: {
+          business_unit?: string
+          content_per_purchase_snapshot?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          material_id?: string
+          notes?: string | null
+          purchase_url_snapshot?: string | null
+          qty_purchase_units?: number
+          qty_usage_units?: number
+          receipt_date?: string
+          receipt_time?: string | null
+          supplier?: string | null
+          total_paid?: number | null
+          unit_price_paid?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_material_receipts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_receipts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_material_receipts_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "costing_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_materials: {
+        Row: {
+          business_unit: string
+          category: string | null
+          content_per_purchase: number
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          name: string
+          price_updated_at: string
+          purchase_price: number
+          purchase_unit: string
+          shopee_url: string | null
+          shrink_factor: number
+          updated_at: string
+          usage_unit: string
+        }
+        Insert: {
+          business_unit: string
+          category?: string | null
+          content_per_purchase: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          price_updated_at?: string
+          purchase_price: number
+          purchase_unit: string
+          shopee_url?: string | null
+          shrink_factor?: number
+          updated_at?: string
+          usage_unit: string
+        }
+        Update: {
+          business_unit?: string
+          category?: string | null
+          content_per_purchase?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          price_updated_at?: string
+          purchase_price?: number
+          purchase_unit?: string
+          shopee_url?: string | null
+          shrink_factor?: number
+          updated_at?: string
+          usage_unit?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_materials_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_materials_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_products: {
+        Row: {
+          business_unit: string
+          category: string | null
+          created_at: string
+          created_by: string | null
+          crew_fee: number
+          depreciation_per_event: number
+          id: string
+          is_active: boolean
+          labor: number
+          labor_hours: number
+          labor_mode: string
+          labor_rate: number
+          manual_price: number
+          name: string
+          overhead_method: string
+          overhead_nominal: number
+          overhead_percent: number
+          packaging: number
+          pos_product_id: string | null
+          pos_variant_id: string | null
+          price_method: string
+          rounding_mode: string
+          rounding_unit: number
+          target_percent: number
+          transport: number
+          type: string
+          updated_at: string
+          yield_qty: number
+          yield_unit: string | null
+        }
+        Insert: {
+          business_unit: string
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          crew_fee?: number
+          depreciation_per_event?: number
+          id?: string
+          is_active?: boolean
+          labor?: number
+          labor_hours?: number
+          labor_mode?: string
+          labor_rate?: number
+          manual_price?: number
+          name: string
+          overhead_method?: string
+          overhead_nominal?: number
+          overhead_percent?: number
+          packaging?: number
+          pos_product_id?: string | null
+          pos_variant_id?: string | null
+          price_method?: string
+          rounding_mode?: string
+          rounding_unit?: number
+          target_percent?: number
+          transport?: number
+          type?: string
+          updated_at?: string
+          yield_qty?: number
+          yield_unit?: string | null
+        }
+        Update: {
+          business_unit?: string
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          crew_fee?: number
+          depreciation_per_event?: number
+          id?: string
+          is_active?: boolean
+          labor?: number
+          labor_hours?: number
+          labor_mode?: string
+          labor_rate?: number
+          manual_price?: number
+          name?: string
+          overhead_method?: string
+          overhead_nominal?: number
+          overhead_percent?: number
+          packaging?: number
+          pos_product_id?: string | null
+          pos_variant_id?: string | null
+          price_method?: string
+          rounding_mode?: string
+          rounding_unit?: number
+          target_percent?: number
+          transport?: number
+          type?: string
+          updated_at?: string
+          yield_qty?: number
+          yield_unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_products_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_products_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_products_pos_product_id_fkey"
+            columns: ["pos_product_id"]
+            isOneToOne: false
+            referencedRelation: "pos_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_products_pos_variant_id_fkey"
+            columns: ["pos_variant_id"]
+            isOneToOne: false
+            referencedRelation: "pos_product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_recipe_items: {
+        Row: {
+          created_at: string
+          id: string
+          material_id: string
+          product_id: string
+          qty: number
+          sort_order: number
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          material_id: string
+          product_id: string
+          qty?: number
+          sort_order?: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          material_id?: string
+          product_id?: string
+          qty?: number
+          sort_order?: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "costing_recipe_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "costing_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "costing_recipe_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "costing_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      costing_units: {
+        Row: {
+          code: string
+          dimension: string
+          label: string
+          to_base: number
+        }
+        Insert: {
+          code: string
+          dimension: string
+          label: string
+          to_base: number
+        }
+        Update: {
+          code?: string
+          dimension?: string
+          label?: string
+          to_base?: number
+        }
+        Relationships: []
+      }
+      disc_positions: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+        }
+        Relationships: []
+      }
+      disc_results: {
+        Row: {
+          answers: Json | null
+          created_at: string
+          created_by: string | null
+          graph1: Json | null
+          graph2: Json | null
+          id: string
+          imported_pdf_path: string | null
+          least_counts: Json | null
+          most_counts: Json | null
+          pattern1_high: string | null
+          pattern1_name: string | null
+          pattern1_num: number | null
+          pattern2_high: string | null
+          pattern2_name: string | null
+          pattern2_num: number | null
+          position_label: string | null
+          source: string
+          taken_at: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json | null
+          created_at?: string
+          created_by?: string | null
+          graph1?: Json | null
+          graph2?: Json | null
+          id?: string
+          imported_pdf_path?: string | null
+          least_counts?: Json | null
+          most_counts?: Json | null
+          pattern1_high?: string | null
+          pattern1_name?: string | null
+          pattern1_num?: number | null
+          pattern2_high?: string | null
+          pattern2_name?: string | null
+          pattern2_num?: number | null
+          position_label?: string | null
+          source: string
+          taken_at: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json | null
+          created_at?: string
+          created_by?: string | null
+          graph1?: Json | null
+          graph2?: Json | null
+          id?: string
+          imported_pdf_path?: string | null
+          least_counts?: Json | null
+          most_counts?: Json | null
+          pattern1_high?: string | null
+          pattern1_name?: string | null
+          pattern1_num?: number | null
+          pattern2_high?: string | null
+          pattern2_name?: string | null
+          pattern2_num?: number | null
+          position_label?: string | null
+          source?: string
+          taken_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "disc_results_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disc_results_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disc_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disc_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      disc_settings: {
+        Row: {
+          id: number
+          site_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          site_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          site_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      disc_submissions: {
+        Row: {
+          adapted_c: number
+          adapted_d: number
+          adapted_i: number
+          adapted_primary: string
+          adapted_s: number
+          adapted_secondary: string | null
+          answers: Json
+          consent_at: string | null
+          consent_given: boolean
+          created_at: string
+          date_of_birth: string | null
+          full_name: string
+          id: string
+          is_reference: boolean
+          natural_c: number
+          natural_d: number
+          natural_i: number
+          natural_primary: string
+          natural_s: number
+          natural_secondary: string | null
+          position_applied: string | null
+        }
+        Insert: {
+          adapted_c: number
+          adapted_d: number
+          adapted_i: number
+          adapted_primary: string
+          adapted_s: number
+          adapted_secondary?: string | null
+          answers: Json
+          consent_at?: string | null
+          consent_given?: boolean
+          created_at?: string
+          date_of_birth?: string | null
+          full_name: string
+          id?: string
+          is_reference?: boolean
+          natural_c: number
+          natural_d: number
+          natural_i: number
+          natural_primary: string
+          natural_s: number
+          natural_secondary?: string | null
+          position_applied?: string | null
+        }
+        Update: {
+          adapted_c?: number
+          adapted_d?: number
+          adapted_i?: number
+          adapted_primary?: string
+          adapted_s?: number
+          adapted_secondary?: string | null
+          answers?: Json
+          consent_at?: string | null
+          consent_given?: boolean
+          created_at?: string
+          date_of_birth?: string | null
+          full_name?: string
+          id?: string
+          is_reference?: boolean
+          natural_c?: number
+          natural_d?: number
+          natural_i?: number
+          natural_primary?: string
+          natural_s?: number
+          natural_secondary?: string | null
+          position_applied?: string | null
+        }
+        Relationships: []
       }
       employee_branch_map: {
         Row: {
@@ -2076,76 +3018,67 @@ export type Database = {
           },
         ]
       }
-      disc_results: {
+      employee_coaching_notes: {
         Row: {
-          id: string
-          user_id: string
-          taken_at: string
-          source: string
-          position_label: string | null
-          answers: Json | null
-          most_counts: Json | null
-          least_counts: Json | null
-          graph1: Json | null
-          graph2: Json | null
-          pattern1_num: number | null
-          pattern1_name: string | null
-          pattern1_high: string | null
-          pattern2_num: number | null
-          pattern2_name: string | null
-          pattern2_high: string | null
-          imported_pdf_path: string | null
-          created_by: string | null
+          acknowledged_at: string | null
+          author_id: string | null
+          body: string
+          context: string
           created_at: string
+          id: string
+          period_from: string | null
+          period_to: string | null
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          taken_at: string
-          source: string
-          position_label?: string | null
-          answers?: Json | null
-          most_counts?: Json | null
-          least_counts?: Json | null
-          graph1?: Json | null
-          graph2?: Json | null
-          pattern1_num?: number | null
-          pattern1_name?: string | null
-          pattern1_high?: string | null
-          pattern2_num?: number | null
-          pattern2_name?: string | null
-          pattern2_high?: string | null
-          imported_pdf_path?: string | null
-          created_by?: string | null
+          acknowledged_at?: string | null
+          author_id?: string | null
+          body: string
+          context?: string
           created_at?: string
+          id?: string
+          period_from?: string | null
+          period_to?: string | null
+          user_id: string
         }
         Update: {
-          id?: string
-          user_id?: string
-          taken_at?: string
-          source?: string
-          position_label?: string | null
-          answers?: Json | null
-          most_counts?: Json | null
-          least_counts?: Json | null
-          graph1?: Json | null
-          graph2?: Json | null
-          pattern1_num?: number | null
-          pattern1_name?: string | null
-          pattern1_high?: string | null
-          pattern2_num?: number | null
-          pattern2_name?: string | null
-          pattern2_high?: string | null
-          imported_pdf_path?: string | null
-          created_by?: string | null
+          acknowledged_at?: string | null
+          author_id?: string | null
+          body?: string
+          context?: string
           created_at?: string
+          id?: string
+          period_from?: string | null
+          period_to?: string | null
+          user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "disc_results_user_id_fkey"
+            foreignKeyName: "employee_coaching_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_coaching_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_coaching_notes_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_coaching_notes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -2186,6 +3119,195 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "attendance_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employment_contract_templates: {
+        Row: {
+          body_markdown: string
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          employer_alamat: string | null
+          employer_jabatan: string | null
+          employer_name: string | null
+          employer_signature_path: string | null
+          id: string
+          is_active: boolean
+          kota: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body_markdown?: string
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          employer_alamat?: string | null
+          employer_jabatan?: string | null
+          employer_name?: string | null
+          employer_signature_path?: string | null
+          id?: string
+          is_active?: boolean
+          kota?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          body_markdown?: string
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          employer_alamat?: string | null
+          employer_jabatan?: string | null
+          employer_name?: string | null
+          employer_signature_path?: string | null
+          id?: string
+          is_active?: boolean
+          kota?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employment_contract_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_contract_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employment_contracts: {
+        Row: {
+          body_markdown: string
+          business_unit: string
+          consent_ip: string | null
+          consent_user_agent: string | null
+          contract_number: string | null
+          created_at: string
+          created_by: string | null
+          employee_signature_path: string | null
+          employee_signed_at: string | null
+          employee_signer_name: string | null
+          employee_signer_nik: string | null
+          employer_alamat: string | null
+          employer_jabatan: string | null
+          employer_name: string | null
+          employer_signature_path: string | null
+          fields: Json
+          id: string
+          kota: string | null
+          lampiran: Json
+          signed_pdf_path: string | null
+          signed_version: number | null
+          status: string
+          template_id: string | null
+          update_note: string | null
+          updated_at: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          body_markdown?: string
+          business_unit: string
+          consent_ip?: string | null
+          consent_user_agent?: string | null
+          contract_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          employee_signature_path?: string | null
+          employee_signed_at?: string | null
+          employee_signer_name?: string | null
+          employee_signer_nik?: string | null
+          employer_alamat?: string | null
+          employer_jabatan?: string | null
+          employer_name?: string | null
+          employer_signature_path?: string | null
+          fields?: Json
+          id?: string
+          kota?: string | null
+          lampiran?: Json
+          signed_pdf_path?: string | null
+          signed_version?: number | null
+          status?: string
+          template_id?: string | null
+          update_note?: string | null
+          updated_at?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          body_markdown?: string
+          business_unit?: string
+          consent_ip?: string | null
+          consent_user_agent?: string | null
+          contract_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          employee_signature_path?: string | null
+          employee_signed_at?: string | null
+          employee_signer_name?: string | null
+          employee_signer_nik?: string | null
+          employer_alamat?: string | null
+          employer_jabatan?: string | null
+          employer_name?: string | null
+          employer_signature_path?: string | null
+          fields?: Json
+          id?: string
+          kota?: string | null
+          lampiran?: Json
+          signed_pdf_path?: string | null
+          signed_version?: number | null
+          status?: string
+          template_id?: string | null
+          update_note?: string | null
+          updated_at?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employment_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_contracts_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "employment_contract_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_contracts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_contracts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -2308,6 +3430,55 @@ export type Database = {
           {
             foreignKeyName: "extra_work_logs_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      investor_bep_baseline: {
+        Row: {
+          amount_idr: number
+          contract_id: string
+          frozen_at: string
+          frozen_by: string | null
+          method: string
+          through_ym: string
+        }
+        Insert: {
+          amount_idr: number
+          contract_id: string
+          frozen_at?: string
+          frozen_by?: string | null
+          method: string
+          through_ym: string
+        }
+        Update: {
+          amount_idr?: number
+          contract_id?: string
+          frozen_at?: string
+          frozen_by?: string | null
+          method?: string
+          through_ym?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investor_bep_baseline_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: true
+            referencedRelation: "investor_contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_bep_baseline_frozen_by_fkey"
+            columns: ["frozen_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investor_bep_baseline_frozen_by_fkey"
+            columns: ["frozen_by"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
@@ -2455,6 +3626,7 @@ export type Database = {
       }
       investor_payouts: {
         Row: {
+          alloc_id: string | null
           amount_idr: number
           contract_id: string
           created_at: string
@@ -2465,8 +3637,10 @@ export type Database = {
           period_month: number
           period_year: number
           ref: string | null
+          source: string
         }
         Insert: {
+          alloc_id?: string | null
           amount_idr: number
           contract_id: string
           created_at?: string
@@ -2477,8 +3651,10 @@ export type Database = {
           period_month: number
           period_year: number
           ref?: string | null
+          source?: string
         }
         Update: {
+          alloc_id?: string | null
           amount_idr?: number
           contract_id?: string
           created_at?: string
@@ -2489,8 +3665,16 @@ export type Database = {
           period_month?: number
           period_year?: number
           ref?: string | null
+          source?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "investor_payouts_alloc_id_fkey"
+            columns: ["alloc_id"]
+            isOneToOne: false
+            referencedRelation: "yeobo_dividend_allocations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "investor_payouts_contract_id_fkey"
             columns: ["contract_id"]
@@ -2513,6 +3697,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      national_holidays: {
+        Row: {
+          created_at: string
+          holiday_date: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          holiday_date: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          holiday_date?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       overtime_requests: {
         Row: {
@@ -2595,6 +3800,27 @@ export type Database = {
           },
         ]
       }
+      password_reset_requests: {
+        Row: {
+          created_at: string
+          email_hash: string
+          id: string
+          ip: string | null
+        }
+        Insert: {
+          created_at?: string
+          email_hash: string
+          id?: string
+          ip?: string | null
+        }
+        Update: {
+          created_at?: string
+          email_hash?: string
+          id?: string
+          ip?: string | null
+        }
+        Relationships: []
+      }
       payslip_deliverables: {
         Row: {
           created_at: string | null
@@ -2644,7 +3870,6 @@ export type Database = {
           attendance_weight_pct: number
           bonus_day_hourly: boolean
           calculation_basis: string
-          monthly_overtime_enabled: boolean
           created_at: string | null
           deliverables_weight_pct: number
           expected_days_mode: string
@@ -2662,6 +3887,7 @@ export type Database = {
           late_penalty_interval_min: number
           late_penalty_mode: string
           monthly_fixed_amount: number
+          monthly_overtime_enabled: boolean
           ot_first_hour_rate: number
           ot_fixed_daily_rate: number
           ot_next_hour_rate: number
@@ -2674,7 +3900,6 @@ export type Database = {
           attendance_weight_pct?: number
           bonus_day_hourly?: boolean
           calculation_basis?: string
-          monthly_overtime_enabled?: boolean
           created_at?: string | null
           deliverables_weight_pct?: number
           expected_days_mode?: string
@@ -2692,6 +3917,7 @@ export type Database = {
           late_penalty_interval_min?: number
           late_penalty_mode?: string
           monthly_fixed_amount?: number
+          monthly_overtime_enabled?: boolean
           ot_first_hour_rate?: number
           ot_fixed_daily_rate?: number
           ot_next_hour_rate?: number
@@ -2704,7 +3930,6 @@ export type Database = {
           attendance_weight_pct?: number
           bonus_day_hourly?: boolean
           calculation_basis?: string
-          monthly_overtime_enabled?: boolean
           created_at?: string | null
           deliverables_weight_pct?: number
           expected_days_mode?: string
@@ -2722,6 +3947,7 @@ export type Database = {
           late_penalty_interval_min?: number
           late_penalty_mode?: string
           monthly_fixed_amount?: number
+          monthly_overtime_enabled?: boolean
           ot_first_hour_rate?: number
           ot_fixed_daily_rate?: number
           ot_next_hour_rate?: number
@@ -2731,6 +3957,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payslip_settings_expected_pair_user_id_fkey"
+            columns: ["expected_pair_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payslip_settings_expected_pair_user_id_fkey"
+            columns: ["expected_pair_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payslip_settings_user_id_fkey"
             columns: ["user_id"]
@@ -2804,6 +4044,8 @@ export type Database = {
           base_salary: number
           bonus_day_pay: number
           breakdown_json: Json | null
+          cake_bonus: number
+          cake_bonus_note: string | null
           created_at: string | null
           debt_deduction: number
           debt_deduction_auto: number
@@ -2820,8 +4062,6 @@ export type Database = {
           id: string
           inputs_signature: string | null
           late_penalty: number
-          cake_bonus: number
-          cake_bonus_note: string | null
           month: number
           monthly_bonus: number
           monthly_bonus_note: string | null
@@ -2845,6 +4085,8 @@ export type Database = {
           base_salary?: number
           bonus_day_pay?: number
           breakdown_json?: Json | null
+          cake_bonus?: number
+          cake_bonus_note?: string | null
           created_at?: string | null
           debt_deduction?: number
           debt_deduction_auto?: number
@@ -2858,8 +4100,6 @@ export type Database = {
           expected_work_days?: number
           extra_day_bonus?: number
           extra_work_pay?: number
-          cake_bonus?: number
-          cake_bonus_note?: string | null
           id?: string
           inputs_signature?: string | null
           late_penalty?: number
@@ -2886,6 +4126,8 @@ export type Database = {
           base_salary?: number
           bonus_day_pay?: number
           breakdown_json?: Json | null
+          cake_bonus?: number
+          cake_bonus_note?: string | null
           created_at?: string | null
           debt_deduction?: number
           debt_deduction_auto?: number
@@ -2897,8 +4139,6 @@ export type Database = {
           employee_response_at?: string | null
           employee_response_message?: string | null
           expected_work_days?: number
-          cake_bonus?: number
-          cake_bonus_note?: string | null
           extra_day_bonus?: number
           extra_work_pay?: number
           id?: string
@@ -3000,6 +4240,66 @@ export type Database = {
           },
         ]
       }
+      pos_operation_authorizers: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          bank_account_id: string
+          operation: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id: string
+          operation: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id?: string
+          operation?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_operation_authorizers_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_operation_authorizers_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_operation_authorizers_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_operation_authorizers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_operation_authorizers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pos_product_variants: {
         Row: {
           active: boolean
@@ -3043,138 +4343,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      pos_service_level_daily: {
-        Row: {
-          bank_account_id: string
-          close_hour: number
-          computed_at: string
-          detail_json: Json | null
-          had_activity: boolean
-          has_baseline: boolean
-          open_hour: number
-          partial_opname: boolean
-          percent: number | null
-          ready_sum: number
-          sample_count: number
-          snapshot_date: string
-          source: string
-          tracked_skus: number
-        }
-        Insert: {
-          bank_account_id: string
-          close_hour: number
-          computed_at?: string
-          detail_json?: Json | null
-          had_activity?: boolean
-          has_baseline?: boolean
-          open_hour: number
-          partial_opname?: boolean
-          percent?: number | null
-          ready_sum: number
-          sample_count: number
-          snapshot_date: string
-          source?: string
-          tracked_skus: number
-        }
-        Update: {
-          bank_account_id?: string
-          close_hour?: number
-          computed_at?: string
-          detail_json?: Json | null
-          had_activity?: boolean
-          has_baseline?: boolean
-          open_hour?: number
-          partial_opname?: boolean
-          percent?: number | null
-          ready_sum?: number
-          sample_count?: number
-          snapshot_date?: string
-          source?: string
-          tracked_skus?: number
-        }
-        Relationships: []
-      }
-      pos_service_level_exclusions: {
-        Row: {
-          bank_account_id: string
-          created_at: string
-          created_by: string | null
-          excluded_from: string
-          excluded_until: string | null
-          id: string
-          product_id: string
-          reason: string | null
-          variant_id: string | null
-        }
-        Insert: {
-          bank_account_id: string
-          created_at?: string
-          created_by?: string | null
-          excluded_from: string
-          excluded_until?: string | null
-          id?: string
-          product_id: string
-          reason?: string | null
-          variant_id?: string | null
-        }
-        Update: {
-          bank_account_id?: string
-          created_at?: string
-          created_by?: string | null
-          excluded_from?: string
-          excluded_until?: string | null
-          id?: string
-          product_id?: string
-          reason?: string | null
-          variant_id?: string | null
-        }
-        Relationships: []
-      }
-      pos_operation_authorizers: {
-        Row: {
-          assigned_at: string
-          assigned_by: string | null
-          bank_account_id: string
-          operation: string
-          user_id: string
-        }
-        Insert: {
-          assigned_at?: string
-          assigned_by?: string | null
-          bank_account_id: string
-          operation: string
-          user_id: string
-        }
-        Update: {
-          assigned_at?: string
-          assigned_by?: string | null
-          bank_account_id?: string
-          operation?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      pos_service_level_owners: {
-        Row: {
-          assigned_at: string
-          assigned_by: string | null
-          bank_account_id: string
-          user_id: string
-        }
-        Insert: {
-          assigned_at?: string
-          assigned_by?: string | null
-          bank_account_id: string
-          user_id: string
-        }
-        Update: {
-          assigned_at?: string
-          assigned_by?: string | null
-          bank_account_id?: string
-          user_id?: string
-        }
-        Relationships: []
       }
       pos_products: {
         Row: {
@@ -3236,6 +4404,7 @@ export type Database = {
         Row: {
           fulfillment_type: string | null
           id: string
+          original_unit_price: number | null
           product_id: string | null
           product_name: string
           qty: number
@@ -3249,6 +4418,7 @@ export type Database = {
         Insert: {
           fulfillment_type?: string | null
           id?: string
+          original_unit_price?: number | null
           product_id?: string | null
           product_name: string
           qty: number
@@ -3262,6 +4432,7 @@ export type Database = {
         Update: {
           fulfillment_type?: string | null
           id?: string
+          original_unit_price?: number | null
           product_id?: string | null
           product_name?: string
           qty?: number
@@ -3404,6 +4575,208 @@ export type Database = {
           {
             foreignKeyName: "pos_sales_settled_by_fkey"
             columns: ["settled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_voided_by_fkey"
+            columns: ["voided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_voided_by_fkey"
+            columns: ["voided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_service_level_daily: {
+        Row: {
+          bank_account_id: string
+          close_hour: number
+          computed_at: string
+          detail_json: Json | null
+          had_activity: boolean
+          has_baseline: boolean
+          open_hour: number
+          partial_opname: boolean
+          percent: number | null
+          ready_sum: number
+          sample_count: number
+          snapshot_date: string
+          source: string
+          tracked_skus: number
+        }
+        Insert: {
+          bank_account_id: string
+          close_hour: number
+          computed_at?: string
+          detail_json?: Json | null
+          had_activity?: boolean
+          has_baseline?: boolean
+          open_hour: number
+          partial_opname?: boolean
+          percent?: number | null
+          ready_sum: number
+          sample_count: number
+          snapshot_date: string
+          source?: string
+          tracked_skus: number
+        }
+        Update: {
+          bank_account_id?: string
+          close_hour?: number
+          computed_at?: string
+          detail_json?: Json | null
+          had_activity?: boolean
+          has_baseline?: boolean
+          open_hour?: number
+          partial_opname?: boolean
+          percent?: number | null
+          ready_sum?: number
+          sample_count?: number
+          snapshot_date?: string
+          source?: string
+          tracked_skus?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_service_level_daily_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_service_level_exclusions: {
+        Row: {
+          bank_account_id: string
+          created_at: string
+          created_by: string | null
+          excluded_from: string
+          excluded_until: string | null
+          id: string
+          product_id: string
+          reason: string | null
+          variant_id: string | null
+        }
+        Insert: {
+          bank_account_id: string
+          created_at?: string
+          created_by?: string | null
+          excluded_from: string
+          excluded_until?: string | null
+          id?: string
+          product_id: string
+          reason?: string | null
+          variant_id?: string | null
+        }
+        Update: {
+          bank_account_id?: string
+          created_at?: string
+          created_by?: string | null
+          excluded_from?: string
+          excluded_until?: string | null
+          id?: string
+          product_id?: string
+          reason?: string | null
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_service_level_exclusions_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_exclusions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_exclusions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_exclusions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "pos_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_exclusions_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "pos_product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_service_level_owners: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          bank_account_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          bank_account_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_service_level_owners_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_owners_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_owners_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_owners_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_service_level_owners_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
@@ -3570,26 +4943,109 @@ export type Database = {
           },
         ]
       }
-      national_holidays: {
+      procurement_assignments: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          business_unit: string
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          business_unit: string
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          business_unit?: string
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procurement_settings: {
         Row: {
           created_at: string
-          holiday_date: string
+          holding_rate_annual: number
           id: string
-          name: string
+          ordering_cost: number
+          review_period_days: number
+          service_level: number
+          updated_at: string
+          updated_by: string | null
+          usage_cv: number
         }
         Insert: {
           created_at?: string
-          holiday_date: string
+          holding_rate_annual?: number
           id?: string
-          name: string
+          ordering_cost?: number
+          review_period_days?: number
+          service_level?: number
+          updated_at?: string
+          updated_by?: string | null
+          usage_cv?: number
         }
         Update: {
           created_at?: string
-          holiday_date?: string
+          holding_rate_annual?: number
           id?: string
-          name?: string
+          ordering_cost?: number
+          review_period_days?: number
+          service_level?: number
+          updated_at?: string
+          updated_by?: string | null
+          usage_cv?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "procurement_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procurement_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -3609,6 +5065,7 @@ export type Database = {
           current_city: string | null
           date_of_birth: string | null
           department: string
+          disc_test_required: boolean
           domisili_alamat: string | null
           domisili_kecamatan: string | null
           domisili_kelurahan: string | null
@@ -3617,7 +5074,6 @@ export type Database = {
           email: string
           emergency_contact_name: string | null
           emergency_contact_whatsapp: string | null
-          disc_test_required: boolean
           extra_work_enabled: boolean
           first_day_of_work: string | null
           full_name: string
@@ -3631,11 +5087,13 @@ export type Database = {
           job_role: string | null
           motto: string | null
           nickname: string | null
+          nik: string | null
           npwp: string | null
           payslip_excluded: boolean
           place_of_birth: string | null
           pos_pin_hash: string | null
           position: string
+          push_notification_exempt: boolean
           resigned_at: string | null
           resigned_by: string | null
           role: string
@@ -3666,6 +5124,7 @@ export type Database = {
           current_city?: string | null
           date_of_birth?: string | null
           department?: string
+          disc_test_required?: boolean
           domisili_alamat?: string | null
           domisili_kecamatan?: string | null
           domisili_kelurahan?: string | null
@@ -3674,7 +5133,6 @@ export type Database = {
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_whatsapp?: string | null
-          disc_test_required?: boolean
           extra_work_enabled?: boolean
           first_day_of_work?: string | null
           full_name?: string
@@ -3688,11 +5146,13 @@ export type Database = {
           job_role?: string | null
           motto?: string | null
           nickname?: string | null
+          nik?: string | null
           npwp?: string | null
           payslip_excluded?: boolean
           place_of_birth?: string | null
           pos_pin_hash?: string | null
           position?: string
+          push_notification_exempt?: boolean
           resigned_at?: string | null
           resigned_by?: string | null
           role?: string
@@ -3723,6 +5183,7 @@ export type Database = {
           current_city?: string | null
           date_of_birth?: string | null
           department?: string
+          disc_test_required?: boolean
           domisili_alamat?: string | null
           domisili_kecamatan?: string | null
           domisili_kelurahan?: string | null
@@ -3731,7 +5192,6 @@ export type Database = {
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_whatsapp?: string | null
-          disc_test_required?: boolean
           extra_work_enabled?: boolean
           first_day_of_work?: string | null
           full_name?: string
@@ -3745,11 +5205,13 @@ export type Database = {
           job_role?: string | null
           motto?: string | null
           nickname?: string | null
+          nik?: string | null
           npwp?: string | null
           payslip_excluded?: boolean
           place_of_birth?: string | null
           pos_pin_hash?: string | null
           position?: string
+          push_notification_exempt?: boolean
           resigned_at?: string | null
           resigned_by?: string | null
           role?: string
@@ -3810,6 +5272,57 @@ export type Database = {
         }
         Relationships: []
       }
+      revenue_month_allocations: {
+        Row: {
+          amount: number
+          branch: string
+          business_unit: string
+          created_at: string
+          created_by: string | null
+          id: string
+          period_month: number
+          period_year: number
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          branch: string
+          business_unit: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          period_month: number
+          period_year: number
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          branch?: string
+          business_unit?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          period_month?: number
+          period_year?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revenue_month_allocations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revenue_month_allocations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       salary_allocations: {
         Row: {
           amount: number
@@ -3862,41 +5375,1042 @@ export type Database = {
           },
         ]
       }
-      revenue_month_allocations: {
+      sim_card_topups: {
         Row: {
-          amount: number
-          branch: string
-          business_unit: string
+          amount_idr: number | null
+          created_at: string
+          id: string
+          new_active_until: string | null
+          new_grace_until: string | null
+          note: string | null
+          proof_path: string
+          sim_card_id: string
+          topped_up_by: string | null
+        }
+        Insert: {
+          amount_idr?: number | null
+          created_at?: string
+          id?: string
+          new_active_until?: string | null
+          new_grace_until?: string | null
+          note?: string | null
+          proof_path: string
+          sim_card_id: string
+          topped_up_by?: string | null
+        }
+        Update: {
+          amount_idr?: number | null
+          created_at?: string
+          id?: string
+          new_active_until?: string | null
+          new_grace_until?: string | null
+          note?: string | null
+          proof_path?: string
+          sim_card_id?: string
+          topped_up_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sim_card_topups_sim_card_id_fkey"
+            columns: ["sim_card_id"]
+            isOneToOne: false
+            referencedRelation: "sim_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sim_card_topups_topped_up_by_fkey"
+            columns: ["topped_up_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sim_card_topups_topped_up_by_fkey"
+            columns: ["topped_up_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sim_cards: {
+        Row: {
+          active_until: string | null
+          business_unit_id: string
           created_at: string
           created_by: string | null
+          grace_until: string | null
           id: string
-          period_month: number
-          period_year: number
+          is_active: boolean
+          label: string | null
+          notes: string | null
+          phone_number: string
+          pic_name: string | null
+          pic_phone: string | null
+          pic_user_id: string | null
+          provider: string | null
           updated_at: string
         }
         Insert: {
-          amount: number
-          branch: string
-          business_unit: string
+          active_until?: string | null
+          business_unit_id: string
           created_at?: string
           created_by?: string | null
+          grace_until?: string | null
           id?: string
-          period_month: number
-          period_year: number
+          is_active?: boolean
+          label?: string | null
+          notes?: string | null
+          phone_number: string
+          pic_name?: string | null
+          pic_phone?: string | null
+          pic_user_id?: string | null
+          provider?: string | null
           updated_at?: string
         }
         Update: {
-          amount?: number
-          branch?: string
-          business_unit?: string
+          active_until?: string | null
+          business_unit_id?: string
           created_at?: string
           created_by?: string | null
+          grace_until?: string | null
           id?: string
-          period_month?: number
-          period_year?: number
+          is_active?: boolean
+          label?: string | null
+          notes?: string | null
+          phone_number?: string
+          pic_name?: string | null
+          pic_phone?: string | null
+          pic_user_id?: string | null
+          provider?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sim_cards_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sim_cards_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sim_cards_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sim_cards_pic_user_id_fkey"
+            columns: ["pic_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sim_cards_pic_user_id_fkey"
+            columns: ["pic_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_account_credentials: {
+        Row: {
+          access_token: string | null
+          account_id: string
+          created_at: string
+          enc_version: number
+          expires_at: string | null
+          external_user_id: string | null
+          last_refresh_error: string | null
+          last_refreshed_at: string | null
+          refresh_expires_at: string | null
+          refresh_failure_count: number
+          refresh_token: string | null
+          scopes: string | null
+          token_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          account_id: string
+          created_at?: string
+          enc_version?: number
+          expires_at?: string | null
+          external_user_id?: string | null
+          last_refresh_error?: string | null
+          last_refreshed_at?: string | null
+          refresh_expires_at?: string | null
+          refresh_failure_count?: number
+          refresh_token?: string | null
+          scopes?: string | null
+          token_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string
+          created_at?: string
+          enc_version?: number
+          expires_at?: string | null
+          external_user_id?: string | null
+          last_refresh_error?: string | null
+          last_refreshed_at?: string | null
+          refresh_expires_at?: string | null
+          refresh_failure_count?: number
+          refresh_token?: string | null
+          scopes?: string | null
+          token_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_account_credentials_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_account_metrics: {
+        Row: {
+          account_id: string
+          accounts_engaged: number | null
+          captured_at: string
+          captured_date: string
+          created_at: string
+          follower_count: number | null
+          following_count: number | null
+          id: string
+          impressions: number | null
+          likes_total: number | null
+          media_count: number | null
+          new_followers: number | null
+          profile_views: number | null
+          raw: Json
+          reach: number | null
+          source: string
+          website_clicks: number | null
+        }
+        Insert: {
+          account_id: string
+          accounts_engaged?: number | null
+          captured_at?: string
+          captured_date: string
+          created_at?: string
+          follower_count?: number | null
+          following_count?: number | null
+          id?: string
+          impressions?: number | null
+          likes_total?: number | null
+          media_count?: number | null
+          new_followers?: number | null
+          profile_views?: number | null
+          raw?: Json
+          reach?: number | null
+          source: string
+          website_clicks?: number | null
+        }
+        Update: {
+          account_id?: string
+          accounts_engaged?: number | null
+          captured_at?: string
+          captured_date?: string
+          created_at?: string
+          follower_count?: number | null
+          following_count?: number | null
+          id?: string
+          impressions?: number | null
+          likes_total?: number | null
+          media_count?: number | null
+          new_followers?: number | null
+          profile_views?: number | null
+          raw?: Json
+          reach?: number | null
+          source?: string
+          website_clicks?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_account_metrics_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_accounts: {
+        Row: {
+          backfill_done_through: string | null
+          business_unit_id: string
+          created_at: string
+          created_by: string | null
+          default_creator_id: string | null
+          display_name: string | null
+          external_account_id: string | null
+          follower_count_cache: number | null
+          handle: string
+          id: string
+          is_active: boolean
+          last_sync_error: string | null
+          last_sync_status: string | null
+          last_synced_at: string | null
+          manager_id: string | null
+          platform: string
+          provider: string
+          provider_config: Json
+          sync_enabled: boolean
+          token_expires_at: string | null
+          token_refresh_failures: number
+          token_status: string | null
+          updated_at: string
+        }
+        Insert: {
+          backfill_done_through?: string | null
+          business_unit_id: string
+          created_at?: string
+          created_by?: string | null
+          default_creator_id?: string | null
+          display_name?: string | null
+          external_account_id?: string | null
+          follower_count_cache?: number | null
+          handle: string
+          id?: string
+          is_active?: boolean
+          last_sync_error?: string | null
+          last_sync_status?: string | null
+          last_synced_at?: string | null
+          manager_id?: string | null
+          platform: string
+          provider?: string
+          provider_config?: Json
+          sync_enabled?: boolean
+          token_expires_at?: string | null
+          token_refresh_failures?: number
+          token_status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          backfill_done_through?: string | null
+          business_unit_id?: string
+          created_at?: string
+          created_by?: string | null
+          default_creator_id?: string | null
+          display_name?: string | null
+          external_account_id?: string | null
+          follower_count_cache?: number | null
+          handle?: string
+          id?: string
+          is_active?: boolean
+          last_sync_error?: string | null
+          last_sync_status?: string | null
+          last_synced_at?: string | null
+          manager_id?: string | null
+          platform?: string
+          provider?: string
+          provider_config?: Json
+          sync_enabled?: boolean
+          token_expires_at?: string | null
+          token_refresh_failures?: number
+          token_status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_accounts_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_accounts_default_creator_id_fkey"
+            columns: ["default_creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_accounts_default_creator_id_fkey"
+            columns: ["default_creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_accounts_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_accounts_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_kpi_targets: {
+        Row: {
+          account_id: string | null
+          business_unit_id: string | null
+          comparator: string
+          created_at: string
+          created_by: string | null
+          creator_id: string | null
+          id: string
+          is_active: boolean
+          metric_key: string
+          notes: string | null
+          period_end: string | null
+          period_start: string
+          period_type: string
+          scope: string
+          target_value: number
+          updated_at: string
+          weight: number
+        }
+        Insert: {
+          account_id?: string | null
+          business_unit_id?: string | null
+          comparator?: string
+          created_at?: string
+          created_by?: string | null
+          creator_id?: string | null
+          id?: string
+          is_active?: boolean
+          metric_key: string
+          notes?: string | null
+          period_end?: string | null
+          period_start: string
+          period_type?: string
+          scope: string
+          target_value: number
+          updated_at?: string
+          weight?: number
+        }
+        Update: {
+          account_id?: string | null
+          business_unit_id?: string | null
+          comparator?: string
+          created_at?: string
+          created_by?: string | null
+          creator_id?: string | null
+          id?: string
+          is_active?: boolean
+          metric_key?: string
+          notes?: string | null
+          period_end?: string | null
+          period_start?: string
+          period_type?: string
+          scope?: string
+          target_value?: number
+          updated_at?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_kpi_targets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_kpi_targets_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_kpi_targets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_kpi_targets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_kpi_targets_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_kpi_targets_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_post_metrics: {
+        Row: {
+          age_minutes: number
+          avg_watch_time_seconds: number | null
+          captured_at: string
+          comments: number | null
+          created_at: string
+          follows: number | null
+          full_video_watched_rate: number | null
+          id: string
+          impressions: number | null
+          likes: number | null
+          plays: number | null
+          post_id: string
+          profile_visits: number | null
+          raw: Json
+          reach: number | null
+          saves: number | null
+          shares: number | null
+          slot: string
+          source: string
+          views: number | null
+          watch_time_seconds: number | null
+        }
+        Insert: {
+          age_minutes: number
+          avg_watch_time_seconds?: number | null
+          captured_at?: string
+          comments?: number | null
+          created_at?: string
+          follows?: number | null
+          full_video_watched_rate?: number | null
+          id?: string
+          impressions?: number | null
+          likes?: number | null
+          plays?: number | null
+          post_id: string
+          profile_visits?: number | null
+          raw?: Json
+          reach?: number | null
+          saves?: number | null
+          shares?: number | null
+          slot: string
+          source: string
+          views?: number | null
+          watch_time_seconds?: number | null
+        }
+        Update: {
+          age_minutes?: number
+          avg_watch_time_seconds?: number | null
+          captured_at?: string
+          comments?: number | null
+          created_at?: string
+          follows?: number | null
+          full_video_watched_rate?: number | null
+          id?: string
+          impressions?: number | null
+          likes?: number | null
+          plays?: number | null
+          post_id?: string
+          profile_visits?: number | null
+          raw?: Json
+          reach?: number | null
+          saves?: number | null
+          shares?: number | null
+          slot?: string
+          source?: string
+          views?: number | null
+          watch_time_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_post_metrics_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_posts: {
+        Row: {
+          account_id: string
+          caption: string | null
+          comments: number | null
+          created_at: string
+          creator_id: string | null
+          creator_source: string
+          duration_seconds: number | null
+          engagement_rate: number | null
+          external_post_id: string
+          first_seen_at: string
+          hashtags: string[] | null
+          id: string
+          impressions: number | null
+          is_deleted: boolean
+          likes: number | null
+          media_type: string | null
+          metrics_updated_at: string | null
+          permalink: string | null
+          platform: string
+          plays: number | null
+          published_at: string
+          published_date: string | null
+          raw: Json
+          reach: number | null
+          saves: number | null
+          shares: number | null
+          thumbnail_url: string | null
+          updated_at: string
+          views: number | null
+        }
+        Insert: {
+          account_id: string
+          caption?: string | null
+          comments?: number | null
+          created_at?: string
+          creator_id?: string | null
+          creator_source?: string
+          duration_seconds?: number | null
+          engagement_rate?: number | null
+          external_post_id: string
+          first_seen_at?: string
+          hashtags?: string[] | null
+          id?: string
+          impressions?: number | null
+          is_deleted?: boolean
+          likes?: number | null
+          media_type?: string | null
+          metrics_updated_at?: string | null
+          permalink?: string | null
+          platform: string
+          plays?: number | null
+          published_at: string
+          published_date?: string | null
+          raw?: Json
+          reach?: number | null
+          saves?: number | null
+          shares?: number | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          views?: number | null
+        }
+        Update: {
+          account_id?: string
+          caption?: string | null
+          comments?: number | null
+          created_at?: string
+          creator_id?: string | null
+          creator_source?: string
+          duration_seconds?: number | null
+          engagement_rate?: number | null
+          external_post_id?: string
+          first_seen_at?: string
+          hashtags?: string[] | null
+          id?: string
+          impressions?: number | null
+          is_deleted?: boolean
+          likes?: number | null
+          media_type?: string | null
+          metrics_updated_at?: string | null
+          permalink?: string | null
+          platform?: string
+          plays?: number | null
+          published_at?: string
+          published_date?: string | null
+          raw?: Json
+          reach?: number | null
+          saves?: number | null
+          shares?: number | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_posts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_posts_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_posts_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_sync_runs: {
+        Row: {
+          account_id: string | null
+          api_calls: number
+          error_detail: string | null
+          error_reason: string | null
+          finished_at: string | null
+          id: string
+          kind: string
+          metric_rows: number
+          posts_seen: number
+          posts_upserted: number
+          provider: string | null
+          started_at: string
+          status: string
+          summary: Json
+        }
+        Insert: {
+          account_id?: string | null
+          api_calls?: number
+          error_detail?: string | null
+          error_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          kind: string
+          metric_rows?: number
+          posts_seen?: number
+          posts_upserted?: number
+          provider?: string | null
+          started_at?: string
+          status?: string
+          summary?: Json
+        }
+        Update: {
+          account_id?: string | null
+          api_calls?: number
+          error_detail?: string | null
+          error_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          metric_rows?: number
+          posts_seen?: number
+          posts_upserted?: number
+          provider?: string | null
+          started_at?: string
+          status?: string
+          summary?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_sync_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studio_heads: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "studio_heads_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "studio_heads_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "studio_heads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "studio_heads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_attachments: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          id: string
+          path: string
+          sort_order: number
+          ticket_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          id?: string
+          path: string
+          sort_order?: number
+          ticket_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          id?: string
+          path?: string
+          sort_order?: number
+          ticket_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_attachments_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tickets: {
+        Row: {
+          branch: string
+          business_unit: string
+          category: string
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          created_by: string
+          description: string
+          dispute_note: string | null
+          escalated_at: string | null
+          escalated_by: string | null
+          escalation_note: string | null
+          id: string
+          in_progress_at: string | null
+          in_progress_by: string | null
+          owner_decided_at: string | null
+          owner_decided_by: string | null
+          owner_decision: string | null
+          owner_note: string | null
+          priority: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          branch: string
+          business_unit?: string
+          category: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by: string
+          description?: string
+          dispute_note?: string | null
+          escalated_at?: string | null
+          escalated_by?: string | null
+          escalation_note?: string | null
+          id?: string
+          in_progress_at?: string | null
+          in_progress_by?: string | null
+          owner_decided_at?: string | null
+          owner_decided_by?: string | null
+          owner_decision?: string | null
+          owner_note?: string | null
+          priority?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          branch?: string
+          business_unit?: string
+          category?: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string
+          dispute_note?: string | null
+          escalated_at?: string | null
+          escalated_by?: string | null
+          escalation_note?: string | null
+          id?: string
+          in_progress_at?: string | null
+          in_progress_by?: string | null
+          owner_decided_at?: string | null
+          owner_decided_by?: string | null
+          owner_decision?: string | null
+          owner_note?: string | null
+          priority?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tickets_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_escalated_by_fkey"
+            columns: ["escalated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_escalated_by_fkey"
+            columns: ["escalated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_in_progress_by_fkey"
+            columns: ["in_progress_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_in_progress_by_fkey"
+            columns: ["in_progress_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_owner_decided_by_fkey"
+            columns: ["owner_decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_owner_decided_by_fkey"
+            columns: ["owner_decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       voice_room_presence: {
         Row: {
@@ -4164,6 +6678,9 @@ export type Database = {
       }
       yeobo_booth_bookings: {
         Row: {
+          bagi_hasil_per_sesi: number | null
+          biaya_sewa_space: number | null
+          booking_type: string
           cancellation_kind: string | null
           catatan: string | null
           created_at: string
@@ -4172,10 +6689,12 @@ export type Database = {
           dp_cashflow_transaction_id: string | null
           dp_nominal: number | null
           dp_tanggal: string | null
+          harga_per_sesi: number | null
           harga_total: number
           id: string
           jam_mulai: string
           jam_selesai: string
+          jumlah_sesi: number | null
           lokasi_event: string | null
           nama_klien: string
           no_hp_klien: string | null
@@ -4189,6 +6708,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bagi_hasil_per_sesi?: number | null
+          biaya_sewa_space?: number | null
+          booking_type?: string
           cancellation_kind?: string | null
           catatan?: string | null
           created_at?: string
@@ -4197,10 +6719,12 @@ export type Database = {
           dp_cashflow_transaction_id?: string | null
           dp_nominal?: number | null
           dp_tanggal?: string | null
+          harga_per_sesi?: number | null
           harga_total: number
           id?: string
           jam_mulai: string
           jam_selesai: string
+          jumlah_sesi?: number | null
           lokasi_event?: string | null
           nama_klien: string
           no_hp_klien?: string | null
@@ -4214,6 +6738,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bagi_hasil_per_sesi?: number | null
+          biaya_sewa_space?: number | null
+          booking_type?: string
           cancellation_kind?: string | null
           catatan?: string | null
           created_at?: string
@@ -4222,10 +6749,12 @@ export type Database = {
           dp_cashflow_transaction_id?: string | null
           dp_nominal?: number | null
           dp_tanggal?: string | null
+          harga_per_sesi?: number | null
           harga_total?: number
           id?: string
           jam_mulai?: string
           jam_selesai?: string
+          jumlah_sesi?: number | null
           lokasi_event?: string | null
           nama_klien?: string
           no_hp_klien?: string | null
@@ -4334,6 +6863,57 @@ export type Database = {
           },
         ]
       }
+      yeobo_booth_reminder_checkpoints: {
+        Row: {
+          created_at: string
+          days_before: number
+          enabled: boolean
+          id: string
+          label: string | null
+          message_template: string | null
+          send_hour: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          days_before: number
+          enabled?: boolean
+          id?: string
+          label?: string | null
+          message_template?: string | null
+          send_hour?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          days_before?: number
+          enabled?: boolean
+          id?: string
+          label?: string | null
+          message_template?: string | null
+          send_hour?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_booth_reminder_checkpoints_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_reminder_checkpoints_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       yeobo_booth_reminder_logs: {
         Row: {
           booking_id: string
@@ -4372,12 +6952,61 @@ export type Database = {
           },
         ]
       }
+      yeobo_booth_reminder_recipients: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          id: string
+          label: string
+          phone_e164: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          label?: string
+          phone_e164?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          label?: string
+          phone_e164?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_booth_reminder_recipients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_booth_reminder_recipients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       yeobo_dividend_allocations: {
         Row: {
           after_bep: boolean
           amount_idr: number
           created_at: string
           created_by: string | null
+          entitlement_idr: number
           id: string
           notes: string | null
           period_month: number
@@ -4392,6 +7021,7 @@ export type Database = {
           amount_idr: number
           created_at?: string
           created_by?: string | null
+          entitlement_idr: number
           id?: string
           notes?: string | null
           period_month: number
@@ -4406,6 +7036,7 @@ export type Database = {
           amount_idr?: number
           created_at?: string
           created_by?: string | null
+          entitlement_idr?: number
           id?: string
           notes?: string | null
           period_month?: number
@@ -4484,10 +7115,44 @@ export type Database = {
           },
         ]
       }
+      yeobo_dividend_pnl_override: {
+        Row: {
+          amount_idr: number
+          branch: string
+          created_at: string
+          note: string | null
+          period_month: number
+          period_year: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          amount_idr: number
+          branch: string
+          created_at?: string
+          note?: string | null
+          period_month: number
+          period_year: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          amount_idr?: number
+          branch?: string
+          created_at?: string
+          note?: string | null
+          period_month?: number
+          period_year?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       yeobo_dividend_recipients: {
         Row: {
           active: boolean
           branch: string
+          claim_token: string | null
           contract_id: string | null
           created_at: string
           created_by: string | null
@@ -4496,6 +7161,8 @@ export type Database = {
           kind: string
           label: string
           notes: string | null
+          placeholder_contact: string | null
+          placeholder_name: string | null
           pool_pct: number | null
           sort_order: number
           updated_at: string
@@ -4504,6 +7171,7 @@ export type Database = {
         Insert: {
           active?: boolean
           branch: string
+          claim_token?: string | null
           contract_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -4512,6 +7180,8 @@ export type Database = {
           kind: string
           label: string
           notes?: string | null
+          placeholder_contact?: string | null
+          placeholder_name?: string | null
           pool_pct?: number | null
           sort_order?: number
           updated_at?: string
@@ -4520,6 +7190,7 @@ export type Database = {
         Update: {
           active?: boolean
           branch?: string
+          claim_token?: string | null
           contract_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -4528,6 +7199,8 @@ export type Database = {
           kind?: string
           label?: string
           notes?: string | null
+          placeholder_contact?: string | null
+          placeholder_name?: string | null
           pool_pct?: number | null
           sort_order?: number
           updated_at?: string
@@ -4571,6 +7244,140 @@ export type Database = {
           },
         ]
       }
+      yeobo_meeting_notes: {
+        Row: {
+          body: string
+          branches: string[]
+          created_at: string
+          created_by: string | null
+          id: string
+          meeting_date: string
+          published: boolean
+          summary: string | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          body: string
+          branches: string[]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          meeting_date: string
+          published?: boolean
+          summary?: string | null
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          body?: string
+          branches?: string[]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          meeting_date?: string
+          published?: boolean
+          summary?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_meeting_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_meeting_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_meeting_notes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_meeting_notes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_photo_sessions: {
+        Row: {
+          branch: string
+          created_at: string
+          id: string
+          locked_at: string | null
+          package_label: string
+          period_month: number
+          period_year: number
+          sessions: number
+          sort_order: number
+          source: string
+          studio: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          branch: string
+          created_at?: string
+          id?: string
+          locked_at?: string | null
+          package_label?: string
+          period_month: number
+          period_year: number
+          sessions: number
+          sort_order?: number
+          source?: string
+          studio: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          branch?: string
+          created_at?: string
+          id?: string
+          locked_at?: string | null
+          package_label?: string
+          period_month?: number
+          period_year?: number
+          sessions?: number
+          sort_order?: number
+          source?: string
+          studio?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_photo_sessions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_photo_sessions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       profiles_celebrations_public: {
@@ -4606,14 +7413,43 @@ export type Database = {
         }
         Relationships: []
       }
+      yeobo_branch_investment_v: {
+        Row: {
+          branch: string | null
+          business_unit: string | null
+          n_contracts: number | null
+          total_investment_idr: number | null
+        }
+        Relationships: []
+      }
+      yeobo_dividend_recipients_v: {
+        Row: {
+          active: boolean | null
+          branch: string | null
+          claim_token: string | null
+          contract_id: string | null
+          id: string | null
+          invest_idr: number | null
+          kind: string | null
+          label: string | null
+          needs_slot: boolean | null
+          notes: string | null
+          placeholder_name: string | null
+          pool_pct: number | null
+          sort_order: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      can_manage_tickets: { Args: never; Returns: boolean }
       can_manage_yeobo_booth: { Args: never; Returns: boolean }
       cleaning_branch_present: {
-        Args: { p_location_id: string; p_date: string }
+        Args: { p_date: string; p_location_id: string }
         Returns: {
-          user_id: string
           sort_order: number
+          user_id: string
         }[]
       }
       count_my_needs_assignments: { Args: never; Returns: number }
@@ -4650,6 +7486,7 @@ export type Database = {
         }[]
       }
       get_ui_theme: { Args: never; Returns: string }
+      investor_yeobo_branches: { Args: never; Returns: string[] }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_assignee: { Args: { account_id: string }; Returns: boolean }
       is_admin_or_pos_assignee: {
@@ -4657,18 +7494,48 @@ export type Database = {
         Returns: boolean
       }
       is_investor_for_business_unit: { Args: { bu: string }; Returns: boolean }
+      is_procurement_for_bu: { Args: { bu: string }; Returns: boolean }
+      is_procurement_staff: { Args: never; Returns: boolean }
+      is_service_level_owner: { Args: { account_id: string }; Returns: boolean }
+      is_sim_pic: { Args: { card: string }; Returns: boolean }
+      is_social_account_member: { Args: { account: string }; Returns: boolean }
+      is_studio_head: { Args: never; Returns: boolean }
       is_yeobo_booth_admin: { Args: never; Returns: boolean }
+      is_zota_person: { Args: never; Returns: boolean }
       resolve_assignment: {
         Args: {
-          p_row_id: string
-          p_category: string
           p_branch: string
-          p_effective_period_month?: number | null
-          p_effective_period_year?: number | null
+          p_category: string
+          p_effective_period_month?: number
+          p_effective_period_year?: number
+          p_row_id: string
         }
         Returns: boolean
       }
       voice_sweep_stale_presence: { Args: never; Returns: number }
+      yeobo_branch_investment: {
+        Args: never
+        Returns: {
+          branch: string
+          business_unit: string
+          n_contracts: number
+          total_investment_idr: number
+        }[]
+      }
+      yeobo_branch_total_investment: {
+        Args: { p_branch: string; p_business_unit: string }
+        Returns: number
+      }
+      yeobo_dividend_pnl_rows: {
+        Args: never
+        Returns: {
+          amount_idr: number
+          branch: string
+          period_month: number
+          period_year: number
+          source: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
@@ -4687,12 +7554,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4716,11 +7583,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4741,11 +7608,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4766,11 +7633,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4783,11 +7650,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4801,7 +7668,6 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
 
 /** Per-day transparency snapshot for payslips.breakdown_json. */
 export type PayslipBreakdown = {

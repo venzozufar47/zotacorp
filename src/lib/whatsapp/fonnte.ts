@@ -1,6 +1,13 @@
 /**
  * Fonnte WhatsApp gateway client.
  *
+ * DISABLED as of 2026-09 — every notification that used to go through here
+ * now goes through Web Push (see src/lib/push/web-push.ts). Fonnte's sender
+ * device is no longer connected, so calls would fail anyway; `FONNTE_ENABLED`
+ * short-circuits every send to a no-op instead of making a doomed network
+ * call. Code kept intact (not deleted) in case Fonnte is ever needed again —
+ * flip the flag back to re-enable, no other changes required.
+ *
  * Fonnte is an Indonesia-local unofficial WhatsApp gateway built on top of
  * WhatsApp Web sessions. The free tier (1 device, limited daily messages)
  * is sufficient for low-volume admin notifications like sign-in/out events.
@@ -15,6 +22,8 @@
  * Fire-and-forget by design: Fonnte / WhatsApp outages must never block an
  * employee from clocking in. All errors are logged, never thrown.
  */
+
+const FONNTE_ENABLED = false;
 
 const FONNTE_ENDPOINT = "https://api.fonnte.com/send";
 
@@ -41,6 +50,8 @@ export async function sendWhatsApp(
   to: string | string[],
   message: string
 ): Promise<boolean> {
+  if (!FONNTE_ENABLED) return false;
+
   const token = process.env.FONNTE_TOKEN;
   if (!token) {
     console.warn("[fonnte] FONNTE_TOKEN not set — skipping WA send");

@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { MapPin, MapPinOff, Clock, Coffee } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { checkIn, checkOut, breakOut, breakIn } from "@/lib/actions/attendance.actions";
+import { getPushGateStatus } from "@/lib/actions/push.actions";
+import { AttendancePushGate } from "./AttendancePushGate";
 import { CheckoutConfirmDialog } from "./CheckoutConfirmDialog";
 import { activeBreakWindow } from "@/lib/utils/break-windows";
 import { extensionFor } from "@/lib/images/compress-image";
@@ -136,6 +138,27 @@ export function CheckInButton({
   const { t } = useTranslation();
 
   const state = getState(log);
+
+  // Push-notification gate for check-in only (not checkout/break — once
+  // an employee has passed the gate once today, later actions proceed
+  // normally). `null` = still checking; fails OPEN on a network hiccup —
+  // the server-side gate inside checkIn() is the real enforcement, this
+  // is purely to skip wasted GPS/selfie effort and show clear guidance.
+  const [pushGateReady, setPushGateReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (state !== "idle") return;
+    let alive = true;
+    getPushGateStatus()
+      .then((res) => {
+        if (alive) setPushGateReady(res.ready);
+      })
+      .catch(() => {
+        if (alive) setPushGateReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [state]);
 
   /**
    * Jam berdetak — HANYA untuk memutuskan kapan centang lembur muncul.
@@ -530,14 +553,20 @@ export function CheckInButton({
   return (
     <>
       <div className="w-full space-y-3">
-        {state === "idle" && (
+        {state === "idle" && pushGateReady === false && (
+          <AttendancePushGate onReady={() => setPushGateReady(true)} />
+        )}
+
+        {state === "idle" && pushGateReady !== false && (
           <button
             className="btn-action-primary w-full pulse-primary flex items-center justify-center gap-2"
             onClick={openCheckIn}
-            disabled={isPending}
+            disabled={isPending || pushGateReady === null}
           >
             {isPending ? (
               <span className="animate-pulse">{t.checkIn.processing}</span>
+            ) : pushGateReady === null ? (
+              <span className="animate-pulse">Memeriksa notifikasi…</span>
             ) : (
               <>
                 <Clock size={20} />
@@ -653,7 +682,7 @@ export function CheckInButton({
         )}
 
         {/* Location status hint — only shown before check-in */}
-        {state === "idle" && (
+        {state === "idle" && pushGateReady !== false && (
           <p className={`text-xs text-center ${
             geoStatus === "denied" || geoStatus === "unavailable"
               ? "text-destructive font-medium"

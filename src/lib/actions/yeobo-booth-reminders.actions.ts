@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireYeoboBoothAccess, type ActionResult } from "./_gates";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import type {
   YeoboBoothReminderCheckpoint,
   YeoboBoothReminderRecipient,
@@ -20,6 +19,35 @@ import type {
 const CP_TABLE = "yeobo_booth_reminder_checkpoints";
 const RCP_TABLE = "yeobo_booth_reminder_recipients";
 const SETTINGS_PATH = "/admin/yeobo-booth/settings";
+
+export interface RecipientCandidate {
+  id: string;
+  fullName: string;
+  businessUnit: string | null;
+}
+
+/**
+ * Akun app yang bisa dipilih sebagai penerima reminder (aktif, semua
+ * peran — admin/operator lapangan boleh sama-sama jadi penerima). Gate
+ * sama dengan sisa file ini (admin global ATAU admin Yeobo Booth) — TIDAK
+ * pakai `listAssignableProfiles` (admin-only) karena akan kosong untuk
+ * admin Yeobo Booth yang bukan admin global.
+ */
+export async function listRecipientCandidates(): Promise<RecipientCandidate[]> {
+  const gate = await requireYeoboBoothAccess();
+  if (!gate.ok) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, full_name, business_unit")
+    .eq("is_active", true)
+    .order("full_name", { ascending: true });
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    fullName: p.full_name || "",
+    businessUnit: p.business_unit,
+  }));
+}
 
 // ── Checkpoints ───────────────────────────────────────────────────────
 
@@ -118,7 +146,7 @@ export async function saveReminderCheckpoints(
   return { ok: true };
 }
 
-// ── Recipients (daftar nomor custom) ──────────────────────────────────
+// ── Recipients (daftar akun app) ────────────────────────────────────────
 
 export async function listReminderRecipients(): Promise<
   YeoboBoothReminderRecipient[]
@@ -128,14 +156,14 @@ export async function listReminderRecipients(): Promise<
   const supabase = await createClient();
   const { data } = await supabase
     .from(RCP_TABLE as never)
-    .select("id, label, phone_e164, enabled")
+    .select("id, label, phone_e164, user_id, enabled")
     .order("created_at", { ascending: true });
   return (data ?? []) as unknown as YeoboBoothReminderRecipient[];
 }
 
 const recipientSchema = z.object({
+  userId: z.string().uuid("Pilih karyawan/admin dari daftar"),
   label: z.string().trim().max(120).optional().default(""),
-  phone: z.string().trim().min(1),
 });
 
 export async function addReminderRecipient(
@@ -150,20 +178,49 @@ export async function addReminderRecipient(
       error: parsed.error.issues[0]?.message ?? "Input invalid",
     };
   }
-  const phone = normalizePhone(parsed.data.phone);
-  if (!phone) {
-    return {
-      ok: false,
-      error: "Nomor WA tidak valid (contoh: 0812xxxx atau 62812xxxx).",
-    };
-  }
   const supabase = await createClient();
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", parsed.data.userId)
+    .maybeSingle();
+  if (!prof) return { ok: false, error: "Akun tidak ditemukan" };
   const { error } = await supabase.from(RCP_TABLE as never).insert({
-    label: parsed.data.label ?? "",
-    phone_e164: phone,
+    label: parsed.data.label || prof.full_name || "",
+    user_id: parsed.data.userId,
+    phone_e164: null,
     created_by: gate.userId,
   } as never);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      return { ok: false, error: "Akun ini sudah terdaftar sebagai penerima" };
+    }
+    return { ok: false, error: error.message };
+  }
+  revalidatePath(SETTINGS_PATH);
+  return { ok: true };
+}
+
+/** Sambungkan baris penerima legacy (phone-only, pra-migrasi push) ke akun app. */
+export async function connectReminderRecipientToAccount(
+  id: string,
+  userId: string
+): Promise<ActionResult> {
+  const gate = await requireYeoboBoothAccess();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const parsed = z.string().uuid().safeParse(userId);
+  if (!parsed.success) return { ok: false, error: "Akun tidak valid" };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from(RCP_TABLE as never)
+    .update({ user_id: userId } as never)
+    .eq("id", id);
+  if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      return { ok: false, error: "Akun ini sudah terdaftar sebagai penerima lain" };
+    }
+    return { ok: false, error: error.message };
+  }
   revalidatePath(SETTINGS_PATH);
   return { ok: true };
 }

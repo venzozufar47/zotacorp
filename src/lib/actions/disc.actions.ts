@@ -4,9 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
+import { sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import {
   scoreDisc,
   validateAnswers,
@@ -258,23 +257,27 @@ export async function setDiscTestRequired(
     .from("profiles")
     .update({ disc_test_required: required, updated_at: new Date().toISOString() })
     .eq("id", userId)
-    .select("id, full_name, nickname, whatsapp_number, is_active, resigned_at")
+    .select("id, full_name, nickname, is_active, resigned_at")
     .single();
   if (error || !prof) return { ok: false, error: error?.message ?? "Profil tidak ditemukan." };
 
+  // `waSent` name kept for API compatibility with callers — channel is now
+  // push, not WA. True only means a send was attempted, not confirmed
+  // delivered (sendPushToUser no-ops silently if unsubscribed).
   let waSent = false;
   if (required && prof.is_active && !prof.resigned_at) {
-    const phone = normalizePhone(prof.whatsapp_number ?? "");
-    if (phone) {
-      try {
-        const message = await renderWaTemplate("disc_test_push", {
-          name: prof.nickname || prof.full_name || "teman",
-        });
-        await sendWhatsApp(phone, message);
-        waSent = true;
-      } catch (err) {
-        console.error("[disc] WA push failed", err);
-      }
+    try {
+      const body = await renderWaTemplate("disc_test_push", {
+        name: prof.nickname || prof.full_name || "teman",
+      });
+      await sendPushToUser(prof.id, {
+        title: "Tes DISC menunggu",
+        body,
+        url: "/disc",
+      });
+      waSent = true;
+    } catch (err) {
+      console.error("[disc] push notify failed", err);
     }
   }
 

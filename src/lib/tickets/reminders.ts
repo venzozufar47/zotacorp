@@ -12,8 +12,7 @@
  */
 
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
+import { sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import {
   TICKET_CATEGORY_LABELS,
@@ -86,23 +85,31 @@ export async function runStudioHeadTicketReminders(): Promise<StudioReminderSumm
   }
   const { data: profs } = await admin
     .from("profiles")
-    .select("id, full_name, nickname, whatsapp_number")
+    .select("id, full_name, nickname")
     .in("id", ids);
 
-  // 3. Kirim pengingat per kepala (sapaan personal).
+  // 3. Kirim pengingat push per kepala. sendPushToUser no-op diam-diam
+  // kalau kepala itu belum aktifkan notifikasi (tidak melempar), jadi
+  // `sent` di sini menghitung PERCOBAAN kirim, bukan konfirmasi terkirim.
   let sent = 0;
   for (const p of (profs ?? []) as any[]) {
-    const phone = normalizePhone(p.whatsapp_number ?? "");
-    if (!phone) continue;
-    const name: string =
-      (p.nickname?.trim() as string) || p.full_name || "Kepala Studio";
-    const message = await renderWaTemplate("ticket_active_reminder", {
-      name,
-      count: activeCount,
-      list,
-    });
-    const ok = await sendWhatsApp(phone, message);
-    if (ok) sent++;
+    try {
+      const name: string =
+        (p.nickname?.trim() as string) || p.full_name || "Kepala Studio";
+      const body = await renderWaTemplate("ticket_active_reminder", {
+        name,
+        count: activeCount,
+        list,
+      });
+      await sendPushToUser(p.id, {
+        title: "Tiket studio menunggu",
+        body,
+        url: "/tickets",
+      });
+      sent++;
+    } catch (err) {
+      console.error("[tickets] push send failed", err);
+    }
   }
 
   return { activeCount, heads: ids.length, sent };

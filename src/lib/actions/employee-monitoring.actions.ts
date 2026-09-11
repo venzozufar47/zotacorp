@@ -4,9 +4,8 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { computeStreak } from "@/lib/utils/streak";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
+import { sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import type { Database } from "@/lib/supabase/types";
 
 /**
@@ -638,7 +637,7 @@ async function runCelebrationBroadcast(
   // pernah ada error kirim ke yang resign).
   const { data: recipients } = await admin
     .from("profiles")
-    .select("id, full_name, nickname, whatsapp_number")
+    .select("id, full_name, nickname")
     .neq("role", "admin")
     .neq("role", "investor")
     .eq("is_active", true)
@@ -657,21 +656,15 @@ async function runCelebrationBroadcast(
     .eq("kind", "greeting");
   const alreadyGreeted = new Set((greetedRows ?? []).map((r) => r.author_id));
 
-  type Target = { id: string; phone: string; name: string };
+  type Target = { id: string; name: string };
   const targets: Target[] = (recipients ?? [])
-    .map((p) => {
-      if (alreadyGreeted.has(p.id)) return null; // sudah ngucapin
-      if (celebrantIds.includes(p.id)) return null; // celebrant sendiri
-      const phone = normalizePhone(p.whatsapp_number ?? "");
-      if (!phone) return null;
-      return { id: p.id, phone, name: p.nickname || p.full_name || "teman" };
-    })
-    .filter((t): t is Target => t !== null);
+    .filter((p) => !alreadyGreeted.has(p.id) && !celebrantIds.includes(p.id))
+    .map((p) => ({ id: p.id, name: p.nickname || p.full_name || "teman" }));
 
   if (targets.length === 0) {
     return {
       ok: false,
-      error: "Tidak ada karyawan dengan nomor WA valid sebagai target.",
+      error: "Tidak ada karyawan sebagai target (semua sudah ngucapin atau celebrant sendiri).",
     };
   }
 
@@ -679,41 +672,31 @@ async function runCelebrationBroadcast(
     .map((c) => c.nickname || c.full_name || "teman")
     .join(", ");
 
+  // Template editable di /admin/settings (tab WhatsApp) — dipakai sebagai
+  // isi push, bukan lagi dikirim via WA.
   let sent = 0;
   let failed = 0;
   for (const t of targets) {
-    // Keduanya pakai template editable di /admin/settings (WhatsApp).
-    const message = await renderWaTemplate(
-      kind === "birthday"
-        ? "celebration_birthday_broadcast"
-        : "celebration_anniversary_broadcast",
-      {
-        recipientName: t.name,
-        celebrantNames,
-        count: celebrants.length,
-      }
-    );
-    let status: "sent" | "failed" = "sent";
-    let errorMessage: string | null = null;
     try {
-      await sendWhatsApp(t.phone, message);
+      const message = await renderWaTemplate(
+        kind === "birthday"
+          ? "celebration_birthday_broadcast"
+          : "celebration_anniversary_broadcast",
+        {
+          recipientName: t.name,
+          celebrantNames,
+          count: celebrants.length,
+        }
+      );
+      await sendPushToUser(t.id, {
+        title: kind === "birthday" ? "Ada yang ulang tahun! 🎂" : "Ada yang anniversary! 🎉",
+        body: message,
+        url: "/dashboard",
+      });
       sent++;
     } catch (err) {
       failed++;
-      status = "failed";
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
-    try {
-      await admin.from("whatsapp_send_logs").insert({
-        recipient_profile_id: t.id,
-        recipient_phone: t.phone,
-        event_type: "other",
-        message_body: message,
-        status,
-        error_message: errorMessage,
-      });
-    } catch (err) {
-      console.error("[broadcast] log insert failed", err);
+      console.error("[broadcast] push send failed", err);
     }
   }
 

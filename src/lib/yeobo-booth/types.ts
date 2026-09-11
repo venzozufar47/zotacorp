@@ -108,14 +108,17 @@ export interface YeoboBoothReminderCheckpoint {
 }
 
 /**
- * Nomor WA penerima reminder Yeobo Booth — daftar custom yang dikelola
- * admin (tabel `yeobo_booth_reminder_recipients`). `phone_e164` = E.164
- * tanpa '+'.
+ * Penerima reminder Yeobo Booth — daftar akun app yang dikelola admin
+ * (tabel `yeobo_booth_reminder_recipients`). Dulu berbasis nomor WA murni;
+ * sekarang berbasis akun (`user_id`) supaya bisa dikirim push. `phone_e164`
+ * dipertahankan untuk baris legacy (pra-migrasi push) yang belum
+ * disambungkan ke akun — null pada baris baru.
  */
 export interface YeoboBoothReminderRecipient {
   id: string;
   label: string;
-  phone_e164: string;
+  phone_e164: string | null;
+  user_id: string | null;
   enabled: boolean;
 }
 

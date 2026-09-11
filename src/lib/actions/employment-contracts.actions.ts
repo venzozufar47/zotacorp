@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, requireSelfOrAdmin, type ActionResult } from "./_gates";
 import { getCurrentUser } from "@/lib/supabase/cached";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
+import { sendPushToUser } from "@/lib/push/web-push";
 import { terbilang } from "@/lib/employment-contracts/terbilang";
 import {
   emptyLampiran,
@@ -363,12 +363,12 @@ export async function issueEmploymentContract(
   if (error || !data) return { ok: false, error: error?.message ?? "Gagal terbit" };
   const contractId = (data as unknown as { id: string }).id;
 
-  if (input.notifyWhatsApp && prof.whatsapp_number) {
-    const nama = prof.full_name?.split(" ")[0] ?? "Karyawan";
-    void sendWhatsApp(
-      prof.whatsapp_number,
-      `Halo ${nama}, kontrak kerja kamu sudah siap untuk ditandatangani. Silakan buka aplikasi → menu Kontrak Kerja untuk membaca & menandatanganinya. Slip gaji akan terbuka setelah kontrak ditandatangani.`
-    ).catch(() => {});
+  if (input.notifyWhatsApp) {
+    void sendPushToUser(input.userId, {
+      title: "Kontrak kerja siap ditandatangani",
+      body: "Buka menu Kontrak Kerja untuk membaca & menandatanganinya. Slip gaji akan terbuka setelah kontrak ditandatangani.",
+      url: "/kontrak",
+    }).catch(() => {});
   }
 
   revalidateAll();
@@ -547,13 +547,12 @@ export async function bulkIssueEmploymentContracts(input: {
 
   if (input.notifyWhatsApp) {
     for (const r of rows) {
-      const p = profById.get(r.userId);
-      if (!p?.whatsapp_number) continue;
-      const nama = p.full_name?.split(" ")[0] ?? "Karyawan";
-      void sendWhatsApp(
-        p.whatsapp_number,
-        `Halo ${nama}, kontrak kerja kamu sudah siap untuk ditandatangani. Silakan buka aplikasi → menu Kontrak Kerja untuk membaca & menandatanganinya. Slip gaji akan terbuka setelah kontrak ditandatangani.`
-      ).catch(() => {});
+      if (!profById.get(r.userId)) continue;
+      void sendPushToUser(r.userId, {
+        title: "Kontrak kerja siap ditandatangani",
+        body: "Buka menu Kontrak Kerja untuk membaca & menandatanganinya. Slip gaji akan terbuka setelah kontrak ditandatangani.",
+        url: "/kontrak",
+      }).catch(() => {});
     }
   }
 

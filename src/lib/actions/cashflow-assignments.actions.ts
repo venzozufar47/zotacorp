@@ -264,8 +264,8 @@ export async function resolveAssignment(
     p_row_id: rowId,
     p_category: patch.category.trim(),
     p_branch: patch.branch.trim(),
-    p_effective_period_month: patch.effectivePeriodMonth ?? null,
-    p_effective_period_year: patch.effectivePeriodYear ?? null,
+    p_effective_period_month: patch.effectivePeriodMonth ?? undefined,
+    p_effective_period_year: patch.effectivePeriodYear ?? undefined,
   });
   if (error) return { ok: false, error: error.message };
   if (data !== true) {

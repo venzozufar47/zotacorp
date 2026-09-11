@@ -340,31 +340,28 @@ function CardFormDialog({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [picMode, setPicMode] = useState<"user" | "manual">(
-    card && !card.picIsUser && card.picName ? "manual" : "user"
-  );
   const [f, setF] = useState({
     businessUnitId: card?.businessUnitId ?? units[0]?.id ?? "",
     phoneNumber: card?.phoneNumber ?? "",
     provider: card?.provider ?? "",
     label: card?.label ?? "",
     picUserId: card?.picUserId ?? "",
-    picName: card?.picIsUser ? "" : (card?.picName ?? ""),
-    picPhone: card?.picIsUser ? "" : (card?.picPhone ?? ""),
     activeUntil: card?.activeUntil ?? "",
     graceUntil: card?.graceUntil ?? "",
     notes: card?.notes ?? "",
   });
 
   function submit() {
+    if (!f.picUserId) {
+      toast.error("Pilih karyawan sebagai penanggung jawab.");
+      return;
+    }
     const payload: SimCardInput = {
       businessUnitId: f.businessUnitId,
       phoneNumber: f.phoneNumber,
       provider: f.provider || null,
       label: f.label || null,
-      picUserId: picMode === "user" ? f.picUserId || null : null,
-      picName: picMode === "manual" ? f.picName || null : null,
-      picPhone: picMode === "manual" ? f.picPhone || null : null,
+      picUserId: f.picUserId,
       activeUntil: f.activeUntil || null,
       graceUntil: f.graceUntil || null,
       notes: f.notes || null,
@@ -429,60 +426,28 @@ function CardFormDialog({
         />
       </label>
 
-      {/* PIC: karyawan terdaftar atau manual */}
+      {/* PIC: wajib karyawan terdaftar — reminder dikirim via push,
+          jadi PJ harus punya akun app untuk bisa dituju. */}
       <div className="rounded-xl border border-border p-2.5 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold">Penanggung jawab</span>
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            {(["user", "manual"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setPicMode(m)}
-                className={`px-2 py-1 text-[11px] font-semibold ${
-                  picMode === m
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {m === "user" ? "Karyawan" : "Manual"}
-              </button>
-            ))}
-          </div>
-        </div>
-        {picMode === "user" ? (
-          <select
-            className={inputCls}
-            value={f.picUserId}
-            onChange={(e) => setF({ ...f, picUserId: e.target.value })}
-          >
-            <option value="">— Pilih karyawan —</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.fullName} {p.businessUnit ? `· ${p.businessUnit}` : ""}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              className={inputCls}
-              placeholder="Nama PJ"
-              value={f.picName}
-              onChange={(e) => setF({ ...f, picName: e.target.value })}
-            />
-            <input
-              className={inputCls}
-              placeholder="Nomor WA"
-              inputMode="numeric"
-              value={f.picPhone}
-              onChange={(e) => setF({ ...f, picPhone: e.target.value })}
-            />
-          </div>
-        )}
-        {picMode === "manual" && (
-          <p className="text-[11px] text-muted-foreground">
-            PJ manual tidak bisa login — hanya admin yang bisa update tenggat.
+        <span className="text-xs font-semibold">Penanggung jawab</span>
+        <select
+          className={inputCls}
+          value={f.picUserId}
+          onChange={(e) => setF({ ...f, picUserId: e.target.value })}
+        >
+          <option value="">— Pilih karyawan —</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.fullName} {p.businessUnit ? `· ${p.businessUnit}` : ""}
+            </option>
+          ))}
+        </select>
+        {card && !card.picIsUser && card.picName && (
+          <p className="text-[11px] text-amber-700">
+            PJ lama (manual): {card.picName}
+            {card.picPhone ? ` · ${card.picPhone}` : ""}. Pilih karyawan di
+            atas untuk menggantikannya — data manual akan dihapus setelah
+            disimpan.
           </p>
         )}
       </div>
