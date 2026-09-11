@@ -4,9 +4,12 @@
  * dan gcOrphanStorage().
  *
  * Generalisasi dari `cleaning-retention.ts`, yang sudah terbukti jalan untuk
- * foto kebersihan. Dua target baru:
- *   - `cashflow-receipts`  : 2,5 GB, 87% dari SELURUH storage org.
- *   - `attendance-selfies` : tumbuh ±50 MB/bulan tanpa batas.
+ * foto kebersihan. Target:
+ *   - `cashflow-receipts`      : 2,5 GB, 87% dari SELURUH storage org saat itu.
+ *   - `attendance-selfies`     : tumbuh ±50 MB/bulan tanpa batas.
+ *   - `cake-order-attachments` : ditambahkan 2026-09 — dulu sengaja dilewati
+ *     saat masih 67 MB, sekarang ±44 MB dan terus naik ±12 MB/bulan tanpa
+ *     batas, satu-satunya bucket besar yang belum tersapu.
  *
  * Bedanya dengan GC yatim: GC membuang file yang TIDAK direferensikan siapa pun
  * (kecelakaan upload). Sweeper ini membuang file yang MASIH direferensikan tapi
@@ -45,11 +48,6 @@ interface MediaRetentionTarget {
   purgedColumn: string;
 }
 
-/**
- * `cake-order-attachments` sengaja TIDAK di sini: lampiran pesanan masih
- * dirujuk saat produksi/komplain, dan buckets-nya baru 67 MB. Ditinjau ulang
- * kalau sudah mendekati ratusan MB.
- */
 export const MEDIA_RETENTION_TARGETS: MediaRetentionTarget[] = [
   {
     label: "cashflow-receipts",
@@ -66,6 +64,17 @@ export const MEDIA_RETENTION_TARGETS: MediaRetentionTarget[] = [
     dateColumn: "date",
     pathColumn: "selfie_path",
     purgedColumn: "selfie_purged_at",
+  },
+  {
+    // Beda dari dua target di atas: satu baris = satu lampiran (bukan
+    // kolom nullable di baris bermakna-bisnis-sendiri) — lihat migrasi
+    // 138. Baris tetap tidak dihapus, cuma storage_path yang dikosongkan.
+    label: "cake-order-attachments",
+    table: "cake_order_attachments",
+    bucket: "cake-order-attachments",
+    dateColumn: "created_at",
+    pathColumn: "storage_path",
+    purgedColumn: "purged_at",
   },
 ];
 
