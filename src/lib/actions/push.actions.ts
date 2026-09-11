@@ -1,7 +1,8 @@
 "use server";
 
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import { notifyAdminAttendance } from "@/lib/whatsapp/attendance-notify";
 
 /** Shape the browser's PushSubscription serializes to (subset we store). */
 export interface BrowserSubscription {
@@ -39,6 +40,30 @@ export async function subscribeToPush(
     { onConflict: "endpoint" }
   );
   if (error) return { error: error.message };
+  return { ok: true };
+}
+
+/**
+ * Fire a dummy attendance check-in through the real admin-notify path so an
+ * admin can verify their push setup without waiting for an employee to
+ * actually sign in. Runs the exact same code as a real check-in event —
+ * only the employee data is fake.
+ */
+export async function sendTestAdminAttendancePush(): Promise<
+  { ok: true } | { error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+  const role = await getCurrentRole();
+  if (role !== "admin") return { error: "Forbidden" };
+
+  await notifyAdminAttendance({
+    fullName: "Test Karyawan (dummy)",
+    event: "in",
+    at: new Date().toISOString(),
+    latitude: null,
+    longitude: null,
+  });
   return { ok: true };
 }
 
