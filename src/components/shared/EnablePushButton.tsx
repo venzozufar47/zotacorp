@@ -29,14 +29,33 @@ type State =
   | "subscribed"
   | "unsubscribed";
 
+interface Props {
+  /** Card heading. Defaults to the employee "slip gaji" copy. */
+  title?: string;
+  /** Shown once notifications are active on this device. */
+  activeDescription?: string;
+  /** Shown before the user has enabled notifications. */
+  promptDescription?: string;
+  /** Toast on successful subscribe. */
+  enabledToast?: string;
+}
+
 /**
- * Lets an employee turn on push notifications (e.g. "slip gaji terbit").
+ * Lets a user turn on push notifications for this browser/device. Generic —
+ * the underlying subscription isn't tied to any one topic (payslip alerts,
+ * admin attendance alerts, future event types all reuse the same
+ * push_subscriptions row), only the card copy changes per call site.
  *
  * iOS only exposes Web Push to a PWA installed to the Home Screen, so when
  * we detect iOS-in-browser we show install guidance instead of a button
  * that can't work. Renders nothing on platforms with no push support at all.
  */
-export function EnablePushButton() {
+export function EnablePushButton({
+  title = "Notifikasi slip gaji",
+  activeDescription = "Aktif di perangkat ini. Kamu akan diberi tahu saat slip gaji terbit.",
+  promptDescription = "Dapatkan pemberitahuan otomatis saat slip gaji kamu terbit.",
+  enabledToast = "Notifikasi aktif! Kamu akan diberi tahu saat slip gaji terbit.",
+}: Props = {}) {
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
 
@@ -95,7 +114,7 @@ export function EnablePushButton() {
         return;
       }
       setState("subscribed");
-      toast.success("Notifikasi aktif! Kamu akan diberi tahu saat slip gaji terbit.");
+      toast.success(enabledToast);
     } catch {
       toast.error("Gagal mengaktifkan notifikasi.");
     } finally {
@@ -132,16 +151,16 @@ export function EnablePushButton() {
           </div>
           <div>
             <p className="font-display text-sm font-bold text-foreground">
-              Notifikasi slip gaji
+              {title}
             </p>
             <p className="text-xs text-muted-foreground">
               {state === "subscribed"
-                ? "Aktif di perangkat ini. Kamu akan diberi tahu saat slip gaji terbit."
+                ? activeDescription
                 : state === "denied"
                   ? "Izin notifikasi diblokir. Aktifkan lewat pengaturan browser/HP."
                   : state === "ios-needs-install"
                     ? 'Di iPhone: ketuk tombol Share lalu "Add to Home Screen", buka app dari ikonnya, baru aktifkan notifikasi.'
-                    : "Dapatkan pemberitahuan otomatis saat slip gaji kamu terbit."}
+                    : promptDescription}
             </p>
           </div>
         </div>

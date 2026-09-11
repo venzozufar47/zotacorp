@@ -40,23 +40,16 @@ export interface PushPayload {
   icon?: string;
 }
 
-/**
- * Deliver a notification to every device a user has subscribed. Never
- * throws — failures are swallowed/logged so business flows aren't blocked.
- */
-export async function sendPushToUser(
-  userId: string,
+type AdminClient = ReturnType<typeof createAdminClient>;
+type StoredSubscription = { id: string; endpoint: string; p256dh: string; auth: string };
+
+/** Shared fan-out: sends `payload` to every subscription, pruning dead ones. */
+async function deliver(
+  supabase: AdminClient,
+  subs: StoredSubscription[],
   payload: PushPayload
 ): Promise<void> {
-  if (!ensureConfigured()) return;
-
-  const supabase = createAdminClient();
-  const { data: subs } = await supabase
-    .from("push_subscriptions")
-    .select("id, endpoint, p256dh, auth")
-    .eq("user_id", userId);
-
-  if (!subs || subs.length === 0) return;
+  if (subs.length === 0) return;
 
   const body = JSON.stringify(payload);
   const stale: string[] = [];
@@ -83,4 +76,48 @@ export async function sendPushToUser(
   if (stale.length > 0) {
     await supabase.from("push_subscriptions").delete().in("id", stale);
   }
+}
+
+/**
+ * Deliver a notification to every device a user has subscribed. Never
+ * throws — failures are swallowed/logged so business flows aren't blocked.
+ */
+export async function sendPushToUser(
+  userId: string,
+  payload: PushPayload
+): Promise<void> {
+  if (!ensureConfigured()) return;
+
+  const supabase = createAdminClient();
+  const { data: subs } = await supabase
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .eq("user_id", userId);
+
+  await deliver(supabase, subs ?? [], payload);
+}
+
+/**
+ * Deliver a notification to every admin who has push enabled on at least
+ * one device. Generic broadcast used by any admin-facing alert (attendance
+ * in/out today; more event types can call this the same way) — callers
+ * don't need to know which admins are subscribed or on which devices.
+ */
+export async function sendPushToAdmins(payload: PushPayload): Promise<void> {
+  if (!ensureConfigured()) return;
+
+  const supabase = createAdminClient();
+  const { data: admins } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("role", "admin");
+  const adminIds = (admins ?? []).map((a) => a.id);
+  if (adminIds.length === 0) return;
+
+  const { data: subs } = await supabase
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .in("user_id", adminIds);
+
+  await deliver(supabase, subs ?? [], payload);
 }

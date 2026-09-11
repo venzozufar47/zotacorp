@@ -11,6 +11,7 @@ import { AttendanceSettingsForm } from "@/components/admin/AttendanceSettingsFor
 import { LanguageCard } from "@/components/settings/LanguageCard";
 import { PosPinCard } from "@/components/profile/PosPinCard";
 import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCard";
+import { EnablePushButton } from "@/components/shared/EnablePushButton";
 import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
 import { ExtraWorkKindsCard } from "@/components/admin/ExtraWorkKindsCard";
@@ -73,6 +74,12 @@ export default async function AdminSettingsPage() {
       <BusinessUnitsCard initial={businessUnits} />
       <ExtraWorkKindsCard initial={extraWorkKinds} employees={employees} />
       <HolidayCalendarCard initial={holidays} />
+      <EnablePushButton
+        title="Notifikasi Admin"
+        promptDescription="Aktifkan untuk dapat notifikasi otomatis di HP/browser ini saat karyawan absen masuk/pulang, dan notifikasi admin lainnya ke depannya."
+        activeDescription="Aktif di perangkat ini. Kamu akan diberi tahu saat karyawan absen masuk/pulang, dan notifikasi admin lainnya."
+        enabledToast="Notifikasi admin aktif di perangkat ini!"
+      />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard
         initialTemplates={waTemplates.map((t) => ({
