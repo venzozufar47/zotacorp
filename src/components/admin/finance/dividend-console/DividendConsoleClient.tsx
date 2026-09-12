@@ -626,6 +626,14 @@ function BranchAllocationTable({
   onClear: () => void;
 }) {
   const sum = branch.rows.reduce((s, r) => s + (amounts[r.recipientId] ?? 0), 0);
+  // Nominal fisik yang masih harus dikirim ke bank kalau Simpan ditekan
+  // sekarang — selalu terhadap `savedAllocation` (apa yang SUDAH tertransfer),
+  // bukan terhadap total hak, supaya benar untuk baris yang masih dibiarkan
+  // di nilai lama maupun yang sudah diisi penuh lewat tombol "Bayar penuh".
+  const toWireTotal = branch.rows.reduce(
+    (s, r) => s + Math.max(0, (amounts[r.recipientId] ?? 0) - (r.savedAllocation ?? 0)),
+    0
+  );
   const poolFilled = declaredPool != null;
   const transferFilled = sum > 0;
   return (
@@ -834,13 +842,31 @@ function BranchAllocationTable({
                         className="w-28 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right font-mono tabular-nums text-foreground"
                       />
                     </div>
-                    {totalHak != null && val !== totalHak && (
-                      <div className="mt-0.5 text-right text-[10.5px] text-muted-foreground">
-                        {val < totalHak
-                          ? `kurang ${formatRp(totalHak - val)}`
-                          : `lebih ${formatRp(val - totalHak)}`}
-                      </div>
-                    )}
+                    {(() => {
+                      // Field ini nilainya KUMULATIF (target amount_idr
+                      // akhir), bukan nominal transfer hari ini — jadi
+                      // caption HARUS bandingkan ke `savedAllocation`
+                      // (yang sudah benar-benar tertransfer), bukan ke
+                      // `totalHak`. Sebelumnya bandingkan ke totalHak:
+                      // begitu tombol "Bayar penuh" diklik dan field jadi
+                      // = totalHak, caption ini hilang — padahal justru
+                      // saat itulah admin paling butuh tahu berapa yang
+                      // masih harus benar-benar dikirim ke bank.
+                      const saved = r.savedAllocation ?? 0;
+                      const toWire = val - saved;
+                      if (toWire === 0) return null;
+                      return (
+                        <div
+                          className={`mt-0.5 text-right text-[10.5px] ${
+                            toWire > 0 ? "text-amber-600" : "text-muted-foreground"
+                          }`}
+                        >
+                          {toWire > 0
+                            ? `perlu transfer ${formatRp(toWire)} lagi`
+                            : `koreksi turun ${formatRp(Math.abs(toWire))}`}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-2.5 text-right text-[11.5px]">
                     {r.payout ? (
@@ -879,6 +905,17 @@ function BranchAllocationTable({
               </td>
               <td className="px-4 py-2.5" />
             </tr>
+            {toWireTotal > 0 && (
+              <tr className="border-t border-border/60 text-[11.5px] text-amber-600">
+                <td className="px-4 py-1.5" colSpan={5}>
+                  Perlu ditransfer fisik sekarang (belum tercatat tersimpan)
+                </td>
+                <td className="px-4 py-1.5 text-right font-mono tabular-nums font-semibold">
+                  {formatRp(toWireTotal)}
+                </td>
+                <td className="px-4 py-1.5" />
+              </tr>
+            )}
           </tfoot>
         </table>
       </div>
