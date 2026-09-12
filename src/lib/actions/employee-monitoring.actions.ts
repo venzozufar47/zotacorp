@@ -149,13 +149,16 @@ async function computeCurrentStreak(
   storedPersonalBest: number,
   storedLastMilestone: number
 ): Promise<number> {
+  // Tanpa .limit(): cap baris tetap membuat hitungan mentok begitu
+  // rekam jejak nyata karyawan melebihi jendela itu, karena baris
+  // bonus_day tetap makan slot tanpa pernah ikut dihitung (lihat
+  // attendance.actions.ts::getMyStreak untuk kasus nyata yang ditemukan).
   const { data } = await supabase
     .from("attendance_logs")
     .select("date, status, bonus_day")
     .eq("user_id", userId)
     .lte("date", todayIso)
-    .order("date", { ascending: false })
-    .limit(120);
+    .order("date", { ascending: false });
   if (!data || data.length === 0) return 0;
   const snap = computeStreak({
     logs: data.map((r) => ({

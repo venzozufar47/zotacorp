@@ -581,13 +581,18 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
       .single();
     if (!profile) return;
 
-    // Last 120 days is more than any milestone window (100) and cheap.
+    // No LIMIT here on purpose: a fixed row cap undercounts once an
+    // employee's real run outlives the window, because bonus_day rows
+    // occupy a slot without ever contributing to the count (found live:
+    // 120-row cap reported 106 for someone whose true unbroken run was
+    // 126 — the oldest 20 rows, some of them on-time, fell off the
+    // window). Per-user row volume is small (a few hundred rows even
+    // after years), so scanning full history is cheap.
     const { data: logs } = await supabase
       .from("attendance_logs")
       .select("date, status, bonus_day")
       .eq("user_id", userId)
-      .order("date", { ascending: false })
-      .limit(120);
+      .order("date", { ascending: false });
 
     const snapshot = computeStreak({
       logs: (logs ?? []) as StreakLogInput[],
@@ -646,12 +651,17 @@ export async function getMyStreak() {
   // bonus_day=true sebelum walk. Tanpa kolom ini, semua row punya
   // bonus_day=undefined (falsy), filter lolos, dan entry bonus
   // langsung men-break streak (status "bonus" ≠ "on_time").
+  //
+  // Sengaja tanpa .limit(): batas baris tetap membuat hitungan mentok
+  // begitu rekam jejak nyata karyawan melebihi jendela itu, karena baris
+  // bonus_day tetap makan slot tanpa pernah ikut dihitung (ditemukan
+  // nyata: cap 120 baris melaporkan 106 padahal rentetan on-time asli
+  // 126). Volume baris per-karyawan kecil, jadi scan semua riwayat murah.
   const { data: logs } = await supabase
     .from("attendance_logs")
     .select("date, status, bonus_day")
     .eq("user_id", user.id)
-    .order("date", { ascending: false })
-    .limit(120);
+    .order("date", { ascending: false });
 
   return computeStreak({
     logs: (logs ?? []) as StreakLogInput[],
