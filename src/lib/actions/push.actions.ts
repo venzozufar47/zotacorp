@@ -74,7 +74,10 @@ function labelUserAgent(ua: string | null): string {
 
 export interface MyPushDevice {
   id: string;
+  /** Custom nickname if the owner set one, otherwise the parsed User-Agent guess. */
   label: string;
+  /** Whether `label` came from a custom nickname (vs. the auto-guessed one). */
+  isCustomLabel: boolean;
   createdAt: string;
 }
 
@@ -84,6 +87,10 @@ export interface MyPushDevice {
  * assuming. A device subscribed while logged into a different account
  * (e.g. tested as an employee, then switched back to admin) stays tied to
  * that other account until re-enabled here — this list makes that visible.
+ *
+ * Safari deliberately omits the exact iPhone/iPad model from the
+ * User-Agent, so two iPhones can look identical here — `label` prefers a
+ * custom nickname (see `renameMyPushDevice`) precisely for that case.
  */
 export async function listMyPushDevices(): Promise<MyPushDevice[]> {
   const user = await getCurrentUser();
@@ -92,15 +99,35 @@ export async function listMyPushDevices(): Promise<MyPushDevice[]> {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("push_subscriptions")
-    .select("id, user_agent, created_at")
+    .select("id, user_agent, device_label, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   return (data ?? []).map((d) => ({
     id: d.id,
-    label: labelUserAgent(d.user_agent),
+    label: d.device_label?.trim() || labelUserAgent(d.user_agent),
+    isCustomLabel: Boolean(d.device_label?.trim()),
     createdAt: d.created_at,
   }));
+}
+
+/** Set (or clear, with an empty string) a custom nickname for one of the CURRENT user's own devices. */
+export async function renameMyPushDevice(
+  id: string,
+  label: string
+): Promise<{ ok: true } | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+  const trimmed = label.trim().slice(0, 60);
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("push_subscriptions")
+    .update({ device_label: trimmed || null })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { error: error.message };
+  return { ok: true };
 }
 
 /** Remove one of the CURRENT user's own devices by subscription id. */
