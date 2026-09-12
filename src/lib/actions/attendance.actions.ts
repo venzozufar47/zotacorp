@@ -29,7 +29,8 @@ import { sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { getBlockingCleaning } from "@/lib/actions/cleaning.actions";
 import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
-import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
+// Nonaktif sementara 2026-09-12 — lihat komentar di pemanggilnya di bawah.
+// import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
 
 interface CheckInPayload {
   latitude: number | null;
@@ -304,7 +305,11 @@ export async function checkIn(payload: CheckInPayload) {
   // Tanda anomali foto (migrasi 134) — murni penanda untuk admin, tidak
   // pernah menggagalkan check-in. Post-response sama seperti dua after()
   // di atas: Gemini lambat/down tidak boleh ikut memperlambat absen.
-  after(() => runSelfieAiCheck({ logId: data.id, selfiePath: payload.selfie_path }));
+  //
+  // DIMATIKAN SEMENTARA 2026-09-12 atas permintaan admin (bukan bug —
+  // fungsi & kolom `selfie_ai_flag`/`selfie_ai_note` tetap utuh). Uncomment
+  // baris di bawah untuk menyalakan lagi.
+  // after(() => runSelfieAiCheck({ logId: data.id, selfiePath: payload.selfie_path }));
 
   revalidatePath("/dashboard");
   revalidatePath("/attendance");
