@@ -44,6 +44,121 @@ export async function subscribeToPush(
   return { ok: true };
 }
 
+/** Best-effort human label from a stored User-Agent string. */
+function labelUserAgent(ua: string | null): string {
+  if (!ua) return "Perangkat tidak diketahui";
+  const isIOS = /iphone|ipad|ipod/i.test(ua);
+  const isAndroid = /android/i.test(ua);
+  const isWindows = /windows/i.test(ua);
+  const isMac = /macintosh/i.test(ua) && !isIOS;
+  const platform = isIOS
+    ? "iPhone/iPad"
+    : isAndroid
+      ? "Android"
+      : isWindows
+        ? "Windows"
+        : isMac
+          ? "Mac"
+          : "Perangkat lain";
+  const browser = /edg\//i.test(ua)
+    ? "Edge"
+    : /chrome\//i.test(ua)
+      ? "Chrome"
+      : /firefox\//i.test(ua)
+        ? "Firefox"
+        : /safari\//i.test(ua)
+          ? "Safari"
+          : "Browser";
+  return `${platform} · ${browser}`;
+}
+
+export interface MyPushDevice {
+  id: string;
+  label: string;
+  createdAt: string;
+}
+
+/**
+ * The CURRENT user's own registered push devices — lets someone verify
+ * which of their devices are actually tied to THIS account, instead of
+ * assuming. A device subscribed while logged into a different account
+ * (e.g. tested as an employee, then switched back to admin) stays tied to
+ * that other account until re-enabled here — this list makes that visible.
+ */
+export async function listMyPushDevices(): Promise<MyPushDevice[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("push_subscriptions")
+    .select("id, user_agent, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  return (data ?? []).map((d) => ({
+    id: d.id,
+    label: labelUserAgent(d.user_agent),
+    createdAt: d.created_at,
+  }));
+}
+
+/** Remove one of the CURRENT user's own devices by subscription id. */
+export async function removeMyPushDevice(
+  id: string
+): Promise<{ ok: true } | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("push_subscriptions")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+export interface PushSendLogRow {
+  id: string;
+  title: string;
+  configured: boolean;
+  targetedCount: number;
+  deliveredCount: number;
+  prunedCount: number;
+  createdAt: string;
+}
+
+/**
+ * Recent push send attempts across the whole app — admin-only. Every
+ * sendPushToUser/sendPushToAdmins call writes one row here (see
+ * src/lib/push/web-push.ts), so a silent failure (VAPID not configured,
+ * zero recipients subscribed, endpoint gone stale) shows up here instead
+ * of only in Vercel server logs.
+ */
+export async function listPushSendLogs(limit = 30): Promise<PushSendLogRow[]> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return [];
+
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("push_send_logs")
+    .select("id, title, configured, targeted_count, delivered_count, pruned_count, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    title: r.title,
+    configured: r.configured,
+    targetedCount: r.targeted_count,
+    deliveredCount: r.delivered_count,
+    prunedCount: r.pruned_count,
+    createdAt: r.created_at,
+  }));
+}
+
 /**
  * Whether the current user is allowed to check in: has a push
  * subscription, OR an admin granted them an exemption. Used both by the

@@ -5242,6 +5242,36 @@ export type Database = {
           },
         ]
       }
+      push_send_logs: {
+        Row: {
+          configured: boolean
+          created_at: string
+          delivered_count: number
+          id: string
+          pruned_count: number
+          targeted_count: number
+          title: string
+        }
+        Insert: {
+          configured?: boolean
+          created_at?: string
+          delivered_count?: number
+          id?: string
+          pruned_count?: number
+          targeted_count?: number
+          title: string
+        }
+        Update: {
+          configured?: boolean
+          created_at?: string
+          delivered_count?: number
+          id?: string
+          pruned_count?: number
+          targeted_count?: number
+          title?: string
+        }
+        Relationships: []
+      }
       push_subscriptions: {
         Row: {
           auth: string

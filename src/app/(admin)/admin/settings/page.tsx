@@ -14,7 +14,9 @@ import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCar
 import { EnablePushButton } from "@/components/shared/EnablePushButton";
 import { TestAttendancePushButton } from "@/components/admin/TestAttendancePushButton";
 import { PushExemptionsCard } from "@/components/admin/PushExemptionsCard";
-import { listPushExemptions } from "@/lib/actions/push.actions";
+import { PushSendLogCard } from "@/components/admin/PushSendLogCard";
+import { MyPushDevicesCard } from "@/components/shared/MyPushDevicesCard";
+import { listPushExemptions, listPushSendLogs } from "@/lib/actions/push.actions";
 import { WaTemplatesCard } from "@/components/admin/WaTemplatesCard";
 import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
 import { ExtraWorkKindsCard } from "@/components/admin/ExtraWorkKindsCard";
@@ -35,7 +37,7 @@ export default async function AdminSettingsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile, holidays, pushExemptions] =
+  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile, holidays, pushExemptions, pushSendLogs] =
     await Promise.all([
       getCachedAttendanceSettings(),
       listWhatsAppRecipients(),
@@ -51,6 +53,7 @@ export default async function AdminSettingsPage() {
       getCurrentProfile(),
       listHolidays(),
       listPushExemptions(),
+      listPushSendLogs(),
     ]);
   const employees = (employeesRes.data ?? []).map((e) => ({
     id: e.id,
@@ -85,10 +88,12 @@ export default async function AdminSettingsPage() {
           activeDescription="Aktif di perangkat ini. Kamu akan diberi tahu saat karyawan absen masuk/pulang, dan notifikasi admin lainnya."
           enabledToast="Notifikasi admin aktif di perangkat ini!"
         />
+        <MyPushDevicesCard />
         <div className="flex justify-end">
           <TestAttendancePushButton />
         </div>
       </div>
+      <PushSendLogCard initialRows={pushSendLogs} />
       <PushExemptionsCard initialRows={pushExemptions} />
       <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard

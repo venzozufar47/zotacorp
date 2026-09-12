@@ -9,7 +9,9 @@ import { createAdminClient } from "@/lib/actions/_supabase-admin";
  * VAPID_PRIVATE_KEY + VAPID_SUBJECT). If they're not set — e.g. a preview
  * deploy or a dev machine without keys — every send becomes a silent no-op
  * so callers (like payslip finalize) never fail just because push isn't
- * configured.
+ * configured. "Silent" to the caller, that is — every attempt (configured
+ * or not, delivered or not) is still recorded to `push_send_logs` so it's
+ * visible from /admin/settings instead of only in server logs.
  *
  * Expired endpoints (HTTP 404/410 from the push service) are pruned so the
  * table doesn't accumulate dead subscriptions.
@@ -43,16 +45,37 @@ export interface PushPayload {
 type AdminClient = ReturnType<typeof createAdminClient>;
 type StoredSubscription = { id: string; endpoint: string; p256dh: string; auth: string };
 
+/** Record one send attempt. Never throws — logging must not break the caller. */
+async function logSend(
+  supabase: AdminClient,
+  title: string,
+  configuredFlag: boolean,
+  targeted: number,
+  delivered: number,
+  pruned: number
+): Promise<void> {
+  try {
+    await supabase.from("push_send_logs").insert({
+      title,
+      configured: configuredFlag,
+      targeted_count: targeted,
+      delivered_count: delivered,
+      pruned_count: pruned,
+    });
+  } catch (err) {
+    console.error("[web-push] send-log insert failed:", err);
+  }
+}
+
 /** Shared fan-out: sends `payload` to every subscription, pruning dead ones. */
 async function deliver(
   supabase: AdminClient,
   subs: StoredSubscription[],
   payload: PushPayload
 ): Promise<void> {
-  if (subs.length === 0) return;
-
   const body = JSON.stringify(payload);
   const stale: string[] = [];
+  let delivered = 0;
 
   await Promise.all(
     subs.map(async (s) => {
@@ -61,6 +84,7 @@ async function deliver(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           body
         );
+        delivered++;
       } catch (err: unknown) {
         const code = (err as { statusCode?: number })?.statusCode;
         if (code === 404 || code === 410) {
@@ -76,6 +100,8 @@ async function deliver(
   if (stale.length > 0) {
     await supabase.from("push_subscriptions").delete().in("id", stale);
   }
+
+  await logSend(supabase, payload.title, true, subs.length, delivered, stale.length);
 }
 
 /**
@@ -86,9 +112,12 @@ export async function sendPushToUser(
   userId: string,
   payload: PushPayload
 ): Promise<void> {
-  if (!ensureConfigured()) return;
-
   const supabase = createAdminClient();
+  if (!ensureConfigured()) {
+    await logSend(supabase, payload.title, false, 0, 0, 0);
+    return;
+  }
+
   const { data: subs } = await supabase
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
@@ -104,15 +133,21 @@ export async function sendPushToUser(
  * don't need to know which admins are subscribed or on which devices.
  */
 export async function sendPushToAdmins(payload: PushPayload): Promise<void> {
-  if (!ensureConfigured()) return;
-
   const supabase = createAdminClient();
+  if (!ensureConfigured()) {
+    await logSend(supabase, payload.title, false, 0, 0, 0);
+    return;
+  }
+
   const { data: admins } = await supabase
     .from("profiles")
     .select("id")
     .eq("role", "admin");
   const adminIds = (admins ?? []).map((a) => a.id);
-  if (adminIds.length === 0) return;
+  if (adminIds.length === 0) {
+    await logSend(supabase, payload.title, true, 0, 0, 0);
+    return;
+  }
 
   const { data: subs } = await supabase
     .from("push_subscriptions")
