@@ -815,6 +815,15 @@ function BranchAllocationTable({
                       >
                         <Eraser size={12} />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setAmount(r.recipientId, r.savedAllocation ?? 0)}
+                        disabled={r.savedAllocation == null}
+                        title="Kembalikan ke yang sudah tersimpan/tertransfer"
+                        className="grid size-6 shrink-0 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <RotateCcw size={12} />
+                      </button>
                       <input
                         type="text"
                         inputMode="numeric"
