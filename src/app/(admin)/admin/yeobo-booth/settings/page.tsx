@@ -31,7 +31,7 @@ export default async function YeoboBoothReminderSettingsPage() {
     <div className="space-y-5">
       <PageHeader
         title="Reminder Yeobo Booth"
-        subtitle="Atur reminder WhatsApp: checkpoint H-berapa & ke nomor mana saja. Semua reminder aktif dikirim sekali sehari (~11:00 WIB) untuk sesi yang berstatus terjadwal."
+        subtitle="Atur reminder push notification: checkpoint H-berapa & ke akun mana saja. Semua reminder aktif dikirim sekali sehari (~11:00 WIB) untuk sesi yang berstatus terjadwal."
         action={
           <Link
             href="/admin/yeobo-booth"

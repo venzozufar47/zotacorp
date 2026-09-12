@@ -462,7 +462,7 @@ export function UsersTable({
                   <span className="font-semibold text-foreground">
                     {resignTarget?.full_name || resignTarget?.email}
                   </span>{" "}
-                  akan dinonaktifkan: akses login, notifikasi WhatsApp
+                  akan dinonaktifkan: akses login, notifikasi push
                   (birthday, anniversary), dan generation payslip akan
                   berhenti. History payslip & data lama tetap tersimpan.
                   Bisa dikembalikan aktif kapan saja.

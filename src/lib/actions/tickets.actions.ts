@@ -19,9 +19,8 @@ import {
   requireStudioHeadOrAdmin,
   type ActionResult,
 } from "./_gates";
-import { sendWhatsApp, getAdminWhatsAppRecipients } from "@/lib/whatsapp/fonnte";
+import { sendPushToUser, sendPushToAdmins } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
 import {
   TICKET_CATEGORY_LABELS,
   RECENT_RESOLUTION_SAMPLE_SIZE,
@@ -119,37 +118,22 @@ async function hydrate(db: any, rows: any[]): Promise<Ticket[]> {
   return tickets;
 }
 
-// ─── WA helpers ─────────────────────────────────────────────────────────────
-async function studioHeadPhones(): Promise<string[]> {
+// ─── Push helpers ───────────────────────────────────────────────────────────
+async function studioHeadUserIds(): Promise<string[]> {
   const admin = createAdminClient() as any;
   const { data: heads } = await admin.from("studio_heads").select("user_id");
-  const ids = ((heads ?? []) as any[]).map((h) => h.user_id);
-  if (ids.length === 0) return [];
-  const { data: profs } = await admin
-    .from("profiles")
-    .select("whatsapp_number")
-    .in("id", ids);
-  return ((profs ?? []) as any[])
-    .map((p) => normalizePhone(p.whatsapp_number ?? ""))
-    .filter(Boolean) as string[];
+  return ((heads ?? []) as any[]).map((h) => h.user_id as string).filter(Boolean);
 }
 
-async function creatorPhone(userId: string): Promise<string | null> {
-  const admin = createAdminClient() as any;
-  const { data } = await admin
-    .from("profiles")
-    .select("whatsapp_number")
-    .eq("id", userId)
-    .maybeSingle();
-  return normalizePhone(data?.whatsapp_number ?? "") || null;
-}
-
-async function fireWa(phones: string[], message: string) {
-  for (const p of phones) {
+async function firePush(
+  userIds: string[],
+  payload: { title: string; body: string; url?: string }
+) {
+  for (const uid of userIds) {
     try {
-      await sendWhatsApp(p, message);
+      await sendPushToUser(uid, payload);
     } catch (err) {
-      console.error("[tickets] WA failed", err);
+      console.error("[tickets] push failed", err);
     }
   }
 }
@@ -204,15 +188,15 @@ export async function createTicket(
     );
   }
 
-  // WA ke Kepala Studio (best-effort).
-  const phones = await studioHeadPhones();
-  if (phones.length > 0) {
+  // Push ke Kepala Studio (best-effort).
+  const headIds = await studioHeadUserIds();
+  if (headIds.length > 0) {
     const msg = await renderWaTemplate("ticket_new_alert", {
       branch: d.branch,
       category: TICKET_CATEGORY_LABELS[d.category],
       title: d.title,
     });
-    void fireWa(phones, msg);
+    void firePush(headIds, { title: "Tiket baru masuk", body: msg, url: "/tickets" });
   }
 
   revalidateTickets();
@@ -304,14 +288,13 @@ export async function resolveTicket(
     .eq("id", ticketId);
   if (error) return { ok: false, error: error.message };
 
-  const phone = await creatorPhone(row.created_by);
-  if (phone) {
+  if (row.created_by) {
     const msg = await renderWaTemplate("ticket_resolved_alert", {
       branch: row.branch,
       title: row.title,
       note: note?.trim() || "-",
     });
-    void fireWa([phone], msg);
+    void firePush([row.created_by], { title: "Tiket selesai", body: msg, url: "/tickets" });
   }
   revalidateTickets();
   return { ok: true };
@@ -345,14 +328,17 @@ export async function escalateTicket(
     .eq("id", ticketId);
   if (error) return { ok: false, error: error.message };
 
-  const phones = await getAdminWhatsAppRecipients();
-  if (phones.length > 0) {
+  {
     const msg = await renderWaTemplate("ticket_escalated_alert", {
       branch: row.branch,
       title: row.title,
       note: note.trim(),
     });
-    void fireWa(phones, msg);
+    void sendPushToAdmins({
+      title: "Tiket dieskalasi",
+      body: msg,
+      url: "/admin/tickets",
+    }).catch((err) => console.error("[tickets] push failed", err));
   }
   revalidateTickets();
   return { ok: true };
@@ -403,13 +389,13 @@ export async function ownerDecideTicket(
   if (error) return { ok: false, error: error.message };
 
   if (decision === "reject") {
-    const phones = await studioHeadPhones();
-    if (phones.length > 0) {
+    const headIds = await studioHeadUserIds();
+    if (headIds.length > 0) {
       const msg = await renderWaTemplate("ticket_returned_alert", {
         title: row.title,
         note: note!.trim(),
       });
-      void fireWa(phones, msg);
+      void firePush(headIds, { title: "Eskalasi ditolak owner", body: msg, url: "/tickets" });
     }
   }
   revalidateTickets();
@@ -468,13 +454,13 @@ export async function confirmTicketResolution(
     .eq("id", ticketId);
   if (error) return { ok: false, error: error.message };
 
-  const phones = await studioHeadPhones();
-  if (phones.length > 0) {
+  const headIds = await studioHeadUserIds();
+  if (headIds.length > 0) {
     const msg = await renderWaTemplate("ticket_reopened_alert", {
       title: row.title,
       note: note!.trim(),
     });
-    void fireWa(phones, msg);
+    void firePush(headIds, { title: "Tiket dibuka kembali", body: msg, url: "/tickets" });
   }
   revalidateTickets();
   return { ok: true };

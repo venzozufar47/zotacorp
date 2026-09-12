@@ -106,7 +106,7 @@ export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
     if (unpaidIds.length === 0) return;
     if (
       !confirm(
-        `Tandai ${unpaidIds.length} payslip sebagai sudah dibayar DAN kirim ${unpaidIds.length} notifikasi WhatsApp ucapan terima kasih ke karyawan?\n\nAksi ini tidak otomatis kirim uang — admin tetap perlu transfer manual via bank.`
+        `Tandai ${unpaidIds.length} payslip sebagai sudah dibayar DAN kirim ${unpaidIds.length} notifikasi push ucapan terima kasih ke karyawan?\n\nAksi ini tidak otomatis kirim uang — admin tetap perlu transfer manual via bank.`
       )
     )
       return;
@@ -117,7 +117,7 @@ export function PayslipPaymentsTable({ rows, month, year, monthLabel }: Props) {
         return;
       }
       toast.success(
-        `${res.paidCount} payslip ditandai dibayar · ${res.waSent ?? 0} WA terkirim`
+        `${res.paidCount} payslip ditandai dibayar · ${res.waSent ?? 0} notifikasi terkirim`
       );
       router.refresh();
     });
@@ -315,8 +315,8 @@ function PaymentRowItem({
       toast.success(
         notifyWa
           ? res.waSent
-            ? "Ditandai lunas · WA terkirim ✅"
-            : "Ditandai lunas · WA gagal/tidak ada nomor"
+            ? "Ditandai lunas · notifikasi terkirim ✅"
+            : "Ditandai lunas · notifikasi gagal terkirim"
           : "Ditandai lunas"
       );
       router.refresh();
@@ -466,9 +466,9 @@ function PaymentRowItem({
                   className="mt-0.5 size-4 accent-primary"
                 />
                 <span className="text-xs leading-relaxed">
-                  Kirim notifikasi WhatsApp ucapan terima kasih ke karyawan.
+                  Kirim notifikasi push ucapan terima kasih ke karyawan.
                   <span className="block text-muted-foreground mt-0.5">
-                    Teks bisa diedit di Settings → WhatsApp.
+                    Teks bisa diedit di Settings → Template notifikasi.
                   </span>
                 </span>
               </label>

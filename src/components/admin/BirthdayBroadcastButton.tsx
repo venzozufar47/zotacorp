@@ -85,7 +85,7 @@ export function BirthdayBroadcastButton({
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {hasBirthday
-              ? `Hari ini: ${todayBirthdays.map((c) => c.name).join(", ")} ulang tahun. Klik untuk kirim WA ke seluruh karyawan ngajak ngucapin via Zota App.`
+              ? `Hari ini: ${todayBirthdays.map((c) => c.name).join(", ")} ulang tahun. Klik untuk kirim push ke seluruh karyawan ngajak ngucapin via Zota App.`
               : "Tidak ada karyawan yang ulang tahun hari ini. Tombol akan aktif otomatis pas ada yang ulang tahun."}
           </p>
         </div>
@@ -103,10 +103,10 @@ export function BirthdayBroadcastButton({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Broadcast WA reminder ulang tahun?</DialogTitle>
+            <DialogTitle>Broadcast reminder ulang tahun?</DialogTitle>
             <DialogDescription>
-              Pesan ini akan dikirim ke <strong>seluruh</strong> karyawan
-              yang punya nomor WhatsApp valid.
+              Notifikasi push ini akan dikirim ke <strong>seluruh</strong>{" "}
+              karyawan aktif.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-xs">
@@ -126,7 +126,7 @@ export function BirthdayBroadcastButton({
                 href="/admin/settings"
                 className="underline underline-offset-2 hover:text-foreground"
               >
-                /admin/settings → Whatsapp Templates
+                /admin/settings → Template notifikasi
               </a>
               {" "}(template <code>celebration_birthday_broadcast</code>).
             </p>

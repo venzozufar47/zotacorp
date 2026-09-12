@@ -231,7 +231,7 @@ function CoachingDialog({
           </h3>
           <p className="mt-0.5 text-[11.5px] text-muted-foreground">
             Tampil di dashboard {name.split(" ")[0]} saat ia masuk. Tidak
-            dikirim lewat WhatsApp.
+            dikirim sebagai notifikasi.
           </p>
         </div>
         <textarea

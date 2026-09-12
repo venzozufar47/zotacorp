@@ -48,10 +48,10 @@ export function WaTemplatesCard({ initialTemplates }: Props) {
           <span className="inline-flex items-center justify-center size-8 rounded-full border-2 border-foreground bg-pop-emerald text-primary-foreground">
             <MessageSquare size={16} strokeWidth={2.5} />
           </span>
-          Whatsapp templates
+          Template notifikasi
         </CardTitle>
         <CardDescription>
-          Edit teks pesan WhatsApp yang dikirim otomatis oleh sistem. Semua
+          Edit teks notifikasi (push) yang dikirim otomatis oleh sistem. Semua
           pesan selalu dikirim dalam Bahasa Indonesia. Placeholder seperti{" "}
           <code className="text-[11px] px-1 py-0.5 rounded bg-muted">
             {"{name}"}

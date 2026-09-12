@@ -264,7 +264,7 @@ function DiscRow({ row }: { row: DiscOverviewRow }) {
             <DialogTitle>Push Tes DISC ke {label}?</DialogTitle>
             <DialogDescription>
               {row.fullName} akan diminta mengambil Tes Kepribadian DISC di Zota
-              App dan akan menerima notifikasi WhatsApp. Slip gajinya{" "}
+              App dan akan menerima notifikasi push. Slip gajinya{" "}
               <strong>terkunci</strong> sampai tesnya selesai. Permintaan mati
               otomatis begitu tes disubmit.
             </DialogDescription>

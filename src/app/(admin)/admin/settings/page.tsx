@@ -10,7 +10,6 @@ import {
 import { AttendanceSettingsForm } from "@/components/admin/AttendanceSettingsForm";
 import { LanguageCard } from "@/components/settings/LanguageCard";
 import { PosPinCard } from "@/components/profile/PosPinCard";
-import { WhatsAppRecipientsCard } from "@/components/admin/WhatsAppRecipientsCard";
 import { EnablePushButton } from "@/components/shared/EnablePushButton";
 import { TestAttendancePushButton } from "@/components/admin/TestAttendancePushButton";
 import { PushExemptionsCard } from "@/components/admin/PushExemptionsCard";
@@ -22,7 +21,6 @@ import { BusinessUnitsCard } from "@/components/admin/BusinessUnitsCard";
 import { ExtraWorkKindsCard } from "@/components/admin/ExtraWorkKindsCard";
 import { HolidayCalendarCard } from "@/components/admin/HolidayCalendarCard";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { listWhatsAppRecipients } from "@/lib/actions/whatsapp-recipients.actions";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import { listExtraWorkKinds } from "@/lib/actions/extra-work-kinds.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
@@ -37,10 +35,9 @@ export default async function AdminSettingsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [settings, waRecipients, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile, holidays, pushExemptions, pushSendLogs] =
+  const [settings, waTemplates, businessUnits, extraWorkKinds, employeesRes, adminProfile, holidays, pushExemptions, pushSendLogs] =
     await Promise.all([
       getCachedAttendanceSettings(),
-      listWhatsAppRecipients(),
       listWaTemplates(),
       listBusinessUnits(),
       listExtraWorkKinds(),
@@ -95,7 +92,6 @@ export default async function AdminSettingsPage() {
       </div>
       <PushSendLogCard initialRows={pushSendLogs} />
       <PushExemptionsCard initialRows={pushExemptions} />
-      <WhatsAppRecipientsCard initialRecipients={waRecipients.data ?? []} />
       <WaTemplatesCard
         initialTemplates={waTemplates.map((t) => ({
           key: t.key,

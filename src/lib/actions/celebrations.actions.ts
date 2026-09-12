@@ -21,49 +21,7 @@ import {
   zonedDateString,
 } from "@/lib/utils/celebrations";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import { sendWhatsApp } from "@/lib/whatsapp/fonnte";
-import { normalizePhone } from "@/lib/whatsapp/normalize-phone";
-
-/**
- * Wrap kirim WA + persist log ke `whatsapp_send_logs` supaya admin
- * bisa audit kapan + ke siapa pesan dikirim. Pakai `admin` (service
- * role) client supaya insert tetap jalan walau RLS authenticated
- * tidak punya policy insert.
- */
-async function logAndSendWhatsApp(
-  admin: ReturnType<typeof createAdminClient<Database>>,
-  args: {
-    recipientProfileId: string | null;
-    phone: string;
-    eventType:
-      | "birthday"
-      | "anniversary"
-      | "celebration_greeting_notification"
-      | "other";
-    body: string;
-  }
-) {
-  let status: "sent" | "failed" = "sent";
-  let errorMessage: string | null = null;
-  try {
-    await sendWhatsApp(args.phone, args.body);
-  } catch (err) {
-    status = "failed";
-    errorMessage = err instanceof Error ? err.message : String(err);
-  }
-  try {
-    await admin.from("whatsapp_send_logs").insert({
-      recipient_profile_id: args.recipientProfileId,
-      recipient_phone: args.phone,
-      event_type: args.eventType,
-      message_body: args.body,
-      status,
-      error_message: errorMessage,
-    });
-  } catch (err) {
-    console.error("[whatsapp-log] insert failed", err);
-  }
-}
+import { sendPushToUser } from "@/lib/push/web-push";
 
 const WINDOW_DAYS = 8; // today + next 7 days
 const ADMIN_RADAR_WINDOW_DAYS = 31; // today + next 30 days for admin Home
@@ -382,10 +340,8 @@ export async function postCelebrationMessage(input: {
 }
 
 /**
- * Sends a WhatsApp nudge to the celebrant telling them a new greeting
- * has arrived, with a short preview. Uses the service-role client so it
- * can read whatsapp_number across profiles regardless of the caller's
- * RLS scope. Silently skips if the celebrant has no whatsapp_number set.
+ * Push a nudge to the celebrant telling them a new greeting has arrived,
+ * with a short preview.
  */
 async function notifyCelebrantOfGreeting(args: {
   celebrantId: string;
@@ -404,7 +360,7 @@ async function notifyCelebrantOfGreeting(args: {
   const [{ data: celebrant }, { data: author }] = await Promise.all([
     admin
       .from("profiles")
-      .select("full_name, nickname, whatsapp_number")
+      .select("full_name, nickname")
       .eq("id", args.celebrantId)
       .maybeSingle(),
     admin
@@ -414,20 +370,19 @@ async function notifyCelebrantOfGreeting(args: {
       .maybeSingle(),
   ]);
 
-  if (!celebrant?.whatsapp_number) return;
-  const phone = normalizePhone(celebrant.whatsapp_number);
-  if (!phone) return;
-
-  const celebrantName = pickDisplayName(celebrant.full_name, celebrant.nickname);
+  const celebrantName = pickDisplayName(celebrant?.full_name, celebrant?.nickname);
   const authorName = pickDisplayName(author?.full_name, author?.nickname);
-
   const eventKindLabel = args.eventKind === "birthday" ? "ulang tahun" : "anniversary";
   const message = await renderWaTemplate("celebration_greeting_notification", {
     celebrantName,
     authorName,
     eventKind: eventKindLabel,
   });
-  await sendWhatsApp(phone, message);
+  await sendPushToUser(args.celebrantId, {
+    title: "Ada ucapan baru! 💌",
+    body: message,
+    url: "/dashboard",
+  });
 }
 
 /**
@@ -499,8 +454,8 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     const [yearStr, monthStr, dayStr] = todayIso.split("-");
     const mmdd = `${monthStr}-${dayStr}`;
 
-    // Service-role client so we can read whatsapp_number across profiles
-    // and run the atomic claim even outside the user's RLS scope.
+    // Service-role client so we can run the atomic claim even outside the
+    // user's RLS scope.
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) {
@@ -513,7 +468,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     // Skip resigned/inactive — mereka tidak boleh dapat WA notif lagi.
     const { data: bCandidates } = await admin
       .from("profiles")
-      .select("id, full_name, nickname, whatsapp_number, date_of_birth, birthday_last_greeted")
+      .select("id, full_name, nickname, date_of_birth, birthday_last_greeted")
       .not("date_of_birth", "is", null)
       .neq("role", "investor")
       .eq("is_active", true);
@@ -532,25 +487,22 @@ export async function dispatchTodaysGreetings(): Promise<void> {
         .update({ birthday_last_greeted: todayIso })
         .eq("id", p.id)
         .or(`birthday_last_greeted.is.null,birthday_last_greeted.lt.${todayIso}`)
-        .select("id, full_name, nickname, whatsapp_number")
+        .select("id, full_name, nickname")
         .maybeSingle();
 
       if (!claimed) continue;
-      const phone = normalizePhone(claimed.whatsapp_number ?? "");
-      if (!phone) continue;
-      const waName = pickDisplayName(claimed.full_name, claimed.nickname);
+      const displayName = pickDisplayName(claimed.full_name, claimed.nickname);
       try {
         const message = await renderWaTemplate("celebration_birthday_morning", {
-          name: waName,
+          name: displayName,
         });
-        await logAndSendWhatsApp(admin, {
-          recipientProfileId: claimed.id,
-          phone,
-          eventType: "birthday",
+        await sendPushToUser(claimed.id, {
+          title: "Selamat ulang tahun! 🎂",
           body: message,
+          url: "/dashboard",
         });
       } catch (err) {
-        console.error("[celebrations] birthday WA failed", err);
+        console.error("[celebrations] birthday push failed", err);
       }
     }
 
@@ -559,7 +511,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
     const { data: aCandidates } = await admin
       .from("profiles")
       .select(
-        "id, full_name, nickname, whatsapp_number, first_day_of_work, anniversary_last_greeted"
+        "id, full_name, nickname, first_day_of_work, anniversary_last_greeted"
       )
       .not("first_day_of_work", "is", null)
       .neq("role", "investor")
@@ -579,26 +531,23 @@ export async function dispatchTodaysGreetings(): Promise<void> {
         .update({ anniversary_last_greeted: todayIso })
         .eq("id", p.id)
         .or(`anniversary_last_greeted.is.null,anniversary_last_greeted.lt.${todayIso}`)
-        .select("id, full_name, nickname, whatsapp_number")
+        .select("id, full_name, nickname")
         .maybeSingle();
 
       if (!claimed) continue;
-      const phone = normalizePhone(claimed.whatsapp_number ?? "");
-      if (!phone) continue;
-      const waName = pickDisplayName(claimed.full_name, claimed.nickname);
+      const displayName = pickDisplayName(claimed.full_name, claimed.nickname);
       try {
         const message = await renderWaTemplate(
           "celebration_anniversary_morning",
-          { name: waName, years }
+          { name: displayName, years }
         );
-        await logAndSendWhatsApp(admin, {
-          recipientProfileId: claimed.id,
-          phone,
-          eventType: "anniversary",
+        await sendPushToUser(claimed.id, {
+          title: "Selamat merayakan anniversary! 🎉",
           body: message,
+          url: "/dashboard",
         });
       } catch (err) {
-        console.error("[celebrations] anniversary WA failed", err);
+        console.error("[celebrations] anniversary push failed", err);
       }
     }
   } catch (err) {

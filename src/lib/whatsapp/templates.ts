@@ -1,14 +1,17 @@
 /**
- * Admin-editable WhatsApp template registry + renderer.
+ * Admin-editable notification template registry + renderer.
  *
- * Every outbound WA the system sends has a `template_key` registered
- * below. At send time, `renderWaTemplate(key, vars)` looks up the row
- * in `whatsapp_templates`, falls back to the hardcoded default here if
- * no row exists, and interpolates `{placeholder}` tokens with the
- * provided values.
+ * Originally built for outbound WhatsApp (via Fonnte, now decommissioned);
+ * every one of these templates is reused as-is for the body text of Web
+ * Push notifications instead — the table/function names still say "wa"
+ * for that historical reason, but nothing here is WhatsApp-specific.
+ * `template_key` is registered below; at send time `renderWaTemplate(key,
+ * vars)` looks up the row in `whatsapp_templates`, falls back to the
+ * hardcoded default here if no row exists, and interpolates
+ * `{placeholder}` tokens with the provided values.
  *
  * Indonesian-only by policy. Admin can customize copy per template from
- * the Whatsapp tab in /admin/settings.
+ * the "Template notifikasi" card in /admin/settings.
  */
 
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -48,7 +51,7 @@ export interface TemplateMeta {
   label: string;
   /** One-sentence description of when this fires. */
   description: string;
-  /** Who receives this WA — for admin context. */
+  /** Who receives this notification — for admin context. */
   recipient: string;
   /** Ordered list of placeholder tokens available in the body. */
   placeholders: PlaceholderInfo[];
@@ -57,7 +60,7 @@ export interface TemplateMeta {
 }
 
 /**
- * Registry of all WA templates. Keys match the `template_key` column.
+ * Registry of all notification templates. Keys match the `template_key` column.
  * Ordering here determines the order cards render in the admin UI.
  */
 export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
@@ -104,7 +107,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Broadcast reminder ulang tahun (manual admin)",
     description:
       "Dikirim ke seluruh karyawan saat admin tap tombol Broadcast di tab Monitoring Karyawan. Mengajak ngucapin via Zota App. {recipientName} di-render personal per penerima; {celebrantNames} berisi yang berulang tahun hari itu.",
-    recipient: "Semua karyawan dengan nomor WA valid",
+    recipient: "Semua karyawan aktif (push notification)",
     placeholders: [
       {
         key: "recipientName",
@@ -123,7 +126,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Broadcast reminder anniversary kerja (otomatis jam 12)",
     description:
       "Dikirim otomatis (cron jam 12:00 WIB) ke seluruh karyawan yang BELUM ngucapin, mengajak beri ucapan ke rekan yang hari ini merayakan anniversary kerja. {recipientName} personal per penerima; {celebrantNames} berisi yang anniversary hari itu.",
-    recipient: "Semua karyawan aktif dengan nomor WA valid (belum ngucapin)",
+    recipient: "Semua karyawan aktif (push notification, belum ngucapin)",
     placeholders: [
       {
         key: "recipientName",
@@ -175,8 +178,8 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
   attendance_check_in_alert: {
     label: "Alert check-in ke admin",
     description:
-      "Dikirim ke semua admin WA (whatsapp_notification_recipients) setiap ada karyawan yang check-in.",
-    recipient: "Admin (dari WA notification recipients)",
+      "Dikirim sebagai push notification ke semua admin yang aktifkan notifikasi, setiap ada karyawan yang check-in.",
+    recipient: "Semua admin (push notification)",
     placeholders: [
       { key: "fullName", description: "Nama karyawan" },
       { key: "time", description: "Jam check-in (HH:mm)" },
@@ -196,8 +199,8 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
   attendance_check_out_alert: {
     label: "Alert check-out ke admin",
     description:
-      "Dikirim ke semua admin WA setiap ada karyawan yang check-out.",
-    recipient: "Admin (dari WA notification recipients)",
+      "Dikirim sebagai push notification ke semua admin setiap ada karyawan yang check-out.",
+    recipient: "Semua admin (push notification)",
     placeholders: [
       { key: "fullName", description: "Nama karyawan" },
       { key: "time", description: "Jam check-out (HH:mm)" },
@@ -217,7 +220,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Yeobo Booth — Reminder H-7",
     description:
       "Dikirim 7 hari sebelum sesi photobooth, jam 11:00 WIB. Tujuan: admin/operator Yeobo Booth siap-siap koordinasi awal (konfirmasi tim, alat, transport).",
-    recipient: "Admin (dari WA notification recipients)",
+    recipient: "Akun penerima reminder Yeobo Booth (push notification)",
     placeholders: [
       { key: "namaKlien", description: "Nama klien" },
       { key: "tanggal", description: "Tanggal sesi (mis. Sen, 1 Jun 2026)" },
@@ -234,7 +237,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Yeobo Booth — Reminder H-3",
     description:
       "Dikirim 3 hari sebelum sesi, jam 11:00 WIB. Tujuan: cek alat + konfirmasi ulang tim freelance.",
-    recipient: "Admin (dari WA notification recipients)",
+    recipient: "Akun penerima reminder Yeobo Booth (push notification)",
     placeholders: [
       { key: "namaKlien", description: "Nama klien" },
       { key: "tanggal", description: "Tanggal sesi" },
@@ -251,7 +254,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Yeobo Booth — Reminder H-1",
     description:
       "Dikirim sehari sebelum sesi, jam 11:00 WIB. Tujuan: final check & briefing tim.",
-    recipient: "Admin (dari WA notification recipients)",
+    recipient: "Akun penerima reminder Yeobo Booth (push notification)",
     placeholders: [
       { key: "namaKlien", description: "Nama klien" },
       { key: "tanggal", description: "Tanggal sesi" },
@@ -268,7 +271,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Yeobo Booth — Reminder (generik)",
     description:
       "Template default untuk semua checkpoint reminder Yeobo Booth yang TIDAK punya pesan custom sendiri. Placeholder {hari} = offset H-berapa. Checkpoint & jam kirim diatur di /admin/yeobo-booth/settings.",
-    recipient: "Nomor WA di daftar penerima Yeobo Booth",
+    recipient: "Akun penerima reminder Yeobo Booth (push notification)",
     placeholders: [
       { key: "hari", description: "Offset hari (angka di belakang 'H-')" },
       { key: "namaKlien", description: "Nama klien" },
@@ -286,7 +289,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
     label: "Yeobo Booth — Reminder Sewa Space (generik)",
     description:
       "Template default reminder untuk booking tipe Sewa Space (tanpa sisa tagihan). {hari} = offset H-berapa, {jumlahSesi} = jumlah sesi.",
-    recipient: "Nomor WA di daftar penerima Yeobo Booth",
+    recipient: "Akun penerima reminder Yeobo Booth (push notification)",
     placeholders: [
       { key: "hari", description: "Offset hari (angka di belakang 'H-')" },
       { key: "namaKlien", description: "Nama penyewa" },
