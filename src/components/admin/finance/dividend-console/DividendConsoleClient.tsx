@@ -336,8 +336,15 @@ export function DividendConsoleClient({
           // "PnL bergerak sejak deklarasi", bukan selisih semu sebesar
           // kasLastMonth yang selalu muncul walau tidak ada apa pun yang
           // berubah.
-          const drift =
-            b.declaredPool != null && kasIni != null ? kasIni - b.declaredPool : null;
+          //
+          // Pakai `pool` (state React `declaredPool`, yang diubah tombol
+          // "Sesuaikan"/input), BUKAN `b.declaredPool` (snapshot dari
+          // server saat halaman dimuat). Sebelumnya pakai `b.declaredPool`
+          // — klik "Sesuaikan" mengubah `pool` sehingga field "Pool dividen
+          // (deklarasi)" ikut berubah, tapi notifikasi drift tetap
+          // membandingkan ke angka lama yang belum disimpan, jadi
+          // banner-nya tidak pernah hilang walau sudah "disesuaikan".
+          const drift = pool != null && kasIni != null ? kasIni - pool : null;
           return (
             <div
               key={b.branch}
