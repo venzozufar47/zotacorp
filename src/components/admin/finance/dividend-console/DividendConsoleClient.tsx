@@ -933,6 +933,14 @@ function InvestorCrossBranchTable({
 }) {
   const liveSliceDue = (recipientId: string | null, fallback: number) =>
     recipientId != null ? amounts[recipientId] ?? fallback : fallback;
+  // Nominal fisik yang masih perlu dikirim untuk satu slice (branch) —
+  // field saat ini dikurangi yang SUDAH tertransfer (bukan dikurangi
+  // total hak). Sama basisnya dengan footer per-cabang di atas, cuma di
+  // sini dijumlah LINTAS CABANG per investor — karena satu investor
+  // dengan kontrak di 2+ cabang cuma perlu SATU transfer bank gabungan,
+  // bukan transfer terpisah tiap cabang.
+  const liveSliceToWire = (recipientId: string | null, alreadySaved: number) =>
+    Math.max(0, liveSliceDue(recipientId, alreadySaved) - alreadySaved);
 
   const grand = data.investors.reduce(
     (acc, inv) => {
@@ -940,20 +948,31 @@ function InvestorCrossBranchTable({
         (s, sl) => s + liveSliceDue(sl.recipientId, sl.transferredThisMonth),
         0
       );
+      const toWire = inv.slices.reduce(
+        (s, sl) => s + liveSliceToWire(sl.recipientId, sl.transferredThisMonth),
+        0
+      );
       acc.transferred += transferred;
+      acc.toWire += toWire;
       acc.arrears += inv.totalArrears;
       acc.cum += inv.totalCumulative;
       return acc;
     },
-    { transferred: 0, arrears: 0, cum: 0 }
+    { transferred: 0, toWire: 0, arrears: 0, cum: 0 }
   );
   // Slot investor yang belum tersambung kontrak ikut masuk grand total.
   for (const u of data.unlinkedRecipients) {
     grand.transferred += amounts[u.recipientId] ?? u.due;
+    grand.toWire += liveSliceToWire(u.recipientId, u.due);
     grand.arrears += u.arrearsBefore;
     grand.cum += u.cumulative;
   }
   const mgmtArrears = data.management.slices.reduce((s, sl) => s + sl.arrearsBefore, 0);
+  const mgmtToWire = data.management.slices.reduce(
+    (s, sl) => s + liveSliceToWire(sl.recipientId, sl.due),
+    0
+  );
+  grand.toWire += mgmtToWire;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -973,6 +992,7 @@ function InvestorCrossBranchTable({
               <th className="px-4 py-2 text-left font-semibold">Cabang</th>
               <th className="px-4 py-2 text-right font-semibold">Tunggakan</th>
               <th className="px-4 py-2 text-right font-semibold">Ditransfer</th>
+              <th className="px-4 py-2 text-right font-semibold">Perlu transfer</th>
               <th className="px-4 py-2 text-right font-semibold">Kumulatif</th>
               <th className="px-4 py-2 text-right font-semibold">BEP</th>
             </tr>
@@ -987,6 +1007,7 @@ function InvestorCrossBranchTable({
                     (s, sl) => s + liveSliceDue(sl.recipientId, sl.due),
                     0
                   )}
+                  liveToWire={mgmtToWire}
                   totalArrears={mgmtArrears}
                   totalCumulative={data.management.totalCumulative}
                   totalBepTarget={0}
@@ -997,6 +1018,7 @@ function InvestorCrossBranchTable({
                     rekeningNumber: null,
                     permanent: false,
                     transferred: liveSliceDue(sl.recipientId, sl.due),
+                    toWire: liveSliceToWire(sl.recipientId, sl.due),
                     arrearsBefore: sl.arrearsBefore,
                     cumulativePayout: sl.cumulative,
                     bepTargetIdr: 0,
@@ -1009,12 +1031,17 @@ function InvestorCrossBranchTable({
                 (s, sl) => s + liveSliceDue(sl.recipientId, sl.transferredThisMonth),
                 0
               );
+              const liveToWire = inv.slices.reduce(
+                (s, sl) => s + liveSliceToWire(sl.recipientId, sl.transferredThisMonth),
+                0
+              );
               return (
                 <FragmentInvestor
                   key={inv.userId}
                   name={inv.name}
                   multiBranch={inv.multiBranch}
                   liveTransferred={liveTransferred}
+                  liveToWire={liveToWire}
                   totalArrears={inv.totalArrears}
                   totalCumulative={inv.totalCumulative}
                   totalBepTarget={inv.totalBepTarget}
@@ -1025,6 +1052,7 @@ function InvestorCrossBranchTable({
                     rekeningNumber: sl.rekeningNumber,
                     permanent: sl.permanent,
                     transferred: liveSliceDue(sl.recipientId, sl.transferredThisMonth),
+                    toWire: liveSliceToWire(sl.recipientId, sl.transferredThisMonth),
                     arrearsBefore: sl.arrearsBefore,
                     cumulativePayout: sl.cumulativePayout,
                     bepTargetIdr: sl.bepTargetIdr,
@@ -1041,6 +1069,7 @@ function InvestorCrossBranchTable({
                   recipientId: u.recipientId,
                   branch: u.branch,
                   transferred: amounts[u.recipientId] ?? u.due,
+                  toWire: liveSliceToWire(u.recipientId, u.due),
                   arrearsBefore: u.arrearsBefore,
                   cumulative: u.cumulative,
                 }))}
@@ -1057,6 +1086,9 @@ function InvestorCrossBranchTable({
               </td>
               <td className="px-4 py-2.5 text-right font-mono tabular-nums">
                 {formatRp(grand.transferred)}
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums text-amber-600">
+                {grand.toWire > 0 ? formatRp(grand.toWire) : "—"}
               </td>
               <td className="px-4 py-2.5 text-right font-mono tabular-nums">
                 {formatRp(grand.cum)}
@@ -1082,6 +1114,7 @@ function FragmentInvestor({
   name,
   multiBranch,
   liveTransferred,
+  liveToWire,
   totalArrears,
   totalCumulative,
   totalBepTarget,
@@ -1091,6 +1124,9 @@ function FragmentInvestor({
   name: string;
   multiBranch: boolean;
   liveTransferred: number;
+  /** Total gabungan lintas cabang yang masih perlu benar-benar dikirim ke
+   *  bank — satu angka, satu transfer, walau kontraknya ada di 2+ cabang. */
+  liveToWire: number;
   totalArrears: number;
   totalCumulative: number;
   totalBepTarget: number;
@@ -1101,6 +1137,7 @@ function FragmentInvestor({
     rekeningNumber: string | null;
     permanent: boolean;
     transferred: number;
+    toWire: number;
     arrearsBefore: number;
     cumulativePayout: number;
     bepTargetIdr: number;
@@ -1143,6 +1180,11 @@ function FragmentInvestor({
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
           {formatRp(liveTransferred)}
         </td>
+        <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-amber-600">
+          {liveToWire > 0 ? formatRp(liveToWire) : (
+            <span className="text-muted-foreground/60 font-normal">—</span>
+          )}
+        </td>
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
           {formatRp(totalCumulative)}
         </td>
@@ -1177,6 +1219,11 @@ function FragmentInvestor({
             </td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
               {formatRp(sl.transferred)}
+            </td>
+            <td className="px-4 py-1.5 text-right font-mono tabular-nums text-amber-600">
+              {sl.toWire > 0 ? formatRp(sl.toWire) : (
+                <span className="text-muted-foreground/60">—</span>
+              )}
             </td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
               {formatRp(sl.cumulativePayout)}
@@ -1224,12 +1271,14 @@ function FragmentUnlinked({
     recipientId: string;
     branch: string;
     transferred: number;
+    toWire: number;
     arrearsBefore: number;
     cumulative: number;
   }>;
 }) {
   const multi = items.length > 1;
   const totalTransferred = items.reduce((s, x) => s + x.transferred, 0);
+  const totalToWire = items.reduce((s, x) => s + x.toWire, 0);
   const totalArrears = items.reduce((s, x) => s + x.arrearsBefore, 0);
   const totalCum = items.reduce((s, x) => s + x.cumulative, 0);
   return (
@@ -1261,6 +1310,11 @@ function FragmentUnlinked({
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
           {formatRp(totalTransferred)}
         </td>
+        <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-amber-600">
+          {totalToWire > 0 ? formatRp(totalToWire) : (
+            <span className="text-muted-foreground/60 font-normal">—</span>
+          )}
+        </td>
         <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold">
           {totalCum > 0 ? formatRp(totalCum) : "—"}
         </td>
@@ -1285,6 +1339,11 @@ function FragmentUnlinked({
             </td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
               {formatRp(it.transferred)}
+            </td>
+            <td className="px-4 py-1.5 text-right font-mono tabular-nums text-amber-600">
+              {it.toWire > 0 ? formatRp(it.toWire) : (
+                <span className="text-muted-foreground/60">—</span>
+              )}
             </td>
             <td className="px-4 py-1.5 text-right font-mono tabular-nums">
               {it.cumulative > 0 ? formatRp(it.cumulative) : "—"}
