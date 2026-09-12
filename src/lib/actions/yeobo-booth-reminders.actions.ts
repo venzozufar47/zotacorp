@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "./_supabase-admin";
 import { requireYeoboBoothAccess, type ActionResult } from "./_gates";
 import type {
   YeoboBoothReminderCheckpoint,
@@ -29,15 +30,20 @@ export interface RecipientCandidate {
 /**
  * Akun app yang bisa dipilih sebagai penerima reminder (aktif, semua
  * peran — admin/operator lapangan boleh sama-sama jadi penerima). Gate
- * sama dengan sisa file ini (admin global ATAU admin Yeobo Booth) — TIDAK
- * pakai `listAssignableProfiles` (admin-only) karena akan kosong untuk
- * admin Yeobo Booth yang bukan admin global.
+ * sama dengan sisa file ini (admin global ATAU admin Yeobo Booth).
+ *
+ * Pakai service-role client (bukan request-scoped `createClient()`):
+ * RLS `profiles_select_admin` mensyaratkan `is_admin()` (admin GLOBAL),
+ * jadi seorang admin Yeobo Booth yang bukan admin global cuma bisa
+ * SELECT baris dirinya sendiri (`profiles_select_own`) — daftar akun
+ * lain (termasuk akun admin) akan kosong kalau lewat client biasa.
+ * `requireYeoboBoothAccess()` di atas sudah jadi gate aplikasinya.
  */
 export async function listRecipientCandidates(): Promise<RecipientCandidate[]> {
   const gate = await requireYeoboBoothAccess();
   if (!gate.ok) return [];
-  const supabase = await createClient();
-  const { data } = await supabase
+  const admin = createAdminClient();
+  const { data } = await admin
     .from("profiles")
     .select("id, full_name, business_unit")
     .eq("is_active", true)
@@ -178,13 +184,17 @@ export async function addReminderRecipient(
       error: parsed.error.issues[0]?.message ?? "Input invalid",
     };
   }
-  const supabase = await createClient();
-  const { data: prof } = await supabase
+  // Service-role read: same RLS reason as listRecipientCandidates — a
+  // Yeobo Booth admin who isn't a global admin can't SELECT someone
+  // else's profiles row (e.g. an admin account) via the request client.
+  const admin = createAdminClient();
+  const { data: prof } = await admin
     .from("profiles")
     .select("full_name")
     .eq("id", parsed.data.userId)
     .maybeSingle();
   if (!prof) return { ok: false, error: "Akun tidak ditemukan" };
+  const supabase = await createClient();
   const { error } = await supabase.from(RCP_TABLE as never).insert({
     label: parsed.data.label || prof.full_name || "",
     user_id: parsed.data.userId,
