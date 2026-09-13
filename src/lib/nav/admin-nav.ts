@@ -239,6 +239,7 @@ export function buildAdminNav({
           children: [
             { href: "/admin/investors?tab=distribusi", label: "Distribusi Bulanan" },
             { href: "/admin/investors/mom", label: "Notulen Rapat" },
+            { href: "/admin/investors/buyback", label: "Buyback Aset" },
           ],
         },
       ],
