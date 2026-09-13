@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CalendarDays, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -9,6 +9,21 @@ import {
   deleteMeetingNote,
   type MeetingNote,
 } from "@/lib/actions/yeobo-mom.actions";
+
+/**
+ * Sama dengan `looksLikeStaleDeployment` di app/error.tsx — deploy baru
+ * terjadi selagi tab ini terbuka, jadi server action ID di bundle lama
+ * sudah tidak dikenali server. Diduplikasi (bukan diimpor) karena
+ * app/error.tsx sengaja berdiri sendiri sebagai root error boundary.
+ */
+function isStaleDeploymentError(err: unknown): boolean {
+  const msg = err instanceof Error ? `${err.name} ${err.message}` : String(err);
+  return /Failed to find Server Action|older or newer deployment|ChunkLoadError|Loading chunk|dynamically imported module/i.test(
+    msg
+  );
+}
+
+const DRAFT_RECOVERY_KEY = "zota:momDraftRecovery";
 
 const BRANCHES = ["Tlogosari", "Tembalang", "Jebres"] as const;
 
@@ -47,42 +62,95 @@ const emptyDraft = (): Draft => ({
  * form, bukan dibiarkan tampak seperti tag hiasan.
  */
 export function MeetingNotesManager({ notes }: { notes: MeetingNote[] }) {
-  const [draft, setDraft] = useState<Draft | null>(null);
+  // Lazy initializer (bukan useEffect + setState) — draf yang disimpan
+  // tepat sebelum reload paksa akibat deploy baru (lihat catch di `save`)
+  // harus sudah terisi di render PERTAMA, bukan menyusul sesudahnya
+  // (flash form kosong lalu tiba-tiba terisi terasa aneh).
+  const [draft, setDraft] = useState<Draft | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = sessionStorage.getItem(DRAFT_RECOVERY_KEY);
+      if (!raw) return null;
+      sessionStorage.removeItem(DRAFT_RECOVERY_KEY);
+      return JSON.parse(raw) as Draft;
+    } catch {
+      return null; // draf rusak/tak terbaca — bukan hal fatal, form kosong.
+    }
+  });
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Sekali saat mount saja: `draft` di sini adalah nilai AWAL dari lazy
+  // initializer di atas (non-null hanya kalau baru dipulihkan dari
+  // sessionStorage — klik "Notulen baru" terjadi lewat onClick setelah
+  // mount, tidak pernah mengisi state ini di render pertama).
+  useEffect(() => {
+    if (draft) toast.success("Draf notulen yang belum tersimpan berhasil dipulihkan.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const save = () => {
     if (!draft) return;
     startTransition(async () => {
-      const res = await upsertMeetingNote({
-        id: draft.id,
-        meetingDate: draft.meetingDate,
-        title: draft.title,
-        branches: draft.branches,
-        summary: draft.summary,
-        body: draft.body,
-        published: draft.published,
-      });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await upsertMeetingNote({
+          id: draft.id,
+          meetingDate: draft.meetingDate,
+          title: draft.title,
+          branches: draft.branches,
+          summary: draft.summary,
+          body: draft.body,
+          published: draft.published,
+        });
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success("Notulen tersimpan");
+        setDraft(null);
+        router.refresh();
+      } catch (err) {
+        // Tanpa try/catch ini, error yang lolos dari `startTransition`
+        // menabrak ke error boundary global (app/error.tsx) dan draf yang
+        // sedang diketik lenyap di balik halaman crash. Kasus paling umum:
+        // ada deploy baru selagi tab ini terbuka (lihat isStaleDeploymentError)
+        // — satu-satunya recovery tetap reload penuh, tapi draf disimpan
+        // dulu ke sessionStorage supaya tidak hilang.
+        if (isStaleDeploymentError(err)) {
+          try {
+            sessionStorage.setItem(DRAFT_RECOVERY_KEY, JSON.stringify(draft));
+          } catch {
+            // sessionStorage penuh/diblokir — reload tetap jalan, cuma
+            // draf tidak sempat terselamatkan.
+          }
+          toast.error("Ada pembaruan aplikasi. Memuat ulang halaman…");
+          setTimeout(() => window.location.reload(), 1200);
+          return;
+        }
+        toast.error("Gagal menyimpan notulen. Coba lagi.");
       }
-      toast.success("Notulen tersimpan");
-      setDraft(null);
-      router.refresh();
     });
   };
 
   const remove = (n: MeetingNote) => {
     if (!confirm(`Hapus notulen "${n.title}" (${fmtDate(n.meetingDate)})?`)) return;
     startTransition(async () => {
-      const res = await deleteMeetingNote(n.id);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await deleteMeetingNote(n.id);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success("Notulen dihapus");
+        router.refresh();
+      } catch (err) {
+        if (isStaleDeploymentError(err)) {
+          toast.error("Ada pembaruan aplikasi. Memuat ulang halaman…");
+          setTimeout(() => window.location.reload(), 1200);
+          return;
+        }
+        toast.error("Gagal menghapus notulen. Coba lagi.");
       }
-      toast.success("Notulen dihapus");
-      router.refresh();
     });
   };
 
