@@ -17,10 +17,17 @@ import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import {
   computeBuybackReport,
+  computeInvestorShares,
   type BuybackAssetInput,
   type BuybackCategory,
   type BuybackReportComputation,
+  type InvestorShare,
 } from "@/lib/investor/buyback-depreciation";
+
+/** Cabang & business unit yang investIdr-nya dipakai untuk membagi nilai
+ *  buyback — fitur ini memang Tlogosari-saja (lihat komentar file
+ *  buyback-depreciation.ts), jadi hard-code di sini konsisten dengan itu. */
+const BUYBACK_BRANCH = "Tlogosari";
 
 export interface BuybackAsset {
   id: string;
@@ -103,6 +110,10 @@ export interface BuybackReportSummary {
 export interface BuybackReportDetail extends BuybackReportSummary {
   lines: BuybackReportComputation["lines"];
   subtotals: BuybackReportComputation["subtotals"];
+  /** null untuk laporan lama (dibuat sebelum kolom ini ada) — BUKAN "tidak
+   *  ada investor", cuma belum pernah dihitung. Render sebagai "—", jangan
+   *  disamakan dengan array kosong. */
+  investorShares: InvestorShare[] | null;
 }
 
 interface ReportDbRow {
@@ -118,6 +129,7 @@ interface ReportDbRow {
   total_book_value_idr: number;
   note: string | null;
   created_at: string;
+  investor_shares: InvestorShare[] | null;
 }
 
 function mapReportRow(r: ReportDbRow): BuybackReportDetail {
@@ -126,15 +138,23 @@ function mapReportRow(r: ReportDbRow): BuybackReportDetail {
     perabot: Number(r.life_months_perabot),
     aksesoris: Number(r.life_months_aksesoris),
   };
-  // `lines` (jsonb) round-trips JSON number types faithfully, tapi
-  // `Number(...)` di sini tetap murah dan menutup celah yang sama untuk
-  // konsumen `computeSubtotalsFromLines` (reduce pakai `+`, rawan
-  // menggabung string kalau salah satu baris ternyata bukan number).
+  // `lines`/`investor_shares` (jsonb) round-trip JSON number types
+  // faithfully, tapi `Number(...)` di sini tetap murah dan menutup celah
+  // yang sama untuk konsumen `computeSubtotalsFromLines` (reduce pakai
+  // `+`, rawan menggabung string kalau salah satu baris ternyata bukan
+  // number).
   const lines = r.lines.map((l) => ({
     ...l,
     totalIdr: Number(l.totalIdr),
     bookValueIdr: Number(l.bookValueIdr),
   }));
+  const investorShares = r.investor_shares
+    ? r.investor_shares.map((s) => ({
+        ...s,
+        pct: Number(s.pct),
+        amountIdr: Number(s.amountIdr),
+      }))
+    : null;
   return {
     id: r.id,
     title: r.title,
@@ -146,6 +166,7 @@ function mapReportRow(r: ReportDbRow): BuybackReportDetail {
     note: r.note,
     createdAt: r.created_at,
     lines,
+    investorShares,
     subtotals: computeSubtotalsFromLines(lines),
   };
 }
@@ -165,7 +186,7 @@ function computeSubtotalsFromLines(
 }
 
 const REPORT_SELECT =
-  "id, title, as_of_date, residual_pct, life_months_elektronik, life_months_perabot, life_months_aksesoris, lines, total_cost_idr, total_book_value_idr, note, created_at";
+  "id, title, as_of_date, residual_pct, life_months_elektronik, life_months_perabot, life_months_aksesoris, lines, investor_shares, total_cost_idr, total_book_value_idr, note, created_at";
 const REPORT_SUMMARY_SELECT =
   "id, title, as_of_date, residual_pct, life_months_elektronik, life_months_perabot, life_months_aksesoris, total_cost_idr, total_book_value_idr, note, created_at";
 
@@ -365,6 +386,27 @@ export async function publishBuybackReport(input: {
     lifeMonths: input.lifeMonths,
   });
 
+  // Uang buyback diberikan 100% ke investor Tlogosari (bukan management),
+  // proporsional porsi modal. Dihitung & dibekukan di sini juga — bukan
+  // recompute live saat laporan dibuka — supaya konsisten dengan prinsip
+  // snapshot: kalau kontrak investor berubah belakangan, laporan yang
+  // sudah terbit tidak ikut berubah.
+  const { data: investorRows, error: investorFetchError } = await supabase
+    .from("yeobo_dividend_recipients")
+    .select("invest_idr")
+    .eq("branch", BUYBACK_BRANCH)
+    .eq("kind", "investor")
+    .eq("active", true);
+  if (investorFetchError)
+    return { ok: false, error: investorFetchError.message };
+  const investors = ((investorRows ?? []) as { invest_idr: number | null }[])
+    .map((r) => ({ investIdr: Number(r.invest_idr ?? 0) }))
+    .filter((i) => i.investIdr > 0);
+  const investorShares = computeInvestorShares(
+    computed.totalBookValueIdr,
+    investors
+  );
+
   const { data, error } = await supabase
     .from("yeobo_buyback_reports")
     .insert({
@@ -375,6 +417,7 @@ export async function publishBuybackReport(input: {
       life_months_perabot: input.lifeMonths.perabot,
       life_months_aksesoris: input.lifeMonths.aksesoris,
       lines: computed.lines,
+      investor_shares: investorShares,
       total_cost_idr: computed.totalCostIdr,
       total_book_value_idr: computed.totalBookValueIdr,
       note: input.note?.trim() || null,

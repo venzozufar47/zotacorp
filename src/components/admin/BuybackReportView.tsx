@@ -57,7 +57,7 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
             </div>
             <div>
               <dt className="text-[11px] text-muted-foreground">
-                Nilai depresiasian
+                Nilai terdepresiasi
               </dt>
               <dd className="font-mono font-semibold text-primary">
                 {formatRp(report.totalBookValueIdr)}
@@ -98,6 +98,71 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
         )}
       </div>
 
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-border bg-muted/30">
+          <span className="text-sm font-bold text-foreground">
+            Alokasi ke investor Tlogosari
+          </span>
+          <span className="ml-2 text-[11px] text-muted-foreground">
+            100% nilai terdepresiasi, proporsional porsi modal — nama disamarkan
+          </span>
+        </div>
+        {report.investorShares == null ? (
+          <p className="px-4 py-4 text-sm text-muted-foreground italic">
+            Laporan ini dibuat sebelum fitur alokasi investor ada — tidak
+            tersedia.
+          </p>
+        ) : report.investorShares.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-muted-foreground italic">
+            Tidak ada investor aktif tercatat untuk Tlogosari saat laporan ini
+            diterbitkan.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-2 text-left font-semibold">Investor</th>
+                <th className="px-4 py-2 text-right font-semibold">Porsi modal</th>
+                <th className="px-4 py-2 text-right font-semibold">
+                  Nilai buyback
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.investorShares.map((s) => (
+                <tr key={s.label} className="border-t border-border/60">
+                  <td className="px-4 py-2.5 font-medium text-foreground">
+                    {s.label}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                    {s.pct.toFixed(2)}%
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-primary">
+                    {formatRp(s.amountIdr)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-border bg-muted/30 font-semibold">
+                <td className="px-4 py-2">Total</td>
+                <td className="px-4 py-2 text-right font-mono tabular-nums">
+                  {report.investorShares
+                    .reduce((s, x) => s + x.pct, 0)
+                    .toFixed(2)}
+                  %
+                </td>
+                <td className="px-4 py-2 text-right font-mono tabular-nums text-primary">
+                  {formatRp(
+                    report.investorShares.reduce((s, x) => s + x.amountIdr, 0)
+                  )}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
+
       {CATEGORY_ORDER.map((cat) => {
         const rows = report.lines.filter((l) => l.category === cat);
         if (rows.length === 0) return null;
@@ -126,7 +191,7 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
                       Bulan jalan
                     </th>
                     <th className="px-4 py-2 text-right font-semibold">
-                      Nilai depresiasian
+                      Nilai terdepresiasi
                     </th>
                   </tr>
                 </thead>

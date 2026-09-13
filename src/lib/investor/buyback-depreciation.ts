@@ -158,3 +158,38 @@ export function computeBuybackReport(
     totalBookValueIdr: lines.reduce((s, l) => s + l.bookValueIdr, 0),
   };
 }
+
+export interface InvestorShare {
+  /** Label anonim ("Investor A", "Investor B", ...) — TIDAK PERNAH nama
+   *  investor asli. Urutan A/B/C/... mengikuti porsi modal terbesar dulu. */
+  label: string;
+  /** Porsi modal terhadap total modal investor cabang ini, persen (0-100). */
+  pct: number;
+  amountIdr: number;
+}
+
+/**
+ * Bagi nilai buyback (uangnya 100% untuk investor, TIDAK ke management)
+ * proporsional terhadap porsi modal masing-masing investor. `investIdr`
+ * per investor didapat dari `yeobo_dividend_recipients` (kind='investor')
+ * — modul ini sendiri tidak tahu-menahu soal Supabase, cuma menerima
+ * angka mentahnya dari pemanggil (sama prinsipnya dengan modul depresiasi
+ * di atas: murni, dipanggil dari server saat laporan dibekukan).
+ */
+export function computeInvestorShares(
+  totalBookValueIdr: number,
+  investors: { investIdr: number }[]
+): InvestorShare[] {
+  const totalInvest = investors.reduce((s, i) => s + i.investIdr, 0);
+  if (totalInvest <= 0) return [];
+  return [...investors]
+    .sort((a, b) => b.investIdr - a.investIdr)
+    .map((inv, i) => {
+      const pct = (inv.investIdr / totalInvest) * 100;
+      return {
+        label: `Investor ${String.fromCharCode(65 + i)}`,
+        pct,
+        amountIdr: (pct / 100) * totalBookValueIdr,
+      };
+    });
+}

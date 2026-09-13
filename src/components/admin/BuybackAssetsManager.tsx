@@ -274,7 +274,7 @@ export function BuybackAssetsManager({
             </p>
           </div>
           <div className="rounded-xl bg-muted p-3">
-            <p className="text-[11px] text-muted-foreground">Nilai depresiasian</p>
+            <p className="text-[11px] text-muted-foreground">Nilai terdepresiasi</p>
             <p className="mt-0.5 font-mono font-semibold text-primary">
               {computed ? formatRp(computed.totalBookValueIdr) : "—"}
             </p>
@@ -508,7 +508,7 @@ export function BuybackAssetsManager({
                       <th className="px-4 py-2 text-left font-semibold">Tgl beli</th>
                       <th className="px-4 py-2 text-right font-semibold">Bulan jalan</th>
                       <th className="px-4 py-2 text-right font-semibold">
-                        Nilai depresiasian
+                        Nilai terdepresiasi
                       </th>
                       <th className="px-4 py-2 text-right font-semibold">Aksi</th>
                     </tr>

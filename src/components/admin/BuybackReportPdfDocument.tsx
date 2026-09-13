@@ -84,12 +84,16 @@ const s = StyleSheet.create({
     paddingHorizontal: 6,
     backgroundColor: "#f4f4f5",
   },
-  colName: { width: "34%" },
-  colQty: { width: "10%", textAlign: "right" },
-  colCost: { width: "18%", textAlign: "right" },
-  colDate: { width: "16%" },
-  colMonths: { width: "10%", textAlign: "right" },
-  colBv: { width: "12%", textAlign: "right" },
+  // paddingRight di tiap kolom (kecuali terakhir) WAJIB ada — tanpa itu,
+  // kolom rata-kanan (mis. Nilai awal) yang diikuti kolom rata-kiri (Tgl
+  // beli) sama-sama menempel ke garis batas bersama dan teksnya menyatu
+  // tanpa jarak sama sekali (ditemukan nyata: "Rp 6.500.0001 Juli 2023").
+  colName: { width: "32%", paddingRight: 6 },
+  colQty: { width: "10%", textAlign: "right", paddingRight: 6 },
+  colCost: { width: "18%", textAlign: "right", paddingRight: 8 },
+  colDate: { width: "16%", paddingRight: 6 },
+  colMonths: { width: "10%", textAlign: "right", paddingRight: 6 },
+  colBv: { width: "14%", textAlign: "right" },
   grandTotal: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -101,6 +105,31 @@ const s = StyleSheet.create({
   grandLabel: { fontSize: 10, fontWeight: "bold" },
   grandValue: { fontSize: 13, fontWeight: "bold", color: C.primary },
   footer: { marginTop: 24, fontSize: 7.5, color: C.mutedFg, textAlign: "center" },
+  invBox: {
+    backgroundColor: C.accent,
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 14,
+  },
+  invTitle: { fontSize: 10, fontWeight: "bold", marginBottom: 2 },
+  invSub: { fontSize: 7.5, color: C.mutedFg, marginBottom: 8 },
+  invHeaderRow: {
+    flexDirection: "row",
+    paddingBottom: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  invRow: { flexDirection: "row", paddingVertical: 3 },
+  invTotalRow: {
+    flexDirection: "row",
+    paddingTop: 4,
+    marginTop: 2,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  colInvName: { width: "40%", paddingRight: 6 },
+  colInvPct: { width: "25%", textAlign: "right", paddingRight: 8 },
+  colInvAmount: { width: "35%", textAlign: "right" },
 });
 
 export function BuybackReportPdfDocument({
@@ -128,7 +157,7 @@ export function BuybackReportPdfDocument({
               <Text style={s.summaryValue}>{rp(report.totalCostIdr)}</Text>
             </View>
             <View style={s.summaryItem}>
-              <Text style={s.summaryLabel}>Nilai depresiasian</Text>
+              <Text style={s.summaryLabel}>Nilai terdepresiasi</Text>
               <Text style={[s.summaryValue, { color: C.primary }]}>
                 {rp(report.totalBookValueIdr)}
               </Text>
@@ -151,6 +180,45 @@ export function BuybackReportPdfDocument({
           </Text>
           {report.note && <Text style={s.policyLine}>Catatan: {report.note}</Text>}
 
+          {report.investorShares && report.investorShares.length > 0 && (
+            <View style={s.invBox} wrap={false}>
+              <Text style={s.invTitle}>Alokasi ke investor Tlogosari</Text>
+              <Text style={s.invSub}>
+                100% nilai terdepresiasi, dibagi proporsional porsi modal
+                masing-masing — nama disamarkan
+              </Text>
+              <View style={s.invHeaderRow}>
+                <Text style={[s.headerCell, s.colInvName]}>Investor</Text>
+                <Text style={[s.headerCell, s.colInvPct]}>Porsi modal</Text>
+                <Text style={[s.headerCell, s.colInvAmount]}>Nilai buyback</Text>
+              </View>
+              {report.investorShares.map((sh) => (
+                <View style={s.invRow} key={sh.label}>
+                  <Text style={[s.cell, s.colInvName]}>{sh.label}</Text>
+                  <Text style={[s.cell, s.colInvPct]}>{sh.pct.toFixed(2)}%</Text>
+                  <Text
+                    style={[s.cell, s.colInvAmount, { color: C.primary, fontWeight: "bold" }]}
+                  >
+                    {rp(sh.amountIdr)}
+                  </Text>
+                </View>
+              ))}
+              <View style={s.invTotalRow}>
+                <Text style={[s.cell, s.colInvName, { fontWeight: "bold" }]}>
+                  Total
+                </Text>
+                <Text style={[s.cell, s.colInvPct, { fontWeight: "bold" }]}>
+                  {report.investorShares.reduce((sum, x) => sum + x.pct, 0).toFixed(2)}%
+                </Text>
+                <Text
+                  style={[s.cell, s.colInvAmount, { fontWeight: "bold", color: C.primary }]}
+                >
+                  {rp(report.investorShares.reduce((sum, x) => sum + x.amountIdr, 0))}
+                </Text>
+              </View>
+            </View>
+          )}
+
           {CATEGORY_ORDER.map((cat) => {
             const rows = report.lines.filter((l) => l.category === cat);
             if (rows.length === 0) return null;
@@ -164,7 +232,7 @@ export function BuybackReportPdfDocument({
                   <Text style={[s.headerCell, s.colCost]}>Nilai awal</Text>
                   <Text style={[s.headerCell, s.colDate]}>Tgl beli</Text>
                   <Text style={[s.headerCell, s.colMonths]}>Bln jalan</Text>
-                  <Text style={[s.headerCell, s.colBv]}>Depresiasian</Text>
+                  <Text style={[s.headerCell, s.colBv]}>Terdepresiasi</Text>
                 </View>
                 {rows.map((l) => (
                   <View style={s.dataRow} key={l.id} wrap={false}>
@@ -201,7 +269,7 @@ export function BuybackReportPdfDocument({
           })}
 
           <View style={s.grandTotal} wrap={false}>
-            <Text style={s.grandLabel}>Total nilai depresiasian</Text>
+            <Text style={s.grandLabel}>Total nilai terdepresiasi</Text>
             <Text style={s.grandValue}>{rp(report.totalBookValueIdr)}</Text>
           </View>
 
