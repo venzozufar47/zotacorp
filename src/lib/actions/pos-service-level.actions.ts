@@ -131,16 +131,32 @@ export interface ServiceLevelSummary {
  * merata-ratakan kolom `percent`: hari dengan sampel lebih sedikit tidak
  * boleh berbobot sama dengan hari penuh.
  */
+/**
+ * `days` = trailing N hari berakhir HARI INI (perilaku lama, dipakai POS
+ * & dashboard karyawan). `{fromDate, toDate}` = rentang eksplisit yang
+ * TIDAK harus berakhir hari ini — dipakai picker custom range di admin.
+ * Union, bukan dua fungsi terpisah, supaya empat pemanggil yang sudah
+ * ada tidak perlu berubah.
+ */
 export async function getServiceLevelSummary(
   bankAccountId: string,
-  days = 30
+  range: number | { fromDate: string; toDate: string } = 30
 ): Promise<ActionResult<ServiceLevelSummary>> {
   const gate = await requireServiceLevelViewer(bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const span = Math.max(1, Math.min(MAX_SPAN_DAYS, Math.floor(days)));
-  const today = jakartaDateString(new Date());
-  const fromDate = jakartaDateMinusDays(today, span - 1);
+  let fromDate: string;
+  let toDate: string;
+  if (typeof range === "number") {
+    const span = Math.max(1, Math.min(MAX_SPAN_DAYS, Math.floor(range)));
+    toDate = jakartaDateString(new Date());
+    fromDate = jakartaDateMinusDays(toDate, span - 1);
+  } else {
+    const valid = validateRange(range.fromDate, range.toDate);
+    if (!valid.ok) return { ok: false, error: valid.error };
+    fromDate = range.fromDate;
+    toDate = range.toDate;
+  }
 
   const supabase = await createClient();
   const [{ data: account }, { data: rows }] = await Promise.all([
@@ -156,7 +172,7 @@ export async function getServiceLevelSummary(
       )
       .eq("bank_account_id", bankAccountId)
       .gte("snapshot_date", fromDate)
-      .lte("snapshot_date", today)
+      .lte("snapshot_date", toDate)
       .order("snapshot_date", { ascending: true }),
   ]);
 

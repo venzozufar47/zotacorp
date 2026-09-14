@@ -48,7 +48,7 @@ interface Outlet {
   summary: ServiceLevelSummary | null;
   /** Rincian LIVE (penyebab terbesar + per-hari) — sama seperti di POS. */
   live: ServiceLevelResult | null;
-  /** Metrik susut 30 hari — penyeimbang angka Service Level. */
+  /** Metrik susut untuk rentang aktif — penyeimbang angka Service Level. */
   waste: WasteResult | null;
   owners: ServiceLevelOwnerRow[];
   exclusions: ServiceLevelExclusionRow[];
@@ -99,9 +99,13 @@ function todayWib(): string {
 export function ServiceLevelAdminClient({
   outlets,
   employees,
+  rangeLabel,
 }: {
   outlets: Outlet[];
   employees: Array<{ id: string; name: string }>;
+  /** Label rentang aktif ("7 hari" / "30 hari" / "16 Agu – hari ini") —
+   * SAMA untuk semua outlet, ditentukan picker di page.tsx. */
+  rangeLabel: string;
 }) {
   if (outlets.length === 0) {
     return (
@@ -181,7 +185,7 @@ export function ServiceLevelAdminClient({
                     <span className="italic">(harga jual)</span>
                   </>
                 ) : (
-                  "Belum ada produksi tercatat 30 hari terakhir — susut belum bisa dihitung."
+                  `Belum ada produksi tercatat ${rangeLabel} — susut belum bisa dihitung.`
                 )}
               </p>
             )}
@@ -204,7 +208,7 @@ export function ServiceLevelAdminClient({
       </div>
 
       {outlets.map((o) => (
-        <OutletPanel key={o.id} outlet={o} employees={employees} />
+        <OutletPanel key={o.id} outlet={o} employees={employees} rangeLabel={rangeLabel} />
       ))}
     </div>
   );
@@ -213,9 +217,11 @@ export function ServiceLevelAdminClient({
 function OutletPanel({
   outlet,
   employees,
+  rangeLabel,
 }: {
   outlet: Outlet;
   employees: Array<{ id: string; name: string }>;
+  rangeLabel: string;
 }) {
   return (
     <div className="panel-sticker p-5 space-y-5">
@@ -228,9 +234,9 @@ function OutletPanel({
         </span>
       </div>
 
-      <WorstSkusSection outlet={outlet} />
-      <WastePanel outlet={outlet} />
-      <DailyBreakdownSection outlet={outlet} />
+      <WorstSkusSection outlet={outlet} rangeLabel={rangeLabel} />
+      <WastePanel outlet={outlet} rangeLabel={rangeLabel} />
+      <DailyBreakdownSection outlet={outlet} rangeLabel={rangeLabel} />
       <HoursSection outlet={outlet} />
       <OwnersSection outlet={outlet} employees={employees} />
       <ExclusionsSection outlet={outlet} />
@@ -243,16 +249,22 @@ function OutletPanel({
  * halaman POS, supaya superadmin tidak perlu login sebagai kasir untuk
  * lihat SKU mana yang menekan angkanya.
  */
-function WorstSkusSection({ outlet }: { outlet: Outlet }) {
+function WorstSkusSection({
+  outlet,
+  rangeLabel,
+}: {
+  outlet: Outlet;
+  rangeLabel: string;
+}) {
   if (!outlet.live || outlet.live.worstSkus.length === 0) return null;
   return (
     <section className="space-y-2">
       <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        <TrendingDown size={12} /> Penyebab terbesar (30 hari)
+        <TrendingDown size={12} /> Penyebab terbesar ({rangeLabel})
       </h3>
       <p className="text-[11px] text-muted-foreground">
         Produk yang paling sering kosong. 100% artinya selalu kosong dalam
-        30 hari kebelakang.
+        rentang {rangeLabel} kebelakang.
       </p>
       <ul className="space-y-1.5">
         {outlet.live.worstSkus.slice(0, 10).map((w) => (
@@ -290,7 +302,13 @@ function WorstSkusSection({ outlet }: { outlet: Outlet }) {
  * tidak stabil (sering habis DAN sering sisa), sedangkan yang tinggi di
  * sini tapi rendah di sana berarti murni overproduksi.
  */
-function WastePanel({ outlet }: { outlet: Outlet }) {
+function WastePanel({
+  outlet,
+  rangeLabel,
+}: {
+  outlet: Outlet;
+  rangeLabel: string;
+}) {
   const w = outlet.waste;
   if (!w) return null;
   const lossQty = w.expiredQty + w.damagedQty;
@@ -301,7 +319,7 @@ function WastePanel({ outlet }: { outlet: Outlet }) {
   return (
     <section className="space-y-2">
       <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        <Trash2 size={12} /> Susut produk (30 hari)
+        <Trash2 size={12} /> Susut produk ({rangeLabel})
       </h3>
       <p className="text-[11px] text-muted-foreground">
         {w.producedQty > 0 ? (
@@ -409,13 +427,19 @@ function WastePanel({ outlet }: { outlet: Outlet }) {
  * kalau ada banyak outlet; superadmin buka sesuai kebutuhan, sama seperti
  * grup kategori di editor alokasi Pusat.
  */
-function DailyBreakdownSection({ outlet }: { outlet: Outlet }) {
+function DailyBreakdownSection({
+  outlet,
+  rangeLabel,
+}: {
+  outlet: Outlet;
+  rangeLabel: string;
+}) {
   if (!outlet.live || outlet.live.days.length === 0) return null;
   const days = outlet.live.days.slice().reverse();
   return (
     <details className="group space-y-2">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        <CalendarDays size={12} /> Per hari (30 hari)
+        <CalendarDays size={12} /> Per hari ({rangeLabel})
         <span className="text-muted-foreground/60 normal-case tracking-normal">
           — klik untuk buka
         </span>
