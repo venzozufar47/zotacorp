@@ -16,6 +16,7 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import {
   requireAdmin,
   requireTicketFiler,
+  requireStudioHead,
   requireStudioHeadOrAdmin,
   type ActionResult,
 } from "./_gates";
@@ -231,7 +232,7 @@ export async function cancelTicket(ticketId: string): Promise<ActionResult> {
 
 // ─── Studio-head transitions ────────────────────────────────────────────────
 export async function startTicket(ticketId: string): Promise<ActionResult> {
-  const gate = await requireStudioHeadOrAdmin();
+  const gate = await requireStudioHead();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = await createClient();
   const { data: t } = await supabase
@@ -275,7 +276,14 @@ export async function resolveTicket(
     branch: string;
   } | null;
   if (!row) return { ok: false, error: "Tiket tidak ditemukan" };
-  if (!["open", "in_progress", "owner_handling"].includes(row.status))
+  // Admin/owner hanya boleh menyelesaikan tiket yang sudah mereka ACC
+  // sendiri (owner_handling) — bukan antrian biasa, itu tugas Kepala
+  // Studio. Kepala Studio sebaliknya tidak menyentuh owner_handling —
+  // begitu owner ACC eskalasi, tiket jadi tanggung jawab owner.
+  const allowedStatuses = gate.isAdmin
+    ? ["owner_handling"]
+    : ["open", "in_progress"];
+  if (!allowedStatuses.includes(row.status))
     return { ok: false, error: "Tiket tidak bisa diselesaikan pada status ini" };
   const { error } = await supabase
     .from("tickets" as never)
@@ -304,7 +312,7 @@ export async function escalateTicket(
   ticketId: string,
   note: string
 ): Promise<ActionResult> {
-  const gate = await requireStudioHeadOrAdmin();
+  const gate = await requireStudioHead();
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!note?.trim()) return { ok: false, error: "Catatan eskalasi wajib diisi" };
   const supabase = await createClient();

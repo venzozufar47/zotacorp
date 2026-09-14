@@ -4,7 +4,13 @@ import Link from "next/link";
 import { ArrowLeft, Ticket as TicketIcon, Inbox, CheckCircle2 } from "lucide-react";
 import { TicketForm } from "./TicketForm";
 import { TicketCard } from "./TicketCard";
-import { formatDuration, isTicketOpen, type Ticket, type TicketViewerRole } from "@/lib/tickets/types";
+import {
+  formatDuration,
+  isTicketOpen,
+  isStudioQueueStatus,
+  type Ticket,
+  type TicketViewerRole,
+} from "@/lib/tickets/types";
 import type { StudioHeadKpi } from "@/lib/actions/tickets.actions";
 
 /**
@@ -31,6 +37,17 @@ export function TicketingSystem({
   const isManager = viewerRole === "head" || viewerRole === "owner";
   const activeQueue = studioQueue.filter((t) => isTicketOpen(t.status));
   const escalationList = escalated.filter((t) => isTicketOpen(t.status));
+
+  // Owner's "Antrian studio" is monitoring-only, not a working queue —
+  // they act on escalations in "Perlu keputusan owner" instead (see
+  // requireStudioHead: starting/escalating a regular ticket is exclusively
+  // the Kepala Studio's job). To cut the repetition this used to cause:
+  // drop escalated/owner_handling tickets (already shown, actionable, in
+  // "Perlu keputusan owner") and tickets the owner filed themselves
+  // (already shown, actionable, in "Tiket saya" below).
+  const ownerMonitorQueue = activeQueue.filter(
+    (t) => isStudioQueueStatus(t.status) && t.createdBy !== uid
+  );
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -87,16 +104,22 @@ export function TicketingSystem({
         </Section>
       )}
 
-      {/* Antrian studio (head & owner) */}
+      {/* Antrian studio — aksi penuh untuk Kepala Studio; pemantauan
+          read-only untuk owner (aksi owner ada di section eskalasi). */}
       {isManager && (
         <Section
           icon={<TicketIcon size={16} />}
-          title="Antrian studio"
-          count={activeQueue.length}
+          title={viewerRole === "owner" ? "Antrian studio (pemantauan)" : "Antrian studio"}
+          count={viewerRole === "owner" ? ownerMonitorQueue.length : activeQueue.length}
           empty="Antrian bersih — tidak ada tiket aktif. 🎉"
         >
-          {activeQueue.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="queue" />
+          {(viewerRole === "owner" ? ownerMonitorQueue : activeQueue).map((t) => (
+            <TicketCard
+              key={t.id}
+              ticket={t}
+              viewerRole={viewerRole}
+              context={viewerRole === "owner" ? "monitor" : "queue"}
+            />
           ))}
         </Section>
       )}

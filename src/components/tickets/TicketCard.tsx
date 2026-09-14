@@ -41,7 +41,7 @@ import {
   type TicketViewerRole,
 } from "@/lib/tickets/types";
 
-type Context = "mine" | "queue" | "escalation";
+type Context = "mine" | "queue" | "escalation" | "monitor";
 
 const STATUS_TONE: Record<Ticket["status"], string> = {
   open: "bg-warning/20 text-warning border-warning",
@@ -382,6 +382,23 @@ function ActionBar({
       btns.push(
         <span key="owner" className="text-[11px] text-muted-foreground italic">
           Ditangani owner
+        </span>
+      );
+  }
+
+  // Read-only untuk owner — memantau antrian Kepala Studio, bukan
+  // menjalankannya. Aksi owner ada di section "Perlu keputusan owner".
+  if (context === "monitor") {
+    if (s === "open")
+      btns.push(
+        <span key="m-open" className="text-[11px] text-muted-foreground italic">
+          Menunggu Kepala Studio memulai…
+        </span>
+      );
+    if (s === "in_progress")
+      btns.push(
+        <span key="m-prog" className="text-[11px] text-muted-foreground italic">
+          Sedang dikerjakan Kepala Studio…
         </span>
       );
   }

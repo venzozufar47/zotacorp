@@ -345,8 +345,10 @@ export async function requireTicketFiler(): Promise<
 }
 
 /**
- * Ticketing — boleh MENINDAKLANJUTI tiket (mulai/selesai/eskalasi):
- * admin (owner) atau Kepala Studio.
+ * Ticketing — boleh MENYELESAIKAN tiket: Kepala Studio (untuk antrian
+ * biasa) atau admin/owner (HANYA untuk tiket yang statusnya
+ * `owner_handling` — yang sudah mereka ACC sendiri lewat eskalasi;
+ * dicek oleh caller lewat `isAdmin`, bukan di sini).
  */
 export async function requireStudioHeadOrAdmin(): Promise<
   { ok: true; userId: string; isAdmin: boolean } | { ok: false; error: string }
@@ -363,6 +365,33 @@ export async function requireStudioHeadOrAdmin(): Promise<
     .maybeSingle();
   if (!data) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id, isAdmin: false };
+}
+
+/**
+ * Ticketing — boleh MEMULAI atau MENGESKALASI tiket antrian biasa:
+ * Kepala Studio SAJA, admin TIDAK bisa lewat gate ini. Owner/admin
+ * hanya berperan di titik keputusan eskalasi (`ownerDecideTicket`) dan
+ * menyelesaikan tiket yang sudah mereka ACC (lihat
+ * `requireStudioHeadOrAdmin`) — bukan menjalankan antrian harian
+ * Kepala Studio.
+ */
+export async function requireStudioHead(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("studio_heads" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!data)
+    return {
+      ok: false,
+      error: "Forbidden — hanya Kepala Studio yang bisa menindaklanjuti antrian ini.",
+    };
+  return { ok: true, userId: user.id };
 }
 
 /**
