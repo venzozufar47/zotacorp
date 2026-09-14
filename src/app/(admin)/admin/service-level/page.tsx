@@ -8,6 +8,7 @@ import { ServiceLevelAdminClient } from "@/components/admin/ServiceLevelAdminCli
 import {
   getServiceLevel,
   getServiceLevelSummary,
+  getWaste,
   listServiceLevelOwners,
   listServiceLevelExclusions,
   listServiceLevelSkus,
@@ -54,7 +55,7 @@ export default async function ServiceLevelAdminPage() {
   const fromDate = jakartaDateMinusDays(today, 29); // 30 hari, sama seperti summary
   const outlets = await Promise.all(
     (accounts ?? []).map(async (a) => {
-      const [summary, owners, exclusions, skus, live] = await Promise.all([
+      const [summary, owners, exclusions, skus, live, waste] = await Promise.all([
         getServiceLevelSummary(a.id, 30),
         listServiceLevelOwners(a.id),
         listServiceLevelExclusions(a.id),
@@ -65,6 +66,10 @@ export default async function ServiceLevelAdminPage() {
         a.service_level_enabled
           ? getServiceLevel(a.id, { fromDate, toDate: today }).catch(() => null)
           : Promise.resolve(null),
+        // Susut dihitung untuk SEMUA outlet, termasuk yang metrik SL-nya
+        // mati: penarikan expired tetap terjadi dan tetap layak dilihat.
+        // Murah, jadi tidak perlu digerbangi flag seperti `live`.
+        getWaste(a.id, { fromDate, toDate: today }).catch(() => null),
       ]);
       return {
         id: a.id,
@@ -76,6 +81,7 @@ export default async function ServiceLevelAdminPage() {
         target: a.service_level_target,
         summary: summary.ok ? (summary.data ?? null) : null,
         live: live && live.ok ? (live.data ?? null) : null,
+        waste: waste && waste.ok ? (waste.data ?? null) : null,
         owners,
         exclusions,
         skus,

@@ -119,6 +119,10 @@ export async function applyStockDeltaIfAbsorbed(
         type: s.qty > 0 ? ("withdrawal" as const) : ("production" as const),
         qty: Math.abs(s.qty),
         notes: note,
+        // Penarikan otomatis di sini adalah penyesuaian akibat void, bukan
+        // barang yang hilang nilainya. Ditandai koreksi_input supaya tidak
+        // pernah bocor ke metrik susut di /admin/service-level.
+        withdrawal_reason: s.qty > 0 ? ("koreksi_input" as const) : null,
         movement_date: jakartaDateString(now),
         movement_time: jakartaHHMM(now),
         created_by: userId,

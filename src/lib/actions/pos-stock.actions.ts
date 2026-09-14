@@ -19,6 +19,11 @@ import {
   emptyPosAuthorizerMap,
   type PosAuthorizerMap,
 } from "@/lib/pos-pin-format";
+import {
+  isWithdrawalReason,
+  WITHDRAWAL_REASON_META,
+  type WithdrawalReason,
+} from "@/lib/pos/withdrawal-reasons";
 // Primitif mesin stok tinggal di modul biasa supaya cron (tanpa sesi)
 // bisa memakainya juga — file ini "use server" dan tidak boleh
 // mengekspor fungsi non-async. Lihat header stock-engine.ts.
@@ -71,6 +76,8 @@ export interface StockMovementRow {
   variantName: string | null;
   qty: number;
   notes: string | null;
+  /** Hanya terisi untuk `withdrawal`; null = produksi, atau baris lama. */
+  withdrawalReason: WithdrawalReason | null;
   movementDate: string;
   movementTime: string | null;
 }
@@ -159,7 +166,9 @@ export async function listStockMovements(
   const supabase = await createClient();
   const { data } = await supabase
     .from("pos_stock_movements")
-    .select("id, type, product_id, variant_id, qty, notes, movement_date, movement_time")
+    .select(
+      "id, type, product_id, variant_id, qty, notes, withdrawal_reason, movement_date, movement_time"
+    )
     .eq("bank_account_id", bankAccountId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -188,6 +197,9 @@ export async function listStockMovements(
     variantName: r.variant_id ? vName.get(r.variant_id) ?? null : null,
     qty: r.qty,
     notes: r.notes,
+    withdrawalReason: isWithdrawalReason(r.withdrawal_reason)
+      ? r.withdrawal_reason
+      : null,
     movementDate: r.movement_date,
     movementTime: r.movement_time,
   }));
@@ -300,6 +312,16 @@ export interface StockMovementLine {
   productId: string;
   variantId?: string | null;
   qty: number;
+  /**
+   * Wajib untuk `type='withdrawal'`, diabaikan untuk produksi.
+   *
+   * Per-BARIS, bukan per-batch seperti `notes`: audit catatan lama
+   * menemukan submit beralasan campur (`rusak, exp, tester`,
+   * `expired dan testing`). Kalau alasan dipasang di level batch, baris
+   * seperti itu terpaksa dipukul rata ke satu kategori dan metrik susut
+   * ikut melenceng.
+   */
+  reason?: WithdrawalReason | null;
 }
 
 /**
@@ -326,6 +348,25 @@ export async function createStockMovements(input: {
   for (const l of input.lines) {
     if (!Number.isInteger(l.qty) || l.qty <= 0)
       return { ok: false, error: "Qty harus bilangan bulat > 0" };
+  }
+
+  // Alasan divalidasi SEBELUM verifikasi PIN supaya kasir tidak diminta
+  // PIN lalu ditolak karena hal yang bisa dicek lebih awal.
+  if (input.type === "withdrawal") {
+    for (const l of input.lines) {
+      if (!isWithdrawalReason(l.reason))
+        return { ok: false, error: "Pilih alasan penarikan untuk tiap produk" };
+    }
+    const needsNote = input.lines.some(
+      (l) =>
+        isWithdrawalReason(l.reason) &&
+        WITHDRAWAL_REASON_META[l.reason].requiresNote
+    );
+    if (needsNote && !input.notes?.trim())
+      return {
+        ok: false,
+        error: 'Alasan "Lainnya" wajib disertai catatan',
+      };
   }
 
   const auth = await verifyOperationPin(
@@ -370,6 +411,12 @@ export async function createStockMovements(input: {
     type: input.type,
     qty: l.qty,
     notes,
+    // CHECK di DB menolak alasan pada baris produksi — paksa null di sini
+    // supaya caller yang salah kirim tidak menggagalkan seluruh batch.
+    withdrawal_reason:
+      input.type === "withdrawal" && isWithdrawalReason(l.reason)
+        ? l.reason
+        : null,
     movement_date: movementDate,
     movement_time: movementTime,
     created_by: gate.userId,

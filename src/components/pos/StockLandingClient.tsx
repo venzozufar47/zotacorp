@@ -21,6 +21,7 @@ import {
 import type { PosProduct } from "@/lib/actions/pos.actions";
 import { StockMovementDialog } from "./StockMovementDialog";
 import { StockReadinessView } from "./StockReadinessView";
+import { WITHDRAWAL_REASON_META } from "@/lib/pos/withdrawal-reasons";
 
 type Tab = "on-hand" | "produksi" | "penarikan" | "opname" | "pantauan";
 
@@ -477,11 +478,24 @@ function MovementPanel({
                   </div>
                 </div>
                 <div className="mt-0.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                  <span className="tabular-nums">
+                  <span className="shrink-0 tabular-nums">
                     {m.movementDate}
                     {m.movementTime ? ` · ${m.movementTime}` : ""}
                   </span>
-                  {m.notes && <span className="truncate italic">{m.notes}</span>}
+                  <span className="flex min-w-0 items-center justify-end gap-1.5">
+                    {m.withdrawalReason && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          WITHDRAWAL_REASON_META[m.withdrawalReason].countsAsLoss
+                            ? "bg-destructive/15 text-destructive"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {WITHDRAWAL_REASON_META[m.withdrawalReason].label}
+                      </span>
+                    )}
+                    {m.notes && <span className="truncate italic">{m.notes}</span>}
+                  </span>
                 </div>
                 {confirming && (
                   <p className="mt-1 text-[10px] text-destructive font-medium">

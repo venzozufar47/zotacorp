@@ -12,6 +12,12 @@ import {
 } from "@/lib/pos-pin-format";
 import { useRouter } from "next/navigation";
 import { PosPinAuthDialog } from "./PosPinAuthDialog";
+import {
+  DEFAULT_WITHDRAWAL_REASON,
+  WITHDRAWAL_REASON_GROUPS,
+  WITHDRAWAL_REASON_META,
+  type WithdrawalReason,
+} from "@/lib/pos/withdrawal-reasons";
 
 interface Props {
   bankAccountId: string;
@@ -30,12 +36,14 @@ interface SkuOption {
   variantId: string | null;
 }
 
-/** Satu baris input di form (SKU + qty). */
+/** Satu baris input di form (SKU + qty + alasan). */
 interface Line {
   /** Key React lokal — stabil selama baris hidup. */
   id: number;
   skuKey: string;
   qty: string;
+  /** Hanya dipakai saat type="withdrawal"; diabaikan untuk produksi. */
+  reason: WithdrawalReason;
 }
 
 export function StockMovementDialog({
@@ -48,7 +56,9 @@ export function StockMovementDialog({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const nextId = useRef(1);
-  const [lines, setLines] = useState<Line[]>([{ id: 0, skuKey: "", qty: "" }]);
+  const [lines, setLines] = useState<Line[]>([
+    { id: 0, skuKey: "", qty: "", reason: DEFAULT_WITHDRAWAL_REASON },
+  ]);
   const [notes, setNotes] = useState("");
   const [pinOpen, setPinOpen] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
@@ -92,7 +102,17 @@ export function StockMovementDialog({
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   }
   function addLine() {
-    setLines((prev) => [...prev, { id: nextId.current++, skuKey: "", qty: "" }]);
+    setLines((prev) => [
+      ...prev,
+      {
+        id: nextId.current++,
+        skuKey: "",
+        qty: "",
+        // Warisi alasan baris terakhir: penarikan massal hampir selalu
+        // satu sebab, jadi kasir cukup mengubah yang menyimpang.
+        reason: prev[prev.length - 1]?.reason ?? DEFAULT_WITHDRAWAL_REASON,
+      },
+    ]);
   }
   function removeLine(id: number) {
     setLines((prev) => (prev.length === 1 ? prev : prev.filter((l) => l.id !== id)));
@@ -100,11 +120,22 @@ export function StockMovementDialog({
 
   /** Baris yang sudah lengkap & valid — dasar preview + payload submit. */
   const validLines = lines
-    .map((l) => ({ opt: optionByKey.get(l.skuKey), qty: parseInt(l.qty, 10) }))
+    .map((l) => ({
+      opt: optionByKey.get(l.skuKey),
+      qty: parseInt(l.qty, 10),
+      reason: l.reason,
+    }))
     .filter(
-      (l): l is { opt: SkuOption; qty: number } =>
+      (l): l is { opt: SkuOption; qty: number; reason: WithdrawalReason } =>
         !!l.opt && Number.isInteger(l.qty) && l.qty > 0
     );
+
+  // Catatan bebas naik jadi WAJIB begitu ada baris beralasan "Lainnya" —
+  // tanpa itu kategorinya tidak berarti apa-apa saat dibaca ulang.
+  const noteRequired =
+    type === "withdrawal" &&
+    validLines.some((l) => WITHDRAWAL_REASON_META[l.reason].requiresNote);
+  const noteMissing = noteRequired && !notes.trim();
 
   const totalQty = validLines.reduce((a, l) => a + l.qty, 0);
   const previewLabel =
@@ -124,6 +155,7 @@ export function StockMovementDialog({
           productId: l.opt.productId,
           variantId: l.opt.variantId,
           qty: l.qty,
+          reason: type === "withdrawal" ? l.reason : null,
         })),
         notes: notes.trim() || undefined,
         pin,
@@ -160,6 +192,8 @@ export function StockMovementDialog({
     if (halfFilled)
       return toast.error("Lengkapi produk & qty di setiap baris");
     if (validLines.length === 0) return toast.error("Pilih produk dulu");
+    if (noteMissing)
+      return toast.error('Alasan "Lainnya" wajib disertai catatan');
     if (authorizers.length > 0) {
       setPinError(null);
       setPinOpen(true);
@@ -200,7 +234,8 @@ export function StockMovementDialog({
               Produk & qty
             </span>
             {lines.map((line, idx) => (
-              <div key={line.id} className="flex items-start gap-2">
+              <div key={line.id} className="space-y-1.5">
+                <div className="flex items-start gap-2">
                 <select
                   value={line.skuKey}
                   onChange={(e) => updateLine(line.id, { skuKey: e.target.value })}
@@ -236,6 +271,34 @@ export function StockMovementDialog({
                 >
                   <Trash2 size={16} />
                 </button>
+                </div>
+
+                {/* Alasan per BARIS, bukan per submit: penarikan beralasan
+                    campur itu nyata di data lama (`rusak, exp, tester`), dan
+                    kalau dipukul rata ke satu kategori metrik susut ikut
+                    melenceng. */}
+                {type === "withdrawal" && (
+                  <select
+                    value={line.reason}
+                    onChange={(e) =>
+                      updateLine(line.id, {
+                        reason: e.target.value as WithdrawalReason,
+                      })
+                    }
+                    aria-label={`Alasan penarikan baris ${idx + 1}`}
+                    className="w-full rounded-lg border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground"
+                  >
+                    {WITHDRAWAL_REASON_GROUPS.map((g) => (
+                      <optgroup key={g.group} label={g.label}>
+                        {g.reasons.map((r) => (
+                          <option key={r} value={r}>
+                            {WITHDRAWAL_REASON_META[r].label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                )}
               </div>
             ))}
 
@@ -250,14 +313,27 @@ export function StockMovementDialog({
           </div>
 
           <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">
-              Catatan {type === "withdrawal" ? "(opsional · expired / rusak / testing)" : "(opsional)"}
+            <span
+              className={
+                noteMissing
+                  ? "text-xs font-medium text-destructive"
+                  : "text-xs font-medium text-muted-foreground"
+              }
+            >
+              {/* Hint lama ("expired / rusak / testing") sudah jadi dropdown
+                  resmi di atas, jadi catatan kembali murni detail bebas. */}
+              Catatan {noteRequired ? "(wajib untuk alasan Lainnya)" : "(opsional)"}
             </span>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              aria-invalid={noteMissing || undefined}
+              className={
+                noteMissing
+                  ? "mt-1 w-full rounded-lg border border-destructive bg-background px-3 py-2 text-sm"
+                  : "mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              }
             />
           </label>
 
@@ -278,7 +354,7 @@ export function StockMovementDialog({
             </button>
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || noteMissing}
               className="flex-1 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
               {pending ? "Menyimpan..." : "Simpan"}

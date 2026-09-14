@@ -9,6 +9,7 @@ import {
   Check,
   Clock,
   TrendingDown,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -24,6 +25,16 @@ import {
   type ServiceLevelSummary,
 } from "@/lib/actions/pos-service-level.actions";
 import { serviceLevelTone, type ServiceLevelResult } from "@/lib/pos/service-level";
+import {
+  wasteTone,
+  WASTE_QTY_SANITY_CAP,
+  type WasteResult,
+} from "@/lib/pos/waste";
+import {
+  WITHDRAWAL_REASON_GROUPS,
+  WITHDRAWAL_REASON_META,
+} from "@/lib/pos/withdrawal-reasons";
+import { formatRp } from "@/lib/cashflow/format";
 
 interface Outlet {
   id: string;
@@ -37,6 +48,8 @@ interface Outlet {
   summary: ServiceLevelSummary | null;
   /** Rincian LIVE (penyebab terbesar + per-hari) — sama seperti di POS. */
   live: ServiceLevelResult | null;
+  /** Metrik susut 30 hari — penyeimbang angka Service Level. */
+  waste: WasteResult | null;
   owners: ServiceLevelOwnerRow[];
   exclusions: ServiceLevelExclusionRow[];
   skus: Array<{ productId: string; variantId: string | null; label: string }>;
@@ -45,6 +58,20 @@ interface Outlet {
 /** Ambang warna relatif ke target outlet. Token semantik, bukan hex. */
 function toneOf(pct: number | null, target: number): string {
   switch (serviceLevelTone(pct, target)) {
+    case "success":
+      return "text-success";
+    case "warning":
+      return "text-warning";
+    case "destructive":
+      return "text-destructive";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+/** Arah terbalik dari toneOf — untuk susut, kecil itu baik. */
+function wasteToneOf(rate: number | null): string {
+  switch (wasteTone(rate)) {
     case "success":
       return "text-success";
     case "warning":
@@ -90,25 +117,46 @@ export function ServiceLevelAdminClient({
       <div className="grid gap-3 sm:grid-cols-2">
         {outlets.map((o) => (
           <div key={o.id} className="panel-sticker p-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {o.branch ?? o.accountName}
-                </p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {o.branch ?? o.accountName}
+              </p>
+              {!o.enabled && (
+                <span className="shrink-0 rounded-full border-2 border-foreground bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                  Nonaktif
+                </span>
+              )}
+            </div>
+
+            {/* Dua angka berdampingan, bukan satu: Service Level sendirian
+                bisa dinaikkan dengan produksi berlebih, dan susut itulah
+                yang menahannya. Dibaca bersama atau tidak berarti. */}
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <div>
                 <p
-                  className={`font-display text-4xl font-extrabold tabular-nums leading-none mt-1 ${toneOf(
+                  className={`font-display text-4xl font-extrabold tabular-nums leading-none ${toneOf(
                     o.summary?.percent ?? null,
                     o.target
                   )}`}
                 >
                   {pctLabel(o.summary?.percent ?? null)}
                 </p>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Service level
+                </p>
               </div>
-              {!o.enabled && (
-                <span className="shrink-0 rounded-full border-2 border-foreground bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-                  Nonaktif
-                </span>
-              )}
+              <div>
+                <p
+                  className={`font-display text-3xl font-extrabold tabular-nums leading-none ${wasteToneOf(
+                    o.waste?.expiredRate ?? null
+                  )}`}
+                >
+                  {pctLabel(o.waste?.expiredRate ?? null)}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Susut expired
+                </p>
+              </div>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               Target {(o.target * 100).toFixed(0)}%
@@ -122,6 +170,21 @@ export function ServiceLevelAdminClient({
                 " · belum ada data snapshot — cron berjalan tiap 22:30 WIB."
               )}
             </p>
+            {o.waste && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {o.waste.producedQty > 0 ? (
+                  <>
+                    {o.waste.expiredQty.toLocaleString("id-ID")} dari{" "}
+                    {o.waste.producedQty.toLocaleString("id-ID")} produksi
+                    terbuang expired · potensi omzet hilang{" "}
+                    {formatRp(o.waste.lostRevenue)}{" "}
+                    <span className="italic">(harga jual)</span>
+                  </>
+                ) : (
+                  "Belum ada produksi tercatat 30 hari terakhir — susut belum bisa dihitung."
+                )}
+              </p>
+            )}
             {o.summary?.hasPartialOpname && (
               <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-warning">
                 <AlertTriangle size={12} className="mt-0.5 shrink-0" />
@@ -166,6 +229,7 @@ function OutletPanel({
       </div>
 
       <WorstSkusSection outlet={outlet} />
+      <WastePanel outlet={outlet} />
       <DailyBreakdownSection outlet={outlet} />
       <HoursSection outlet={outlet} />
       <OwnersSection outlet={outlet} employees={employees} />
@@ -215,6 +279,116 @@ function WorstSkusSection({ outlet }: { outlet: Outlet }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * Produk yang paling sering TERBUANG — sengaja dipasang tepat di bawah
+ * "Penyebab terbesar" supaya dua daftar itu terbaca berdampingan. Di
+ * situlah wawasannya: SKU yang tinggi di dua-duanya berarti produksinya
+ * tidak stabil (sering habis DAN sering sisa), sedangkan yang tinggi di
+ * sini tapi rendah di sana berarti murni overproduksi.
+ */
+function WastePanel({ outlet }: { outlet: Outlet }) {
+  const w = outlet.waste;
+  if (!w) return null;
+  const lossQty = w.expiredQty + w.damagedQty;
+  const nothingToShow =
+    lossQty === 0 && w.byReason.length === 0 && w.unknownRows === 0;
+  if (nothingToShow) return null;
+
+  return (
+    <section className="space-y-2">
+      <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <Trash2 size={12} /> Susut produk (30 hari)
+      </h3>
+      <p className="text-[11px] text-muted-foreground">
+        Penyeimbang Service Level: dari {w.producedQty.toLocaleString("id-ID")}{" "}
+        unit yang diproduksi, {w.expiredQty.toLocaleString("id-ID")} terbuang
+        expired dan {w.damagedQty.toLocaleString("id-ID")} rusak — total{" "}
+        <span className="font-bold text-destructive tabular-nums">
+          {pctLabel(w.lossRate)}
+        </span>
+        .
+      </p>
+
+      {w.worstSkus.length > 0 && (
+        <ul className="space-y-1.5">
+          {w.worstSkus.slice(0, 10).map((s) => (
+            <li key={s.key} className="flex items-center gap-3 text-xs">
+              <span className="min-w-0 flex-1 truncate" title={s.label}>
+                {s.label}
+              </span>
+              <span
+                className="h-2 w-24 shrink-0 overflow-hidden rounded-full bg-muted sm:w-40"
+                role="img"
+                aria-label={`${s.label} menyumbang ${(s.share * 100).toFixed(0)} persen dari susut`}
+              >
+                <span
+                  className="block h-full rounded-full bg-destructive"
+                  style={{ width: `${Math.max(2, s.share * 100)}%` }}
+                />
+              </span>
+              <span className="w-12 shrink-0 text-right font-bold tabular-nums text-destructive">
+                {s.qty.toLocaleString("id-ID")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Rincian semua alasan, termasuk yang BUKAN kerugian — tanpa ini,
+          angka susut terbaca tanpa konteks berapa yang sebenarnya
+          terpakai dengan tujuan. */}
+      {w.byReason.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+          {WITHDRAWAL_REASON_GROUPS.map((g) => {
+            const items = w.byReason.filter(
+              (r) => WITHDRAWAL_REASON_META[r.reason].group === g.group
+            );
+            if (items.length === 0) return null;
+            return (
+              <div key={g.group} className="min-w-[9rem]">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {g.label}
+                </p>
+                {items.map((r) => (
+                  <p
+                    key={r.reason}
+                    className={`text-[11px] tabular-nums ${
+                      WITHDRAWAL_REASON_META[r.reason].countsAsLoss
+                        ? "text-destructive"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {WITHDRAWAL_REASON_META[r.reason].label}:{" "}
+                    {r.qty.toLocaleString("id-ID")}
+                  </p>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {w.unknownRows > 0 && (
+        <p className="flex items-start gap-1.5 text-[11px] text-warning">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          {w.unknownRows.toLocaleString("id-ID")} penarikan (
+          {w.unknownQty.toLocaleString("id-ID")} unit) tidak punya alasan
+          tercatat — tidak ikut dihitung susut, jadi angka di atas kemungkinan
+          lebih rendah dari yang sebenarnya.
+        </p>
+      )}
+      {w.cappedRows > 0 && (
+        <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          {w.cappedRows.toLocaleString("id-ID")} baris dengan qty tidak masuk
+          akal (&gt; {WASTE_QTY_SANITY_CAP.toLocaleString("id-ID")}) dibuang dari
+          perhitungan — hampir pasti salah input yang perlu dirapikan.
+        </p>
+      )}
     </section>
   );
 }

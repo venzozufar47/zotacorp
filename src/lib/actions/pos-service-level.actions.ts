@@ -14,6 +14,7 @@ import {
   type ServiceLevelResult,
 } from "@/lib/pos/service-level";
 import { listActiveSkus } from "@/lib/pos/stock-engine";
+import { computeWaste, type WasteResult } from "@/lib/pos/waste";
 
 /**
  * Server action untuk metrik Service Level.
@@ -67,6 +68,35 @@ export async function getServiceLevel(
 
   const supabase = await createClient();
   const data = await computeServiceLevel(supabase, bankAccountId, {
+    fromDate: range.fromDate,
+    toDate: range.toDate,
+  });
+  return { ok: true, data };
+}
+
+/**
+ * Metrik susut — penyeimbang Service Level. Ringan (dua agregasi pada
+ * satu tabel terindeks), jadi aman dipanggil bersamaan untuk semua
+ * outlet; lihat header @/lib/pos/waste.
+ *
+ * Gate-nya `requireAdminOrPosAssignee`, SAMA seperti getServiceLevel dan
+ * sengaja BUKAN requireServiceLevelViewer yang lebih longgar: ini baca
+ * pos_stock_movements mentah, yang RLS-nya tertutup untuk penanggung
+ * jawab metrik non-POS. Kalau gate-nya dilonggarkan, mereka lolos gate
+ * tapi RLS mengembalikan nol baris — dan halaman menampilkan "susut 0%"
+ * yang bohong, bukan pesan "tidak berhak".
+ */
+export async function getWaste(
+  bankAccountId: string,
+  range: { fromDate: string; toDate: string }
+): Promise<ActionResult<WasteResult>> {
+  const valid = validateRange(range.fromDate, range.toDate);
+  if (!valid.ok) return { ok: false, error: valid.error };
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const supabase = await createClient();
+  const data = await computeWaste(supabase, bankAccountId, {
     fromDate: range.fromDate,
     toDate: range.toDate,
   });

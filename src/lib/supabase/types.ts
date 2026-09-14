@@ -4796,6 +4796,7 @@ export type Database = {
           qty: number
           type: string
           variant_id: string | null
+          withdrawal_reason: string | null
         }
         Insert: {
           bank_account_id: string
@@ -4809,6 +4810,7 @@ export type Database = {
           qty: number
           type: string
           variant_id?: string | null
+          withdrawal_reason?: string | null
         }
         Update: {
           bank_account_id?: string
@@ -4822,6 +4824,7 @@ export type Database = {
           qty?: number
           type?: string
           variant_id?: string | null
+          withdrawal_reason?: string | null
         }
         Relationships: [
           {
