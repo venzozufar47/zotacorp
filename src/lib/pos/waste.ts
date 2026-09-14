@@ -1,4 +1,9 @@
-import { skuKey, type PosDbClient, type SkuKey } from "./stock-engine";
+import {
+  fetchAllPages,
+  skuKey,
+  type PosDbClient,
+  type SkuKey,
+} from "./stock-engine";
 import {
   WITHDRAWAL_REASONS,
   WITHDRAWAL_REASON_META,
@@ -103,6 +108,10 @@ interface PricedRow {
   price: number;
 }
 
+interface ProductRow extends PricedRow {
+  stock_aggregate_variants: boolean;
+}
+
 function emptyResult(fromDate: string, toDate: string): WasteResult {
   return {
     fromDate,
@@ -137,14 +146,19 @@ export async function computeWaste(
 ): Promise<WasteResult> {
   const { fromDate, toDate } = opts;
 
-  const { data: movements } = await supabase
-    .from("pos_stock_movements")
-    .select("product_id, variant_id, type, qty, withdrawal_reason")
-    .eq("bank_account_id", bankAccountId)
-    .gte("movement_date", fromDate)
-    .lte("movement_date", toDate);
-
-  const rows = (movements ?? []) as MovementRow[];
+  // Paginasi WAJIB: PostgREST memotong di 1000 baris tanpa error, dan
+  // pemotongan diam-diam di sini berarti susut dilaporkan lebih kecil
+  // dari kenyataan — persis jenis kesalahan yang membuat metrik tak
+  // lagi dipercaya. Pare sudah ~274 baris per 30 hari dan getWaste
+  // menerima rentang sampai 90 hari.
+  const { rows } = await fetchAllPages<MovementRow>(() =>
+    supabase
+      .from("pos_stock_movements")
+      .select("id, product_id, variant_id, type, qty, withdrawal_reason")
+      .eq("bank_account_id", bankAccountId)
+      .gte("movement_date", fromDate)
+      .lte("movement_date", toDate)
+  );
   if (rows.length === 0) return emptyResult(fromDate, toDate);
 
   let producedQty = 0;
@@ -211,9 +225,9 @@ export async function computeWaste(
     productIds.length
       ? supabase
           .from("pos_products")
-          .select("id, name, price")
+          .select("id, name, price, stock_aggregate_variants")
           .in("id", productIds)
-      : Promise.resolve({ data: [] as PricedRow[] }),
+      : Promise.resolve({ data: [] as ProductRow[] }),
     variantIds.length
       ? supabase
           .from("pos_product_variants")
@@ -226,25 +240,41 @@ export async function computeWaste(
   const vInfo = new Map((variants ?? []).map((v) => [v.id, v]));
 
   let lostRevenue = 0;
-  const worstSkus: WasteSkuRow[] = [];
-  for (const [key, agg] of lossBySku) {
+  // Collapse mode-agregat, PERSIS seperti computeExpectedCounts: produk
+  // ber-`stock_aggregate_variants` dihitung di level produk, tapi baris
+  // legacy dari sebelum toggle masih menyimpan variant_id (Mille Crepes:
+  // 139 baris ber-varian vs 33 tanpa). Tanpa collapse, satu produk
+  // terpecah jadi beberapa entri dan masing-masing salah peringkat.
+  const collapsed = new Map<SkuKey, { label: string; qty: number }>();
+  for (const agg of lossBySku.values()) {
     const p = pInfo.get(agg.productId);
     const v = agg.variantId ? vInfo.get(agg.variantId) : null;
+
+    // Nilai rupiah dihitung SEBELUM collapse, memakai harga varian
+    // aslinya — varian adalah SKU ber-harga sendiri (Regular vs Large),
+    // jadi menilai semuanya dengan harga produk akan melenceng.
+    const price = Number(v?.price ?? p?.price ?? 0);
+    lostRevenue += agg.qty * (Number.isFinite(price) ? price : 0);
+
+    const aggregateMode = p?.stock_aggregate_variants ?? false;
+    const effVariantId = aggregateMode ? null : agg.variantId;
+    const key = skuKey(agg.productId, effVariantId);
     const label = p
-      ? v
+      ? effVariantId && v
         ? p.name + " · " + v.name
         : p.name
       : "(produk terhapus)";
-    // Harga varian menang bila ada — varian adalah SKU ber-harga sendiri.
-    const price = Number(v?.price ?? p?.price ?? 0);
-    lostRevenue += agg.qty * (Number.isFinite(price) ? price : 0);
-    worstSkus.push({
-      key,
-      label,
-      qty: agg.qty,
-      share: lossQty > 0 ? agg.qty / lossQty : 0,
-    });
+    const prev = collapsed.get(key);
+    if (prev) prev.qty += agg.qty;
+    else collapsed.set(key, { label, qty: agg.qty });
   }
+
+  const worstSkus: WasteSkuRow[] = Array.from(collapsed, ([key, c]) => ({
+    key,
+    label: c.label,
+    qty: c.qty,
+    share: lossQty > 0 ? c.qty / lossQty : 0,
+  }));
   worstSkus.sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label));
 
   // Urut kanonik, bukan urut qty: rincian per alasan dibaca sebagai

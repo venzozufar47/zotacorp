@@ -304,13 +304,24 @@ function WastePanel({ outlet }: { outlet: Outlet }) {
         <Trash2 size={12} /> Susut produk (30 hari)
       </h3>
       <p className="text-[11px] text-muted-foreground">
-        Penyeimbang Service Level: dari {w.producedQty.toLocaleString("id-ID")}{" "}
-        unit yang diproduksi, {w.expiredQty.toLocaleString("id-ID")} terbuang
-        expired dan {w.damagedQty.toLocaleString("id-ID")} rusak — total{" "}
-        <span className="font-bold text-destructive tabular-nums">
-          {pctLabel(w.lossRate)}
-        </span>
-        .
+        {w.producedQty > 0 ? (
+          <>
+            Penyeimbang Service Level: dari{" "}
+            {w.producedQty.toLocaleString("id-ID")} unit yang diproduksi,{" "}
+            {w.expiredQty.toLocaleString("id-ID")} terbuang expired dan{" "}
+            {w.damagedQty.toLocaleString("id-ID")} rusak — total{" "}
+            <span className="font-bold text-destructive tabular-nums">
+              {pctLabel(w.lossRate)}
+            </span>
+            .
+          </>
+        ) : (
+          <>
+            {lossQty.toLocaleString("id-ID")} unit ditarik sebagai susut, tapi
+            tidak ada produksi tercatat di rentang ini — persentasenya tidak
+            bisa dihitung.
+          </>
+        )}
       </p>
 
       {w.worstSkus.length > 0 && (

@@ -68,7 +68,7 @@ const PAGE = 1000;
  * baris di antara halaman — bug yang jauh lebih sulit dilihat daripada
  * pemotongan di 1000 baris yang sedang kita perbaiki.
  */
-async function fetchAllPages<T>(
+export async function fetchAllPages<T>(
   buildQuery: () => {
     order: (col: string, opts: { ascending: boolean }) => {
       range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>;
