@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Lock, Loader2, Save, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { Lock, Loader2, Save, ChevronDown, ChevronUp, Sparkles, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,12 @@ import {
   type RoundDetailDTO,
 } from "@/lib/actions/evaluation-360.actions";
 import { EVALUATION_360_METRICS } from "@/lib/evaluation-360/rubric";
+import { downloadEvaluation360Pdf } from "@/lib/evaluation-360/downloadPdf";
 import { cn } from "@/lib/utils";
+
+/** Minimal evaluator supaya rata-rata & alasan gabungan tetap anonim —
+ *  dengan 1 evaluator, "gabungan" tidak menyamarkan apa pun. */
+const MIN_EVALUATORS_FOR_PDF = 2;
 
 function average(values: number[]): number {
   if (values.length === 0) return 0;
@@ -35,6 +40,24 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
   const [targetPerbaikan, setTargetPerbaikan] = useState(notes?.targetPerbaikan ?? "");
   const [caraPengecekan, setCaraPengecekan] = useState(notes?.caraPengecekan ?? "");
   const [targetDate, setTargetDate] = useState(notes?.targetCompletionDate ?? "");
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  async function downloadPdf() {
+    setDownloadingPdf(true);
+    try {
+      await downloadEvaluation360Pdf({
+        subjectName,
+        roundTitle: detail.round.title,
+        responses,
+        notes: notes ?? null,
+      });
+    } catch (err) {
+      console.error("[evaluation-360] PDF generation failed", err);
+      toast.error("Gagal membuat PDF.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
 
   function toggle(raterId: string) {
     setExpanded((prev) => {
@@ -66,11 +89,33 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
 
   return (
     <section className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden">
-      <div className="px-4 py-3 border-b-2 border-foreground bg-muted/40">
-        <h3 className="font-display text-base font-bold">{subjectName}</h3>
-        <p className="text-xs text-muted-foreground">
-          {responses.length} evaluator sudah menilai
-        </p>
+      <div className="px-4 py-3 border-b-2 border-foreground bg-muted/40 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-display text-base font-bold">{subjectName}</h3>
+          <p className="text-xs text-muted-foreground">
+            {responses.length} evaluator sudah menilai
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={responses.length < MIN_EVALUATORS_FOR_PDF || downloadingPdf}
+          onClick={downloadPdf}
+          title={
+            responses.length < MIN_EVALUATORS_FOR_PDF
+              ? `Butuh minimal ${MIN_EVALUATORS_FOR_PDF} evaluasi masuk supaya hasil gabungan tetap anonim`
+              : undefined
+          }
+          className="gap-1.5"
+        >
+          {downloadingPdf ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Download size={14} />
+          )}
+          Unduh PDF
+        </Button>
       </div>
 
       {responses.length === 0 ? (
