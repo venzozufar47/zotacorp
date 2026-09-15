@@ -1,12 +1,17 @@
 /* PDF "Hasil Evaluasi 360°" per karyawan — untuk diunduh admin lalu
  * diberikan ke karyawan bersangkutan. Skor per metrik memakai RATA-RATA
  * semua evaluator (bukan per-evaluator) dan alasan/apresiasi/catatan
- * digabung jadi satu paragraf tanpa atribusi (lihat blendReasons.ts) —
- * konsisten dengan desain produk bahwa identitas evaluator dirahasiakan
- * dari karyawan yang dievaluasi, bahkan di dokumen resminya.
+ * ditampilkan sebagai daftar "Poin 1, 2, ..." bernomor URUT POSISI
+ * (lihat blendReasons.ts) — TIDAK PERNAH diberi label nama/inisial
+ * evaluator dalam bentuk apa pun, dan urutan diacak secara independen
+ * di tiap bagian, supaya "Poin 1" di satu metrik tidak bisa dikaitkan
+ * dengan "Poin 1" di metrik lain. Konsisten dengan desain produk bahwa
+ * identitas evaluator dirahasiakan dari karyawan yang dievaluasi, bahkan
+ * di dokumen resminya. Murni penyusunan teks apa adanya — tanpa AI.
  *
  * Sama seperti PayslipPdfDocument: primitives @react-pdf/renderer,
- * bukan DOM. Layout formal header band + section + footer band.
+ * bukan DOM. Layout formal header band (berulang tiap halaman) +
+ * section + footer band.
  */
 
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
@@ -36,7 +41,7 @@ const C = {
 
 const styles = StyleSheet.create({
   page: {
-    padding: 0,
+    paddingBottom: 40, // sisakan ruang footerBand fixed supaya konten tidak tertindih
     fontSize: 10,
     color: C.fg,
     fontFamily: "Helvetica",
@@ -46,21 +51,21 @@ const styles = StyleSheet.create({
     backgroundColor: C.primary,
     color: "#ffffff",
     paddingHorizontal: 32,
-    paddingVertical: 18,
+    paddingVertical: 14,
   },
-  brand: { fontSize: 18, fontWeight: "bold", letterSpacing: 2 },
+  brand: { fontSize: 16, fontWeight: "bold", letterSpacing: 2 },
   brandTagline: {
-    fontSize: 9,
-    marginTop: 4,
+    fontSize: 8.5,
+    marginTop: 3,
     opacity: 0.85,
     letterSpacing: 1,
     textTransform: "uppercase",
   },
-  body: { paddingHorizontal: 32, paddingVertical: 20 },
+  body: { paddingHorizontal: 32, paddingTop: 16, paddingBottom: 8 },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   metaCell: { flex: 1 },
   metaLabel: {
@@ -76,13 +81,13 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     borderStyle: "solid",
     borderRadius: 4,
-    marginBottom: 12,
+    marginBottom: 10,
     overflow: "hidden",
   },
   sectionHeader: {
     backgroundColor: C.accent,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
     borderBottomStyle: "solid",
@@ -97,9 +102,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
   },
-  sectionScore: { fontSize: 11, fontWeight: "bold", color: C.primaryDark },
-  sectionBody: { padding: 12 },
-  paragraph: { fontSize: 9.5, color: C.fg, lineHeight: 1.5 },
+  sectionScore: { fontSize: 10.5, fontWeight: "bold", color: C.primaryDark },
+  sectionBody: { padding: 10 },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
   rowLabelMuted: { color: C.mutedFg, fontSize: 10 },
   rowValue: { color: C.fg, fontSize: 10, fontWeight: "bold" },
@@ -111,7 +115,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     marginBottom: 4,
   },
-  scoreTableRow: { flexDirection: "row", paddingVertical: 3 },
+  scoreTableRow: { flexDirection: "row", paddingVertical: 2.5 },
   scoreTableRowTotal: {
     flexDirection: "row",
     paddingTop: 5,
@@ -137,11 +141,54 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textAlign: "right",
   },
+  // Daftar "Poin N" — pengganti paragraf gabungan, tiap potongan teks
+  // berdiri sendiri bernomor urut posisi (bukan per-evaluator).
+  pointRow: { flexDirection: "row", marginBottom: 5 },
+  pointRowLast: { flexDirection: "row" },
+  pointNumber: {
+    width: 16,
+    fontSize: 9,
+    fontWeight: "bold",
+    color: C.primaryDark,
+  },
+  pointText: { flex: 1, fontSize: 9.5, color: C.fg, lineHeight: 1.4 },
+  emptyText: { fontSize: 9.5, color: C.mutedFg, fontStyle: "italic" },
+  metricBlock: { marginBottom: 9 },
+  metricBlockDivider: {
+    marginBottom: 9,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    borderTopStyle: "solid",
+  },
+  metricHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  metricTitle: { fontSize: 9.5, fontWeight: "bold", color: C.fg },
+  metricScore: { fontSize: 9.5, fontWeight: "bold", color: C.primaryDark },
+  // Field label+value (Ringkasan & Rencana Tindak Lanjut) — pakai
+  // border-top sebagai pemisah antar field, BUKAN cuma marginBottom:
+  // marginBottom pada View pembungkus tidak selalu menyisakan jarak
+  // yang konsisten di react-pdf begitu isinya Text bertumpuk, jadi
+  // pemisah eksplisit (border) dipakai supaya jaraknya terjamin.
+  fieldBlock: { paddingBottom: 9, marginBottom: 9 },
+  fieldBlockDivider: {
+    paddingTop: 9,
+    paddingBottom: 9,
+    marginBottom: 9,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    borderTopStyle: "solid",
+  },
+  fieldLabel: { color: C.mutedFg, fontSize: 9, marginBottom: 3 },
+  fieldValue: { fontSize: 9.5, color: C.fg, lineHeight: 1.4 },
   disclaimer: {
     backgroundColor: C.warnBg,
     borderRadius: 4,
-    padding: 10,
-    marginBottom: 12,
+    padding: 9,
+    marginBottom: 10,
   },
   disclaimerText: { fontSize: 8.5, color: C.warn, lineHeight: 1.4 },
   footerBand: {
@@ -168,11 +215,9 @@ function Section({
   children: React.ReactNode;
 }) {
   // Sengaja TANPA wrap={false}: dengan kohort besar (banyak evaluator),
-  // paragraf gabungan alasan/apresiasi bisa lebih panjang dari satu
-  // halaman — wrap={false} akan memotong/overflow kontennya alih-alih
-  // melanjutkan ke halaman berikut. Beda dari PayslipPdfDocument yang
-  // section-nya selalu pendek (baris angka), di sini isinya paragraf
-  // bebas yang panjangnya tidak terprediksi.
+  // daftar poin gabungan bisa lebih panjang dari satu halaman —
+  // wrap={false} akan memotong/overflow kontennya alih-alih melanjutkan
+  // ke halaman berikut.
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -180,6 +225,24 @@ function Section({
         {score && <Text style={styles.sectionScore}>{score}</Text>}
       </View>
       <View style={styles.sectionBody}>{children}</View>
+    </View>
+  );
+}
+
+/** Daftar "Poin 1, 2, ..." — nomor murni posisional (urutan sudah
+ *  diacak di blendReasons.ts), tidak pernah berupa nama/inisial. */
+function PointList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return <Text style={styles.emptyText}>Belum ada catatan.</Text>;
+  }
+  return (
+    <View>
+      {items.map((text, i) => (
+        <View key={i} style={i === items.length - 1 ? styles.pointRowLast : styles.pointRow}>
+          <Text style={styles.pointNumber}>{i + 1}.</Text>
+          <Text style={styles.pointText}>{text}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -228,7 +291,7 @@ export function Evaluation360PdfDocument({
   return (
     <Document title={`Hasil Evaluasi 360 - ${subjectName}`} author="Zota Corp">
       <Page size="A4" style={styles.page}>
-        <View style={styles.headerBand}>
+        <View style={styles.headerBand} fixed>
           <Text style={styles.brand}>ZOTA CORP</Text>
           <Text style={styles.brandTagline}>Hasil Evaluasi 360°</Text>
         </View>
@@ -252,8 +315,9 @@ export function Evaluation360PdfDocument({
           <View style={styles.disclaimer}>
             <Text style={styles.disclaimerText}>
               Skor tiap metrik adalah rata-rata dari {evaluatorCount} rekan
-              yang menilai. Alasan, apresiasi, dan catatan digabung menjadi
-              satu ringkasan — identitas masing-masing evaluator dirahasiakan.
+              yang menilai. Poin-poin di bawah digabung dari semua evaluator
+              dan diberi nomor urut acak (bukan nama) — identitas
+              masing-masing evaluator dirahasiakan.
             </Text>
           </View>
 
@@ -279,39 +343,42 @@ export function Evaluation360PdfDocument({
           </Section>
 
           <Section title="Apresiasi">
-            <Text style={styles.paragraph}>{apresiasi}</Text>
+            <PointList items={apresiasi} />
           </Section>
 
-          {EVALUATION_360_METRICS.map((m) => (
-            <Section key={m.key} title={m.title} score={`${averages[m.key]} / 10`}>
-              <Text style={styles.paragraph}>{blendedReasons[m.key]}</Text>
-            </Section>
-          ))}
+          <Section title="Detail per Metrik">
+            {EVALUATION_360_METRICS.map((m, i) => (
+              <View
+                key={m.key}
+                style={i === 0 ? styles.metricBlock : styles.metricBlockDivider}
+              >
+                <View style={styles.metricHeaderRow}>
+                  <Text style={styles.metricTitle}>{m.title}</Text>
+                  <Text style={styles.metricScore}>{averages[m.key]} / 10</Text>
+                </View>
+                <PointList items={blendedReasons[m.key]} />
+              </View>
+            ))}
+          </Section>
 
           <Section title="Catatan Tambahan">
-            <Text style={styles.paragraph}>{catatan}</Text>
+            <PointList items={catatan} />
           </Section>
 
           <Section title="Ringkasan & Rencana Tindak Lanjut">
-            <View style={{ marginBottom: 8 }}>
-              <Text style={styles.rowLabelMuted}>Kesimpulan hasil diskusi</Text>
-              <Text style={[styles.paragraph, { marginTop: 2 }]}>
-                {notes?.kesimpulan || "—"}
-              </Text>
+            <View style={styles.fieldBlock}>
+              <Text style={styles.fieldLabel}>Kesimpulan hasil diskusi</Text>
+              <Text style={styles.fieldValue}>{notes?.kesimpulan || "—"}</Text>
             </View>
-            <View style={{ marginBottom: 8 }}>
-              <Text style={styles.rowLabelMuted}>Target perbaikan (4 minggu)</Text>
-              <Text style={[styles.paragraph, { marginTop: 2 }]}>
-                {notes?.targetPerbaikan || "—"}
-              </Text>
+            <View style={styles.fieldBlockDivider}>
+              <Text style={styles.fieldLabel}>Target perbaikan (4 minggu)</Text>
+              <Text style={styles.fieldValue}>{notes?.targetPerbaikan || "—"}</Text>
             </View>
-            <View style={{ marginBottom: 8 }}>
-              <Text style={styles.rowLabelMuted}>Cara pengecekan progres</Text>
-              <Text style={[styles.paragraph, { marginTop: 2 }]}>
-                {notes?.caraPengecekan || "—"}
-              </Text>
+            <View style={styles.fieldBlockDivider}>
+              <Text style={styles.fieldLabel}>Cara pengecekan progres</Text>
+              <Text style={styles.fieldValue}>{notes?.caraPengecekan || "—"}</Text>
             </View>
-            <View style={styles.row}>
+            <View style={[styles.fieldBlockDivider, styles.row, { marginBottom: 0 }]}>
               <Text style={styles.rowLabelMuted}>Target selesai</Text>
               <Text style={styles.rowValue}>
                 {fmtDate(notes?.targetCompletionDate || null)}

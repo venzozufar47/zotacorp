@@ -6,10 +6,12 @@ import { EVALUATION_360_METRICS } from "./rubric";
  * Gabungkan teks bebas dari beberapa evaluator (alasan per metrik,
  * apresiasi, catatan) jadi SATU PDF per karyawan tanpa membocorkan siapa
  * menulis yang mana — tidak ada AI rewrite (biaya/kompleksitas tidak
- * sepadan, lihat diskusi produk), cukup: urutan diacak SECARA
- * INDEPENDEN di tiap bagian (supaya "urutan ke-2 di semua metrik selalu
- * orang yang sama" tidak bisa dipakai buat menebak), lalu digabung jadi
- * satu paragraf mengalir tanpa bullet/label per orang.
+ * sepadan, lihat diskusi produk). Tiap bagian jadi daftar "Poin 1, Poin
+ * 2, ..." bernomor URUT POSISI, BUKAN per-evaluator — urutan diacak
+ * SECARA INDEPENDEN di tiap bagian, jadi "Poin 1" di satu metrik dan
+ * "Poin 1" di metrik lain tidak boleh diasumsikan berasal dari orang
+ * yang sama. Tidak ada label nama/inisial evaluator dalam bentuk apa
+ * pun — nomor urut murni posisional, dibuang begitu digenerate ulang.
  */
 
 function shuffle<T>(arr: T[]): T[] {
@@ -21,23 +23,17 @@ function shuffle<T>(arr: T[]): T[] {
   return next;
 }
 
-/** Pastikan tiap potongan diakhiri tanda baca sebelum digabung. */
-function withEndingPunctuation(s: string): string {
-  const t = s.trim();
-  if (!t) return t;
-  return /[.!?]$/.test(t) ? t : `${t}.`;
-}
-
-function blendTexts(texts: string[]): string {
+/** Teks bersih (trim, buang kosong), urutan diacak — SIAP dinomori
+ *  sebagai "Poin 1/2/3" di UI, bukan digabung jadi satu paragraf. */
+function blendTexts(texts: string[]): string[] {
   const cleaned = texts.map((t) => t.trim()).filter(Boolean);
-  if (cleaned.length === 0) return "—";
-  return shuffle(cleaned).map(withEndingPunctuation).join(" ");
+  return shuffle(cleaned);
 }
 
 export function blendMetricReasons(
   responses: RoundResponseDTO[]
-): Record<Evaluation360MetricKey, string> {
-  const result = {} as Record<Evaluation360MetricKey, string>;
+): Record<Evaluation360MetricKey, string[]> {
+  const result = {} as Record<Evaluation360MetricKey, string[]>;
   for (const metric of EVALUATION_360_METRICS) {
     const texts = responses
       .map((r) => r.metricScores[metric.key]?.reason)
@@ -47,11 +43,11 @@ export function blendMetricReasons(
   return result;
 }
 
-export function blendApresiasi(responses: RoundResponseDTO[]): string {
+export function blendApresiasi(responses: RoundResponseDTO[]): string[] {
   return blendTexts(responses.map((r) => r.apresiasi));
 }
 
-export function blendNotes(responses: RoundResponseDTO[]): string {
+export function blendNotes(responses: RoundResponseDTO[]): string[] {
   return blendTexts(responses.map((r) => r.notes));
 }
 

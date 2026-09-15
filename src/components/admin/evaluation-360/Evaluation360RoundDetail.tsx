@@ -25,6 +25,12 @@ function average(values: number[]): number {
   return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10;
 }
 
+/** totalScore adalah jumlah 5 metrik (skala /50) — tampilkan rata-rata
+ *  per metrik (skala /10) supaya konsisten dengan kolom skor lainnya. */
+function totalAsAverage(totalScore: number): number {
+  return Math.round((totalScore / EVALUATION_360_METRICS.length) * 10) / 10;
+}
+
 function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
   roundId: string;
   subjectId: string;
@@ -133,7 +139,7 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
                     {m.title.split(" ")[0]}
                   </th>
                 ))}
-                <th className="px-2 py-2 font-semibold text-center">Total</th>
+                <th className="px-2 py-2 font-semibold text-center">Rata-rata</th>
                 <th className="px-2 py-2 font-semibold text-right">Detail</th>
               </tr>
             </thead>
@@ -147,7 +153,9 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
                         {r.metricScores[m.key]?.score ?? "—"}
                       </td>
                     ))}
-                    <td className="px-2 py-2 text-center font-bold">{r.totalScore}</td>
+                    <td className="px-2 py-2 text-center font-bold">
+                      {totalAsAverage(r.totalScore)}
+                    </td>
                     <td className="px-2 py-2 text-right">
                       <button
                         type="button"
@@ -210,7 +218,7 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
                   </td>
                 ))}
                 <td className="px-2 py-2 text-center font-bold">
-                  {average(responses.map((r) => r.totalScore))}
+                  {average(responses.map((r) => totalAsAverage(r.totalScore)))}
                 </td>
                 <td />
               </tr>
