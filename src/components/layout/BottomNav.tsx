@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -16,6 +16,7 @@ export function BottomNav({
   hasTickets = false,
   hasSimCards = false,
   hasProcurement = false,
+  has360Eval = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -29,6 +30,8 @@ export function BottomNav({
   /** Tab "Pengadaan" — array item di file ini TERPISAH dari Sidebar.tsx,
    *  jadi setiap penambahan menu wajib dilakukan di KEDUANYA. */
   hasProcurement?: boolean;
+  /** Show "Evaluasi" tab for users with ≥1 pending peer evaluation. */
+  has360Eval?: boolean;
   assignmentCount?: number;
   me?: MenuViewer | null;
 }) {
@@ -41,6 +44,9 @@ export function BottomNav({
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     ...(hasTickets
       ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      : []),
+    ...(has360Eval
+      ? [{ href: "/evaluasi", icon: ClipboardCheck, label: "Evaluasi", color: "bg-pop-pink" }]
       : []),
     ...(hasSimCards
       ? [

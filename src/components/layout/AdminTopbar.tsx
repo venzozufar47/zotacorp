@@ -122,6 +122,7 @@ function deriveCrumbs(pathname: string): string[] {
     variables: "Variables",
     "employment-contracts": "Kontrak Kerja",
     disc: "Tes DISC",
+    "evaluasi-360": "Evaluasi 360°",
     celebrations: "Monitoring Karyawan",
     // Keuangan
     finance: "Finance",

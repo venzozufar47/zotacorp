@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -17,6 +17,7 @@ export function Sidebar({
   hasTickets = false,
   hasSimCards = false,
   hasProcurement = false,
+  has360Eval = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -34,6 +35,8 @@ export function Sidebar({
   hasSimCards?: boolean;
   /** Tab "Pengadaan" untuk staf yang ditugaskan memantau stok bahan. */
   hasProcurement?: boolean;
+  /** Show "Evaluasi" tab for users with ≥1 pending peer evaluation. */
+  has360Eval?: boolean;
   /** Jumlah transaksi yang di-assign ke user & masih "Needs Assignment". */
   assignmentCount?: number;
   me?: MenuViewer | null;
@@ -48,6 +51,9 @@ export function Sidebar({
     { href: "/intercom", icon: Radio, label: "Intercom", color: "bg-pop-emerald" },
     ...(hasTickets
       ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      : []),
+    ...(has360Eval
+      ? [{ href: "/evaluasi", icon: ClipboardCheck, label: "Evaluasi", color: "bg-pop-pink" }]
       : []),
     ...(hasSimCards
       ? [

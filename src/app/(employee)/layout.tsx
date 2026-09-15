@@ -9,6 +9,7 @@ import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { canFileTickets } from "@/lib/tickets/access";
 import { isSimPic } from "@/lib/sim-cards/access";
 import { isProcurementStaff } from "@/lib/procurement/access";
+import { hasPending360Evaluation } from "@/lib/evaluation-360/access";
 
 export default async function EmployeeLayout({
   children,
@@ -29,6 +30,7 @@ export default async function EmployeeLayout({
     hasTickets,
     hasSimCards,
     hasProcurement,
+    has360Eval,
   ] = await Promise.all([
     listMyAssignedBankAccountIds(),
     getCurrentProfile(),
@@ -39,6 +41,7 @@ export default async function EmployeeLayout({
     canFileTickets(),
     isSimPic(),
     isProcurementStaff(),
+    hasPending360Evaluation(),
   ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -63,6 +66,7 @@ export default async function EmployeeLayout({
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
         hasProcurement={hasProcurement}
+        has360Eval={has360Eval}
         assignmentCount={assignmentCount}
         me={me}
       />
@@ -80,6 +84,7 @@ export default async function EmployeeLayout({
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
         hasProcurement={hasProcurement}
+        has360Eval={has360Eval}
         assignmentCount={assignmentCount}
         me={me}
       />

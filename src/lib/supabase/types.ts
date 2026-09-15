@@ -3312,6 +3312,252 @@ export type Database = {
           },
         ]
       }
+      evaluation_360_participants: {
+        Row: {
+          created_at: string
+          id: string
+          round_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          round_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          round_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluation_360_participants_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "evaluation_360_rounds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evaluation_360_responses: {
+        Row: {
+          created_at: string
+          id: string
+          metric_scores: Json
+          notes: string | null
+          rater_id: string
+          round_id: string
+          subject_id: string
+          total_score: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metric_scores: Json
+          notes?: string | null
+          rater_id: string
+          round_id: string
+          subject_id: string
+          total_score: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metric_scores?: Json
+          notes?: string | null
+          rater_id?: string
+          round_id?: string
+          subject_id?: string
+          total_score?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluation_360_responses_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_responses_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_responses_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "evaluation_360_rounds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_responses_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_responses_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evaluation_360_rounds: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          status: string
+          title: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          status?: string
+          title: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluation_360_rounds_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_rounds_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_rounds_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_rounds_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evaluation_360_subject_notes: {
+        Row: {
+          cara_pengecekan: string | null
+          id: string
+          kesimpulan: string | null
+          round_id: string
+          subject_id: string
+          target_completion_date: string | null
+          target_perbaikan: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          cara_pengecekan?: string | null
+          id?: string
+          kesimpulan?: string | null
+          round_id: string
+          subject_id: string
+          target_completion_date?: string | null
+          target_perbaikan?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          cara_pengecekan?: string | null
+          id?: string
+          kesimpulan?: string | null
+          round_id?: string
+          subject_id?: string
+          target_completion_date?: string | null
+          target_perbaikan?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluation_360_subject_notes_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "evaluation_360_rounds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_subject_notes_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_subject_notes_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_subject_notes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluation_360_subject_notes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       extra_work_kind_assignments: {
         Row: {
           created_at: string
@@ -7029,6 +7275,158 @@ export type Database = {
           },
           {
             foreignKeyName: "yeobo_booth_reminder_recipients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_buyback_assets: {
+        Row: {
+          category: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          notes: string | null
+          override_source: string | null
+          override_value_idr: number | null
+          purchase_date: string
+          qty: number
+          sort_order: number
+          total_idr: number
+          unit: string
+          unit_price_idr: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          override_source?: string | null
+          override_value_idr?: number | null
+          purchase_date: string
+          qty?: number
+          sort_order?: number
+          total_idr: number
+          unit?: string
+          unit_price_idr: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          override_source?: string | null
+          override_value_idr?: number | null
+          purchase_date?: string
+          qty?: number
+          sort_order?: number
+          total_idr?: number
+          unit?: string
+          unit_price_idr?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_buyback_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_buyback_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_buyback_assets_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_buyback_assets_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yeobo_buyback_reports: {
+        Row: {
+          as_of_date: string
+          created_at: string
+          created_by: string | null
+          id: string
+          investor_shares: Json | null
+          life_months_aksesoris: number
+          life_months_elektronik: number
+          life_months_perabot: number
+          lines: Json
+          note: string | null
+          residual_pct: number
+          title: string
+          total_book_value_idr: number
+          total_cost_idr: number
+        }
+        Insert: {
+          as_of_date: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          investor_shares?: Json | null
+          life_months_aksesoris: number
+          life_months_elektronik: number
+          life_months_perabot: number
+          lines: Json
+          note?: string | null
+          residual_pct: number
+          title: string
+          total_book_value_idr: number
+          total_cost_idr: number
+        }
+        Update: {
+          as_of_date?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          investor_shares?: Json | null
+          life_months_aksesoris?: number
+          life_months_elektronik?: number
+          life_months_perabot?: number
+          lines?: Json
+          note?: string | null
+          residual_pct?: number
+          title?: string
+          total_book_value_idr?: number
+          total_cost_idr?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yeobo_buyback_reports_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yeobo_buyback_reports_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"

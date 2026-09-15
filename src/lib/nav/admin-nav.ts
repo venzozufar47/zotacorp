@@ -3,6 +3,7 @@ import {
   Cake,
   Calculator,
   Camera,
+  ClipboardCheck,
   ClipboardList,
   Coins,
   Database,
@@ -186,6 +187,12 @@ export function buildAdminNav({
           href: "/admin/disc",
           icon: Brain,
           label: "Tes DISC",
+          color: "bg-pop-pink",
+        },
+        {
+          href: "/admin/evaluasi-360",
+          icon: ClipboardCheck,
+          label: "Evaluasi 360°",
           color: "bg-pop-pink",
         },
         {
