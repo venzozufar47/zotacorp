@@ -51,6 +51,8 @@ import { sendToPrinter } from "@/lib/pos/print-transport";
 import { resolveCashierName } from "@/lib/pos/cashier-schedule";
 import { ServiceLevelHero } from "@/components/pos/ServiceLevelHero";
 import type { ServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
+import { DailyRevenueTargetCard } from "@/components/pos/DailyRevenueTargetCard";
+import type { PosDailyRevenueSummary } from "@/lib/actions/pos.actions";
 import {
   SUGAR_LEVELS,
   SUGAR_LEVEL_LABELS,
@@ -80,6 +82,9 @@ interface Props {
   /** Ringkasan Service Level dari snapshot. null = fitur mati / gagal
    *  dibaca — komponennya tidak dirender, layar kasir tetap utuh. */
   serviceLevel?: ServiceLevelSummary | null;
+  /** Omset hari ini vs target (migrasi 146). null = target belum di-set
+   *  admin / gagal dibaca — kartu tidak dirender. */
+  dailyRevenue?: PosDailyRevenueSummary | null;
   /** Konten struk bersama (server, per rekening). */
   receiptContent: ReceiptContent;
   products: PosProduct[];
@@ -188,6 +193,7 @@ export function POSClient({
   branch = null,
   cashierName = null,
   serviceLevel = null,
+  dailyRevenue = null,
   receiptContent,
   products,
   isAdmin,
@@ -1238,13 +1244,22 @@ export function POSClient({
       <main className="min-w-0 overflow-y-auto pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
         {/* Strip informasional di atas grid produk — ikut ter-scroll saat
             kasir menelusuri produk, jadi tidak permanen memakan ruang. */}
-        {serviceLevel && (
-          <div className="px-3 pt-3">
-            <ServiceLevelHero
-              summary={serviceLevel}
-              size="compact"
-              href={`${basePath}/service-level`}
-            />
+        {(dailyRevenue || serviceLevel) && (
+          <div className="flex items-stretch gap-3 px-3 pt-3">
+            {dailyRevenue && (
+              <div className="min-w-0 flex-1">
+                <DailyRevenueTargetCard summary={dailyRevenue} />
+              </div>
+            )}
+            {serviceLevel && (
+              <div className="min-w-0 flex-1">
+                <ServiceLevelHero
+                  summary={serviceLevel}
+                  size="compact"
+                  href={`${basePath}/service-level`}
+                />
+              </div>
+            )}
           </div>
         )}
         <DiscountBanner activeDiscount={activeDiscount} />

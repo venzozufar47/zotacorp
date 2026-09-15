@@ -1648,6 +1648,107 @@ export async function getPosShiftSummary(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Daily revenue target
+// ─────────────────────────────────────────────────────────────────────
+
+export interface PosDailyRevenueSummary {
+  /** Jakarta date saat query (YYYY-MM-DD) */
+  today: string;
+  /** ISO timestamp saat server menghitung. */
+  asOf: string;
+  /** Target omset hari ini, Rupiah. Null = admin belum set (migrasi 146) — kartu disembunyikan di UI. */
+  target: number | null;
+  salesToday: number;
+  qrisToday: number;
+  /** salesToday + qrisToday. */
+  totalToday: number;
+  /** totalToday / target. Null kalau target null. */
+  percent: number | null;
+}
+
+/**
+ * Omset hari ini (Sales + QRIS, kategori POS asli — BUKAN semua credit
+ * seperti `cashCreditsToday` di getPosShiftSummary, yang juga menghitung
+ * Wealth Transfer/Pinjaman non-jualan) dibanding target harian outlet.
+ *
+ * Live query, bukan snapshot — bedanya dengan Service Level: rentangnya
+ * cuma "hari ini" di satu statement bulan berjalan, bukan 30 hari lintas
+ * histori stok, jadi biayanya kecil untuk dihitung tiap load halaman POS.
+ */
+export async function getPosDailyRevenueSummary(
+  bankAccountId: string
+): Promise<ActionResult<PosDailyRevenueSummary>> {
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const supabase = await createClient();
+  const now = new Date();
+  const today = jakartaDateString(now);
+  const [yearStr, monthStr] = today.split("-");
+  const periodYear = Number(yearStr);
+  const periodMonth = Number(monthStr);
+
+  const [{ data: account }, { data: stmt }] = await Promise.all([
+    supabase
+      .from("bank_accounts")
+      .select("daily_revenue_target")
+      .eq("id", bankAccountId)
+      .maybeSingle(),
+    supabase
+      .from("cashflow_statements")
+      .select("id")
+      .eq("bank_account_id", bankAccountId)
+      .eq("period_year", periodYear)
+      .eq("period_month", periodMonth)
+      .maybeSingle(),
+  ]);
+
+  const target = account?.daily_revenue_target ?? null;
+
+  const empty = (): PosDailyRevenueSummary => ({
+    today,
+    asOf: now.toISOString(),
+    target,
+    salesToday: 0,
+    qrisToday: 0,
+    totalToday: 0,
+    percent: target ? 0 : null,
+  });
+
+  if (!stmt) return { ok: true, data: empty() };
+
+  const { data: rows, error } = await supabase
+    .from("cashflow_transactions")
+    .select("category, credit")
+    .eq("statement_id", stmt.id)
+    .eq("transaction_date", today);
+  if (error) return { ok: false, error: error.message };
+
+  let salesToday = 0;
+  let qrisToday = 0;
+  for (const r of rows ?? []) {
+    const credit = Number(r.credit) || 0;
+    if (credit <= 0) continue;
+    if (r.category === POS_QRIS_CATEGORY) qrisToday += credit;
+    else if (r.category === POS_CASH_CATEGORY) salesToday += credit;
+  }
+  const totalToday = salesToday + qrisToday;
+
+  return {
+    ok: true,
+    data: {
+      today,
+      asOf: now.toISOString(),
+      target,
+      salesToday,
+      qrisToday,
+      totalToday,
+      percent: target ? totalToday / target : null,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Void transaksi (dari /pos/riwayat)
 // ─────────────────────────────────────────────────────────────────────
 
