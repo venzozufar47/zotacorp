@@ -96,12 +96,13 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
         {report.note && (
           <p className="mt-2 text-sm text-foreground">{report.note}</p>
         )}
-        {report.lines.some((l) => l.isOverridden) && (
+        {report.lines.some((l) => l.overrideSource) && (
           <p className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1">
             <Sparkles size={11} className="text-amber-600 shrink-0" />
             Aset bertanda &ldquo;Disesuaikan manual&rdquo; nilainya diganti dari
-            riset pasar (bukan formula garis lurus) — sumbernya tercantum di
-            bawah nama aset. Aset lain tetap formula.
+            riset pasar (bukan formula garis lurus). Aset lain tetap pakai
+            formula garis lurus — catatan di bawah namanya adalah dokumentasi
+            kenapa formula dipertahankan, bukan perubahan nilai.
           </p>
         )}
       </div>
@@ -213,7 +214,7 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
                             <Sparkles size={10} className="shrink-0" /> Disesuaikan manual
                           </span>
                         )}
-                        {l.isOverridden && l.overrideSource && (
+                        {l.overrideSource && (
                           <p className="text-[10.5px] font-normal text-muted-foreground mt-0.5">
                             {l.overrideSource}
                           </p>

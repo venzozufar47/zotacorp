@@ -80,6 +80,7 @@ const s = StyleSheet.create({
   },
   cell: { fontSize: 8.5 },
   overrideNote: { fontSize: 6.5, color: C.amber, marginTop: 1 },
+  valuationNote: { fontSize: 6.5, color: C.mutedFg, marginTop: 1 },
   subtotalRow: {
     flexDirection: "row",
     paddingVertical: 4,
@@ -181,11 +182,12 @@ export function BuybackReportPdfDocument({
             {report.lifeMonths.aksesoris} bln
           </Text>
           {report.note && <Text style={s.policyLine}>Catatan: {report.note}</Text>}
-          {report.lines.some((l) => l.isOverridden) && (
+          {report.lines.some((l) => l.overrideSource) && (
             <Text style={s.policyLine}>
               * = nilai disesuaikan manual dari riset pasar (bukan formula
-              garis lurus) — sumber tercantum di bawah nama aset terkait.
-              Baris tanpa tanda tetap formula.
+              garis lurus). Aset lain tetap formula garis lurus — catatan di
+              bawah namanya adalah dokumentasi kenapa formula dipertahankan,
+              bukan perubahan nilai.
             </Text>
           )}
 
@@ -252,8 +254,10 @@ export function BuybackReportPdfDocument({
                           <Text style={{ color: C.amber, fontWeight: "bold" }}> *</Text>
                         )}
                       </Text>
-                      {l.isOverridden && l.overrideSource && (
-                        <Text style={s.overrideNote}>{l.overrideSource}</Text>
+                      {l.overrideSource && (
+                        <Text style={l.isOverridden ? s.overrideNote : s.valuationNote}>
+                          {l.overrideSource}
+                        </Text>
                       )}
                     </View>
                     <Text style={[s.cell, s.colQty]}>

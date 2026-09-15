@@ -56,6 +56,212 @@ interface AssetDraft {
 }
 
 /**
+ * Form tambah/ubah satu aset — dipakai di DUA posisi: di atas daftar utk
+ * "aset baru" (tidak ada baris spesifik yg jadi rujukan posisi), dan INLINE
+ * tepat di baris yg sedang diubah utk "ubah aset" (supaya admin tidak harus
+ * bolak-balik scroll ke atas buat lihat form lalu scroll turun lagi ke
+ * konteks barisnya — itu yg dikomplain sebelum refactor ini).
+ */
+function AssetDraftForm({
+  draft,
+  setDraft,
+  onCancel,
+  onSave,
+  pending,
+}: {
+  draft: AssetDraft;
+  setDraft: (d: AssetDraft) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  pending: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-foreground">
+          {draft.id ? "Ubah aset" : "Aset baru"}
+        </h4>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-muted-foreground hover:text-foreground p-1"
+          aria-label="Tutup"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Nama aset
+          </span>
+          <input
+            type="text"
+            value={draft.name}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-muted-foreground">Qty</span>
+          <input
+            type="number"
+            value={draft.qty}
+            onChange={(e) => setDraft({ ...draft, qty: e.target.value })}
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Satuan
+          </span>
+          <input
+            type="text"
+            value={draft.unit}
+            onChange={(e) => setDraft({ ...draft, unit: e.target.value })}
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Harga/unit (Rp)
+          </span>
+          <input
+            type="number"
+            value={draft.unitPriceIdr}
+            onChange={(e) => setDraft({ ...draft, unitPriceIdr: e.target.value })}
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Nilai total (Rp)
+          </span>
+          <input
+            type="number"
+            value={draft.totalIdr}
+            onChange={(e) => setDraft({ ...draft, totalIdr: e.target.value })}
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          />
+          <p className="mt-0.5 text-[10.5px] text-muted-foreground">
+            Biasanya qty × harga/unit, tapi boleh disesuaikan kalau beda
+            dengan catatan pembelian asli.
+          </p>
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Tanggal beli
+          </span>
+          <input
+            type="date"
+            value={draft.purchaseDate}
+            onChange={(e) => setDraft({ ...draft, purchaseDate: e.target.value })}
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Kategori
+          </span>
+          <select
+            value={draft.category}
+            onChange={(e) =>
+              setDraft({ ...draft, category: e.target.value as BuybackCategory })
+            }
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          >
+            {CATEGORY_ORDER.map((cat) => (
+              <option key={cat} value={cat}>
+                {CATEGORY_LABELS[cat]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-semibold text-muted-foreground">
+            Catatan (opsional)
+          </span>
+          <input
+            type="text"
+            value={draft.notes}
+            onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+          />
+        </label>
+      </div>
+
+      <div className="rounded-xl border border-dashed border-border p-4 space-y-3">
+        <div className="flex items-start gap-2">
+          <Sparkles size={15} className="mt-0.5 shrink-0 text-primary" />
+          <div>
+            <p className="text-xs font-semibold text-foreground">
+              Override nilai manual (opsional)
+            </p>
+            <p className="text-[10.5px] text-muted-foreground">
+              Isi kalau formula garis lurus tidak realistis utk aset ini
+              (mis. kamera/printer yang harga pasar second-nya tidak ikut
+              kurva depresiasi linear). Kalau diisi, nilai ini MENGGANTIKAN
+              hasil formula di ringkasan &amp; laporan — aset lain tetap
+              pakai formula seperti biasa.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-xs font-semibold text-muted-foreground">
+              Nilai override (Rp)
+            </span>
+            <input
+              type="number"
+              value={draft.overrideValueIdr}
+              onChange={(e) =>
+                setDraft({ ...draft, overrideValueIdr: e.target.value })
+              }
+              placeholder="Kosongkan utk pakai formula"
+              className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold text-muted-foreground">
+              Sumber / justifikasi
+            </span>
+            <input
+              type="text"
+              value={draft.overrideSource}
+              onChange={(e) =>
+                setDraft({ ...draft, overrideSource: e.target.value })
+              }
+              placeholder="Riset pasar + link marketplace, atau alasan lain"
+              className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 sm:flex-none h-10 px-4 rounded-xl border border-border text-foreground text-sm font-medium hover:bg-muted"
+        >
+          Batal
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onSave}
+          className="flex-1 sm:flex-none h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+        >
+          {pending && <Loader2 size={14} className="animate-spin" />}
+          Simpan
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Kelola aset bergerak Tlogosari + terbitkan laporan buyback beku.
  *
  * Ringkasan/preview di bagian atas dihitung LIVE di klien (murni untuk
@@ -360,189 +566,14 @@ export function BuybackAssetsManager({
           )}
         </div>
 
-        {draft && (
-          <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-semibold text-foreground">
-                {draft.id ? "Ubah aset" : "Aset baru"}
-              </h4>
-              <button
-                type="button"
-                onClick={() => setDraft(null)}
-                className="text-muted-foreground hover:text-foreground p-1"
-                aria-label="Tutup"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Nama aset
-                </span>
-                <input
-                  type="text"
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-muted-foreground">Qty</span>
-                <input
-                  type="number"
-                  value={draft.qty}
-                  onChange={(e) => setDraft({ ...draft, qty: e.target.value })}
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Satuan
-                </span>
-                <input
-                  type="text"
-                  value={draft.unit}
-                  onChange={(e) => setDraft({ ...draft, unit: e.target.value })}
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Harga/unit (Rp)
-                </span>
-                <input
-                  type="number"
-                  value={draft.unitPriceIdr}
-                  onChange={(e) => setDraft({ ...draft, unitPriceIdr: e.target.value })}
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Nilai total (Rp)
-                </span>
-                <input
-                  type="number"
-                  value={draft.totalIdr}
-                  onChange={(e) => setDraft({ ...draft, totalIdr: e.target.value })}
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                />
-                <p className="mt-0.5 text-[10.5px] text-muted-foreground">
-                  Biasanya qty × harga/unit, tapi boleh disesuaikan kalau beda
-                  dengan catatan pembelian asli.
-                </p>
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Tanggal beli
-                </span>
-                <input
-                  type="date"
-                  value={draft.purchaseDate}
-                  onChange={(e) => setDraft({ ...draft, purchaseDate: e.target.value })}
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Kategori
-                </span>
-                <select
-                  value={draft.category}
-                  onChange={(e) =>
-                    setDraft({ ...draft, category: e.target.value as BuybackCategory })
-                  }
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                >
-                  {CATEGORY_ORDER.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {CATEGORY_LABELS[cat]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Catatan (opsional)
-                </span>
-                <input
-                  type="text"
-                  value={draft.notes}
-                  onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                />
-              </label>
-            </div>
-
-            <div className="rounded-xl border border-dashed border-border p-4 space-y-3">
-              <div className="flex items-start gap-2">
-                <Sparkles size={15} className="mt-0.5 shrink-0 text-primary" />
-                <div>
-                  <p className="text-xs font-semibold text-foreground">
-                    Override nilai manual (opsional)
-                  </p>
-                  <p className="text-[10.5px] text-muted-foreground">
-                    Isi kalau formula garis lurus tidak realistis utk aset ini
-                    (mis. kamera/printer yang harga pasar second-nya tidak
-                    ikut kurva depresiasi linear). Kalau diisi, nilai ini
-                    MENGGANTIKAN hasil formula di ringkasan &amp; laporan —
-                    aset lain tetap pakai formula seperti biasa.
-                  </p>
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Nilai override (Rp)
-                  </span>
-                  <input
-                    type="number"
-                    value={draft.overrideValueIdr}
-                    onChange={(e) =>
-                      setDraft({ ...draft, overrideValueIdr: e.target.value })
-                    }
-                    placeholder="Kosongkan utk pakai formula"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Sumber / justifikasi
-                  </span>
-                  <input
-                    type="text"
-                    value={draft.overrideSource}
-                    onChange={(e) =>
-                      setDraft({ ...draft, overrideSource: e.target.value })
-                    }
-                    placeholder="Riset pasar + link marketplace, atau alasan lain"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setDraft(null)}
-                className="flex-1 sm:flex-none h-10 px-4 rounded-xl border border-border text-foreground text-sm font-medium hover:bg-muted"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={saveAsset}
-                className="flex-1 sm:flex-none h-10 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
-              >
-                {pending && <Loader2 size={14} className="animate-spin" />}
-                Simpan
-              </button>
-            </div>
-          </div>
+        {draft && !draft.id && (
+          <AssetDraftForm
+            draft={draft}
+            setDraft={setDraft}
+            onCancel={() => setDraft(null)}
+            onSave={saveAsset}
+            pending={pending}
+          />
         )}
 
         {CATEGORY_ORDER.map((cat) => {
@@ -581,6 +612,21 @@ export function BuybackAssetsManager({
                   <tbody>
                     {rows.map((a) => {
                       const line = lineByAssetId.get(a.id);
+                      if (draft?.id === a.id) {
+                        return (
+                          <tr key={a.id} className="border-t border-border/60">
+                            <td className="p-3" colSpan={9}>
+                              <AssetDraftForm
+                                draft={draft}
+                                setDraft={setDraft}
+                                onCancel={() => setDraft(null)}
+                                onSave={saveAsset}
+                                pending={pending}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      }
                       return (
                         <tr key={a.id} className="border-t border-border/60">
                           <td className="px-4 py-2.5">
