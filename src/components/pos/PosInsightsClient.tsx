@@ -330,11 +330,15 @@ export function PosInsightsClient({
 }
 
 function InsightsBody({ insights }: { insights: PosInsights }) {
-  const { summary, topProducts, topVariants, daily, hourly, dow } = insights;
+  const { summary, topProducts, topVariants, daily, hourly, dow, dailyRevenueTarget } =
+    insights;
 
+  // Target ikut menentukan skala chart — supaya garis target selalu
+  // kelihatan di dalam area chart walau semua bar di bawahnya (target
+  // belum pernah tercapai di periode ini), bukan terpotong di luar.
   const maxDailyRevenue = useMemo(
-    () => Math.max(1, ...daily.map((d) => d.revenue)),
-    [daily]
+    () => Math.max(1, dailyRevenueTarget ?? 0, ...daily.map((d) => d.revenue)),
+    [daily, dailyRevenueTarget]
   );
   const maxHourly = useMemo(
     () => Math.max(1, ...hourly.map((h) => h.txCount)),
@@ -431,6 +435,7 @@ function InsightsBody({ insights }: { insights: PosInsights }) {
         <DailyRevenueChart
           slice={trimToActiveDays(daily)}
           maxDailyRevenue={maxDailyRevenue}
+          target={dailyRevenueTarget}
         />
       </Section>
 
@@ -558,26 +563,68 @@ function SummaryCard({
  * di atas bar tetap tampil untuk peak + sample (anti-tabrakan di slice
  * padat); hover memunculkan tooltip lengkap (tanggal + revenue + tx)
  * untuk SEMUA bar — termasuk yang label statisnya disembunyikan.
+ *
+ * `target` (migrasi 146, `bank_accounts.daily_revenue_target`) kalau ada
+ * menggambar garis putus-putus + label nominal, dan mewarnai tiap bar
+ * hijau (tercapai) / merah (belum) — menggantikan warna pink netral.
+ * `maxDailyRevenue` dari caller SUDAH memasukkan `target` (lihat
+ * `InsightsBody`), jadi garisnya dijamin selalu di dalam area chart
+ * walau tidak ada satu hari pun yang menembus target.
  */
 function DailyRevenueChart({
   slice,
   maxDailyRevenue,
+  target,
 }: {
   slice: Array<{ date: string; revenue: number; txCount: number }>;
   maxDailyRevenue: number;
+  target: number | null;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const peakRev = Math.max(0, ...slice.map((d) => d.revenue));
   const dense = slice.length > 10;
+  const targetPct =
+    target != null ? Math.min(100, Math.max(0, (target / maxDailyRevenue) * 100)) : null;
   return (
     <>
-      <div className="flex items-stretch gap-[3px] h-36 px-1">
+      <div className="relative flex items-stretch gap-[3px] h-36 px-1">
+        {/* Garis target — overlay diselaraskan persis dengan zona tinggi
+            bar (h-32 di bawah row h-36) supaya skalanya sama-sama pakai
+            maxDailyRevenue. pointer-events-none supaya tidak menutup
+            hover bar di baliknya. */}
+        {targetPct !== null && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 z-10">
+            <div
+              className="absolute inset-x-0 border-t-2 border-dashed border-foreground/40"
+              style={{ bottom: `${targetPct}%` }}
+            >
+              <span className="absolute right-0 -top-4 whitespace-nowrap rounded bg-card px-1 text-[10px] font-semibold text-foreground shadow-sm">
+                Target {formatRp(target!)}
+              </span>
+            </div>
+          </div>
+        )}
         {slice.map((d, idx) => {
           const heightPct = (d.revenue / maxDailyRevenue) * 100;
           const isPeak = d.revenue === peakRev && d.revenue > 0;
           const showLabel =
             d.revenue > 0 && (!dense || isPeak || idx % 3 === 0);
           const isHovered = hovered === idx;
+          const hit = target != null && d.revenue >= target;
+          const barColorClass =
+            target == null
+              ? isPeak
+                ? "bg-primary"
+                : isHovered
+                  ? "bg-primary/90"
+                  : "bg-primary/60 hover:bg-primary/80"
+              : hit
+                ? isHovered
+                  ? "bg-success/90"
+                  : "bg-success/70 hover:bg-success/90"
+                : isHovered
+                  ? "bg-destructive/80"
+                  : "bg-destructive/55 hover:bg-destructive/75";
           return (
             <div
               key={d.date}
@@ -611,7 +658,9 @@ function DailyRevenueChart({
                     className={
                       "text-[10px] tabular-nums leading-none mb-0.5 whitespace-nowrap " +
                       (isPeak
-                        ? "font-bold text-primary"
+                        ? target == null
+                          ? "font-bold text-primary"
+                          : "font-bold text-foreground"
                         : "font-semibold text-foreground")
                     }
                   >
@@ -619,14 +668,7 @@ function DailyRevenueChart({
                   </span>
                 )}
                 <div
-                  className={
-                    "w-full rounded-t-[3px] transition " +
-                    (isPeak
-                      ? "bg-primary"
-                      : isHovered
-                        ? "bg-primary/90"
-                        : "bg-primary/60 hover:bg-primary/80")
-                  }
+                  className={"w-full rounded-t-[3px] transition " + barColorClass}
                   style={{
                     height: `${heightPct}%`,
                     minHeight: d.revenue > 0 ? "3px" : 0,

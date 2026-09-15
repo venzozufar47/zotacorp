@@ -64,6 +64,9 @@ export interface PosInsights {
   hourly: Array<{ hour: number; txCount: number; revenue: number }>;
   /** Day-of-week 0=Minggu .. 6=Sabtu (WIB), tx count + revenue. */
   dow: Array<{ dow: number; txCount: number; revenue: number }>;
+  /** Target omset harian rekening (migrasi 146), Rupiah. Null = admin
+   *  belum set — chart "Revenue harian" tidak menampilkan garis target. */
+  dailyRevenueTarget: number | null;
 }
 
 /** Hard cap supaya admin tidak iseng minta range puluhan tahun. */
@@ -114,6 +117,13 @@ export async function getPosInsights(
   const supabase = await createClient();
   const today = range.to;
   const fromDate = range.from;
+
+  const { data: account } = await supabase
+    .from("bank_accounts")
+    .select("daily_revenue_target")
+    .eq("id", bankAccountId)
+    .maybeSingle();
+  const dailyRevenueTarget = account?.daily_revenue_target ?? null;
 
   // Sales di window — paginasi 1000-row PostgREST cap.
   type SaleRow = {
@@ -314,6 +324,7 @@ export async function getPosInsights(
       daily,
       hourly,
       dow,
+      dailyRevenueTarget,
     },
   };
 }
