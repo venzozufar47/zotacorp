@@ -6,6 +6,7 @@ import {
   listCakeOptionsAdmin,
   listCakeDiameterOptions,
   listCakeBasePrices,
+  listCakeDiyPrices,
 } from "@/lib/actions/cake-options.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { CakeOptionsManager } from "@/components/admin/CakeOptionsManager";
@@ -21,10 +22,11 @@ export default async function AdminCakeOptionsPage() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const [res, diaRes, priceRes] = await Promise.all([
+  const [res, diaRes, priceRes, diyPriceRes] = await Promise.all([
     listCakeOptionsAdmin(),
     listCakeDiameterOptions(),
     listCakeBasePrices(),
+    listCakeDiyPrices(),
   ]);
   return (
     <div className="space-y-5 animate-fade-up">
@@ -36,6 +38,7 @@ export default async function AdminCakeOptionsPage() {
         initialOptions={res.ok ? res.data ?? [] : []}
         initialDiameters={diaRes.ok ? diaRes.data ?? [] : []}
         initialPrices={priceRes.ok ? priceRes.data ?? [] : []}
+        initialDiyPrices={diyPriceRes.ok ? diyPriceRes.data ?? [] : []}
       />
     </div>
   );

@@ -9,6 +9,7 @@ import {
   createCakeOrder,
   updateCakeOrderFull,
 } from "@/lib/actions/cake-orders.actions";
+import { listCakeDiyPrices } from "@/lib/actions/cake-options.actions";
 import { formatIDR } from "@/lib/cashflow/format";
 import { ImageDropField } from "./ImageDropField";
 import type {
@@ -18,6 +19,7 @@ import type {
   CakeBranch,
   CakeDiameterOption,
   CakeDiscountKind,
+  CakeDiyDiameterPrice,
   CakeOption,
   CakeOptionsByKind,
   CakeOrder,
@@ -124,6 +126,18 @@ export function NewCakeOrderForm({
     editing?.customer_phone ?? ""
   );
   const [branch, setBranch] = useState<CakeBranch>(editing?.branch ?? "pare");
+  /** Jenis pesanan DIY — independen dari base/bentuk/diameter (semua
+   *  tetap bebas dipilih). Cuma mengganti sumber harga: bukan matriks
+   *  base×diameter, tapi `cake_diy_diameter_prices` (per diameter). */
+  const [isDiy, setIsDiy] = useState(editing?.is_diy ?? false);
+  const [diyPrices, setDiyPrices] = useState<CakeDiyDiameterPrice[]>([]);
+  useEffect(() => {
+    listCakeDiyPrices().then((res) => {
+      if (res.ok) setDiyPrices(res.data ?? []);
+    });
+    // Sekali saat mount — daftar harga DIY tidak berubah selama sesi
+    // form ini terbuka.
+  }, []);
   const [baseCakeOptionId, setBaseCakeOptionId] = useState(
     editing?.base_cake_option_id ?? ""
   );
@@ -262,6 +276,8 @@ export function NewCakeOrderForm({
     diameters,
     prices,
     override: overrideNum,
+    isDiy,
+    diyPrices,
   });
   const basePrice = resolved.price;
   const priceFromMatrix = resolved.source === "matrix";
@@ -334,6 +350,7 @@ export function NewCakeOrderForm({
         customerPhone: customerPhone || null,
         branch,
         baseCakeOptionId,
+        isDiy,
         shapeOptionId,
         shapeCustom: shapeOpt?.is_custom_freeform ? shapeCustom : null,
         dimensionCm: dimensionCmNum,
@@ -505,6 +522,21 @@ export function NewCakeOrderForm({
               </button>
             }
           >
+            <label className="flex items-center gap-2 rounded-lg border-2 border-dashed border-border px-3 py-2 hover:border-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isDiy}
+                onChange={(e) => setIsDiy(e.target.checked)}
+                className="size-4"
+              />
+              <span className="text-sm text-foreground font-medium">
+                🎨 Ini pesanan DIY
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                — base/bentuk/diameter tetap bebas dipilih, harga ikut
+                daftar harga DIY (bukan matriks base cake)
+              </span>
+            </label>
             {showBasePrices && (
               <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs space-y-1">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -602,7 +634,7 @@ export function NewCakeOrderForm({
                 <div className="text-sm font-semibold tabular-nums text-foreground">
                   Rp {formatIDR(basePrice)}
                   <span className="ml-2 text-[10px] font-normal text-muted-foreground">
-                    · dari matriks
+                    · {isDiy ? "harga DIY" : "dari matriks"}
                   </span>
                 </div>
               ) : (

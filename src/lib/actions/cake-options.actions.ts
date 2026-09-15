@@ -8,6 +8,7 @@ import {
   type CakeBaseDiameterPrice,
   type CakeBranch,
   type CakeDiameterOption,
+  type CakeDiyDiameterPrice,
   type CakeOption,
   type CakeOptionKind,
   type CakeOptionsByKind,
@@ -373,6 +374,103 @@ export async function setCakeBasePricesBulk(
       .delete()
       .eq("base_option_id", b)
       .eq("diameter_id", d);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/admin/cake-orders/options");
+  revalidatePath("/cake-orders");
+  return { ok: true, data: { updated: merged.size } };
+}
+
+// ---------- DIY pricing (per diameter, base cake tidak berpengaruh) --
+
+/** Semua baris harga DIY — admin manager butuh untuk render tabel,
+ *  order form butuh untuk resolusi harga. */
+export async function listCakeDiyPrices(): Promise<
+  ActionResult<CakeDiyDiameterPrice[]>
+> {
+  const supabase = adminClient();
+  const { data, error } = await supabase
+    .from("cake_diy_diameter_prices" as never)
+    .select("*");
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as CakeDiyDiameterPrice[] };
+}
+
+/**
+ * Bulk-upsert harga DIY per diameter. Sama pola dengan
+ * `setCakeBasePricesBulk` — cuma tanpa dimensi base_option_id karena
+ * base cake tidak mempengaruhi harga DIY (migrasi 147).
+ */
+export interface CakeDiyPriceChange {
+  diameter_id: string;
+  branch: CakeBranch;
+  price_idr: number | null;
+}
+
+export async function setCakeDiyPricesBulk(
+  changes: CakeDiyPriceChange[]
+): Promise<ActionResult<{ updated: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (changes.length === 0) return { ok: true, data: { updated: 0 } };
+  const supabase = adminClient();
+
+  const diaIds = Array.from(new Set(changes.map((c) => c.diameter_id)));
+  const { data: existingRows } = await supabase
+    .from("cake_diy_diameter_prices" as never)
+    .select("*")
+    .in("diameter_id", diaIds);
+  const existing = new Map<string, CakeDiyDiameterPrice>();
+  for (const r of (existingRows ?? []) as unknown as CakeDiyDiameterPrice[]) {
+    existing.set(r.diameter_id, r);
+  }
+
+  const merged = new Map<
+    string,
+    {
+      diameter_id: string;
+      price_pare_idr: number | null;
+      price_semarang_idr: number | null;
+    }
+  >();
+  for (const c of changes) {
+    const existingRow = existing.get(c.diameter_id);
+    const cur = merged.get(c.diameter_id) ?? {
+      diameter_id: c.diameter_id,
+      price_pare_idr: existingRow?.price_pare_idr ?? null,
+      price_semarang_idr: existingRow?.price_semarang_idr ?? null,
+    };
+    const next =
+      c.price_idr == null ? null : Math.max(0, Math.round(c.price_idr));
+    merged.set(c.diameter_id, {
+      ...cur,
+      [branchPriceCol(c.branch)]: next,
+    });
+  }
+
+  const now = new Date().toISOString();
+  const toUpsert: Record<string, unknown>[] = [];
+  const toDelete: string[] = [];
+  for (const m of merged.values()) {
+    if (m.price_pare_idr == null && m.price_semarang_idr == null) {
+      toDelete.push(m.diameter_id);
+    } else {
+      toUpsert.push({ ...m, updated_at: now });
+    }
+  }
+
+  if (toUpsert.length > 0) {
+    const { error } = await supabase
+      .from("cake_diy_diameter_prices" as never)
+      .upsert(toUpsert as never, { onConflict: "diameter_id" });
+    if (error) return { ok: false, error: error.message };
+  }
+  for (const diaId of toDelete) {
+    const { error } = await supabase
+      .from("cake_diy_diameter_prices" as never)
+      .delete()
+      .eq("diameter_id", diaId);
     if (error) return { ok: false, error: error.message };
   }
 

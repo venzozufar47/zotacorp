@@ -28,6 +28,7 @@ import {
   parseCakeBranch,
   type CakeBaseDiameterPrice,
   type CakeDiameterOption,
+  type CakeDiyDiameterPrice,
 } from "@/lib/cake-orders/types";
 
 /**
@@ -53,17 +54,20 @@ async function loadPriceMatrix(
 ): Promise<{
   diameters: CakeDiameterOption[];
   prices: CakeBaseDiameterPrice[];
+  diyPrices: CakeDiyDiameterPrice[];
 }> {
-  const [diaRes, priceRes] = await Promise.all([
+  const [diaRes, priceRes, diyRes] = await Promise.all([
     supabase
       .from("cake_diameter_options" as never)
       .select("id, diameter_cm")
       .eq("is_active", true),
     supabase.from("cake_base_diameter_prices" as never).select("*"),
+    supabase.from("cake_diy_diameter_prices" as never).select("*"),
   ]);
   return {
     diameters: (diaRes.data ?? []) as unknown as CakeDiameterOption[],
     prices: (priceRes.data ?? []) as unknown as CakeBaseDiameterPrice[],
+    diyPrices: (diyRes.data ?? []) as unknown as CakeDiyDiameterPrice[],
   };
 }
 
@@ -142,7 +146,8 @@ export async function createCakeOrder(
 
   const dimensionCm = clampDimensionCm(input.dimensionCm);
   const branch = parseCakeBranch(input.branch);
-  const { diameters, prices } = await loadPriceMatrix(supabase);
+  const { diameters, prices, diyPrices } = await loadPriceMatrix(supabase);
+  const isDiy = input.isDiy ?? false;
   const basePrice = resolveBasePrice({
     baseOption: baseOpt,
     branch,
@@ -150,6 +155,8 @@ export async function createCakeOrder(
     diameters,
     prices,
     override: input.basePriceOverrideIdr ?? null,
+    isDiy,
+    diyPrices,
   }).price;
   // Trim, drop empty rows, sum prices server-side. Breakdown stored
   // as-is for transparency; total snapshot kept on add_ons_idr so
@@ -179,6 +186,7 @@ export async function createCakeOrder(
       branch,
       base_cake_option_id: baseOpt.id,
       base_price_idr: basePrice,
+      is_diy: isDiy,
       shape_option_id: shapeOpt.id,
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
@@ -672,7 +680,8 @@ export async function updateCakeOrderFull(
 
   const dimensionCm = clampDimensionCm(input.dimensionCm);
   const branch = parseCakeBranch(input.branch);
-  const { diameters, prices } = await loadPriceMatrix(supabase);
+  const { diameters, prices, diyPrices } = await loadPriceMatrix(supabase);
+  const isDiy = input.isDiy ?? false;
   const basePrice = resolveBasePrice({
     baseOption: baseOpt,
     branch,
@@ -680,6 +689,8 @@ export async function updateCakeOrderFull(
     diameters,
     prices,
     override: input.basePriceOverrideIdr ?? null,
+    isDiy,
+    diyPrices,
   }).price;
   const addOnsBreakdown: CakeAddOnLine[] = (input.addOns ?? [])
     .map((a) => ({
@@ -706,6 +717,7 @@ export async function updateCakeOrderFull(
       branch,
       base_cake_option_id: baseOpt.id,
       base_price_idr: basePrice,
+      is_diy: isDiy,
       shape_option_id: shapeOpt.id,
       shape_custom: shapeOpt.is_custom_freeform
         ? input.shapeCustom?.trim() ?? null
