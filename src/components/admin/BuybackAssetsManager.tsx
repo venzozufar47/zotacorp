@@ -10,6 +10,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -50,6 +51,8 @@ interface AssetDraft {
   category: BuybackCategory;
   sortOrder: number;
   notes: string;
+  overrideValueIdr: string;
+  overrideSource: string;
 }
 
 /**
@@ -101,13 +104,18 @@ export function BuybackAssetsManager({
         category: a.category,
         sortOrder: a.sortOrder,
         notes: a.notes,
+        overrideValueIdr: a.overrideValueIdr,
+        overrideSource: a.overrideSource,
       })),
       { asOfDate, residualPct, lifeMonths }
     );
   }, [assets, asOfDate, residualPct, lifeMonths]);
 
   const lineByAssetId = useMemo(() => {
-    const map = new Map<string, { elapsedMonths: number; bookValueIdr: number }>();
+    const map = new Map<
+      string,
+      { elapsedMonths: number; bookValueIdr: number; isOverridden: boolean }
+    >();
     computed?.lines.forEach((l) => map.set(l.id, l));
     return map;
   }, [computed]);
@@ -117,6 +125,8 @@ export function BuybackAssetsManager({
     const qty = Number(draft.qty);
     const unitPriceIdr = Number(draft.unitPriceIdr);
     const totalIdr = Number(draft.totalIdr);
+    const overrideValueIdr =
+      draft.overrideValueIdr.trim() === "" ? null : Number(draft.overrideValueIdr);
     startTransition(async () => {
       const res = await upsertBuybackAsset({
         id: draft.id,
@@ -129,6 +139,8 @@ export function BuybackAssetsManager({
         category: draft.category,
         sortOrder: draft.sortOrder,
         notes: draft.notes,
+        overrideValueIdr,
+        overrideSource: draft.overrideSource,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -156,6 +168,8 @@ export function BuybackAssetsManager({
       category,
       sortOrder: maxInCategory + 1,
       notes: "",
+      overrideValueIdr: "",
+      overrideSource: "",
     };
   };
 
@@ -462,6 +476,54 @@ export function BuybackAssetsManager({
               </label>
             </div>
 
+            <div className="rounded-xl border border-dashed border-border p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <Sparkles size={15} className="mt-0.5 shrink-0 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">
+                    Override nilai manual (opsional)
+                  </p>
+                  <p className="text-[10.5px] text-muted-foreground">
+                    Isi kalau formula garis lurus tidak realistis utk aset ini
+                    (mis. kamera/printer yang harga pasar second-nya tidak
+                    ikut kurva depresiasi linear). Kalau diisi, nilai ini
+                    MENGGANTIKAN hasil formula di ringkasan &amp; laporan —
+                    aset lain tetap pakai formula seperti biasa.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Nilai override (Rp)
+                  </span>
+                  <input
+                    type="number"
+                    value={draft.overrideValueIdr}
+                    onChange={(e) =>
+                      setDraft({ ...draft, overrideValueIdr: e.target.value })
+                    }
+                    placeholder="Kosongkan utk pakai formula"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Sumber / justifikasi
+                  </span>
+                  <input
+                    type="text"
+                    value={draft.overrideSource}
+                    onChange={(e) =>
+                      setDraft({ ...draft, overrideSource: e.target.value })
+                    }
+                    placeholder="Riset pasar + link marketplace, atau alasan lain"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
+                  />
+                </label>
+              </div>
+            </div>
+
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
@@ -542,7 +604,21 @@ export function BuybackAssetsManager({
                             {line ? line.elapsedMonths : "—"}
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-primary">
-                            {line ? formatRp(line.bookValueIdr) : "—"}
+                            <span className="inline-flex items-center gap-1 justify-end">
+                              {line ? formatRp(line.bookValueIdr) : "—"}
+                              {line?.isOverridden && (
+                                <Sparkles
+                                  size={12}
+                                  className="text-primary shrink-0"
+                                  aria-label="Nilai override manual"
+                                />
+                              )}
+                            </span>
+                            {a.overrideSource && (
+                              <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                                {a.overrideSource}
+                              </p>
+                            )}
                           </td>
                           <td className="px-4 py-2.5 text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -560,6 +636,11 @@ export function BuybackAssetsManager({
                                     category: a.category,
                                     sortOrder: a.sortOrder,
                                     notes: a.notes ?? "",
+                                    overrideValueIdr:
+                                      a.overrideValueIdr == null
+                                        ? ""
+                                        : String(a.overrideValueIdr),
+                                    overrideSource: a.overrideSource ?? "",
                                   })
                                 }
                                 className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"

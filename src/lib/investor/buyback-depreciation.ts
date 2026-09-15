@@ -94,12 +94,27 @@ export interface BuybackAssetInput {
   category: BuybackCategory;
   sortOrder: number;
   notes: string | null;
+  /** Nilai manual yang MENGGANTIKAN hasil formula garis lurus untuk aset
+   *  ini saja — dipakai utk barang bervalue tinggi (kamera, printer) yang
+   *  harga pasar secondhand-nya tidak mengikuti kurva depresiasi linear
+   *  standar (mis. kamera body yang permintaannya tetap tinggi meski umur
+   *  ekonomis fiskalnya sudah lewat separuh). Null = pakai formula seperti
+   *  biasa. */
+  overrideValueIdr: number | null;
+  /** Catatan penilaian — wajib diisi kalau overrideValueIdr diisi (sumber
+   *  riset/justifikasi kenapa nilai formula diganti), TAPI juga boleh diisi
+   *  SENDIRIAN tanpa override (overrideValueIdr null) sebagai dokumentasi
+   *  kenapa formula tetap dipertahankan utk aset ini. Ditampilkan apa
+   *  adanya di laporan/PDF baik override atau bukan. */
+  overrideSource: string | null;
 }
 
 export interface BuybackLine extends BuybackAssetInput {
   elapsedMonths: number;
   lifeMonths: number;
   bookValueIdr: number;
+  /** true bila bookValueIdr berasal dari overrideValueIdr, bukan formula. */
+  isOverridden: boolean;
 }
 
 export interface CategorySubtotal {
@@ -126,16 +141,20 @@ export function computeBuybackReport(
   const lines: BuybackLine[] = assets.map((a) => {
     const life = policy.lifeMonths[a.category];
     const elapsed = elapsedMonths(a.purchaseDate, policy.asOfDate);
+    const isOverridden = a.overrideValueIdr != null;
     return {
       ...a,
       elapsedMonths: elapsed,
       lifeMonths: life,
-      bookValueIdr: bookValue({
-        totalIdr: a.totalIdr,
-        lifeMonths: life,
-        residualPct: policy.residualPct,
-        elapsed,
-      }),
+      isOverridden,
+      bookValueIdr: isOverridden
+        ? (a.overrideValueIdr as number)
+        : bookValue({
+            totalIdr: a.totalIdr,
+            lifeMonths: life,
+            residualPct: policy.residualPct,
+            elapsed,
+          }),
     };
   });
 

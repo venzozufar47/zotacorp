@@ -40,6 +40,8 @@ export interface BuybackAsset {
   category: BuybackCategory;
   sortOrder: number;
   notes: string | null;
+  overrideValueIdr: number | null;
+  overrideSource: string | null;
   updatedAt: string;
 }
 
@@ -54,6 +56,8 @@ interface AssetDbRow {
   category: BuybackCategory;
   sort_order: number;
   notes: string | null;
+  override_value_idr: number | null;
+  override_source: string | null;
   updated_at: string;
 }
 
@@ -73,6 +77,8 @@ function mapAssetRow(r: AssetDbRow): BuybackAsset {
     category: r.category,
     sortOrder: r.sort_order,
     notes: r.notes,
+    overrideValueIdr: r.override_value_idr == null ? null : Number(r.override_value_idr),
+    overrideSource: r.override_source,
     updatedAt: r.updated_at,
   };
 }
@@ -89,11 +95,13 @@ function toAssetInput(a: BuybackAsset): BuybackAssetInput {
     category: a.category,
     sortOrder: a.sortOrder,
     notes: a.notes,
+    overrideValueIdr: a.overrideValueIdr,
+    overrideSource: a.overrideSource,
   };
 }
 
 const ASSET_SELECT =
-  "id, name, qty, unit, unit_price_idr, total_idr, purchase_date, category, sort_order, notes, updated_at";
+  "id, name, qty, unit, unit_price_idr, total_idr, purchase_date, category, sort_order, notes, override_value_idr, override_source, updated_at";
 
 export interface BuybackReportSummary {
   id: string;
@@ -147,6 +155,7 @@ function mapReportRow(r: ReportDbRow): BuybackReportDetail {
     ...l,
     totalIdr: Number(l.totalIdr),
     bookValueIdr: Number(l.bookValueIdr),
+    overrideValueIdr: l.overrideValueIdr == null ? null : Number(l.overrideValueIdr),
   }));
   const investorShares = r.investor_shares
     ? r.investor_shares.map((s) => ({
@@ -215,6 +224,8 @@ export async function upsertBuybackAsset(input: {
   category: BuybackCategory;
   sortOrder?: number;
   notes?: string | null;
+  overrideValueIdr?: number | null;
+  overrideSource?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -232,6 +243,15 @@ export async function upsertBuybackAsset(input: {
     return { ok: false, error: "Tanggal beli tidak valid" };
   if (!["elektronik", "perabot", "aksesoris"].includes(input.category))
     return { ok: false, error: "Kategori tidak valid" };
+  const overrideValueIdr = input.overrideValueIdr ?? null;
+  if (overrideValueIdr != null && (!Number.isFinite(overrideValueIdr) || overrideValueIdr < 0))
+    return { ok: false, error: "Nilai override tidak valid" };
+  const overrideSource = input.overrideSource?.trim() || null;
+  // Override tanpa sumber/justifikasi bukan angka yang bisa diaudit — sama
+  // prinsipnya dengan kenapa nilai formula selalu bisa ditelusuri ke
+  // parameter kebijakannya.
+  if (overrideValueIdr != null && !overrideSource)
+    return { ok: false, error: "Sumber/justifikasi wajib diisi kalau ada nilai override" };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = adminClient() as any;
@@ -245,6 +265,8 @@ export async function upsertBuybackAsset(input: {
     category: input.category,
     sort_order: input.sortOrder ?? 0,
     notes: input.notes?.trim() || null,
+    override_value_idr: overrideValueIdr,
+    override_source: overrideSource,
     updated_by: gate.userId,
   };
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, Sparkles } from "lucide-react";
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -95,6 +95,14 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
         </p>
         {report.note && (
           <p className="mt-2 text-sm text-foreground">{report.note}</p>
+        )}
+        {report.lines.some((l) => l.overrideSource) && (
+          <p className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1">
+            <Sparkles size={11} className="text-primary shrink-0" />
+            Baris bertanda (✦) nilainya disesuaikan manual dari riset pasar;
+            baris lain tetap formula garis lurus — catatan penilaian ada di
+            bawah tiap nama aset.
+          </p>
         )}
       </div>
 
@@ -200,6 +208,11 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
                     <tr key={l.id} className="border-t border-border/60">
                       <td className="px-4 py-2.5 font-medium text-foreground">
                         {l.name}
+                        {l.overrideSource && (
+                          <p className="text-[10.5px] font-normal text-muted-foreground mt-0.5">
+                            {l.overrideSource}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-right text-muted-foreground">
                         {l.qty} {l.unit}
@@ -214,7 +227,16 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
                         {l.elapsedMonths}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-primary">
-                        {formatRp(l.bookValueIdr)}
+                        <span className="inline-flex items-center gap-1 justify-end">
+                          {formatRp(l.bookValueIdr)}
+                          {l.isOverridden && (
+                            <Sparkles
+                              size={12}
+                              className="text-primary shrink-0"
+                              aria-label="Nilai penyesuaian manual"
+                            />
+                          )}
+                        </span>
                       </td>
                     </tr>
                   ))}
