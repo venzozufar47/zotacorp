@@ -14,6 +14,7 @@ const C = {
   mutedFg: "#6e6e73",
   border: "#d2d2d7",
   accent: "#eef7f9",
+  amber: "#b45309",
 };
 
 const rp = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
@@ -78,7 +79,7 @@ const s = StyleSheet.create({
     borderBottomColor: C.border,
   },
   cell: { fontSize: 8.5 },
-  overrideNote: { fontSize: 6.5, color: C.mutedFg, marginTop: 1 },
+  overrideNote: { fontSize: 6.5, color: C.amber, marginTop: 1 },
   subtotalRow: {
     flexDirection: "row",
     paddingVertical: 4,
@@ -180,11 +181,11 @@ export function BuybackReportPdfDocument({
             {report.lifeMonths.aksesoris} bln
           </Text>
           {report.note && <Text style={s.policyLine}>Catatan: {report.note}</Text>}
-          {report.lines.some((l) => l.overrideSource) && (
+          {report.lines.some((l) => l.isOverridden) && (
             <Text style={s.policyLine}>
               * = nilai disesuaikan manual dari riset pasar (bukan formula
-              garis lurus). Baris lain tetap formula; catatan penilaian
-              tercantum di bawah nama aset masing-masing.
+              garis lurus) — sumber tercantum di bawah nama aset terkait.
+              Baris tanpa tanda tetap formula.
             </Text>
           )}
 
@@ -245,8 +246,13 @@ export function BuybackReportPdfDocument({
                 {rows.map((l) => (
                   <View style={s.dataRow} key={l.id} wrap={false}>
                     <View style={s.colName}>
-                      <Text style={s.cell}>{l.name}</Text>
-                      {l.overrideSource && (
+                      <Text style={s.cell}>
+                        {l.name}
+                        {l.isOverridden && (
+                          <Text style={{ color: C.amber, fontWeight: "bold" }}> *</Text>
+                        )}
+                      </Text>
+                      {l.isOverridden && l.overrideSource && (
                         <Text style={s.overrideNote}>{l.overrideSource}</Text>
                       )}
                     </View>
@@ -258,7 +264,6 @@ export function BuybackReportPdfDocument({
                     <Text style={[s.cell, s.colMonths]}>{l.elapsedMonths}</Text>
                     <Text style={[s.cell, s.colBv, { color: C.primary, fontWeight: "bold" }]}>
                       {rp(l.bookValueIdr)}
-                      {l.isOverridden ? " *" : ""}
                     </Text>
                   </View>
                 ))}

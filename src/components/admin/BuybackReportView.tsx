@@ -96,12 +96,12 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
         {report.note && (
           <p className="mt-2 text-sm text-foreground">{report.note}</p>
         )}
-        {report.lines.some((l) => l.overrideSource) && (
+        {report.lines.some((l) => l.isOverridden) && (
           <p className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1">
-            <Sparkles size={11} className="text-primary shrink-0" />
-            Baris bertanda (✦) nilainya disesuaikan manual dari riset pasar;
-            baris lain tetap formula garis lurus — catatan penilaian ada di
-            bawah tiap nama aset.
+            <Sparkles size={11} className="text-amber-600 shrink-0" />
+            Aset bertanda &ldquo;Disesuaikan manual&rdquo; nilainya diganti dari
+            riset pasar (bukan formula garis lurus) — sumbernya tercantum di
+            bawah nama aset. Aset lain tetap formula.
           </p>
         )}
       </div>
@@ -208,7 +208,12 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
                     <tr key={l.id} className="border-t border-border/60">
                       <td className="px-4 py-2.5 font-medium text-foreground">
                         {l.name}
-                        {l.overrideSource && (
+                        {l.isOverridden && (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 px-2 py-0.5 text-[10px] font-semibold align-middle">
+                            <Sparkles size={10} className="shrink-0" /> Disesuaikan manual
+                          </span>
+                        )}
+                        {l.isOverridden && l.overrideSource && (
                           <p className="text-[10.5px] font-normal text-muted-foreground mt-0.5">
                             {l.overrideSource}
                           </p>
@@ -227,16 +232,7 @@ export function BuybackReportView({ report }: { report: BuybackReportDetail }) {
                         {l.elapsedMonths}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-primary">
-                        <span className="inline-flex items-center gap-1 justify-end">
-                          {formatRp(l.bookValueIdr)}
-                          {l.isOverridden && (
-                            <Sparkles
-                              size={12}
-                              className="text-primary shrink-0"
-                              aria-label="Nilai penyesuaian manual"
-                            />
-                          )}
-                        </span>
+                        {formatRp(l.bookValueIdr)}
                       </td>
                     </tr>
                   ))}

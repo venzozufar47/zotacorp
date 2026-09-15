@@ -569,6 +569,9 @@ export function BuybackAssetsManager({
                       <th className="px-4 py-2 text-right font-semibold">Nilai awal</th>
                       <th className="px-4 py-2 text-left font-semibold">Tgl beli</th>
                       <th className="px-4 py-2 text-right font-semibold">Bulan jalan</th>
+                      <th className="px-4 py-2 text-left font-semibold">
+                        Dasar nilai
+                      </th>
                       <th className="px-4 py-2 text-right font-semibold">
                         Nilai terdepresiasi
                       </th>
@@ -603,22 +606,34 @@ export function BuybackAssetsManager({
                           <td className="px-4 py-2.5 text-right text-muted-foreground">
                             {line ? line.elapsedMonths : "—"}
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-primary">
-                            <span className="inline-flex items-center gap-1 justify-end">
-                              {line ? formatRp(line.bookValueIdr) : "—"}
-                              {line?.isOverridden && (
-                                <Sparkles
-                                  size={12}
-                                  className="text-primary shrink-0"
-                                  aria-label="Nilai override manual"
-                                />
-                              )}
-                            </span>
+                          <td className="px-4 py-2.5">
+                            {a.overrideValueIdr != null ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 px-2 py-0.5 text-[10px] font-semibold"
+                                title={a.overrideSource ?? undefined}
+                              >
+                                <Sparkles size={10} className="shrink-0" /> Override manual
+                              </span>
+                            ) : a.overrideSource ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium"
+                                title={a.overrideSource}
+                              >
+                                Formula (dicek)
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">
+                                Formula
+                              </span>
+                            )}
                             {a.overrideSource && (
-                              <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                              <p className="text-[10px] text-muted-foreground mt-1 max-w-[280px]">
                                 {a.overrideSource}
                               </p>
                             )}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-primary">
+                            {line ? formatRp(line.bookValueIdr) : "—"}
                           </td>
                           <td className="px-4 py-2.5 text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -670,7 +685,7 @@ export function BuybackAssetsManager({
                       <td className="px-4 py-2 text-right font-mono tabular-nums">
                         {subtotal ? formatRp(subtotal.totalCostIdr) : "—"}
                       </td>
-                      <td className="px-4 py-2" colSpan={2} />
+                      <td className="px-4 py-2" colSpan={3} />
                       <td className="px-4 py-2 text-right font-mono tabular-nums text-primary">
                         {subtotal ? formatRp(subtotal.totalBookValueIdr) : "—"}
                       </td>
