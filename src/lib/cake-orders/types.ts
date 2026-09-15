@@ -124,6 +124,11 @@ export interface CakeOrder {
 
   base_cake_option_id: string;
   base_price_idr: number;
+  /** Jenis pesanan DIY (checkbox) — independen dari base/bentuk/diameter
+   *  yang tetap bebas dipilih. Cuma mengubah SUMBER harga: bukan matriks
+   *  base×diameter, tapi `cake_diy_diameter_prices` (per diameter saja,
+   *  base cake tidak berpengaruh). Lihat resolveBasePrice di pricing.ts. */
+  is_diy: boolean;
   shape_option_id: string;
   shape_custom: string | null;
   /** Diameter / sisi terpanjang kue dalam cm. Null = belum diisi
@@ -295,6 +300,8 @@ export interface CreateCakeOrderInput {
   /** Cabang tempat order dibuat. Wajib — menentukan harga di matriks. */
   branch: CakeBranch;
   baseCakeOptionId: string;
+  /** Jenis pesanan DIY — lihat `CakeOrder.is_diy`. Default false. */
+  isDiy?: boolean;
   shapeOptionId: string;
   shapeCustom?: string | null;
   /** Diameter / ukuran sisi terpanjang kue (cm). Optional. */
@@ -412,6 +419,16 @@ export function branchPriceCol(
  *  untuk cabang tersebut. */
 export interface CakeBaseDiameterPrice {
   base_option_id: string;
+  diameter_id: string;
+  price_pare_idr: number | null;
+  price_semarang_idr: number | null;
+  updated_at: string;
+}
+
+/** Harga pesanan DIY per diameter — base cake TIDAK berpengaruh (beda
+ *  dari `CakeBaseDiameterPrice`, yang berdimensi base×diameter). Satu
+ *  baris per diameter; null = belum diset untuk cabang tersebut. */
+export interface CakeDiyDiameterPrice {
   diameter_id: string;
   price_pare_idr: number | null;
   price_semarang_idr: number | null;

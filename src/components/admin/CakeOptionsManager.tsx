@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Save, X, Trash } from "lucide-react";
 import { toast } from "sonner";
@@ -12,7 +12,9 @@ import {
   updateCakeDiameter,
   deleteCakeDiameter,
   setCakeBasePricesBulk,
+  setCakeDiyPricesBulk,
   type CakeBasePriceChange,
+  type CakeDiyPriceChange,
   type CakeOptionInput,
   type CakeDiameterInput,
 } from "@/lib/actions/cake-options.actions";
@@ -20,6 +22,7 @@ import type {
   CakeBaseDiameterPrice,
   CakeBranch,
   CakeDiameterOption,
+  CakeDiyDiameterPrice,
   CakeOption,
   CakeOptionKind,
 } from "@/lib/cake-orders/types";
@@ -29,6 +32,7 @@ interface Props {
   initialOptions: CakeOption[];
   initialDiameters: CakeDiameterOption[];
   initialPrices: CakeBaseDiameterPrice[];
+  initialDiyPrices: CakeDiyDiameterPrice[];
 }
 
 type TabKey = CakeOptionKind | "diameter";
@@ -46,6 +50,7 @@ export function CakeOptionsManager({
   initialOptions,
   initialDiameters,
   initialPrices,
+  initialDiyPrices,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -291,6 +296,14 @@ export function CakeOptionsManager({
           bases={initialOptions.filter((o) => o.kind === "base_cake")}
           diameters={initialDiameters.filter((d) => d.is_active)}
           prices={initialPrices}
+          pending={pending}
+        />
+      )}
+
+      {activeKind === "base_cake" && (
+        <DiyPriceRow
+          diameters={initialDiameters.filter((d) => d.is_active)}
+          diyPrices={initialDiyPrices}
           pending={pending}
         />
       )}
@@ -542,9 +555,14 @@ function PriceMatrix({
   const [dirty, setDirty] = useState<Map<string, number | null>>(new Map());
 
   // Reset dirty saat data server berubah (router.refresh sesudah save).
-  useEffect(() => {
+  // Adjust-during-render, bukan useEffect — reference `prices` berubah
+  // tiap render server baru, jadi ini setara "props changed" yang React
+  // docs anjurkan ditangani saat render, bukan efek terpisah.
+  const [prevPrices, setPrevPrices] = useState(prices);
+  if (prices !== prevPrices) {
+    setPrevPrices(prices);
     setDirty(new Map());
-  }, [prices]);
+  }
 
   if (bases.length === 0 || diameters.length === 0) {
     return (
@@ -886,6 +904,191 @@ function PriceMatrix({
                 </button>
               </td>
               <td colSpan={diameters.length + 1} aria-hidden="true" />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Harga DIY per diameter — TIDAK berdimensi base cake (beda dari
+ * `PriceMatrix`), karena base cake tidak mempengaruhi harga pesanan
+ * DIY (migrasi 147). Satu baris saja; kolom = diameter yang sama
+ * dengan matriks base×diameter di atasnya.
+ */
+function DiyPriceRow({
+  diameters,
+  diyPrices,
+  pending,
+}: {
+  diameters: CakeDiameterOption[];
+  diyPrices: CakeDiyDiameterPrice[];
+  pending: boolean;
+}) {
+  const router = useRouter();
+  const [saving, startSave] = useTransition();
+  const priceMap = useMemo(() => {
+    const m = new Map<string, { pare: number | null; semarang: number | null }>();
+    for (const p of diyPrices)
+      m.set(p.diameter_id, { pare: p.price_pare_idr, semarang: p.price_semarang_idr });
+    return m;
+  }, [diyPrices]);
+
+  /** Key: "{diameterId}:{branch}". */
+  const [dirty, setDirty] = useState<Map<string, number | null>>(new Map());
+
+  // Adjust-during-render (lihat catatan di PriceMatrix di atas).
+  const [prevDiyPrices, setPrevDiyPrices] = useState(diyPrices);
+  if (diyPrices !== prevDiyPrices) {
+    setPrevDiyPrices(diyPrices);
+    setDirty(new Map());
+  }
+
+  if (diameters.length === 0) return null;
+
+  const dirtyKey = (diaId: string, branch: CakeBranch) => `${diaId}:${branch}`;
+
+  const onCellChange = (
+    diaId: string,
+    branch: CakeBranch,
+    raw: string,
+    saved: number | null
+  ) => {
+    const trimmed = raw.trim();
+    const next =
+      trimmed === ""
+        ? null
+        : Math.max(0, parseInt(trimmed.replace(/\D/g, ""), 10) || 0);
+    const k = dirtyKey(diaId, branch);
+    setDirty((prev) => {
+      const m = new Map(prev);
+      if (next === saved) m.delete(k);
+      else m.set(k, next);
+      return m;
+    });
+  };
+
+  const dirtyCount = dirty.size;
+
+  const onSaveAll = () => {
+    if (dirtyCount === 0) return;
+    const changes: CakeDiyPriceChange[] = [];
+    for (const [k, v] of dirty) {
+      const [diaId, branch] = k.split(":") as [string, CakeBranch];
+      changes.push({ diameter_id: diaId, branch, price_idr: v });
+    }
+    startSave(async () => {
+      const res = await setCakeDiyPricesBulk(changes);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`Tersimpan · ${dirtyCount} perubahan`);
+      router.refresh();
+    });
+  };
+
+  const onDiscard = () => {
+    if (dirtyCount === 0) return;
+    setDirty(new Map());
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="text-sm font-semibold text-foreground">
+          Harga DIY · per diameter
+        </h3>
+        <div className="flex items-center gap-1.5">
+          {dirtyCount > 0 && (
+            <>
+              <span className="text-[11px] text-muted-foreground">
+                {dirtyCount} perubahan belum disimpan
+              </span>
+              <button
+                type="button"
+                onClick={onDiscard}
+                disabled={pending || saving}
+                className="rounded-lg border-2 border-foreground bg-card px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+              >
+                Batalkan
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onSaveAll}
+            disabled={pending || saving || dirtyCount === 0}
+            className="flex items-center gap-1.5 rounded-lg border-2 border-foreground bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save size={12} strokeWidth={2.5} />
+            {saving ? "Menyimpan…" : "Simpan"}
+            {dirtyCount > 0 && !saving && (
+              <span className="ml-0.5 inline-flex items-center justify-center rounded-full bg-foreground text-background px-1.5 min-w-[1.25rem] text-[10px] tabular-nums">
+                {dirtyCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Base cake TIDAK mempengaruhi harga DIY — kosongkan kalau diameter
+        itu belum punya harga DIY preset (form order akan minta admin isi
+        manual, sama seperti sel matriks base×diameter yang kosong).
+      </p>
+      <div className="rounded-2xl border-2 border-foreground bg-card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 border-b-2 border-foreground">
+            <tr>
+              <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-muted/50 z-10 whitespace-nowrap">
+                Diameter
+              </th>
+              {diameters.map((d) => (
+                <th key={d.id} className="text-left px-3 py-2 font-semibold tabular-nums whitespace-nowrap">
+                  {d.label ?? `${d.diameter_cm} cm`}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="px-3 py-2 font-medium text-foreground sticky left-0 bg-card whitespace-nowrap">
+                DIY
+              </td>
+              {diameters.map((d) => {
+                const cell = priceMap.get(d.id);
+                const savedPare = cell?.pare ?? null;
+                const savedSem = cell?.semarang ?? null;
+                const dirtyPareKey = dirtyKey(d.id, "pare");
+                const dirtySemKey = dirtyKey(d.id, "semarang");
+                const pareVal = dirty.has(dirtyPareKey)
+                  ? dirty.get(dirtyPareKey) ?? null
+                  : savedPare;
+                const semVal = dirty.has(dirtySemKey)
+                  ? dirty.get(dirtySemKey) ?? null
+                  : savedSem;
+                return (
+                  <td key={d.id} className="px-2 py-1">
+                    <DualPriceCell
+                      pareValue={pareVal}
+                      semarangValue={semVal}
+                      pareDirty={dirty.has(dirtyPareKey)}
+                      semarangDirty={dirty.has(dirtySemKey)}
+                      disabled={pending || saving}
+                      onChange={(branch, raw) =>
+                        onCellChange(
+                          d.id,
+                          branch,
+                          raw,
+                          branch === "pare" ? savedPare : savedSem
+                        )
+                      }
+                    />
+                  </td>
+                );
+              })}
             </tr>
           </tbody>
         </table>
