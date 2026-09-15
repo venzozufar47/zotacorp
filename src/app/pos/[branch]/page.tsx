@@ -9,6 +9,7 @@ import {
 import {
   findPosAccount,
   listActivePosProducts,
+  getPosDailyRevenueSummary,
 } from "@/lib/actions/pos.actions";
 import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
 import { getActiveDiscount } from "@/lib/actions/pos-discount.actions";
@@ -52,6 +53,7 @@ export default async function PosPage({
     profile,
     receiptConfig,
     serviceLevelRes,
+    dailyRevenueRes,
   ] = await Promise.all([
       listActivePosProducts(account.id),
       getCurrentRole(),
@@ -65,6 +67,10 @@ export default async function PosPage({
       // `.catch(() => null)` seperti listStockOnHand di atas: kegagalan
       // metrik TIDAK boleh mengosongkan layar kasir.
       getServiceLevelSummary(account.id, 30).catch(() => null),
+      // Live (bukan snapshot) tapi cuma "hari ini" satu statement —
+      // murah. Sama alasan .catch(): kartu target tidak boleh
+      // menjatuhkan seluruh layar kasir.
+      getPosDailyRevenueSummary(account.id).catch(() => null),
     ]);
   const receiptContent =
     receiptConfig ?? defaultReceiptContent(account.accountName);
@@ -87,6 +93,9 @@ export default async function PosPage({
       basePath={basePath}
       serviceLevel={
         serviceLevelRes && serviceLevelRes.ok ? serviceLevelRes.data : null
+      }
+      dailyRevenue={
+        dailyRevenueRes && dailyRevenueRes.ok ? dailyRevenueRes.data : null
       }
       cashierName={profile?.full_name ?? null}
       receiptContent={receiptContent}

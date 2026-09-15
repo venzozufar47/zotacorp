@@ -465,6 +465,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           custom_categories: Json | null
+          daily_revenue_target: number | null
           default_branch: string | null
           id: string
           is_active: boolean
@@ -491,6 +492,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           custom_categories?: Json | null
+          daily_revenue_target?: number | null
           default_branch?: string | null
           id?: string
           is_active?: boolean
@@ -517,6 +519,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           custom_categories?: Json | null
+          daily_revenue_target?: number | null
           default_branch?: string | null
           id?: string
           is_active?: boolean
