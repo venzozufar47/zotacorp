@@ -8,7 +8,7 @@ import { sendPushToUser } from "@/lib/push/web-push";
 import type { Json } from "@/lib/supabase/types";
 import {
   computeTotal,
-  validateMetricScores,
+  validateEvaluation360Submission,
   type Evaluation360MetricScores,
 } from "@/lib/evaluation-360/rubric";
 import type { ActionResult } from "./_gates";
@@ -48,7 +48,8 @@ interface ResponseRow {
   subject_id: string;
   metric_scores: Evaluation360MetricScores;
   total_score: number;
-  notes: string | null;
+  apresiasi: string;
+  notes: string;
   created_at: string;
   updated_at: string;
 }
@@ -206,7 +207,8 @@ export interface RoundResponseDTO {
   raterName: string;
   metricScores: Evaluation360MetricScores;
   totalScore: number;
-  notes: string | null;
+  apresiasi: string;
+  notes: string;
   submittedAt: string;
 }
 
@@ -280,6 +282,7 @@ export async function getRoundDetail(roundId: string): Promise<RoundDetailDTO | 
         "—",
       metricScores: r.metric_scores,
       totalScore: r.total_score,
+      apresiasi: r.apresiasi,
       notes: r.notes,
       submittedAt: r.created_at,
     });
@@ -478,6 +481,7 @@ export interface MyEvaluation360FormDTO {
   subjectName: string;
   existing: {
     scores: Evaluation360MetricScores;
+    apresiasi: string;
     notes: string;
   } | null;
 }
@@ -512,7 +516,7 @@ export async function getMy360EvaluationForm(
         .in("user_id", [user.id, subjectId]),
       admin
         .from("evaluation_360_responses")
-        .select("metric_scores, notes")
+        .select("metric_scores, apresiasi, notes")
         .eq("round_id", roundId)
         .eq("rater_id", user.id)
         .eq("subject_id", subjectId)
@@ -534,7 +538,8 @@ export async function getMy360EvaluationForm(
   const r = round as unknown as { title: string; status: "active" | "closed" };
   const ex = existing as unknown as {
     metric_scores: Evaluation360MetricScores;
-    notes: string | null;
+    apresiasi: string;
+    notes: string;
   } | null;
 
   return {
@@ -544,7 +549,9 @@ export async function getMy360EvaluationForm(
       (subjectProfile as ProfileLite | null)?.nickname ||
       (subjectProfile as ProfileLite | null)?.full_name ||
       "—",
-    existing: ex ? { scores: ex.metric_scores, notes: ex.notes ?? "" } : null,
+    existing: ex
+      ? { scores: ex.metric_scores, apresiasi: ex.apresiasi, notes: ex.notes }
+      : null,
   };
 }
 
@@ -552,7 +559,8 @@ export interface SubmitEvaluation360Input {
   roundId: string;
   subjectId: string;
   scores: Evaluation360MetricScores;
-  notes?: string;
+  apresiasi: string;
+  notes: string;
 }
 
 /** Submit (atau update sebelum round ditutup) satu form evaluasi peer. */
@@ -566,7 +574,11 @@ export async function submitEvaluation360(
     return { ok: false, error: "Tidak bisa menilai diri sendiri." };
   }
 
-  const invalid = validateMetricScores(input.scores);
+  const invalid = validateEvaluation360Submission({
+    scores: input.scores,
+    apresiasi: input.apresiasi,
+    notes: input.notes,
+  });
   if (invalid) return { ok: false, error: invalid };
 
   const admin = createAdminClient();
@@ -604,7 +616,8 @@ export async function submitEvaluation360(
         subject_id: input.subjectId,
         metric_scores: input.scores as unknown as Json,
         total_score: totalScore,
-        notes: input.notes?.trim() || null,
+        apresiasi: input.apresiasi.trim(),
+        notes: input.notes.trim(),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "round_id,rater_id,subject_id" }

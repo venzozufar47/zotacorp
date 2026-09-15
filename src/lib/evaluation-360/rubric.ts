@@ -2,6 +2,9 @@
  * Rubrik Evaluasi 360° — murni (tanpa I/O). 5 metrik tetap (tidak diedit
  * admin), diambil persis dari lembar evaluasi kertas yang dipakai
  * sebelumnya. Skor 1–10 + alasan wajib per metrik; total = jumlah 5 skor.
+ * Form juga wajib berisi "apresiasi" (hal positif umum, ditulis di awal
+ * form) dan "catatan tambahan" — semua field wajib, form tidak boleh
+ * cuma berisi skor/kritik.
  */
 
 export type Evaluation360MetricKey =
@@ -102,6 +105,27 @@ export function validateMetricScores(
     if (!entry.reason || !entry.reason.trim()) {
       return `Alasan & contoh kasus untuk "${metric.title}" wajib diisi.`;
     }
+  }
+  return null;
+}
+
+/**
+ * Validasi seluruh form (skor 5 metrik + apresiasi + catatan tambahan) —
+ * semua field wajib terisi, bukan cuma skor/kritik. `apresiasi` ditulis
+ * di awal form (sebelum skor) supaya rater membuka dengan hal positif.
+ */
+export function validateEvaluation360Submission(input: {
+  scores: Evaluation360MetricScores;
+  apresiasi: string;
+  notes: string;
+}): string | null {
+  if (!input.apresiasi || !input.apresiasi.trim()) {
+    return "Apresiasi wajib diisi.";
+  }
+  const scoresInvalid = validateMetricScores(input.scores);
+  if (scoresInvalid) return scoresInvalid;
+  if (!input.notes || !input.notes.trim()) {
+    return "Catatan tambahan wajib diisi.";
   }
   return null;
 }

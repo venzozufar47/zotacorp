@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   EVALUATION_360_METRICS,
   EVALUATION_360_MAX_TOTAL,
-  validateMetricScores,
+  validateEvaluation360Submission,
   computeTotal,
   type Evaluation360MetricKey,
   type Evaluation360MetricScores,
@@ -18,10 +18,11 @@ import { submitEvaluation360 } from "@/lib/actions/evaluation-360.actions";
 import { cn } from "@/lib/utils";
 
 /**
- * Form evaluasi satu peer — 5 blok skor+alasan (bukan wizard multi-step
- * seperti DISC, cukup satu halaman scroll). Draft autosave ke
- * localStorage (debounced, karena ada text field), key per (round,
- * subject) supaya tidak hilang saat refresh/pindah tab.
+ * Form evaluasi satu peer — apresiasi umum di awal, lalu 5 blok
+ * skor+alasan, lalu catatan tambahan (bukan wizard multi-step seperti
+ * DISC, cukup satu halaman scroll). Semua field wajib diisi. Draft
+ * autosave ke localStorage (debounced, karena ada text field), key per
+ * (round, subject) supaya tidak hilang saat refresh/pindah tab.
  */
 
 function draftKey(roundId: string, subjectId: string) {
@@ -48,13 +49,18 @@ export function Evaluation360Form({
   roundTitle: string;
   roundStatus: "active" | "closed";
   subjectName: string;
-  existing: { scores: Evaluation360MetricScores; notes: string } | null;
+  existing: {
+    scores: Evaluation360MetricScores;
+    apresiasi: string;
+    notes: string;
+  } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [scores, setScores] = useState<Evaluation360MetricScores>(
     existing?.scores ?? emptyScores()
   );
+  const [apresiasi, setApresiasi] = useState(existing?.apresiasi ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const loadedDraft = useRef(false);
 
@@ -67,6 +73,7 @@ export function Evaluation360Form({
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (parsed?.scores) setScores(parsed.scores);
+      if (typeof parsed?.apresiasi === "string") setApresiasi(parsed.apresiasi);
       if (typeof parsed?.notes === "string") setNotes(parsed.notes);
     } catch {
       // draft rusak/tidak ada — abaikan.
@@ -78,14 +85,14 @@ export function Evaluation360Form({
       try {
         window.localStorage.setItem(
           draftKey(roundId, subjectId),
-          JSON.stringify({ scores, notes })
+          JSON.stringify({ scores, apresiasi, notes })
         );
       } catch {
         // storage penuh/di-disable — draft hanya bertahan di state.
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [roundId, subjectId, scores, notes]);
+  }, [roundId, subjectId, scores, apresiasi, notes]);
 
   function setMetric(key: Evaluation360MetricKey, patch: Partial<{ score: number; reason: string }>) {
     setScores((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
@@ -95,13 +102,19 @@ export function Evaluation360Form({
   const total = computeTotal(scores);
 
   function submit() {
-    const invalid = validateMetricScores(scores);
+    const invalid = validateEvaluation360Submission({ scores, apresiasi, notes });
     if (invalid) {
       toast.error(invalid);
       return;
     }
     startTransition(async () => {
-      const res = await submitEvaluation360({ roundId, subjectId, scores, notes });
+      const res = await submitEvaluation360({
+        roundId,
+        subjectId,
+        scores,
+        apresiasi,
+        notes,
+      });
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -147,6 +160,26 @@ export function Evaluation360Form({
         tulis kejadian nyata. Jujur dan objektif; ini untuk perbaikan, bukan
         untuk menjatuhkan.
       </p>
+
+      <div className="rounded-2xl border-2 border-foreground bg-warning/10 p-4 shadow-hard-sm space-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <Sparkles size={15} className="text-warning" />
+          <span className="text-xs font-semibold text-muted-foreground">
+            Apresiasi untuk {subjectName}
+          </span>
+        </div>
+        <p className="text-[11.5px] text-muted-foreground">
+          Sebelum masuk ke penilaian, tulis dulu hal positif/pencapaian{" "}
+          {subjectName} yang kamu hargai — bukan cuma catatan evaluasi.
+        </p>
+        <Textarea
+          value={apresiasi}
+          disabled={closed}
+          onChange={(e) => setApresiasi(e.target.value)}
+          placeholder="Apa yang kamu apresiasi dari kerja/sikap orang ini?"
+          rows={3}
+        />
+      </div>
 
       <div className="space-y-4">
         {EVALUATION_360_METRICS.map((metric) => (
@@ -207,12 +240,13 @@ export function Evaluation360Form({
 
       <div className="rounded-2xl border border-border bg-card p-4 space-y-1.5">
         <span className="text-xs font-semibold text-muted-foreground">
-          Catatan tambahan (opsional)
+          Catatan tambahan
         </span>
         <Textarea
           value={notes}
           disabled={closed}
           onChange={(e) => setNotes(e.target.value)}
+          placeholder="Hal lain yang ingin disampaikan…"
           rows={3}
         />
       </div>

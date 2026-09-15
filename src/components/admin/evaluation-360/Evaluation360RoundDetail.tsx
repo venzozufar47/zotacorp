@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Lock, Loader2, Save, ChevronDown, ChevronUp } from "lucide-react";
+import { Lock, Loader2, Save, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -107,6 +107,12 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
                       <button
                         type="button"
                         onClick={() => toggle(r.raterId)}
+                        aria-label={
+                          expanded.has(r.raterId)
+                            ? `Sembunyikan detail evaluasi dari ${r.raterName}`
+                            : `Lihat detail evaluasi dari ${r.raterName}`
+                        }
+                        aria-expanded={expanded.has(r.raterId)}
                         className="text-muted-foreground hover:text-foreground"
                       >
                         {expanded.has(r.raterId) ? (
@@ -121,6 +127,14 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
                     <tr className="border-b border-border/60 bg-muted/10">
                       <td colSpan={EVALUATION_360_METRICS.length + 3} className="px-3 py-3">
                         <div className="space-y-2.5">
+                          <div>
+                            <p className="text-xs font-semibold flex items-center gap-1">
+                              <Sparkles size={12} className="text-warning" /> Apresiasi
+                            </p>
+                            <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                              {r.apresiasi || "—"}
+                            </p>
+                          </div>
                           {EVALUATION_360_METRICS.map((m) => (
                             <div key={m.key}>
                               <p className="text-xs font-semibold">
@@ -131,14 +145,12 @@ function SubjectRekap({ roundId, subjectName, subjectId, detail }: {
                               </p>
                             </div>
                           ))}
-                          {r.notes && (
-                            <div>
-                              <p className="text-xs font-semibold">Catatan tambahan</p>
-                              <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-                                {r.notes}
-                              </p>
-                            </div>
-                          )}
+                          <div>
+                            <p className="text-xs font-semibold">Catatan tambahan</p>
+                            <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                              {r.notes || "—"}
+                            </p>
+                          </div>
                         </div>
                       </td>
                     </tr>

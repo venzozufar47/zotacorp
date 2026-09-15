@@ -3357,10 +3357,11 @@ export type Database = {
       }
       evaluation_360_responses: {
         Row: {
+          apresiasi: string
           created_at: string
           id: string
           metric_scores: Json
-          notes: string | null
+          notes: string
           rater_id: string
           round_id: string
           subject_id: string
@@ -3368,10 +3369,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          apresiasi: string
           created_at?: string
           id?: string
           metric_scores: Json
-          notes?: string | null
+          notes: string
           rater_id: string
           round_id: string
           subject_id: string
@@ -3379,10 +3381,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          apresiasi?: string
           created_at?: string
           id?: string
           metric_scores?: Json
-          notes?: string | null
+          notes?: string
           rater_id?: string
           round_id?: string
           subject_id?: string
@@ -7887,6 +7890,10 @@ export type Database = {
         }[]
       }
       count_my_needs_assignments: { Args: never; Returns: number }
+      evaluation_360_can_rate: {
+        Args: { p_rater_id: string; p_round_id: string; p_subject_id: string }
+        Returns: boolean
+      }
       get_intercom_presence: {
         Args: { room_ids: string[] }
         Returns: {
