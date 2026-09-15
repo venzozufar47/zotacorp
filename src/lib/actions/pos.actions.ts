@@ -1717,20 +1717,41 @@ export async function getPosDailyRevenueSummary(
 
   if (!stmt) return { ok: true, data: empty() };
 
-  const { data: rows, error } = await supabase
-    .from("cashflow_transactions")
-    .select("category, credit")
-    .eq("statement_id", stmt.id)
-    .eq("transaction_date", today);
-  if (error) return { ok: false, error: error.message };
+  // Paginate — konsisten dengan getPosShiftSummary/pnl.ts: PostgREST
+  // meng-cap 1000 baris per default. Satu hari di satu outlet nyaris
+  // tidak pernah sebanyak itu, tapi ORDER BY + .range() murah dan
+  // menghindari kejutan diam-diam kalau suatu hari ramai sekali.
+  type Row = { category: string | null; credit: number | string; debit: number | string };
+  const rows: Row[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("cashflow_transactions")
+      .select("category, credit, debit")
+      .eq("statement_id", stmt.id)
+      .eq("transaction_date", today)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) return { ok: false, error: error.message };
+    const page = data ?? [];
+    rows.push(...(page as Row[]));
+    if (page.length < PAGE) break;
+  }
 
+  // Net kredit-debit PER KATEGORI, bukan cuma jumlah kredit — baris
+  // koreksi/refund yang ditulis di kategori Sales/QRIS yang sama (bukan
+  // "Sales Refund" terpisah) harus mengurangi, sama seperti netting
+  // revenue di pnl.ts. Tanpa ini, koreksi turun tidak pernah terlihat di
+  // kartu dan omset yang ditampilkan ke kasir bisa lebih tinggi dari
+  // kenyataan.
   let salesToday = 0;
   let qrisToday = 0;
-  for (const r of rows ?? []) {
+  for (const r of rows) {
     const credit = Number(r.credit) || 0;
-    if (credit <= 0) continue;
-    if (r.category === POS_QRIS_CATEGORY) qrisToday += credit;
-    else if (r.category === POS_CASH_CATEGORY) salesToday += credit;
+    const debit = Number(r.debit) || 0;
+    const net = credit - debit;
+    if (r.category === POS_QRIS_CATEGORY) qrisToday += net;
+    else if (r.category === POS_CASH_CATEGORY) salesToday += net;
   }
   const totalToday = salesToday + qrisToday;
 
