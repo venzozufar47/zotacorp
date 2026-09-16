@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -53,6 +53,41 @@ interface AssetDraft {
   notes: string;
   overrideValueIdr: string;
   overrideSource: string;
+}
+
+/**
+ * Textarea yang tingginya mengikuti panjang teks (tumbuh otomatis) supaya
+ * justifikasi override yang panjang bisa dibaca utuh tanpa scroll internal
+ * saat mode edit — resize manual dimatikan krn tinggi sudah otomatis pas.
+ */
+function AutoGrowTextarea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={1}
+      className="mt-1 w-full min-h-10 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground resize-none overflow-hidden"
+    />
+  );
 }
 
 /**
@@ -207,8 +242,8 @@ function AssetDraftForm({
             </p>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block">
+        <div className="grid gap-4">
+          <label className="block sm:max-w-xs">
             <span className="text-xs font-semibold text-muted-foreground">
               Nilai override (Rp)
             </span>
@@ -226,14 +261,10 @@ function AssetDraftForm({
             <span className="text-xs font-semibold text-muted-foreground">
               Sumber / justifikasi
             </span>
-            <input
-              type="text"
+            <AutoGrowTextarea
               value={draft.overrideSource}
-              onChange={(e) =>
-                setDraft({ ...draft, overrideSource: e.target.value })
-              }
+              onChange={(v) => setDraft({ ...draft, overrideSource: v })}
               placeholder="Riset pasar + link marketplace, atau alasan lain"
-              className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground"
             />
           </label>
         </div>
