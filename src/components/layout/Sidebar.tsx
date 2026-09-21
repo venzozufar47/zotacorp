@@ -13,6 +13,7 @@ export function Sidebar({
   hasCash = false,
   hasCakeOrders = false,
   hasCakeProduction = false,
+  hasCakeFinance = false,
   hasYeoboBooth = false,
   hasTickets = false,
   hasSimCards = false,
@@ -28,6 +29,8 @@ export function Sidebar({
   hasCash?: boolean;
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
+  /** Tab "Finance Cake" untuk admin Haengbocake (cake_finance_admins). */
+  hasCakeFinance?: boolean;
   /** Show the "Yeobo Booth" tab for users in the yeobo_booth_admins allowlist. */
   hasYeoboBooth?: boolean;
   /** Show "Tiket" tab for Yeobo Space employees / Kepala Studio. */
@@ -85,6 +88,16 @@ export function Sidebar({
             icon: Factory,
             label: "Produksi",
             color: "bg-tertiary",
+          },
+        ]
+      : []),
+    ...(hasCakeFinance
+      ? [
+          {
+            href: "/admin/cake-orders",
+            icon: Cake,
+            label: "Finance Cake",
+            color: "bg-pop-emerald",
           },
         ]
       : []),

@@ -11,6 +11,7 @@ import {
   listCakeBasePrices,
 } from "@/lib/actions/cake-options.actions";
 import { getCakeFinanceRecapMonth } from "@/lib/actions/cake-finance.actions";
+import { isCakeFinanceAdmin } from "@/lib/cake-orders/access";
 import {
   listMySlips,
   getSlipForProduction,
@@ -48,11 +49,15 @@ export default async function AdminCakeOrdersPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const role = await getCurrentRole();
-  if (role !== "admin") redirect("/dashboard");
+  const isAdmin = role === "admin";
+  // Admin Haengbocake (daftar cake_finance_admins) hanya boleh tab
+  // Finance — tab lain, Opsi, dan Akses tetap khusus admin global.
+  if (!isAdmin && !(await isCakeFinanceAdmin())) redirect("/dashboard");
 
   const sp = await searchParams;
-  const tab: CakeOrdersTab =
-    sp.tab === "finance"
+  const tab: CakeOrdersTab = !isAdmin
+    ? "finance"
+    : sp.tab === "finance"
       ? "finance"
       : sp.tab === "archive"
         ? "archive"
@@ -70,20 +75,24 @@ export default async function AdminCakeOrdersPage({
       action={
         <div className="flex flex-wrap gap-2">
           <RefreshButton />
-          <Link
-            href="/admin/cake-orders/options"
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-          >
-            <Settings size={14} strokeWidth={2.5} />
-            Opsi
-          </Link>
-          <Link
-            href="/admin/cake-orders/access"
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-          >
-            <UsersRound size={14} strokeWidth={2.5} />
-            Akses
-          </Link>
+          {isAdmin && (
+            <>
+              <Link
+                href="/admin/cake-orders/options"
+                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                <Settings size={14} strokeWidth={2.5} />
+                Opsi
+              </Link>
+              <Link
+                href="/admin/cake-orders/access"
+                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-foreground bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                <UsersRound size={14} strokeWidth={2.5} />
+                Akses
+              </Link>
+            </>
+          )}
         </div>
       }
     />
@@ -138,7 +147,7 @@ export default async function AdminCakeOrdersPage({
     return (
       <div className="space-y-5 animate-fade-up">
         {header}
-        <CakeOrdersTabsNav current="finance" />
+        {isAdmin && <CakeOrdersTabsNav current="finance" />}
         <CakeFinanceView
           month={month}
           year={year}

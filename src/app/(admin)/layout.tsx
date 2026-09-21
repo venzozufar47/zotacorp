@@ -10,6 +10,7 @@ import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.act
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import { getCleaningMisses } from "@/lib/actions/admin-home.actions";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
+import { isCakeFinanceAdmin } from "@/lib/cake-orders/access";
 
 export default async function AdminLayout({
   children,
@@ -50,21 +51,31 @@ export default async function AdminLayout({
       );
     }
 
-    const [assignedIds, hasCash] = await Promise.all([
+    const [assignedIds, hasCash, hasCakeFinance] = await Promise.all([
       listMyAssignedBankAccountIds(),
       hasAssignedCashDashboard(),
+      isCakeFinanceAdmin(),
     ]);
     const hasFinance = assignedIds.length > 0;
     return (
       <div className="flex min-h-screen bg-background">
         <RouteProgressBar />
-        <Sidebar className="hidden md:flex" hasFinance={hasFinance} hasCash={hasCash} />
+        <Sidebar
+          className="hidden md:flex"
+          hasFinance={hasFinance}
+          hasCash={hasCash}
+          hasCakeFinance={hasCakeFinance}
+        />
         <main className="flex-1 min-w-0">
           <div className="max-w-[1700px] mx-auto px-4 py-6 pb-24 md:px-6 md:pb-8">
             {children}
           </div>
         </main>
-        <BottomNav hasFinance={hasFinance} hasCash={hasCash} />
+        <BottomNav
+        hasFinance={hasFinance}
+        hasCash={hasCash}
+        hasCakeFinance={hasCakeFinance}
+      />
       </div>
     );
   }

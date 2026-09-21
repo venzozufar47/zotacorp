@@ -14,6 +14,23 @@ import type { CakeBranch } from "@/lib/cake-orders/types";
  * produksi-nya. Admin tetap akses semua via role='admin'; field ini
  * khusus untuk role 'production' yang sekarang branch-spesifik.
  */
+/**
+ * Apakah caller ada di daftar `cake_finance_admins` (admin Haengbocake
+ * khusus tab Finance). Admin global TIDAK dicek di sini — pemanggil
+ * yang menggabungkannya dengan role check.
+ */
+export const isCakeFinanceAdmin = cache(async (): Promise<boolean> => {
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cake_finance_admins" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return Boolean(data);
+});
+
 export const getMyCakeAccess = cache(
   async (): Promise<{
     hasOrders: boolean;

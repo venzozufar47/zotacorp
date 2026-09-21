@@ -1,7 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/actions/_gates";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import { requireAdminOrCakeFinanceAdmin } from "@/lib/actions/_gates";
 import {
   CAKE_BRANCHES,
   type CakeBranch,
@@ -109,10 +109,12 @@ export async function getCakeFinanceRecapMonth(
   month: number,
   year: number
 ): Promise<CakeFinanceRecap> {
-  const gate = await requireAdmin();
+  const gate = await requireAdminOrCakeFinanceAdmin();
   if (!gate.ok) return emptyRecap(month, year);
 
-  const supabase = await createClient();
+  // Service-role setelah lolos gate: admin Haengbocake (non-admin global)
+  // tidak punya RLS read ke cake_orders. Query di bawah read-only.
+  const supabase = createAdminClient();
   const TZ = "Asia/Jakarta";
   const nextY = month === 12 ? year + 1 : year;
   const nextM = month === 12 ? 1 : month + 1;

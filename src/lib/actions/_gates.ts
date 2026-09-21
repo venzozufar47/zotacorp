@@ -26,6 +26,27 @@ export async function requireAdmin(): Promise<
 }
 
 /**
+ * Admin ATAU admin Haengbocake (daftar `cake_finance_admins`). Hanya
+ * dipakai untuk rekap Finance cake — jangan dipakai untuk gate lain.
+ */
+export async function requireAdminOrCakeFinanceAdmin(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cake_finance_admins" as never)
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/**
  * Self-or-admin gate for investor-scoped READS. Admin passes for any
  * `userId`; otherwise the caller may only act on their OWN id.
  *

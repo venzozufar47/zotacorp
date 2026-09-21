@@ -6,6 +6,8 @@ import { listCakeAccessAssignments } from "@/lib/actions/cake-access.actions";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { CakeAccessManager } from "@/components/admin/CakeAccessManager";
+import { CakeFinanceAdminsManager } from "@/components/admin/CakeFinanceAdminsManager";
+import { listCakeFinanceAdmins } from "@/lib/actions/cake-finance-admins.actions";
 
 /**
  * Admin assigns 'orders' / 'production' scopes to specific employees.
@@ -20,7 +22,7 @@ export default async function AdminCakeAccessPage() {
   // the lighter `getAllEmployees()` only returns id+name+email. Run
   // in parallel with the assignments fetch.
   const supabase = await createClient();
-  const [{ data: profilesRaw }, accessRes] = await Promise.all([
+  const [{ data: profilesRaw }, accessRes, financeAdmins] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name, email, avatar_url, avatar_seed")
@@ -28,6 +30,7 @@ export default async function AdminCakeAccessPage() {
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
     listCakeAccessAssignments(),
+    listCakeFinanceAdmins(),
   ]);
   const employees = (profilesRaw ?? []).map((e) => ({
     id: e.id,
@@ -46,6 +49,10 @@ export default async function AdminCakeAccessPage() {
       <CakeAccessManager
         initialAssignments={accessRes.ok ? accessRes.data ?? [] : []}
         employees={employees}
+      />
+      <CakeFinanceAdminsManager
+        admins={financeAdmins}
+        candidates={employees}
       />
     </div>
   );

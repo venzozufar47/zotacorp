@@ -185,7 +185,8 @@ export async function updateSession(request: NextRequest) {
       // Non-admin on admin route → send to employee home, EXCEPT
       // finance pages (cash rekening assignees) ATAU yeobo-booth pages
       // (admin Yeobo Booth via `yeobo_booth_admins` membership; lihat
-      // migration 063). Page-level gate enforces — middleware hanya
+      // migration 063) ATAU halaman Finance cake (migration 150).
+      // Page-level gate enforces — middleware hanya
       // let-through agar pages bisa di-load.
       if (onAdminRoute && !isAdmin) {
         const isFinanceAssigneePath =
@@ -193,7 +194,12 @@ export async function updateSession(request: NextRequest) {
           pathname === "/admin/finance/" ||
           pathname.startsWith("/admin/finance/rekening/");
         const isYeoboBoothPath = pathname.startsWith("/admin/yeobo-booth");
-        if (!isFinanceAssigneePath && !isYeoboBoothPath) {
+        // Admin Haengbocake (cake_finance_admins) — hanya halaman utama
+        // /admin/cake-orders (tab Finance); sub-halaman (options, access,
+        // detail order) tetap terblokir di sini DAN di page-gate masing².
+        const isCakeFinancePath =
+          pathname === "/admin/cake-orders" || pathname === "/admin/cake-orders/";
+        if (!isFinanceAssigneePath && !isYeoboBoothPath && !isCakeFinancePath) {
           const url = request.nextUrl.clone();
           url.pathname = home;
           return NextResponse.redirect(url);

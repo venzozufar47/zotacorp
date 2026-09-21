@@ -4,7 +4,7 @@ import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
 import { listMyAssignedBankAccountIds, hasAssignedCashDashboard } from "@/lib/cashflow/access";
 import { countMyAssignments } from "@/lib/actions/cashflow-assignments.actions";
 import { getCurrentProfile } from "@/lib/supabase/cached";
-import { getMyCakeAccess } from "@/lib/cake-orders/access";
+import { getMyCakeAccess, isCakeFinanceAdmin } from "@/lib/cake-orders/access";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { canFileTickets } from "@/lib/tickets/access";
 import { isSimPic } from "@/lib/sim-cards/access";
@@ -31,6 +31,7 @@ export default async function EmployeeLayout({
     hasSimCards,
     hasProcurement,
     has360Eval,
+    hasCakeFinance,
   ] = await Promise.all([
     listMyAssignedBankAccountIds(),
     getCurrentProfile(),
@@ -42,6 +43,7 @@ export default async function EmployeeLayout({
     isSimPic(),
     isProcurementStaff(),
     hasPending360Evaluation(),
+    isCakeFinanceAdmin(),
   ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -62,6 +64,7 @@ export default async function EmployeeLayout({
         hasCash={hasCash}
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
+        hasCakeFinance={hasCakeFinance}
         hasYeoboBooth={hasYeoboBooth}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
@@ -80,6 +83,7 @@ export default async function EmployeeLayout({
         hasCash={hasCash}
         hasCakeOrders={cakeAccess.hasOrders}
         hasCakeProduction={cakeAccess.hasProduction}
+        hasCakeFinance={hasCakeFinance}
         hasYeoboBooth={hasYeoboBooth}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}

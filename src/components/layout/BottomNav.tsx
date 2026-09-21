@@ -12,6 +12,7 @@ export function BottomNav({
   hasCash = false,
   hasCakeOrders = false,
   hasCakeProduction = false,
+  hasCakeFinance = false,
   hasYeoboBooth = false,
   hasTickets = false,
   hasSimCards = false,
@@ -24,6 +25,7 @@ export function BottomNav({
   hasCash?: boolean;
   hasCakeOrders?: boolean;
   hasCakeProduction?: boolean;
+  hasCakeFinance?: boolean;
   hasYeoboBooth?: boolean;
   hasTickets?: boolean;
   hasSimCards?: boolean;
@@ -78,6 +80,16 @@ export function BottomNav({
             icon: Factory,
             label: "Produksi",
             color: "bg-tertiary",
+          },
+        ]
+      : []),
+    ...(hasCakeFinance
+      ? [
+          {
+            href: "/admin/cake-orders",
+            icon: Cake,
+            label: "Fin. Cake",
+            color: "bg-pop-emerald",
           },
         ]
       : []),
