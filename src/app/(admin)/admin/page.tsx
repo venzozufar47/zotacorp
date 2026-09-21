@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getAdminHomeToday,
   getCleaningMisses,
+  getAdminOpsMetrics,
 } from "@/lib/actions/admin-home.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
@@ -37,6 +38,7 @@ export default async function AdminHomeRoute() {
     radar,
     celebrationsFeed,
     cleaningExceptions,
+    opsMetrics,
   ] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
@@ -49,6 +51,7 @@ export default async function AdminHomeRoute() {
       mySelfCelebration: null,
     })),
     getCleaningMisses(),
+    getAdminOpsMetrics(),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -88,6 +91,7 @@ export default async function AdminHomeRoute() {
         upcomingCelebrants={radar}
         userDirectory={userDirectory}
         cleaningExceptions={cleaningExceptions}
+        opsMetrics={opsMetrics}
       />
       <div className="mt-5">
         <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />

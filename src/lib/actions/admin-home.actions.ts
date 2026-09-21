@@ -10,6 +10,68 @@ import {
 import { zonedDateString } from "@/lib/utils/celebrations";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
 import { getCleaningMonitor } from "./cleaning.actions";
+import {
+  getServiceLevelSummary,
+  getExpiredWasteSummary,
+} from "./pos-service-level.actions";
+import {
+  getStudioHeadRecentResolutionKpi,
+  type StudioHeadRecentResolutionKpi,
+} from "./tickets.actions";
+
+/** Metrik operasional ringkas untuk Home admin (30 hari terakhir). */
+export interface AdminOpsMetrics {
+  outlets: Array<{
+    id: string;
+    label: string;
+    /** Pecahan 0-1; null = belum ada data. */
+    serviceLevel: number | null;
+    serviceLevelTarget: number;
+    /** Pecahan 0-1 dari produksi; null = belum ada produksi. */
+    expiredRate: number | null;
+  }>;
+  ticketKpi: StudioHeadRecentResolutionKpi | null;
+}
+
+/**
+ * Service Level + ditarik expired per outlet POS, dan KPI kecepatan tiket
+ * Kepala Studio. Semuanya memakai action yang sudah ada (gate admin lolos),
+ * jadi angkanya identik dengan halaman Service Level & dashboard Kepala Studio.
+ * Gagal satu → sel itu "—", tidak menjatuhkan seluruh Home.
+ */
+export async function getAdminOpsMetrics(): Promise<AdminOpsMetrics> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { outlets: [], ticketKpi: null };
+
+  const supabase = await createClient();
+  const { data: accounts } = await supabase
+    .from("bank_accounts")
+    .select("id, account_name, default_branch, service_level_target")
+    .eq("pos_enabled", true)
+    .eq("is_active", true)
+    .eq("service_level_enabled", true)
+    .order("default_branch", { ascending: true });
+
+  const [outlets, ticketKpi] = await Promise.all([
+    Promise.all(
+      (accounts ?? []).map(async (a) => {
+        const [sl, waste] = await Promise.all([
+          getServiceLevelSummary(a.id, 30).catch(() => null),
+          getExpiredWasteSummary(a.id, 30).catch(() => null),
+        ]);
+        return {
+          id: a.id,
+          label: a.default_branch ?? a.account_name,
+          serviceLevel: sl && sl.ok ? (sl.data?.percent ?? null) : null,
+          serviceLevelTarget: a.service_level_target,
+          expiredRate: waste && waste.ok ? (waste.data?.expiredRate ?? null) : null,
+        };
+      })
+    ),
+    getStudioHeadRecentResolutionKpi().catch(() => null),
+  ]);
+  return { outlets, ticketKpi };
+}
 
 /**
  * Live snapshot for the admin Home dashboard. All numbers are scoped

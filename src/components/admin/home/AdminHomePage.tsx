@@ -20,6 +20,8 @@ import type {
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
+import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
+import { AdminOpsCard } from "./AdminOpsCard";
 
 /** Full rupiah, e.g. "Rp 58.470.000". */
 const formatRp = (n: number) =>
@@ -49,6 +51,7 @@ export function AdminHomePage({
   upcomingCelebrants,
   userDirectory,
   cleaningExceptions,
+  opsMetrics,
 }: {
   greetingName: string;
   today: AdminHomeToday;
@@ -62,6 +65,7 @@ export function AdminHomePage({
   >;
   /** Karyawan yang sudah sign-in tapi belum menyelesaikan kebersihan. */
   cleaningExceptions: CleaningExceptionRow[];
+  opsMetrics: AdminOpsMetrics;
 }) {
   const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
   const router = useRouter();
@@ -163,51 +167,43 @@ export function AdminHomePage({
         </button>
       </header>
 
-      {/* KPI ROW — tiap metrik dipisah jadi 2 kartu: hari ini & bulan ini.
-          Kolom kiri = Hari ini, kolom kanan = Bulan ini (per baris metrik). */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-        <Kpi
-          label="POS Hbc Pare · Hari ini"
-          value={formatRp(today.posHbcPareToday)}
-          icon={<WalletIcon size={13} />}
-          tone="default"
-          compact
-        />
-        <Kpi
-          label="POS Hbc Pare · Bulan ini"
-          value={formatRp(today.posHbcPareMonth)}
-          icon={<WalletIcon size={13} />}
-          tone="default"
-          compact
-        />
-        <Kpi
-          label="Cake Hbc Pare · Hari ini"
-          value={formatRp(today.cakeHbcPareToday)}
-          icon={<CakeSlice size={13} />}
-          tone="default"
-          compact
-        />
-        <Kpi
-          label="Cake Hbc Pare · Bulan ini"
-          value={formatRp(today.cakeHbcPareMonth)}
-          icon={<CakeSlice size={13} />}
-          tone="default"
-          compact
-        />
-        <Kpi
-          label="Cake Hbc Smg · Hari ini"
-          value={formatRp(today.cakeHbcSmgToday)}
-          icon={<CakeSlice size={13} />}
-          tone="default"
-          compact
-        />
-        <Kpi
-          label="Cake Hbc Smg · Bulan ini"
-          value={formatRp(today.cakeHbcSmgMonth)}
-          icon={<CakeSlice size={13} />}
-          tone="default"
-          compact
-        />
+      {/* KPI — dipadatkan: omzet 3 baris × (hari ini | bulan ini) dalam satu
+          kartu, di samping kartu operasional (Service Level, ditarik expired,
+          kecepatan tiket studio). */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+        <Card>
+          <CardHead title="Omzet" sub="Hari ini & akumulasi bulan ini" />
+          <div className="px-5 pb-4">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-x-5 gap-y-2.5 items-baseline text-sm">
+              <span />
+              <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground text-right">
+                Hari ini
+              </span>
+              <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground text-right">
+                Bulan ini
+              </span>
+              <RevenueRow
+                icon={<WalletIcon size={13} />}
+                label="POS Hbc Pare"
+                day={today.posHbcPareToday}
+                month={today.posHbcPareMonth}
+              />
+              <RevenueRow
+                icon={<CakeSlice size={13} />}
+                label="Cake Hbc Pare"
+                day={today.cakeHbcPareToday}
+                month={today.cakeHbcPareMonth}
+              />
+              <RevenueRow
+                icon={<CakeSlice size={13} />}
+                label="Cake Hbc Smg"
+                day={today.cakeHbcSmgToday}
+                month={today.cakeHbcSmgMonth}
+              />
+            </div>
+          </div>
+        </Card>
+        <AdminOpsCard ops={opsMetrics} />
       </div>
 
       {/* CLEANING — management by exception. Muncul HANYA untuk miss
@@ -483,65 +479,32 @@ function CardHead({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-function Kpi({
-  label,
-  value,
-  frac,
+function RevenueRow({
   icon,
-  tone,
-  compact = false,
+  label,
+  day,
+  month,
 }: {
-  label: string;
-  value: string;
-  frac?: string;
   icon: React.ReactNode;
-  tone: "default" | "warn" | "bad" | "good";
-  /** Currency or other long-string KPIs use a smaller font + nowrap. */
-  compact?: boolean;
+  label: string;
+  day: number;
+  month: number;
 }) {
-  const iconBg: Record<typeof tone, string> = {
-    default: "bg-accent text-[var(--teal-600)]",
-    warn: "bg-warning/15 text-warning",
-    bad: "bg-destructive/15 text-destructive",
-    good: "bg-success/15 text-success",
-  };
   return (
-    <div
-      className="bg-card rounded-2xl border border-border/70 px-4 sm:px-5 py-4 transition hover:-translate-y-0.5 overflow-hidden"
-      style={{
-        boxShadow:
-          "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)",
-      }}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <span
-          className={cn(
-            "grid place-items-center size-[22px] rounded-md",
-            iconBg[tone]
-          )}
-        >
+    <>
+      <span className="flex items-center gap-2 min-w-0 text-[13px] font-medium text-foreground">
+        <span className="grid place-items-center size-[22px] rounded-md shrink-0 bg-accent text-[var(--teal-600)]">
           {icon}
         </span>
-        <span className="text-[10.5px] sm:text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {label}
-        </span>
-      </div>
-      <div
-        className={cn(
-          "font-medium leading-none tracking-[-0.01em] text-foreground tabular-nums text-right",
-          compact
-            ? "text-sm sm:text-base lg:text-lg whitespace-nowrap"
-            : "text-2xl sm:text-3xl lg:text-[32px]"
-        )}
-      >
-        {value}
-        {frac && (
-          <span className="text-muted-foreground font-medium text-base sm:text-lg lg:text-xl">
-            {frac}
-          </span>
-        )}
-      </div>
-    </div>
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="text-right tabular-nums whitespace-nowrap text-[13px] sm:text-sm font-medium text-foreground">
+        {formatRp(day)}
+      </span>
+      <span className="text-right tabular-nums whitespace-nowrap text-[13px] sm:text-sm font-medium text-foreground">
+        {formatRp(month)}
+      </span>
+    </>
   );
 }
 
