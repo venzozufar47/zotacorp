@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Gauge } from "lucide-react";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import { serviceLevelTone } from "@/lib/pos/service-level";
 import { wasteTone, WASTE_EXPIRED_TARGET } from "@/lib/pos/waste";
@@ -47,12 +46,6 @@ export function AdminOpsCard({ ops }: { ops: AdminOpsMetrics }) {
             30 hari terakhir
           </div>
         </div>
-        <Link
-          href="/admin/service-level"
-          className="inline-flex items-center gap-1 text-[11.5px] font-medium text-primary hover:underline"
-        >
-          <Gauge size={12} /> Detail
-        </Link>
       </div>
 
       <div className="px-4 sm:px-5 pb-4">
@@ -77,9 +70,12 @@ export function AdminOpsCard({ ops }: { ops: AdminOpsMetrics }) {
         {kpi && (
           <div className="mt-3 pt-3 border-t border-border/60 flex items-baseline justify-between gap-3">
             <div className="min-w-0">
-              <span className="text-[13px] font-medium text-foreground">
+              <Link
+                href="/admin/tickets"
+                className="text-[13px] font-medium text-foreground underline-offset-2 hover:underline hover:text-primary"
+              >
                 Kecepatan tiket Kepala Studio
-              </span>
+              </Link>
               <span className="block text-[11px] text-muted-foreground">
                 {kpi.sampleCount === 0
                   ? "Belum ada tiket selesai"
@@ -103,9 +99,12 @@ function OutletRow({ o }: { o: AdminOpsMetrics["outlets"][number] }) {
   const ex = TONE_CLASS[wasteTone(o.expiredRate)];
   return (
     <>
-      <span className="text-[13px] font-medium text-foreground break-words">
+      <Link
+        href={o.href}
+        className="text-[13px] font-medium text-foreground break-words underline-offset-2 hover:underline hover:text-primary"
+      >
         {o.label}
-      </span>
+      </Link>
       <span className="text-right whitespace-nowrap">
         <span className={`font-display text-lg font-extrabold tabular-nums ${sl}`}>
           {pct(o.serviceLevel)}

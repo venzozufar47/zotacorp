@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Wallet as WalletIcon, CakeSlice, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AdminHomeToday } from "@/lib/actions/admin-home.actions";
@@ -67,12 +68,15 @@ function RevenueRow({
   day,
   month,
   delta,
+  href,
 }: {
   icon: React.ReactNode;
   label: string;
   day: number;
   month: number;
   delta?: MonthDelta | null;
+  /** Bila diisi, label jadi tautan (mis. ke layar POS cabang). */
+  href?: string;
 }) {
   return (
     <>
@@ -80,7 +84,16 @@ function RevenueRow({
         <span className="grid place-items-center size-[22px] rounded-md shrink-0 bg-accent text-[var(--teal-600)]">
           {icon}
         </span>
-        <span className="truncate">{label}</span>
+        {href ? (
+          <Link
+            href={href}
+            className="truncate underline-offset-2 hover:underline hover:text-primary"
+          >
+            {label}
+          </Link>
+        ) : (
+          <span className="truncate">{label}</span>
+        )}
       </span>
       <span className="min-w-0 sm:text-right tabular-nums text-[13px] sm:text-sm font-medium text-foreground">
         <span className="block sm:hidden text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -164,11 +177,24 @@ export function AdminRevenueCard({
           <RevenueRow
             icon={<WalletIcon size={13} />}
             label="POS Hbc Pare"
+            href="/pospare"
             day={today.posHbcPareToday}
             month={today.posHbcPareMonth}
             delta={monthDelta(
               today.posHbcPareMonth - today.posHbcPareToday,
               cmp?.posHbcPare,
+              cmp?.prevLabel
+            )}
+          />
+          <RevenueRow
+            icon={<WalletIcon size={13} />}
+            label="POS Hbc Smg"
+            href="/possemarang"
+            day={today.posHbcSmgToday}
+            month={today.posHbcSmgMonth}
+            delta={monthDelta(
+              today.posHbcSmgMonth - today.posHbcSmgToday,
+              cmp?.posHbcSmg,
               cmp?.prevLabel
             )}
           />

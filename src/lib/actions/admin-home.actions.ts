@@ -10,6 +10,7 @@ import {
 import { zonedDateString } from "@/lib/utils/celebrations";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
 import { getCleaningMonitor } from "./cleaning.actions";
+import { posBasePathForBranch } from "@/lib/pos/branch";
 import {
   getServiceLevelSummary,
   getExpiredWasteSummary,
@@ -24,6 +25,8 @@ export interface AdminOpsMetrics {
   outlets: Array<{
     id: string;
     label: string;
+    /** Halaman Service Level outlet ini di layar POS-nya. */
+    href: string;
     /** Pecahan 0-1; null = belum ada data. */
     serviceLevel: number | null;
     serviceLevelTarget: number;
@@ -62,6 +65,10 @@ export async function getAdminOpsMetrics(): Promise<AdminOpsMetrics> {
         return {
           id: a.id,
           label: a.default_branch ?? a.account_name,
+          href:
+            a.default_branch === "Pare" || a.default_branch === "Semarang"
+              ? `${posBasePathForBranch(a.default_branch)}/service-level`
+              : "/admin/service-level",
           serviceLevel: sl && sl.ok ? (sl.data?.percent ?? null) : null,
           serviceLevelTarget: a.service_level_target,
           expiredRate: waste && waste.ok ? (waste.data?.expiredRate ?? null) : null,
@@ -88,6 +95,9 @@ export interface AdminHomeToday {
   /** POS Haengbocake Pare — hari ini & akumulasi bulan ini (rupiah). */
   posHbcPareToday: number;
   posHbcPareMonth: number;
+  /** POS Haengbocake Semarang — hari ini & akumulasi bulan ini (rupiah). */
+  posHbcSmgToday: number;
+  posHbcSmgMonth: number;
   /** Custom cake per cabang — hari ini & bulan ini, basis tanggal slip
    *  dibuat (created_at, zona Jakarta), bukan tanggal ambil. Rupiah. */
   cakeHbcPareToday: number;
@@ -107,6 +117,7 @@ export interface AdminHomeToday {
     /** Label rentang bulan lalu, mis. "1–20 Agu". */
     prevLabel: string;
     posHbcPare: number;
+    posHbcSmg: number;
     cakeHbcPare: number;
     cakeHbcSmg: number;
   } | null;
@@ -149,6 +160,8 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     posSalesToday: 0,
     posHbcPareToday: 0,
     posHbcPareMonth: 0,
+    posHbcSmgToday: 0,
+    posHbcSmgMonth: 0,
     cakeHbcPareToday: 0,
     cakeHbcPareMonth: 0,
     cakeHbcSmgToday: 0,
@@ -213,11 +226,14 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
 
   // POS Haengbocake Pare bisa >1000 baris/bulan → PostgREST cap default
   // 1000 row akan meng-undercount kalau di-sum langsung. Paginate.
-  const sumPosPareTotal = async (range: {
-    eqDate?: string;
-    gte?: string;
-    lt?: string;
-  }): Promise<number> => {
+  const sumPosTotal = async (
+    branch: "Pare" | "Semarang",
+    range: {
+      eqDate?: string;
+      gte?: string;
+      lt?: string;
+    }
+  ): Promise<number> => {
     let total = 0;
     const PAGE = 1000;
     for (let offset = 0; ; offset += PAGE) {
@@ -226,7 +242,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
         .select("total, bank_accounts!inner(business_unit, default_branch)")
         .is("voided_at", null)
         .eq("bank_accounts.business_unit", "Haengbocake")
-        .eq("bank_accounts.default_branch", "Pare");
+        .eq("bank_accounts.default_branch", branch);
       if (range.eqDate) q = q.eq("sale_date", range.eqDate);
       if (range.gte) q = q.gte("sale_date", range.gte);
       if (range.lt) q = q.lt("sale_date", range.lt);
@@ -256,6 +272,9 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeParePrevRes,
     cakeSmgPrevRes,
     posHbcParePrev,
+    posHbcSmgToday,
+    posHbcSmgMonth,
+    posHbcSmgPrev,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -278,8 +297,8 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeRangeQuery("pare", monthStartIso, monthEndIso),
     cakeRangeQuery("semarang", dayStartIso, dayEndIso),
     cakeRangeQuery("semarang", monthStartIso, monthEndIso),
-    sumPosPareTotal({ eqDate: todayIso }),
-    sumPosPareTotal({ gte: monthStartDate, lt: nextMonthStartDate }),
+    sumPosTotal("Pare", { eqDate: todayIso }),
+    sumPosTotal("Pare", { gte: monthStartDate, lt: nextMonthStartDate }),
     canCompare
       ? cakeRangeQuery("pare", prevStartIso, prevCutoffIso)
       : Promise.resolve({ data: [] }),
@@ -287,7 +306,12 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       ? cakeRangeQuery("semarang", prevStartIso, prevCutoffIso)
       : Promise.resolve({ data: [] }),
     canCompare
-      ? sumPosPareTotal({ gte: prevStartDate, lt: prevCutoffDate })
+      ? sumPosTotal("Pare", { gte: prevStartDate, lt: prevCutoffDate })
+      : Promise.resolve(0),
+    sumPosTotal("Semarang", { eqDate: todayIso }),
+    sumPosTotal("Semarang", { gte: monthStartDate, lt: nextMonthStartDate }),
+    canCompare
+      ? sumPosTotal("Semarang", { gte: prevStartDate, lt: prevCutoffDate })
       : Promise.resolve(0),
   ]);
 
@@ -360,6 +384,8 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     posSalesToday,
     posHbcPareToday,
     posHbcPareMonth,
+    posHbcSmgToday,
+    posHbcSmgMonth,
     cakeHbcPareToday,
     cakeHbcPareMonth,
     cakeHbcSmgToday,
@@ -369,6 +395,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
           days: cmpDays,
           prevLabel,
           posHbcPare: posHbcParePrev,
+          posHbcSmg: posHbcSmgPrev,
           cakeHbcPare: sumIdr(cakeParePrevRes.data),
           cakeHbcSmg: sumIdr(cakeSmgPrevRes.data),
         }
