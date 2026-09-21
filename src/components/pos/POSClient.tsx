@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
 import { PosShell } from "./PosShell";
 import "./workstation.css";
@@ -1179,6 +1181,16 @@ export function POSClient({
     >
       {/* ── Top bar ───────────────────────────────────────── */}
       <header className="md:col-span-3 h-14 border-b border-border bg-card flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 z-20">
+        {/* Kembali ke beranda Zota. "/" me-redirect sesuai peran (admin →
+            /admin, karyawan → /dashboard), jadi satu tautan cukup untuk semua. */}
+        <Link
+          href="/"
+          className="size-9 rounded-full border border-border bg-card text-foreground inline-flex items-center justify-center shrink-0 hover:bg-muted"
+          aria-label="Kembali ke beranda Zota"
+          title="Kembali ke beranda Zota"
+        >
+          <ArrowLeft size={16} />
+        </Link>
         <div className="size-9 rounded-xl bg-primary text-primary-foreground inline-flex items-center justify-center font-bold text-base shrink-0">
           Z
         </div>
