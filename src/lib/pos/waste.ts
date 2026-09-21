@@ -302,6 +302,9 @@ export async function computeWaste(
   };
 }
 
+/** Target "ditarik expired" — batas atas, kecil itu baik. Sama dengan ambang hijau di wasteTone. */
+export const WASTE_EXPIRED_TARGET = 0.05;
+
 export type WasteTone = "success" | "warning" | "destructive" | "muted";
 
 /**
@@ -316,7 +319,7 @@ export type WasteTone = "success" | "warning" | "destructive" | "muted";
  */
 export function wasteTone(rate: number | null): WasteTone {
   if (rate === null || !Number.isFinite(rate)) return "muted";
-  if (rate < 0.05) return "success";
+  if (rate < WASTE_EXPIRED_TARGET) return "success";
   if (rate < 0.1) return "warning";
   return "destructive";
 }

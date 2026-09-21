@@ -27,6 +27,7 @@ import {
 import { serviceLevelTone, type ServiceLevelResult } from "@/lib/pos/service-level";
 import {
   wasteTone,
+  WASTE_EXPIRED_TARGET,
   WASTE_QTY_SANITY_CAP,
   type WasteResult,
 } from "@/lib/pos/waste";
@@ -158,7 +159,7 @@ export function ServiceLevelAdminClient({
                   {pctLabel(o.waste?.expiredRate ?? null)}
                 </p>
                 <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Susut expired
+                  Ditarik expired · target &lt;{(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%
                 </p>
               </div>
             </div>

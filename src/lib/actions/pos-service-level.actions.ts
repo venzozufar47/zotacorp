@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "./_supabase-admin";
 import {
   requireAdmin,
   requireAdminOrPosAssignee,
@@ -101,6 +102,33 @@ export async function getWaste(
     toDate: range.toDate,
   });
   return { ok: true, data };
+}
+
+/**
+ * Angka "ditarik expired" untuk dashboard penanggung jawab metrik.
+ *
+ * Gate-nya `requireServiceLevelViewer` (bukan AdminOrPosAssignee) karena
+ * penanggung jawab non-POS memang harus bisa melihatnya. Konsekuensinya
+ * RLS pos_stock_movements menolak mereka, jadi dihitung lewat service-role
+ * SETELAH gate lolos — dan hanya angka agregat yang dikembalikan, tidak
+ * ada baris mentah. Jangan dilonggarkan ke pemanggil tanpa gate.
+ */
+export async function getExpiredWasteSummary(
+  bankAccountId: string,
+  days = 30
+): Promise<ActionResult<{ expiredRate: number | null }>> {
+  const gate = await requireServiceLevelViewer(bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const span = Math.max(1, Math.min(MAX_SPAN_DAYS, Math.floor(days)));
+  const toDate = jakartaDateString(new Date());
+  const fromDate = jakartaDateMinusDays(toDate, span - 1);
+
+  const data = await computeWaste(createAdminClient(), bankAccountId, {
+    fromDate,
+    toDate,
+  });
+  return { ok: true, data: { expiredRate: data.expiredRate } };
 }
 
 export interface ServiceLevelSummary {

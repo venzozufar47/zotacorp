@@ -1,6 +1,10 @@
-import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
+import {
+  getServiceLevelSummary,
+  getExpiredWasteSummary,
+} from "@/lib/actions/pos-service-level.actions";
 import type { ServiceLevelOutlet } from "@/lib/pos/service-level-access";
 import { serviceLevelTone } from "@/lib/pos/service-level";
+import { wasteTone, WASTE_EXPIRED_TARGET } from "@/lib/pos/waste";
 
 /**
  * Panel Service Level di dashboard karyawan, untuk penanggung jawab metrik.
@@ -32,6 +36,20 @@ function tone(pct: number | null, target: number): string {
   }
 }
 
+/** Arah terbalik dari tone() — untuk ditarik expired, kecil itu baik. */
+function wasteToneClass(rate: number | null): string {
+  switch (wasteTone(rate)) {
+    case "success":
+      return "text-success";
+    case "warning":
+      return "text-warning";
+    case "destructive":
+      return "text-destructive";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
 export async function ServiceLevelPanel({
   outlets,
 }: {
@@ -41,8 +59,15 @@ export async function ServiceLevelPanel({
 
   const summaries = await Promise.all(
     outlets.map(async (o) => {
-      const res = await getServiceLevelSummary(o.bankAccountId, 30);
-      return { outlet: o, summary: res.ok ? res.data : null };
+      const [res, wasteRes] = await Promise.all([
+        getServiceLevelSummary(o.bankAccountId, 30),
+        getExpiredWasteSummary(o.bankAccountId, 30),
+      ]);
+      return {
+        outlet: o,
+        summary: res.ok ? res.data : null,
+        expiredRate: wasteRes.ok ? wasteRes.data?.expiredRate ?? null : null,
+      };
     })
   );
 
@@ -57,11 +82,12 @@ export async function ServiceLevelPanel({
 
       <div className="panel-sticker p-5 space-y-4">
         <p className="text-xs text-muted-foreground">
-          Berapa persen produk ready stock, dirata-rata sepanjang jam buka.
-          Kamu penanggung jawab metrik ini.
+          Berapa persen produk ready stock, dirata-rata sepanjang jam buka, dan
+          berapa persen produksi yang ditarik karena expired. Kamu penanggung
+          jawab metrik ini.
         </p>
 
-        {summaries.map(({ outlet, summary }) => (
+        {summaries.map(({ outlet, summary, expiredRate }) => (
           <div key={outlet.bankAccountId} className="space-y-1.5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {outlet.branch ?? outlet.accountName}
@@ -71,20 +97,37 @@ export async function ServiceLevelPanel({
                 Belum ada data terhitung.
               </p>
             ) : (
-              <div className="flex items-baseline gap-3">
-                <span
-                  className={`font-display text-4xl sm:text-5xl font-extrabold tabular-nums leading-none ${tone(
-                    summary.percent,
-                    summary.target
-                  )}`}
-                >
-                  {summary.percent === null
-                    ? "—"
-                    : `${(summary.percent * 100).toFixed(1)}%`}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  30 hari · target {(summary.target * 100).toFixed(0)}%
-                </span>
+              <div className="space-y-2">
+                <div className="flex items-baseline gap-3">
+                  <span
+                    className={`font-display text-4xl sm:text-5xl font-extrabold tabular-nums leading-none ${tone(
+                      summary.percent,
+                      summary.target
+                    )}`}
+                  >
+                    {summary.percent === null
+                      ? "—"
+                      : `${(summary.percent * 100).toFixed(1)}%`}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    30 hari · target {(summary.target * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <span
+                    className={`font-display text-2xl sm:text-3xl font-extrabold tabular-nums leading-none ${wasteToneClass(
+                      expiredRate
+                    )}`}
+                  >
+                    {expiredRate === null
+                      ? "—"
+                      : `${(expiredRate * 100).toFixed(1)}%`}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ditarik expired · target di bawah{" "}
+                    {(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%
+                  </span>
+                </div>
               </div>
             )}
           </div>
