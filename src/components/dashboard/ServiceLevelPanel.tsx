@@ -82,9 +82,7 @@ export async function ServiceLevelPanel({
 
       <div className="panel-sticker p-5 space-y-4">
         <p className="text-xs text-muted-foreground">
-          Berapa persen produk ready stock, dirata-rata sepanjang jam buka, dan
-          berapa persen produksi yang ditarik karena expired. Kamu penanggung
-          jawab metrik ini.
+          Produk ready stock dan produksi yang ditarik karena expired.
         </p>
 
         {summaries.map(({ outlet, summary, expiredRate }) => (
