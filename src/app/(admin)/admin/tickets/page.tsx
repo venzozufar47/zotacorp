@@ -34,7 +34,10 @@ export default async function AdminTicketsPage() {
   return (
     <div className="space-y-6">
       <RealtimeRefresher channel="tickets-admin" table="tickets" />
-      <div className="relative z-40">
+      {/* z-20, bukan z-40: harus di atas konten di bawahnya (popover Kepala
+          Studio) tapi TETAP di bawah topbar admin sticky (z-30), kalau tidak
+          judul halaman menimpa topbar saat di-scroll. */}
+      <div className="relative z-20">
         <PageHeader
           title="Tiket Studio"
           subtitle="Antrian eskalasi, pemantauan tiket Yeobo Space, dan penunjukan Kepala Studio."
