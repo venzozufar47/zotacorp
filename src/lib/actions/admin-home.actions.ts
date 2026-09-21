@@ -94,6 +94,22 @@ export interface AdminHomeToday {
   cakeHbcPareMonth: number;
   cakeHbcSmgToday: number;
   cakeHbcSmgMonth: number;
+  /**
+   * Pembanding "vs bulan lalu", apple-to-apple: bulan lalu pada rentang
+   * tanggal yang sama dengan bulan ini s.d. KEMARIN (hari ini belum
+   * lengkap, jadi dikeluarkan dari kedua sisi). null = tidak bisa
+   * dibandingkan (tgl 1, atau rentang lebih panjang dari bulan lalu, mis.
+   * 30–31 Mar vs Feb).
+   */
+  monthCompare: {
+    /** Jumlah hari yang dibandingkan: tgl 1 s.d. kemarin. */
+    days: number;
+    /** Label rentang bulan lalu, mis. "1–20 Agu". */
+    prevLabel: string;
+    posHbcPare: number;
+    cakeHbcPare: number;
+    cakeHbcSmg: number;
+  } | null;
   hourlyCheckIns: number[]; // 13 buckets covering 07:00 → 19:00
   asOfIso: string; // ISO timestamp the snapshot was taken
   todayIso: string; // yyyy-mm-dd in org tz
@@ -137,6 +153,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeHbcPareMonth: 0,
     cakeHbcSmgToday: 0,
     cakeHbcSmgMonth: 0,
+    monthCompare: null,
     hourlyCheckIns: Array(13).fill(0),
     asOfIso: new Date().toISOString(),
     todayIso: zonedDateString(new Date(), "Asia/Jakarta"),
@@ -161,6 +178,25 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
   const monthStartIso = tzDayRangeUtc(monthStartDate, tz).startIso;
   const monthEndIso = tzDayRangeUtc(nextMonthStartDate, tz).startIso;
   const { startIso: dayStartIso, endIso: dayEndIso } = tzDayRangeUtc(todayIso, tz);
+
+  // Rentang pembanding: bulan lalu, tgl 1 s.d. (hari ini − 1) → [prevStart, prevCutoff).
+  const dayOfMonth = Number(todayIso.split("-")[2]);
+  const cmpDays = dayOfMonth - 1;
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  const prevStartDate = `${py}-${String(pm).padStart(2, "0")}-01`;
+  const prevMonthDays = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+  const canCompare = cmpDays >= 1 && cmpDays <= prevMonthDays;
+  const prevCutoffDate = canCompare
+    ? new Date(Date.UTC(py, pm - 1, 1 + cmpDays)).toISOString().slice(0, 10)
+    : prevStartDate;
+  const prevStartIso = tzDayRangeUtc(prevStartDate, tz).startIso;
+  const prevCutoffIso = tzDayRangeUtc(prevCutoffDate, tz).startIso;
+  const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const prevLabel =
+    cmpDays === 1
+      ? `1 ${MONTHS_ID[pm - 1]}`
+      : `1–${cmpDays} ${MONTHS_ID[pm - 1]}`;
 
   // Custom cake masuk (slip dibuat = created_at) dalam rentang, per cabang.
   // `cake_orders` belum ada di generated types (free_claim dst.) → cast
@@ -217,6 +253,9 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeSmgMonthRes,
     posHbcPareToday,
     posHbcPareMonth,
+    cakeParePrevRes,
+    cakeSmgPrevRes,
+    posHbcParePrev,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -241,6 +280,15 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeRangeQuery("semarang", monthStartIso, monthEndIso),
     sumPosPareTotal({ eqDate: todayIso }),
     sumPosPareTotal({ gte: monthStartDate, lt: nextMonthStartDate }),
+    canCompare
+      ? cakeRangeQuery("pare", prevStartIso, prevCutoffIso)
+      : Promise.resolve({ data: [] }),
+    canCompare
+      ? cakeRangeQuery("semarang", prevStartIso, prevCutoffIso)
+      : Promise.resolve({ data: [] }),
+    canCompare
+      ? sumPosPareTotal({ gte: prevStartDate, lt: prevCutoffDate })
+      : Promise.resolve(0),
   ]);
 
   const totalEmployees = employeesRes.count ?? 0;
@@ -316,6 +364,15 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeHbcPareMonth,
     cakeHbcSmgToday,
     cakeHbcSmgMonth,
+    monthCompare: canCompare
+      ? {
+          days: cmpDays,
+          prevLabel,
+          posHbcPare: posHbcParePrev,
+          cakeHbcPare: sumIdr(cakeParePrevRes.data),
+          cakeHbcSmg: sumIdr(cakeSmgPrevRes.data),
+        }
+      : null,
     hourlyCheckIns,
     asOfIso: now.toISOString(),
     todayIso,

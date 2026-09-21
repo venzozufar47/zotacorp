@@ -172,7 +172,14 @@ export function AdminHomePage({
           kecepatan tiket studio). */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
         <Card>
-          <CardHead title="Omzet" sub="Hari ini & akumulasi bulan ini" />
+          <CardHead
+            title="Omzet"
+            sub={
+              today.monthCompare
+                ? `Hari ini & bulan ini · ▲▼ vs ${today.monthCompare.prevLabel} bulan lalu`
+                : "Hari ini & akumulasi bulan ini"
+            }
+          />
           <div className="px-5 pb-4">
             <div className="grid grid-cols-[1fr_auto_auto] gap-x-5 gap-y-2.5 items-baseline text-sm">
               <span />
@@ -187,18 +194,33 @@ export function AdminHomePage({
                 label="POS Hbc Pare"
                 day={today.posHbcPareToday}
                 month={today.posHbcPareMonth}
+                delta={monthDelta(
+                  today.posHbcPareMonth - today.posHbcPareToday,
+                  today.monthCompare?.posHbcPare,
+                  today.monthCompare?.prevLabel
+                )}
               />
               <RevenueRow
                 icon={<CakeSlice size={13} />}
                 label="Cake Hbc Pare"
                 day={today.cakeHbcPareToday}
                 month={today.cakeHbcPareMonth}
+                delta={monthDelta(
+                  today.cakeHbcPareMonth - today.cakeHbcPareToday,
+                  today.monthCompare?.cakeHbcPare,
+                  today.monthCompare?.prevLabel
+                )}
               />
               <RevenueRow
                 icon={<CakeSlice size={13} />}
                 label="Cake Hbc Smg"
                 day={today.cakeHbcSmgToday}
                 month={today.cakeHbcSmgMonth}
+                delta={monthDelta(
+                  today.cakeHbcSmgMonth - today.cakeHbcSmgToday,
+                  today.monthCompare?.cakeHbcSmg,
+                  today.monthCompare?.prevLabel
+                )}
               />
             </div>
           </div>
@@ -479,16 +501,65 @@ function CardHead({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
+interface MonthDelta {
+  pct: number;
+  title: string;
+}
+
+/**
+ * Selisih % bulan ini vs bulan lalu pada rentang tanggal yang sama.
+ * `curThroughYesterday` = total bulan ini dikurangi hari ini (hari ini belum
+ * lengkap, jadi dikeluarkan dari kedua sisi). null bila tidak ada pembanding
+ * atau bulan lalu 0 (persen tak terdefinisi).
+ */
+function monthDelta(
+  curThroughYesterday: number,
+  prev: number | undefined,
+  prevLabel: string | undefined
+): MonthDelta | null {
+  if (prev === undefined || !prevLabel || prev <= 0) return null;
+  const pct = ((curThroughYesterday - prev) / prev) * 100;
+  return {
+    pct,
+    title: `Dibanding ${prevLabel} (rentang tanggal yang sama, s.d. kemarin): ${formatRp(
+      prev
+    )} → ${formatRp(curThroughYesterday)}`,
+  };
+}
+
+function DeltaPill({ d }: { d: MonthDelta }) {
+  const up = d.pct >= 0;
+  const rounded = Math.abs(d.pct) < 0.05 ? 0 : d.pct;
+  const txt = new Intl.NumberFormat("id-ID", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    signDisplay: "always",
+  }).format(rounded);
+  return (
+    <span
+      title={d.title}
+      className={cn(
+        "ml-1.5 inline-block rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums align-middle",
+        up ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"
+      )}
+    >
+      {up ? "▲" : "▼"} {txt}%
+    </span>
+  );
+}
+
 function RevenueRow({
   icon,
   label,
   day,
   month,
+  delta,
 }: {
   icon: React.ReactNode;
   label: string;
   day: number;
   month: number;
+  delta?: MonthDelta | null;
 }) {
   return (
     <>
@@ -503,6 +574,7 @@ function RevenueRow({
       </span>
       <span className="text-right tabular-nums whitespace-nowrap text-[13px] sm:text-sm font-medium text-foreground">
         {formatRp(month)}
+        {delta && <DeltaPill d={delta} />}
       </span>
     </>
   );
