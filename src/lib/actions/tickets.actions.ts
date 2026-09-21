@@ -274,6 +274,23 @@ export async function resolveTicket(
     return { ok: false, error: "Foto bukti penyelesaian wajib dilampirkan" };
   if (paths.some((p) => !p.startsWith(`${gate.userId}/`)))
     return { ok: false, error: "Foto bukti tidak valid" };
+  // Path yang lolos awalan folder belum tentu ada filenya — klien bisa saja
+  // mengirim path karangan dan tiket tetap "berbukti". Pastikan setiap objek
+  // memang terunggah (createSignedUrls mengembalikan error per objek yang
+  // tidak ada).
+  {
+    const storageAdmin = createAdminClient() as any;
+    const { data: signed, error: signErr } = await storageAdmin.storage
+      .from("ticket-attachments")
+      .createSignedUrls(paths, 60);
+    if (
+      signErr ||
+      !Array.isArray(signed) ||
+      signed.length !== paths.length ||
+      signed.some((s: any) => s.error || !s.signedUrl)
+    )
+      return { ok: false, error: "Foto bukti belum terunggah dengan benar. Coba lagi." };
+  }
   const supabase = await createClient();
   const { data: t } = await supabase
     .from("tickets" as never)
@@ -495,13 +512,6 @@ export async function confirmTicketResolution(
   // Bukti foto putaran ini ditandai 'superseded' (bukan dihapus) supaya
   // putaran berikutnya mulai bersih tapi jejaknya tetap ada. Service-role:
   // pelapor tidak punya policy UPDATE di ticket_attachments.
-  const adminDb = createAdminClient() as any;
-  const { error: supErr } = await adminDb
-    .from("ticket_attachments")
-    .update({ kind: "superseded" })
-    .eq("ticket_id", ticketId)
-    .eq("kind", "resolution");
-  if (supErr) return { ok: false, error: supErr.message };
   const { error } = await supabase
     .from("tickets" as never)
     .update({
@@ -513,6 +523,19 @@ export async function confirmTicketResolution(
     } as never)
     .eq("id", ticketId);
   if (error) return { ok: false, error: error.message };
+  // Urutan sengaja: tiket dibuka dulu, BARU foto lama ditandai. Kalau dibalik
+  // dan update tiket gagal, tiket tetap "selesai" tetapi buktinya sudah
+  // disembunyikan. Kegagalan di sini tidak fatal (tiket sudah terbuka) —
+  // paling buruk foto lama ikut tampil di putaran berikutnya.
+  {
+    const adminDb = createAdminClient() as any;
+    const { error: supErr } = await adminDb
+      .from("ticket_attachments")
+      .update({ kind: "superseded" })
+      .eq("ticket_id", ticketId)
+      .eq("kind", "resolution");
+    if (supErr) console.error("[tickets] gagal menandai foto lama superseded", supErr.message);
+  }
 
   const headIds = await studioHeadUserIds();
   if (headIds.length > 0) {

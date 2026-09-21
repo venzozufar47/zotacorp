@@ -20,8 +20,11 @@ const TONE_CLASS = {
 
 const pct = (v: number | null) => (v === null ? "—" : `${(v * 100).toFixed(1)}%`);
 
-export function AdminOpsCard({ ops }: { ops: AdminOpsMetrics }) {
-  const kpi = ops.ticketKpi;
+export function AdminOpsCard({ ops }: { ops?: AdminOpsMetrics | null }) {
+  // Defensif: data operasional itu pelengkap Home — kalau kosong (mis. skew
+  // antar bundle saat deploy), kartu tampil kosong, bukan menjatuhkan Beranda.
+  const outlets = ops?.outlets ?? [];
+  const kpi = ops?.ticketKpi ?? null;
   const ticketTone =
     !kpi || kpi.avgResolutionMs === null
       ? "muted"
@@ -57,10 +60,10 @@ export function AdminOpsCard({ ops }: { ops: AdminOpsMetrics }) {
           <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground text-right">
             Ditarik expired
           </span>
-          {ops.outlets.map((o) => (
+          {outlets.map((o) => (
             <OutletRow key={o.id} o={o} />
           ))}
-          {ops.outlets.length === 0 && (
+          {outlets.length === 0 && (
             <span className="col-span-3 text-[13px] text-muted-foreground">
               Belum ada outlet dengan metrik aktif.
             </span>

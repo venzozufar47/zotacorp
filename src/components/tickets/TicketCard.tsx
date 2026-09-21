@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -91,6 +91,10 @@ export function TicketCard({
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Object URL dibuat SEKALI per set file dan dilepas saat berubah/unmount —
+  // membuatnya di render membocorkan satu blob per render per foto.
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
 
   function closePrompt() {
     setPrompt(null);
@@ -326,7 +330,7 @@ export function TicketCard({
       />
 
       {/* Dialog catatan */}
-      <Dialog open={prompt !== null} onOpenChange={(v) => !v && !uploading && closePrompt()}>
+      <Dialog open={prompt !== null} onOpenChange={(v) => !v && !uploading && !pending && closePrompt()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{prompt?.title}</DialogTitle>
@@ -357,7 +361,7 @@ export function TicketCard({
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={URL.createObjectURL(f)}
+                      src={previews[i]}
                       alt={`foto ${i + 1}`}
                       className="size-full object-cover"
                     />

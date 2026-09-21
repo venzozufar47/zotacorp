@@ -19,9 +19,9 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
  * booking `online` dan amendment berprovider `mayar`. Tunai / voucher /
  * amendment non-Mayar tidak dipotong — uangnya memang tidak lewat Mayar.
  * Sisa selisih vs mutasi bank berasal dari pembayaran non-Mayar itu, bukan fee.
- * Booking batal/kedaluwarsa tidak punya `paid_at`, dan belum ada booking
- * berstatus lain yang sudah dibayar sejak Agustus, jadi refund tidak
- * dikurangkan — kalau nanti muncul, kolom `refund_amount_idr` perlu dihitung.
+ * Booking yang dibatalkan SETELAH dibayar (paid_at terisi) ikut dibaca dan
+ * dikurangi `refund_amount_idr`, jadi pembatalan dengan refund sebagian
+ * tidak menghapus seluruh omzetnya. Per 22 Sep 2026 belum ada yang begitu.
  */
 
 /**
@@ -86,7 +86,7 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
   const fetchAll = async (
     table: "bookings" | "booking_amendments",
     amountCol: string,
-    statusEq: string,
+    statusIn: string[],
     /** true bila baris ini dibayar lewat Mayar (kena fee). */
     viaMayar: (r: Record<string, unknown>) => boolean
   ) => {
@@ -98,10 +98,10 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
         .from(table)
         .select(
           table === "bookings"
-            ? `id, branch_id, paid_at, payment_method, ${amountCol}`
+            ? `id, branch_id, paid_at, payment_method, refund_amount_idr, ${amountCol}`
             : `id, branch_id, paid_at, provider, ${amountCol}`
         )
-        .eq("status", statusEq)
+        .in("status", statusIn)
         .gte("paid_at", fromIso)
         .order("id", { ascending: true })
         .range(offset, offset + PAGE - 1);
@@ -111,7 +111,9 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
         if (!r.paid_at) continue;
         rows.push({
           branch_id: String(r.branch_id),
-          amt: Number(r[amountCol] ?? 0) * (viaMayar(r) ? 1 - MAYAR_FEE_RATE : 1),
+          amt:
+            (Number(r[amountCol] ?? 0) - Number(r.refund_amount_idr ?? 0)) *
+            (viaMayar(r) ? 1 - MAYAR_FEE_RATE : 1),
           paid_at: String(r.paid_at),
         });
       }
@@ -124,13 +126,13 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
       fetchAll(
         "bookings",
         "total_amount_idr",
-        "confirmed",
+        ["confirmed", "cancelled"],
         (r) => r.payment_method === "online"
       ),
       fetchAll(
         "booking_amendments",
         "diff_idr",
-        "paid",
+        ["paid"],
         (r) => r.provider === "mayar"
       ),
     ]);

@@ -144,7 +144,7 @@ export function AdminRevenueCard({
   today: AdminHomeToday;
   yeobo: YeoboRevenue | null;
 }) {
-  const cmp = today.monthCompare;
+  const cmp = today.monthCompare ?? null;
   return (
     <div
       className="bg-card rounded-2xl border border-border/70 overflow-hidden"
