@@ -19,7 +19,10 @@ export async function CelebrationsCard({ feed, viewerId }: Props) {
   const { lang, t } = await getDictionary();
   const hasToday = feed.today.length > 0;
   const hasUpcoming = feed.upcoming.length > 0;
-  const isEmpty = !hasToday && !hasUpcoming;
+
+  // Tidak ada perayaan hari ini maupun 7 hari ke depan → sembunyikan
+  // seluruh seksi, jangan tampilkan kartu kosong.
+  if (!hasToday && !hasUpcoming) return null;
 
   const locale = lang === "id" ? idLocale : undefined;
 
@@ -39,13 +42,6 @@ export async function CelebrationsCard({ feed, viewerId }: Props) {
       </div>
 
       <div className="rounded-3xl border border-border bg-card p-5 space-y-5">
-        {isEmpty && (
-          <div className="py-8 text-center space-y-2">
-            <div aria-hidden className="text-3xl">🎈</div>
-            <p className="text-sm text-muted-foreground">{t.celebrations.empty}</p>
-          </div>
-        )}
-
         {hasToday && (
           <div className="space-y-3">
             {feed.today.map((c) => (
