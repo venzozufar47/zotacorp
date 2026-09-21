@@ -14,6 +14,7 @@ import {
   getAdminCelebrationsRadar,
   getCelebrationsFeed,
 } from "@/lib/actions/celebrations.actions";
+import { getYeoboSpaceRevenue } from "@/lib/actions/admin-home-yeobo.actions";
 import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 
@@ -39,6 +40,7 @@ export default async function AdminHomeRoute() {
     celebrationsFeed,
     cleaningExceptions,
     opsMetrics,
+    yeoboRevenue,
   ] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
@@ -52,6 +54,7 @@ export default async function AdminHomeRoute() {
     })),
     getCleaningMisses(),
     getAdminOpsMetrics(),
+    getYeoboSpaceRevenue().catch(() => null),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -92,6 +95,7 @@ export default async function AdminHomeRoute() {
         userDirectory={userDirectory}
         cleaningExceptions={cleaningExceptions}
         opsMetrics={opsMetrics}
+        yeoboRevenue={yeoboRevenue}
       />
       <div className="mt-5">
         <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />

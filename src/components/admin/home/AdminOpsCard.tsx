@@ -38,7 +38,7 @@ export function AdminOpsCard({ ops }: { ops: AdminOpsMetrics }) {
           "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)",
       }}
     >
-      <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3">
+      <div className="px-4 sm:px-5 pt-4 pb-3 flex items-center justify-between gap-3">
         <div>
           <div className="font-display font-semibold text-[15px] lg:text-base text-foreground tracking-[-0.015em]">
             Operasional
@@ -55,8 +55,8 @@ export function AdminOpsCard({ ops }: { ops: AdminOpsMetrics }) {
         </Link>
       </div>
 
-      <div className="px-5 pb-4">
-        <div className="grid grid-cols-[1fr_auto_auto] gap-x-5 gap-y-2.5 items-baseline">
+      <div className="px-4 sm:px-5 pb-4">
+        <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 sm:gap-x-5 gap-y-2.5 items-center">
           <span />
           <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground text-right">
             Service level
@@ -103,14 +103,14 @@ function OutletRow({ o }: { o: AdminOpsMetrics["outlets"][number] }) {
   const ex = TONE_CLASS[wasteTone(o.expiredRate)];
   return (
     <>
-      <span className="text-[13px] font-medium text-foreground truncate">
+      <span className="text-[13px] font-medium text-foreground break-words">
         {o.label}
       </span>
       <span className="text-right whitespace-nowrap">
         <span className={`font-display text-lg font-extrabold tabular-nums ${sl}`}>
           {pct(o.serviceLevel)}
         </span>
-        <span className="ml-1.5 text-[10.5px] text-muted-foreground">
+        <span className="block sm:inline sm:ml-1.5 text-[10.5px] leading-none text-muted-foreground">
           /{(o.serviceLevelTarget * 100).toFixed(0)}%
         </span>
       </span>
@@ -118,7 +118,7 @@ function OutletRow({ o }: { o: AdminOpsMetrics["outlets"][number] }) {
         <span className={`font-display text-lg font-extrabold tabular-nums ${ex}`}>
           {pct(o.expiredRate)}
         </span>
-        <span className="ml-1.5 text-[10.5px] text-muted-foreground">
+        <span className="block sm:inline sm:ml-1.5 text-[10.5px] leading-none text-muted-foreground">
           &lt;{(WASTE_EXPIRED_TARGET * 100).toFixed(0)}%
         </span>
       </span>
