@@ -241,6 +241,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
         .from("pos_sales")
         .select("total, bank_accounts!inner(business_unit, default_branch)")
         .is("voided_at", null)
+        // Pesanan yang belum dibayar (payment_status='pending', mis. pre-order)
+        // BUKAN omzet — baru dihitung saat di-settle. Tanpa filter ini omzet
+        // Semarang ikut membengkak oleh pesanan yang belum lunas.
+        .eq("payment_status", "paid")
         .eq("bank_accounts.business_unit", "Haengbocake")
         .eq("bank_accounts.default_branch", branch);
       if (range.eqDate) q = q.eq("sale_date", range.eqDate);
