@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -11,6 +11,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   Loader2,
+  ImagePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ import {
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { cn } from "@/lib/utils";
 import { TicketPhotos } from "./TicketPhotos";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import {
   startTicket,
   resolveTicket,
@@ -64,7 +66,12 @@ function agoLabel(iso: string) {
 interface NotePrompt {
   title: string;
   required: boolean;
-  run: (note: string) => Promise<{ ok: boolean; error?: string }>;
+  /** true = wajib lampirkan foto (bukti penyelesaian). */
+  requirePhotos?: boolean;
+  run: (
+    note: string,
+    photoPaths: string[]
+  ) => Promise<{ ok: boolean; error?: string }>;
   successMsg: string;
 }
 
@@ -81,6 +88,44 @@ export function TicketCard({
   const [pending, startTransition] = useTransition();
   const [prompt, setPrompt] = useState<NotePrompt | null>(null);
   const [note, setNote] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function closePrompt() {
+    setPrompt(null);
+    setNote("");
+    setFiles([]);
+  }
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    const imgs = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    setFiles((prev) => [...prev, ...imgs].slice(0, 10));
+  }
+
+  /** Upload langsung ke bucket privat, path ${uid}/${uuid}.jpg (policy owner-folder). */
+  async function uploadPhotos(): Promise<string[]> {
+    const supabase = createSupabaseClient();
+    const { data } = await supabase.auth.getUser();
+    const uid = data.user?.id;
+    if (!uid) throw new Error("Sesi habis, silakan login ulang");
+    const paths: string[] = [];
+    try {
+      for (const f of files) {
+        const path = `${uid}/${crypto.randomUUID()}.jpg`;
+        const { error } = await supabase.storage
+          .from("ticket-attachments")
+          .upload(path, f, { contentType: f.type || "image/jpeg", upsert: false });
+        if (error) throw error;
+        paths.push(path);
+      }
+      return paths;
+    } catch (err) {
+      if (paths.length) void supabase.storage.from("ticket-attachments").remove(paths);
+      throw err;
+    }
+  }
 
   function runDirect(
     fn: () => Promise<{ ok: boolean; error?: string }>,
@@ -100,18 +145,41 @@ export function TicketCard({
       toast.error("Catatan wajib diisi");
       return;
     }
+    if (prompt.requirePhotos && files.length === 0) {
+      toast.error("Foto bukti wajib dilampirkan");
+      return;
+    }
     const p = prompt;
     startTransition(async () => {
-      const res = await p.run(note.trim());
-      if (!res.ok) return void toast.error(res.error ?? "Gagal");
+      let paths: string[] = [];
+      if (p.requirePhotos) {
+        setUploading(true);
+        try {
+          paths = await uploadPhotos();
+        } catch {
+          setUploading(false);
+          return void toast.error("Gagal mengupload foto. Coba lagi.");
+        }
+        setUploading(false);
+      }
+      const res = await p.run(note.trim(), paths);
+      if (!res.ok) {
+        // Server menolak (mis. status berubah) → foto yang sudah terupload yatim.
+        if (paths.length)
+          void createSupabaseClient().storage.from("ticket-attachments").remove(paths);
+        return void toast.error(res.error ?? "Gagal");
+      }
       toast.success(p.successMsg);
-      setPrompt(null);
-      setNote("");
+      closePrompt();
       router.refresh();
     });
   }
 
   const resMs = ticketResolutionMs(ticket);
+  const reportPhotos = (ticket.attachments ?? []).filter((a) => a.kind === "report");
+  const resolutionPhotos = (ticket.attachments ?? []).filter((a) => a.kind === "resolution");
+  // Tiket yang pernah ditolak pelapor: keterangan baru + foto baru wajib.
+  const isReopened = !!ticket.disputeNote;
 
   return (
     <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-hard-sm space-y-2.5">
@@ -163,9 +231,7 @@ export function TicketCard({
         </p>
       )}
 
-      {ticket.attachments && ticket.attachments.length > 0 && (
-        <TicketPhotos attachments={ticket.attachments} />
-      )}
+      {reportPhotos.length > 0 && <TicketPhotos attachments={reportPhotos} />}
 
       {/* Catatan alur */}
       {ticket.escalationNote && (ticket.status === "escalated" || ticket.status === "owner_handling") && (
@@ -185,6 +251,11 @@ export function TicketCard({
         <div className="text-[11.5px] text-success font-medium">
           ✓ Selesai{resMs != null ? ` dalam ${formatDuration(resMs)}` : ""}
           {ticket.resolutionNote ? ` — ${ticket.resolutionNote}` : ""}
+          {resolutionPhotos.length > 0 && (
+            <span className="block mt-0.5">
+              <TicketPhotos attachments={resolutionPhotos} label="foto bukti selesai" />
+            </span>
+          )}
           {ticket.confirmedAt ? (
             <span className="block text-success/80">✓✓ Dikonfirmasi pelapor</span>
           ) : (
@@ -204,9 +275,10 @@ export function TicketCard({
         }
         onResolveDirect={() =>
           setPrompt({
-            title: "Tandai selesai",
-            required: false,
-            run: (n) => resolveTicket(ticket.id, n || undefined),
+            title: isReopened ? "Tandai selesai (perbaikan ulang)" : "Tandai selesai",
+            required: isReopened,
+            requirePhotos: true,
+            run: (n, paths) => resolveTicket(ticket.id, n || undefined, paths),
             successMsg: "Tiket selesai",
           })
         }
@@ -254,7 +326,7 @@ export function TicketCard({
       />
 
       {/* Dialog catatan */}
-      <Dialog open={prompt !== null} onOpenChange={(v) => !v && setPrompt(null)}>
+      <Dialog open={prompt !== null} onOpenChange={(v) => !v && !uploading && closePrompt()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{prompt?.title}</DialogTitle>
@@ -263,15 +335,78 @@ export function TicketCard({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
-            placeholder={prompt?.required ? "Catatan (wajib)…" : "Catatan (opsional)…"}
+            placeholder={
+              prompt?.requirePhotos && prompt.required
+                ? "Keterangan baru (wajib)…"
+                : prompt?.required
+                  ? "Catatan (wajib)…"
+                  : "Catatan (opsional)…"
+            }
             className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm resize-y"
           />
+          {prompt?.requirePhotos && (
+            <div className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Foto bukti (wajib, bisa lebih dari 1)
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {files.map((f, i) => (
+                  <div
+                    key={i}
+                    className="relative size-16 rounded-lg border-2 border-foreground overflow-hidden bg-muted"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={URL.createObjectURL(f)}
+                      alt={`foto ${i + 1}`}
+                      className="size-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}
+                      className="absolute top-0.5 right-0.5 grid place-items-center size-5 rounded-full bg-foreground text-background"
+                      aria-label="Hapus foto"
+                    >
+                      <XIcon size={12} />
+                    </button>
+                  </div>
+                ))}
+                {files.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="grid place-items-center size-16 rounded-lg border-2 border-dashed border-foreground/40 text-muted-foreground hover:bg-muted transition"
+                  >
+                    <ImagePlus size={20} />
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPrompt(null)} disabled={pending}>
+            <Button variant="outline" onClick={closePrompt} disabled={pending}>
               Batal
             </Button>
             <Button onClick={confirmPrompt} disabled={pending}>
-              {pending ? <Loader2 size={14} className="animate-spin" /> : "Konfirmasi"}
+              {pending ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  {uploading ? "Mengupload…" : ""}
+                </>
+              ) : (
+                "Konfirmasi"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

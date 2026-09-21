@@ -37,7 +37,10 @@ export function AdminTopbar({
     <div
       className="hidden md:flex h-[60px] items-center gap-3.5 px-7 border-b border-border/70 sticky top-0 z-30"
       style={{
-        background: "rgba(251, 251, 249, 0.7)",
+        // Hampir opak: di browser/GPU yang tidak menerapkan backdrop-filter
+        // (blur gagal), alpha 0.7 membuat teks halaman yang di-scroll tembus
+        // dan bertumpuk dengan breadcrumb.
+        background: "rgba(251, 251, 249, 0.96)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
       }}

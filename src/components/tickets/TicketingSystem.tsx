@@ -1,13 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Ticket as TicketIcon, Inbox, CheckCircle2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Ticket as TicketIcon,
+  Inbox,
+  CheckCircle2,
+  Archive,
+  ChevronDown,
+} from "lucide-react";
 import { TicketForm } from "./TicketForm";
 import { TicketCard } from "./TicketCard";
 import {
   formatDuration,
   isTicketOpen,
   isStudioQueueStatus,
+  needsFilerConfirmation,
   type Ticket,
   type TicketViewerRole,
 } from "@/lib/tickets/types";
@@ -34,6 +43,7 @@ export function TicketingSystem({
   kpi?: StudioHeadKpi | null;
   backHref?: string;
 }) {
+  const [showArchive, setShowArchive] = useState(false);
   const isManager = viewerRole === "head" || viewerRole === "owner";
   const activeQueue = studioQueue.filter((t) => isTicketOpen(t.status));
   const escalationList = escalated.filter((t) => isTicketOpen(t.status));
@@ -45,6 +55,14 @@ export function TicketingSystem({
   // drop escalated/owner_handling tickets (already shown, actionable, in
   // "Perlu keputusan owner") and tickets the owner filed themselves
   // (already shown, actionable, in "Tiket saya" below).
+  // "Tiket saya": yang sudah selesai (dan sudah dikonfirmasi pelapor) atau
+  // dibatalkan disembunyikan ke arsip. Tiket selesai yang MASIH menunggu
+  // konfirmasi pelapor tetap tampil — tombol Konfirmasi/Belum beres ada di sana.
+  const isArchived = (t: Ticket) =>
+    t.status === "cancelled" || (t.status === "resolved" && !needsFilerConfirmation(t));
+  const myActive = myTickets.filter((t) => !isArchived(t));
+  const myArchived = myTickets.filter(isArchived);
+
   const ownerMonitorQueue = activeQueue.filter(
     (t) => isStudioQueueStatus(t.status) && t.createdBy !== uid
   );
@@ -128,13 +146,47 @@ export function TicketingSystem({
       <Section
         icon={<CheckCircle2 size={16} />}
         title="Tiket saya"
-        count={myTickets.length}
-        empty="Belum ada tiket. Ketuk “Buat Tiket” untuk melapor."
+        count={myActive.length}
+        empty={
+          myArchived.length > 0
+            ? "Tidak ada tiket aktif."
+            : "Belum ada tiket. Ketuk “Buat Tiket” untuk melapor."
+        }
       >
-        {myTickets.map((t) => (
+        {myActive.map((t) => (
           <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="mine" />
         ))}
       </Section>
+
+      {myArchived.length > 0 && (
+        <section className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowArchive((v) => !v)}
+            aria-expanded={showArchive}
+            className="flex w-full items-center gap-2 text-left"
+          >
+            <span className="text-muted-foreground">
+              <Archive size={16} />
+            </span>
+            <h2 className="font-display font-bold text-base">Arsip tiket selesai</h2>
+            <span className="text-xs font-semibold text-muted-foreground rounded-full bg-muted px-2 py-0.5">
+              {myArchived.length}
+            </span>
+            <ChevronDown
+              size={16}
+              className={`ml-auto text-muted-foreground transition-transform ${showArchive ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showArchive && (
+            <div className="space-y-3">
+              {myArchived.map((t) => (
+                <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="mine" />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

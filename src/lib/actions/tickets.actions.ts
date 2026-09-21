@@ -44,6 +44,8 @@ function mapAttachment(r: any): TicketAttachment {
     path: r.path,
     contentType: r.content_type ?? null,
     uploadedBy: r.uploaded_by ?? null,
+    kind:
+      r.kind === "resolution" || r.kind === "superseded" ? r.kind : "report",
     sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
   };
@@ -259,14 +261,23 @@ export async function startTicket(ticketId: string): Promise<ActionResult> {
 
 export async function resolveTicket(
   ticketId: string,
-  note?: string
+  note: string | undefined,
+  photoPaths: string[]
 ): Promise<ActionResult> {
   const gate = await requireStudioHeadOrAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
+  // Bukti foto WAJIB untuk semua tiket. Path harus di folder uploader
+  // sendiri (sama dengan policy storage) supaya tidak bisa menempelkan
+  // foto milik orang lain sebagai bukti.
+  const paths = Array.from(new Set(photoPaths ?? [])).slice(0, 10);
+  if (paths.length === 0)
+    return { ok: false, error: "Foto bukti penyelesaian wajib dilampirkan" };
+  if (paths.some((p) => !p.startsWith(`${gate.userId}/`)))
+    return { ok: false, error: "Foto bukti tidak valid" };
   const supabase = await createClient();
   const { data: t } = await supabase
     .from("tickets" as never)
-    .select("status, created_by, title, branch")
+    .select("status, created_by, title, branch, dispute_note")
     .eq("id", ticketId)
     .maybeSingle();
   const row = t as unknown as {
@@ -274,8 +285,16 @@ export async function resolveTicket(
     created_by: string;
     title: string;
     branch: string;
+    dispute_note: string | null;
   } | null;
   if (!row) return { ok: false, error: "Tiket tidak ditemukan" };
+  // Tiket yang pernah ditolak pelapor ("belum beres") wajib disubmit ulang
+  // dengan keterangan BARU + foto baru, sama seperti penyelesaian pertama.
+  if (row.dispute_note && !note?.trim())
+    return {
+      ok: false,
+      error: "Tiket ini pernah ditolak pelapor — keterangan baru wajib diisi",
+    };
   // Admin/owner hanya boleh menyelesaikan tiket yang sudah mereka ACC
   // sendiri (owner_handling) — bukan antrian biasa, itu tugas Kepala
   // Studio. Kepala Studio sebaliknya tidak menyentuh owner_handling —
@@ -285,6 +304,25 @@ export async function resolveTicket(
     : ["open", "in_progress"];
   if (!allowedStatuses.includes(row.status))
     return { ok: false, error: "Tiket tidak bisa diselesaikan pada status ini" };
+  // Foto disimpan SEBELUM status berubah: kalau update gagal, baris foto
+  // dibersihkan lagi. Kebalikannya bisa menghasilkan tiket "selesai" tanpa
+  // bukti — persis yang mau dicegah. Service-role karena admin/owner tidak
+  // selalu lolos RLS insert ticket_attachments (hanya pemilik tiket).
+  const admin = createAdminClient() as any;
+  const { data: insertedPhotos, error: photoErr } = await admin
+    .from("ticket_attachments")
+    .insert(
+      paths.map((path, i) => ({
+        ticket_id: ticketId,
+        path,
+        uploaded_by: gate.userId,
+        content_type: "image/jpeg",
+        kind: "resolution",
+        sort_order: i,
+      }))
+    )
+    .select("id");
+  if (photoErr) return { ok: false, error: photoErr.message };
   const { error } = await supabase
     .from("tickets" as never)
     .update({
@@ -294,7 +332,11 @@ export async function resolveTicket(
       resolution_note: note?.trim() || null,
     } as never)
     .eq("id", ticketId);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    const ids = ((insertedPhotos ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (ids.length) await admin.from("ticket_attachments").delete().in("id", ids);
+    return { ok: false, error: error.message };
+  }
 
   if (row.created_by) {
     const msg = await renderWaTemplate("ticket_resolved_alert", {
@@ -450,6 +492,16 @@ export async function confirmTicketResolution(
   }
 
   // dispute → buka kembali ke antrian Kepala Studio, bersihkan jejak selesai.
+  // Bukti foto putaran ini ditandai 'superseded' (bukan dihapus) supaya
+  // putaran berikutnya mulai bersih tapi jejaknya tetap ada. Service-role:
+  // pelapor tidak punya policy UPDATE di ticket_attachments.
+  const adminDb = createAdminClient() as any;
+  const { error: supErr } = await adminDb
+    .from("ticket_attachments")
+    .update({ kind: "superseded" })
+    .eq("ticket_id", ticketId)
+    .eq("kind", "resolution");
+  if (supErr) return { ok: false, error: supErr.message };
   const { error } = await supabase
     .from("tickets" as never)
     .update({

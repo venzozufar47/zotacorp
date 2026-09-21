@@ -10,7 +10,14 @@ import type { TicketAttachment } from "@/lib/tickets/types";
  * Tombol "N foto" → buka galeri lightbox. URL foto (bucket privat) dibuat
  * on-demand lewat server action signed URL (600s) saat dibuka.
  */
-export function TicketPhotos({ attachments }: { attachments: TicketAttachment[] }) {
+export function TicketPhotos({
+  attachments,
+  label = "foto",
+}: {
+  attachments: TicketAttachment[];
+  /** Teks setelah jumlah, mis. "foto" atau "foto bukti selesai". */
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [urls, setUrls] = useState<string[]>([]);
@@ -38,7 +45,7 @@ export function TicketPhotos({ attachments }: { attachments: TicketAttachment[] 
         onClick={openGallery}
         className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-primary hover:underline"
       >
-        <ImageIcon size={13} /> {attachments.length} foto
+        <ImageIcon size={13} /> {attachments.length} {label}
       </button>
 
       {open && (

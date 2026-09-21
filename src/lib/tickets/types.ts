@@ -53,6 +53,8 @@ export interface TicketAttachment {
   path: string;
   contentType: string | null;
   uploadedBy: string | null;
+  /** report = lampiran pelapor; resolution = bukti selesai aktif; superseded = bukti putaran lama yang ditolak pelapor. */
+  kind: "report" | "resolution" | "superseded";
   sortOrder: number;
   createdAt: string;
 }
