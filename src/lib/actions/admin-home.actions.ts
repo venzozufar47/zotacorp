@@ -10,7 +10,6 @@ import {
 import { zonedDateString } from "@/lib/utils/celebrations";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
 import { getCleaningMonitor } from "./cleaning.actions";
-import { posBasePathForBranch } from "@/lib/pos/branch";
 import {
   getServiceLevelSummary,
   getExpiredWasteSummary,
@@ -25,7 +24,9 @@ export interface AdminOpsMetrics {
   outlets: Array<{
     id: string;
     label: string;
-    /** Halaman Service Level outlet ini di layar POS-nya. */
+    /** Panel Service Level ADMIN (/admin/service-level), langsung ke
+     *  anchor outlet ini — BUKAN panel POS: admin belum tentu punya akses
+     *  layar kasir, dan panel admin sudah menampilkan angka yang sama. */
     href: string;
     /** Pecahan 0-1; null = belum ada data. */
     serviceLevel: number | null;
@@ -65,10 +66,7 @@ export async function getAdminOpsMetrics(): Promise<AdminOpsMetrics> {
         return {
           id: a.id,
           label: a.default_branch ?? a.account_name,
-          href:
-            a.default_branch === "Pare" || a.default_branch === "Semarang"
-              ? `${posBasePathForBranch(a.default_branch)}/service-level`
-              : "/admin/service-level",
+          href: `/admin/service-level#outlet-${a.id}`,
           serviceLevel: sl && sl.ok ? (sl.data?.percent ?? null) : null,
           serviceLevelTarget: a.service_level_target,
           expiredRate: waste && waste.ok ? (waste.data?.expiredRate ?? null) : null,

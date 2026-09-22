@@ -121,7 +121,11 @@ export function ServiceLevelAdminClient({
       {/* Ringkasan — supaya superadmin tidak perlu membuka layar kasir. */}
       <div className="grid gap-3 sm:grid-cols-2">
         {outlets.map((o) => (
-          <div key={o.id} className="panel-sticker p-4">
+          <div
+            key={o.id}
+            id={`outlet-${o.id}`}
+            className="panel-sticker p-4 scroll-mt-20"
+          >
             <div className="flex items-start justify-between gap-3">
               <p className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 {o.branch ?? o.accountName}
