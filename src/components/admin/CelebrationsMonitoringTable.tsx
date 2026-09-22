@@ -38,14 +38,14 @@ function pickName(r: EmployeeMonitoringRow): string {
 
 /**
  * Tab admin monitoring perayaan, di-organisir per KATEGORI (Notice,
- * Streak, Ulang Tahun, Anniversary, Log WA) — bukan per-karyawan.
- * Setiap kategori punya rangkingnya sendiri sehingga admin bisa scan
- * "siapa yang streaknya paling tinggi", "siapa ulang tahun terdekat",
- * dst dalam satu pandangan.
+ * Streak, Ulang Tahun, Anniversary, Riwayat notifikasi) — bukan
+ * per-karyawan. Setiap kategori punya rangkingnya sendiri sehingga admin
+ * bisa scan "siapa yang streaknya paling tinggi", "siapa ulang tahun
+ * terdekat", dst dalam satu pandangan.
  */
 export function CelebrationsMonitoringTable({ rows }: Props) {
   const noticeRows = rows.filter((r) => r.notices.length > 0);
-  const [waQuery, setWaQuery] = useState("");
+  const [notifQuery, setNotifQuery] = useState("");
 
   const streakRows = useMemo(
     () =>
@@ -79,14 +79,14 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
     [rows]
   );
 
-  const waLog = useMemo(() => {
+  const notifLog = useMemo(() => {
     const flat: Array<{
       employeeId: string;
       employeeName: string;
-      log: EmployeeMonitoringRow["recentWa"][number];
+      log: EmployeeMonitoringRow["recentNotifications"][number];
     }> = [];
     for (const r of rows) {
-      for (const log of r.recentWa) {
+      for (const log of r.recentNotifications) {
         flat.push({
           employeeId: r.id,
           employeeName: pickName(r),
@@ -98,17 +98,17 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
     return flat;
   }, [rows]);
 
-  const waLogFiltered = useMemo(() => {
-    const q = waQuery.trim().toLowerCase();
-    if (!q) return waLog;
-    return waLog.filter((entry) => {
+  const notifLogFiltered = useMemo(() => {
+    const q = notifQuery.trim().toLowerCase();
+    if (!q) return notifLog;
+    return notifLog.filter((entry) => {
       if (entry.employeeName.toLowerCase().includes(q)) return true;
       if (entry.log.body?.toLowerCase().includes(q)) return true;
       if (eventBadgeLabel(entry.log.eventType).toLowerCase().includes(q)) return true;
       if (entry.log.eventType.toLowerCase().includes(q)) return true;
       return false;
     });
-  }, [waLog, waQuery]);
+  }, [notifLog, notifQuery]);
 
   if (rows.length === 0) {
     return (
@@ -249,31 +249,31 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
         </CategoryCard>
 
         <CategoryCard
-          title="Riwayat WA perayaan"
+          title="Riwayat notifikasi perayaan"
           icon={<MessageCircle size={14} />}
           accent="bg-indigo-50/60 border-indigo-300"
           countLabel={
-            waQuery
-              ? `${waLogFiltered.length} / ${waLog.length} pesan`
-              : `${waLog.length} pesan`
+            notifQuery
+              ? `${notifLogFiltered.length} / ${notifLog.length} notif`
+              : `${notifLog.length} notif`
           }
         >
           <div className="px-3 pt-2 pb-1">
             <input
               type="search"
-              value={waQuery}
-              onChange={(e) => setWaQuery(e.target.value)}
-              placeholder="Cari nama, isi pesan, atau jenis (notif/streak/broadcast)…"
+              value={notifQuery}
+              onChange={(e) => setNotifQuery(e.target.value)}
+              placeholder="Cari nama, isi pesan, atau jenis (ulang tahun/anniversary/streak)…"
               className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
           </div>
-          {waLog.length === 0 ? (
-            <Empty>Belum ada log WA perayaan.</Empty>
-          ) : waLogFiltered.length === 0 ? (
-            <Empty>Tidak ada hasil untuk &quot;{waQuery}&quot;.</Empty>
+          {notifLog.length === 0 ? (
+            <Empty>Belum ada log notifikasi perayaan.</Empty>
+          ) : notifLogFiltered.length === 0 ? (
+            <Empty>Tidak ada hasil untuk &quot;{notifQuery}&quot;.</Empty>
           ) : (
             <ul className="divide-y divide-border/60 max-h-[420px] overflow-y-auto">
-              {waLogFiltered.map((entry) => (
+              {notifLogFiltered.map((entry) => (
                 <li
                   key={entry.log.id}
                   className="px-3 py-2 text-xs hover:bg-accent/10"
@@ -400,16 +400,18 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 function eventBadgeLabel(eventType: string): string {
   switch (eventType) {
-    case "birthday":
+    case "birthday_morning":
       return "Birthday";
-    case "anniversary":
+    case "anniversary_morning":
       return "Anniversary";
+    case "birthday_broadcast":
+      return "Broadcast 🎂";
+    case "anniversary_broadcast":
+      return "Broadcast 🎉";
     case "streak_milestone":
       return "Streak";
-    case "celebration_greeting_notification":
+    case "greeting_notified":
       return "Notif";
-    case "other":
-      return "Broadcast";
     default:
       return eventType;
   }
@@ -417,16 +419,18 @@ function eventBadgeLabel(eventType: string): string {
 
 function eventBadgeClass(eventType: string): string {
   switch (eventType) {
-    case "birthday":
+    case "birthday_morning":
       return "bg-pink-100 text-pink-700";
-    case "anniversary":
+    case "anniversary_morning":
+      return "bg-amber-100 text-amber-700";
+    case "birthday_broadcast":
+      return "bg-pink-100 text-pink-700";
+    case "anniversary_broadcast":
       return "bg-amber-100 text-amber-700";
     case "streak_milestone":
       return "bg-emerald-100 text-emerald-700";
-    case "celebration_greeting_notification":
+    case "greeting_notified":
       return "bg-purple-100 text-purple-700";
-    case "other":
-      return "bg-indigo-100 text-indigo-700";
     default:
       return "bg-muted text-muted-foreground";
   }

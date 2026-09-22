@@ -25,7 +25,7 @@ import {
   activeBreakWindow,
   localHhmm,
 } from "@/lib/utils/break-windows";
-import { sendPushToUser } from "@/lib/push/web-push";
+import { sendCelebrationPush } from "@/lib/celebrations/push-log";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import { getBlockingCleaning } from "@/lib/actions/cleaning.actions";
 import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
@@ -569,9 +569,9 @@ export async function breakIn(payload: CheckInPayload) {
 /**
  * Post-check-in streak bookkeeping. Recomputes the current streak from
  * attendance_logs, ratchets `streak_personal_best` when a new high is
- * observed, and fires a single congratulatory WhatsApp the first time a
- * milestone (5/10/20/30/60/100) is crossed. All failures swallowed —
- * this is decoration, never a blocker.
+ * observed, and fires a single congratulatory push notification the first
+ * time a milestone (5/10/20/30/60/100) is crossed. All failures swallowed
+ * — this is decoration, never a blocker.
  */
 async function updateStreakAfterCheckIn(userId: string): Promise<void> {
   try {
@@ -626,7 +626,10 @@ async function updateStreakAfterCheckIn(userId: string): Promise<void> {
           name: profile.full_name ?? "teman",
           days: snapshot.milestoneHitNow,
         });
-        await sendPushToUser(userId, { title: "Streak baru! 🎉", body });
+        await sendCelebrationPush(userId, "streak_milestone", {
+          title: "Streak baru! 🎉",
+          body,
+        });
       } catch (err) {
         console.error("[streak] push send failed", err);
       }

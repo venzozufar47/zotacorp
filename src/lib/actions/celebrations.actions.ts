@@ -21,7 +21,7 @@ import {
   zonedDateString,
 } from "@/lib/utils/celebrations";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import { sendPushToUser } from "@/lib/push/web-push";
+import { sendCelebrationPush } from "@/lib/celebrations/push-log";
 
 const WINDOW_DAYS = 8; // today + next 7 days
 const ADMIN_RADAR_WINDOW_DAYS = 31; // today + next 30 days for admin Home
@@ -378,7 +378,7 @@ async function notifyCelebrantOfGreeting(args: {
     authorName,
     eventKind: eventKindLabel,
   });
-  await sendPushToUser(args.celebrantId, {
+  await sendCelebrationPush(args.celebrantId, "greeting_notified", {
     title: "Ada ucapan baru! 💌",
     body: message,
     url: "/dashboard",
@@ -496,7 +496,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
         const message = await renderWaTemplate("celebration_birthday_morning", {
           name: displayName,
         });
-        await sendPushToUser(claimed.id, {
+        await sendCelebrationPush(claimed.id, "birthday_morning", {
           title: "Selamat ulang tahun! 🎂",
           body: message,
           url: "/dashboard",
@@ -541,7 +541,7 @@ export async function dispatchTodaysGreetings(): Promise<void> {
           "celebration_anniversary_morning",
           { name: displayName, years }
         );
-        await sendPushToUser(claimed.id, {
+        await sendCelebrationPush(claimed.id, "anniversary_morning", {
           title: "Selamat merayakan anniversary! 🎉",
           body: message,
           url: "/dashboard",

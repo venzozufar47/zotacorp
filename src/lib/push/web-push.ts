@@ -67,12 +67,20 @@ async function logSend(
   }
 }
 
+/** How many devices were targeted vs. actually delivered — callers that
+ *  need to know whether a send truly landed (e.g. per-recipient audit
+ *  logs) can use this; everyone else keeps ignoring the return value. */
+export interface PushDeliveryResult {
+  targeted: number;
+  delivered: number;
+}
+
 /** Shared fan-out: sends `payload` to every subscription, pruning dead ones. */
 async function deliver(
   supabase: AdminClient,
   subs: StoredSubscription[],
   payload: PushPayload
-): Promise<void> {
+): Promise<PushDeliveryResult> {
   const body = JSON.stringify(payload);
   const stale: string[] = [];
   let delivered = 0;
@@ -102,20 +110,24 @@ async function deliver(
   }
 
   await logSend(supabase, payload.title, true, subs.length, delivered, stale.length);
+  return { targeted: subs.length, delivered };
 }
 
 /**
  * Deliver a notification to every device a user has subscribed. Never
  * throws — failures are swallowed/logged so business flows aren't blocked.
+ * Returns targeted/delivered counts (0/0 when unconfigured or the user has
+ * no subscriptions) for callers that want to know whether it truly landed;
+ * most callers just `await` it and ignore the result.
  */
 export async function sendPushToUser(
   userId: string,
   payload: PushPayload
-): Promise<void> {
+): Promise<PushDeliveryResult> {
   const supabase = createAdminClient();
   if (!ensureConfigured()) {
     await logSend(supabase, payload.title, false, 0, 0, 0);
-    return;
+    return { targeted: 0, delivered: 0 };
   }
 
   const { data: subs } = await supabase
@@ -123,7 +135,7 @@ export async function sendPushToUser(
     .select("id, endpoint, p256dh, auth")
     .eq("user_id", userId);
 
-  await deliver(supabase, subs ?? [], payload);
+  return deliver(supabase, subs ?? [], payload);
 }
 
 /**
@@ -132,11 +144,13 @@ export async function sendPushToUser(
  * in/out today; more event types can call this the same way) — callers
  * don't need to know which admins are subscribed or on which devices.
  */
-export async function sendPushToAdmins(payload: PushPayload): Promise<void> {
+export async function sendPushToAdmins(
+  payload: PushPayload
+): Promise<PushDeliveryResult> {
   const supabase = createAdminClient();
   if (!ensureConfigured()) {
     await logSend(supabase, payload.title, false, 0, 0, 0);
-    return;
+    return { targeted: 0, delivered: 0 };
   }
 
   const { data: admins } = await supabase
@@ -146,7 +160,7 @@ export async function sendPushToAdmins(payload: PushPayload): Promise<void> {
   const adminIds = (admins ?? []).map((a) => a.id);
   if (adminIds.length === 0) {
     await logSend(supabase, payload.title, true, 0, 0, 0);
-    return;
+    return { targeted: 0, delivered: 0 };
   }
 
   const { data: subs } = await supabase
@@ -154,5 +168,5 @@ export async function sendPushToAdmins(payload: PushPayload): Promise<void> {
     .select("id, endpoint, p256dh, auth")
     .in("user_id", adminIds);
 
-  await deliver(supabase, subs ?? [], payload);
+  return deliver(supabase, subs ?? [], payload);
 }

@@ -20,16 +20,16 @@ interface Props {
   /**
    * Preview body pesan yang akan dikirim, sudah di-render dari
    * template `celebration_birthday_broadcast` (admin bisa edit copy
-   * di /admin/settings → Whatsapp Templates).
+   * di /admin/settings → Template notifikasi).
    */
   previewMessage: string;
 }
 
 /**
- * Tombol admin untuk broadcast WA reminder ke seluruh karyawan kalau
- * ada yang ulang tahun hari ini, mengajak ucapin via Zota app. Hanya
- * aktif kalau memang ada celebrant hari ini supaya tidak kirim
- * pesan kosong.
+ * Tombol admin untuk broadcast push notification ke seluruh karyawan
+ * kalau ada yang ulang tahun hari ini, mengajak ucapin via Zota app.
+ * Hanya aktif kalau memang ada celebrant hari ini supaya tidak kirim
+ * notifikasi kosong.
  */
 export function BirthdayBroadcastButton({
   todayBirthdays,

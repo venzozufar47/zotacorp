@@ -12,8 +12,9 @@ import { BirthdayBroadcastButton } from "@/components/admin/BirthdayBroadcastBut
 
 /**
  * Admin tab: monitoring streak presensi, ulang tahun, anniversary
- * tahun kerja, dan log pesan WA terkait perayaan untuk setiap
- * karyawan. Tidak menampilkan WA notifikasi presensi (request user).
+ * tahun kerja, dan log push notification terkait perayaan untuk setiap
+ * karyawan. Tidak menampilkan notifikasi presensi (request user) —
+ * fokusnya perayaan saja.
  */
 export default async function AdminCelebrationsPage() {
   const user = await getCurrentUser();
@@ -33,7 +34,7 @@ export default async function AdminCelebrationsPage() {
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="Monitoring Karyawan"
-        subtitle="Streak presensi, ulang tahun, anniversary tahun kerja, dan log pesan WA perayaan"
+        subtitle="Streak presensi, ulang tahun, anniversary tahun kerja, dan log notifikasi perayaan"
       />
       <BirthdayBroadcastButton
         todayBirthdays={todayBirthdays.map((r) => ({

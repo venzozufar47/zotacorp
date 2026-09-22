@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { computeStreak } from "@/lib/utils/streak";
-import { sendPushToUser } from "@/lib/push/web-push";
+import { sendCelebrationPush } from "@/lib/celebrations/push-log";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import type { Database } from "@/lib/supabase/types";
 
@@ -13,7 +13,7 @@ import type { Database } from "@/lib/supabase/types";
  *  - Streak presensi (current + personal best + last milestone)
  *  - Tanggal ulang tahun + last greeted
  *  - Tanggal mulai kerja + last anniversary greeted + tahun berjalan
- *  - Riwayat kiriman WA terkait perayaan (birthday/anniversary)
+ *  - Riwayat push notification terkait perayaan (birthday/anniversary/streak)
  *
  * Sekuritas: admin-only (dipanggil dari halaman /admin yang sudah
  * gate-nya `role === "admin"`).
@@ -23,7 +23,6 @@ export interface EmployeeMonitoringRow {
   id: string;
   fullName: string;
   nickname: string | null;
-  whatsappNumber: string | null;
   // Streak
   streakCurrent: number;
   streakPersonalBest: number;
@@ -39,13 +38,13 @@ export interface EmployeeMonitoringRow {
   daysToAnniversary: number | null;
   anniversaryLastGreeted: string | null;
   yearsOfService: number;
-  // Recent WA logs (celebration only)
-  recentWa: WhatsAppLogEntry[];
+  // Riwayat push perayaan (celebration_push_logs)
+  recentNotifications: CelebrationLogEntry[];
   /**
-   * Notice yang seharusnya tampil ke admin: WA yang berdasarkan
-   * data DB seharusnya sudah dikirim tapi tidak terdeteksi di
-   * `whatsapp_send_logs` (atau memang belum dikirim padahal sudah
-   * lewat tanggalnya). Tujuan: highlight gap supaya admin bisa
+   * Notice yang seharusnya tampil ke admin: push perayaan yang
+   * berdasarkan data DB seharusnya sudah dikirim tapi tidak terdeteksi
+   * di `celebration_push_logs` (atau memang belum dikirim padahal
+   * sudah lewat tanggalnya). Tujuan: highlight gap supaya admin bisa
    * resend manual atau cek dispatcher.
    */
   notices: MonitoringNotice[];
@@ -57,20 +56,29 @@ export interface MonitoringNotice {
     | "anniversary_marked_no_log"
     | "birthday_passed_not_greeted"
     | "anniversary_passed_not_greeted"
-    | "streak_milestone_no_wa"
-    | "no_whatsapp_number";
+    | "streak_milestone_no_push"
+    | "no_push_subscription";
   message: string;
   date: string | null;
 }
 
 /**
  * Web app live mulai 2026-04-16. Sebelum tanggal itu tidak ada
- * dispatcher WA, jadi notice "belum di-greet" untuk event yang
+ * dispatcher notifikasi, jadi notice "belum di-greet" untuk event yang
  * tanggalnya < APP_LIVE_DATE di-suppress (false-positive).
  */
 const APP_LIVE_DATE = "2026-04-16";
 
-export interface WhatsAppLogEntry {
+/**
+ * Tanggal `celebration_push_logs` mulai ditulis (migration 151, pengganti
+ * `whatsapp_send_logs` yang sudah mati). Event yang di-mark "sudah
+ * di-greet" SEBELUM tanggal ini tidak akan pernah punya baris log — itu
+ * bukan gap sungguhan, cuma histori dari sebelum tabel ini ada. Notice
+ * "marked_no_log" HANYA dicek utk tanggal >= ini.
+ */
+const CELEBRATION_LOG_LIVE_DATE = "2026-09-22";
+
+export interface CelebrationLogEntry {
   id: string;
   eventType: string;
   status: string;
@@ -189,7 +197,7 @@ export async function listEmployeeMonitoring(): Promise<{
   const { data: profiles, error: profErr } = await supabase
     .from("profiles")
     .select(
-      "id, full_name, nickname, whatsapp_number, role, date_of_birth, first_day_of_work, birthday_last_greeted, anniversary_last_greeted, streak_personal_best, streak_last_milestone"
+      "id, full_name, nickname, push_notification_exempt, role, date_of_birth, first_day_of_work, birthday_last_greeted, anniversary_last_greeted, streak_personal_best, streak_last_milestone"
     )
     .neq("role", "admin")
     .eq("is_active", true)
@@ -206,31 +214,45 @@ export async function listEmployeeMonitoring(): Promise<{
   const todayIso = todayIsoInTz(tz);
   const yearNow = Number(todayIso.slice(0, 4));
 
-  // Batched WA logs: ambil 5 terakhir per profile via
-  // window-function. Pakai SQL raw via RPC akan terlalu rumit; cukup
-  // pull semua log yang event-nya birthday/anniversary, lalu group
-  // di JS.
-  const { data: waLogs } = await supabase
-    .from("whatsapp_send_logs")
-    .select("id, recipient_profile_id, event_type, status, error_message, message_body, sent_at")
-    .not("event_type", "in", "(attendance_check_in_alert,attendance_check_out_alert)")
-    .order("sent_at", { ascending: false })
+  // Siapa yang punya minimal satu device push-subscribed — dipakai notice
+  // "no_push_subscription" (pengganti "belum ada nomor WA"; push tidak
+  // butuh nomor telepon, jadi kondisi blocker-nya beda sama sekali).
+  const { data: subRows } = await supabase
+    .from("push_subscriptions")
+    .select("user_id");
+  const subscribedIds = new Set((subRows ?? []).map((r) => r.user_id));
+
+  // Batched celebration push logs: pull semua log 30 hari terakhir,
+  // lalu group per-profile di JS (jumlah karyawan kecil, lebih murah
+  // drpd window-function per-row via RPC).
+  const { data: celebLogs } = await supabase
+    .from("celebration_push_logs" as never)
+    .select("id, recipient_profile_id, event_type, status, error_message, body, created_at")
+    .order("created_at", { ascending: false })
     .limit(800);
 
-  const waByProfile = new Map<string, WhatsAppLogEntry[]>();
-  for (const log of waLogs ?? []) {
+  const logsByProfile = new Map<string, CelebrationLogEntry[]>();
+  for (const log of (celebLogs ?? []) as unknown as Array<{
+    id: string;
+    recipient_profile_id: string;
+    event_type: string;
+    status: string;
+    error_message: string | null;
+    body: string;
+    created_at: string;
+  }>) {
     if (!log.recipient_profile_id) continue;
-    const arr = waByProfile.get(log.recipient_profile_id) ?? [];
+    const arr = logsByProfile.get(log.recipient_profile_id) ?? [];
     if (arr.length >= 10) continue;
     arr.push({
       id: log.id,
       eventType: log.event_type,
       status: log.status,
       errorMessage: log.error_message,
-      body: log.message_body,
-      sentAt: log.sent_at,
+      body: log.body,
+      sentAt: log.created_at,
     });
-    waByProfile.set(log.recipient_profile_id, arr);
+    logsByProfile.set(log.recipient_profile_id, arr);
   }
 
   // Untuk tiap profile, compute streak (paralel max 8 sekaligus
@@ -267,40 +289,42 @@ export async function listEmployeeMonitoring(): Promise<{
       yearsOfService = Math.max(0, yearNow - startYear);
     }
 
-    // Detect missing WA log notices.
+    // Detect missing push log notices.
     const notices: MonitoringNotice[] = [];
-    const profLogs = waByProfile.get(p.id) ?? [];
+    const profLogs = logsByProfile.get(p.id) ?? [];
 
-    // Nomor WhatsApp belum di-setup → semua dispatcher (birthday,
-    // anniversary, streak) tidak punya target. Notice paling
-    // priority karena root cause WA-related notices lain.
-    if (!p.whatsapp_number || !p.whatsapp_number.trim()) {
+    // Tidak ada device push-subscribed → semua dispatcher (birthday,
+    // anniversary, streak) tidak punya target. Notice paling priority
+    // krn jadi root cause notice lain di bawah. Karyawan yang memang
+    // di-exempt (push_notification_exempt) sengaja tidak di-flag.
+    if (!subscribedIds.has(p.id) && !p.push_notification_exempt) {
       notices.push({
-        kind: "no_whatsapp_number",
+        kind: "no_push_subscription",
         message:
-          "Nomor WhatsApp belum di-setup di profile. Tidak ada WA otomatis (ulang tahun / anniversary / streak) yang bisa dikirim ke karyawan ini.",
+          "Belum ada device dengan push notification aktif. Tidak ada notifikasi otomatis (ulang tahun / anniversary / streak) yang bisa terkirim ke karyawan ini.",
         date: null,
       });
     }
     const hasBirthdayLogIso = (iso: string) =>
       profLogs.some(
-        (l) => l.eventType === "birthday" && l.sentAt.slice(0, 10) === iso
+        (l) => l.eventType === "birthday_morning" && l.sentAt.slice(0, 10) === iso
       );
     const hasAnniversaryLogIso = (iso: string) =>
       profLogs.some(
-        (l) => l.eventType === "anniversary" && l.sentAt.slice(0, 10) === iso
+        (l) => l.eventType === "anniversary_morning" && l.sentAt.slice(0, 10) === iso
       );
 
-    // Birthday: kalau profile tag birthday_last_greeted tapi tidak
-    // ada log → dispatcher fired sebelum logging hidup.
+    // Birthday: kalau profile tag birthday_last_greeted (>= tanggal
+    // celebration_push_logs mulai ditulis) tapi tidak ada log → dispatcher
+    // fired tapi gagal ke-log (atau push-nya sendiri gagal terkirim).
     if (p.birthday_last_greeted) {
       if (
-        p.birthday_last_greeted >= APP_LIVE_DATE &&
+        p.birthday_last_greeted >= CELEBRATION_LOG_LIVE_DATE &&
         !hasBirthdayLogIso(p.birthday_last_greeted)
       ) {
         notices.push({
           kind: "birthday_marked_no_log",
-          message: `Birthday WA dicatat terkirim ${p.birthday_last_greeted} tapi tidak ada di log.`,
+          message: `Notifikasi ulang tahun dicatat terkirim ${p.birthday_last_greeted} tapi tidak ada di log.`,
           date: p.birthday_last_greeted,
         });
       }
@@ -317,21 +341,21 @@ export async function listEmployeeMonitoring(): Promise<{
       ) {
         notices.push({
           kind: "birthday_passed_not_greeted",
-          message: `Ulang tahun ${occThisYear} sudah lewat tapi WA belum tercatat dikirim.`,
+          message: `Ulang tahun ${occThisYear} sudah lewat tapi notifikasi belum tercatat dikirim.`,
           date: occThisYear,
         });
       }
     }
 
-    // Anniversary: same logic + same APP_LIVE_DATE guard.
+    // Anniversary: same logic.
     if (p.anniversary_last_greeted) {
       if (
-        p.anniversary_last_greeted >= APP_LIVE_DATE &&
+        p.anniversary_last_greeted >= CELEBRATION_LOG_LIVE_DATE &&
         !hasAnniversaryLogIso(p.anniversary_last_greeted)
       ) {
         notices.push({
           kind: "anniversary_marked_no_log",
-          message: `Anniversary WA dicatat terkirim ${p.anniversary_last_greeted} tapi tidak ada di log.`,
+          message: `Notifikasi anniversary dicatat terkirim ${p.anniversary_last_greeted} tapi tidak ada di log.`,
           date: p.anniversary_last_greeted,
         });
       }
@@ -345,47 +369,23 @@ export async function listEmployeeMonitoring(): Promise<{
       ) {
         notices.push({
           kind: "anniversary_passed_not_greeted",
-          message: `Anniversary ${occThisYear} sudah lewat tapi WA belum tercatat dikirim.`,
+          message: `Anniversary ${occThisYear} sudah lewat tapi notifikasi belum tercatat dikirim.`,
           date: occThisYear,
         });
       }
     }
 
-    // Streak milestone WA: tiga case warning.
-    //   (a) streak.current >= 5 tapi `streak_last_milestone` < 5 →
-    //       dispatcher belum jalan sama sekali untuk user ini.
-    //   (b) `streak_last_milestone` >= 5 tapi tidak ada log
-    //       streak_milestone → dispatcher fire tanpa log.
-    //   (c) Marker lebih tinggi dari milestone tertinggi yang
-    //       di-LOG (mis. marker 10 tapi log cuma punya 5) → ada
-    //       milestone yang di-crossed pre-logging atau insert log
-    //       gagal di salah satu tier.
+    // Streak milestone: HANYA case DB-murni (tidak bergantung pada log,
+    // krn celebration_push_logs baru mulai ditulis CELEBRATION_LOG_LIVE_DATE
+    // — milestone lama tidak akan pernah punya baris log, itu bukan gap
+    // sungguhan). streak.current >= 5 tapi `streak_last_milestone` < 5
+    // berarti dispatcher belum jalan sama sekali utk user ini SEJAK
+    // SEKARANG (murni dari kolom profile, tidak butuh histori log).
     const lastMs = p.streak_last_milestone ?? 0;
-    const streakLogMilestones = profLogs
-      .filter((l) => l.eventType === "streak_milestone")
-      .map((l) => {
-        const m = /(\d+)\s*hari/.exec(l.body);
-        return m ? Number(m[1]) : 0;
-      });
-    const highestLoggedMilestone = streakLogMilestones.length
-      ? Math.max(...streakLogMilestones)
-      : 0;
     if (streak >= 5 && lastMs < 5) {
       notices.push({
-        kind: "streak_milestone_no_wa",
-        message: `Streak ${streak} hari sudah lewat threshold milestone (5) tapi WA milestone belum dikirim sama sekali.`,
-        date: null,
-      });
-    } else if (lastMs >= 5 && streakLogMilestones.length === 0) {
-      notices.push({
-        kind: "streak_milestone_no_wa",
-        message: `Milestone ${lastMs} hari sudah dicatat di profile tapi tidak ada log WA streak_milestone untuk karyawan ini.`,
-        date: null,
-      });
-    } else if (lastMs > highestLoggedMilestone && lastMs >= 5) {
-      notices.push({
-        kind: "streak_milestone_no_wa",
-        message: `Milestone tertinggi di profile = ${lastMs} hari, tapi log WA cuma sampai ${highestLoggedMilestone} hari. Tier ${lastMs} hari belum tercatat dikirim.`,
+        kind: "streak_milestone_no_push",
+        message: `Streak ${streak} hari sudah lewat threshold milestone (5) tapi notifikasi milestone belum dikirim sama sekali.`,
         date: null,
       });
     }
@@ -394,7 +394,6 @@ export async function listEmployeeMonitoring(): Promise<{
       id: p.id,
       fullName: p.full_name ?? "",
       nickname: p.nickname,
-      whatsappNumber: p.whatsapp_number,
       streakCurrent: streak,
       streakPersonalBest: p.streak_personal_best ?? 0,
       streakLastMilestone: p.streak_last_milestone ?? 0,
@@ -407,7 +406,7 @@ export async function listEmployeeMonitoring(): Promise<{
       daysToAnniversary,
       anniversaryLastGreeted: p.anniversary_last_greeted,
       yearsOfService,
-      recentWa: profLogs,
+      recentNotifications: profLogs,
       notices,
     });
   }
@@ -581,11 +580,11 @@ export interface BroadcastResult {
   error?: string;
   /** List karyawan yang ulang tahunnya hari ini. */
   celebrants?: Array<{ id: string; name: string }>;
-  /** Jumlah pesan WA yang berhasil terkirim. */
+  /** Jumlah push yang berhasil terkirim. */
   sentCount?: number;
-  /** Jumlah pesan yang gagal (error_message di-log). */
+  /** Jumlah yang gagal (error_message di-log). */
   failedCount?: number;
-  /** Total target karyawan (yang punya whatsapp_number valid). */
+  /** Total target karyawan. */
   targetCount?: number;
   /**
    * Jumlah karyawan yang di-skip karena sudah pernah post greeting
@@ -597,21 +596,22 @@ export interface BroadcastResult {
 }
 
 /**
- * Admin broadcast: pesan WA ke SELURUH karyawan yang punya nomor WA
- * memberitahukan bahwa ada karyawan ulang tahun hari ini, ajak ucapin
- * via Zota app. Dipakai admin sebagai nudge supaya feed celebration di
- * dashboard tidak sepi.
+ * Admin broadcast: push notification ke SELURUH karyawan aktif
+ * memberitahukan bahwa ada karyawan ulang tahun/anniversary hari ini,
+ * ajak ucapin via Zota app. Dipakai admin sebagai nudge supaya feed
+ * celebration di dashboard tidak sepi.
  *
- * Setiap pesan terkirim di-log ke `whatsapp_send_logs` dengan
- * `event_type = 'other'` (bukan birthday/anniversary) — itu untuk
- * recipient yang BUKAN sang celebrant. Tujuannya: log buat audit, tapi
- * tidak duplikat dengan dispatcher pagi yang menargetkan celebrant.
+ * Setiap pengiriman di-log ke `celebration_push_logs` (event_type
+ * 'birthday_broadcast'/'anniversary_broadcast') — itu untuk recipient
+ * yang BUKAN sang celebrant. Tujuannya: log buat audit, tapi tidak
+ * duplikat dengan dispatcher pagi yang menargetkan celebrant sendiri
+ * (event_type 'birthday_morning'/'anniversary_morning').
  */
 /**
  * Inti broadcast reminder untuk satu `kind` (birthday / anniversary).
  * TANPA gate role — dipakai oleh admin action (yang gate sendiri) DAN
- * cron. Kirim WA ke SEMUA karyawan aktif & belum resign yang BELUM
- * ngucapin celebrant hari ini (skip celebrant + tanpa nomor WA).
+ * cron. Kirim push ke SEMUA karyawan aktif & belum resign yang BELUM
+ * ngucapin celebrant hari ini (skip celebrant sendiri).
  */
 async function runCelebrationBroadcast(
   kind: "birthday" | "anniversary"
@@ -691,11 +691,15 @@ async function runCelebrationBroadcast(
           count: celebrants.length,
         }
       );
-      await sendPushToUser(t.id, {
-        title: kind === "birthday" ? "Ada yang ulang tahun! 🎂" : "Ada yang anniversary! 🎉",
-        body: message,
-        url: "/dashboard",
-      });
+      await sendCelebrationPush(
+        t.id,
+        kind === "birthday" ? "birthday_broadcast" : "anniversary_broadcast",
+        {
+          title: kind === "birthday" ? "Ada yang ulang tahun! 🎂" : "Ada yang anniversary! 🎉",
+          body: message,
+          url: "/dashboard",
+        }
+      );
       sent++;
     } catch (err) {
       failed++;

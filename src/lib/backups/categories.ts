@@ -113,7 +113,7 @@ export const CATEGORY_TABLES: Record<BackupCategory, readonly string[]> = {
     "whatsapp_templates",
     "whatsapp_send_logs",
   ],
-  celebration: ["celebration_messages"],
+  celebration: ["celebration_messages", "celebration_push_logs"],
   business: ["business_units", "business_unit_roles"],
   voice: ["voice_rooms", "voice_room_presence"],
 };
