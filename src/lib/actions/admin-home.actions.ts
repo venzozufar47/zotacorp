@@ -445,7 +445,7 @@ export async function getRevenueSummaryForHome(): Promise<RevenueSummary> {
     cakeHbcSmgMonth: 0,
     monthCompare: null,
   };
-  if (!(await canViewRevenueDashboard())) return empty;
+  if (!(await canViewRevenueDashboard("haengbocake"))) return empty;
 
   // Service-role, bukan client sesi: pos_sales RLS (is_admin_or_pos_assignee)
   // hanya meloloskan admin atau PIC POS rekening itu -- seorang

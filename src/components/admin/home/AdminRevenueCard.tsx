@@ -141,10 +141,11 @@ export function AdminRevenueCard({
   today,
   yeobo,
 }: {
-  today: RevenueSummary;
+  /** null = viewer tidak punya scope 'haengbocake' — baris POS/Cake disembunyikan. */
+  today: RevenueSummary | null;
   yeobo: YeoboRevenue | null;
 }) {
-  const cmp = today.monthCompare ?? null;
+  const cmp = today?.monthCompare ?? null;
   return (
     <div
       className="bg-card rounded-2xl border border-border/70 overflow-hidden"
@@ -174,52 +175,56 @@ export function AdminRevenueCard({
             Bulan ini
           </span>
 
-          <RevenueRow
-            icon={<WalletIcon size={13} />}
-            label="POS Hbc Pare"
-            href="/pospare"
-            day={today.posHbcPareToday}
-            month={today.posHbcPareMonth}
-            delta={monthDelta(
-              today.posHbcPareMonth - today.posHbcPareToday,
-              cmp?.posHbcPare,
-              cmp?.prevLabel
-            )}
-          />
-          <RevenueRow
-            icon={<WalletIcon size={13} />}
-            label="POS Hbc Smg"
-            href="/possemarang"
-            day={today.posHbcSmgToday}
-            month={today.posHbcSmgMonth}
-            delta={monthDelta(
-              today.posHbcSmgMonth - today.posHbcSmgToday,
-              cmp?.posHbcSmg,
-              cmp?.prevLabel
-            )}
-          />
-          <RevenueRow
-            icon={<CakeSlice size={13} />}
-            label="Cake Hbc Pare"
-            day={today.cakeHbcPareToday}
-            month={today.cakeHbcPareMonth}
-            delta={monthDelta(
-              today.cakeHbcPareMonth - today.cakeHbcPareToday,
-              cmp?.cakeHbcPare,
-              cmp?.prevLabel
-            )}
-          />
-          <RevenueRow
-            icon={<CakeSlice size={13} />}
-            label="Cake Hbc Smg"
-            day={today.cakeHbcSmgToday}
-            month={today.cakeHbcSmgMonth}
-            delta={monthDelta(
-              today.cakeHbcSmgMonth - today.cakeHbcSmgToday,
-              cmp?.cakeHbcSmg,
-              cmp?.prevLabel
-            )}
-          />
+          {today && (
+            <>
+              <RevenueRow
+                icon={<WalletIcon size={13} />}
+                label="POS Hbc Pare"
+                href="/pospare"
+                day={today.posHbcPareToday}
+                month={today.posHbcPareMonth}
+                delta={monthDelta(
+                  today.posHbcPareMonth - today.posHbcPareToday,
+                  cmp?.posHbcPare,
+                  cmp?.prevLabel
+                )}
+              />
+              <RevenueRow
+                icon={<WalletIcon size={13} />}
+                label="POS Hbc Smg"
+                href="/possemarang"
+                day={today.posHbcSmgToday}
+                month={today.posHbcSmgMonth}
+                delta={monthDelta(
+                  today.posHbcSmgMonth - today.posHbcSmgToday,
+                  cmp?.posHbcSmg,
+                  cmp?.prevLabel
+                )}
+              />
+              <RevenueRow
+                icon={<CakeSlice size={13} />}
+                label="Cake Hbc Pare"
+                day={today.cakeHbcPareToday}
+                month={today.cakeHbcPareMonth}
+                delta={monthDelta(
+                  today.cakeHbcPareMonth - today.cakeHbcPareToday,
+                  cmp?.cakeHbcPare,
+                  cmp?.prevLabel
+                )}
+              />
+              <RevenueRow
+                icon={<CakeSlice size={13} />}
+                label="Cake Hbc Smg"
+                day={today.cakeHbcSmgToday}
+                month={today.cakeHbcSmgMonth}
+                delta={monthDelta(
+                  today.cakeHbcSmgMonth - today.cakeHbcSmgToday,
+                  cmp?.cakeHbcSmg,
+                  cmp?.prevLabel
+                )}
+              />
+            </>
+          )}
 
           {yeobo && (
             <>

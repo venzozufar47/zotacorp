@@ -59,7 +59,7 @@ const BRANCHES: Array<{ id: string; label: string }> = [
 const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
 export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
-  if (!(await canViewRevenueDashboard())) return null;
+  if (!(await canViewRevenueDashboard("yeobo"))) return null;
 
   const todayIso = jakartaDateString(new Date());
   const [y, m, d] = todayIso.split("-").map(Number);

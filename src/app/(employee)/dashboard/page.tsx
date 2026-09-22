@@ -120,7 +120,8 @@ export default async function DashboardPage() {
     serviceLevelOutlets,
     coachingNotes,
     ticketResolutionKpi,
-    hasRevenueAccess,
+    hasHaengbocakeRevenueAccess,
+    hasYeoboRevenueAccess,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -156,11 +157,13 @@ export default async function DashboardPage() {
     listMyServiceLevelOutlets(),
     listMyCoachingNotes(),
     getStudioHeadRecentResolutionKpi(),
-    canViewRevenueDashboard(),
+    canViewRevenueDashboard("haengbocake"),
+    canViewRevenueDashboard("yeobo"),
   ]);
-  const [revenueSummary, yeoboRevenue] = hasRevenueAccess
-    ? await Promise.all([getRevenueSummaryForHome(), getYeoboSpaceRevenue()])
-    : [null, null];
+  const [revenueSummary, yeoboRevenue] = await Promise.all([
+    hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
+    hasYeoboRevenueAccess ? getYeoboSpaceRevenue() : Promise.resolve(null),
+  ]);
   const pendingContract = myPendingContract;
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -377,9 +380,10 @@ export default async function DashboardPage() {
 
       {/* Kartu Omzet admin, ditunjukkan ke karyawan yang di-assign admin
           (revenue_dashboard_viewers) — data sama, reuse komponen admin
-          apa adanya. hasRevenueAccess sudah menggerbangi kedua fetch di
-          atas, jadi revenueSummary null berarti memang tidak berhak. */}
-      {revenueSummary && (
+          apa adanya. Haengbocake & Yeobo di-assign TERPISAH (scope
+          berbeda), jadi salah satu bisa null sementara yang lain terisi
+          — kartu tetap tampil selama minimal satu scope diberikan. */}
+      {(revenueSummary || yeoboRevenue) && (
         <AdminRevenueCard today={revenueSummary} yeobo={yeoboRevenue} />
       )}
 
