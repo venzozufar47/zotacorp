@@ -7,6 +7,7 @@ import {
   getCurrentUser,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
+import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
 import { zonedDateString } from "@/lib/utils/celebrations";
 import { jakartaDateString, jakartaDateMinusDays } from "@/lib/utils/jakarta";
 import { getCleaningMonitor } from "./cleaning.actions";
@@ -405,6 +406,184 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     hourlyCheckIns,
     asOfIso: now.toISOString(),
     todayIso,
+  };
+}
+
+/** Subset dari AdminHomeToday yang aman ditunjukkan ke karyawan non-admin
+ *  yang di-assign (revenue_dashboard_viewers) — SENGAJA tidak menyertakan
+ *  clockedInNow/lateToday/hourlyCheckIns (data kehadiran seluruh
+ *  perusahaan, bukan bagian dari "angka Omzet" yang diminta terlihat). */
+export interface RevenueSummary {
+  posHbcPareToday: number;
+  posHbcPareMonth: number;
+  posHbcSmgToday: number;
+  posHbcSmgMonth: number;
+  cakeHbcPareToday: number;
+  cakeHbcPareMonth: number;
+  cakeHbcSmgToday: number;
+  cakeHbcSmgMonth: number;
+  monthCompare: AdminHomeToday["monthCompare"];
+}
+
+/**
+ * Sama seperti bagian Omzet di `getAdminHomeToday` (query POS/cake +
+ * pembanding bulan lalu), tapi DIPISAH jadi fungsi sendiri (bukan
+ * memanggil ulang getAdminHomeToday dgn gate dilonggarkan) supaya data
+ * kehadiran full-company yang dihitung di fungsi itu tidak pernah ikut
+ * ke-expose ke viewer non-admin. Duplikasi query kecil ini sengaja —
+ * trade-off yang lebih aman drpd melonggarkan gate fungsi besar di atas.
+ */
+export async function getRevenueSummaryForHome(): Promise<RevenueSummary> {
+  const empty: RevenueSummary = {
+    posHbcPareToday: 0,
+    posHbcPareMonth: 0,
+    posHbcSmgToday: 0,
+    posHbcSmgMonth: 0,
+    cakeHbcPareToday: 0,
+    cakeHbcPareMonth: 0,
+    cakeHbcSmgToday: 0,
+    cakeHbcSmgMonth: 0,
+    monthCompare: null,
+  };
+  if (!(await canViewRevenueDashboard())) return empty;
+
+  // Service-role, bukan client sesi: pos_sales RLS (is_admin_or_pos_assignee)
+  // hanya meloloskan admin atau PIC POS rekening itu -- seorang
+  // revenue_dashboard_viewer yang bukan keduanya akan dapat 0 baris kalau
+  // pakai client sesi, padahal gate di atas sudah memutuskan dia berhak.
+  const supabase = adminClient();
+  const settings = await getCachedAttendanceSettings();
+  const tz = settings?.timezone ?? "Asia/Jakarta";
+  const now = new Date();
+  const todayIso = zonedDateString(now, tz);
+
+  const [yStr, mStr] = todayIso.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const monthStartDate = `${yStr}-${mStr}-01`;
+  const nextMonthStartDate = `${ny}-${String(nm).padStart(2, "0")}-01`;
+  const monthStartIso = tzDayRangeUtc(monthStartDate, tz).startIso;
+  const monthEndIso = tzDayRangeUtc(nextMonthStartDate, tz).startIso;
+  const { startIso: dayStartIso, endIso: dayEndIso } = tzDayRangeUtc(todayIso, tz);
+
+  const dayOfMonth = Number(todayIso.split("-")[2]);
+  const cmpDays = dayOfMonth - 1;
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  const prevStartDate = `${py}-${String(pm).padStart(2, "0")}-01`;
+  const prevMonthDays = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+  const canCompare = cmpDays >= 1 && cmpDays <= prevMonthDays;
+  const prevCutoffDate = canCompare
+    ? new Date(Date.UTC(py, pm - 1, 1 + cmpDays)).toISOString().slice(0, 10)
+    : prevStartDate;
+  const prevStartIso = tzDayRangeUtc(prevStartDate, tz).startIso;
+  const prevCutoffIso = tzDayRangeUtc(prevCutoffDate, tz).startIso;
+  const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const prevLabel =
+    cmpDays === 1
+      ? `1 ${MONTHS_ID[pm - 1]}`
+      : `1–${cmpDays} ${MONTHS_ID[pm - 1]}`;
+
+  const cakeRangeQuery = (branch: string, fromIso: string, toIso: string) =>
+    supabase
+      .from("cake_orders" as never)
+      .select("total_idr")
+      .eq("branch", branch)
+      .eq("free_claim", false)
+      .not("status", "in", "(cancelled,discarded)")
+      .gte("created_at", fromIso)
+      .lt("created_at", toIso);
+
+  const sumPosTotal = async (
+    branch: "Pare" | "Semarang",
+    range: { eqDate?: string; gte?: string; lt?: string }
+  ): Promise<number> => {
+    let total = 0;
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      let q = supabase
+        .from("pos_sales")
+        .select("total, bank_accounts!inner(business_unit, default_branch)")
+        .is("voided_at", null)
+        .eq("payment_status", "paid")
+        .eq("bank_accounts.business_unit", "Haengbocake")
+        .eq("bank_accounts.default_branch", branch);
+      if (range.eqDate) q = q.eq("sale_date", range.eqDate);
+      if (range.gte) q = q.gte("sale_date", range.gte);
+      if (range.lt) q = q.lt("sale_date", range.lt);
+      const { data } = await q
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      const rows = (data ?? []) as { total: number | null }[];
+      total += rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
+      if (rows.length < PAGE) break;
+    }
+    return total;
+  };
+
+  const [
+    cakePareTodayRes,
+    cakePareMonthRes,
+    cakeSmgTodayRes,
+    cakeSmgMonthRes,
+    posHbcPareToday,
+    posHbcPareMonth,
+    cakeParePrevRes,
+    cakeSmgPrevRes,
+    posHbcParePrev,
+    posHbcSmgToday,
+    posHbcSmgMonth,
+    posHbcSmgPrev,
+  ] = await Promise.all([
+    cakeRangeQuery("pare", dayStartIso, dayEndIso),
+    cakeRangeQuery("pare", monthStartIso, monthEndIso),
+    cakeRangeQuery("semarang", dayStartIso, dayEndIso),
+    cakeRangeQuery("semarang", monthStartIso, monthEndIso),
+    sumPosTotal("Pare", { eqDate: todayIso }),
+    sumPosTotal("Pare", { gte: monthStartDate, lt: nextMonthStartDate }),
+    canCompare
+      ? cakeRangeQuery("pare", prevStartIso, prevCutoffIso)
+      : Promise.resolve({ data: [] }),
+    canCompare
+      ? cakeRangeQuery("semarang", prevStartIso, prevCutoffIso)
+      : Promise.resolve({ data: [] }),
+    canCompare
+      ? sumPosTotal("Pare", { gte: prevStartDate, lt: prevCutoffDate })
+      : Promise.resolve(0),
+    sumPosTotal("Semarang", { eqDate: todayIso }),
+    sumPosTotal("Semarang", { gte: monthStartDate, lt: nextMonthStartDate }),
+    canCompare
+      ? sumPosTotal("Semarang", { gte: prevStartDate, lt: prevCutoffDate })
+      : Promise.resolve(0),
+  ]);
+
+  const sumIdr = (rows: unknown) =>
+    ((rows ?? []) as { total_idr: number | null }[]).reduce(
+      (s, r) => s + Number(r.total_idr ?? 0),
+      0
+    );
+
+  return {
+    posHbcPareToday,
+    posHbcPareMonth,
+    posHbcSmgToday,
+    posHbcSmgMonth,
+    cakeHbcPareToday: sumIdr(cakePareTodayRes.data),
+    cakeHbcPareMonth: sumIdr(cakePareMonthRes.data),
+    cakeHbcSmgToday: sumIdr(cakeSmgTodayRes.data),
+    cakeHbcSmgMonth: sumIdr(cakeSmgMonthRes.data),
+    monthCompare: canCompare
+      ? {
+          days: cmpDays,
+          prevLabel,
+          posHbcPare: posHbcParePrev,
+          posHbcSmg: posHbcSmgPrev,
+          cakeHbcPare: sumIdr(cakeParePrevRes.data),
+          cakeHbcSmg: sumIdr(cakeSmgPrevRes.data),
+        }
+      : null,
   };
 }
 

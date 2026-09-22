@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Wallet as WalletIcon, CakeSlice, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AdminHomeToday } from "@/lib/actions/admin-home.actions";
+import type { RevenueSummary } from "@/lib/actions/admin-home.actions";
 import type { YeoboRevenue } from "@/lib/actions/admin-home-yeobo.actions";
 
 /**
@@ -141,7 +141,7 @@ export function AdminRevenueCard({
   today,
   yeobo,
 }: {
-  today: AdminHomeToday;
+  today: RevenueSummary;
   yeobo: YeoboRevenue | null;
 }) {
   const cmp = today.monthCompare ?? null;

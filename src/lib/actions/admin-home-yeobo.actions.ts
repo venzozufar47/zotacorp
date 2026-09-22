@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentRole } from "@/lib/supabase/cached";
+import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
 import { yeoboAdminClient } from "@/lib/supabase/yeobo-admin";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
@@ -59,8 +59,7 @@ const BRANCHES: Array<{ id: string; label: string }> = [
 const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
 export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
-  const role = await getCurrentRole();
-  if (role !== "admin") return null;
+  if (!(await canViewRevenueDashboard())) return null;
 
   const todayIso = jakartaDateString(new Date());
   const [y, m, d] = todayIso.split("-").map(Number);

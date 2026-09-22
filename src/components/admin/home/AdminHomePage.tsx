@@ -21,7 +21,9 @@ import type { Celebrant } from "@/lib/utils/celebrations";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import { AdminOpsCard } from "./AdminOpsCard";
 import { AdminRevenueCard } from "./AdminRevenueCard";
+import { RevenueDashboardViewersManager } from "./RevenueDashboardViewersManager";
 import type { YeoboRevenue } from "@/lib/actions/admin-home-yeobo.actions";
+import type { RevenueDashboardViewerRow } from "@/lib/actions/revenue-dashboard-viewers.actions";
 
 interface InboxItem {
   id: string;
@@ -49,6 +51,8 @@ export function AdminHomePage({
   cleaningExceptions,
   opsMetrics,
   yeoboRevenue,
+  revenueViewers,
+  revenueViewerCandidates,
 }: {
   greetingName: string;
   today: AdminHomeToday;
@@ -64,6 +68,9 @@ export function AdminHomePage({
   cleaningExceptions: CleaningExceptionRow[];
   opsMetrics: AdminOpsMetrics;
   yeoboRevenue: YeoboRevenue | null;
+  /** Karyawan non-admin yang boleh lihat kartu Omzet di beranda mereka. */
+  revenueViewers: RevenueDashboardViewerRow[];
+  revenueViewerCandidates: { id: string; full_name: string | null; email: string | null }[];
 }) {
   const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
   const router = useRouter();
@@ -169,7 +176,13 @@ export function AdminHomePage({
           kartu, di samping kartu operasional (Service Level, ditarik expired,
           kecepatan tiket studio). */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-        <AdminRevenueCard today={today} yeobo={yeoboRevenue} />
+        <div className="space-y-2">
+          <AdminRevenueCard today={today} yeobo={yeoboRevenue} />
+          <RevenueDashboardViewersManager
+            viewers={revenueViewers}
+            candidates={revenueViewerCandidates}
+          />
+        </div>
         <AdminOpsCard ops={opsMetrics} />
       </div>
 

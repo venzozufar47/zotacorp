@@ -34,6 +34,10 @@ import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
 import { ServiceLevelPanel } from "@/components/dashboard/ServiceLevelPanel";
 import { listMyServiceLevelOutlets } from "@/lib/pos/service-level-access";
+import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
+import { getRevenueSummaryForHome } from "@/lib/actions/admin-home.actions";
+import { getYeoboSpaceRevenue } from "@/lib/actions/admin-home-yeobo.actions";
+import { AdminRevenueCard } from "@/components/admin/home/AdminRevenueCard";
 import { TicketResolutionPanel } from "@/components/dashboard/TicketResolutionPanel";
 import { getMyPendingContract } from "@/lib/actions/employment-contracts.actions";
 import {
@@ -116,6 +120,7 @@ export default async function DashboardPage() {
     serviceLevelOutlets,
     coachingNotes,
     ticketResolutionKpi,
+    hasRevenueAccess,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -151,7 +156,11 @@ export default async function DashboardPage() {
     listMyServiceLevelOutlets(),
     listMyCoachingNotes(),
     getStudioHeadRecentResolutionKpi(),
+    canViewRevenueDashboard(),
   ]);
+  const [revenueSummary, yeoboRevenue] = hasRevenueAccess
+    ? await Promise.all([getRevenueSummaryForHome(), getYeoboSpaceRevenue()])
+    : [null, null];
   const pendingContract = myPendingContract;
 
   if (profile?.role === "admin") redirect("/admin/attendance");
@@ -365,6 +374,14 @@ export default async function DashboardPage() {
           kelompok panel substantif, bukan tumpukan banner di atas.
           Render sendiri nol kalau user bukan penanggung jawab. */}
       <ServiceLevelPanel outlets={serviceLevelOutlets} />
+
+      {/* Kartu Omzet admin, ditunjukkan ke karyawan yang di-assign admin
+          (revenue_dashboard_viewers) — data sama, reuse komponen admin
+          apa adanya. hasRevenueAccess sudah menggerbangi kedua fetch di
+          atas, jadi revenueSummary null berarti memang tidak berhak. */}
+      {revenueSummary && (
+        <AdminRevenueCard today={revenueSummary} yeobo={yeoboRevenue} />
+      )}
 
       {/* Kartu KPI Kepala Studio — render sendiri nol kalau bukan Kepala Studio. */}
       <TicketResolutionPanel kpi={ticketResolutionKpi} />
