@@ -895,6 +895,85 @@ export type Database = {
         }
         Relationships: []
       }
+      cake_diy_diameter_prices: {
+        Row: {
+          diameter_id: string
+          price_pare_idr: number | null
+          price_semarang_idr: number | null
+          updated_at: string
+        }
+        Insert: {
+          diameter_id: string
+          price_pare_idr?: number | null
+          price_semarang_idr?: number | null
+          updated_at?: string
+        }
+        Update: {
+          diameter_id?: string
+          price_pare_idr?: number | null
+          price_semarang_idr?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_diy_diameter_prices_diameter_id_fkey"
+            columns: ["diameter_id"]
+            isOneToOne: true
+            referencedRelation: "cake_diameter_options"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cake_finance_admins: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cake_finance_admins_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_finance_admins_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_finance_admins_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cake_finance_admins_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cake_options: {
         Row: {
           base_price_idr: number | null
@@ -1099,6 +1178,7 @@ export type Database = {
           free_claim_by: string | null
           greeting_card: string | null
           id: string
+          is_diy: boolean
           paid_at: string | null
           paid_idr: number
           payment_option_id: string | null
@@ -1150,6 +1230,7 @@ export type Database = {
           free_claim_by?: string | null
           greeting_card?: string | null
           id?: string
+          is_diy?: boolean
           paid_at?: string | null
           paid_idr?: number
           payment_option_id?: string | null
@@ -1201,6 +1282,7 @@ export type Database = {
           free_claim_by?: string | null
           greeting_card?: string | null
           id?: string
+          is_diy?: boolean
           paid_at?: string | null
           paid_idr?: number
           payment_option_id?: string | null
@@ -1791,6 +1873,54 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "celebration_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      celebration_push_logs: {
+        Row: {
+          body: string
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          recipient_profile_id: string
+          status: string
+          title: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          recipient_profile_id: string
+          status: string
+          title: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          recipient_profile_id?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "celebration_push_logs_recipient_profile_id_fkey"
+            columns: ["recipient_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "celebration_push_logs_recipient_profile_id_fkey"
+            columns: ["recipient_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]
@@ -5534,6 +5664,7 @@ export type Database = {
           device_label: string | null
           endpoint: string
           id: string
+          last_clicked_at: string | null
           p256dh: string
           user_agent: string | null
           user_id: string
@@ -5544,6 +5675,7 @@ export type Database = {
           device_label?: string | null
           endpoint: string
           id?: string
+          last_clicked_at?: string | null
           p256dh: string
           user_agent?: string | null
           user_id: string
@@ -5554,6 +5686,7 @@ export type Database = {
           device_label?: string | null
           endpoint?: string
           id?: string
+          last_clicked_at?: string | null
           p256dh?: string
           user_agent?: string | null
           user_id?: string
@@ -6481,6 +6614,7 @@ export type Database = {
           content_type: string | null
           created_at: string
           id: string
+          kind: string
           path: string
           sort_order: number
           ticket_id: string
@@ -6490,6 +6624,7 @@ export type Database = {
           content_type?: string | null
           created_at?: string
           id?: string
+          kind?: string
           path: string
           sort_order?: number
           ticket_id: string
@@ -6499,6 +6634,7 @@ export type Database = {
           content_type?: string | null
           created_at?: string
           id?: string
+          kind?: string
           path?: string
           sort_order?: number
           ticket_id?: string

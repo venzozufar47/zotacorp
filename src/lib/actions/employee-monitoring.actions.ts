@@ -38,6 +38,10 @@ export interface EmployeeMonitoringRow {
   daysToAnniversary: number | null;
   anniversaryLastGreeted: string | null;
   yearsOfService: number;
+  // Kesehatan push notification (lihat komentar di listEmployeeMonitoring)
+  pushDeviceCount: number;
+  pushLastClickedAt: string | null;
+  pushExempt: boolean;
   // Riwayat push perayaan (celebration_push_logs)
   recentNotifications: CelebrationLogEntry[];
   /**
@@ -214,13 +218,29 @@ export async function listEmployeeMonitoring(): Promise<{
   const todayIso = todayIsoInTz(tz);
   const yearNow = Number(todayIso.slice(0, 4));
 
-  // Siapa yang punya minimal satu device push-subscribed — dipakai notice
-  // "no_push_subscription" (pengganti "belum ada nomor WA"; push tidak
-  // butuh nomor telepon, jadi kondisi blocker-nya beda sama sekali).
+  // Push subscriptions per karyawan — dipakai utk notice
+  // "no_push_subscription" DAN kartu "Kesehatan Push Notification".
+  // `last_clicked_at` adalah satu-satunya bukti server-observable bahwa
+  // push BENAR-BENAR nyampe & dibuka (server tidak bisa nanya browser
+  // "izin notifikasi kamu masih aktif?" secara sinkron — subscription
+  // row bisa saja jadi basi diam-diam kalau permission dicabut/browser
+  // di-uninstall tanpa pernah gagal terkirim). Diisi service worker via
+  // POST /api/push/click, lihat migration 152.
   const { data: subRows } = await supabase
     .from("push_subscriptions")
-    .select("user_id");
+    .select("user_id, last_clicked_at");
   const subscribedIds = new Set((subRows ?? []).map((r) => r.user_id));
+  const deviceCountByUser = new Map<string, number>();
+  const lastClickByUser = new Map<string, string>();
+  for (const r of subRows ?? []) {
+    deviceCountByUser.set(r.user_id, (deviceCountByUser.get(r.user_id) ?? 0) + 1);
+    if (r.last_clicked_at) {
+      const prev = lastClickByUser.get(r.user_id);
+      if (!prev || r.last_clicked_at > prev) {
+        lastClickByUser.set(r.user_id, r.last_clicked_at);
+      }
+    }
+  }
 
   // Batched celebration push logs: pull semua log 30 hari terakhir,
   // lalu group per-profile di JS (jumlah karyawan kecil, lebih murah
@@ -406,6 +426,9 @@ export async function listEmployeeMonitoring(): Promise<{
       daysToAnniversary,
       anniversaryLastGreeted: p.anniversary_last_greeted,
       yearsOfService,
+      pushDeviceCount: deviceCountByUser.get(p.id) ?? 0,
+      pushLastClickedAt: lastClickByUser.get(p.id) ?? null,
+      pushExempt: p.push_notification_exempt ?? false,
       recentNotifications: profLogs,
       notices,
     });

@@ -7,6 +7,7 @@ import {
   Flame,
   MessageCircle,
   AlertTriangle,
+  BellRing,
 } from "lucide-react";
 import type { EmployeeMonitoringRow } from "@/lib/actions/employee-monitoring.actions";
 
@@ -34,6 +35,24 @@ function relativeDays(days: number | null | undefined): string {
 
 function pickName(r: EmployeeMonitoringRow): string {
   return r.nickname || r.fullName || "(tanpa nama)";
+}
+
+function relativeSince(iso: string | null): string {
+  if (!iso) return "belum pernah";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return "hari ini";
+  if (days === 1) return "kemarin";
+  return `${days} hari lalu`;
+}
+
+/** Kesehatan push notification per karyawan — 0=belum subscribe (paling
+ *  perlu perhatian), 1=subscribe tapi belum pernah terbukti klik,
+ *  2=subscribe & pernah klik, 3=dikecualikan (push_notification_exempt). */
+function pushHealthTier(r: EmployeeMonitoringRow): 0 | 1 | 2 | 3 {
+  if (r.pushExempt) return 3;
+  if (r.pushDeviceCount === 0) return 0;
+  if (!r.pushLastClickedAt) return 1;
+  return 2;
 }
 
 /**
@@ -76,6 +95,21 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
           (a, b) =>
             (a.daysToAnniversary ?? 365) - (b.daysToAnniversary ?? 365)
         ),
+    [rows]
+  );
+
+  const pushHealthRows = useMemo(
+    () =>
+      [...rows].sort((a, b) => {
+        const ta = pushHealthTier(a);
+        const tb = pushHealthTier(b);
+        if (ta !== tb) return ta - tb;
+        if (ta === 2) {
+          // Di antara yang sehat, klik terlama duluan — paling layak dicek.
+          return (a.pushLastClickedAt ?? "").localeCompare(b.pushLastClickedAt ?? "");
+        }
+        return pickName(a).localeCompare(pickName(b));
+      }),
     [rows]
   );
 
@@ -246,6 +280,60 @@ export function CelebrationsMonitoringTable({ rows }: Props) {
               })}
             </ul>
           )}
+        </CategoryCard>
+
+        <CategoryCard
+          title="Kesehatan push notification"
+          icon={<BellRing size={14} />}
+          accent="bg-sky-50/60 border-sky-300"
+          countLabel={`${pushHealthRows.filter((r) => pushHealthTier(r) <= 1).length} perlu dicek`}
+        >
+          <p className="px-3 pt-2 pb-1 text-[10.5px] text-muted-foreground">
+            Server tidak bisa menanyakan browser &quot;izin notifikasi
+            masih aktif?&quot; secara langsung — bukti terkuat adalah
+            karyawan pernah benar-benar mengetuk sebuah notifikasi.
+          </p>
+          <ul className="divide-y divide-border/60 max-h-[420px] overflow-y-auto">
+            {pushHealthRows.map((r) => {
+              const tier = pushHealthTier(r);
+              return (
+                <li
+                  key={r.id}
+                  className="flex items-baseline justify-between gap-3 px-3 py-2 text-xs hover:bg-accent/10"
+                >
+                  <span className="flex-1 min-w-0 truncate text-foreground font-medium">
+                    {pickName(r)}
+                  </span>
+                  <span
+                    className={
+                      "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap " +
+                      (tier === 0
+                        ? "bg-destructive/15 text-destructive"
+                        : tier === 1
+                          ? "bg-amber-100 text-amber-700"
+                          : tier === 2
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-muted text-muted-foreground")
+                    }
+                  >
+                    {tier === 0
+                      ? "Belum subscribe"
+                      : tier === 1
+                        ? "Belum pernah klik"
+                        : tier === 2
+                          ? "Aktif"
+                          : "Dikecualikan"}
+                  </span>
+                  <span className="text-muted-foreground text-[10px] whitespace-nowrap">
+                    {r.pushDeviceCount} device
+                  </span>
+                  <span className="text-muted-foreground text-[10px] whitespace-nowrap w-20 text-right">
+                    {tier === 2 ? relativeSince(r.pushLastClickedAt) : "—"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         </CategoryCard>
 
         <CategoryCard
