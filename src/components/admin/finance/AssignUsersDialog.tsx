@@ -37,6 +37,9 @@ interface Props {
  * - "Full" — bisa input/edit cashflow + akses POS (rekening cash only)
  * - "POS saja" — cuma bisa input sale di /pos, tidak lihat cashflow
  *   (hanya muncul untuk rekening POS-enabled)
+ * - "Insights saja" — cuma bisa lihat /insights (read-only: revenue,
+ *   produk laku), tidak bisa input sale/stok/cashflow sama sekali
+ *   (hanya muncul untuk rekening POS-enabled)
  * Toggle scope per user. Save replace set secara atomis.
  */
 export function AssignUsersDialog({
@@ -150,7 +153,8 @@ export function AssignUsersDialog({
             Rekening <strong>{accountName}</strong>. Pilih scope per karyawan —
             <strong> Full</strong> bisa input/edit cashflow,{" "}
             <strong>POS saja</strong> cuma bisa input sale di /pos tanpa akses
-            cashflow.
+            cashflow, <strong>Insights saja</strong> cuma bisa lihat halaman
+            Insights (read-only) tanpa bisa input apa pun.
           </DialogDescription>
         </DialogHeader>
 
@@ -221,6 +225,13 @@ export function AssignUsersDialog({
                           label="POS saja"
                           active={scope === "pos_only"}
                           onClick={() => setScope(c.id, "pos_only")}
+                        />
+                      )}
+                      {canPosOnly && (
+                        <ScopeChip
+                          label="Insights saja"
+                          active={scope === "insights_only"}
+                          onClick={() => setScope(c.id, "insights_only")}
                         />
                       )}
                     </div>

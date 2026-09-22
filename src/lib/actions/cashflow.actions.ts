@@ -2130,7 +2130,7 @@ export async function setPusatAllocationLock(input: {
 //  Bank account assignees (per-rekening ACL for cash rekening)
 // ─────────────────────────────────────────────────────────────────────
 
-export type AssigneeScope = "full" | "pos_only";
+export type AssigneeScope = "full" | "pos_only" | "insights_only";
 
 export interface AssigneeCandidate {
   id: string;
@@ -2198,6 +2198,9 @@ export interface AssigneeSelection {
  * - `scope='pos_only'` berlaku untuk rekening apa pun yang
  *   `pos_enabled=true` (saat ini Cash Pare) — user hanya bisa akses
  *   /pos, tidak bisa lihat cashflow rekening.
+ * - `scope='insights_only'` juga hanya utk rekening pos_enabled — user
+ *   HANYA bisa lihat /insights (read-only: revenue, produk laku), tidak
+ *   bisa input sale, stok, atau cashflow sama sekali.
  */
 export async function setBankAccountAssignees(
   bankAccountId: string,
@@ -2216,6 +2219,7 @@ export async function setBankAccountAssignees(
 
   const wantsFull = selections.some((s) => s.scope === "full");
   const wantsPosOnly = selections.some((s) => s.scope === "pos_only");
+  const wantsInsightsOnly = selections.some((s) => s.scope === "insights_only");
   if (wantsFull && account.bank !== "cash") {
     return {
       ok: false,
@@ -2226,6 +2230,12 @@ export async function setBankAccountAssignees(
     return {
       ok: false,
       error: "Akses POS-only hanya tersedia untuk rekening POS-enabled.",
+    };
+  }
+  if (wantsInsightsOnly && !account.pos_enabled) {
+    return {
+      ok: false,
+      error: "Akses Insights-only hanya tersedia untuk rekening POS-enabled.",
     };
   }
 

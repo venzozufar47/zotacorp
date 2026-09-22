@@ -143,6 +143,31 @@ export async function requireAdminOrPosAssignee(
 }
 
 /**
+ * Boleh MELIHAT Insights Penjualan (read-only): admin, assignee 'full',
+ * atau assignee 'insights_only'. SENGAJA tidak menyertakan 'pos_only' —
+ * kasir lihat detail penjualannya sendiri cukup di /riwayat, bukan
+ * insights agregat lintas transaksi orang lain (revenue, ranking produk).
+ */
+export async function requireInsightsViewer(
+  bankAccountId: string
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  const supabase = await createClient();
+  const { data: assignment } = await supabase
+    .from("bank_account_assignees")
+    .select("bank_account_id")
+    .eq("bank_account_id", bankAccountId)
+    .eq("user_id", user.id)
+    .in("scope", ["full", "insights_only"])
+    .maybeSingle();
+  if (!assignment) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/**
  * Boleh MELIHAT Service Level satu outlet: admin, assignee POS
  * (full|pos_only), atau penanggung jawab metrik.
  *

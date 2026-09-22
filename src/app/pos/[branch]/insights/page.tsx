@@ -2,8 +2,10 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { findPosAccount } from "@/lib/actions/pos.actions";
+import { createClient } from "@/lib/supabase/server";
+import { findPosAccountForInsights } from "@/lib/actions/pos.actions";
 import { getPosInsights } from "@/lib/actions/pos-insights.actions";
+import { requireInsightsViewer } from "@/lib/actions/_gates";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { PosInsightsClient } from "@/components/pos/PosInsightsClient";
 import {
@@ -65,13 +67,39 @@ export default async function PosInsightsPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  // Insights = data sensitif (revenue, ranking produk) — hanya admin.
-  // Kasir lihat detail penjualannya cukup di riwayat.
-  const role = await getCurrentRole();
-  if (role !== "admin") redirect(basePath);
-
-  const account = await findPosAccount(branch);
+  // Insights = data sensitif (revenue, ranking produk) — admin, assignee
+  // 'full', atau assignee 'insights_only' (role baca-saja khusus buat
+  // ini). Kasir 'pos_only' TETAP tidak lolos — lihat detail penjualannya
+  // sendiri cukup di riwayat, bukan agregat lintas transaksi orang lain.
+  //
+  // Pakai findPosAccountForInsights (service-role), BUKAN findPosAccount:
+  // yang terakhir RLS-gate ke scope full/pos_only saja, jadi assignee
+  // insights_only akan selalu dapat null lewatnya. Akses sungguhan tetap
+  // digate requireInsightsViewer tepat sesudah account_id didapat.
+  const account = await findPosAccountForInsights(branch);
   if (!account) redirect("/");
+
+  const gate = await requireInsightsViewer(account.id);
+  if (!gate.ok) redirect(basePath);
+
+  const role = await getCurrentRole();
+  const isAdmin = role === "admin";
+
+  // Beda dgn "boleh lihat" (gate di atas, admin ATAU full ATAU
+  // insights_only): ini spesifik "HANYA insights_only" — dipakai buat
+  // sembunyikan seluruh nav lain (POS/Katalog/Saldo/Stok/Pesanan/Riwayat)
+  // di rail. Assignee 'full' tetap lihat semua tab seperti biasa.
+  let insightsOnly = false;
+  if (!isAdmin) {
+    const supabase = await createClient();
+    const { data: assignment } = await supabase
+      .from("bank_account_assignees")
+      .select("scope")
+      .eq("bank_account_id", account.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    insightsOnly = assignment?.scope === "insights_only";
+  }
 
   const sp = await searchParams;
   const range = resolveRange(sp);
@@ -86,7 +114,8 @@ export default async function PosInsightsPage({
       range={range}
       insights={insights}
       error={res.ok ? null : res.error}
-      isAdmin
+      isAdmin={isAdmin}
+      insightsOnly={insightsOnly}
     />
   );
 }

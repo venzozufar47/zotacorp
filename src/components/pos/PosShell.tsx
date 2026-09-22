@@ -66,6 +66,7 @@ export function PosShell({
   basePath,
   active,
   isAdmin,
+  insightsOnly = false,
   title,
   subtitle,
   actions,
@@ -77,6 +78,9 @@ export function PosShell({
   basePath: string;
   active: PosNavSection;
   isAdmin: boolean;
+  /** Scope viewer = 'insights_only' — rail cuma tampilkan Insights, semua
+   *  tab lain (termasuk POS register) disembunyikan. */
+  insightsOnly?: boolean;
   /** Heading di main area (mirror "page-head" dari design). */
   title?: string;
   /** Subteks di bawah title, misal "kelola stok harian, produksi & opname". */
@@ -87,7 +91,9 @@ export function PosShell({
   showShiftPill?: boolean;
   children: React.ReactNode;
 }) {
-  const visible = RAIL.filter((it) => !it.adminOnly || isAdmin);
+  const visible = insightsOnly
+    ? RAIL.filter((it) => it.section === "insights")
+    : RAIL.filter((it) => !it.adminOnly || isAdmin);
   return (
     <div
       data-pos-shell

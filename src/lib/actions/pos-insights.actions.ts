@@ -1,7 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import { requireAdminOrPosAssignee, type ActionResult } from "./_gates";
+import { createAdminClient } from "./_supabase-admin";
+import { requireInsightsViewer, type ActionResult } from "./_gates";
 import { jakartaDateMinusDays, jakartaHour } from "@/lib/utils/jakarta";
 import {
   SUGAR_LEVELS,
@@ -97,7 +97,7 @@ export async function getPosInsights(
   bankAccountId: string,
   range: { from: string; to: string }
 ): Promise<ActionResult<PosInsights>> {
-  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  const gate = await requireInsightsViewer(bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   // Validasi range — caller server page sudah normalisasi dari
@@ -114,7 +114,11 @@ export async function getPosInsights(
     return { ok: false, error: `Maksimal ${INSIGHTS_MAX_DAYS} hari` };
   }
 
-  const supabase = await createClient();
+  // Service-role, bukan client sesi: pos_sales/pos_sale_items RLS
+  // (is_admin_or_pos_assignee) hanya meloloskan scope 'full'/'pos_only' --
+  // scope baru 'insights_only' TIDAK ikut situ dengan sengaja (lihat
+  // migration 155), jadi baca di sini setelah gate di atas memutuskan.
+  const supabase = createAdminClient();
   const today = range.to;
   const fromDate = range.from;
 

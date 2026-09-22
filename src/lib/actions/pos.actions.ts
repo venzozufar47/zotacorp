@@ -1471,6 +1471,41 @@ export async function findPosAccount(
   };
 }
 
+/**
+ * Sama seperti `findPosAccount`, tapi service-role — dipakai HANYA oleh
+ * halaman Insights. `bank_accounts` SELECT via RLS sesi cuma lolos utk
+ * scope 'full'/'pos_only' (is_admin_or_pos_assignee, migrasi 035), jadi
+ * assignee 'insights_only' akan selalu dapat null lewat `findPosAccount`
+ * biasa. Aman: cuma me-resolve cabang → account_id (bukan data sensitif),
+ * akses sungguhan tetap digate `requireInsightsViewer` sesudah ini oleh
+ * pemanggil.
+ */
+export async function findPosAccountForInsights(
+  branch: string
+): Promise<{ id: string; accountName: string; branch: string | null } | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const adminDb = createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { data, error } = await adminDb
+    .from("bank_accounts")
+    .select("id, account_name, default_branch")
+    .eq("business_unit", "Haengbocake")
+    .eq("default_branch", branch)
+    .eq("pos_enabled", true)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  return {
+    id: data[0].id,
+    accountName: data[0].account_name,
+    branch: data[0].default_branch ?? null,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Shift balance check
 // ─────────────────────────────────────────────────────────────────────

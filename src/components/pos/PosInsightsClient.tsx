@@ -20,6 +20,9 @@ interface Props {
   insights: PosInsights | null;
   error: string | null;
   isAdmin: boolean;
+  /** True kalau scope viewer = 'insights_only' — rail cuma tampilkan tab
+   *  Insights, tab lain (POS/Katalog/Saldo/Stok/Pesanan/Riwayat) disembunyikan. */
+  insightsOnly?: boolean;
 }
 
 const PERIOD_OPTIONS: Array<{ value: number; label: string }> = [
@@ -102,6 +105,7 @@ export function PosInsightsClient({
   insights,
   error,
   isAdmin,
+  insightsOnly = false,
 }: Props) {
   const router = useRouter();
   const today = jakartaDateString(new Date());
@@ -211,6 +215,7 @@ export function PosInsightsClient({
       outletName={accountName}
       basePath={basePath}
       isAdmin={isAdmin}
+      insightsOnly={insightsOnly}
       active="insights"
       title="Insights Penjualan"
       subtitle={
