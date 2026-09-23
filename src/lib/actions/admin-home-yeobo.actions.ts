@@ -1,6 +1,7 @@
 "use server";
 
 import { canViewRevenueDashboard } from "@/lib/revenue-dashboard/access";
+import { getCurrentRole } from "@/lib/supabase/cached";
 import { yeoboAdminClient } from "@/lib/supabase/yeobo-admin";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
@@ -174,5 +175,105 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
         ? `1 ${MONTHS_ID[pm - 1]}`
         : `1–${cmpDays} ${MONTHS_ID[pm - 1]}`
       : null,
+  };
+}
+
+/**
+ * Utilisasi slot Yeobo Space per cabang: Booked ÷ (Booked + ActiveUnbooked)
+ * dalam menit, dibaca dari view `yeobo.v_slot_utilization_daily` (migrasi
+ * 161/162) dan dijumlah lintas pool (shared+large untuk Tembalang/
+ * Tlogosari; Jebres sudah satu pool). ActiveUnbooked sudah mengecualikan
+ * menit yang kepakai buffer/tabrakan ruangan — lihat diskusi di percakapan
+ * yang menghasilkan migrasi itu.
+ *
+ * Tiga angka per cabang, meniru pola `getYeoboSpaceRevenue`:
+ *   - prevMonthPct: bulan lalu PENUH (selalu lengkap, tak ada hari parsial).
+ *   - curMonthToDatePct: bulan ini s.d. KEMARIN (hari ini sengaja
+ *     dikecualikan — beda dari Omzet yang boleh akumulasi parsial, di sini
+ *     "tersedia" hari ini sudah dihitung penuh 1 hari sementara "booked"-nya
+ *     baru sebagian, jadi ikut hari ini akan bikin rasionya bias rendah).
+ *   - prevSameRangePct: bulan lalu pada rentang tanggal SAMA s.d. kemarin —
+ *     basis pembanding adil untuk curMonthToDatePct (bulan lalu penuh vs
+ *     bulan ini parsial itu bukan apple-to-apple).
+ *
+ * Superadmin-only (beda dari Omzet yang juga bisa di-share ke viewer
+ * non-admin) — cek role langsung, bukan `canViewRevenueDashboard`.
+ */
+export interface YeoboUtilizationBranch {
+  id: string;
+  label: string;
+  prevMonthPct: number | null;
+  curMonthToDatePct: number | null;
+  prevSameRangePct: number | null;
+}
+
+export interface YeoboUtilization {
+  branches: YeoboUtilizationBranch[];
+  prevMonthLabel: string;
+  /** null = belum ada hari lengkap bulan ini (hari pertama bulan berjalan). */
+  curMonthLabel: string | null;
+  prevSameRangeLabel: string | null;
+}
+
+export async function getYeoboSlotUtilization(): Promise<YeoboUtilization | null> {
+  if ((await getCurrentRole()) !== "admin") return null;
+
+  const todayIso = jakartaDateString(new Date());
+  const [y, m, d] = todayIso.split("-").map(Number);
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const monthStart = `${y}-${pad2(m)}-01`;
+
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  const prevStart = `${py}-${pad2(pm)}-01`;
+  const prevMonthDays = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+  const prevEnd = `${py}-${pad2(pm)}-${pad2(prevMonthDays)}`;
+
+  const cmpDays = d - 1; // hari lengkap bulan ini, tidak termasuk hari ini
+  const curEnd = cmpDays >= 1 ? `${y}-${pad2(m)}-${pad2(cmpDays)}` : null;
+  const canCompare = cmpDays >= 1 && cmpDays <= prevMonthDays;
+  const prevSameEnd = canCompare ? `${py}-${pad2(pm)}-${pad2(cmpDays)}` : null;
+
+  const yeobo = yeoboAdminClient();
+  const upper = curEnd ?? prevEnd; // curEnd (bulan ini) selalu > prevEnd bila ada
+  const { data, error } = await yeobo
+    .from("v_slot_utilization_daily")
+    .select("branch_id, booking_date, booked_min, active_unbooked_min")
+    .gte("booking_date", prevStart)
+    .lte("booking_date", upper);
+  if (error) return null;
+
+  type Row = { branch_id: string; booking_date: string; booked_min: number; active_unbooked_min: number };
+  const rows = (data ?? []) as unknown as Row[];
+
+  const sumRange = (branchId: string, start: string, end: string | null): number | null => {
+    if (!end) return null;
+    let booked = 0;
+    let unbooked = 0;
+    let any = false;
+    for (const r of rows) {
+      if (r.branch_id !== branchId || r.booking_date < start || r.booking_date > end) continue;
+      booked += r.booked_min;
+      unbooked += r.active_unbooked_min;
+      any = true;
+    }
+    if (!any || booked + unbooked === 0) return null;
+    return Math.round(((100 * booked) / (booked + unbooked)) * 10) / 10;
+  };
+
+  const label = (days: number, monthIdx: number) =>
+    days === 1 ? `1 ${MONTHS_ID[monthIdx]}` : `1–${days} ${MONTHS_ID[monthIdx]}`;
+
+  return {
+    branches: BRANCHES.map((b) => ({
+      id: b.id,
+      label: b.label,
+      prevMonthPct: sumRange(b.id, prevStart, prevEnd),
+      curMonthToDatePct: sumRange(b.id, monthStart, curEnd),
+      prevSameRangePct: canCompare ? sumRange(b.id, prevStart, prevSameEnd) : null,
+    })),
+    prevMonthLabel: `${MONTHS_ID[pm - 1]} ${py}`,
+    curMonthLabel: curEnd ? label(cmpDays, m - 1) : null,
+    prevSameRangeLabel: canCompare ? label(cmpDays, pm - 1) : null,
   };
 }

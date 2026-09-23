@@ -14,7 +14,10 @@ import {
   getAdminCelebrationsRadar,
   getCelebrationsFeed,
 } from "@/lib/actions/celebrations.actions";
-import { getYeoboSpaceRevenue } from "@/lib/actions/admin-home-yeobo.actions";
+import {
+  getYeoboSpaceRevenue,
+  getYeoboSlotUtilization,
+} from "@/lib/actions/admin-home-yeobo.actions";
 import { getHaengbocakeCashBalances } from "@/lib/actions/admin-home-cash.actions";
 import {
   listRevenueDashboardViewers,
@@ -46,6 +49,7 @@ export default async function AdminHomeRoute() {
     cleaningExceptions,
     opsMetrics,
     yeoboRevenue,
+    yeoboUtilization,
     cashBalances,
     revenueViewers,
     revenueViewerCandidates,
@@ -63,6 +67,7 @@ export default async function AdminHomeRoute() {
     getCleaningMisses(),
     getAdminOpsMetrics(),
     getYeoboSpaceRevenue().catch(() => null),
+    getYeoboSlotUtilization().catch(() => null),
     getHaengbocakeCashBalances().catch(() => []),
     listRevenueDashboardViewers(),
     listEligibleForRevenueDashboard(),
@@ -107,6 +112,7 @@ export default async function AdminHomeRoute() {
         cleaningExceptions={cleaningExceptions}
         opsMetrics={opsMetrics}
         yeoboRevenue={yeoboRevenue}
+        yeoboUtilization={yeoboUtilization}
         cashBalances={cashBalances}
         revenueViewers={revenueViewers}
         revenueViewerCandidates={revenueViewerCandidates}

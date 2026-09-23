@@ -21,8 +21,9 @@ import type { Celebrant } from "@/lib/utils/celebrations";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import { AdminOpsCard } from "./AdminOpsCard";
 import { AdminRevenueCard } from "./AdminRevenueCard";
+import { AdminYeoboUtilizationCard } from "./AdminYeoboUtilizationCard";
 import { RevenueDashboardViewersManager } from "./RevenueDashboardViewersManager";
-import type { YeoboRevenue } from "@/lib/actions/admin-home-yeobo.actions";
+import type { YeoboRevenue, YeoboUtilization } from "@/lib/actions/admin-home-yeobo.actions";
 import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
 import type { RevenueDashboardViewerRow } from "@/lib/actions/revenue-dashboard-viewers.actions";
 
@@ -52,6 +53,7 @@ export function AdminHomePage({
   cleaningExceptions,
   opsMetrics,
   yeoboRevenue,
+  yeoboUtilization,
   cashBalances,
   revenueViewers,
   revenueViewerCandidates,
@@ -70,6 +72,7 @@ export function AdminHomePage({
   cleaningExceptions: CleaningExceptionRow[];
   opsMetrics: AdminOpsMetrics;
   yeoboRevenue: YeoboRevenue | null;
+  yeoboUtilization: YeoboUtilization | null;
   /** Saldo kas fisik Haengbocake per cabang — admin-only, lihat
    *  getHaengbocakeCashBalances. [] = bukan admin atau gagal dimuat. */
   cashBalances: CashBalanceRow[];
@@ -187,6 +190,7 @@ export function AdminHomePage({
             viewers={revenueViewers}
             candidates={revenueViewerCandidates}
           />
+          <AdminYeoboUtilizationCard utilization={yeoboUtilization} />
         </div>
         <AdminOpsCard ops={opsMetrics} />
       </div>
