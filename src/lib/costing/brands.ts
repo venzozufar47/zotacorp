@@ -16,6 +16,52 @@ export function costingBrands(names: string[]): string[] {
 }
 
 /**
+ * Pemetaan brand costing virtual (per-cabang, lihat header di atas) →
+ * `bank_accounts` POS yang sebenarnya. `bank_accounts.business_unit`
+ * TETAP "Haengbocake" (induk) untuk kedua cabang — hanya `default_branch`
+ * yang membedakannya. Tanpa pemetaan ini, kode yang mencocokkan brand
+ * costing langsung ke `bank_accounts.business_unit` (mis. picker
+ * "Tautkan ke POS") akan selalu 0 hasil untuk Haengbocake Pare/Semarang,
+ * karena stringnya memang tidak pernah sama persis.
+ *
+ * Brand lain (tanpa split, mis. "Yeobo Space") lolos apa adanya —
+ * `bank_accounts.business_unit`-nya sudah sama persis dengan nama brand
+ * costing.
+ */
+const COSTING_BRAND_POS_BRANCH: Readonly<Record<string, string>> = {
+  "Haengbocake Pare": "Pare",
+  "Haengbocake Semarang": "Semarang",
+};
+
+/** Filter `bank_accounts` yang berlaku untuk sebuah brand costing. */
+export function posAccountFilterForCostingBrand(costingBrand: string): {
+  businessUnit: string;
+  branch?: string;
+} {
+  const branch = COSTING_BRAND_POS_BRANCH[costingBrand];
+  return branch ? { businessUnit: "Haengbocake", branch } : { businessUnit: costingBrand };
+}
+
+/**
+ * Kebalikannya: brand costing yang berlaku untuk sebuah rekening POS
+ * (`business_unit` + `default_branch`-nya). Dipakai `setPosLink` supaya
+ * perbandingan brand-nya di namespace yang SAMA dengan
+ * `costing_products.business_unit` (bukan `bank_accounts.business_unit`
+ * mentah, yang untuk Haengbocake selalu "Haengbocake" tanpa cabang).
+ */
+export function costingBrandForPosAccount(
+  businessUnit: string,
+  branch: string | null
+): string {
+  if (businessUnit === "Haengbocake" && branch) {
+    for (const [costingBrand, b] of Object.entries(COSTING_BRAND_POS_BRANCH)) {
+      if (b === branch) return costingBrand;
+    }
+  }
+  return businessUnit;
+}
+
+/**
  * Cookie brand terakhir dibuka. Ditulis client (`rememberBrand`) saat
  * user ganti brand, dibaca server saat halaman costing dirender tanpa
  * `?bu=`. Pola sama dengan preferensi bahasa (src/lib/i18n/server.ts):

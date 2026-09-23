@@ -5,6 +5,10 @@ import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { runHppSnapshotCapture } from "@/lib/costing/snapshot";
 import { normalizeLink, LINK_ERROR } from "@/lib/costing/link";
+import {
+  posAccountFilterForCostingBrand,
+  costingBrandForPosAccount,
+} from "@/lib/costing/brands";
 import { updatePosProduct, updatePosProductVariant } from "./pos.actions";
 import {
   num,
@@ -941,17 +945,25 @@ export interface PosLinkOption {
 }
 
 /** Produk/varian POS untuk brand (via bank_accounts.business_unit).
- *  Dipakai picker "Tautkan ke POS". */
+ *  Dipakai picker "Tautkan ke POS".
+ *
+ * `businessUnit` di sini adalah brand COSTING ("Haengbocake Pare"), yang
+ * untuk Haengbocake tidak sama persis dengan `bank_accounts.business_unit`
+ * ("Haengbocake" tanpa cabang) — lihat `posAccountFilterForCostingBrand`.
+ * Tanpa pemetaan ini query selalu 0 baris untuk kedua cabang Haengbocake. */
 export async function listPosOptions(
   businessUnit: string
 ): Promise<ActionResult<PosLinkOption[]>> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const supabase = adminClient();
-  const { data: accts } = await supabase
+  const filter = posAccountFilterForCostingBrand(businessUnit);
+  let acctQuery = supabase
     .from("bank_accounts")
     .select("id")
-    .eq("business_unit", businessUnit);
+    .eq("business_unit", filter.businessUnit);
+  if (filter.branch) acctQuery = acctQuery.eq("default_branch", filter.branch);
+  const { data: accts } = await acctQuery;
   const acctIds = ((accts ?? []) as { id: string }[]).map((a) => a.id);
   if (acctIds.length === 0) return { ok: true, data: [] };
 
@@ -1026,7 +1038,7 @@ async function posProductInfo(
   const [{ data: ba }, { count }] = await Promise.all([
     supabase
       .from("bank_accounts")
-      .select("business_unit")
+      .select("business_unit, default_branch")
       .eq("id", (p as { bank_account_id: string }).bank_account_id)
       .maybeSingle(),
     supabase
@@ -1035,8 +1047,15 @@ async function posProductInfo(
       .eq("product_id", posProductId)
       .eq("active", true),
   ]);
+  // Terjemahkan ke brand COSTING (mis. "Haengbocake Pare"), bukan
+  // `business_unit` mentah rekening ("Haengbocake" tanpa cabang) —
+  // pemanggil (guard `setPosLink`) membandingkannya dengan
+  // `costing_products.business_unit`, yang selalu di namespace costing.
+  const baRow = ba as { business_unit?: string; default_branch?: string | null } | null;
   return {
-    brand: (ba as { business_unit?: string } | null)?.business_unit ?? null,
+    brand: baRow?.business_unit
+      ? costingBrandForPosAccount(baRow.business_unit, baRow.default_branch ?? null)
+      : null,
     hasVariants: (count ?? 0) > 0,
   };
 }
