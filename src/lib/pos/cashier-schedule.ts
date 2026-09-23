@@ -7,6 +7,12 @@
  *   - Senin–Sabtu 15.00–22.00 → Dinda
  *   - Di luar jam/hari itu (termasuk Minggu) → Debar Boles
  *
+ * Cabang Semarang: TIDAK dijadwal (banyak kasir gantian login sendiri-
+ * sendiri, beda dari Pare). `fallback` (nama akun login) dipakai apa
+ * adanya, KECUALI ada di `SEMARANG_DISPLAY_NAME` — pemendekan nama utk
+ * struk saja, profil aslinya (nama lengkap, nickname+emoji) tidak
+ * disentuh sama sekali.
+ *
  * Cabang lain: tidak dioverride (pakai `fallback`, mis. nama akun login).
  *
  * PERGANTIAN ORANG: tambahkan entri baru ber-`from` di daftar slot yang
@@ -68,6 +74,15 @@ function jakartaMinutesOfDay(d: Date): number {
   return h * 60 + m;
 }
 
+/**
+ * Pemendekan nama kasir Semarang untuk struk. Key = `full_name` persis
+ * seperti di `profiles`, bukan nickname (nickname punya emoji, mis.
+ * "Tasya🪷" — tidak cocok dicetak thermal).
+ */
+const SEMARANG_DISPLAY_NAME: Readonly<Record<string, string>> = {
+  "Tasya Maynanda": "Tasya",
+};
+
 /** Nama kasir Pare untuk sebuah instant. */
 export function resolvePareCashier(at: Date): string {
   const wd = jakartaWeekday(at); // 0=Min … 6=Sab
@@ -95,5 +110,7 @@ export function resolveCashierName(
   // Tanggal invalid (mis. timestamp tak terparse) → jangan lempar; pakai fallback.
   if (Number.isNaN(at.getTime())) return fallback;
   if (branch === "Pare") return resolvePareCashier(at);
+  if (branch === "Semarang" && fallback)
+    return SEMARANG_DISPLAY_NAME[fallback] ?? fallback;
   return fallback;
 }
