@@ -23,6 +23,7 @@ import { AdminOpsCard } from "./AdminOpsCard";
 import { AdminRevenueCard } from "./AdminRevenueCard";
 import { RevenueDashboardViewersManager } from "./RevenueDashboardViewersManager";
 import type { YeoboRevenue } from "@/lib/actions/admin-home-yeobo.actions";
+import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
 import type { RevenueDashboardViewerRow } from "@/lib/actions/revenue-dashboard-viewers.actions";
 
 interface InboxItem {
@@ -51,6 +52,7 @@ export function AdminHomePage({
   cleaningExceptions,
   opsMetrics,
   yeoboRevenue,
+  cashBalances,
   revenueViewers,
   revenueViewerCandidates,
 }: {
@@ -68,6 +70,9 @@ export function AdminHomePage({
   cleaningExceptions: CleaningExceptionRow[];
   opsMetrics: AdminOpsMetrics;
   yeoboRevenue: YeoboRevenue | null;
+  /** Saldo kas fisik Haengbocake per cabang — admin-only, lihat
+   *  getHaengbocakeCashBalances. [] = bukan admin atau gagal dimuat. */
+  cashBalances: CashBalanceRow[];
   /** Karyawan non-admin yang boleh lihat kartu Omzet di beranda mereka. */
   revenueViewers: RevenueDashboardViewerRow[];
   revenueViewerCandidates: { id: string; full_name: string | null; email: string | null }[];
@@ -177,7 +182,7 @@ export function AdminHomePage({
           kecepatan tiket studio). */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
         <div className="space-y-2">
-          <AdminRevenueCard today={today} yeobo={yeoboRevenue} />
+          <AdminRevenueCard today={today} yeobo={yeoboRevenue} cashBalances={cashBalances} />
           <RevenueDashboardViewersManager
             viewers={revenueViewers}
             candidates={revenueViewerCandidates}

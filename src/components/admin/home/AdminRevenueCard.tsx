@@ -3,6 +3,7 @@ import { Wallet as WalletIcon, CakeSlice, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RevenueSummary } from "@/lib/actions/admin-home.actions";
 import type { YeoboRevenue } from "@/lib/actions/admin-home-yeobo.actions";
+import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
 
 /**
  * Kartu Omzet di Home admin: Haengbocake (POS + cake) dan Yeobo Space
@@ -140,10 +141,19 @@ function timeLabel(iso: string | null): string {
 export function AdminRevenueCard({
   today,
   yeobo,
+  cashBalances = [],
 }: {
   /** null = viewer tidak punya scope 'haengbocake' — baris POS/Cake disembunyikan. */
   today: RevenueSummary | null;
   yeobo: YeoboRevenue | null;
+  /**
+   * Admin-only (lihat getHaengbocakeCashBalances) — sengaja opsional,
+   * bukan sekadar `[]` default nilai. Kartu ini dipakai juga di beranda
+   * karyawan delegasi (canViewRevenueDashboard), yang TIDAK boleh
+   * melihat saldo kas walau boleh melihat omzet; pemanggil itu cukup
+   * tidak mengoper prop ini sama sekali, tidak perlu ingat kirim `[]`.
+   */
+  cashBalances?: CashBalanceRow[];
 }) {
   const cmp = today?.monthCompare ?? null;
   return (
@@ -223,6 +233,25 @@ export function AdminRevenueCard({
                   cmp?.prevLabel
                 )}
               />
+            </>
+          )}
+
+          {cashBalances.length > 0 && (
+            <>
+              <GroupHead>Saldo Kas Haengbocake</GroupHead>
+              <div className="col-span-2 sm:col-span-3 flex flex-wrap gap-x-6 gap-y-1.5">
+                {cashBalances.map((c) => (
+                  <span key={c.branch} className="inline-flex items-center gap-1.5 text-[13px]">
+                    <span className="grid place-items-center size-[22px] rounded-md shrink-0 bg-accent text-[var(--teal-600)]">
+                      <WalletIcon size={13} />
+                    </span>
+                    <span className="text-muted-foreground">{c.branch}:</span>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatRp(c.balance)}
+                    </span>
+                  </span>
+                ))}
+              </div>
             </>
           )}
 

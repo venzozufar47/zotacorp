@@ -15,6 +15,7 @@ import {
   getCelebrationsFeed,
 } from "@/lib/actions/celebrations.actions";
 import { getYeoboSpaceRevenue } from "@/lib/actions/admin-home-yeobo.actions";
+import { getHaengbocakeCashBalances } from "@/lib/actions/admin-home-cash.actions";
 import {
   listRevenueDashboardViewers,
   listEligibleForRevenueDashboard,
@@ -45,6 +46,7 @@ export default async function AdminHomeRoute() {
     cleaningExceptions,
     opsMetrics,
     yeoboRevenue,
+    cashBalances,
     revenueViewers,
     revenueViewerCandidates,
   ] = await Promise.all([
@@ -61,6 +63,7 @@ export default async function AdminHomeRoute() {
     getCleaningMisses(),
     getAdminOpsMetrics(),
     getYeoboSpaceRevenue().catch(() => null),
+    getHaengbocakeCashBalances().catch(() => []),
     listRevenueDashboardViewers(),
     listEligibleForRevenueDashboard(),
   ]);
@@ -104,6 +107,7 @@ export default async function AdminHomeRoute() {
         cleaningExceptions={cleaningExceptions}
         opsMetrics={opsMetrics}
         yeoboRevenue={yeoboRevenue}
+        cashBalances={cashBalances}
         revenueViewers={revenueViewers}
         revenueViewerCandidates={revenueViewerCandidates}
       />
