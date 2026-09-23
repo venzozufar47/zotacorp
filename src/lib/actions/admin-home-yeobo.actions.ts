@@ -241,7 +241,13 @@ export async function getYeoboSlotUtilization(): Promise<YeoboUtilization | null
     .select("branch_id, booking_date, booked_min, active_unbooked_min")
     .gte("booking_date", prevStart)
     .lte("booking_date", upper);
-  if (error) return null;
+  if (error) {
+    // Jangan hilang diam-diam (lihat migrasi 163: view ini sempat gagal
+    // permission-denied karena belum di-GRANT ke service_role, dan
+    // ketangkep .catch(() => null) di page.tsx tanpa jejak apa pun).
+    console.error("getYeoboSlotUtilization:", error.message);
+    return null;
+  }
 
   type Row = { branch_id: string; booking_date: string; booked_min: number; active_unbooked_min: number };
   const rows = (data ?? []) as unknown as Row[];
