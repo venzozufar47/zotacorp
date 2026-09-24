@@ -40,6 +40,11 @@ export interface YeoboRevenueBranch {
   month: number;
   /** Bulan lalu pada rentang tanggal sama s.d. kemarin; null = tak bisa dibandingkan. */
   prevSameRange: number | null;
+  /** Jumlah booking (BUKAN termasuk baris amendment) — dipakai buat AOV.
+   *  Amendment cuma nambah nilai booking yang sudah ada, bukan order baru. */
+  todayCount: number;
+  monthCount: number;
+  prevSameRangeCount: number | null;
 }
 
 export interface YeoboRevenue {
@@ -80,7 +85,7 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
   // Jakarta tanpa DST → offset tetap +07:00.
   const fromIso = `${prevStart}T00:00:00+07:00`;
 
-  type Row = { branch_id: string; amt: number; paid_at: string };
+  type Row = { branch_id: string; amt: number; paid_at: string; isBooking: boolean };
   const rows: Row[] = [];
 
   const fetchAll = async (
@@ -115,6 +120,7 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
             (Number(r[amountCol] ?? 0) - Number(r.refund_amount_idr ?? 0)) *
             (viaMayar(r) ? 1 - MAYAR_FEE_RATE : 1),
           paid_at: String(r.paid_at),
+          isBooking: table === "bookings",
         });
       }
       if (page.length < PAGE) break;
@@ -141,9 +147,10 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
     return null;
   }
 
-  const acc = new Map<string, { today: number; month: number; prev: number }>(
-    BRANCHES.map((b) => [b.id, { today: 0, month: 0, prev: 0 }])
-  );
+  const acc = new Map<
+    string,
+    { today: number; month: number; prev: number; todayCount: number; monthCount: number; prevCount: number }
+  >(BRANCHES.map((b) => [b.id, { today: 0, month: 0, prev: 0, todayCount: 0, monthCount: 0, prevCount: 0 }]));
   let latest: string | null = null;
   for (const r of rows) {
     const a = acc.get(r.branch_id);
@@ -152,9 +159,14 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
     const date = jakartaDateString(new Date(r.paid_at));
     if (date >= monthStart) {
       a.month += r.amt;
-      if (date === todayIso) a.today += r.amt;
+      if (r.isBooking) a.monthCount++;
+      if (date === todayIso) {
+        a.today += r.amt;
+        if (r.isBooking) a.todayCount++;
+      }
     } else if (canCompare && date >= prevStart && date < prevCutoff) {
       a.prev += r.amt;
+      if (r.isBooking) a.prevCount++;
     }
   }
 
@@ -167,6 +179,9 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
         today: a.today,
         month: a.month,
         prevSameRange: canCompare ? a.prev : null,
+        todayCount: a.todayCount,
+        monthCount: a.monthCount,
+        prevSameRangeCount: canCompare ? a.prevCount : null,
       };
     }),
     latestPaidAt: latest,

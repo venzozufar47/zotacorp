@@ -103,6 +103,16 @@ export interface AdminHomeToday {
   cakeHbcPareMonth: number;
   cakeHbcSmgToday: number;
   cakeHbcSmgMonth: number;
+  /** Jumlah transaksi/order — dipakai buat AOV (Average Order Value),
+   *  bukan ditampilkan langsung di kartu Omzet. */
+  posHbcPareTodayCount: number;
+  posHbcPareMonthCount: number;
+  posHbcSmgTodayCount: number;
+  posHbcSmgMonthCount: number;
+  cakeHbcPareTodayCount: number;
+  cakeHbcPareMonthCount: number;
+  cakeHbcSmgTodayCount: number;
+  cakeHbcSmgMonthCount: number;
   /**
    * Pembanding "vs bulan lalu", apple-to-apple: bulan lalu pada rentang
    * tanggal yang sama dengan bulan ini s.d. KEMARIN (hari ini belum
@@ -119,6 +129,13 @@ export interface AdminHomeToday {
     posHbcSmg: number;
     cakeHbcPare: number;
     cakeHbcSmg: number;
+    /** Jumlah transaksi periode pembanding — dipakai buat delta AOV.
+     *  Opsional: RevenueSummary (getRevenueSummaryForHome) reuse tipe
+     *  monthCompare ini tapi tidak butuh AOV, jadi tidak mengisinya. */
+    posHbcPareCount?: number;
+    posHbcSmgCount?: number;
+    cakeHbcPareCount?: number;
+    cakeHbcSmgCount?: number;
   } | null;
   hourlyCheckIns: number[]; // 13 buckets covering 07:00 → 19:00
   asOfIso: string; // ISO timestamp the snapshot was taken
@@ -165,6 +182,14 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeHbcPareMonth: 0,
     cakeHbcSmgToday: 0,
     cakeHbcSmgMonth: 0,
+    posHbcPareTodayCount: 0,
+    posHbcPareMonthCount: 0,
+    posHbcSmgTodayCount: 0,
+    posHbcSmgMonthCount: 0,
+    cakeHbcPareTodayCount: 0,
+    cakeHbcPareMonthCount: 0,
+    cakeHbcSmgTodayCount: 0,
+    cakeHbcSmgMonthCount: 0,
     monthCompare: null,
     hourlyCheckIns: Array(13).fill(0),
     asOfIso: new Date().toISOString(),
@@ -232,8 +257,9 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       gte?: string;
       lt?: string;
     }
-  ): Promise<number> => {
+  ): Promise<{ total: number; count: number }> => {
     let total = 0;
+    let count = 0;
     const PAGE = 1000;
     for (let offset = 0; ; offset += PAGE) {
       let q = supabase
@@ -257,9 +283,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
         .range(offset, offset + PAGE - 1);
       const rows = (data ?? []) as { total: number | null }[];
       total += rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
+      count += rows.length;
       if (rows.length < PAGE) break;
     }
-    return total;
+    return { total, count };
   };
 
   const [
@@ -270,14 +297,14 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakePareMonthRes,
     cakeSmgTodayRes,
     cakeSmgMonthRes,
-    posHbcPareToday,
-    posHbcPareMonth,
+    posHbcPareTodayAgg,
+    posHbcPareMonthAgg,
     cakeParePrevRes,
     cakeSmgPrevRes,
-    posHbcParePrev,
-    posHbcSmgToday,
-    posHbcSmgMonth,
-    posHbcSmgPrev,
+    posHbcParePrevAgg,
+    posHbcSmgTodayAgg,
+    posHbcSmgMonthAgg,
+    posHbcSmgPrevAgg,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -310,13 +337,20 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
       : Promise.resolve({ data: [] }),
     canCompare
       ? sumPosTotal("Pare", { gte: prevStartDate, lt: prevCutoffDate })
-      : Promise.resolve(0),
+      : Promise.resolve({ total: 0, count: 0 }),
     sumPosTotal("Semarang", { eqDate: todayIso }),
     sumPosTotal("Semarang", { gte: monthStartDate, lt: nextMonthStartDate }),
     canCompare
       ? sumPosTotal("Semarang", { gte: prevStartDate, lt: prevCutoffDate })
-      : Promise.resolve(0),
+      : Promise.resolve({ total: 0, count: 0 }),
   ]);
+
+  const posHbcPareToday = posHbcPareTodayAgg.total;
+  const posHbcPareMonth = posHbcPareMonthAgg.total;
+  const posHbcParePrev = posHbcParePrevAgg.total;
+  const posHbcSmgToday = posHbcSmgTodayAgg.total;
+  const posHbcSmgMonth = posHbcSmgMonthAgg.total;
+  const posHbcSmgPrev = posHbcSmgPrevAgg.total;
 
   const totalEmployees = employeesRes.count ?? 0;
   const logs = (todayLogsRes.data ?? []) as Array<{
@@ -378,6 +412,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
   const cakeHbcPareMonth = sumIdr(cakePareMonthRes.data);
   const cakeHbcSmgToday = sumIdr(cakeSmgTodayRes.data);
   const cakeHbcSmgMonth = sumIdr(cakeSmgMonthRes.data);
+  const rowCount = (rows: unknown) => ((rows ?? []) as unknown[]).length;
   // posHbcPareToday / posHbcPareMonth sudah dihitung (paginated) di atas.
 
   return {
@@ -393,6 +428,14 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeHbcPareMonth,
     cakeHbcSmgToday,
     cakeHbcSmgMonth,
+    posHbcPareTodayCount: posHbcPareTodayAgg.count,
+    posHbcPareMonthCount: posHbcPareMonthAgg.count,
+    posHbcSmgTodayCount: posHbcSmgTodayAgg.count,
+    posHbcSmgMonthCount: posHbcSmgMonthAgg.count,
+    cakeHbcPareTodayCount: rowCount(cakePareTodayRes.data),
+    cakeHbcPareMonthCount: rowCount(cakePareMonthRes.data),
+    cakeHbcSmgTodayCount: rowCount(cakeSmgTodayRes.data),
+    cakeHbcSmgMonthCount: rowCount(cakeSmgMonthRes.data),
     monthCompare: canCompare
       ? {
           days: cmpDays,
@@ -401,6 +444,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
           posHbcSmg: posHbcSmgPrev,
           cakeHbcPare: sumIdr(cakeParePrevRes.data),
           cakeHbcSmg: sumIdr(cakeSmgPrevRes.data),
+          posHbcPareCount: posHbcParePrevAgg.count,
+          posHbcSmgCount: posHbcSmgPrevAgg.count,
+          cakeHbcPareCount: rowCount(cakeParePrevRes.data),
+          cakeHbcSmgCount: rowCount(cakeSmgPrevRes.data),
         }
       : null,
     hourlyCheckIns,

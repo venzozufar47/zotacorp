@@ -19,6 +19,7 @@ import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmation
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
+import { AdminAovCard } from "./AdminAovCard";
 import { AdminOpsCard } from "./AdminOpsCard";
 import { AdminRevenueCard } from "./AdminRevenueCard";
 import { AdminYeoboUtilizationCard } from "./AdminYeoboUtilizationCard";
@@ -194,6 +195,8 @@ export function AdminHomePage({
         </div>
         <AdminOpsCard ops={opsMetrics} />
       </div>
+
+      <AdminAovCard today={today} yeobo={yeoboRevenue} />
 
       {/* CLEANING — management by exception. Muncul HANYA untuk miss
           terkonfirmasi: karyawan yang KEMARIN hadir + dijadwalkan bersih
