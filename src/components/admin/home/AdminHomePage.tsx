@@ -22,7 +22,6 @@ import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import { AdminAovCard } from "./AdminAovCard";
 import { AdminOpsCard } from "./AdminOpsCard";
 import { AdminRevenueCard } from "./AdminRevenueCard";
-import { AdminYeoboUtilizationCard } from "./AdminYeoboUtilizationCard";
 import { RevenueDashboardViewersManager } from "./RevenueDashboardViewersManager";
 import type { YeoboRevenue, YeoboUtilization } from "@/lib/actions/admin-home-yeobo.actions";
 import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
@@ -191,9 +190,8 @@ export function AdminHomePage({
             viewers={revenueViewers}
             candidates={revenueViewerCandidates}
           />
-          <AdminYeoboUtilizationCard utilization={yeoboUtilization} />
         </div>
-        <AdminOpsCard ops={opsMetrics} />
+        <AdminOpsCard ops={opsMetrics} yeoboUtilization={yeoboUtilization} />
       </div>
 
       <AdminAovCard today={today} yeobo={yeoboRevenue} />
