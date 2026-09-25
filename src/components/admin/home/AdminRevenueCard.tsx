@@ -73,6 +73,27 @@ function monthDelta(
   };
 }
 
+/**
+ * Delta buat mode PROYEKSI — basisnya beda dari `monthDelta` di atas:
+ * proyeksi (angka penuh, diekstrapolasi) dibandingkan ke bulan lalu PENUH
+ * (bukan rentang tanggal sama s.d. kemarin), karena membandingkan proyeksi
+ * penuh ke angka partial itu bukan apple-to-apple — akan selalu keliatan
+ * "menang besar" walau padahal cuma efek proyeksi vs data separuh bulan.
+ */
+function monthDeltaProjected(
+  projectedTotal: number,
+  prevFull: number | null | undefined,
+  prevFullLabel: string | null | undefined
+): MonthDelta | null {
+  if (prevFull == null || !prevFullLabel || prevFull <= 0) return null;
+  return {
+    pct: ((projectedTotal - prevFull) / prevFull) * 100,
+    title: `Proyeksi vs ${prevFullLabel} (bulan lalu penuh): ${formatRp(
+      prevFull
+    )} → ~${formatRp(projectedTotal)}`,
+  };
+}
+
 function DeltaPill({ d }: { d: MonthDelta }) {
   const up = d.pct >= 0;
   const rounded = Math.abs(d.pct) < 0.05 ? 0 : d.pct;
@@ -238,6 +259,18 @@ export function AdminRevenueCard({
   const toggleMode = () => setMode((m) => (m === "runrate" ? "actual" : "runrate"));
   const displayMonth = (monthToDate: number) =>
     projected ? runRateProjection(monthToDate, day, daysInMonth) : monthToDate;
+  /** Basis pembanding % ikut ganti sesuai mode — lihat `monthDeltaProjected`. */
+  const deltaFor = (
+    monthActual: number,
+    todayActual: number,
+    prevPartial: number | null | undefined,
+    prevPartialLabel: string | null | undefined,
+    prevFull: number,
+    prevFullLabel: string
+  ) =>
+    projected
+      ? monthDeltaProjected(displayMonth(monthActual), prevFull, prevFullLabel)
+      : monthDelta(monthActual - todayActual, prevPartial, prevPartialLabel);
 
   return (
     <div
@@ -315,10 +348,13 @@ export function AdminRevenueCard({
                 projected={projected}
                 onToggleMonth={toggleMode}
                 canToggle={canProject}
-                delta={monthDelta(
-                  today.posHbcPareMonth - today.posHbcPareToday,
+                delta={deltaFor(
+                  today.posHbcPareMonth,
+                  today.posHbcPareToday,
                   cmp?.posHbcPare,
-                  cmp?.prevLabel
+                  cmp?.prevLabel,
+                  today.prevMonthFull.posHbcPare,
+                  today.prevMonthFull.label
                 )}
               />
               <RevenueRow
@@ -330,10 +366,13 @@ export function AdminRevenueCard({
                 projected={projected}
                 onToggleMonth={toggleMode}
                 canToggle={canProject}
-                delta={monthDelta(
-                  today.posHbcSmgMonth - today.posHbcSmgToday,
+                delta={deltaFor(
+                  today.posHbcSmgMonth,
+                  today.posHbcSmgToday,
                   cmp?.posHbcSmg,
-                  cmp?.prevLabel
+                  cmp?.prevLabel,
+                  today.prevMonthFull.posHbcSmg,
+                  today.prevMonthFull.label
                 )}
               />
               <RevenueRow
@@ -344,10 +383,13 @@ export function AdminRevenueCard({
                 projected={projected}
                 onToggleMonth={toggleMode}
                 canToggle={canProject}
-                delta={monthDelta(
-                  today.cakeHbcPareMonth - today.cakeHbcPareToday,
+                delta={deltaFor(
+                  today.cakeHbcPareMonth,
+                  today.cakeHbcPareToday,
                   cmp?.cakeHbcPare,
-                  cmp?.prevLabel
+                  cmp?.prevLabel,
+                  today.prevMonthFull.cakeHbcPare,
+                  today.prevMonthFull.label
                 )}
               />
               <RevenueRow
@@ -358,10 +400,13 @@ export function AdminRevenueCard({
                 projected={projected}
                 onToggleMonth={toggleMode}
                 canToggle={canProject}
-                delta={monthDelta(
-                  today.cakeHbcSmgMonth - today.cakeHbcSmgToday,
+                delta={deltaFor(
+                  today.cakeHbcSmgMonth,
+                  today.cakeHbcSmgToday,
                   cmp?.cakeHbcSmg,
-                  cmp?.prevLabel
+                  cmp?.prevLabel,
+                  today.prevMonthFull.cakeHbcSmg,
+                  today.prevMonthFull.label
                 )}
               />
             </>
@@ -407,7 +452,14 @@ export function AdminRevenueCard({
                   projected={projected}
                   onToggleMonth={toggleMode}
                   canToggle={canProject}
-                  delta={monthDelta(b.month - b.today, b.prevSameRange, yeobo.prevLabel)}
+                  delta={deltaFor(
+                    b.month,
+                    b.today,
+                    b.prevSameRange,
+                    yeobo.prevLabel,
+                    b.prevMonthFull,
+                    yeobo.prevMonthFullLabel
+                  )}
                 />
               ))}
               <p className="col-span-2 sm:col-span-3 text-[10.5px] leading-snug text-muted-foreground mt-2 sm:mt-0">

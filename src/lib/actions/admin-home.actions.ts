@@ -137,6 +137,21 @@ export interface AdminHomeToday {
     cakeHbcPareCount?: number;
     cakeHbcSmgCount?: number;
   } | null;
+  /**
+   * Bulan lalu PENUH (selalu lengkap, tak ada hari parsial — beda dari
+   * `monthCompare` yang rentang tanggalnya sama dengan bulan ini s.d.
+   * kemarin). Basis pembanding buat mode proyeksi run-rate di kartu Omzet:
+   * "kalau pace ini diterusin, ngalahin bulan lalu secara keseluruhan atau
+   * tidak?" — membandingkan proyeksi (angka penuh) dengan angka partial
+   * bakal salah kaprah.
+   */
+  prevMonthFull: {
+    label: string;
+    posHbcPare: number;
+    posHbcSmg: number;
+    cakeHbcPare: number;
+    cakeHbcSmg: number;
+  };
   hourlyCheckIns: number[]; // 13 buckets covering 07:00 → 19:00
   asOfIso: string; // ISO timestamp the snapshot was taken
   todayIso: string; // yyyy-mm-dd in org tz
@@ -191,6 +206,7 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     cakeHbcSmgTodayCount: 0,
     cakeHbcSmgMonthCount: 0,
     monthCompare: null,
+    prevMonthFull: { label: "", posHbcPare: 0, posHbcSmg: 0, cakeHbcPare: 0, cakeHbcSmg: 0 },
     hourlyCheckIns: Array(13).fill(0),
     asOfIso: new Date().toISOString(),
     todayIso: zonedDateString(new Date(), "Asia/Jakarta"),
@@ -305,6 +321,10 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     posHbcSmgTodayAgg,
     posHbcSmgMonthAgg,
     posHbcSmgPrevAgg,
+    cakeParePrevFullRes,
+    cakeSmgPrevFullRes,
+    posHbcParePrevFullAgg,
+    posHbcSmgPrevFullAgg,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -343,6 +363,12 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
     canCompare
       ? sumPosTotal("Semarang", { gte: prevStartDate, lt: prevCutoffDate })
       : Promise.resolve({ total: 0, count: 0 }),
+    // Bulan lalu PENUH — selalu dihitung (tak digerbang canCompare), basis
+    // pembanding buat mode proyeksi run-rate (lihat AdminHomeToday.prevMonthFull).
+    cakeRangeQuery("pare", prevStartIso, monthStartIso),
+    cakeRangeQuery("semarang", prevStartIso, monthStartIso),
+    sumPosTotal("Pare", { gte: prevStartDate, lt: monthStartDate }),
+    sumPosTotal("Semarang", { gte: prevStartDate, lt: monthStartDate }),
   ]);
 
   const posHbcPareToday = posHbcPareTodayAgg.total;
@@ -450,6 +476,13 @@ export async function getAdminHomeToday(): Promise<AdminHomeToday> {
           cakeHbcSmgCount: rowCount(cakeSmgPrevRes.data),
         }
       : null,
+    prevMonthFull: {
+      label: `${MONTHS_ID[pm - 1]} ${py}`,
+      posHbcPare: posHbcParePrevFullAgg.total,
+      posHbcSmg: posHbcSmgPrevFullAgg.total,
+      cakeHbcPare: sumIdr(cakeParePrevFullRes.data),
+      cakeHbcSmg: sumIdr(cakeSmgPrevFullRes.data),
+    },
     hourlyCheckIns,
     asOfIso: now.toISOString(),
     todayIso,
@@ -470,6 +503,7 @@ export interface RevenueSummary {
   cakeHbcSmgToday: number;
   cakeHbcSmgMonth: number;
   monthCompare: AdminHomeToday["monthCompare"];
+  prevMonthFull: AdminHomeToday["prevMonthFull"];
 }
 
 /**
@@ -491,6 +525,7 @@ export async function getRevenueSummaryForHome(): Promise<RevenueSummary> {
     cakeHbcSmgToday: 0,
     cakeHbcSmgMonth: 0,
     monthCompare: null,
+    prevMonthFull: { label: "", posHbcPare: 0, posHbcSmg: 0, cakeHbcPare: 0, cakeHbcSmg: 0 },
   };
   if (!(await canViewRevenueDashboard("haengbocake"))) return empty;
 
@@ -583,6 +618,10 @@ export async function getRevenueSummaryForHome(): Promise<RevenueSummary> {
     posHbcSmgToday,
     posHbcSmgMonth,
     posHbcSmgPrev,
+    cakeParePrevFullRes,
+    cakeSmgPrevFullRes,
+    posHbcParePrevFull,
+    posHbcSmgPrevFull,
   ] = await Promise.all([
     cakeRangeQuery("pare", dayStartIso, dayEndIso),
     cakeRangeQuery("pare", monthStartIso, monthEndIso),
@@ -604,6 +643,12 @@ export async function getRevenueSummaryForHome(): Promise<RevenueSummary> {
     canCompare
       ? sumPosTotal("Semarang", { gte: prevStartDate, lt: prevCutoffDate })
       : Promise.resolve(0),
+    // Bulan lalu PENUH — selalu (tak digerbang canCompare), lihat catatan
+    // sama di getAdminHomeToday.
+    cakeRangeQuery("pare", prevStartIso, monthStartIso),
+    cakeRangeQuery("semarang", prevStartIso, monthStartIso),
+    sumPosTotal("Pare", { gte: prevStartDate, lt: monthStartDate }),
+    sumPosTotal("Semarang", { gte: prevStartDate, lt: monthStartDate }),
   ]);
 
   const sumIdr = (rows: unknown) =>
@@ -631,6 +676,13 @@ export async function getRevenueSummaryForHome(): Promise<RevenueSummary> {
           cakeHbcSmg: sumIdr(cakeSmgPrevRes.data),
         }
       : null,
+    prevMonthFull: {
+      label: `${MONTHS_ID[pm - 1]} ${py}`,
+      posHbcPare: posHbcParePrevFull,
+      posHbcSmg: posHbcSmgPrevFull,
+      cakeHbcPare: sumIdr(cakeParePrevFullRes.data),
+      cakeHbcSmg: sumIdr(cakeSmgPrevFullRes.data),
+    },
   };
 }
 

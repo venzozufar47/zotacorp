@@ -40,6 +40,12 @@ export interface YeoboRevenueBranch {
   month: number;
   /** Bulan lalu pada rentang tanggal sama s.d. kemarin; null = tak bisa dibandingkan. */
   prevSameRange: number | null;
+  /** Bulan lalu PENUH (selalu lengkap, tak ada hari parsial) — basis
+   *  pembanding buat mode proyeksi run-rate: "kalau pace ini diterusin,
+   *  ngalahin bulan lalu secara keseluruhan atau tidak?". Beda dari
+   *  `prevSameRange` yang basisnya rentang tanggal sama (buat angka MTD
+   *  aktual vs aktual). */
+  prevMonthFull: number;
   /** Jumlah booking (BUKAN termasuk baris amendment) — dipakai buat AOV.
    *  Amendment cuma nambah nilai booking yang sudah ada, bukan order baru. */
   todayCount: number;
@@ -53,6 +59,8 @@ export interface YeoboRevenue {
   latestPaidAt: string | null;
   /** Rentang pembanding, mis. "1–20 Agu"; null = tak ada pembanding. */
   prevLabel: string | null;
+  /** Label bulan lalu penuh, mis. "Agu 2026" — pasangan `prevMonthFull`. */
+  prevMonthFullLabel: string;
 }
 
 const BRANCHES: Array<{ id: string; label: string }> = [
@@ -149,8 +157,21 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
 
   const acc = new Map<
     string,
-    { today: number; month: number; prev: number; todayCount: number; monthCount: number; prevCount: number }
-  >(BRANCHES.map((b) => [b.id, { today: 0, month: 0, prev: 0, todayCount: 0, monthCount: 0, prevCount: 0 }]));
+    {
+      today: number;
+      month: number;
+      prev: number;
+      prevFull: number;
+      todayCount: number;
+      monthCount: number;
+      prevCount: number;
+    }
+  >(
+    BRANCHES.map((b) => [
+      b.id,
+      { today: 0, month: 0, prev: 0, prevFull: 0, todayCount: 0, monthCount: 0, prevCount: 0 },
+    ])
+  );
   let latest: string | null = null;
   for (const r of rows) {
     const a = acc.get(r.branch_id);
@@ -164,9 +185,14 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
         a.today += r.amt;
         if (r.isBooking) a.todayCount++;
       }
-    } else if (canCompare && date >= prevStart && date < prevCutoff) {
-      a.prev += r.amt;
-      if (r.isBooking) a.prevCount++;
+    } else if (date >= prevStart) {
+      // Bulan lalu PENUH (selalu, tak digerbang canCompare — beda dari
+      // `prev` rentang-sama di bawah yang cuma valid kalau canCompare).
+      a.prevFull += r.amt;
+      if (canCompare && date < prevCutoff) {
+        a.prev += r.amt;
+        if (r.isBooking) a.prevCount++;
+      }
     }
   }
 
@@ -179,6 +205,7 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
         today: a.today,
         month: a.month,
         prevSameRange: canCompare ? a.prev : null,
+        prevMonthFull: a.prevFull,
         todayCount: a.todayCount,
         monthCount: a.monthCount,
         prevSameRangeCount: canCompare ? a.prevCount : null,
@@ -190,6 +217,7 @@ export async function getYeoboSpaceRevenue(): Promise<YeoboRevenue | null> {
         ? `1 ${MONTHS_ID[pm - 1]}`
         : `1–${cmpDays} ${MONTHS_ID[pm - 1]}`
       : null,
+    prevMonthFullLabel: `${MONTHS_ID[pm - 1]} ${py}`,
   };
 }
 
