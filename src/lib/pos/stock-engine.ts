@@ -195,7 +195,19 @@ export async function listActiveSkus(
 export async function loadBaselineAt(
   supabase: PosDbClient,
   bankAccountId: string,
-  beforeIso: string
+  beforeIso: string,
+  /**
+   * Sama seperti di `computeExpectedCounts`: kalau sebuah produk di-toggle
+   * ke `stock_aggregate_variants=true` SETELAH opname terakhirnya dicatat,
+   * baris item opname itu masih membawa `variant_id` per-varian lama.
+   * Tanpa collapse ini, key baseline (`p:X|v:<varian lama>`) tidak pernah
+   * cocok dengan key SKU agregat saat ini (`p:X|v:-`) — baseline-nya
+   * senyap jadi 0, bukan salah — undercounting `expected` yang berujung
+   * false "surplus" persis seperti bug qty negatif yang dilaporkan Tasya.
+   * Opsional (default: tanpa collapse) supaya caller yang belum sempat
+   * menghitung `aggregateProductIds` tidak wajib berubah.
+   */
+  aggregateProductIds?: Set<string>
 ): Promise<{
   cutoffIso: string | null;
   baseline: Map<SkuKey, number>;
@@ -226,7 +238,11 @@ export async function loadBaselineAt(
   );
   const baseline = new Map<SkuKey, number>();
   for (const it of items) {
-    baseline.set(skuKey(it.product_id, it.variant_id), it.physical_count);
+    const vId = aggregateProductIds?.has(it.product_id) ? null : it.variant_id;
+    const key = skuKey(it.product_id, vId);
+    // Dua baris legacy per-varian bisa collapse ke key agregat yang sama
+    // — jumlahkan, jangan timpa, supaya baseline-nya tidak kehilangan sisa.
+    baseline.set(key, (baseline.get(key) ?? 0) + it.physical_count);
   }
   return {
     cutoffIso: last.created_at,
@@ -302,6 +318,17 @@ export async function computeExpectedCounts(
     const key = skuKey(it.product_id, vId);
     if (!result.has(key)) continue;
     result.set(key, (result.get(key) ?? 0) - it.qty);
+  }
+
+  // Stok fisik tidak pernah negatif secara konsep — kalau hasilnya < 0,
+  // itu tandanya ada movement yang salah (mis. over-withdrawal: menarik
+  // lebih banyak dari yang pernah tercatat ada), bukan expected count yang
+  // sah. Tanpa floor ini, SKU tsb PERMANEN tak bisa di-opname: berapa pun
+  // physicalCount yang dimasukkan (selalu ≥ 0) akan selalu terbaca
+  // "surplus" karena expected-nya negatif — persis kasus yang memblokir
+  // Tasya di POS Semarang (baseline 10, over-withdrawal 11 → expected -1).
+  for (const [key, value] of result) {
+    if (value < 0) result.set(key, 0);
   }
 
   return result;

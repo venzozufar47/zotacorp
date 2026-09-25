@@ -112,14 +112,15 @@ export interface StockOpnameDetail {
 /** Baseline "sebelum sekarang" — pembungkus tipis `loadBaselineAt`. */
 async function loadBaseline(
   supabase: PosDbClient,
-  bankAccountId: string
+  bankAccountId: string,
+  aggregateProductIds?: Set<string>
 ): Promise<{
   cutoffIso: string | null;
   baseline: Map<SkuKey, number>;
   opnameId: string | null;
   itemCount: number;
 }> {
-  return loadBaselineAt(supabase, bankAccountId, new Date().toISOString());
+  return loadBaselineAt(supabase, bankAccountId, new Date().toISOString(), aggregateProductIds);
 }
 
 export async function listStockOnHand(
@@ -130,11 +131,11 @@ export async function listStockOnHand(
   const gate = await requireAdminOrPosAssignee(bankAccountId);
   if (!gate.ok) return [];
   const supabase = await createClient();
-  const [skuResult, baseline] = await Promise.all([
-    listActiveSkus(supabase, bankAccountId),
-    loadBaseline(supabase, bankAccountId),
-  ]);
-  const { skus, aggregateProductIds } = skuResult;
+  // Berurutan (bukan Promise.all): baseline butuh aggregateProductIds dari
+  // listActiveSkus supaya baris legacy ber-variant_id di produk mode-agregat
+  // ikut ter-collapse (lihat komentar loadBaselineAt).
+  const { skus, aggregateProductIds } = await listActiveSkus(supabase, bankAccountId);
+  const baseline = await loadBaseline(supabase, bankAccountId, aggregateProductIds);
   const now = new Date().toISOString();
   const expected = await computeExpectedCounts(
     supabase,
@@ -577,11 +578,12 @@ export async function createStockOpname(input: {
       createdAt: v && v.created_at > p.created_at ? v.created_at : p.created_at,
     };
   });
-  const baseline = await loadBaseline(supabase, input.bankAccountId);
-  // Aggregate-mode set untuk sale collapse — ambil sekali dari katalog.
+  // Aggregate-mode set — dibutuhkan baseline (collapse baris legacy
+  // ber-variant_id, lihat loadBaselineAt) SEBELUM di-load, bukan sesudah.
   const aggregateProductIds = new Set(
     (products ?? []).filter((p) => p.stock_aggregate_variants).map((p) => p.id)
   );
+  const baseline = await loadBaseline(supabase, input.bankAccountId, aggregateProductIds);
   const now = new Date();
   const nowIso = now.toISOString();
   const expected = await computeExpectedCounts(
@@ -899,7 +901,7 @@ async function readinessAtInternal(
   skus: Sku[],
   aggregateProductIds: Set<string>
 ): Promise<StockReadinessSnapshot> {
-  const baseline = await loadBaselineAt(supabase, bankAccountId, atIso);
+  const baseline = await loadBaselineAt(supabase, bankAccountId, atIso, aggregateProductIds);
   const expected = await computeExpectedCounts(
     supabase,
     bankAccountId,
