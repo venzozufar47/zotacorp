@@ -36,6 +36,12 @@ yarn-error.log*
 
 # claude local scratch (design refs, backups, plans)
 .claude/tmp/
+# ...diff/tmp files a Claude Code session can leave behind if it writes
+# scratch output into the repo root instead of its scratchpad dir
+*.claudetmpdiff*.txt
+
+# stray platform binaries that shouldn't be committed to this repo
+*.exe
 
 # vercel
 .vercel
