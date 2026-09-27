@@ -139,6 +139,24 @@ export function CleaningRedoCard({ items }: { items: PendingRedoPhoto[] }) {
                 />
               </div>
             )}
+            {it.attachmentUrls.length > 0 && (
+              <div className="mt-2 flex items-start gap-2">
+                <span className="text-[10.5px] text-muted-foreground shrink-0 mt-1.5">
+                  Dari owner:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {it.attachmentUrls.map((url) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={url}
+                      src={url}
+                      alt="Lampiran dari owner"
+                      className="size-9 rounded-md border border-border object-cover"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
             <button
               type="button"
               disabled={pending && busyId === it.completionId}

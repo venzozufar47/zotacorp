@@ -40,6 +40,13 @@ export interface RetentionResult {
   cleared: number;
 }
 
+export interface AttachmentRetentionResult {
+  cutoff: string;
+  found: number;
+  removed: number;
+  cleared: number;
+}
+
 function admin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -91,6 +98,58 @@ export async function sweepCleaningPhotoRetention(
     const { error: updErr } = await db
       .from("cleaning_task_completions")
       .update({ photo_path: null, photo_purged_at: new Date().toISOString() })
+      .in(
+        "id",
+        chunk.map((r) => r.id)
+      );
+    if (!updErr) result.cleared += chunk.length;
+  }
+
+  return result;
+}
+
+/**
+ * Retensi lampiran review (foto contoh/anotasi yang OWNER unggah saat verdict
+ * redo — lihat migrasi 157). Sama 90 hari, sama bucket privat `cleaning-photos`
+ * (path lain, `review-attachments/...`), tapi cutoff-nya dibaca dari TANGGAL
+ * completion INDUKNYA (tabel ini sendiri tidak punya kolom tanggal) — jadi
+ * lampiran ikut kedaluwarsa bersamaan dengan foto bukti yang direviewnya.
+ *
+ * Beda dari sweep di atas: setiap baris di sini SELALU punya foto (baris cuma
+ * dibuat saat unggah berhasil), jadi tidak perlu kosongkan `photo_path` untuk
+ * membedakan "kedaluwarsa" dari "memang tidak ada foto" — `purged_at` sendiri
+ * sudah cukup jadi penanda itu.
+ */
+export async function sweepCleaningReviewAttachmentRetention(
+  days: number = CLEANING_PHOTO_RETENTION_DAYS
+): Promise<AttachmentRetentionResult> {
+  const db = admin();
+  const cutoff = cutoffDate(days);
+  const result: AttachmentRetentionResult = { cutoff, found: 0, removed: 0, cleared: 0 };
+
+  const { data: rows, error } = await db
+    .from("cleaning_review_attachments")
+    .select("id, photo_path, completion:cleaning_task_completions!inner(date)")
+    .is("purged_at", null)
+    .lt("completion.date", cutoff)
+    .limit(MAX_PER_RUN);
+  if (error) throw new Error(`retensi lampiran: ${error.message}`);
+
+  const expired = (rows ?? []) as unknown as Array<{ id: string; photo_path: string }>;
+  result.found = expired.length;
+  if (expired.length === 0) return result;
+
+  for (let i = 0; i < expired.length; i += BATCH) {
+    const chunk = expired.slice(i, i + BATCH);
+
+    const { error: rmErr } = await db.storage
+      .from(BUCKET)
+      .remove(chunk.map((r) => r.photo_path));
+    if (!rmErr) result.removed += chunk.length;
+
+    const { error: updErr } = await db
+      .from("cleaning_review_attachments")
+      .update({ purged_at: new Date().toISOString() })
       .in(
         "id",
         chunk.map((r) => r.id)

@@ -19,7 +19,10 @@ export const maxDuration = 300; // 5 menit — backup besar bisa lama
 import { NextResponse } from "next/server";
 import { dueForCron, runBackupCron } from "@/lib/actions/backup.actions";
 import { gcOrphanStorage } from "@/lib/storage/gc-orphans";
-import { sweepCleaningPhotoRetention } from "@/lib/storage/cleaning-retention";
+import {
+  sweepCleaningPhotoRetention,
+  sweepCleaningReviewAttachmentRetention,
+} from "@/lib/storage/cleaning-retention";
 import { sweepMediaRetention } from "@/lib/storage/media-retention";
 import { checkCronAuth } from "@/lib/utils/cron-auth";
 
@@ -34,6 +37,9 @@ export async function GET(req: Request) {
   // blokir/gagalkan backup. Retensi jalan lebih dulu supaya file yang baru
   // dilepas rujukannya tidak menunggu sehari lagi untuk disapu GC.
   const retention = await sweepCleaningPhotoRetention().catch(() => null);
+  const reviewAttachmentRetention = await sweepCleaningReviewAttachmentRetention().catch(
+    () => null
+  );
   // Bukti transaksi + selfie absensi, ambang 90 hari yang sama.
   const media = await sweepMediaRetention().catch(() => []);
   const gc = await gcOrphanStorage().catch(() => []);
@@ -45,13 +51,14 @@ export async function GET(req: Request) {
       reason: check.reason,
       gc,
       retention,
+      reviewAttachmentRetention,
       media,
     });
   }
   const res = await runBackupCron();
   if (!res.ok) {
     return NextResponse.json(
-      { error: res.error, gc, retention, media },
+      { error: res.error, gc, retention, reviewAttachmentRetention, media },
       { status: 500 }
     );
   }
@@ -61,6 +68,7 @@ export async function GET(req: Request) {
     fileName: res.data?.fileName,
     gc,
     retention,
+    reviewAttachmentRetention,
     media,
   });
 }

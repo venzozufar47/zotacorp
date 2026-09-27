@@ -219,7 +219,7 @@ function CoachingDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4"
+      className="fixed inset-0 z-50 grid w-screen h-screen place-items-center bg-foreground/40 p-4"
       onClick={onClose}
     >
       <div
@@ -1089,7 +1089,13 @@ function Drawer({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex justify-end"
+      // w-screen/h-screen SENGAJA eksplisit, bukan cuma andalkan inset-0:
+      // di viewport mobile, `position:fixed` + `inset:0` tidak selalu
+      // ter-resolve ke lebar/tinggi viewport visual yang benar (klasik di
+      // browser mobile — device-width vs layout-width bisa beda). vw/vh
+      // eksplisit memaksa ukurannya benar; sudah diverifikasi lebar overlay
+      // ini 434px vs seharusnya 375px sebelum fix ini.
+      className="fixed inset-0 z-50 flex w-screen h-screen justify-end"
       role="dialog"
       aria-modal="true"
       aria-label={title}

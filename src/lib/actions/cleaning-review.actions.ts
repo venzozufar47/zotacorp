@@ -42,6 +42,11 @@ export async function setCleaningPhotoVerdict(input: {
   verdict: CleaningVerdict;
   redoReason?: CleaningRedoReason | null;
   note?: string | null;
+  /** Path lampiran (bucket cleaning-photos, prefix review-attachments/) yang
+   *  sudah diunggah client SEBELUM memanggil action ini — lihat komentar di
+   *  atas AttachmentUploader di PhotoReviewGallery.tsx. Hanya dipakai kalau
+   *  verdict === "redo"; diabaikan untuk verdict lain. */
+  attachmentPaths?: string[];
 }): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -85,6 +90,24 @@ export async function setCleaningPhotoVerdict(input: {
     })
     .eq("id", input.completionId);
   if (error) return { ok: false, error: error.message };
+
+  const attachmentPaths = (input.attachmentPaths ?? []).filter(Boolean);
+  if (input.verdict === "redo" && attachmentPaths.length > 0) {
+    const { error: attErr } = await supabase.from("cleaning_review_attachments").insert(
+      attachmentPaths.map((photo_path) => ({
+        completion_id: input.completionId,
+        photo_path,
+        uploaded_by: user?.id ?? null,
+      }))
+    );
+    // Verdict-nya sendiri sudah tersimpan di atas — kegagalan lampiran tidak
+    // boleh membuat pemanggil mengira verdict-nya batal, cukup dilaporkan.
+    if (attErr)
+      return {
+        ok: false,
+        error: `Verdict tersimpan, tapi lampiran gagal disimpan: ${attErr.message}`,
+      };
+  }
 
   revalidatePath("/admin/cleaning");
   revalidatePath("/dashboard");
@@ -231,6 +254,8 @@ export interface PendingRedoPhoto {
   photoUrl: string | null;
   /** URL publik contoh foto yang benar, kalau titik ini punya referensi. */
   referenceUrl: string | null;
+  /** Foto lampiran dari owner (anotasi/contoh) — lihat setCleaningPhotoVerdict. */
+  attachmentUrls: string[];
   assignmentId: string;
   itemId: string;
   photoReqId: string | null;
@@ -297,6 +322,35 @@ export async function getMyPendingRedoPhotos(): Promise<PendingRedoPhoto[]> {
       ? supabase.storage.from(REF_BUCKET).getPublicUrl(path).data.publicUrl
       : null;
 
+  // Lampiran owner (kalau ada) per completion — satu batch, bukan N+1.
+  const { data: attachments } = await supabase
+    .from("cleaning_review_attachments")
+    .select("completion_id, photo_path")
+    .in(
+      "completion_id",
+      rows.map((r) => r.id)
+    )
+    .is("purged_at", null);
+  type AttachmentRow = { completion_id: string; photo_path: string };
+  const attachmentsByCompletion = new Map<string, string[]>();
+  for (const a of (attachments ?? []) as AttachmentRow[]) {
+    const existing = attachmentsByCompletion.get(a.completion_id);
+    if (existing) existing.push(a.photo_path);
+    else attachmentsByCompletion.set(a.completion_id, [a.photo_path]);
+  }
+  const attachmentPaths = (attachments ?? []).map(
+    (a: AttachmentRow) => a.photo_path
+  );
+  const attachmentUrlByPath = new Map<string, string>();
+  if (attachmentPaths.length) {
+    const { data: signed } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .createSignedUrls(attachmentPaths, 1800);
+    for (const s of signed ?? []) {
+      if (s.signedUrl && s.path) attachmentUrlByPath.set(s.path, s.signedUrl);
+    }
+  }
+
   return rows.map((r) => ({
     completionId: r.id,
     itemTitle: r.item?.title ?? "—",
@@ -309,6 +363,9 @@ export async function getMyPendingRedoPhotos(): Promise<PendingRedoPhoto[]> {
     referenceUrl: r.photo_req_id
       ? refUrl(refByReqId.get(r.photo_req_id))
       : null,
+    attachmentUrls: (attachmentsByCompletion.get(r.id) ?? [])
+      .map((p) => attachmentUrlByPath.get(p))
+      .filter((u): u is string => !!u),
     assignmentId: r.assignment_id,
     itemId: r.item_id,
     photoReqId: r.photo_req_id,

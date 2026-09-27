@@ -2195,6 +2195,55 @@ export type Database = {
           },
         ]
       }
+      cleaning_review_attachments: {
+        Row: {
+          completion_id: string
+          created_at: string
+          id: string
+          photo_path: string
+          purged_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          completion_id: string
+          created_at?: string
+          id?: string
+          photo_path: string
+          purged_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          completion_id?: string
+          created_at?: string
+          id?: string
+          photo_path?: string
+          purged_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_review_attachments_completion_id_fkey"
+            columns: ["completion_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_task_completions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_review_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_review_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cleaning_task_completions: {
         Row: {
           assignment_id: string

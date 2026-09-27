@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   Loader2,
@@ -10,12 +10,15 @@ import {
   CalendarDays,
   RotateCcw,
   Check,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { formatDateID } from "@/lib/utils/date-formats";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { compressImageFile } from "@/lib/images/compress-image";
 import {
   getCleaningPhotoHistory,
   type PhotoHistoryRow,
@@ -28,6 +31,109 @@ import {
   type CleaningRedoReason,
 } from "@/lib/actions/cleaning-review.actions";
 import type { CleaningEmployee } from "./types";
+
+const ATTACHMENT_BUCKET = "cleaning-photos";
+const MAX_ATTACHMENTS = 5;
+
+/**
+ * Foto lampiran (contoh/anotasi) yang owner pilih untuk menyertai verdict
+ * redo. Diunggah ke storage SEGERA saat dipilih (bukan ditunda sampai submit)
+ * supaya progress/kegagalan per file terlihat sebelum owner menekan "Kirim" —
+ * gagal setelah verdict sudah tersimpan hanya akan membingungkan.
+ */
+function AttachmentUploader({
+  completionId,
+  paths,
+  onPathsChange,
+}: {
+  completionId: string;
+  paths: string[];
+  onPathsChange: (paths: string[]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const room = MAX_ATTACHMENTS - paths.length;
+    if (room <= 0) {
+      toast.error(`Maksimal ${MAX_ATTACHMENTS} foto lampiran`);
+      return;
+    }
+    const selected = Array.from(files).slice(0, room);
+    setUploading(true);
+    const supabase = createSupabaseClient();
+    const uploaded: string[] = [];
+    for (const file of selected) {
+      const compressed = await compressImageFile(file);
+      const ext = compressed.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `review-attachments/${completionId}/${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabase.storage
+        .from(ATTACHMENT_BUCKET)
+        .upload(path, compressed, { contentType: compressed.type, upsert: false });
+      if (error) {
+        toast.error(`Gagal unggah ${file.name}`);
+        continue;
+      }
+      uploaded.push(path);
+    }
+    if (uploaded.length) onPathsChange([...paths, ...uploaded]);
+    setUploading(false);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function remove(path: string) {
+    void createSupabaseClient().storage.from(ATTACHMENT_BUCKET).remove([path]);
+    onPathsChange(paths.filter((p) => p !== path));
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {paths.map((p) => (
+          <span
+            key={p}
+            className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-1 text-[10.5px] text-white/80"
+          >
+            <Paperclip size={11} />
+            {p.split("/").pop()?.slice(0, 10)}…
+            <button
+              type="button"
+              onClick={() => remove(p)}
+              className="text-white/50 hover:text-white"
+              aria-label="Hapus lampiran"
+            >
+              <X size={11} />
+            </button>
+          </span>
+        ))}
+        {paths.length < MAX_ATTACHMENTS && (
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-1 text-[10.5px] font-semibold text-white/80 hover:bg-white/20 disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <Paperclip size={11} />
+            )}
+            Lampirkan foto
+          </button>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => void handleFiles(e.target.files)}
+      />
+    </div>
+  );
+}
 
 const PAGE = 60;
 
@@ -60,6 +166,7 @@ function VerdictBar({
   const [redoOpen, setRedoOpen] = useState(false);
   const [redoReason, setRedoReason] = useState<CleaningRedoReason>("angle");
   const [note, setNote] = useState(row.review_note ?? "");
+  const [attachmentPaths, setAttachmentPaths] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
 
   function send(verdict: "ok" | "redo" | "unreviewed") {
@@ -73,6 +180,7 @@ function VerdictBar({
         verdict,
         redoReason: verdict === "redo" ? redoReason : null,
         note: verdict === "redo" ? note.trim() : null,
+        attachmentPaths: verdict === "redo" ? attachmentPaths : undefined,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyimpan");
@@ -86,6 +194,7 @@ function VerdictBar({
             : "Verdict dibatalkan"
       );
       setRedoOpen(false);
+      setAttachmentPaths([]);
       onDone({
         review_status: verdict,
         review_note: verdict === "redo" ? note.trim() : null,
@@ -164,6 +273,11 @@ function VerdictBar({
             maxLength={500}
             placeholder="Apa yang harus diulang? Karyawan membaca ini."
             className="w-full rounded-lg bg-black/40 px-2.5 py-2 text-[12.5px] text-white placeholder:text-white/40"
+          />
+          <AttachmentUploader
+            completionId={row.completion_id}
+            paths={attachmentPaths}
+            onPathsChange={setAttachmentPaths}
           />
           <div className="flex justify-end gap-2">
             <button
@@ -300,60 +414,141 @@ export function PhotoReviewGallery({
   const [itemId, setItemId] = useState(initialItemId ?? "");
   const [userId, setUserId] = useState("");
 
+  // Default = antrean "Perlu diputuskan" (unreviewed, tanpa batas tanggal —
+  // lihat getCleaningPhotoHistory). Dibuka dari satu titik spesifik lewat
+  // `initialItemId` justru minta riwayat titik ITU, jadi langsung mode
+  // telusur dengan filter terbuka.
+  const [mode, setMode] = useState<"queue" | "browse">(
+    initialItemId ? "browse" : "queue"
+  );
+  const [filtersOpen, setFiltersOpen] = useState(!!initialItemId);
+
   const [rows, setRows] = useState<PhotoHistoryRow[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [pending, startTransition] = useTransition();
   const [lightbox, setLightbox] = useState<PhotoHistoryRow | null>(null);
+  // Offset SERVER, bukan rows.length: di mode antrean, baris yang sudah
+  // diputuskan langsung dibuang dari `rows` (lihat onDone di VerdictBar),
+  // jadi rows.length menyusut sambil admin bekerja. `nextCursorRef` menyimpan
+  // completed_at baris terakhir yang diambil — dipakai "Muat lebih banyak" di
+  // mode antrean supaya tidak melewati baris yang belum pernah tampil begitu
+  // ada yang sudah diputuskan (lihat catatan di getCleaningPhotoHistory).
+  // Mode telusur tetap pakai offset numerik (rows.length aman di sana:
+  // barisnya tidak dibuang, cuma statusnya diperbarui di tempat).
+  const nextCursorRef = useRef<string | null>(null);
 
   const load = useCallback(
-    (offset: number) => {
+    (
+      opts: { offset?: number; cursor?: string | null },
+      modeOverride?: "queue" | "browse"
+    ) => {
+      const effectiveMode = modeOverride ?? mode;
+      const offset = opts.offset ?? 0;
       startTransition(async () => {
         const res = await getCleaningPhotoHistory({
-          from,
-          to,
+          from: effectiveMode === "browse" ? from : null,
+          to: effectiveMode === "browse" ? to : null,
+          review_status: effectiveMode === "queue" ? "unreviewed" : null,
           checklist_id: checklistId || null,
           item_id: itemId || null,
           user_id: userId || null,
           limit: PAGE,
           offset,
+          after_completed_at: opts.cursor ?? null,
         });
         if ("error" in res) {
           toast.error(res.error);
           return;
         }
-        setRows((prev) => (offset === 0 ? res.rows : [...prev, ...res.rows]));
+        setRows((prev) => (offset === 0 && !opts.cursor ? res.rows : [...prev, ...res.rows]));
         setHasMore(res.hasMore);
         setLoaded(true);
+        nextCursorRef.current = res.rows.at(-1)?.completed_at ?? nextCursorRef.current;
       });
     },
-    [from, to, checklistId, itemId, userId]
+    [mode, from, to, checklistId, itemId, userId]
   );
 
-  // First paint only; afterwards the user drives it with "Tampilkan".
+  function showQueue() {
+    setMode("queue");
+    setFiltersOpen(false);
+    nextCursorRef.current = null;
+    load({}, "queue");
+  }
+
+  function showBrowse() {
+    setMode("browse");
+    load({}, "browse");
+  }
+
+  function loadMore() {
+    if (mode === "queue") {
+      load({ cursor: nextCursorRef.current });
+    } else {
+      load({ offset: rows.length });
+    }
+  }
+
+  // First paint only; afterwards the user drives it with "Tampilkan"/antrean.
   useEffect(() => {
-    load(0);
+    load({}, initialItemId ? "browse" : "queue");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Group by date so a week of evidence reads as a timeline, not a soup.
-  const byDate = rows.reduce<Record<string, PhotoHistoryRow[]>>((acc, r) => {
-    (acc[r.date] ??= []).push(r);
+  // Kelompokkan per CABANG dulu (yang paling sering ditanya: "coba lihat
+  // Tembalang hari ini"), lalu per tanggal di dalamnya supaya tetap terbaca
+  // sebagai linimasa, bukan tumpukan foto tak berurutan.
+  const byBranch = rows.reduce<Record<string, PhotoHistoryRow[]>>((acc, r) => {
+    (acc[r.branch_name] ??= []).push(r);
     return acc;
   }, {});
-  const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+  const branches = Object.keys(byBranch).sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-        <div>
-          <h3 className="font-display font-bold text-[15px]">Review Foto</h3>
-          <p className="text-[12.5px] text-muted-foreground mt-0.5">
-            Telusuri bukti foto yang sudah dikirim karyawan. Foto disimpan 90
-            hari, setelah itu terhapus otomatis — catatan pengerjaannya tetap ada.
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-display font-bold text-[15px]">
+              {mode === "queue" ? "Perlu diputuskan" : "Review Foto"}
+            </h3>
+            <p className="text-[12.5px] text-muted-foreground mt-0.5">
+              {mode === "queue"
+                ? "Foto TERBARU per titik yang belum di-Acc atau diminta ulang. Kalau titik yang sama sudah difoto lagi tanpa sempat ditinjau, foto lama otomatis dianggap Acc."
+                : "Telusuri bukti foto yang sudah dikirim karyawan. Foto disimpan 90 hari, setelah itu terhapus otomatis — catatan pengerjaannya tetap ada."}
+            </p>
+          </div>
+          {mode === "browse" && (
+            <button
+              type="button"
+              onClick={showQueue}
+              className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
+            >
+              ← Antrean
+            </button>
+          )}
         </div>
 
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((v) => !v)}
+          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-muted-foreground hover:text-foreground"
+        >
+          <span
+            className={cn(
+              "inline-block transition-transform",
+              filtersOpen ? "rotate-90" : ""
+            )}
+            aria-hidden
+          >
+            ▸
+          </span>
+          Filter &amp; tanggal
+        </button>
+
+        {filtersOpen && (
+          <>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block">
             <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
@@ -442,7 +637,7 @@ export function PhotoReviewGallery({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" onClick={() => load(0)} disabled={pending}>
+          <Button size="sm" onClick={showBrowse} disabled={pending}>
             {pending ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
@@ -463,84 +658,110 @@ export function PhotoReviewGallery({
               <CalendarDays size={12} /> {d} hari
             </button>
           ))}
-          {loaded && (
-            <span className="text-[12px] text-muted-foreground ml-auto">
-              {rows.length} foto{hasMore ? "+" : ""}
-            </span>
-          )}
         </div>
+          </>
+        )}
+
+        {loaded && (
+          <span className="block text-[12px] text-muted-foreground">
+            {rows.length} foto{hasMore ? "+" : ""}
+          </span>
+        )}
       </div>
 
       {loaded && rows.length === 0 && (
         <p className="text-[13px] text-muted-foreground px-1">
-          Tidak ada foto pada rentang ini.
+          {mode === "queue"
+            ? "Tidak ada yang perlu diputuskan. Semua titik sudah Acc atau menunggu foto berikutnya."
+            : "Tidak ada foto pada rentang ini."}
         </p>
       )}
 
-      {dates.map((d) => (
-        <div key={d} className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="font-display font-bold text-[13.5px]">
-              {formatDateID(d)}
-            </span>
-            <span className="text-[11.5px] text-muted-foreground">
-              {byDate[d].length} foto
-            </span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-            {byDate[d].map((r) => (
-              <button
-                key={r.completion_id}
-                type="button"
-                onClick={() => r.url && setLightbox(r)}
-                disabled={!r.url}
-                className={cn(
-                  "group text-left rounded-xl border border-border bg-card overflow-hidden transition",
-                  r.url ? "hover:-translate-y-0.5 hover:shadow-md" : "opacity-70"
-                )}
-              >
-                <div className="relative aspect-square bg-muted">
-                  {r.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={r.url}
-                      alt={r.label ?? r.item_title}
-                      loading="lazy"
-                      decoding="async"
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 grid place-items-center text-muted-foreground gap-1 px-2 text-center">
-                      <ImageOff size={18} />
-                      <span className="text-[10.5px] leading-tight">
-                        {r.purged ? "Terhapus (retensi 90 hari)" : "Foto hilang"}
-                      </span>
-                    </div>
-                  )}
+      {branches.map((branch) => {
+        const branchRows = byBranch[branch];
+        const byDate = branchRows.reduce<Record<string, PhotoHistoryRow[]>>(
+          (acc, r) => {
+            (acc[r.date] ??= []).push(r);
+            return acc;
+          },
+          {}
+        );
+        const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+        return (
+          <div key={branch} className="space-y-3">
+            <div className="flex items-baseline gap-2 border-b border-border pb-1.5">
+              <h4 className="font-display font-bold text-[15px]">{branch}</h4>
+              <span className="text-[11.5px] text-muted-foreground">
+                {branchRows.length} foto
+              </span>
+            </div>
+            {dates.map((d) => (
+              <div key={d} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-display font-semibold text-[13px] text-foreground/80">
+                    {formatDateID(d)}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {byDate[d].length} foto
+                  </span>
                 </div>
-                <div className="p-2 space-y-0.5">
-                  <div className="text-[11.5px] font-medium leading-tight line-clamp-2">
-                    {r.label ?? r.item_title}
-                  </div>
-                  <div className="text-[10.5px] text-muted-foreground truncate">
-                    {r.item_title}
-                  </div>
-                  <div className="text-[10.5px] text-muted-foreground truncate">
-                    {r.user_name}
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+                  {byDate[d].map((r) => (
+                    <button
+                      key={r.completion_id}
+                      type="button"
+                      onClick={() => r.url && setLightbox(r)}
+                      disabled={!r.url}
+                      className={cn(
+                        "group text-left rounded-xl border border-border bg-card overflow-hidden transition",
+                        r.url ? "hover:-translate-y-0.5 hover:shadow-md" : "opacity-70"
+                      )}
+                    >
+                      <div className="relative aspect-square bg-muted">
+                        {r.url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={r.url}
+                            alt={r.label ?? r.item_title}
+                            loading="lazy"
+                            decoding="async"
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 grid place-items-center text-muted-foreground gap-1 px-2 text-center">
+                            <ImageOff size={18} />
+                            <span className="text-[10.5px] leading-tight">
+                              {r.purged ? "Terhapus (retensi 90 hari)" : "Foto hilang"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <div className="text-[11.5px] font-medium leading-tight line-clamp-2">
+                          {r.label ?? r.item_title}
+                        </div>
+                        <div className="text-[10.5px] text-muted-foreground truncate">
+                          {r.item_title}
+                        </div>
+                        <div className="text-[10.5px] text-muted-foreground truncate">
+                          {r.user_name}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {hasMore && (
         <div className="flex justify-center">
           <Button
             size="sm"
             variant="outline"
-            onClick={() => load(rows.length)}
+            onClick={loadMore}
             disabled={pending}
           >
             {pending && <Loader2 size={14} className="animate-spin" />}
@@ -551,7 +772,15 @@ export function PhotoReviewGallery({
 
       {lightbox?.url && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 grid place-items-center p-4"
+          // w-screen/h-screen: lihat catatan di Drawer (CleaningOverview.tsx)
+          // — inset-0 saja tidak selalu ter-resolve ke viewport visual yang
+          // benar di mobile. overflow-y-auto + [place-items:safe_center]
+          // WAJIB: konten (foto + verdict + lampiran) bisa lebih tinggi dari
+          // viewport, dan plain place-items-center pada elemen fixed membuat
+          // bagian yang meluber ke ATAS sama sekali tak terjangkau scroll
+          // (browser tidak membuat area scroll negatif) — "safe" membuatnya
+          // jatuh ke rata-atas begitu overflow, bukan tetap dipaksa center.
+          className="fixed inset-0 z-50 grid w-screen h-screen [place-items:safe_center] overflow-y-auto bg-black/80 p-4"
           onClick={() => setLightbox(null)}
         >
           <div
@@ -579,18 +808,55 @@ export function PhotoReviewGallery({
                 <X size={16} />
               </button>
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={lightbox.url}
-              alt={lightbox.label ?? lightbox.item_title}
-              className="w-full max-h-[65vh] object-contain rounded-xl bg-black"
-            />
+            {lightbox.reference_url ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <span className="block text-[10.5px] font-semibold uppercase tracking-wider text-white/60">
+                    Foto karyawan
+                  </span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={lightbox.url}
+                    alt={lightbox.label ?? lightbox.item_title}
+                    className="w-full max-h-[50vh] sm:max-h-[60vh] object-contain rounded-xl bg-black"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="block text-[10.5px] font-semibold uppercase tracking-wider text-white/60">
+                    Foto referensi (contoh)
+                  </span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={lightbox.reference_url}
+                    alt={`Referensi ${lightbox.label ?? lightbox.item_title}`}
+                    className="w-full max-h-[50vh] sm:max-h-[60vh] object-contain rounded-xl bg-black"
+                  />
+                </div>
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={lightbox.url}
+                alt={lightbox.label ?? lightbox.item_title}
+                className="w-full max-h-[65vh] object-contain rounded-xl bg-black"
+              />
+            )}
             <VerdictBar
               row={lightbox}
               onDone={(next) => {
-                // Perbarui baris di grid TANPA menutup lightbox: admin biasanya
-                // menilai beberapa foto berturut-turut, dan menutup paksa tiap
-                // kali membuat ia kehilangan tempatnya.
+                if (mode === "queue" && next.review_status !== "unreviewed") {
+                  // Sudah diputuskan → keluar dari antrean. Tutup lightbox-nya
+                  // juga: baris ini sudah tidak ada lagi di grid, menyisakannya
+                  // terbuka hanya membingungkan.
+                  setRows((rs) =>
+                    rs.filter((r) => r.completion_id !== lightbox.completion_id)
+                  );
+                  setLightbox(null);
+                  return;
+                }
+                // Mode telusur: perbarui di tempat TANPA menutup lightbox —
+                // admin biasanya menilai beberapa foto berturut-turut, dan
+                // menutup paksa tiap kali membuat ia kehilangan tempatnya.
                 setRows((rs) =>
                   rs.map((r) =>
                     r.completion_id === lightbox.completion_id

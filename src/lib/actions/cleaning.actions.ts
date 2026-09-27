@@ -1269,6 +1269,48 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
   return { date: today, checked_in: checkedIn, tasks };
 }
 
+const AUTO_RESOLVE_NOTE =
+  "Otomatis di-Acc — ada foto lebih baru untuk titik ini sebelum ditinjau.";
+
+/**
+ * Titik (item_id + photo_req_id) yang sama disubmit ulang setiap hari — kalau
+ * owner belum sempat menilai foto KEMARIN sebelum foto HARI INI masuk, foto
+ * kemarin sudah tidak relevan lagi untuk diputuskan (sudah ada penggantinya).
+ * Anggapannya: diam-diam Acc, bukan menumpuk jadi antrean yang tidak pernah
+ * habis. Inilah yang membuat "Perlu diputuskan" di Telusur Foto selalu berisi
+ * PALING BANYAK satu foto per titik, bukan seluruh riwayat.
+ *
+ * Ditulis lewat service role: menyentuh review_status/reviewed_at/review_note
+ * yang dikunci trigger `cleaning_guard_review` untuk sesi biasa (migrasi
+ * 130/156) — sah di sini karena hanya menyapu baris LAMA milik titik yang
+ * SAMA, dipicu oleh submission baru yang sah.
+ */
+async function autoResolveSupersededPhotos(
+  itemId: string,
+  photoReqId: string | null,
+  newCompletionId: string,
+  newCompletedAt: string
+): Promise<void> {
+  if (!photoReqId) return; // checkbox/generic — tidak ada "titik foto" yang relevan
+  const admin = createAdminClient();
+  await admin
+    .from("cleaning_task_completions")
+    .update({
+      review_status: "ok",
+      reviewed_at: new Date().toISOString(),
+      review_note: AUTO_RESOLVE_NOTE,
+    })
+    .eq("item_id", itemId)
+    .eq("photo_req_id", photoReqId)
+    .eq("review_status", "unreviewed")
+    .neq("id", newCompletionId)
+    // Jaga-jaga: hanya baris yang BENAR-BENAR lebih lama dari submission baru
+    // ini yang disapu. Tidak seharusnya ada baris unreviewed yang lebih baru
+    // (completed_at selalu "sekarang" saat insert), tapi filter ini
+    // menghilangkan keraguan itu sama sekali alih-alih mengandalkan asumsi.
+    .lt("completed_at", newCompletedAt);
+}
+
 export async function completeCleaningItem(input: {
   assignment_id: string;
   item_id: string;
@@ -1408,22 +1450,30 @@ export async function completeCleaningItem(input: {
     return { error: "Item ini wajib menyertakan foto bukti." };
   }
 
-  const { error } = await supabase.from("cleaning_task_completions").upsert(
-    {
-      user_id: user.id,
-      assignment_id: input.assignment_id,
-      item_id: input.item_id,
-      photo_req_id: photoReqId,
-      date: today,
-      photo_path: input.photo_path ?? null,
-      latitude: input.latitude ?? null,
-      longitude: input.longitude ?? null,
-      note: input.note?.trim() || null,
-      completed_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,item_id,date,photo_req_id" }
-  );
+  const completedAt = new Date().toISOString();
+  const { data: upserted, error } = await supabase
+    .from("cleaning_task_completions")
+    .upsert(
+      {
+        user_id: user.id,
+        assignment_id: input.assignment_id,
+        item_id: input.item_id,
+        photo_req_id: photoReqId,
+        date: today,
+        photo_path: input.photo_path ?? null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        note: input.note?.trim() || null,
+        completed_at: completedAt,
+      },
+      { onConflict: "user_id,item_id,date,photo_req_id" }
+    )
+    .select("id")
+    .single();
   if (error) return { error: error.message };
+  if (upserted) {
+    await autoResolveSupersededPhotos(input.item_id, photoReqId, upserted.id, completedAt);
+  }
   revalidatePath("/dashboard");
   return { ok: true };
 }
@@ -1491,6 +1541,7 @@ export async function resubmitCleaningPhoto(input: {
     return { error: "Tidak ada perbaikan yang perlu dikirim untuk foto ini." };
 
   const admin = createAdminClient();
+  const completedAt = new Date().toISOString();
   const { data: upserted, error } = await admin
     .from("cleaning_task_completions")
     .upsert(
@@ -1503,7 +1554,7 @@ export async function resubmitCleaningPhoto(input: {
         photo_path: input.photo_path,
         latitude: input.latitude ?? null,
         longitude: input.longitude ?? null,
-        completed_at: new Date().toISOString(),
+        completed_at: completedAt,
         // Reset eksplisit: kalau ini menimpa baris redo lama itu sendiri
         // (tanggal sama), verdict lamanya tidak boleh nyangkut.
         review_status: "unreviewed",
@@ -1526,6 +1577,7 @@ export async function resubmitCleaningPhoto(input: {
       .update({ fixed_by_completion_id: upserted.id })
       .eq("id", row.id);
   }
+  await autoResolveSupersededPhotos(row.item_id, row.photo_req_id, upserted.id, completedAt);
 
   revalidatePath("/dashboard");
   return { ok: true };
@@ -1847,6 +1899,9 @@ export interface PhotoHistoryRow {
   completed_at: string;
   user_name: string;
   checklist_name: string;
+  /** Cabang — dari lokasi assignment (duty cabang) atau business_unit
+   *  karyawan (assignment personal). Dipakai mengelompokkan grid per cabang. */
+  branch_name: string;
   item_id: string;
   item_title: string;
   /** Slot foto (cleaning_item_photos.id), null = checkbox/generic. Dipakai
@@ -1854,6 +1909,10 @@ export interface PhotoHistoryRow {
   photo_req_id: string | null;
   /** Which photo slot this was, e.g. "Kloset — bersih…". */
   label: string | null;
+  /** Public URL foto referensi/contoh titik ini, untuk dibandingkan saat
+   *  review — null kalau titik ini tidak punya referensi (atau checkbox
+   *  tanpa slot foto). */
+  reference_url: string | null;
   /** Signed URL, or null when the image is gone (retention or missing file). */
   url: string | null;
   /** True when the image was deleted by the 90-day retention sweep. */
@@ -1876,22 +1935,39 @@ export interface PhotoHistoryRow {
  * minutes — long enough to browse, short enough that a copied URL dies quickly.
  */
 export async function getCleaningPhotoHistory(input: {
-  from: string;
-  to: string;
+  /** Kosongkan keduanya untuk mode antrean (lihat `review_status` di bawah) —
+   *  tanpa batas tanggal, karena antrean memang menyisir SELURUH riwayat yang
+   *  belum diputuskan, bukan satu rentang. */
+  from?: string | null;
+  to?: string | null;
   checklist_id?: string | null;
   user_id?: string | null;
   /** Satu titik saja (cleaning_checklist_items.id). Checklist bisa punya 10+
    *  titik, jadi "buka foto Toilet" sebelumnya berarti menyisir seluruh
    *  checklist dengan mata. */
   item_id?: string | null;
+  /** Mode antrean "Perlu diputuskan": hanya `unreviewed`, urut PALING LAMA
+   *  menunggu dulu (bukan terbaru — ini daftar kerja, bukan linimasa). */
+  review_status?: "unreviewed" | "ok" | "redo" | null;
   limit?: number;
   offset?: number;
+  /**
+   * "Muat lebih banyak" mode antrean pakai INI, bukan `offset` — nilai
+   * `completed_at` baris terakhir yang sudah diambil. Wajib: himpunan
+   * `unreviewed` MENYUSUT sambil admin memutuskan (baris yang sudah Acc/redo
+   * langsung tidak lagi cocok filter), jadi offset numerik akan melewati
+   * baris yang belum pernah ditampilkan begitu ada yang sudah diputuskan di
+   * halaman sebelumnya. Cursor tidak punya masalah itu — baris "setelah X
+   * secara waktu" selalu berarti sama terlepas baris mana yang sudah hilang.
+   */
+  after_completed_at?: string | null;
 }): Promise<{ rows: PhotoHistoryRow[]; hasMore: boolean } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
 
   const limit = Math.min(Math.max(input.limit ?? 60, 1), 200);
   const offset = Math.max(input.offset ?? 0, 0);
+  const queueMode = !input.from && !input.to;
   const supabase = await createClient();
 
   // FK profiles DISEBUT EKSPLISIT: migrasi 130 menambah reviewed_by (juga FK ke
@@ -1902,19 +1978,29 @@ export async function getCleaningPhotoHistory(input: {
   let q = supabase
     .from("cleaning_task_completions")
     .select(
-      "id, date, completed_at, photo_path, photo_purged_at, user_id, item_id, photo_req_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles!cleaning_task_completions_user_id_fkey(full_name)"
+      "id, date, completed_at, photo_path, photo_purged_at, user_id, item_id, photo_req_id, assignment_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles!cleaning_task_completions_user_id_fkey(full_name)"
     )
-    .gte("date", input.from)
-    .lte("date", input.to)
     // A checkbox item (never had a photo) is not evidence to review.
     .or("photo_path.not.is.null,photo_purged_at.not.is.null")
-    .order("date", { ascending: false })
-    .order("completed_at", { ascending: false })
-    .range(offset, offset + limit); // +1 row to detect "more"
+    // Antrean: paling lama menunggu dulu (daftar kerja). Telusuri bebas:
+    // terbaru dulu (linimasa), perilaku lama.
+    .order("completed_at", { ascending: queueMode });
 
+  // `.range()` dan `.limit()` sama-sama mengatur batas halaman di level
+  // PostgREST — jangan panggil keduanya pada query yang sama (salah satu
+  // akan menimpa yang lain secara tidak terduga). Cursor pakai `.limit()`
+  // (+1 baris untuk deteksi "masih ada lagi"); offset numerik pakai
+  // `.range()` yang sudah membatasi lewat rentangnya sendiri.
+  q = input.after_completed_at
+    ? q.gt("completed_at", input.after_completed_at).limit(limit + 1)
+    : q.range(offset, offset + limit); // +1 row to detect "more"
+
+  if (input.from) q = q.gte("date", input.from);
+  if (input.to) q = q.lte("date", input.to);
   if (input.checklist_id) q = q.eq("item.checklist_id", input.checklist_id);
   if (input.item_id) q = q.eq("item_id", input.item_id);
   if (input.user_id) q = q.eq("user_id", input.user_id);
+  if (input.review_status) q = q.eq("review_status", input.review_status);
 
   const { data, error } = await q;
   if (error) return { error: error.message };
@@ -1932,6 +2018,7 @@ export async function getCleaningPhotoHistory(input: {
     user_id: string;
     item_id: string;
     photo_req_id: string | null;
+    assignment_id: string;
     review_status: string | null;
     review_note: string | null;
     item: unknown;
@@ -1940,17 +2027,72 @@ export async function getCleaningPhotoHistory(input: {
   const hasMore = all.length > limit;
   const page = hasMore ? all.slice(0, limit) : all;
 
-  // Slot labels come from a separate table; fetch the ones this page needs.
+  // Slot labels + foto referensi datang dari tabel terpisah; ambil sekaligus
+  // yang dibutuhkan halaman ini, supaya admin bisa membandingkan foto
+  // karyawan dengan contoh yang benar saat menilai.
   const slotIds = [
     ...new Set(page.map((r) => r.photo_req_id).filter((v): v is string => !!v)),
   ];
   const labelById = new Map<string, string | null>();
+  const refUrlById = new Map<string, string | null>();
   if (slotIds.length) {
     const { data: slots } = await supabase
       .from("cleaning_item_photos")
-      .select("id, label")
+      .select("id, label, reference_photo_path")
       .in("id", slotIds);
-    for (const s of slots ?? []) labelById.set(s.id, s.label);
+    for (const s of slots ?? []) {
+      labelById.set(s.id, s.label);
+      refUrlById.set(
+        s.id,
+        s.reference_photo_path
+          ? supabase.storage.from("cleaning-refs").getPublicUrl(s.reference_photo_path)
+              .data.publicUrl
+          : null
+      );
+    }
+  }
+
+  // Cabang: duty cabang (location_id → attendance_locations.name) atau
+  // assignment personal (user_id → profiles.business_unit) — cermin
+  // `branchKeyOf` di range-report.ts, tapi hasilnya nama tampil, bukan kunci.
+  const assignmentIds = [...new Set(page.map((r) => r.assignment_id))];
+  const branchByAssignment = new Map<string, string>();
+  if (assignmentIds.length) {
+    const { data: assignmentRows } = await supabase
+      .from("cleaning_assignments")
+      .select("id, location_id, user_id")
+      .in("id", assignmentIds);
+    const locIds = [
+      ...new Set(
+        (assignmentRows ?? [])
+          .map((a) => a.location_id)
+          .filter((v): v is string => !!v)
+      ),
+    ];
+    const userIds = [
+      ...new Set(
+        (assignmentRows ?? [])
+          .filter((a) => !a.location_id)
+          .map((a) => a.user_id)
+          .filter((v): v is string => !!v)
+      ),
+    ];
+    const [{ data: locs }, { data: profs }] = await Promise.all([
+      locIds.length
+        ? supabase.from("attendance_locations").select("id, name").in("id", locIds)
+        : Promise.resolve({ data: [] }),
+      userIds.length
+        ? supabase.from("profiles").select("id, business_unit").in("id", userIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const locNameById = new Map((locs ?? []).map((l) => [l.id, l.name]));
+    const buById = new Map((profs ?? []).map((p) => [p.id, p.business_unit]));
+    for (const a of assignmentRows ?? []) {
+      const name = a.location_id
+        ? locNameById.get(a.location_id) ?? "—"
+        : buById.get(a.user_id ?? "") ?? "—";
+      branchByAssignment.set(a.id, name);
+    }
   }
 
   const paths = page
@@ -1978,10 +2120,12 @@ export async function getCleaningPhotoHistory(input: {
       completed_at: r.completed_at,
       user_name: profile?.full_name ?? "—",
       checklist_name: item?.checklist?.name ?? "—",
+      branch_name: branchByAssignment.get(r.assignment_id) ?? "—",
       item_id: r.item_id,
       item_title: item?.title ?? "—",
       photo_req_id: r.photo_req_id,
       label: r.photo_req_id ? labelById.get(r.photo_req_id) ?? null : null,
+      reference_url: r.photo_req_id ? refUrlById.get(r.photo_req_id) ?? null : null,
       url: r.photo_path ? urlByPath.get(r.photo_path) ?? null : null,
       purged: !r.photo_path && !!r.photo_purged_at,
       review_status:
