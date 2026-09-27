@@ -295,61 +295,64 @@ export async function getMyPendingRedoPhotos(): Promise<PendingRedoPhoto[]> {
   const rows = (data ?? []) as Row[];
   if (rows.length === 0) return [];
 
-  const paths = rows.map((r) => r.photo_path).filter((p): p is string => !!p);
-  const urlByPath = new Map<string, string>();
-  if (paths.length) {
+  // Path → signed URL, batched via createSignedUrls (satu panggilan, bukan
+  // N+1). Dipakai dua kali di bawah (foto utama & lampiran owner) — beda
+  // baris, pola sama.
+  const signedUrlMap = async (paths: string[]): Promise<Map<string, string>> => {
+    const map = new Map<string, string>();
+    if (!paths.length) return map;
     const { data: signed } = await supabase.storage
       .from(PHOTO_BUCKET)
       .createSignedUrls(paths, 1800);
     for (const s of signed ?? []) {
-      if (s.signedUrl && s.path) urlByPath.set(s.path, s.signedUrl);
+      if (s.signedUrl && s.path) map.set(s.path, s.signedUrl);
     }
-  }
+    return map;
+  };
 
+  const paths = rows.map((r) => r.photo_path).filter((p): p is string => !!p);
   const reqIds = [
     ...new Set(rows.map((r) => r.photo_req_id).filter((v): v is string => !!v)),
   ];
+  const completionIds = rows.map((r) => r.id);
+
+  // Tiga query di bawah cuma bergantung pada `rows` (bukan satu sama lain) —
+  // jalankan bersamaan, bukan menunggu bergantian.
+  const [urlByPath, slotsRes, attachmentsRes] = await Promise.all([
+    signedUrlMap(paths),
+    reqIds.length
+      ? supabase
+          .from("cleaning_item_photos")
+          .select("id, reference_photo_path")
+          .in("id", reqIds)
+      : Promise.resolve({ data: null }),
+    supabase
+      .from("cleaning_review_attachments")
+      .select("completion_id, photo_path")
+      .in("completion_id", completionIds)
+      .is("purged_at", null),
+  ]);
+
   const refByReqId = new Map<string, string | null>();
-  if (reqIds.length) {
-    const { data: slots } = await supabase
-      .from("cleaning_item_photos")
-      .select("id, reference_photo_path")
-      .in("id", reqIds);
-    for (const s of slots ?? []) refByReqId.set(s.id, s.reference_photo_path);
-  }
+  for (const s of slotsRes.data ?? []) refByReqId.set(s.id, s.reference_photo_path);
   const refUrl = (path: string | null | undefined) =>
     path
       ? supabase.storage.from(REF_BUCKET).getPublicUrl(path).data.publicUrl
       : null;
 
-  // Lampiran owner (kalau ada) per completion — satu batch, bukan N+1.
-  const { data: attachments } = await supabase
-    .from("cleaning_review_attachments")
-    .select("completion_id, photo_path")
-    .in(
-      "completion_id",
-      rows.map((r) => r.id)
-    )
-    .is("purged_at", null);
+  // Lampiran owner (kalau ada) per completion, dikelompokkan sekaligus
+  // dikumpulkan jadi satu daftar path untuk signedUrlMap — satu lintasan,
+  // bukan dua.
   type AttachmentRow = { completion_id: string; photo_path: string };
   const attachmentsByCompletion = new Map<string, string[]>();
-  for (const a of (attachments ?? []) as AttachmentRow[]) {
+  const attachmentPaths: string[] = [];
+  for (const a of (attachmentsRes.data ?? []) as AttachmentRow[]) {
     const existing = attachmentsByCompletion.get(a.completion_id);
     if (existing) existing.push(a.photo_path);
     else attachmentsByCompletion.set(a.completion_id, [a.photo_path]);
+    attachmentPaths.push(a.photo_path);
   }
-  const attachmentPaths = (attachments ?? []).map(
-    (a: AttachmentRow) => a.photo_path
-  );
-  const attachmentUrlByPath = new Map<string, string>();
-  if (attachmentPaths.length) {
-    const { data: signed } = await supabase.storage
-      .from(PHOTO_BUCKET)
-      .createSignedUrls(attachmentPaths, 1800);
-    for (const s of signed ?? []) {
-      if (s.signedUrl && s.path) attachmentUrlByPath.set(s.path, s.signedUrl);
-    }
-  }
+  const attachmentUrlByPath = await signedUrlMap(attachmentPaths);
 
   return rows.map((r) => ({
     completionId: r.id,

@@ -52,6 +52,9 @@ function AttachmentUploader({
 }) {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Lazy initializer: satu instance dibuat sekali, dipakai handleFiles maupun
+  // remove — bukan ref (react-hooks/refs melarang baca/tulis ref saat render).
+  const [supabase] = useState(() => createSupabaseClient());
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -62,28 +65,31 @@ function AttachmentUploader({
     }
     const selected = Array.from(files).slice(0, room);
     setUploading(true);
-    const supabase = createSupabaseClient();
-    const uploaded: string[] = [];
-    for (const file of selected) {
-      const compressed = await compressImageFile(file);
-      const ext = compressed.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `review-attachments/${completionId}/${crypto.randomUUID()}.${ext}`;
-      const { error } = await supabase.storage
-        .from(ATTACHMENT_BUCKET)
-        .upload(path, compressed, { contentType: compressed.type, upsert: false });
-      if (error) {
-        toast.error(`Gagal unggah ${file.name}`);
-        continue;
-      }
-      uploaded.push(path);
-    }
+    // Tiap file independen (path unik per file) — kompres+unggah paralel,
+    // bukan satu per satu.
+    const results = await Promise.all(
+      selected.map(async (file) => {
+        const compressed = await compressImageFile(file);
+        const ext = compressed.name.split(".").pop()?.toLowerCase() || "jpg";
+        const path = `review-attachments/${completionId}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage
+          .from(ATTACHMENT_BUCKET)
+          .upload(path, compressed, { contentType: compressed.type, upsert: false });
+        if (error) {
+          toast.error(`Gagal unggah ${file.name}`);
+          return null;
+        }
+        return path;
+      })
+    );
+    const uploaded = results.filter((p): p is string => !!p);
     if (uploaded.length) onPathsChange([...paths, ...uploaded]);
     setUploading(false);
     if (inputRef.current) inputRef.current.value = "";
   }
 
   function remove(path: string) {
-    void createSupabaseClient().storage.from(ATTACHMENT_BUCKET).remove([path]);
+    void supabase.storage.from(ATTACHMENT_BUCKET).remove([path]);
     onPathsChange(paths.filter((p) => p !== path));
   }
 
@@ -438,18 +444,17 @@ export function PhotoReviewGallery({
   // barisnya tidak dibuang, cuma statusnya diperbarui di tempat).
   const nextCursorRef = useRef<string | null>(null);
 
+  // `mode` selalu eksplisit dari pemanggil (bukan dibaca dari state) — tak
+  // ada jalur yang bisa lupa mengoper mode dan diam-diam jatuh ke `mode`
+  // state yang mungkin sudah basi.
   const load = useCallback(
-    (
-      opts: { offset?: number; cursor?: string | null },
-      modeOverride?: "queue" | "browse"
-    ) => {
-      const effectiveMode = modeOverride ?? mode;
+    (mode: "queue" | "browse", opts: { offset?: number; cursor?: string | null }) => {
       const offset = opts.offset ?? 0;
       startTransition(async () => {
         const res = await getCleaningPhotoHistory({
-          from: effectiveMode === "browse" ? from : null,
-          to: effectiveMode === "browse" ? to : null,
-          review_status: effectiveMode === "queue" ? "unreviewed" : null,
+          from: mode === "browse" ? from : null,
+          to: mode === "browse" ? to : null,
+          review_status: mode === "queue" ? "unreviewed" : null,
           checklist_id: checklistId || null,
           item_id: itemId || null,
           user_id: userId || null,
@@ -467,32 +472,32 @@ export function PhotoReviewGallery({
         nextCursorRef.current = res.rows.at(-1)?.completed_at ?? nextCursorRef.current;
       });
     },
-    [mode, from, to, checklistId, itemId, userId]
+    [from, to, checklistId, itemId, userId]
   );
 
   function showQueue() {
     setMode("queue");
     setFiltersOpen(false);
     nextCursorRef.current = null;
-    load({}, "queue");
+    load("queue", {});
   }
 
   function showBrowse() {
     setMode("browse");
-    load({}, "browse");
+    load("browse", {});
   }
 
   function loadMore() {
     if (mode === "queue") {
-      load({ cursor: nextCursorRef.current });
+      load("queue", { cursor: nextCursorRef.current });
     } else {
-      load({ offset: rows.length });
+      load("browse", { offset: rows.length });
     }
   }
 
   // First paint only; afterwards the user drives it with "Tampilkan"/antrean.
   useEffect(() => {
-    load({}, initialItemId ? "browse" : "queue");
+    load(initialItemId ? "browse" : "queue", {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

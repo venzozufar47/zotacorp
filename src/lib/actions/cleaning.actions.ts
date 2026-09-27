@@ -2027,51 +2027,60 @@ export async function getCleaningPhotoHistory(input: {
   const hasMore = all.length > limit;
   const page = hasMore ? all.slice(0, limit) : all;
 
-  // Slot labels + foto referensi datang dari tabel terpisah; ambil sekaligus
-  // yang dibutuhkan halaman ini, supaya admin bisa membandingkan foto
-  // karyawan dengan contoh yang benar saat menilai.
+  // Slot labels + foto referensi, cabang tiap assignment, dan signed URL foto
+  // — ketiganya cuma bergantung pada `page`, bukan satu sama lain, jadi
+  // dijalankan bersamaan alih-alih menunggu bergantian.
   const slotIds = [
     ...new Set(page.map((r) => r.photo_req_id).filter((v): v is string => !!v)),
   ];
+  const assignmentIds = [...new Set(page.map((r) => r.assignment_id))];
+  const paths = page.map((r) => r.photo_path).filter((p): p is string => !!p);
+
+  const [slotsRes, assignmentRowsRes, signedRes] = await Promise.all([
+    slotIds.length
+      ? supabase
+          .from("cleaning_item_photos")
+          .select("id, label, reference_photo_path")
+          .in("id", slotIds)
+      : Promise.resolve({ data: [] }),
+    assignmentIds.length
+      ? supabase
+          .from("cleaning_assignments")
+          .select("id, location_id, user_id")
+          .in("id", assignmentIds)
+      : Promise.resolve({ data: [] }),
+    paths.length
+      ? supabase.storage.from("cleaning-photos").createSignedUrls(paths, 1800)
+      : Promise.resolve({ data: [] }),
+  ]);
+
   const labelById = new Map<string, string | null>();
   const refUrlById = new Map<string, string | null>();
-  if (slotIds.length) {
-    const { data: slots } = await supabase
-      .from("cleaning_item_photos")
-      .select("id, label, reference_photo_path")
-      .in("id", slotIds);
-    for (const s of slots ?? []) {
-      labelById.set(s.id, s.label);
-      refUrlById.set(
-        s.id,
-        s.reference_photo_path
-          ? supabase.storage.from("cleaning-refs").getPublicUrl(s.reference_photo_path)
-              .data.publicUrl
-          : null
-      );
-    }
+  for (const s of slotsRes.data ?? []) {
+    labelById.set(s.id, s.label);
+    refUrlById.set(
+      s.id,
+      s.reference_photo_path
+        ? supabase.storage.from("cleaning-refs").getPublicUrl(s.reference_photo_path)
+            .data.publicUrl
+        : null
+    );
   }
 
   // Cabang: duty cabang (location_id → attendance_locations.name) atau
   // assignment personal (user_id → profiles.business_unit) — cermin
   // `branchKeyOf` di range-report.ts, tapi hasilnya nama tampil, bukan kunci.
-  const assignmentIds = [...new Set(page.map((r) => r.assignment_id))];
   const branchByAssignment = new Map<string, string>();
-  if (assignmentIds.length) {
-    const { data: assignmentRows } = await supabase
-      .from("cleaning_assignments")
-      .select("id, location_id, user_id")
-      .in("id", assignmentIds);
+  const assignmentRows = assignmentRowsRes.data ?? [];
+  if (assignmentRows.length) {
     const locIds = [
       ...new Set(
-        (assignmentRows ?? [])
-          .map((a) => a.location_id)
-          .filter((v): v is string => !!v)
+        assignmentRows.map((a) => a.location_id).filter((v): v is string => !!v)
       ),
     ];
     const userIds = [
       ...new Set(
-        (assignmentRows ?? [])
+        assignmentRows
           .filter((a) => !a.location_id)
           .map((a) => a.user_id)
           .filter((v): v is string => !!v)
@@ -2087,7 +2096,7 @@ export async function getCleaningPhotoHistory(input: {
     ]);
     const locNameById = new Map((locs ?? []).map((l) => [l.id, l.name]));
     const buById = new Map((profs ?? []).map((p) => [p.id, p.business_unit]));
-    for (const a of assignmentRows ?? []) {
+    for (const a of assignmentRows) {
       const name = a.location_id
         ? locNameById.get(a.location_id) ?? "—"
         : buById.get(a.user_id ?? "") ?? "—";
@@ -2095,17 +2104,9 @@ export async function getCleaningPhotoHistory(input: {
     }
   }
 
-  const paths = page
-    .map((r) => r.photo_path)
-    .filter((p): p is string => !!p);
   const urlByPath = new Map<string, string>();
-  if (paths.length) {
-    const { data: signed } = await supabase.storage
-      .from("cleaning-photos")
-      .createSignedUrls(paths, 1800);
-    for (const s of signed ?? []) {
-      if (s.signedUrl && s.path) urlByPath.set(s.path, s.signedUrl);
-    }
+  for (const s of signedRes.data ?? []) {
+    if (s.signedUrl && s.path) urlByPath.set(s.path, s.signedUrl);
   }
 
   const rows: PhotoHistoryRow[] = page.map((r) => {
