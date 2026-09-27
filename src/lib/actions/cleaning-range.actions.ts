@@ -66,6 +66,28 @@ function itemsOf(checklist: ChecklistShape): RangeItemInput[] {
     }));
 }
 
+const PAGE = 1000;
+
+/**
+ * PostgREST memotong diam-diam di 1.000 baris tanpa `.range()`. Rentang 30
+ * hari gampang menembus itu (30 hari × banyak cabang bisa 3.000+ baris
+ * completion) — tanpa loop ini, titik yang SUDAH dikerjakan hilang dari hasil
+ * query dan `buildCleaningRangeReport` melaporkannya `miss`, padahal fotonya
+ * ada. Skor jadi terlihat rendah walau kepatuhan aslinya nyaris sempurna.
+ */
+async function fetchAllRows<T>(
+  page: (offset: number) => PromiseLike<{ data: T[] | null }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const { data } = await page(offset);
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return rows;
+}
+
 export interface CleaningRangeEmployee {
   userId: string;
   name: string;
@@ -105,10 +127,10 @@ export async function getCleaningRangeReport(input: {
   const [
     personRes,
     branchRes,
-    completionRes,
+    completions,
     holidayRes,
     poolRes,
-    presenceRes,
+    presence,
     locationRes,
   ] = await Promise.all([
     supabase
@@ -126,24 +148,44 @@ export async function getCleaningRangeReport(input: {
       .eq("is_active", true)
       .not("location_id", "is", null)
       .order("duty_slot", { ascending: true }),
-    supabase
-      .from("cleaning_task_completions")
-      .select(
-        "item_id, user_id, date, completed_at, photo_path, photo_req_id, review_status"
-      )
-      .gte("date", from)
-      .lte("date", to),
+    fetchAllRows<{
+      item_id: string;
+      user_id: string;
+      date: string;
+      completed_at: string;
+      photo_path: string | null;
+      photo_req_id: string | null;
+      review_status: string | null;
+    }>((offset) =>
+      supabase
+        .from("cleaning_task_completions")
+        .select(
+          "item_id, user_id, date, completed_at, photo_path, photo_req_id, review_status"
+        )
+        .gte("date", from)
+        .lte("date", to)
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE - 1)
+    ),
     supabase.from("national_holidays").select("holiday_date, name"),
     supabase.from("cleaning_duty_pool").select("location_id, user_id, sort_order"),
     // Dua kebutuhan berbeda dari satu tabel, jadi satu query saja:
     //   * `matched_location_id` → siapa yang hadir DI CABANG (resolusi duty).
     //   * ada/tidaknya baris   → orangnya masuk kerja hari itu, lepas lokasi
     //     (supaya hari cuti tidak ditagihkan sebagai kelalaian).
-    supabase
-      .from("attendance_logs")
-      .select("user_id, matched_location_id, date")
-      .gte("date", from)
-      .lte("date", to),
+    fetchAllRows<{
+      user_id: string;
+      matched_location_id: string | null;
+      date: string;
+    }>((offset) =>
+      supabase
+        .from("attendance_logs")
+        .select("user_id, matched_location_id, date")
+        .gte("date", from)
+        .lte("date", to)
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE - 1)
+    ),
     // Cabang = attendance_locations (tidak ada tabel cleaning_locations —
     // lokasi absensi sekaligus jadi cabang yang bisa dipasangi duty).
     supabase.from("attendance_locations").select("id, name"),
@@ -244,16 +286,7 @@ export async function getCleaningRangeReport(input: {
     // supaya modul agregasi tidak perlu tahu apa pun soal zona waktu.
     tzOffsetMinutes: 7 * 60,
     assignments,
-    // Cast: `review_status` baru ada sejak migrasi 130, belum di types.ts.
-    completions: ((completionRes.data ?? []) as unknown as Array<{
-      item_id: string;
-      user_id: string;
-      date: string;
-      completed_at: string;
-      photo_path: string | null;
-      photo_req_id: string | null;
-      review_status: string | null;
-    }>).map((c) => ({
+    completions: completions.map((c) => ({
       itemId: c.item_id,
       userId: c.user_id,
       date: c.date,
@@ -270,16 +303,15 @@ export async function getCleaningRangeReport(input: {
       userId: p.user_id,
       sortOrder: p.sort_order,
     })),
-    presence: (presenceRes.data ?? [])
+    presence: presence
       .filter((p) => !!p.matched_location_id)
       .map((p) => ({
         locationId: p.matched_location_id as string,
         userId: p.user_id,
         date: p.date,
       })),
-    attendance: new Set(
-      (presenceRes.data ?? []).map((p) => `${p.user_id}|${p.date}`)
-    ),
+    attendance: new Set(presence.map((p) => `${p.user_id}|${p.date}`)),
+    allHolidays: new Set(holidays.keys()),
     locationNames: new Map(
       (locationRes.data ?? []).map((l) => [l.id as string, l.name as string])
     ),

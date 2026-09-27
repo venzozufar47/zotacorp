@@ -20,7 +20,11 @@ import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
 import { CoachingNotesCard } from "@/components/dashboard/CoachingNotesCard";
-import { listMyCoachingNotes } from "@/lib/actions/cleaning-review.actions";
+import { CleaningRedoCard } from "@/components/dashboard/CleaningRedoCard";
+import {
+  listMyCoachingNotes,
+  getMyPendingRedoPhotos,
+} from "@/lib/actions/cleaning-review.actions";
 import { DashboardHero } from "@/components/dashboard/DashboardHero";
 import { FloorTodayCard } from "@/components/dashboard/FloorTodayCard";
 import { SelfCelebrationHero } from "@/components/dashboard/SelfCelebrationHero";
@@ -119,6 +123,7 @@ export default async function DashboardPage() {
     isHeadOfStudio,
     serviceLevelOutlets,
     coachingNotes,
+    cleaningRedoPhotos,
     ticketResolutionKpi,
     hasHaengbocakeRevenueAccess,
     hasYeoboRevenueAccess,
@@ -156,6 +161,7 @@ export default async function DashboardPage() {
     isStudioHead(),
     listMyServiceLevelOutlets(),
     listMyCoachingNotes(),
+    getMyPendingRedoPhotos(),
     getStudioHeadRecentResolutionKpi(),
     canViewRevenueDashboard("haengbocake"),
     canViewRevenueDashboard("yeobo"),
@@ -230,6 +236,12 @@ export default async function DashboardPage() {
       )}
 
       <ProfileCompletionCard missingSections={missingSections} />
+
+      {/* Foto kebersihan yang perlu diperbaiki — di ATAS catatan pembinaan:
+          ini yang mengunci sign-in/checkout (lihat hasPendingCleaningRedo),
+          jadi lebih mendesak daripada catatan yang cuma perlu dibaca.
+          Komponennya sendiri yang menghilang saat kosong. */}
+      <CleaningRedoCard items={cleaningRedoPhotos} />
 
       {/* Catatan pembinaan dari admin. Diletakkan tinggi: kalau ada, ia hal
           pertama yang perlu dibaca hari itu. Komponennya sendiri yang

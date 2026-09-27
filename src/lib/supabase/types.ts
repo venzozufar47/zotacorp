@@ -1928,6 +1928,7 @@ export type Database = {
       cleaning_assignments: {
         Row: {
           block_checkout: boolean
+          block_signin: boolean
           checklist_id: string
           created_at: string
           duty_slot: number | null
@@ -1949,6 +1950,7 @@ export type Database = {
         }
         Insert: {
           block_checkout?: boolean
+          block_signin?: boolean
           checklist_id: string
           created_at?: string
           duty_slot?: number | null
@@ -1970,6 +1972,7 @@ export type Database = {
         }
         Update: {
           block_checkout?: boolean
+          block_signin?: boolean
           checklist_id?: string
           created_at?: string
           duty_slot?: number | null
@@ -2140,24 +2143,33 @@ export type Database = {
           id: string
           item_id: string
           label: string | null
+          previous_reference_photo_path: string | null
+          previous_source_completion_id: string | null
           reference_photo_path: string | null
           sort_order: number
+          source_completion_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           item_id: string
           label?: string | null
+          previous_reference_photo_path?: string | null
+          previous_source_completion_id?: string | null
           reference_photo_path?: string | null
           sort_order?: number
+          source_completion_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           item_id?: string
           label?: string | null
+          previous_reference_photo_path?: string | null
+          previous_source_completion_id?: string | null
           reference_photo_path?: string | null
           sort_order?: number
+          source_completion_id?: string | null
         }
         Relationships: [
           {
@@ -2165,6 +2177,20 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "cleaning_checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_item_photos_previous_source_completion_id_fkey"
+            columns: ["previous_source_completion_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_task_completions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_item_photos_source_completion_id_fkey"
+            columns: ["source_completion_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_task_completions"
             referencedColumns: ["id"]
           },
         ]
@@ -2175,6 +2201,7 @@ export type Database = {
           completed_at: string
           created_at: string
           date: string
+          fixed_by_completion_id: string | null
           id: string
           item_id: string
           latitude: number | null
@@ -2183,6 +2210,7 @@ export type Database = {
           photo_path: string | null
           photo_purged_at: string | null
           photo_req_id: string | null
+          redo_reason: string | null
           review_note: string | null
           review_status: string
           reviewed_at: string | null
@@ -2194,6 +2222,7 @@ export type Database = {
           completed_at?: string
           created_at?: string
           date: string
+          fixed_by_completion_id?: string | null
           id?: string
           item_id: string
           latitude?: number | null
@@ -2202,6 +2231,7 @@ export type Database = {
           photo_path?: string | null
           photo_purged_at?: string | null
           photo_req_id?: string | null
+          redo_reason?: string | null
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null
@@ -2213,6 +2243,7 @@ export type Database = {
           completed_at?: string
           created_at?: string
           date?: string
+          fixed_by_completion_id?: string | null
           id?: string
           item_id?: string
           latitude?: number | null
@@ -2221,6 +2252,7 @@ export type Database = {
           photo_path?: string | null
           photo_purged_at?: string | null
           photo_req_id?: string | null
+          redo_reason?: string | null
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null
@@ -2233,6 +2265,13 @@ export type Database = {
             columns: ["assignment_id"]
             isOneToOne: false
             referencedRelation: "cleaning_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_task_completions_fixed_by_completion_id_fkey"
+            columns: ["fixed_by_completion_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_task_completions"
             referencedColumns: ["id"]
           },
           {
@@ -4080,6 +4119,60 @@ export type Database = {
           },
         ]
       }
+      iq_submissions: {
+        Row: {
+          answers: Json
+          band_label: string
+          by_category: Json
+          consent_at: string | null
+          consent_given: boolean
+          correct: number
+          created_at: string
+          date_of_birth: string
+          full_name: string
+          id: string
+          percent: number
+          position_applied: string | null
+          reasoning_index: number
+          tab_switches: number
+          total: number
+        }
+        Insert: {
+          answers: Json
+          band_label: string
+          by_category: Json
+          consent_at?: string | null
+          consent_given?: boolean
+          correct: number
+          created_at?: string
+          date_of_birth: string
+          full_name: string
+          id?: string
+          percent: number
+          position_applied?: string | null
+          reasoning_index: number
+          tab_switches?: number
+          total: number
+        }
+        Update: {
+          answers?: Json
+          band_label?: string
+          by_category?: Json
+          consent_at?: string | null
+          consent_given?: boolean
+          correct?: number
+          created_at?: string
+          date_of_birth?: string
+          full_name?: string
+          id?: string
+          percent?: number
+          position_applied?: string | null
+          reasoning_index?: number
+          tab_switches?: number
+          total?: number
+        }
+        Relationships: []
+      }
       national_holidays: {
         Row: {
           created_at: string
@@ -5692,6 +5785,59 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      revenue_dashboard_viewers: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          notes: string | null
+          scope: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          scope: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          notes?: string | null
+          scope?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revenue_dashboard_viewers_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revenue_dashboard_viewers_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revenue_dashboard_viewers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revenue_dashboard_viewers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       revenue_month_allocations: {
         Row: {

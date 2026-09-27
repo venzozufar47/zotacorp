@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -300,6 +301,7 @@ export function CleaningOverview({
   locations,
   employees,
   holidays,
+  initialGalleryOpen,
 }: {
   report: CleaningRangeReportWithNames;
   range: CleaningRangeKey;
@@ -310,6 +312,9 @@ export function CleaningOverview({
   locations: CleaningLocation[];
   employees: CleaningEmployee[];
   holidays: HolidayRow[];
+  /** Buka drawer "Telusur foto" langsung saat halaman dimuat — dipakai
+   *  quick-access "Review foto kebersihan" di Beranda admin (`?gallery=1`). */
+  initialGalleryOpen?: boolean;
 }) {
   const [branchKey, setBranchKey] = useState<string | null>(
     // Default ke cabang terburuk: halaman ini untuk menemukan masalah, jadi
@@ -317,7 +322,9 @@ export function CleaningOverview({
     report.branches[0]?.key ?? null
   );
   const [setupOpen, setSetupOpen] = useState(false);
-  const [gallery, setGallery] = useState<{ itemId?: string } | null>(null);
+  const [gallery, setGallery] = useState<{ itemId?: string } | null>(
+    initialGalleryOpen ? {} : null
+  );
   const [coaching, setCoaching] = useState<{
     userId: string;
     name: string;
@@ -1052,7 +1059,18 @@ function SetupSection({
   );
 }
 
-/** Slide-over kanan. <details> tidak cukup di sini: isinya form dengan state. */
+/**
+ * Slide-over kanan. <details> tidak cukup di sini: isinya form dengan state.
+ *
+ * Di-portal ke `document.body` (bukan dirender apa adanya di tempat) supaya
+ * `fixed inset-0` benar-benar menutup viewport. Halaman ini dirender di
+ * dalam wrapper `.animate-fade-up` (dipakai puluhan halaman lain juga) —
+ * selama animation-nya masih "filling" (selalu, karena `both`), elemen itu
+ * jadi containing block baru bagi descendant `position:fixed`, jadi drawer
+ * ter-clip ke kotak wrapper itu alih-alih layar penuh. Portal keluar dari
+ * subtree itu sepenuhnya menghindarinya, terlepas dari animasi ancestor
+ * mana pun sekarang atau nanti.
+ */
 function Drawer({
   title,
   onClose,
@@ -1062,7 +1080,14 @@ function Drawer({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  return (
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex justify-end"
       role="dialog"
@@ -1084,6 +1109,7 @@ function Drawer({
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
       </aside>
-    </div>
+    </div>,
+    document.body
   );
 }

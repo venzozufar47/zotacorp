@@ -8,6 +8,7 @@ import {
   getCleaningMisses,
   getAdminOpsMetrics,
 } from "@/lib/actions/admin-home.actions";
+import { getCleaningReviewQuickAccess } from "@/lib/actions/cleaning-review.actions";
 import { getPendingConfirmations } from "@/lib/actions/pending-confirmations.actions";
 import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions";
 import {
@@ -53,6 +54,7 @@ export default async function AdminHomeRoute() {
     cashBalances,
     revenueViewers,
     revenueViewerCandidates,
+    cleaningReviewQuickAccess,
   ] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
@@ -71,6 +73,7 @@ export default async function AdminHomeRoute() {
     getHaengbocakeCashBalances().catch(() => []),
     listRevenueDashboardViewers(),
     listEligibleForRevenueDashboard(),
+    getCleaningReviewQuickAccess().catch(() => ({ freshUnreviewedCount: 0 })),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -116,6 +119,7 @@ export default async function AdminHomeRoute() {
         cashBalances={cashBalances}
         revenueViewers={revenueViewers}
         revenueViewerCandidates={revenueViewerCandidates}
+        cleaningReviewQuickAccess={cleaningReviewQuickAccess}
       />
       <div className="mt-5">
         <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />

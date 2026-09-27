@@ -250,6 +250,17 @@ export interface BuildRangeReportInput {
    * tidak boleh adalah menagihnya ke seseorang.
    */
   attendance: AttendanceDaySet;
+  /**
+   * SEMUA tanggal libur nasional (bukan cuma yang jatuh di `days`).
+   *
+   * `dailyIndex` di cleaning-rotation.ts menghitung mundur dari
+   * `rotation_anchor` assignment — yang bisa jauh sebelum rentang laporan ini
+   * (mis. anchor Juni sementara laporan cuma menampilkan 30 hari terakhir).
+   * Kalau himpunan liburnya dipotong ke `days` saja, libur SEBELUM rentang
+   * hilang dari hitungan, paritas rotasi bergeser, dan giliran orang yang
+   * benar bisa tertukar — kelalaian orang A tercatat sebagai kelalaian B.
+   */
+  allHolidays: ReadonlySet<string>;
   /** locationId → nama cabang. */
   locationNames: ReadonlyMap<string, string>;
   /** userId → business_unit, untuk mengelompokkan assignment per-orang. */
@@ -276,11 +287,14 @@ export function buildCleaningRangeReport(
     pool,
     presence,
     attendance,
+    allHolidays,
     locationNames,
     userUnits,
   } = input;
 
-  const holidaySet = new Set(days.filter((d) => d.holiday).map((d) => d.ymd));
+  // Dipakai KHUSUS untuk math rotasi (dailyIndex) — lihat catatan
+  // `allHolidays` di atas. Jangan disempitkan ke `days` seperti versi lama.
+  const holidaySet = new Set(allHolidays);
 
   // Completion diindeks per (item|date) — TANPA user.
   //
@@ -505,8 +519,16 @@ export function buildCleaningRangeReport(
             checklistName: a.checklistName,
             points: [],
           } satisfies EmployeeDay);
-        ed.points.push({ itemId: item.id, title: item.title, status });
-        ed.status = worst(ed.points.map((p) => p.status));
+        // Rotasi 2+ orang berbagi SATU checklist → titik ini diproses sekali
+        // per assignment anggota grup (bukan sekali per titik). Saat
+        // completion sudah ada, performer sama-sama `done.userId` di setiap
+        // pass, jadi tanpa penjagaan ini titik yang sama masuk dua kali ke
+        // `points` — kartu "Hari duty terakhir" menampilkan badge dobel dan
+        // React memprotes key yang tidak unik.
+        if (!ed.points.some((p) => p.itemId === item.id)) {
+          ed.points.push({ itemId: item.id, title: item.title, status });
+          ed.status = worst(ed.points.map((p) => p.status));
+        }
         perUser.set(day.ymd, ed);
         empDays.set(performer, perUser);
       }

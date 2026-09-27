@@ -57,6 +57,7 @@ export function AdminHomePage({
   cashBalances,
   revenueViewers,
   revenueViewerCandidates,
+  cleaningReviewQuickAccess,
 }: {
   greetingName: string;
   today: AdminHomeToday;
@@ -79,6 +80,8 @@ export function AdminHomePage({
   /** Karyawan non-admin yang boleh lihat kartu Omzet di beranda mereka. */
   revenueViewers: RevenueDashboardViewerRow[];
   revenueViewerCandidates: { id: string; full_name: string | null; email: string | null }[];
+  /** Quick-access "review foto kebersihan" — lihat getCleaningReviewQuickAccess. */
+  cleaningReviewQuickAccess?: { freshUnreviewedCount: number } | null;
 }) {
   const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
   const router = useRouter();
@@ -191,7 +194,11 @@ export function AdminHomePage({
             candidates={revenueViewerCandidates}
           />
         </div>
-        <AdminOpsCard ops={opsMetrics} yeoboUtilization={yeoboUtilization} />
+        <AdminOpsCard
+          ops={opsMetrics}
+          yeoboUtilization={yeoboUtilization}
+          cleaningReviewQuickAccess={cleaningReviewQuickAccess}
+        />
       </div>
 
       <AdminAovCard today={today} yeobo={yeoboRevenue} />

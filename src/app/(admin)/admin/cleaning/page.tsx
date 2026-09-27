@@ -52,7 +52,7 @@ function ymdMinus(ymd: string, n: number): string {
 export default async function AdminCleaningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; view?: string }>;
+  searchParams: Promise<{ range?: string; view?: string; gallery?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -65,6 +65,7 @@ export default async function AdminCleaningPage({
       ? sp.range
       : "hari";
   const view: CleaningViewKey = sp.view === "karyawan" ? "karyawan" : "ringkasan";
+  const initialGalleryOpen = sp.gallery === "1";
 
   const today = jakartaDateString(new Date());
   const from = ymdMinus(today, Math.max(RANGE_DAYS[range], MIN_FETCH_DAYS) - 1);
@@ -126,6 +127,7 @@ export default async function AdminCleaningPage({
           locations={locations}
           employees={employees}
           holidays={holidays}
+          initialGalleryOpen={initialGalleryOpen}
         />
       )}
     </div>

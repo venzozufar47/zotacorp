@@ -200,10 +200,21 @@
   }
 
   /* ── Keyframes ─────────────────────────────────────────────── */
+  /*
+   * `to` di sini SENGAJA `transform: none`, bukan `scale(1)` /
+   * `translateY(0) scale(1)` yang nilainya sama secara visual. `animation:
+   * ... both` mengunci nilai `to` selamanya setelah animasi selesai — dan
+   * transform APA PUN selain `none` (termasuk yang identitas) membuat
+   * elemen itu jadi containing block baru bagi descendant `position:fixed`.
+   * Akibatnya modal/drawer/dialog yang dirender di dalam wrapper beranimasi
+   * ini (`.animate-fade-up` dkk, dipakai di puluhan halaman) ter-clip ke
+   * kotak wrapper alih-alih menutup viewport sungguhan — persis bug drawer
+   * "Kerajinan karyawan" yang sempit tidak penuh layar.
+   */
   @keyframes pop-in {
     from { opacity: 0; transform: scale(0.5); }
     60%  { transform: scale(1.05); }
-    to   { opacity: 1; transform: scale(1); }
+    to   { opacity: 1; transform: none; }
   }
   @keyframes wiggle {
     0%, 100% { transform: rotate(0deg); }
@@ -212,11 +223,11 @@
   }
   @keyframes bounce-up {
     from { opacity: 0; transform: translateY(20px) scale(0.95); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 1; transform: none; }
   }
   @keyframes fade-up {
     from { opacity: 0; transform: translateY(16px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 1; transform: none; }
   }
   @keyframes float-bob {
     0%, 100% { transform: translateY(0); }

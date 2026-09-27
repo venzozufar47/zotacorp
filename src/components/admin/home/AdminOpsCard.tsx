@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Camera } from "lucide-react";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import type { YeoboUtilization } from "@/lib/actions/admin-home-yeobo.actions";
 import { serviceLevelTone } from "@/lib/pos/service-level";
@@ -78,9 +79,12 @@ function UtilRow({
 export function AdminOpsCard({
   ops,
   yeoboUtilization,
+  cleaningReviewQuickAccess,
 }: {
   ops?: AdminOpsMetrics | null;
   yeoboUtilization?: YeoboUtilization | null;
+  /** Quick-access "review foto kebersihan" — lihat getCleaningReviewQuickAccess. */
+  cleaningReviewQuickAccess?: { freshUnreviewedCount: number } | null;
 }) {
   // Defensif: data operasional itu pelengkap Home — kalau kosong (mis. skew
   // antar bundle saat deploy), kartu tampil kosong, bukan menjatuhkan Beranda.
@@ -180,6 +184,30 @@ export function AdminOpsCard({
             </span>
           </div>
         )}
+
+        {/* Quick-access: selalu tampil (bukan management-by-exception seperti
+            "Kebersihan terlewat") — ini pintasan navigasi, bukan alarm.
+            Angkanya sengaja dibatasi 48 jam terakhir, lihat
+            getCleaningReviewQuickAccess. */}
+        <div className="mt-3 pt-3 border-t border-border/60 flex items-baseline justify-between gap-3">
+          <div className="min-w-0">
+            <Link
+              href="/admin/cleaning?gallery=1"
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium text-foreground underline-offset-2 hover:underline hover:text-primary"
+            >
+              <Camera size={13} className="shrink-0" />
+              Review foto kebersihan
+            </Link>
+            <span className="block text-[11px] text-muted-foreground">
+              Tinjau satu per satu, tandai Acc atau perlu ulang
+            </span>
+          </div>
+          {!!cleaningReviewQuickAccess?.freshUnreviewedCount && (
+            <span className="font-display text-lg font-extrabold tabular-nums whitespace-nowrap text-foreground">
+              {cleaningReviewQuickAccess.freshUnreviewedCount}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

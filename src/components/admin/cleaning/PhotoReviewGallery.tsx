@@ -21,28 +21,44 @@ import {
   type PhotoHistoryRow,
   type CleaningChecklist,
 } from "@/lib/actions/cleaning.actions";
-import { setCleaningPhotoVerdict } from "@/lib/actions/cleaning-review.actions";
+import {
+  setCleaningPhotoVerdict,
+  setPhotoAsReference,
+  undoReferencePhoto,
+  type CleaningRedoReason,
+} from "@/lib/actions/cleaning-review.actions";
 import type { CleaningEmployee } from "./types";
 
 const PAGE = 60;
 
+const REDO_REASONS: Array<{ value: CleaningRedoReason; label: string }> = [
+  { value: "angle", label: "Angle kurang tepat" },
+  { value: "not_clean", label: "Tempat tidak bersih" },
+];
+
 /**
- * Verdict admin atas satu foto: Oke / Minta ulang.
+ * Verdict admin atas satu foto: Acc / Angle kurang tepat / Tempat tidak
+ * bersih.
  *
- * "Minta ulang" MEWAJIBKAN alasan, dan alasannya diketik di sini alih-alih
- * lewat `prompt()`: karyawan membaca teks ini di dashboard-nya, jadi ia harus
- * ditulis dengan tenang dan terlihat sebelum dikirim. Meminta orang mengulang
- * pekerjaan tanpa memberi tahu apa yang kurang bukan instruksi, hanya
- * penolakan.
+ * Dua yang terakhir sama-sama `verdict: "redo"` (karyawan diminta ulang,
+ * checkout/check-in terkunci sampai diperbaiki) — bedanya cuma kategori
+ * (`redoReason`) yang dibaca dashboard karyawan sebagai badge ringkas.
+ * Catatan bebas TETAP wajib untuk keduanya: kategori memberi tahu APA yang
+ * salah, catatan memberi tahu BAGAIMANA memperbaikinya — karyawan membaca
+ * teks ini di dashboard-nya, jadi ia harus ditulis dengan tenang dan
+ * terlihat sebelum dikirim.
  */
 function VerdictBar({
   row,
   onDone,
 }: {
   row: PhotoHistoryRow;
-  onDone: (next: Pick<PhotoHistoryRow, "review_status" | "review_note">) => void;
+  onDone: (
+    next: Pick<PhotoHistoryRow, "review_status" | "review_note">
+  ) => void;
 }) {
   const [redoOpen, setRedoOpen] = useState(false);
+  const [redoReason, setRedoReason] = useState<CleaningRedoReason>("angle");
   const [note, setNote] = useState(row.review_note ?? "");
   const [pending, startTransition] = useTransition();
 
@@ -55,6 +71,7 @@ function VerdictBar({
       const res = await setCleaningPhotoVerdict({
         completionId: row.completion_id,
         verdict,
+        redoReason: verdict === "redo" ? redoReason : null,
         note: verdict === "redo" ? note.trim() : null,
       });
       if (!res.ok) {
@@ -65,7 +82,7 @@ function VerdictBar({
         verdict === "redo"
           ? "Ditandai perlu ulang"
           : verdict === "ok"
-            ? "Ditandai oke"
+            ? "Ditandai Acc"
             : "Verdict dibatalkan"
       );
       setRedoOpen(false);
@@ -83,7 +100,7 @@ function VerdictBar({
           {row.review_status === "redo"
             ? "Ditandai perlu ulang"
             : row.review_status === "ok"
-              ? "Sudah ditandai oke"
+              ? "Sudah di-Acc"
               : "Belum ditinjau"}
         </span>
         <div className="ml-auto flex items-center gap-2">
@@ -112,7 +129,7 @@ function VerdictBar({
             className="inline-flex items-center gap-1 rounded-lg bg-emerald-500 px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
           >
             {pending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-            Oke
+            Acc
           </button>
         </div>
       </div>
@@ -123,6 +140,23 @@ function VerdictBar({
       )}
       {redoOpen && (
         <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {REDO_REASONS.map((r) => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => setRedoReason(r.value)}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
+                  redoReason === r.value
+                    ? "bg-orange-500 text-white"
+                    : "bg-white/10 text-white/70 hover:bg-white/20"
+                )}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -150,6 +184,79 @@ function VerdictBar({
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Jadikan foto ini referensi baru untuk titiknya + batalkan (undo 1 langkah).
+ *
+ * Dipisah dari VerdictBar karena tidak terkait verdict — foto yang di-Acc
+ * MAUPUN yang perlu diulang bisa saja punya alasan dijadikan contoh (yang
+ * terakhir jarang, tapi tidak dilarang; admin yang menilai). Nonaktif kalau
+ * `photo_req_id` null (checkbox/item tanpa slot foto — tidak ada baris
+ * `cleaning_item_photos` untuk ditunjuk).
+ */
+function ReferenceButton({ row }: { row: PhotoHistoryRow }) {
+  const [pending, startTransition] = useTransition();
+  const [done, setDone] = useState(false);
+
+  if (!row.photo_req_id) {
+    return (
+      <span
+        className="text-[11px] text-white/40"
+        title="Item ini tidak punya slot foto referensi"
+      >
+        Tidak bisa dijadikan referensi
+      </span>
+    );
+  }
+
+  function setAsRef() {
+    startTransition(async () => {
+      const res = await setPhotoAsReference({ completionId: row.completion_id });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal menjadikan referensi");
+        return;
+      }
+      toast.success("Dijadikan foto referensi");
+      setDone(true);
+    });
+  }
+
+  function undo() {
+    startTransition(async () => {
+      const res = await undoReferencePhoto({ photoReqId: row.photo_req_id! });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal membatalkan");
+        return;
+      }
+      toast.success("Dibatalkan");
+      setDone(false);
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={setAsRef}
+        className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-white/25 disabled:opacity-50"
+      >
+        {pending ? <Loader2 size={12} className="animate-spin" /> : null}
+        Jadikan referensi
+      </button>
+      {done && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={undo}
+          className="text-[11px] text-white/60 hover:text-white underline disabled:opacity-50"
+        >
+          Batalkan
+        </button>
       )}
     </div>
   );
@@ -494,6 +601,7 @@ export function PhotoReviewGallery({
                 setLightbox((l) => (l ? { ...l, ...next } : l));
               }}
             />
+            <ReferenceButton row={lightbox} />
           </div>
         </div>
       )}

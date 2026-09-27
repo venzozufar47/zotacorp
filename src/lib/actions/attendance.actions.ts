@@ -27,7 +27,10 @@ import {
 } from "@/lib/utils/break-windows";
 import { sendCelebrationPush } from "@/lib/celebrations/push-log";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import { getBlockingCleaning } from "@/lib/actions/cleaning.actions";
+import {
+  getBlockingCleaning,
+  hasPendingCleaningRedo,
+} from "@/lib/actions/cleaning.actions";
 import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
 // Nonaktif sementara 2026-09-12 — lihat komentar di pemanggilnya di bawah.
 // import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
@@ -148,6 +151,19 @@ export async function checkIn(payload: CheckInPayload) {
     return {
       error: "Aktifkan notifikasi push dulu sebelum bisa absen masuk.",
       pushRequired: true as const,
+    };
+  }
+
+  // SOP Kebersihan gate: foto yang ditandai "perlu ulang" dan belum
+  // diperbaiki menahan check-in juga, bukan cuma checkout (lihat migrasi
+  // 156 / block_signin). Beda dengan getBlockingCleaning di checkOut — di
+  // sini TIDAK relevan cek "checklist hari ini belum dikerjakan", harinya
+  // baru saja mulai.
+  if (await hasPendingCleaningRedo(user.id, "signin")) {
+    return {
+      error:
+        "Ada foto kebersihan yang perlu diperbaiki dulu — lihat kartu di beranda.",
+      cleaningRedoBlocked: true as const,
     };
   }
 
@@ -833,6 +849,18 @@ export async function checkOut(payload?: CheckOutPayload) {
     return {
       error: "Selesaikan checklist kebersihan dulu sebelum check out.",
       cleaningIncomplete: cleaningBlocking,
+    };
+  }
+
+  // Pengecekan KEDUA, beda alasan: foto yang sudah ditinjau owner dan
+  // ditandai "perlu ulang" tapi belum diperbaiki (migrasi 156). Terpisah
+  // dari getBlockingCleaning di atas (yang soal checklist hari ini belum
+  // dikerjakan sama sekali) supaya pesannya jelas bedanya bagi karyawan.
+  if (await hasPendingCleaningRedo(user.id, "checkout")) {
+    return {
+      error:
+        "Ada foto kebersihan yang perlu diperbaiki dulu — lihat kartu di beranda.",
+      cleaningRedoBlocked: true as const,
     };
   }
 

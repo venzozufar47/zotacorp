@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "./_supabase-admin";
 import {
   getCurrentUser,
   getCurrentRole,
@@ -1427,6 +1428,109 @@ export async function completeCleaningItem(input: {
   return { ok: true };
 }
 
+/**
+ * Karyawan memperbaiki satu foto yang owner tandai `redo` — mengirim foto
+ * baru untuk spot yang sama.
+ *
+ * SENGAJA tidak memanggil `completeCleaningItem` dan tidak mewarisi guard-nya
+ * (check-in dulu, giliran rotasi, jendela waktu): kalau `block_signin` aktif,
+ * karyawan belum bisa check-in sampai ini beres — mewajibkan check-in di sini
+ * akan jadi kebuntuan ayam-telur. Cukup pastikan completion lama memang
+ * miliknya dan memang masih redo aktif.
+ *
+ * Upsert-nya memakai conflict target PERSIS SAMA dengan `completeCleaningItem`
+ * (`user_id,item_id,date,photo_req_id`) — sengaja, supaya tidak menambah
+ * kemungkinan baris ganda pada constraint yang sudah dipakai setiap hari oleh
+ * seluruh karyawan. Kalau baris barunya jatuh di tanggal lain (kasus umum,
+ * karena review biasanya terjadi belakangan), ini insert baris baru; kalau
+ * kebetulan hari yang sama (owner sempat review cepat), upsert menimpa baris
+ * lama itu sendiri.
+ *
+ * Ditulis lewat SERVICE ROLE, bukan sesi karyawan — sengaja, dan BUKAN demi
+ * kenyamanan. Baris kepemilikan & status redo-aktif sudah diverifikasi manual
+ * di atas (setara dengan apa yang RLS `insert_own`/`update_own` akan cek),
+ * tapi pada kasus tabrakan tanggal-sama, upsert ini adalah UPDATE yang
+ * mengubah review_status dari 'redo' ke 'unreviewed' — persis kolom yang
+ * dikunci trigger `cleaning_guard_review` (migrasi 130/156) untuk sesi biasa.
+ * Menulis lewat sesi karyawan sendiri akan ditolak trigger itu di skenario
+ * ini. Service role (`auth.uid() is null`) melewatinya — sah di sini karena
+ * pemanggilnya sudah lolos verifikasi kepemilikan di atas.
+ */
+export async function resubmitCleaningPhoto(input: {
+  completionId: string;
+  photo_path: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}): Promise<{ ok: true } | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Tidak terautentikasi." };
+  if (!input.photo_path) return { error: "Foto wajib disertakan." };
+  const today = jakartaDateString(new Date());
+  // Baca lewat sesi biasa: RLS select-own sudah cukup untuk verifikasi
+  // kepemilikan, tidak perlu service role di sini.
+  const supabase = await createClient();
+
+  const { data: old } = await supabase
+    .from("cleaning_task_completions")
+    .select("id, user_id, assignment_id, item_id, photo_req_id, review_status, fixed_by_completion_id")
+    .eq("id", input.completionId)
+    .maybeSingle();
+  type OldRow = {
+    id: string;
+    user_id: string;
+    assignment_id: string;
+    item_id: string;
+    photo_req_id: string | null;
+    review_status: string | null;
+    fixed_by_completion_id: string | null;
+  };
+  const row = old as OldRow | null;
+  if (!row || row.user_id !== user.id)
+    return { error: "Foto tidak ditemukan." };
+  if (row.review_status !== "redo" || row.fixed_by_completion_id)
+    return { error: "Tidak ada perbaikan yang perlu dikirim untuk foto ini." };
+
+  const admin = createAdminClient();
+  const { data: upserted, error } = await admin
+    .from("cleaning_task_completions")
+    .upsert(
+      {
+        user_id: row.user_id,
+        assignment_id: row.assignment_id,
+        item_id: row.item_id,
+        photo_req_id: row.photo_req_id,
+        date: today,
+        photo_path: input.photo_path,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        completed_at: new Date().toISOString(),
+        // Reset eksplisit: kalau ini menimpa baris redo lama itu sendiri
+        // (tanggal sama), verdict lamanya tidak boleh nyangkut.
+        review_status: "unreviewed",
+        reviewed_by: null,
+        reviewed_at: null,
+        review_note: null,
+        redo_reason: null,
+      },
+      { onConflict: "user_id,item_id,date,photo_req_id" }
+    )
+    .select("id")
+    .single();
+  if (error || !upserted) return { error: error?.message ?? "Gagal menyimpan." };
+
+  // Baris baru sungguhan (tanggal beda dari completion lama) → tutup redo
+  // lama secara eksplisit supaya tidak terus memblokir sign in/checkout.
+  if (upserted.id !== row.id) {
+    await admin
+      .from("cleaning_task_completions")
+      .update({ fixed_by_completion_id: upserted.id })
+      .eq("id", row.id);
+  }
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 export async function uncompleteCleaningItem(input: {
   item_id: string;
   /** Slot to clear; null = the checkbox/generic completion. */
@@ -1571,6 +1675,40 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
   return blocking;
 }
 
+/**
+ * Ada foto redo milik user ini yang belum diperbaiki (`fixed_by_completion_id`
+ * masih null), pada assignment yang memang menandai blokirnya (`block_checkout`
+ * ATAU `block_signin`)?
+ *
+ * Dipakai DUA sisi — checkIn() dan checkOut() — supaya satu sumber kebenaran:
+ * kalau logikanya nanti berubah, cukup di sini. Sengaja terpisah dari
+ * `getBlockingCleaning` (yang jawab "belum kerjakan hari ini") karena
+ * pertanyaannya beda dan checkIn() butuh yang ini SAJA — mewajibkan cek
+ * "hari ini" di titik check-in tidak masuk akal, harinya baru saja mulai.
+ *
+ * `context` menentukan flag MANA yang dicek — `block_signin` untuk check-in,
+ * `block_checkout` untuk checkout. Keduanya dibuat sebagai kolom TERPISAH
+ * justru supaya admin bisa mengatur independen per assignment (lihat
+ * migrasi 156); menyatukannya jadi satu OR di sini akan membuat kedua flag
+ * itu berperilaku identik dan pengaturannya jadi tidak berarti.
+ */
+export async function hasPendingCleaningRedo(
+  userId: string,
+  context: "signin" | "checkout"
+): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cleaning_task_completions")
+    .select("id, assignment:cleaning_assignments!inner(block_checkout, block_signin)")
+    .eq("user_id", userId)
+    .eq("review_status", "redo")
+    .is("fixed_by_completion_id", null);
+  type Row = { assignment: { block_checkout: boolean; block_signin: boolean } | null };
+  return ((data ?? []) as unknown as Row[]).some((r) =>
+    context === "signin" ? r.assignment?.block_signin : r.assignment?.block_checkout
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Admin: monitoring (management by exception)
 // ---------------------------------------------------------------------------
@@ -1709,7 +1847,11 @@ export interface PhotoHistoryRow {
   completed_at: string;
   user_name: string;
   checklist_name: string;
+  item_id: string;
   item_title: string;
+  /** Slot foto (cleaning_item_photos.id), null = checkbox/generic. Dipakai
+   *  tombol "Jadikan referensi" untuk tahu baris mana yang diperbarui. */
+  photo_req_id: string | null;
   /** Which photo slot this was, e.g. "Kloset — bersih…". */
   label: string | null;
   /** Signed URL, or null when the image is gone (retention or missing file). */
@@ -1760,7 +1902,7 @@ export async function getCleaningPhotoHistory(input: {
   let q = supabase
     .from("cleaning_task_completions")
     .select(
-      "id, date, completed_at, photo_path, photo_purged_at, user_id, photo_req_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles!cleaning_task_completions_user_id_fkey(full_name)"
+      "id, date, completed_at, photo_path, photo_purged_at, user_id, item_id, photo_req_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles!cleaning_task_completions_user_id_fkey(full_name)"
     )
     .gte("date", input.from)
     .lte("date", input.to)
@@ -1788,6 +1930,7 @@ export async function getCleaningPhotoHistory(input: {
     photo_path: string | null;
     photo_purged_at: string | null;
     user_id: string;
+    item_id: string;
     photo_req_id: string | null;
     review_status: string | null;
     review_note: string | null;
@@ -1835,7 +1978,9 @@ export async function getCleaningPhotoHistory(input: {
       completed_at: r.completed_at,
       user_name: profile?.full_name ?? "—",
       checklist_name: item?.checklist?.name ?? "—",
+      item_id: r.item_id,
       item_title: item?.title ?? "—",
+      photo_req_id: r.photo_req_id,
       label: r.photo_req_id ? labelById.get(r.photo_req_id) ?? null : null,
       url: r.photo_path ? urlByPath.get(r.photo_path) ?? null : null,
       purged: !r.photo_path && !!r.photo_purged_at,
