@@ -1954,18 +1954,21 @@ export async function savePusatAllocation(input: {
   }, 0);
   const roundedPusat = Math.round(pusatTotal);
 
-  // Auto-deduct mirror fetchPnL: untuk Haengbocake Sales credit,
-  // POS QRIS Pare dari Cash Pare ledger otomatis ter-atribusi ke
-  // Pare (lewat source "posQris"). Net yang admin perlu alokasi =
-  // pusatTotal − POS QRIS Pare di bulan tsb. Validator harus pakai
-  // angka yang SAMA dengan editor UI, kalau tidak admin yang sudah
-  // input total sesuai net editor akan ditolak.
-  let qrisParePareThisMonth = 0;
-  if (
-    input.businessUnit === "Haengbocake" &&
-    input.side === "credit" &&
-    input.category === "Sales"
-  ) {
+  // Auto-deduct mirror fetchPnL: untuk Haengbocake Sales credit, POS
+  // QRIS Pare & Semarang dari ledger cash masing-masing otomatis
+  // ter-atribusi ke cabangnya (lewat source "posQris"). Net yang admin
+  // perlu alokasi = pusatTotal − POS QRIS Pare − POS QRIS Semarang di
+  // bulan tsb. Validator harus pakai angka yang SAMA dengan editor UI,
+  // kalau tidak admin yang sudah input total sesuai net editor akan
+  // ditolak.
+  const qrisTotalFor = async (accountName: string): Promise<number> => {
+    if (
+      input.businessUnit !== "Haengbocake" ||
+      input.side !== "credit" ||
+      input.category !== "Sales"
+    ) {
+      return 0;
+    }
     const periodStart = `${input.periodYear}-${String(input.periodMonth).padStart(2, "0")}-01`;
     const nextY = input.periodMonth === 12 ? input.periodYear + 1 : input.periodYear;
     const nextM = input.periodMonth === 12 ? 1 : input.periodMonth + 1;
@@ -1989,17 +1992,18 @@ export async function savePusatAllocation(input: {
           "credit, transaction_date, effective_period_year, effective_period_month, cashflow_statements!inner(bank_accounts!inner(business_unit, account_name))"
         )
         .eq("cashflow_statements.bank_accounts.business_unit", "Haengbocake")
-        .eq("cashflow_statements.bank_accounts.account_name", "Cash Haengbocake Pare")
+        .eq("cashflow_statements.bank_accounts.account_name", accountName)
         .eq("category", "QRIS (non-operasional)")
         .gte("transaction_date", periodStart)
         .lt("transaction_date", periodEnd)
         .order("id", { ascending: true })
         .range(offset, offset + PAGE - 1);
-      if (qrisErr) return { ok: false, error: qrisErr.message };
+      if (qrisErr) throw new Error(qrisErr.message);
       const rows = (page ?? []) as unknown as QRow[];
       qrisRows.push(...rows);
       if (rows.length < PAGE) break;
     }
+    let total = 0;
     for (const r of qrisRows) {
       // Hormati effective_period_year/month override sama persis
       // dengan fetchPnL — kalau set, override date-based bucket.
@@ -2017,20 +2021,44 @@ export async function savePusatAllocation(input: {
         m = Number(mm);
       }
       if (y !== input.periodYear || m !== input.periodMonth) continue;
-      qrisParePareThisMonth += Number(r.credit ?? 0);
+      total += Number(r.credit ?? 0);
     }
+    return total;
+  };
+  let qrisPareThisMonth = 0;
+  let qrisSemarangThisMonth = 0;
+  try {
+    [qrisPareThisMonth, qrisSemarangThisMonth] = await Promise.all([
+      qrisTotalFor("Cash Haengbocake Pare"),
+      qrisTotalFor("Cash Haengbocake Semarang"),
+    ]);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
-  const autoDeductPare = Math.min(
-    Math.round(qrisParePareThisMonth),
-    roundedPusat
+  // Berurutan (Pare dulu, lalu Semarang dari sisanya) — sama persis
+  // dengan urutan di fetchPnL, supaya net yang divalidasi di sini tidak
+  // pernah berbeda dari yang dihitung editor UI.
+  const autoDeductPare = Math.min(Math.round(qrisPareThisMonth), roundedPusat);
+  const autoDeductSemarang = Math.min(
+    Math.round(qrisSemarangThisMonth),
+    roundedPusat - autoDeductPare
   );
-  const netForAllocation = roundedPusat - autoDeductPare;
+  const netForAllocation = roundedPusat - autoDeductPare - autoDeductSemarang;
   const sum = Math.round(input.semarangAmount + input.pareAmount);
   if (Math.abs(sum - netForAllocation) > 1) {
     const diff = Math.abs(sum - netForAllocation);
+    const deductParts: string[] = [];
+    if (autoDeductPare > 0) {
+      deductParts.push(`POS QRIS Pare Rp ${autoDeductPare.toLocaleString("id-ID")}`);
+    }
+    if (autoDeductSemarang > 0) {
+      deductParts.push(
+        `POS QRIS Semarang Rp ${autoDeductSemarang.toLocaleString("id-ID")}`
+      );
+    }
     const note =
-      autoDeductPare > 0
-        ? ` (raw Pusat Rp ${roundedPusat.toLocaleString("id-ID")} − auto-deduct POS QRIS Pare Rp ${autoDeductPare.toLocaleString("id-ID")})`
+      deductParts.length > 0
+        ? ` (raw Pusat Rp ${roundedPusat.toLocaleString("id-ID")} − auto-deduct ${deductParts.join(" − ")})`
         : "";
     return {
       ok: false,

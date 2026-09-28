@@ -800,6 +800,19 @@ function CategoryGroup({
                   </span>
                 </span>
               ) : null}
+              {r.category === "Sales" && r.side === "credit" && r.autoDeductSemarang > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm px-1 py-0.5 mt-0.5 text-[9px] font-mono tabular-nums border border-pop-emerald/60 bg-pop-emerald/10 text-foreground"
+                  title="POS QRIS Semarang sudah otomatis dipotong dari total Pusat — angka di kolom 'Untuk dialokasikan' di sebelah kanan sudah bersih (custom cake online saja)."
+                >
+                  <span className="uppercase tracking-wider font-semibold">
+                    − POS QRIS Semarang
+                  </span>
+                  <span>
+                    Rp {r.autoDeductSemarang.toLocaleString("id-ID")}
+                  </span>
+                </span>
+              ) : null}
               </div>
             </td>
             <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
@@ -959,6 +972,17 @@ function CategoryGroup({
                         </span>
                         <span className="font-mono tabular-nums font-semibold text-foreground">
                           Rp {hint.posPare.toLocaleString("id-ID")}
+                        </span>
+                      </li>
+                      <li className="flex items-baseline justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          POS Semarang (Cash + QRIS){" "}
+                          <span className="text-[9px] text-muted-foreground/60">
+                            (sudah otomatis ke Semarang)
+                          </span>
+                        </span>
+                        <span className="font-mono tabular-nums font-semibold text-foreground">
+                          Rp {hint.posSemarang.toLocaleString("id-ID")}
                         </span>
                       </li>
                     </ul>

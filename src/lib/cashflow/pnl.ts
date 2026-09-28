@@ -153,6 +153,9 @@ export interface SalesAllocationHint {
    * bagian dari sisa yang perlu di-split manual.
    */
   posPare: number;
+  /** Sama seperti `posPare`, tapi untuk rekening Cash Haengbocake
+   *  Semarang. */
+  posSemarang: number;
 }
 
 export interface PnLMonth {
@@ -195,6 +198,9 @@ export interface PnLMonth {
    * that QRIS money was physically rung up at Pare's register).
    */
   qrisOperasionalPare: number;
+  /** Sama seperti `qrisOperasionalPare`, tapi untuk rekening Cash
+   *  Haengbocake Semarang. */
+  qrisOperasionalSemarang: number;
   /**
    * Referensi custom cake per-cabang bulan ini (Haengbocake-only, di
    * luar ongkir). Angka bantu untuk mengalokasikan Sales Pusat — tidak
@@ -438,6 +444,12 @@ export async function fetchPnL(
   // advisory number shown in the Sales allocation hint. Not part of any
   // P&L figure.
   const posCashParePerMonth = new Map<string, number>();
+  // Sama seperti qrisParePerMonth/posCashParePerMonth, tapi untuk
+  // rekening Cash Haengbocake Semarang — POS Semarang sekarang sudah
+  // live, jadi cabang ini butuh mekanisme auto-deduct yang sama dengan
+  // Pare, bukan cuma Pare.
+  const qrisSemarangPerMonth = new Map<string, number>();
+  const posCashSemarangPerMonth = new Map<string, number>();
   // Company-wide Investment/Dividend totals (owner-POV), keyed by
   // monthKey → { "Investment"|"Dividend" → { credit, debit } }. These
   // categories are NEVER routed to branch/pusat buckets; branch tag on
@@ -492,6 +504,26 @@ export async function fetchPnL(
       posCashParePerMonth.set(
         monthKey,
         (posCashParePerMonth.get(monthKey) ?? 0) + creditNum
+      );
+    }
+    if (
+      accountName === "Cash Haengbocake Semarang" &&
+      rawCategory === "QRIS (non-operasional)" &&
+      creditNum > 0
+    ) {
+      qrisSemarangPerMonth.set(
+        monthKey,
+        (qrisSemarangPerMonth.get(monthKey) ?? 0) + creditNum
+      );
+    }
+    if (
+      accountName === "Cash Haengbocake Semarang" &&
+      rawCategory === "Sales" &&
+      creditNum > 0
+    ) {
+      posCashSemarangPerMonth.set(
+        monthKey,
+        (posCashSemarangPerMonth.get(monthKey) ?? 0) + creditNum
       );
     }
     const branchRaw = (t.branch ?? "").trim();
@@ -683,14 +715,18 @@ export async function fetchPnL(
     //    contribute to the branch totals; unbalanced/unallocated are
     //    skipped here and flagged in `pusatBreakdown`.
     //
-    // Special handling Sales credit: total POS QRIS Pare bulan ini
-    // (sudah dihitung di `qrisParePerMonth`) otomatis dipotong dari
-    // raw Pusat total, dan langsung diatribusi ke Pare via sumber
-    // "posQris". Admin tinggal alokasi sisa-nya (yang biasanya custom
-    // cake online — campuran Bank Jago + non-POS QRIS).
+    // Special handling Sales credit: total POS QRIS Pare + Semarang
+    // bulan ini (dihitung di `qrisParePerMonth`/`qrisSemarangPerMonth`)
+    // otomatis dipotong dari raw Pusat total, dan langsung diatribusi
+    // ke cabang masing-masing via sumber "posQris". Admin tinggal
+    // alokasi sisa-nya (yang biasanya custom cake online — campuran
+    // Bank Jago + non-POS QRIS).
     const pusatBreakdown: PusatBreakdownRow[] = [];
     const posQrisPareThisMonth = Math.round(
       qrisParePerMonth.get(monthKey) ?? 0
+    );
+    const posQrisSemarangThisMonth = Math.round(
+      qrisSemarangPerMonth.get(monthKey) ?? 0
     );
     for (const [k, amount] of bucket) {
       const [branch, category, side] = k.split("|") as [
@@ -719,12 +755,20 @@ export async function fetchPnL(
       const allocKey = `${monthKey}|${side}|${category}`;
       const alloc = allocMap.get(allocKey);
       const pusatTotal = Math.round(amount);
-      // Auto-deduct hanya Sales credit di Pare (POS belum ada Semarang).
+      // Auto-deduct Sales credit untuk KEDUA cabang POS (Pare & Semarang).
+      // Berurutan: Pare dipotong dulu dari pusatTotal, Semarang dipotong
+      // dari sisanya — bukan proporsional. Ini cuma beda kalau
+      // pusatTotal bulan itu < jumlah kedua QRIS (jarang: biasanya
+      // berarti ada lag settlement bank vs pencatatan register lintas
+      // bulan), dan urutan Pare-dulu meneruskan perilaku existing yang
+      // sudah berjalan sebelum Semarang ditambahkan.
       const isSalesCredit = category === "Sales" && side === "credit";
       const autoDeductPare = isSalesCredit
         ? Math.min(posQrisPareThisMonth, pusatTotal)
         : 0;
-      const autoDeductSemarang = 0;
+      const autoDeductSemarang = isSalesCredit
+        ? Math.min(posQrisSemarangThisMonth, pusatTotal - autoDeductPare)
+        : 0;
       const netForAllocation = pusatTotal - autoDeductPare - autoDeductSemarang;
       const semarangAlloc = alloc ? Math.round(alloc.semarang) : 0;
       const pareAlloc = alloc ? Math.round(alloc.pare) : 0;
@@ -785,10 +829,13 @@ export async function fetchPnL(
         details,
       });
 
-      // Auto-deducted portion (POS QRIS) langsung dorong ke Pare tanpa
-      // menunggu admin alokasi.
+      // Auto-deducted portion (POS QRIS) langsung dorong ke cabang
+      // masing-masing tanpa menunggu admin alokasi.
       if (autoDeductPare > 0) {
         addToBranch("Pare", "posQris", category, autoDeductPare, 0);
+      }
+      if (autoDeductSemarang > 0) {
+        addToBranch("Semarang", "posQris", category, autoDeductSemarang, 0);
       }
 
       if (balanced) {
@@ -968,6 +1015,9 @@ export async function fetchPnL(
       unallocatedCount: pusatBreakdown.filter((p) => p.unallocated).length,
       unbalancedCount: pusatBreakdown.filter((p) => p.unbalanced).length,
       qrisOperasionalPare: Math.round(qrisParePerMonth.get(monthKey) ?? 0),
+      qrisOperasionalSemarang: Math.round(
+        qrisSemarangPerMonth.get(monthKey) ?? 0
+      ),
       companyNetDividen: Math.round(companyDebit - companyCredit),
       companyNetDividenByCategory,
       salesHint: (() => {
@@ -979,10 +1029,19 @@ export async function fetchPnL(
           (posCashParePerMonth.get(monthKey) ?? 0) +
             (qrisParePerMonth.get(monthKey) ?? 0)
         );
-        if (cakeSemarang === 0 && cakePare === 0 && posPare === 0) {
+        const posSemarang = Math.round(
+          (posCashSemarangPerMonth.get(monthKey) ?? 0) +
+            (qrisSemarangPerMonth.get(monthKey) ?? 0)
+        );
+        if (
+          cakeSemarang === 0 &&
+          cakePare === 0 &&
+          posPare === 0 &&
+          posSemarang === 0
+        ) {
           return undefined;
         }
-        return { cakeSemarang, cakePare, posPare };
+        return { cakeSemarang, cakePare, posPare, posSemarang };
       })(),
     };
   });
