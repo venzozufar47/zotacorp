@@ -306,8 +306,8 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
   ticket_new_alert: {
     label: "Tiket — laporan baru masuk",
     description:
-      "Dikirim ke Kepala Studio saat ada tiket baru dibuat karyawan Yeobo Space.",
-    recipient: "Kepala Studio (studio_heads)",
+      "Dikirim saat ada tiket baru dibuat karyawan Yeobo Space, ke Kepala Studio, karyawan lain di cabang yang sama, dan superadmin.",
+    recipient: "Kepala Studio (studio_heads), karyawan sesama cabang, & admin",
     placeholders: [
       { key: "branch", description: "Cabang studio (Tlogosari/Tembalang/Jebres)" },
       { key: "category", description: "Kategori laporan" },

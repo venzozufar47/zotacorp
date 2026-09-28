@@ -130,6 +130,28 @@ async function studioHeadUserIds(): Promise<string[]> {
   return ((heads ?? []) as any[]).map((h) => h.user_id as string).filter(Boolean);
 }
 
+/**
+ * Karyawan yang ditugaskan (attendance) ke cabang Yeobo tsb — sumber sama
+ * dengan RLS `ticket_select_same_branch` (migration 150): employee_locations
+ * → attendance_locations "Yeobo Space - <cabang>".
+ */
+async function branchEmployeeUserIds(branch: string): Promise<string[]> {
+  const admin = createAdminClient() as any;
+  const { data: loc } = await admin
+    .from("attendance_locations")
+    .select("id")
+    .eq("name", `Yeobo Space - ${branch}`)
+    .maybeSingle();
+  if (!loc) return [];
+  const { data } = await admin
+    .from("employee_locations")
+    .select("employee_id")
+    .eq("location_id", loc.id);
+  return Array.from(
+    new Set(((data ?? []) as any[]).map((r) => r.employee_id as string).filter(Boolean))
+  );
+}
+
 async function firePush(
   userIds: string[],
   payload: { title: string; body: string; url?: string }
@@ -193,16 +215,24 @@ export async function createTicket(
     );
   }
 
-  // Push ke Kepala Studio (best-effort).
-  const headIds = await studioHeadUserIds();
-  if (headIds.length > 0) {
-    const msg = await renderWaTemplate("ticket_new_alert", {
-      branch: d.branch,
-      category: TICKET_CATEGORY_LABELS[d.category],
-      title: d.title,
-    });
-    void firePush(headIds, { title: "Tiket baru masuk", body: msg, url: "/tickets" });
-  }
+  // Push ke Kepala Studio, karyawan sesama cabang, & superadmin (best-effort).
+  const [headIds, branchIds] = await Promise.all([
+    studioHeadUserIds(),
+    branchEmployeeUserIds(d.branch),
+  ]);
+  const notifyIds = Array.from(new Set([...headIds, ...branchIds])).filter(
+    (id) => id !== gate.userId
+  );
+  const pushMsg = await renderWaTemplate("ticket_new_alert", {
+    branch: d.branch,
+    category: TICKET_CATEGORY_LABELS[d.category],
+    title: d.title,
+  });
+  const pushPayload = { title: "Tiket baru masuk", body: pushMsg, url: "/tickets" };
+  if (notifyIds.length > 0) void firePush(notifyIds, pushPayload);
+  void sendPushToAdmins(pushPayload).catch((err) => {
+    console.error("[tickets] push admin failed", err);
+  });
 
   revalidateTickets();
   return { ok: true, data: { id: ticketId } };
