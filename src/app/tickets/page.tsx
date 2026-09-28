@@ -8,6 +8,7 @@ import {
   getStudioQueue,
   getEscalatedForOwner,
   getStudioHeadKpi,
+  getBranchQueue,
 } from "@/lib/actions/tickets.actions";
 import { TicketingSystem } from "@/components/tickets/TicketingSystem";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
@@ -17,10 +18,11 @@ export default async function TicketsPage() {
   if (!user || !role) redirect("/dashboard");
 
   const isManager = role === "head" || role === "owner";
-  const [myTickets, studioQueue, escalated, kpi] = await Promise.all([
+  const [myTickets, studioQueue, escalated, branchQueue, kpi] = await Promise.all([
     getMyTickets(),
     isManager ? getStudioQueue() : Promise.resolve([]),
     role === "owner" ? getEscalatedForOwner() : Promise.resolve([]),
+    role === "filer" ? getBranchQueue() : Promise.resolve([]),
     isManager ? getStudioHeadKpi() : Promise.resolve(null),
   ]);
 
@@ -33,6 +35,7 @@ export default async function TicketsPage() {
         myTickets={myTickets}
         studioQueue={studioQueue}
         escalated={escalated}
+        branchQueue={branchQueue}
         kpi={kpi}
         backHref="/dashboard"
       />

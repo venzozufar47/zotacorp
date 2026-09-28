@@ -104,6 +104,28 @@ export function needsFilerConfirmation(
 /** Peran penampil terhadap sistem tiket. */
 export type TicketViewerRole = "owner" | "head" | "filer";
 
+/**
+ * Baris ringkas "antrian sesama cabang" — karyawan Yeobo Space melihat tiket
+ * AKTIF rekan sekantor (termasuk yang dibuat admin/owner utk cabang itu),
+ * TANPA deskripsi/catatan/foto (lihat getBranchQueue di tickets.actions.ts
+ * dan migration 150_ticket_branch_queue.sql). Tipe terpisah dari `Ticket`
+ * secara sengaja — bukan cuma `Omit<Ticket, ...>` — supaya UI yang memakai
+ * tipe ini tidak bisa "kelupaan" merender field detail yang memang tidak
+ * pernah di-fetch untuk baris ini.
+ */
+export interface TicketQueueSummary {
+  id: string;
+  branch: TicketBranch;
+  category: TicketCategory;
+  priority: TicketPriority;
+  title: string;
+  status: TicketStatus;
+  createdByName: string;
+  createdByAvatarUrl: string | null;
+  createdByAvatarSeed: string | null;
+  createdAt: string;
+}
+
 /** Status yang dianggap "belum selesai" (butuh perhatian / masih di antrian). */
 export const OPEN_TICKET_STATUSES: TicketStatus[] = [
   "open",

@@ -9,15 +9,18 @@ import {
   CheckCircle2,
   Archive,
   ChevronDown,
+  Users,
 } from "lucide-react";
 import { TicketForm } from "./TicketForm";
 import { TicketCard } from "./TicketCard";
+import { BranchQueueCard } from "./BranchQueueCard";
 import {
   formatDuration,
   isTicketOpen,
   isStudioQueueStatus,
   needsFilerConfirmation,
   type Ticket,
+  type TicketQueueSummary,
   type TicketViewerRole,
 } from "@/lib/tickets/types";
 import type { StudioHeadKpi } from "@/lib/actions/tickets.actions";
@@ -32,6 +35,7 @@ export function TicketingSystem({
   myTickets,
   studioQueue = [],
   escalated = [],
+  branchQueue = [],
   kpi = null,
   backHref,
 }: {
@@ -40,6 +44,7 @@ export function TicketingSystem({
   myTickets: Ticket[];
   studioQueue?: Ticket[];
   escalated?: Ticket[];
+  branchQueue?: TicketQueueSummary[];
   kpi?: StudioHeadKpi | null;
   backHref?: string;
 }) {
@@ -138,6 +143,21 @@ export function TicketingSystem({
               viewerRole={viewerRole}
               context={viewerRole === "owner" ? "monitor" : "queue"}
             />
+          ))}
+        </Section>
+      )}
+
+      {/* Antrian sesama cabang — filer saja; head/admin sudah lihat semua
+          lewat "Antrian studio" di atas. Read-only, tanpa deskripsi/foto. */}
+      {viewerRole === "filer" && (
+        <Section
+          icon={<Users size={16} />}
+          title="Antrian sesama cabang"
+          count={branchQueue.length}
+          empty="Belum ada tiket aktif dari rekan sekantor."
+        >
+          {branchQueue.map((t) => (
+            <BranchQueueCard key={t.id} ticket={t} />
           ))}
         </Section>
       )}

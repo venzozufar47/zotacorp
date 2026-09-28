@@ -45,7 +45,7 @@ import {
 
 type Context = "mine" | "queue" | "escalation" | "monitor";
 
-const STATUS_TONE: Record<Ticket["status"], string> = {
+export const STATUS_TONE: Record<Ticket["status"], string> = {
   open: "bg-warning/20 text-warning border-warning",
   in_progress: "bg-accent text-[var(--teal-700)] border-[var(--teal-500)]",
   escalated: "bg-pop-pink/30 text-foreground border-foreground",
@@ -54,7 +54,7 @@ const STATUS_TONE: Record<Ticket["status"], string> = {
   cancelled: "bg-muted text-muted-foreground border-border",
 };
 
-function agoLabel(iso: string) {
+export function agoLabel(iso: string) {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (m < 1) return "baru saja";
   if (m < 60) return `${m} mnt lalu`;

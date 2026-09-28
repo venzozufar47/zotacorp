@@ -25,8 +25,10 @@ import { renderWaTemplate } from "@/lib/whatsapp/templates";
 import {
   TICKET_CATEGORY_LABELS,
   RECENT_RESOLUTION_SAMPLE_SIZE,
+  OPEN_TICKET_STATUSES,
   type Ticket,
   type TicketAttachment,
+  type TicketQueueSummary,
 } from "@/lib/tickets/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -560,6 +562,54 @@ export async function getMyTickets(): Promise<Ticket[]> {
     .eq("created_by", user.id)
     .order("created_at", { ascending: false });
   return hydrate(supabase, (data ?? []) as any[]);
+}
+
+/**
+ * Antrian tiket AKTIF sesama karyawan Yeobo Space di cabang yang sama
+ * (termasuk tiket yang dibuat admin/owner utk cabang itu) — ringkas saja
+ * (tanpa deskripsi/catatan/foto), tiket milik sendiri dikeluarkan supaya
+ * tidak dobel dengan section "Tiket saya". Cakupan cabang ditentukan RLS
+ * (`ticket_select_same_branch`, migration 150) lewat penugasan presensi
+ * karyawan — filer yang belum/ tidak di-assign ke lokasi Yeobo mana pun
+ * otomatis dapat array kosong, bukan error.
+ */
+export async function getBranchQueue(): Promise<TicketQueueSummary[]> {
+  const gate = await requireTicketFiler();
+  if (!gate.ok) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tickets" as never)
+    .select("id, created_by, branch, category, priority, title, status, created_at")
+    .in("status", OPEN_TICKET_STATUSES)
+    .neq("created_by", gate.userId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  const rows = (data ?? []) as any[];
+  if (rows.length === 0) return [];
+
+  const admin = createAdminClient() as any;
+  const creatorIds = Array.from(new Set(rows.map((r) => r.created_by)));
+  const { data: profs } = await admin
+    .from("profiles")
+    .select("id, full_name, nickname, avatar_url, avatar_seed")
+    .in("id", creatorIds);
+  const profById = new Map(((profs ?? []) as any[]).map((p) => [p.id, p]));
+
+  return rows.map((r) => {
+    const p = profById.get(r.created_by);
+    return {
+      id: r.id,
+      branch: r.branch,
+      category: r.category,
+      priority: r.priority,
+      title: r.title,
+      status: r.status,
+      createdByName: p?.nickname?.trim() || p?.full_name || "Karyawan",
+      createdByAvatarUrl: p?.avatar_url ?? null,
+      createdByAvatarSeed: p?.avatar_seed ?? null,
+      createdAt: r.created_at,
+    };
+  });
 }
 
 export async function getStudioQueue(): Promise<Ticket[]> {
