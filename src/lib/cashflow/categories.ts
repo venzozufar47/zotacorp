@@ -36,7 +36,15 @@ export const HAENGBOCAKE_DEBIT_CATEGORIES = [
   "Wealth Transfer",
 ] as const;
 
-export const HAENGBOCAKE_BRANCHES = ["Pusat", "Semarang", "Pare"] as const;
+/**
+ * "Mamaya" ditambahkan Sep 2026 — sebelumnya supplier Haengbocake,
+ * sekarang mendekati pailit dan rekeningnya digabung ke rekening Bank
+ * Jago Haengbocake. Omzet & pengeluaran Mamaya lewat rekening yang sama
+ * dengan Haengbocake sendiri, jadi butuh cabang sendiri di PnL supaya
+ * bisa dipisah lagi nanti (lihat cashflow_rules priority 15-19 di
+ * rekening Jago Haengbocake untuk auto-kategorisasinya).
+ */
+export const HAENGBOCAKE_BRANCHES = ["Pusat", "Semarang", "Pare", "Mamaya"] as const;
 
 /**
  * Yeobo Space — workspace business unit dengan 3 cabang fisik

@@ -288,14 +288,23 @@ export function applyCategorization(
       }
     }
 
-    // Effective accounting period: when description menyebut nama bulan
-    // (e.g. "Gaji Maret 2026"), override agar tx ter-bucket di bulan
-    // tersebut di PnL — bukan di tanggal settlement. Slot-fill juga:
-    // tidak menimpa nilai yang sudah ada dari admin override.
+    // Effective accounting period: when notes menyebut nama bulan (e.g.
+    // "Gaji Maret 2026"), override agar tx ter-bucket di bulan tersebut
+    // di PnL — bukan di tanggal settlement. Slot-fill juga: tidak
+    // menimpa nilai yang sudah ada dari admin override.
+    //
+    // WAJIB pakai `tx.notes`, BUKAN `tx.description` — description
+    // menggabungkan nama pengirim/penerima + tipe transaksi + notes jadi
+    // satu string ("AGUS SUPRIYADI BRI ... · Outgoing Transfer · DP rak
+    // renov semarang"), dan regex bulan pendek (agus?/mei/mar/jan/jul/...)
+    // gampang salah tangkap NAMA orang sebagai singkatan bulan — "AGUS
+    // Supriyadi" terbaca "Agustus" walau notes aslinya tidak menyebut
+    // bulan sama sekali. Fallback ke description cuma untuk baris legacy
+    // yang di-ingest sebelum kolom notes terstruktur ada.
     let effectivePeriodMonth: number | null = tx.effectivePeriodMonth ?? null;
     let effectivePeriodYear: number | null = tx.effectivePeriodYear ?? null;
     if (effectivePeriodMonth === null && effectivePeriodYear === null) {
-      const detected = extractEffectivePeriod(tx.description, tx.date);
+      const detected = extractEffectivePeriod(tx.notes || tx.description, tx.date);
       if (detected) {
         effectivePeriodMonth = detected.month;
         effectivePeriodYear = detected.year;
