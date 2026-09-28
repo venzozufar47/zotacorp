@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { PnLReport } from "@/lib/cashflow/pnl";
 
-type SankeyScope = "all" | "Semarang" | "Pare";
+type SankeyScope = "all" | "Haengbocake" | "Semarang" | "Pare" | "Mamaya";
 
 /**
  * Sankey-style Income Statement — port of the Claude Design mockup
@@ -107,11 +107,18 @@ export function PnLSankey({ report }: Props) {
     let companyNetDividen = 0;
 
     for (const m of report.months) {
-      if (scope === "all") companyNetDividen += m.companyNetDividen;
+      // Net Dividen (Company) itu benar-benar company-wide — tidak
+      // di-filter per cabang di pnl.ts — jadi ditampilkan di kedua view
+      // multi-cabang ("all" dan "Haengbocake"), bukan cuma "all".
+      if (scope === "all" || scope === "Haengbocake") {
+        companyNetDividen += m.companyNetDividen;
+      }
       const branches =
         scope === "all"
-          ? [m.byBranch.Semarang, m.byBranch.Pare]
-          : [m.byBranch[scope]];
+          ? [m.byBranch.Semarang, m.byBranch.Pare, m.byBranch.Mamaya]
+          : scope === "Haengbocake"
+            ? [m.byBranch.Semarang, m.byBranch.Pare]
+            : [m.byBranch[scope]];
       for (const branch of branches) {
         for (const c of branch.byCategory) {
           if (c.kind !== "operating") continue;
@@ -355,7 +362,8 @@ export function PnLSankey({ report }: Props) {
   // Dalam view per-cabang, Net Dividen company-wide tidak dialokasi
   // ke cabang — jadi Op Profit langsung 100% ke Retained. Skip
   // netDivNode + prevRetainedNode dalam scope ini.
-  const showNetDividen = scope === "all" && computed.actualNetDividen > 0;
+  const showNetDividen =
+    (scope === "all" || scope === "Haengbocake") && computed.actualNetDividen > 0;
   const netDivNode = showNetDividen
     ? makeNode(
         "dividend",
@@ -726,10 +734,13 @@ export function PnLSankey({ report }: Props) {
         <h3 className="sankey-title">{report.businessUnit} Income Statement</h3>
         <div className="sankey-sub">
           {periodLabel(report.from, report.to)}
-          {scope !== "all" ? ` · cabang ${scope}` : ""}
+          {scope === "Haengbocake" ? " · Semarang + Pare (tanpa Mamaya)" : ""}
+          {scope === "Semarang" || scope === "Pare" || scope === "Mamaya"
+            ? ` · cabang ${scope}`
+            : ""}
         </div>
         <div className="sankey-scope">
-          {(["all", "Semarang", "Pare"] as const).map((s) => (
+          {(["all", "Haengbocake", "Semarang", "Pare", "Mamaya"] as const).map((s) => (
             <button
               key={s}
               type="button"

@@ -161,6 +161,10 @@ export interface PnLMonth {
   byBranch: {
     Semarang: BranchPnL;
     Pare: BranchPnL;
+    /** Mamaya: eks-supplier Haengbocake, rekeningnya digabung ke Bank
+     *  Jago Haengbocake Sep 2026 — dihitung terpisah dari Semarang/Pare
+     *  (BUKAN ikut alokasi Pusat) supaya bisa dipisah PnL-nya nanti. */
+    Mamaya: BranchPnL;
   };
   pusatBreakdown: PusatBreakdownRow[];
   /** Count of Pusat buckets still needing admin input this month. */
@@ -409,7 +413,7 @@ export async function fetchPnL(
   // Aggregate tx totals, partitioned by monthKey. This way the
   // per-month report build below is O(buckets_in_month) instead of
   // O(total_tx_across_range) for every month iteration.
-  type BranchName = "Pusat" | "Semarang" | "Pare" | "unassigned";
+  type BranchName = "Pusat" | "Semarang" | "Pare" | "Mamaya" | "unassigned";
   type MonthBucket = Map<string, number>; // "<branch>|<category>|<side>" → amount
   const byMonth = new Map<string, MonthBucket>();
   // Per-bucket transaction details, only filled for Pusat buckets
@@ -492,7 +496,10 @@ export async function fetchPnL(
     }
     const branchRaw = (t.branch ?? "").trim();
     const branch: BranchName =
-      branchRaw === "Pusat" || branchRaw === "Semarang" || branchRaw === "Pare"
+      branchRaw === "Pusat" ||
+      branchRaw === "Semarang" ||
+      branchRaw === "Pare" ||
+      branchRaw === "Mamaya"
         ? branchRaw
         : "unassigned";
     const category = normalizePnLCategory(businessUnit, t.category);
@@ -529,7 +536,8 @@ export async function fetchPnL(
       byMonth.set(monthKey, bucket);
     }
     const collectDetail = branch === "Pusat" && PUSAT_DETAIL_CATEGORIES.has(category);
-    const collectBranchDetail = branch === "Semarang" || branch === "Pare";
+    const collectBranchDetail =
+      branch === "Semarang" || branch === "Pare" || branch === "Mamaya";
     if (credit > 0) {
       const k = `${branch}|${category}|credit`;
       bucket.set(k, (bucket.get(k) ?? 0) + credit);
@@ -604,21 +612,30 @@ export async function fetchPnL(
     //  - `branchPusatAgg`   → sisa Pusat yang admin alokasikan manual.
     type BranchBag = Map<string, { credit: number; debit: number }>;
     const newBag = (): BranchBag => new Map();
-    const branchAgg: Record<"Semarang" | "Pare", BranchBag> = {
+    // Mamaya key ada di keempat Record supaya `addToBranch`/`buildBranch`
+    // tetap satu fungsi generik untuk ketiga cabang — tapi di praktiknya
+    // branchPusatAgg.Mamaya dan branchPosQrisAgg.Mamaya SELALU kosong:
+    // Mamaya tidak pernah lewat alokasi Pusat atau POS QRIS pass-through,
+    // cuma direct attribution (loop 1 di bawah).
+    const branchAgg: Record<"Semarang" | "Pare" | "Mamaya", BranchBag> = {
       Semarang: newBag(),
       Pare: newBag(),
+      Mamaya: newBag(),
     };
-    const branchDirectAgg: Record<"Semarang" | "Pare", BranchBag> = {
+    const branchDirectAgg: Record<"Semarang" | "Pare" | "Mamaya", BranchBag> = {
       Semarang: newBag(),
       Pare: newBag(),
+      Mamaya: newBag(),
     };
-    const branchPusatAgg: Record<"Semarang" | "Pare", BranchBag> = {
+    const branchPusatAgg: Record<"Semarang" | "Pare" | "Mamaya", BranchBag> = {
       Semarang: newBag(),
       Pare: newBag(),
+      Mamaya: newBag(),
     };
-    const branchPosQrisAgg: Record<"Semarang" | "Pare", BranchBag> = {
+    const branchPosQrisAgg: Record<"Semarang" | "Pare" | "Mamaya", BranchBag> = {
       Semarang: newBag(),
       Pare: newBag(),
+      Mamaya: newBag(),
     };
     const accumulate = (
       bag: BranchBag,
@@ -632,7 +649,7 @@ export async function fetchPnL(
       bag.set(category, existing);
     };
     const addToBranch = (
-      branch: "Semarang" | "Pare",
+      branch: "Semarang" | "Pare" | "Mamaya",
       source: "direct" | "pusat" | "posQris",
       category: string,
       credit: number,
@@ -657,7 +674,7 @@ export async function fetchPnL(
         string,
         PnLSide,
       ];
-      if (branch !== "Semarang" && branch !== "Pare") continue;
+      if (branch !== "Semarang" && branch !== "Pare" && branch !== "Mamaya") continue;
       if (side === "credit") addToBranch(branch, "direct", category, amount, 0);
       else addToBranch(branch, "direct", category, 0, amount);
     }
@@ -795,7 +812,7 @@ export async function fetchPnL(
     //    companyNonOp di atas — jadi bag ini nggak pernah berisi
     //    keduanya, dan branch summary tidak punya Net Dividen.
     const buildBranch = (
-      branchName: "Semarang" | "Pare",
+      branchName: "Semarang" | "Pare" | "Mamaya",
       bag: Map<string, { credit: number; debit: number }>
     ): BranchPnL => {
       const byCategory: BranchCategoryBreakdown[] = [];
@@ -945,6 +962,7 @@ export async function fetchPnL(
       byBranch: {
         Semarang: buildBranch("Semarang", branchAgg.Semarang),
         Pare: buildBranch("Pare", branchAgg.Pare),
+        Mamaya: buildBranch("Mamaya", branchAgg.Mamaya),
       },
       pusatBreakdown,
       unallocatedCount: pusatBreakdown.filter((p) => p.unallocated).length,
