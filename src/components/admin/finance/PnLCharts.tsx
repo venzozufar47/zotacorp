@@ -74,13 +74,18 @@ export function PnLCharts({ report }: Props) {
     month: `${MONTH_NAMES[m.month - 1]} ${String(m.year).slice(-2)}`,
     semarangProfit: m.byBranch.Semarang.operatingProfit,
     pareProfit: m.byBranch.Pare.operatingProfit,
+    mamayaProfit: m.byBranch.Mamaya.operatingProfit,
     companyNetDiv: m.companyNetDividen,
   }));
 
   // Compute symmetric y-domain padding so the zero-line sits mid-chart
   // when values straddle it — the positive/negative shaded bands then
   // read as equal visual weight.
-  const allProfit = data.flatMap((d) => [d.semarangProfit, d.pareProfit]);
+  const allProfit = data.flatMap((d) => [
+    d.semarangProfit,
+    d.pareProfit,
+    d.mamayaProfit,
+  ]);
   const allNetDiv = data.map((d) => d.companyNetDiv);
   const profitDomain = computeDomain(allProfit);
   const netDivDomain = computeDomain(allNetDiv);
@@ -159,7 +164,9 @@ export function PnLCharts({ report }: Props) {
               {/* Palet cabang dipisah dari var(--primary) (teal yang
                   bisa tersugesti "profit"/"success") dan dari merah
                   destructive. Tone editorial Oceanic: biru navy untuk
-                  Semarang, pink rose untuk Pare, amber untuk Net
+                  Semarang, pink rose untuk Pare, ungu untuk Mamaya
+                  (entitas terpisah, bukan hasil split Pusat — sengaja
+                  bukan turunan warna Semarang/Pare), amber untuk Net
                   Dividen (company-wide). */}
               <Bar
                 dataKey="semarangProfit"
@@ -167,6 +174,7 @@ export function PnLCharts({ report }: Props) {
                 fill="#1d4ed8"
               />
               <Bar dataKey="pareProfit" name="Pare" fill="#be185d" />
+              <Bar dataKey="mamayaProfit" name="Mamaya" fill="#7c3aed" />
             </BarChart>
           </ResponsiveContainer>
         </div>

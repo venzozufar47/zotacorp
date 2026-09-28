@@ -78,6 +78,9 @@ export function PnLTable({ report }: Props) {
       acc.pareRev += m.byBranch.Pare.operatingRevenue;
       acc.pareExp += m.byBranch.Pare.operatingExpense;
       acc.pareProfit += m.byBranch.Pare.operatingProfit;
+      acc.mamayaRev += m.byBranch.Mamaya.operatingRevenue;
+      acc.mamayaExp += m.byBranch.Mamaya.operatingExpense;
+      acc.mamayaProfit += m.byBranch.Mamaya.operatingProfit;
       acc.totalNetDiv += m.companyNetDividen;
       return acc;
     },
@@ -88,6 +91,9 @@ export function PnLTable({ report }: Props) {
       pareRev: 0,
       pareExp: 0,
       pareProfit: 0,
+      mamayaRev: 0,
+      mamayaExp: 0,
+      mamayaProfit: 0,
       totalNetDiv: 0,
     }
   );
@@ -139,7 +145,7 @@ export function PnLTable({ report }: Props) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-xs border-separate border-spacing-0 min-w-[900px]">
+        <table className="w-full text-xs border-separate border-spacing-0 min-w-[1200px]">
           <thead>
             <tr className="text-muted-foreground uppercase tracking-wider bg-muted/60">
               <th className="w-8 border-b border-border"></th>
@@ -158,6 +164,12 @@ export function PnLTable({ report }: Props) {
               >
                 Pare
               </th>
+              <th
+                colSpan={3}
+                className="text-center font-semibold px-3 py-2 border-b border-l border-border"
+              >
+                Mamaya
+              </th>
               <th className="text-right font-semibold px-3 py-2.5 border-b border-l border-border w-36">
                 Net Dividen (Company)
               </th>
@@ -166,6 +178,15 @@ export function PnLTable({ report }: Props) {
               <th className="w-8 border-b border-border"></th>
               <th className="border-b border-border"></th>
               <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
+                Revenue
+              </th>
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
+                Expense
+              </th>
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
+                Profit Op.
+              </th>
+              <th className="text-right font-semibold px-3 py-2 border-b border-l border-border w-24">
                 Revenue
               </th>
               <th className="text-right font-semibold px-3 py-2 border-b border-l border-border/40 w-24">
@@ -221,6 +242,14 @@ export function PnLTable({ report }: Props) {
                 strong
                 unit={unit}
               />
+              <AmountTd value={grand.mamayaRev} unit={unit} />
+              <AmountTd value={-grand.mamayaExp} tone="destructive" unit={unit} />
+              <AmountTd
+                value={grand.mamayaProfit}
+                tone={grand.mamayaProfit >= 0 ? "success" : "destructive"}
+                strong
+                unit={unit}
+              />
               <AmountTd
                 value={grand.totalNetDiv}
                 tone={grand.totalNetDiv >= 0 ? "success" : "destructive"}
@@ -250,6 +279,7 @@ function FragmentRow({
 }) {
   const sem = month.byBranch.Semarang;
   const pare = month.byBranch.Pare;
+  const mamaya = month.byBranch.Mamaya;
   const hasWarning = month.unallocatedCount + month.unbalancedCount > 0;
   return (
     <>
@@ -287,6 +317,14 @@ function FragmentRow({
           strong
           unit={unit}
         />
+        <AmountTd value={mamaya.operatingRevenue} unit={unit} />
+        <AmountTd value={-mamaya.operatingExpense} tone="destructive" unit={unit} />
+        <AmountTd
+          value={mamaya.operatingProfit}
+          tone={mamaya.operatingProfit >= 0 ? "success" : "destructive"}
+          strong
+          unit={unit}
+        />
         <AmountTd
           value={month.companyNetDividen}
           tone={month.companyNetDividen >= 0 ? "success" : "destructive"}
@@ -296,10 +334,12 @@ function FragmentRow({
       </tr>
       {isOpen && (
         <tr className="bg-muted/20">
-          <td colSpan={9} className="p-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-border/60 min-w-0">
+          {/* colSpan = total kolom tabel: chevron + bulan + 3×(Semarang/Pare/Mamaya) + netDividen = 1+1+3+3+3+1 */}
+          <td colSpan={12} className="p-0">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-border/60 min-w-0">
               <BranchDetail label="Semarang" branch={sem} unit={unit} />
               <BranchDetail label="Pare" branch={pare} unit={unit} />
+              <BranchDetail label="Mamaya" branch={mamaya} unit={unit} />
             </div>
             {month.companyNetDividenByCategory.length > 0 ? (
               <div className="border-t border-border/60 p-3 bg-background/40">
