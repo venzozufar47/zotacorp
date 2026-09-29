@@ -7,6 +7,7 @@ import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
 import { dictionary, type Language } from "@/lib/i18n/dictionary";
 import { LazyToaster } from "@/components/ui/LazyToaster";
 import { PwaRegister } from "@/components/shared/PwaRegister";
+import { BfcacheRefresh } from "@/components/shared/BfcacheRefresh";
 import "./globals.css";
 
 /**
@@ -102,6 +103,7 @@ export default async function RootLayout({
           {children}
           <LazyToaster />
           <PwaRegister />
+          <BfcacheRefresh />
           <Analytics />
           <SpeedInsights />
         </LanguageProvider>

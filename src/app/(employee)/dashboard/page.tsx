@@ -48,8 +48,10 @@ import {
   getMyOpenTicketsSummary,
   getStudioQueueCount,
   getStudioHeadRecentResolutionKpi,
+  getBranchQueue,
 } from "@/lib/actions/tickets.actions";
 import { isStudioHead } from "@/lib/tickets/access";
+import { BranchQueueCard } from "@/components/tickets/BranchQueueCard";
 import Link from "next/link";
 import { Brain, FileSignature, Ticket as TicketIcon, PackageSearch } from "lucide-react";
 import { isProcurementStaff } from "@/lib/procurement/access";
@@ -119,6 +121,7 @@ export default async function DashboardPage() {
     extraWorkKinds,
     myPendingContract,
     myTicketsSummary,
+    branchQueue,
     studioQueueCount,
     isHeadOfStudio,
     serviceLevelOutlets,
@@ -157,6 +160,7 @@ export default async function DashboardPage() {
     listExtraWorkKindsForUser(user.id),
     getMyPendingContract(),
     getMyOpenTicketsSummary(),
+    getBranchQueue(),
     getStudioQueueCount(),
     isStudioHead(),
     listMyServiceLevelOutlets(),
@@ -379,6 +383,31 @@ export default async function DashboardPage() {
           </span>
           <span className="text-sm font-bold shrink-0">→</span>
         </Link>
+      )}
+
+      {branchQueue.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <TicketIcon size={15} />
+            <span className="font-display font-bold text-sm">
+              {branchQueue.length} tiket aktif di cabangmu
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Termasuk yang diajukan admin/owner atau rekan kerja lain.
+          </p>
+          {branchQueue.slice(0, 5).map((t) => (
+            <BranchQueueCard key={t.id} ticket={t} />
+          ))}
+          {branchQueue.length > 5 && (
+            <Link
+              href="/tickets"
+              className="block text-center text-xs font-semibold text-primary hover:underline"
+            >
+              +{branchQueue.length - 5} tiket aktif lainnya
+            </Link>
+          )}
+        </div>
       )}
 
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />

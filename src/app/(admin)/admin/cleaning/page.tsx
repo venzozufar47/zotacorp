@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
   CleaningOverview,
-  type CleaningRangeKey,
   type CleaningViewKey,
 } from "@/components/admin/cleaning/CleaningOverview";
 import {
@@ -29,19 +28,12 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
  * turun ke drawer; halaman menjawab dua hal: seberapa bersih tiap cabang, dan
  * siapa yang rajin.
  *
- * `?range=` menentukan lebar rentang skor (hari / 7 / 30). Strip 14 hari di
- * kartu selalu 14 hari, jadi rentang 1 hari pun tetap punya konteks.
+ * Skor & strip SELALU 14 hari terakhir — tidak ada lagi pilihan rentang
+ * (dulu hari ini / 7 / 30 hari), yang bikin skor bisa tidak sinkron dengan
+ * strip yang memang selalu 14 hari.
  */
 
-const RANGE_DAYS: Record<CleaningRangeKey, number> = {
-  hari: 1,
-  "7": 7,
-  "30": 30,
-};
-
-/** Strip di kartu selalu memperlihatkan 14 hari, jadi rentang sesempit apa pun
- *  tetap diambil minimal 14 hari ke belakang. */
-const MIN_FETCH_DAYS = 14;
+const SCORE_DAYS = 14;
 
 function ymdMinus(ymd: string, n: number): string {
   return new Date(Date.parse(`${ymd}T00:00:00Z`) - n * 86_400_000)
@@ -52,7 +44,7 @@ function ymdMinus(ymd: string, n: number): string {
 export default async function AdminCleaningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; view?: string; gallery?: string }>;
+  searchParams: Promise<{ view?: string; gallery?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -60,15 +52,11 @@ export default async function AdminCleaningPage({
   if (role !== "admin") redirect("/dashboard");
 
   const sp = await searchParams;
-  const range: CleaningRangeKey =
-    sp.range === "7" || sp.range === "30" || sp.range === "hari"
-      ? sp.range
-      : "hari";
   const view: CleaningViewKey = sp.view === "karyawan" ? "karyawan" : "ringkasan";
   const initialGalleryOpen = sp.gallery === "1";
 
   const today = jakartaDateString(new Date());
-  const from = ymdMinus(today, Math.max(RANGE_DAYS[range], MIN_FETCH_DAYS) - 1);
+  const from = ymdMinus(today, SCORE_DAYS - 1);
 
   const supabase = await createClient();
   const [
@@ -87,9 +75,7 @@ export default async function AdminCleaningPage({
     getCleaningRangeReport({
       from,
       to: today,
-      // Skor mengikuti rentang yang DIPILIH, walau datanya diambil ≥14 hari
-      // demi strip. Tanpa ini "Hari ini" menampilkan skor 14 hari.
-      scoreDays: RANGE_DAYS[range],
+      scoreDays: SCORE_DAYS,
     }),
     supabase
       .from("profiles")
@@ -119,7 +105,6 @@ export default async function AdminCleaningPage({
       ) : (
         <CleaningOverview
           report={reportRes.data!}
-          range={range}
           view={view}
           checklists={checklists}
           assignments={assignments}

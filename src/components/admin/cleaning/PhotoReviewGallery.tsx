@@ -375,7 +375,7 @@ function ReferenceButton({ row }: { row: PhotoHistoryRow }) {
           onClick={undo}
           className="text-[11px] text-white/60 hover:text-white underline disabled:opacity-50"
         >
-          Batalkan
+          Undo jadikan referensi
         </button>
       )}
     </div>
@@ -509,6 +509,17 @@ export function PhotoReviewGallery({
     return acc;
   }, {});
   const branches = Object.keys(byBranch).sort((a, b) => a.localeCompare(b));
+
+  // Urutan linear yang SAMA PERSIS dengan urutan tampil di grid (cabang asc,
+  // tanggal desc, lalu urutan asli dalam tanggal — sort stabil menjaga itu
+  // tanpa perlu membangun ulang nested groupnya). Dipakai VerdictBar.onDone
+  // untuk tahu "foto berikutnya" begitu verdict dikirim, supaya admin bisa
+  // menilai berturut-turut tanpa keluar-masuk lightbox tiap foto.
+  const flatOrder = [...rows].sort((a, b) => {
+    const branchCmp = a.branch_name.localeCompare(b.branch_name);
+    if (branchCmp !== 0) return branchCmp;
+    return b.date.localeCompare(a.date);
+  });
 
   return (
     <div className="space-y-4">
@@ -849,14 +860,21 @@ export function PhotoReviewGallery({
             <VerdictBar
               row={lightbox}
               onDone={(next) => {
+                // Lompat ke foto berikutnya di urutan grid begitu verdict
+                // terkirim — admin menilai antrean berturut-turut tanpa harus
+                // keluar & pilih lagi satu per satu. null kalau ini yang
+                // terakhir (queue: tutup lightbox; browse: tetap di foto ini).
+                const idx = flatOrder.findIndex(
+                  (r) => r.completion_id === lightbox.completion_id
+                );
+                const nextRow = idx >= 0 ? (flatOrder[idx + 1] ?? null) : null;
+
                 if (mode === "queue" && next.review_status !== "unreviewed") {
-                  // Sudah diputuskan → keluar dari antrean. Tutup lightbox-nya
-                  // juga: baris ini sudah tidak ada lagi di grid, menyisakannya
-                  // terbuka hanya membingungkan.
+                  // Sudah diputuskan → keluar dari antrean.
                   setRows((rs) =>
                     rs.filter((r) => r.completion_id !== lightbox.completion_id)
                   );
-                  setLightbox(null);
+                  setLightbox(nextRow);
                   return;
                 }
                 // Mode telusur: perbarui di tempat TANPA menutup lightbox —
@@ -869,7 +887,7 @@ export function PhotoReviewGallery({
                       : r
                   )
                 );
-                setLightbox((l) => (l ? { ...l, ...next } : l));
+                setLightbox(nextRow ?? ((l) => (l ? { ...l, ...next } : l)));
               }}
             />
             <ReferenceButton row={lightbox} />

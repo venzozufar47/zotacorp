@@ -37,8 +37,22 @@ import { resolveBranchDuty } from "@/lib/utils/cleaning-branch-duty";
  * sendiri, bukan varian `miss`: pekerjaannya DILAKUKAN dan buktinya ada, hanya
  * tidak diterima — orangnya sudah datang, jadi memperlakukannya sama dengan
  * tidak dikerjakan akan salah menghukum.
+ *
+ * `miss_absent` juga berdiri sendiri, bukan varian `miss`: ruangannya sama-
+ * sama tidak dibersihkan, tapi BUKAN karena diabaikan — orang yang bertugas
+ * shift itu memang tidak masuk (lihat `attendance` di bawah). Skor cabang
+ * tetap menghitungnya sebagai kegagalan (ruangannya nyata-nyata kotor), tapi
+ * warnanya sengaja BUKAN merah supaya tidak terbaca sebagai kelalaian siapa
+ * pun saat ditampilkan.
  */
-export type CleaningDayStatus = "ok" | "late" | "redo" | "miss" | "pending" | "off";
+export type CleaningDayStatus =
+  | "ok"
+  | "late"
+  | "redo"
+  | "miss"
+  | "miss_absent"
+  | "pending"
+  | "off";
 
 export interface RangeItemInput {
   id: string;
@@ -185,6 +199,7 @@ export interface CleaningRangeReport {
 /** Urutan keparahan — dipakai memilih status "terburuk" & mengurutkan kartu. */
 const SEVERITY: Record<CleaningDayStatus, number> = {
   miss: 0,
+  miss_absent: 0,
   redo: 1,
   late: 2,
   pending: 3,
@@ -482,6 +497,12 @@ export function buildCleaningRangeReport(
         } else {
           status = "miss";
         }
+        // Shift-nya sendiri tidak masuk hari itu → ruangannya tetap kotor
+        // (skor cabang tidak berubah), tapi bukan kelalaian siapa pun yang
+        // ADA. Downgrade label SEBELUM disimpan ke sel supaya strip/heatmap
+        // ikut menampilkan warna netral, bukan cuma rekap per-karyawan.
+        if (status === "miss" && performer && !attendance.has(`${performer}|${day.ymd}`))
+          status = "miss_absent";
         // Merge antar assignment yang berbagi titik (rotasi): hari yang sudah
         // tercatat dikerjakan tidak boleh ditimpa `off`/`miss` oleh assignment
         // pasangannya. Aturannya satu baris: status NYATA mengalahkan `off`,
@@ -505,11 +526,11 @@ export function buildCleaningRangeReport(
         // tetap terhitung sebagai titik terlewat, tapi tidak ada orang yang
         // pantas ditagih.
         if (!performer) continue;
-        // Terlewat pada hari orangnya tidak masuk BUKAN kelalaiannya. Selnya
-        // tetap `miss` untuk skor cabang di atas; yang dilewati hanya
+        // Terlewat pada hari orangnya tidak masuk BUKAN kelalaiannya — statusnya
+        // sudah jadi `miss_absent` di atas kalau begitu, jadi cukup cek itu di
+        // sini. Selnya tetap terhitung untuk skor cabang; yang dilewati hanya
         // penagihannya ke orang, sehingga harinya jadi `off` di heatmap-nya.
-        if (status === "miss" && !attendance.has(`${performer}|${day.ymd}`))
-          continue;
+        if (status === "miss_absent") continue;
         const perUser = empDays.get(performer) ?? new Map<string, EmployeeDay>();
         const ed =
           perUser.get(day.ymd) ??
@@ -553,7 +574,7 @@ export function buildCleaningRangeReport(
     const rev = [...cells].reverse().filter((c) => c.status !== "off");
     let missStreak = 0;
     for (const c of rev) {
-      if (c.status === "miss") missStreak++;
+      if (c.status === "miss" || c.status === "miss_absent") missStreak++;
       else if (c.status === "pending") continue;
       else break;
     }
@@ -610,7 +631,7 @@ export function buildCleaningRangeReport(
         b!.done++;
         b!.late++;
       } else if (c.status === "redo") b!.redo++;
-      else if (c.status === "miss") b!.miss++;
+      else if (c.status === "miss" || c.status === "miss_absent") b!.miss++;
       else if (c.status === "pending") b!.pending++;
       if (SEVERITY[c.status] < SEVERITY[b!.series[i]]) b!.series[i] = c.status;
     });

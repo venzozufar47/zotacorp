@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { createCoachingNote } from "@/lib/actions/cleaning-review.actions";
+import { MONTH_NAMES } from "@/lib/utils/date-formats";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { ChecklistManager } from "./ChecklistManager";
 import { AssignmentManager } from "./AssignmentManager";
@@ -55,14 +56,6 @@ import type {
  * menjanjikan wewenang yang tidak dimiliki halaman ini.
  */
 
-const RANGES = [
-  { key: "hari", label: "Hari ini" },
-  { key: "7", label: "7 hari" },
-  { key: "30", label: "30 hari" },
-] as const;
-
-export type CleaningRangeKey = (typeof RANGES)[number]["key"];
-
 /**
  * Dua tab, bukan lima.
  *
@@ -85,6 +78,7 @@ const STATUS_LABEL: Record<CleaningDayStatus, string> = {
   late: "Telat",
   redo: "Perlu ulang",
   miss: "Belum dikerjakan",
+  miss_absent: "Shift tidak masuk",
   pending: "Menunggu jadwal",
   off: "Tidak terjadwal",
 };
@@ -97,6 +91,11 @@ const CELL_CLASS: Record<CleaningDayStatus, string> = {
   // diterima — beda derajat dengan tidak dikerjakan sama sekali.
   redo: "bg-orange-500",
   miss: "bg-destructive",
+  // Slate, BUKAN merah: ruangannya tetap tidak dibersihkan (skor cabang tetap
+  // turun), tapi shift yang bertugas hari itu memang tidak masuk — bukan
+  // kelalaian siapa pun yang hadir, jadi tidak boleh terbaca sama dengan
+  // `miss` yang murni diabaikan.
+  miss_absent: "bg-slate-400",
   pending: "bg-primary/25",
   off: "bg-muted",
 };
@@ -106,6 +105,8 @@ const PILL_CLASS: Record<CleaningDayStatus, string> = {
   late: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400",
   redo: "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-400",
   miss: "border-destructive/40 bg-destructive/10 text-destructive",
+  miss_absent:
+    "border-slate-400/40 bg-slate-400/10 text-slate-600 dark:text-slate-400",
   pending: "border-border bg-muted text-muted-foreground",
   off: "border-border bg-muted text-muted-foreground",
 };
@@ -114,6 +115,7 @@ const LEGEND: Array<[CleaningDayStatus, string]> = [
   ["ok", "lengkap"],
   ["late", "telat"],
   ["miss", "belum dikerjakan"],
+  ["miss_absent", "shift tidak masuk"],
   ["pending", "menunggu jadwal"],
   ["off", "tidak kebagian slot / libur"],
 ];
@@ -138,14 +140,24 @@ function Strip({
   title?: string;
 }) {
   return (
-    <div className="flex gap-[2px]" title={title}>
-      {cells.map((s, i) => (
-        <i
-          key={days[i] ?? i}
-          title={`${days[i]} — ${STATUS_LABEL[s]}`}
-          className={`h-3 flex-1 min-w-[3px] rounded-[2px] ${CELL_CLASS[s]}`}
-        />
-      ))}
+    <div title={title}>
+      <div className="flex gap-[2px]">
+        {cells.map((s, i) => (
+          <i
+            key={days[i] ?? i}
+            title={`${days[i]} — ${STATUS_LABEL[s]}`}
+            className={`h-3 flex-1 min-w-[3px] rounded-[2px] ${CELL_CLASS[s]}`}
+          />
+        ))}
+      </div>
+      {/* Label tanggal ujung-ujung strip — tanpa ini orang harus hover tiap
+          sel satu-satu untuk tahu strip-nya mencakup tanggal berapa saja. */}
+      {days.length > 1 && (
+        <div className="mt-0.5 flex justify-between text-[9px] leading-none text-muted-foreground/70">
+          <span>{shortDay(days[0])}</span>
+          <span>{shortDay(days[days.length - 1])}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -168,6 +180,13 @@ function Legend() {
 
 const ageLabel = (n: number | null) =>
   n == null ? "belum pernah" : n === 0 ? "hari ini" : n === 1 ? "kemarin" : `${n} hari lalu`;
+
+/** "2026-09-28" → "28 Sep" — tanpa tahun, cukup untuk label ujung strip. */
+function shortDay(ymd: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(ymd);
+  if (!m) return ymd;
+  return `${m[2]} ${MONTH_NAMES[Number(m[1]) - 1] ?? m[1]}`;
+}
 
 /** Titik yang butuh mata manajer. Diurut: belum dikerjakan → lama tak terpantau. */
 /**
@@ -293,7 +312,6 @@ function reviewQueue(points: PointReport[]) {
 
 export function CleaningOverview({
   report,
-  range,
   view,
   checklists,
   assignments,
@@ -304,7 +322,6 @@ export function CleaningOverview({
   initialGalleryOpen,
 }: {
   report: CleaningRangeReportWithNames;
-  range: CleaningRangeKey;
   view: CleaningViewKey;
   checklists: CleaningChecklist[];
   assignments: CleaningAssignmentRow[];
@@ -348,32 +365,15 @@ export function CleaningOverview({
     (e) => allBranches || e.branchKey === branchKey
   );
 
-  const scopeLabel =
-    range === "hari" ? "hari ini" : range === "7" ? "7 hari terakhir" : "30 hari terakhir";
+  // Skor & kepatuhan SELALU 14 hari terakhir — sama dengan lebar strip, jadi
+  // tidak ada lagi rentang terpilih yang bisa membuat angkanya tidak sinkron
+  // dengan visualnya.
+  const scopeLabel = "14 hari terakhir";
 
   return (
     <div className="space-y-6">
       {/* Scope bar */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-          Rentang
-        </span>
-        <div className="flex gap-1 rounded-full border border-border bg-muted/40 p-1">
-          {RANGES.map((r) => (
-            <Link
-              key={r.key}
-              href={`/admin/cleaning?view=${view}&range=${r.key}`}
-              className={
-                "rounded-full px-3 py-1 text-xs font-semibold transition " +
-                (range === r.key
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground")
-              }
-            >
-              {r.label}
-            </Link>
-          ))}
-        </div>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
@@ -399,7 +399,7 @@ export function CleaningOverview({
           return (
             <Link
               key={v.key}
-              href={`/admin/cleaning?view=${v.key}&range=${range}`}
+              href={`/admin/cleaning?view=${v.key}`}
               className={`press-feedback -mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold ${
                 on
                   ? "border-primary text-primary"
@@ -912,7 +912,9 @@ function PointCard({
             ? `menunggu jadwal · terakhir ${ageLabel(point.ageDays)}`
             : point.current === "miss"
               ? `belum dikerjakan ${point.missStreak} hari · terakhir ${ageLabel(point.ageDays)}`
-              : `tidak terjadwal · terakhir ${ageLabel(point.ageDays)}`}
+              : point.current === "miss_absent"
+                ? `shift tidak masuk ${point.missStreak} hari · terakhir ${ageLabel(point.ageDays)}`
+                : `tidak terjadwal · terakhir ${ageLabel(point.ageDays)}`}
       </div>
       <div className="mt-0.5 text-[10.5px] text-muted-foreground">
         {point.photoSlots > 0 ? `${point.photoSlots} slot foto` : "tanpa foto"} ·{" "}
