@@ -107,11 +107,17 @@ function ResultCell({ snapshot, dense }: { snapshot: MetaAdsSnapshot; dense?: bo
         dense ? "py-2 sm:py-2.5" : "py-2.5 sm:py-3"
       )}
     >
-      {snapshot.results != null ? fmtInt(snapshot.results) : "—"}
-      {snapshot.resultLabel && (
-        <span className="block text-[10.5px] text-muted-foreground">
-          {snapshot.resultLabel}
-        </span>
+      {snapshot.resultsBreakdown.length === 0 ? (
+        "—"
+      ) : (
+        <div className="space-y-1">
+          {snapshot.resultsBreakdown.map((r) => (
+            <div key={r.label}>
+              {fmtInt(r.value)}
+              <span className="block text-[10.5px] text-muted-foreground">{r.label}</span>
+            </div>
+          ))}
+        </div>
       )}
     </td>
   );

@@ -69,6 +69,11 @@ interface RawInsightsRow {
   action_values?: RawAction[];
 }
 
+export interface MetaAdsResultBreakdownItem {
+  label: string;
+  value: number;
+}
+
 export interface MetaAdsSnapshot {
   spend: number;
   impressions: number;
@@ -76,8 +81,14 @@ export interface MetaAdsSnapshot {
   cpm: number | null;
   cpc: number | null;
   clicks: number;
+  /** Metrik hasil utama (prioritas tertinggi dari `resultsBreakdown`) —
+   *  dipakai kartu ringkasan, Biaya/Hasil, dan sort "Hasil terbanyak". */
   results: number | null;
   resultLabel: string | null;
+  /** SEMUA metrik hasil yang tercatat (profile visit, chat, klik link,
+   *  dst — bukan cuma satu yang paling prioritas), diurutkan sama seperti
+   *  RESULT_ACTION_PRIORITY. `results`/`resultLabel` di atas = elemen [0]. */
+  resultsBreakdown: MetaAdsResultBreakdownItem[];
   costPerResult: number | null;
   purchaseValue: number | null;
   roas: number | null;
@@ -155,19 +166,27 @@ function summarize(row: RawInsightsRow | undefined, optimizationGoal?: string): 
   const actions = row?.actions ?? [];
   const actionValues = row?.action_values ?? [];
 
-  let results: number | null = null;
-  let resultLabel: string | null = null;
+  // Kumpulkan SEMUA action type yang cocok (bukan berhenti di yang pertama)
+  // — satu ad set bisa sekaligus punya chat, kunjungan profil, klik link,
+  // dst. Dedup by label (bukan by action_type) karena Meta kadang laporkan
+  // beberapa action_type mentah untuk hasil yang sama secara bisnis (mis.
+  // "onsite_conversion.purchase" & "purchase" bisa sama-sama ada di respons
+  // untuk satu pembelian yang sama) — entri berprioritas tertinggi menang.
+  const resultsBreakdown: MetaAdsResultBreakdownItem[] = [];
+  const seenLabels = new Set<string>();
   for (const candidate of RESULT_ACTION_PRIORITY) {
     const found = actions.find((a) => a.action_type === candidate.type);
-    if (found) {
-      results = num(found.value);
-      resultLabel =
-        candidate.type === "landing_page_view" && optimizationGoal === "PROFILE_VISIT"
-          ? "Kunjungan Profil"
-          : candidate.label;
-      break;
-    }
+    if (!found) continue;
+    const label =
+      candidate.type === "landing_page_view" && optimizationGoal === "PROFILE_VISIT"
+        ? "Kunjungan Profil"
+        : candidate.label;
+    if (seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    resultsBreakdown.push({ label, value: num(found.value) });
   }
+  const results = resultsBreakdown[0]?.value ?? null;
+  const resultLabel = resultsBreakdown[0]?.label ?? null;
 
   let purchaseValue: number | null = null;
   for (const type of PURCHASE_VALUE_ACTION_TYPES) {
@@ -187,6 +206,7 @@ function summarize(row: RawInsightsRow | undefined, optimizationGoal?: string): 
     clicks: num(row?.clicks),
     results,
     resultLabel,
+    resultsBreakdown,
     costPerResult: results && results > 0 ? spend / results : null,
     purchaseValue,
     roas: purchaseValue != null && spend > 0 ? purchaseValue / spend : null,
