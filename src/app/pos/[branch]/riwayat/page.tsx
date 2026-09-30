@@ -28,13 +28,6 @@ import { formatTime } from "@/lib/utils/date";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
 
-/** "HH:mm" → menit sejak tengah malam, untuk mengurutkan sale + cake
- *  pickup dalam satu timeline kronologis. */
-function hhmmToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-
 function formatDateLong(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("id-ID", {
@@ -136,22 +129,30 @@ export default async function PosRiwayatPage({
     }),
   ]);
 
-  // Timeline gabungan, urut waktu terbaru dulu — sama seperti urutan
-  // `sales` sendiri. Pickup kue TIDAK ikut `dayTotal`/`activeCount` di
-  // bawah: uangnya (kalau cash) sudah tercatat terpisah sebagai baris
-  // kas non-operasional, dan pendapatannya diakui via akrual cake.
-  // Ikut menghitungnya di sini akan dobel.
+  // Timeline gabungan, urut waktu terbaru dulu. Sort-key-nya harus dari
+  // timestamp ASLI (`sale_time`/`picked_up_at`, keduanya `timestamptz`
+  // UTC), bukan hasil parsing string "HH:mm" — sebelumnya sale memakai
+  // `s.saleTime` mentah (string UTC penuh) lewat parser "HH:mm" buatan
+  // tangan, jadi jamnya ke-NaN dan urutannya acak. Pickup kue TIDAK ikut
+  // `dayTotal`/`activeCount` di bawah: uangnya (kalau cash) sudah
+  // tercatat terpisah sebagai baris kas non-operasional, dan
+  // pendapatannya diakui via akrual cake. Ikut menghitungnya di sini
+  // akan dobel.
   type TimelineEntry =
-    | { kind: "sale"; time: string; sale: (typeof sales)[number] }
-    | { kind: "cake"; time: string; cake: CakePickupHistoryRow };
+    | { kind: "sale"; at: number; sale: (typeof sales)[number] }
+    | { kind: "cake"; at: number; cake: CakePickupHistoryRow };
   const timeline: TimelineEntry[] = [
-    ...sales.map((s) => ({ kind: "sale" as const, time: s.saleTime, sale: s })),
+    ...sales.map((s) => ({
+      kind: "sale" as const,
+      at: new Date(s.saleTime).getTime(),
+      sale: s,
+    })),
     ...cakePickups.map((c) => ({
       kind: "cake" as const,
-      time: formatTime(c.pickedUpAt),
+      at: new Date(c.pickedUpAt).getTime(),
       cake: c,
     })),
-  ].sort((a, b) => hhmmToMinutes(b.time) - hhmmToMinutes(a.time));
+  ].sort((a, b) => b.at - a.at);
 
   const dayTotal = sales.reduce(
     (a, b) => (b.voidedAt ? a : a + b.total),
