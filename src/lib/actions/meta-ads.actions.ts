@@ -29,6 +29,14 @@ const RESULT_ACTION_PRIORITY = [
   { type: "lead", label: "Lead" },
   { type: "complete_registration", label: "Registrasi" },
   { type: "onsite_conversion.messaging_conversation_started_7d", label: "Chat dimulai" },
+  // Meta tidak punya action_type khusus "profile visit" — utk ad set
+  // dengan optimization_goal PROFILE_VISIT (destination = profil
+  // Instagram), "landing page"-nya YA profil itu sendiri, jadi
+  // dihitung lewat landing_page_view yang sama dipakai traffic-ke-
+  // website biasa. Labelnya di-override di summarize() berdasarkan
+  // optimization_goal ad set — "Kunjungan Halaman" di sini cuma
+  // fallback generik kalau goal-nya bukan PROFILE_VISIT.
+  { type: "landing_page_view", label: "Kunjungan Halaman" },
   { type: "link_click", label: "Klik link" },
 ] as const;
 
@@ -142,7 +150,7 @@ function describeStatus(status: string | undefined): {
   return { label: status, active: false };
 }
 
-function summarize(row: RawInsightsRow | undefined): MetaAdsSnapshot {
+function summarize(row: RawInsightsRow | undefined, optimizationGoal?: string): MetaAdsSnapshot {
   const spend = num(row?.spend);
   const actions = row?.actions ?? [];
   const actionValues = row?.action_values ?? [];
@@ -153,7 +161,10 @@ function summarize(row: RawInsightsRow | undefined): MetaAdsSnapshot {
     const found = actions.find((a) => a.action_type === candidate.type);
     if (found) {
       results = num(found.value);
-      resultLabel = candidate.label;
+      resultLabel =
+        candidate.type === "landing_page_view" && optimizationGoal === "PROFILE_VISIT"
+          ? "Kunjungan Profil"
+          : candidate.label;
       break;
     }
   }
@@ -217,23 +228,37 @@ async function fetchInsights(
 }
 
 /**
- * `effective_status`/`created_time` bukan field yang sah di endpoint
- * /insights (itu properti objek ad/adset, bukan metrik performa) — harus
- * diambil terpisah dari edge /ads atau /adsets lalu digabung manual by
- * id. Satu fungsi untuk kedua edge (bukan dua fungsi hampir identik)
- * karena bentuknya memang sama, cuma edge-nya beda.
+ * `effective_status`/`created_time`/`optimization_goal` bukan field yang
+ * sah di endpoint /insights (itu properti objek ad/adset, bukan metrik
+ * performa) — harus diambil terpisah dari edge /ads atau /adsets lalu
+ * digabung manual by id. Satu fungsi untuk kedua edge (bukan dua fungsi
+ * hampir identik) karena bentuknya memang sama, cuma edge-nya beda.
+ * `optimization_goal` cuma diminta utk /adsets — bukan field yang sah di
+ * objek Ad, dan ad mewarisi goal ad set induknya lewat adset_id saja.
  */
 async function fetchEdgeMeta(
   accountId: string,
   token: string,
   edge: "ads" | "adsets"
-): Promise<Map<string, { status: string; createdTime: string }>> {
+): Promise<Map<string, { status: string; createdTime: string; optimizationGoal?: string }>> {
+  const fields =
+    edge === "adsets"
+      ? "id,effective_status,created_time,optimization_goal"
+      : "id,effective_status,created_time";
   const json = await graphFetch<{
-    data?: { id: string; effective_status?: string; created_time?: string }[];
-  }>(`${accountId}/${edge}`, { fields: "id,effective_status,created_time", limit: "500" }, token);
+    data?: {
+      id: string;
+      effective_status?: string;
+      created_time?: string;
+      optimization_goal?: string;
+    }[];
+  }>(`${accountId}/${edge}`, { fields, limit: "500" }, token);
   const rows = json.data ?? [];
   return new Map(
-    rows.map((r) => [r.id, { status: r.effective_status ?? "", createdTime: r.created_time ?? "" }])
+    rows.map((r) => [
+      r.id,
+      { status: r.effective_status ?? "", createdTime: r.created_time ?? "", optimizationGoal: r.optimization_goal },
+    ])
   );
 }
 
@@ -278,13 +303,17 @@ async function fetchAdsetGroups(
 
   const ads = adRows.map((row) => {
     const status = describeStatus(adMetaById.get(row.ad_id ?? "")?.status);
+    // Ad tidak punya optimization_goal sendiri — pakai milik ad set induk
+    // supaya label "Kunjungan Profil" konsisten antara baris ad set dan
+    // ad-ad di dalamnya.
+    const optimizationGoal = adsetMetaById.get(row.adset_id ?? "")?.optimizationGoal;
     return {
       adsetId: row.adset_id ?? "",
       adId: row.ad_id ?? "",
       adName: row.ad_name ?? "(tanpa nama)",
       statusLabel: status.label,
       statusActive: status.active,
-      ...summarize(row),
+      ...summarize(row, optimizationGoal),
     };
   });
 
@@ -300,7 +329,7 @@ async function fetchAdsetGroups(
         statusLabel: status.label,
         statusActive: status.active,
         createdTime: meta?.createdTime ?? "",
-        totals: summarize(row),
+        totals: summarize(row, meta?.optimizationGoal),
         ads: ads
           .filter((a) => a.adsetId === adsetId)
           .sort((a, b) => b.spend - a.spend),

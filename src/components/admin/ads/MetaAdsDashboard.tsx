@@ -30,14 +30,14 @@ function MetricCard({
   sub?: string;
 }) {
   return (
-    <div className="bg-card rounded-2xl border border-border/70 p-4">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <span className="grid size-7 place-items-center rounded-lg bg-accent text-[var(--teal-600)]">
+    <div className="bg-card rounded-2xl border border-border/70 p-3 sm:p-4 min-w-0">
+      <div className="flex items-center gap-2 text-muted-foreground min-w-0">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-accent text-[var(--teal-600)]">
           <Icon size={14} />
         </span>
-        <span className="text-[12px] font-medium">{label}</span>
+        <span className="text-[12px] font-medium truncate">{label}</span>
       </div>
-      <div className="mt-2 font-display text-xl font-extrabold tabular-nums text-foreground">
+      <div className="mt-2 font-display text-lg sm:text-xl font-extrabold tabular-nums text-foreground truncate">
         {value}
       </div>
       {sub && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
@@ -99,9 +99,14 @@ function StatusBadge({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-function ResultCell({ snapshot }: { snapshot: MetaAdsSnapshot }) {
+function ResultCell({ snapshot, dense }: { snapshot: MetaAdsSnapshot; dense?: boolean }) {
   return (
-    <td className="px-4 py-3 text-right tabular-nums text-foreground whitespace-nowrap">
+    <td
+      className={cn(
+        "px-2 sm:px-4 text-right tabular-nums text-foreground whitespace-nowrap",
+        dense ? "py-2 sm:py-2.5" : "py-2.5 sm:py-3"
+      )}
+    >
       {snapshot.results != null ? fmtInt(snapshot.results) : "—"}
       {snapshot.resultLabel && (
         <span className="block text-[10.5px] text-muted-foreground">
@@ -145,7 +150,7 @@ function AdsetGroupRow({ group }: { group: MetaAdsAdsetGroup }) {
         className="border-b border-border/40 cursor-pointer bg-muted/40 hover:bg-muted/70"
         onClick={toggle}
       >
-        <td className="px-4 py-3 min-w-0">
+        <td className="px-2.5 sm:px-4 py-2.5 sm:py-3 min-w-0">
           <div className="flex items-center gap-1.5">
             <ChevronDown
               size={13}
@@ -153,46 +158,46 @@ function AdsetGroupRow({ group }: { group: MetaAdsAdsetGroup }) {
             />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-foreground truncate max-w-[180px]">
+                <span className="font-semibold text-foreground truncate max-w-[110px] sm:max-w-[180px]">
                   {group.adsetName}
                 </span>
                 <StatusBadge label={group.statusLabel} active={group.statusActive} />
               </div>
-              <div className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+              <div className="text-[11px] text-muted-foreground truncate max-w-[150px] sm:max-w-[220px]">
                 Campaign: {group.campaignName || "—"} · {group.ads.length} ad
                 {group.createdTime && <> · dibuat {formatShortDate(group.createdTime)}</>}
               </div>
             </div>
           </div>
         </td>
-        <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground whitespace-nowrap">
+        <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-right tabular-nums font-semibold text-foreground whitespace-nowrap">
           {formatRp(group.totals.spend)}
         </td>
         <ResultCell snapshot={group.totals} />
-        <td className="px-4 py-3 text-right tabular-nums text-foreground whitespace-nowrap">
+        <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-right tabular-nums text-foreground whitespace-nowrap">
           {group.totals.costPerResult != null ? formatRp(group.totals.costPerResult) : "—"}
         </td>
-        <td className="px-4 py-3 text-right tabular-nums text-foreground whitespace-nowrap">
+        <td className="px-2 sm:px-4 py-2.5 sm:py-3 text-right tabular-nums text-foreground whitespace-nowrap">
           {group.totals.roas != null ? `${group.totals.roas.toFixed(2)}x` : "—"}
         </td>
       </tr>
       {open &&
         group.ads.map((ad) => (
           <tr key={ad.adId} className="border-b border-border/30 last:border-0">
-            <td className="pl-9 pr-4 py-2.5 min-w-0">
+            <td className="pl-7 sm:pl-9 pr-2.5 sm:pr-4 py-2 sm:py-2.5 min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-foreground truncate max-w-[160px]">{ad.adName}</span>
+                <span className="text-foreground truncate max-w-[90px] sm:max-w-[160px]">{ad.adName}</span>
                 <StatusBadge label={ad.statusLabel} active={ad.statusActive} />
               </div>
             </td>
-            <td className="px-4 py-2.5 text-right tabular-nums text-foreground whitespace-nowrap">
+            <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-foreground whitespace-nowrap">
               {formatRp(ad.spend)}
             </td>
-            <ResultCell snapshot={ad} />
-            <td className="px-4 py-2.5 text-right tabular-nums text-foreground whitespace-nowrap">
+            <ResultCell snapshot={ad} dense />
+            <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-foreground whitespace-nowrap">
               {ad.costPerResult != null ? formatRp(ad.costPerResult) : "—"}
             </td>
-            <td className="px-4 py-2.5 text-right tabular-nums text-foreground whitespace-nowrap">
+            <td className="px-2 sm:px-4 py-2 sm:py-2.5 text-right tabular-nums text-foreground whitespace-nowrap">
               {ad.roas != null ? `${ad.roas.toFixed(2)}x` : "—"}
             </td>
           </tr>
@@ -270,11 +275,11 @@ function AdsetBreakdownTable({ groups }: { groups: MetaAdsAdsetGroup[] }) {
         <table className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-border/60 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              <th className="px-4 py-3">Ad Set</th>
-              <th className="px-4 py-3 text-right">Spend</th>
-              <th className="px-4 py-3 text-right">Hasil</th>
-              <th className="px-4 py-3 text-right">Biaya/Hasil</th>
-              <th className="px-4 py-3 text-right">ROAS</th>
+              <th className="px-2.5 sm:px-4 py-2.5 sm:py-3">Ad Set</th>
+              <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-right">Spend</th>
+              <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-right">Hasil</th>
+              <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-right whitespace-nowrap">Biaya/Hasil</th>
+              <th className="px-2 sm:px-4 py-2.5 sm:py-3 text-right">ROAS</th>
             </tr>
           </thead>
           <tbody>
