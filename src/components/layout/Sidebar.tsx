@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Radio, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -15,6 +15,7 @@ export function Sidebar({
   hasCakeProduction = false,
   hasCakeFinance = false,
   hasYeoboBooth = false,
+  hasMetaAds = false,
   hasTickets = false,
   hasSimCards = false,
   hasProcurement = false,
@@ -33,6 +34,8 @@ export function Sidebar({
   hasCakeFinance?: boolean;
   /** Show the "Yeobo Booth" tab for users in the yeobo_booth_admins allowlist. */
   hasYeoboBooth?: boolean;
+  /** Show the "Meta Ads" tab for users in the meta_ads_viewers allowlist. */
+  hasMetaAds?: boolean;
   /** Show "Tiket" tab for Yeobo Space employees / Kepala Studio. */
   hasTickets?: boolean;
   hasSimCards?: boolean;
@@ -128,6 +131,16 @@ export function Sidebar({
             icon: Camera,
             label: "Yeobo Booth",
             color: "bg-pop-emerald",
+          },
+        ]
+      : []),
+    ...(hasMetaAds
+      ? [
+          {
+            href: "/admin/ads",
+            icon: Target,
+            label: "Meta Ads",
+            color: "bg-pop-pink",
           },
         ]
       : []),

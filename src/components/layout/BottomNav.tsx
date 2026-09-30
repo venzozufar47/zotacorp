@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -14,6 +14,7 @@ export function BottomNav({
   hasCakeProduction = false,
   hasCakeFinance = false,
   hasYeoboBooth = false,
+  hasMetaAds = false,
   hasTickets = false,
   hasSimCards = false,
   hasProcurement = false,
@@ -27,6 +28,8 @@ export function BottomNav({
   hasCakeProduction?: boolean;
   hasCakeFinance?: boolean;
   hasYeoboBooth?: boolean;
+  /** Show the "Meta Ads" tab for users in the meta_ads_viewers allowlist. */
+  hasMetaAds?: boolean;
   hasTickets?: boolean;
   hasSimCards?: boolean;
   /** Tab "Pengadaan" — array item di file ini TERPISAH dari Sidebar.tsx,
@@ -120,6 +123,16 @@ export function BottomNav({
             icon: Camera,
             label: "Booth",
             color: "bg-pop-emerald",
+          },
+        ]
+      : []),
+    ...(hasMetaAds
+      ? [
+          {
+            href: "/admin/ads",
+            icon: Target,
+            label: "Ads",
+            color: "bg-pop-pink",
           },
         ]
       : []),

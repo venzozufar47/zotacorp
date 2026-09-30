@@ -11,6 +11,7 @@ import { listOpenPayslipDisputes } from "@/lib/actions/payslip-disputes.actions"
 import { getCleaningMisses } from "@/lib/actions/admin-home.actions";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { isCakeFinanceAdmin } from "@/lib/cake-orders/access";
+import { isMetaAdsViewer } from "@/lib/meta-ads/access";
 
 export default async function AdminLayout({
   children,
@@ -51,10 +52,11 @@ export default async function AdminLayout({
       );
     }
 
-    const [assignedIds, hasCash, hasCakeFinance] = await Promise.all([
+    const [assignedIds, hasCash, hasCakeFinance, hasMetaAds] = await Promise.all([
       listMyAssignedBankAccountIds(),
       hasAssignedCashDashboard(),
       isCakeFinanceAdmin(),
+      isMetaAdsViewer(),
     ]);
     const hasFinance = assignedIds.length > 0;
     return (
@@ -65,6 +67,7 @@ export default async function AdminLayout({
           hasFinance={hasFinance}
           hasCash={hasCash}
           hasCakeFinance={hasCakeFinance}
+          hasMetaAds={hasMetaAds}
         />
         <main className="flex-1 min-w-0">
           <div className="max-w-[1700px] mx-auto px-4 py-6 pb-24 md:px-6 md:pb-8">
@@ -75,6 +78,7 @@ export default async function AdminLayout({
         hasFinance={hasFinance}
         hasCash={hasCash}
         hasCakeFinance={hasCakeFinance}
+        hasMetaAds={hasMetaAds}
       />
       </div>
     );

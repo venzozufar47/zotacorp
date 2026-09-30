@@ -6,6 +6,7 @@ import { countMyAssignments } from "@/lib/actions/cashflow-assignments.actions";
 import { getCurrentProfile } from "@/lib/supabase/cached";
 import { getMyCakeAccess, isCakeFinanceAdmin } from "@/lib/cake-orders/access";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
+import { isMetaAdsViewer } from "@/lib/meta-ads/access";
 import { canFileTickets } from "@/lib/tickets/access";
 import { isSimPic } from "@/lib/sim-cards/access";
 import { isProcurementStaff } from "@/lib/procurement/access";
@@ -32,6 +33,7 @@ export default async function EmployeeLayout({
     hasProcurement,
     has360Eval,
     hasCakeFinance,
+    hasMetaAds,
   ] = await Promise.all([
     listMyAssignedBankAccountIds(),
     getCurrentProfile(),
@@ -44,6 +46,7 @@ export default async function EmployeeLayout({
     isProcurementStaff(),
     hasPending360Evaluation(),
     isCakeFinanceAdmin(),
+    isMetaAdsViewer(),
   ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -66,6 +69,7 @@ export default async function EmployeeLayout({
         hasCakeProduction={cakeAccess.hasProduction}
         hasCakeFinance={hasCakeFinance}
         hasYeoboBooth={hasYeoboBooth}
+        hasMetaAds={hasMetaAds}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
         hasProcurement={hasProcurement}
@@ -85,6 +89,7 @@ export default async function EmployeeLayout({
         hasCakeProduction={cakeAccess.hasProduction}
         hasCakeFinance={hasCakeFinance}
         hasYeoboBooth={hasYeoboBooth}
+        hasMetaAds={hasMetaAds}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
         hasProcurement={hasProcurement}

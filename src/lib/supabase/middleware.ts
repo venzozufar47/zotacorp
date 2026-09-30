@@ -185,7 +185,8 @@ export async function updateSession(request: NextRequest) {
       // Non-admin on admin route → send to employee home, EXCEPT
       // finance pages (cash rekening assignees) ATAU yeobo-booth pages
       // (admin Yeobo Booth via `yeobo_booth_admins` membership; lihat
-      // migration 063) ATAU halaman Finance cake (migration 150).
+      // migration 063) ATAU halaman Finance cake (migration 150) ATAU
+      // halaman Meta Ads (viewer via `meta_ads_viewers`, migration 166).
       // Page-level gate enforces — middleware hanya
       // let-through agar pages bisa di-load.
       if (onAdminRoute && !isAdmin) {
@@ -199,7 +200,17 @@ export async function updateSession(request: NextRequest) {
         // detail order) tetap terblokir di sini DAN di page-gate masing².
         const isCakeFinancePath =
           pathname === "/admin/cake-orders" || pathname === "/admin/cake-orders/";
-        if (!isFinanceAssigneePath && !isYeoboBoothPath && !isCakeFinancePath) {
+        // Sub-halaman /admin/ads/access (kelola membership) tetap
+        // terblokir di sini — sengaja hanya pathname persis "/admin/ads",
+        // page-gate-nya sendiri (getCurrentRole !== "admin") jadi lapis
+        // kedua kalau viewer coba akses langsung via URL.
+        const isMetaAdsPath = pathname === "/admin/ads" || pathname === "/admin/ads/";
+        if (
+          !isFinanceAssigneePath &&
+          !isYeoboBoothPath &&
+          !isCakeFinancePath &&
+          !isMetaAdsPath
+        ) {
           const url = request.nextUrl.clone();
           url.pathname = home;
           return NextResponse.redirect(url);

@@ -6,6 +6,7 @@ import {
   CAKE_BRANCH_LABELS,
   type CakeBranch,
 } from "@/lib/cake-orders/types";
+import { isMetaAdsViewer } from "@/lib/meta-ads/access";
 
 /**
  * Shared server-action result shape + auth gates. Extracted so multiple
@@ -313,6 +314,27 @@ export async function requireYeoboBoothAccess(): Promise<
     .eq("user_id", user.id)
     .maybeSingle();
   if (!data) return { ok: false, error: "Forbidden" };
+  return { ok: true, userId: user.id };
+}
+
+/**
+ * Meta Ads Insights — boleh MELIHAT dashboard /admin/ads: admin global
+ * atau meta_ads_viewers membership (migration 166). Manajemen membership
+ * itu sendiri (add/remove viewer) tetap admin-only lewat `requireAdmin`
+ * langsung di `meta-ads-viewers.actions.ts`, sama seperti pola
+ * yeobo_booth_admins / revenue_dashboard_viewers.
+ */
+export async function requireMetaAdsAccess(): Promise<
+  { ok: true; userId: string } | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const role = await getCurrentRole();
+  if (role === "admin") return { ok: true, userId: user.id };
+  // Reuses the cached() lookup — layout + page already call isMetaAdsViewer()
+  // in the same request, so this dedupes to zero extra DB round trips
+  // instead of re-querying `meta_ads_viewers` a second time.
+  if (!(await isMetaAdsViewer())) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
 }
 
