@@ -149,9 +149,10 @@ export function AdminAovCard({
             Bulan ini
           </span>
 
+          <GroupHead>Pare</GroupHead>
           <AovRow
             icon={<WalletIcon size={13} />}
-            label="POS Hbc Pare"
+            label="POS"
             day={aov(today.posHbcPareToday, today.posHbcPareTodayCount)}
             month={aov(today.posHbcPareMonth, today.posHbcPareMonthCount)}
             delta={monthDelta(
@@ -164,8 +165,24 @@ export function AdminAovCard({
             )}
           />
           <AovRow
+            icon={<CakeSlice size={13} />}
+            label="Cake"
+            day={aov(today.cakeHbcPareToday, today.cakeHbcPareTodayCount)}
+            month={aov(today.cakeHbcPareMonth, today.cakeHbcPareMonthCount)}
+            delta={monthDelta(
+              aov(
+                today.cakeHbcPareMonth - today.cakeHbcPareToday,
+                today.cakeHbcPareMonthCount - today.cakeHbcPareTodayCount
+              ),
+              cmp?.cakeHbcPareCount ? aov(cmp.cakeHbcPare, cmp.cakeHbcPareCount) : null,
+              cmp?.prevLabel
+            )}
+          />
+
+          <GroupHead>Semarang</GroupHead>
+          <AovRow
             icon={<WalletIcon size={13} />}
-            label="POS Hbc Smg"
+            label="POS"
             day={aov(today.posHbcSmgToday, today.posHbcSmgTodayCount)}
             month={aov(today.posHbcSmgMonth, today.posHbcSmgMonthCount)}
             delta={monthDelta(
@@ -179,21 +196,7 @@ export function AdminAovCard({
           />
           <AovRow
             icon={<CakeSlice size={13} />}
-            label="Cake Hbc Pare"
-            day={aov(today.cakeHbcPareToday, today.cakeHbcPareTodayCount)}
-            month={aov(today.cakeHbcPareMonth, today.cakeHbcPareMonthCount)}
-            delta={monthDelta(
-              aov(
-                today.cakeHbcPareMonth - today.cakeHbcPareToday,
-                today.cakeHbcPareMonthCount - today.cakeHbcPareTodayCount
-              ),
-              cmp?.cakeHbcPareCount ? aov(cmp.cakeHbcPare, cmp.cakeHbcPareCount) : null,
-              cmp?.prevLabel
-            )}
-          />
-          <AovRow
-            icon={<CakeSlice size={13} />}
-            label="Cake Hbc Smg"
+            label="Cake"
             day={aov(today.cakeHbcSmgToday, today.cakeHbcSmgTodayCount)}
             month={aov(today.cakeHbcSmgMonth, today.cakeHbcSmgMonthCount)}
             delta={monthDelta(

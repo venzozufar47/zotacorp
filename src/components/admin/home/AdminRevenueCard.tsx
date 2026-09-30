@@ -339,9 +339,10 @@ export function AdminRevenueCard({
 
           {today && (
             <>
+              <GroupHead>Pare</GroupHead>
               <RevenueRow
                 icon={<WalletIcon size={13} />}
-                label="POS Hbc Pare"
+                label="POS"
                 href="/pospare"
                 day={today.posHbcPareToday}
                 month={displayMonth(today.posHbcPareMonth)}
@@ -358,8 +359,27 @@ export function AdminRevenueCard({
                 )}
               />
               <RevenueRow
+                icon={<CakeSlice size={13} />}
+                label="Cake"
+                day={today.cakeHbcPareToday}
+                month={displayMonth(today.cakeHbcPareMonth)}
+                projected={projected}
+                onToggleMonth={toggleMode}
+                canToggle={canProject}
+                delta={deltaFor(
+                  today.cakeHbcPareMonth,
+                  today.cakeHbcPareToday,
+                  cmp?.cakeHbcPare,
+                  cmp?.prevLabel,
+                  today.prevMonthFull.cakeHbcPare,
+                  today.prevMonthFull.label
+                )}
+              />
+
+              <GroupHead>Semarang</GroupHead>
+              <RevenueRow
                 icon={<WalletIcon size={13} />}
-                label="POS Hbc Smg"
+                label="POS"
                 href="/possemarang"
                 day={today.posHbcSmgToday}
                 month={displayMonth(today.posHbcSmgMonth)}
@@ -377,24 +397,7 @@ export function AdminRevenueCard({
               />
               <RevenueRow
                 icon={<CakeSlice size={13} />}
-                label="Cake Hbc Pare"
-                day={today.cakeHbcPareToday}
-                month={displayMonth(today.cakeHbcPareMonth)}
-                projected={projected}
-                onToggleMonth={toggleMode}
-                canToggle={canProject}
-                delta={deltaFor(
-                  today.cakeHbcPareMonth,
-                  today.cakeHbcPareToday,
-                  cmp?.cakeHbcPare,
-                  cmp?.prevLabel,
-                  today.prevMonthFull.cakeHbcPare,
-                  today.prevMonthFull.label
-                )}
-              />
-              <RevenueRow
-                icon={<CakeSlice size={13} />}
-                label="Cake Hbc Smg"
+                label="Cake"
                 day={today.cakeHbcSmgToday}
                 month={displayMonth(today.cakeHbcSmgMonth)}
                 projected={projected}

@@ -19,10 +19,10 @@ import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmation
 import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
-import { AdminAovCard } from "./AdminAovCard";
-import { AdminOpsCard } from "./AdminOpsCard";
-import { AdminRevenueCard } from "./AdminRevenueCard";
+import { BranchCardsGrid } from "./BranchCardsGrid";
+import { StudioOpsSummary } from "./StudioOpsSummary";
 import { RevenueDashboardViewersManager } from "./RevenueDashboardViewersManager";
+import { formatRpCompact } from "@/lib/cashflow/format";
 import type { YeoboRevenue, YeoboUtilization } from "@/lib/actions/admin-home-yeobo.actions";
 import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
 import type { RevenueDashboardViewerRow } from "@/lib/actions/revenue-dashboard-viewers.actions";
@@ -96,8 +96,24 @@ export function AdminHomePage({
   });
 
   const inbox = buildInbox(pendingConfirmations, disputes, userDirectory);
-  const totalPending = inbox.length;
+  // Total SESUNGGUHNYA, bukan panjang `inbox` — buildInbox memotong ke 6
+  // baris teratas untuk daftar (lihat komentarnya), jadi count di sini
+  // HARUS dari sumber sebelum dipotong. Sebelumnya keduanya dari
+  // `inbox.length`, membuat bel notifikasi (dari pendingConfirmations
+  // mentah) dan teks "menunggu" di hero/Inbox tidak pernah sinkron begitu
+  // pending lebih dari 6.
+  const totalPending = pendingConfirmations.length + disputes.length;
   const onDutyCount = today.clockedInNow.filter((p) => !p.checkedOut).length;
+  // Total omzet bulan ini SEMUA cabang — Haengbocake (POS+Cake, Pare+
+  // Semarang) + Yeobo Space (3 cabang). Angka aktual (bukan proyeksi):
+  // hero cuma menyampaikan fakta sekali pandang, togglenya sendiri hidup
+  // di BranchCardsGrid untuk yang butuh detail per cabang.
+  const totalMonthOmzet =
+    today.posHbcPareMonth +
+    today.posHbcSmgMonth +
+    today.cakeHbcPareMonth +
+    today.cakeHbcSmgMonth +
+    (yeoboRevenue?.branches.reduce((sum, b) => sum + b.month, 0) ?? 0);
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -143,8 +159,8 @@ export function AdminHomePage({
         <div className="relative z-[1] flex flex-col gap-2 min-w-[220px]">
           <HeroStat label="Employees" value={today.totalEmployees} />
           <HeroStat
-            label="Clocked in"
-            value={`${onDutyCount} / ${today.totalEmployees}`}
+            label="Omzet bulan ini"
+            value={`Rp ${formatRpCompact(totalMonthOmzet)}`}
           />
         </div>
       </section>
@@ -183,25 +199,29 @@ export function AdminHomePage({
         </button>
       </header>
 
-      {/* KPI — dipadatkan: omzet 3 baris × (hari ini | bulan ini) dalam satu
-          kartu, di samping kartu operasional (Service Level, ditarik expired,
-          kecepatan tiket studio). */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-        <div className="space-y-2">
-          <AdminRevenueCard today={today} yeobo={yeoboRevenue} cashBalances={cashBalances} />
+      {/* Satu kartu per cabang (Pare, Semarang, Jebres, Tembalang,
+          Tlogosari) — omzet, AOV, dan operasional cabang itu sekaligus,
+          bukan tiga kartu terpisah yang masing-masing melintasi semua
+          cabang. Sisa yang bukan milik satu cabang (kecepatan tiket
+          studio, quick-access review foto) turun ke StudioOpsSummary. */}
+      <BranchCardsGrid
+        today={today}
+        ops={opsMetrics}
+        yeobo={yeoboRevenue}
+        yeoboUtilization={yeoboUtilization}
+        cashBalances={cashBalances}
+      />
+
+      <StudioOpsSummary
+        ticketKpi={opsMetrics.ticketKpi}
+        cleaningReviewQuickAccess={cleaningReviewQuickAccess}
+        footer={
           <RevenueDashboardViewersManager
             viewers={revenueViewers}
             candidates={revenueViewerCandidates}
           />
-        </div>
-        <AdminOpsCard
-          ops={opsMetrics}
-          yeoboUtilization={yeoboUtilization}
-          cleaningReviewQuickAccess={cleaningReviewQuickAccess}
-        />
-      </div>
-
-      <AdminAovCard today={today} yeobo={yeoboRevenue} />
+        }
+      />
 
       {/* CLEANING — management by exception. Muncul HANYA untuk miss
           terkonfirmasi: karyawan yang KEMARIN hadir + dijadwalkan bersih
@@ -258,7 +278,9 @@ export function AdminHomePage({
             sub={
               totalPending === 0
                 ? "All clear, nothing waiting"
-                : `${totalPending} waiting · resolve from here`
+                : inbox.length < totalPending
+                  ? `${totalPending} waiting · showing ${inbox.length} most recent`
+                  : `${totalPending} waiting · resolve from here`
             }
           />
           <div className="px-2 pb-2">
@@ -272,24 +294,32 @@ export function AdminHomePage({
                 Nothing waiting. 🌴
               </div>
             ) : (
-              inbox.map((it) => (
-                <InboxRow
-                  key={it.id}
-                  item={it}
-                  onSubject={() =>
-                    it.href
-                      ? router.push(it.href)
-                      : setDrawer({
-                          userId: it.userId,
-                          fullName: it.userName,
-                          avatarUrl: it.userAvatarUrl,
-                          avatarSeed: it.userAvatarSeed,
-                          caption: it.desc,
-                          pendingRegistration: it.isRegistration,
-                        })
-                  }
-                />
-              ))
+              <>
+                {inbox.map((it) => (
+                  <InboxRow
+                    key={it.id}
+                    item={it}
+                    onSubject={() =>
+                      it.href
+                        ? router.push(it.href)
+                        : setDrawer({
+                            userId: it.userId,
+                            fullName: it.userName,
+                            avatarUrl: it.userAvatarUrl,
+                            avatarSeed: it.userAvatarSeed,
+                            caption: it.desc,
+                            pendingRegistration: it.isRegistration,
+                          })
+                    }
+                  />
+                ))}
+                {inbox.length < totalPending && (
+                  <p className="px-3 py-2 text-[11.5px] text-muted-foreground">
+                    +{totalPending - inbox.length} lainnya — lihat di halaman masing-masing
+                    (Kehadiran, Tiket Studio, dll).
+                  </p>
+                )}
+              </>
             )}
           </div>
         </Card>
