@@ -50,11 +50,25 @@ export interface DayBreakdown {
   payments: PaymentRow[];
 }
 
+export interface OutstandingOrder {
+  orderId: string;
+  customerName: string;
+  branch: string | null;
+  status: string;
+  /** Tanggal ambil/kirim (yyyy-mm-dd, WIB). */
+  scheduledDate: string | null;
+  total: number;
+  paid: number;
+  remaining: number;
+}
+
 export interface OutstandingSummary {
   /** Jumlah sisa tagihan semua order yang punya pembayaran di bulan ini. */
   amount: number;
   /** Berapa order di antaranya yang masih punya sisa tagihan. */
   orderCount: number;
+  /** Order yang belum lunas, jadwal terlama dulu (paling mendesak). */
+  orders: OutstandingOrder[];
 }
 
 interface BonusMonth {
@@ -65,7 +79,7 @@ interface BonusMonth {
   outstanding: OutstandingSummary;
 }
 
-const NO_OUTSTANDING: OutstandingSummary = { amount: 0, orderCount: 0 };
+const NO_OUTSTANDING: OutstandingSummary = { amount: 0, orderCount: 0, orders: [] };
 
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
@@ -99,6 +113,7 @@ export async function getCustomCakeBonusMonth(
       total_idr: number;
       paid_idr: number;
       refund_idr: number;
+      scheduled_at: string | null;
     };
   };
 
@@ -111,7 +126,7 @@ export async function getCustomCakeBonusMonth(
     const { data, error } = await supabase
       .from("cake_order_payments")
       .select(
-        "id, cake_order_id, kind, label, amount_idr, notes, paid_at, cake_orders!inner(customer_name, branch, status, free_claim, total_idr, paid_idr, refund_idr)"
+        "id, cake_order_id, kind, label, amount_idr, notes, paid_at, cake_orders!inner(customer_name, branch, status, free_claim, total_idr, paid_idr, refund_idr, scheduled_at)"
       )
       .gte("paid_at", `${monthStartWib}T00:00:00+07:00`)
       .lt("paid_at", `${monthEndWibExcl}T00:00:00+07:00`)
@@ -130,7 +145,7 @@ export async function getCustomCakeBonusMonth(
   // Aturan yang sama dengan gerbang kurang-bayar kasir POS. Order yang
   // sudah di-refund penuh bukan piutang — uangnya memang dikembalikan.
   const remainingByOrder = new Map<string, number>();
-  const outstanding: OutstandingSummary = { amount: 0, orderCount: 0 };
+  const outstanding: OutstandingSummary = { amount: 0, orderCount: 0, orders: [] };
   for (const r of rows) {
     if (r.cake_orders.free_claim || remainingByOrder.has(r.cake_order_id)) continue;
     const s = summarizeFromOrder({
@@ -144,8 +159,28 @@ export async function getCustomCakeBonusMonth(
     if (remaining > 0) {
       outstanding.amount += remaining;
       outstanding.orderCount += 1;
+      const sched = r.cake_orders.scheduled_at
+        ? Date.parse(r.cake_orders.scheduled_at)
+        : NaN;
+      outstanding.orders.push({
+        orderId: r.cake_order_id,
+        customerName: r.cake_orders.customer_name,
+        branch: r.cake_orders.branch,
+        status: r.cake_orders.status,
+        scheduledDate: Number.isNaN(sched)
+          ? null
+          : new Date(sched + WIB_OFFSET_MS).toISOString().slice(0, 10),
+        total: s.total,
+        paid: s.net,
+        remaining,
+      });
     }
   }
+  outstanding.orders.sort(
+    (a, b) =>
+      (a.scheduledDate ?? "9999").localeCompare(b.scheduledDate ?? "9999") ||
+      b.remaining - a.remaining
+  );
 
   const byDate = new Map<string, PaymentRow[]>();
   for (const r of rows) {

@@ -1,8 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { toast } from "sonner";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Info,
+} from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import { dailyTier, TIER_CAP, TIER_MIN } from "@/lib/cake-bonus/tier-formula";
 import type {
@@ -129,6 +137,8 @@ export function CustomCakeBonusView({
         />
       </div>
 
+      <OutstandingList outstanding={outstanding} monthLabel={monthLabel} />
+
       <details className="group rounded-lg bg-accent px-3 py-2 text-[11px] text-[var(--teal-700)]">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium">
           <Info size={12} className="shrink-0" />
@@ -174,6 +184,92 @@ export function CustomCakeBonusView({
         </ul>
       )}
     </section>
+  );
+}
+
+function reminderText(o: OutstandingSummary, monthLabel: string): string {
+  const lines = o.orders.map((x, i) => {
+    const when = x.scheduledDate ? ` · jadwal ${formatDate(x.scheduledDate)}` : "";
+    const branch = BRANCH_LABEL[x.branch ?? ""] ?? "cabang ?";
+    return `${i + 1}. ${x.customerName} (${branch})${when} · sisa ${formatRp(x.remaining)}`;
+  });
+  return [
+    `Pengingat order custom cake yang belum lunas — ${monthLabel}`,
+    "Pelunasan yang segera dicatat masuk ke omset & bonus hari pencatatan.",
+    "",
+    ...lines,
+    "",
+    `Total: ${formatRp(o.amount)} (${o.orderCount} order)`,
+  ].join("\n");
+}
+
+function OutstandingList({
+  outstanding,
+  monthLabel,
+}: {
+  outstanding: OutstandingSummary;
+  monthLabel: string;
+}) {
+  if (outstanding.orders.length === 0) return null;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(reminderText(outstanding, monthLabel));
+      toast.success("Pengingat disalin — tinggal tempel ke WhatsApp");
+    } catch {
+      toast.error("Gagal menyalin. Salin manual dari daftar.");
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <p className="text-xs font-semibold text-amber-900">
+            Order belum lunas ({outstanding.orderCount})
+          </p>
+          <p className="text-[10px] text-amber-800/80">
+            Begitu pelunasan dicatat, nominalnya masuk omset &amp; bonus di
+            hari pencatatan.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={copy}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-400 bg-card px-2.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+        >
+          <Copy size={12} />
+          Salin pengingat
+        </button>
+      </div>
+      <ul className="space-y-1">
+        {outstanding.orders.map((o) => (
+          <li key={o.orderId}>
+            <Link
+              href={`/admin/cake-orders/${o.orderId}`}
+              className="flex items-center gap-2 rounded-md border border-border bg-card p-1.5 hover:bg-muted/40"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-xs">
+                  <span className="font-medium">{o.customerName}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {BRANCH_LABEL[o.branch ?? ""] ?? "cabang ?"}
+                    {o.scheduledDate ? ` · jadwal ${formatDate(o.scheduledDate)}` : ""}
+                  </span>
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Dibayar {formatRp(o.paid)} dari {formatRp(o.total)}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-bold tabular-nums text-amber-800">
+                {formatRp(o.remaining)}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
