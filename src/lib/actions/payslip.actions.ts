@@ -20,6 +20,7 @@ import {
   type FinalizeBlocker,
 } from "@/lib/payslip/finalize-guard";
 import { explainNetTotal } from "@/lib/payslip/net-total";
+import { attendanceAffectsPay, shortDayLabel } from "@/lib/payslip/attendance-gate";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { getCakeBonusDetailByPosition } from "@/lib/cake-bonus";
 import { isCakeBonusPosition } from "@/lib/cake-bonus/positions";
@@ -2187,13 +2188,38 @@ export async function submitPayslipResponse(
   // gives a friendlier error than a generic Postgres reject.
   const { data: payslip } = await supabase
     .from("payslips")
-    .select("user_id, status")
+    .select("user_id, status, month, year")
     .eq("id", payslipId)
     .maybeSingle();
   if (!payslip) return { error: "Payslip not found" };
   if (payslip.user_id !== user.id) return { error: "Not your payslip" };
   if (payslip.status !== "finalized")
     return { error: "Only finalized payslips can be responded to" };
+
+  // Konfirmasi dikunci selama masih ada hari lupa check-out di periode slip
+  // (hanya untuk basis gaji yang memakai kehadiran). Sanggah/reset tetap
+  // boleh — itu jalan keluar karyawan. Aturan sama dengan UI.
+  if (kind === "acknowledged") {
+    const { data: s } = await supabase
+      .from("payslip_settings")
+      .select("calculation_basis")
+      .eq("user_id", payslip.user_id)
+      .maybeSingle();
+    if (attendanceAffectsPay(s?.calculation_basis)) {
+      const missing = (
+        await getIncompleteAttendanceByPeriod(payslip.user_id)
+      )[`${payslip.year}-${String(payslip.month).padStart(2, "0")}`];
+      if (missing && missing.length > 0) {
+        return {
+          error:
+            `Ada ${missing.length} hari lupa check-out (${missing
+              .map(shortDayLabel)
+              .join(", ")}) yang belum dihitung. Konfirmasi dikunci — ` +
+            `pakai "Sanggah" untuk lapor ke admin.`,
+        };
+      }
+    }
+  }
 
   const trimmed = (message ?? "").trim();
   if (kind === "issue" && !trimmed)

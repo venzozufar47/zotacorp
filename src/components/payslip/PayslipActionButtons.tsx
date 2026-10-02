@@ -26,6 +26,7 @@ import {
   type EmployeeResponseKind,
 } from "@/lib/actions/payslip.actions";
 import { downloadPayslipPdf } from "@/lib/payslip/downloadPdf";
+import { attendanceAffectsPay } from "@/lib/payslip/attendance-gate";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import type {
   Payslip,
@@ -41,7 +42,8 @@ interface Props {
   profile: Profile | null;
   /** Tanggal "YYYY-MM-DD" pada periode slip ini yang check-out-nya kosong.
    *  Hari seperti itu tidak dihitung sebagai hari kerja sama sekali, jadi
-   *  karyawan harus melihatnya SEBELUM menekan Konfirmasi. */
+   *  karyawan harus melihatnya SEBELUM menekan Konfirmasi (yang dikunci
+   *  selama daftar ini tidak kosong, untuk basis gaji berbasis kehadiran). */
   incompleteAttendance?: string[];
 }
 
@@ -58,12 +60,18 @@ function formatDayLabel(ymd: string): string {
 }
 
 /**
- * Peringatan absen menggantung. Sengaja TIDAK memblokir konfirmasi —
- * karyawan mungkin memang tidak bekerja hari itu, dan mengunci tombolnya
- * akan menyandera slip yang sebenarnya sudah benar. Tugasnya membuat
- * kerugian yang senyap jadi terlihat sebelum keputusan diambil.
+ * Peringatan hari lupa check-out. Selagi masih ada, tombol Konfirmasi
+ * dikunci (UI + `submitPayslipResponse`); jalan keluar karyawan adalah
+ * Sanggah, supaya admin mengisi check-out lalu memfinalisasi ulang.
+ * Sisi admin sengaja tidak dikunci.
  */
-function IncompleteAttendanceNotice({ dates }: { dates: string[] }) {
+function IncompleteAttendanceNotice({
+  dates,
+  blocking,
+}: {
+  dates: string[];
+  blocking: boolean;
+}) {
   const { t } = useTranslation();
   const d = t.payslipDetail;
   return (
@@ -95,6 +103,7 @@ function IncompleteAttendanceNotice({ dates }: { dates: string[] }) {
             ))}
           </ul>
           <p className="text-[11px] mt-1.5" style={{ color: "#8a5a00" }}>
+            {blocking && <strong>{d.incompleteBlocked} </strong>}
             {d.incompleteAction}
           </p>
         </div>
@@ -130,6 +139,12 @@ export function PayslipActionButtons({
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const response = (p.employee_response ?? "pending") as EmployeeResponseKind;
+
+  // Hanya relevan kalau nominal gaji memang bergantung pada kehadiran.
+  const missingCheckout = attendanceAffectsPay(settings?.calculation_basis)
+    ? incompleteAttendance
+    : [];
+  const confirmBlocked = missingCheckout.length > 0;
 
   function setKind(kind: EmployeeResponseKind, message?: string) {
     startTransition(async () => {
@@ -168,8 +183,11 @@ export function PayslipActionButtons({
           keputusan konfirmasi. Tetap ditampilkan setelah karyawan menjawab:
           kalau mereka terlanjur konfirmasi, ini yang membuat mereka sadar
           masih bisa membatalkan dan menyanggah. */}
-      {incompleteAttendance.length > 0 && (
-        <IncompleteAttendanceNotice dates={incompleteAttendance} />
+      {confirmBlocked && (
+        <IncompleteAttendanceNotice
+          dates={missingCheckout}
+          blocking={response === "pending"}
+        />
       )}
 
       {/* Response state — pending shows primary actions; otherwise shows
@@ -179,7 +197,7 @@ export function PayslipActionButtons({
           <Button
             type="button"
             onClick={() => setKind("acknowledged")}
-            disabled={pending}
+            disabled={pending || confirmBlocked}
             loading={pending}
             className="h-11 gap-2 text-white"
             style={{ background: "var(--primary, #117a8c)" }}

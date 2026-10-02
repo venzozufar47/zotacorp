@@ -547,10 +547,12 @@ export const dictionary = {
       bannerAcknowledged: "Confirmed",
       bannerIssue: "Reported issue",
       // Incomplete attendance warning (shown above the confirm buttons)
-      incompleteTitle: "{count} day(s) missing a check-out",
+      incompleteTitle: "{count} day(s) you forgot to check out",
       incompleteBody:
-        "These days have a check-in but no check-out, so they are NOT counted as work days — which lowers your prorated pay. Check before confirming.",
-      incompleteAction: "Wrong? Use “Dispute” below to tell admin.",
+        "These days have a check-in but no check-out, so they are NOT counted as work days — which lowers your prorated pay.",
+      incompleteBlocked: "Confirm is locked until your attendance is complete.",
+      incompleteAction:
+        "Use “Dispute” below to ask admin to fill in the check-out.",
       // Dispute dialog
       disputeDialogTitle: "Report an issue on this payslip",
       disputeDialogDescription:
@@ -1248,10 +1250,13 @@ export const dictionary = {
       actionSendToAdmin: "Kirim ke admin",
       bannerAcknowledged: "Sudah dikonfirmasi",
       bannerIssue: "Lapor masalah",
-      incompleteTitle: "{count} hari absennya belum lengkap",
+      incompleteTitle: "{count} hari lupa check-out (sign out)",
       incompleteBody:
-        "Hari berikut ada check-in tapi tidak ada check-out, jadi TIDAK dihitung sebagai hari kerja — dan itu mengurangi gaji prorata kamu. Cek dulu sebelum konfirmasi.",
-      incompleteAction: "Kalau tidak sesuai, pakai “Sanggah” di bawah untuk lapor ke admin.",
+        "Hari berikut ada check-in tapi tidak ada check-out, jadi TIDAK dihitung sebagai hari kerja — dan itu mengurangi gaji prorata kamu.",
+      incompleteBlocked:
+        "Tombol Konfirmasi dikunci sampai absennya dilengkapi.",
+      incompleteAction:
+        "Pakai “Sanggah” di bawah untuk minta admin mengisi check-out-nya.",
       disputeDialogTitle: "Sanggah slip gaji",
       disputeDialogDescription:
         "Tulis apa yang tidak sesuai (mis. nilai salah, denda telat tidak seharusnya, lembur belum dihitung). Admin akan tinjau dan menghubungi kamu.",
