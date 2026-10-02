@@ -32,6 +32,11 @@ export interface Subscription {
   allocations: SubscriptionAllocation[];
 }
 
+/** "Rp 1.200.000" — pembulatan ke rupiah penuh. */
+export function formatIdr(n: number): string {
+  return "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
+}
+
 /** Nominal per bulan dari nominal per siklus (tahunan ÷ 12, dst). */
 export function monthlyEquivalent(amountIdr: number, cycle: BillingCycle): number {
   return amountIdr / CYCLE_MONTHS[cycle];

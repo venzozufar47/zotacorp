@@ -12,9 +12,9 @@ import {
   RefreshCw,
   Split,
   Trash2,
+  User,
   X,
 } from "lucide-react";
-import { formatRp } from "@/lib/cashflow/format";
 import {
   deleteSubscription,
   renewSubscription,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/actions/subscriptions.actions";
 import {
   CYCLE_LABEL,
+  formatIdr as formatRp,
   monthlyEquivalent,
   renewalStatus,
   type BillingCycle,
@@ -30,10 +31,12 @@ import {
   type SubscriptionAllocation,
 } from "@/lib/subscriptions/types";
 import {
-  GENERAL_BU,
+  PERSONAL_BU,
+  REGISTRY_BUSINESS_UNITS,
   branchesFor,
   buLabel,
   compareBu,
+  isPersonalBu,
 } from "@/lib/admin-registry/taxonomy";
 import {
   BuBranchSelect,
@@ -115,12 +118,19 @@ export function SubscriptionsManager({
     return [...m.entries()].sort((a, b) => compareBu(a[0], b[0]));
   }, [filtered]);
 
-  // Ringkasan hanya untuk yang AKTIF dan dalam cakupan filter.
+  // Ringkasan hanya untuk yang AKTIF dan dalam cakupan filter. Biaya pribadi
+  // owner dipisah dari total bisnis supaya tidak menggelembungkan biaya unit.
   const active = filtered.filter((r) => r.sub.isActive);
-  const monthlyTotal = active.reduce(
-    (s, r) => s + monthlyEquivalent(r.alloc.amountIdr, r.sub.billingCycle),
-    0
-  );
+  const monthlyOf = (rs: Row[]) =>
+    rs.reduce(
+      (s, r) => s + monthlyEquivalent(r.alloc.amountIdr, r.sub.billingCycle),
+      0
+    );
+  const personalRows = active.filter((r) => isPersonalBu(r.alloc.businessUnit));
+  const businessRows = active.filter((r) => !isPersonalBu(r.alloc.businessUnit));
+  const personalOnly = buFilter === PERSONAL_BU;
+  const monthlyTotal = monthlyOf(personalOnly ? personalRows : businessRows);
+  const personalMonthly = monthlyOf(personalRows);
   const dueRows = active.filter((r) => {
     const st = renewalStatus(r.sub.nextRenewalDate, today).status;
     return st === "overdue" || st === "today" || st === "soon";
@@ -131,7 +141,15 @@ export function SubscriptionsManager({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <Stat label="Per bulan" value={formatRp(monthlyTotal)} />
+        <Stat
+          label={personalOnly ? "Pribadi per bulan" : "Per bulan"}
+          value={formatRp(monthlyTotal)}
+          hint={
+            !personalOnly && personalMonthly > 0
+              ? `+ ${formatRp(personalMonthly)} pribadi (tidak dihitung)`
+              : undefined
+          }
+        />
         <Stat label="Per tahun (estimasi)" value={formatRp(monthlyTotal * 12)} />
         <Stat
           label="Perlu diperpanjang (≤ 7 hari)"
@@ -174,7 +192,8 @@ export function SubscriptionsManager({
           return (
             <section key={bu} className="space-y-2">
               <h2 className="flex items-baseline justify-between gap-2 font-display font-bold text-sm">
-                <span>
+                <span className="inline-flex items-center gap-1.5">
+                  {isPersonalBu(bu) && <User size={13} aria-hidden />}
                   {buLabel(bu)}{" "}
                   <span className="font-normal text-muted-foreground">({list.length})</span>
                 </span>
@@ -479,8 +498,7 @@ function SubscriptionFormDialog({
   }
 
   function nextFreeBu(exclude: string): string {
-    const all = ["Haengbocake", "Yeobo Space", "Yeobo Booth", "Mamaya House", "Gritamora", GENERAL_BU];
-    return all.find((b) => b !== exclude) ?? GENERAL_BU;
+    return REGISTRY_BUSINESS_UNITS.find((b) => b !== exclude) ?? PERSONAL_BU;
   }
 
   function patchRow(key: number, p: Partial<SplitRow>) {

@@ -17,6 +17,7 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  User,
 } from "lucide-react";
 import {
   deleteManagedAccount,
@@ -24,7 +25,7 @@ import {
   saveManagedAccount,
 } from "@/lib/actions/managed-accounts.actions";
 import type { ManagedAccount } from "@/lib/accounts/types";
-import { buLabel, compareBu } from "@/lib/admin-registry/taxonomy";
+import { buLabel, compareBu, isPersonalBu } from "@/lib/admin-registry/taxonomy";
 import {
   BuBranchSelect,
   Field,
@@ -145,7 +146,8 @@ export function AccountsManager({ accounts }: { accounts: ManagedAccount[] }) {
       ) : (
         groups.map(([bu, list]) => (
           <section key={bu} className="space-y-2">
-            <h2 className="font-display font-bold text-sm">
+            <h2 className="inline-flex items-center gap-1.5 font-display font-bold text-sm">
+              {isPersonalBu(bu) && <User size={13} aria-hidden />}
               {buLabel(bu)}{" "}
               <span className="font-normal text-muted-foreground">({list.length})</span>
             </h2>

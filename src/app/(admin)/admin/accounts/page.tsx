@@ -23,7 +23,7 @@ export default async function AdminAccountsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Akun & Password"
-        subtitle="Simpan login per unit & cabang. Cukup email dan password; info lain opsional."
+        subtitle="Simpan login per unit & cabang, atau pribadi owner. Cukup email dan password; info lain opsional."
       />
       <AccountsManager accounts={accounts} />
     </div>

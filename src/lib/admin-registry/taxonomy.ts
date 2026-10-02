@@ -1,16 +1,20 @@
-import {
-  HAENGBOCAKE_BRANCHES,
-  YEOBO_BRANCH_ORDER,
-} from "@/lib/cashflow/categories";
-
 /**
  * Pengelompokan Business Unit + Cabang untuk registri admin (Subscription &
- * Akun). Cabang diambil dari konstanta yang sama dengan PnL supaya daftarnya
- * tidak pernah drift dari yang dipakai keuangan.
+ * Akun). SENGAJA berdiri sendiri — tidak terhubung ke PnL/keuangan — jadi
+ * daftar cabang ditulis di sini dan tidak mengikuti perubahan kode keuangan.
  */
+const HAENGBOCAKE_BRANCHES = ["Pusat", "Semarang", "Pare", "Mamaya"] as const;
+const YEOBO_BRANCHES = ["Tlogosari", "Tembalang", "Jebres"] as const;
 
 /** "Umum" = biaya/akun lintas unit (tidak milik satu BU). */
 export const GENERAL_BU = "Umum";
+
+/**
+ * "Pribadi" = milik owner pribadi, BUKAN biaya bisnis. Diperlakukan sebagai
+ * "unit" biasa di data (teks), tapi total biaya bisnis di halaman
+ * Subscription tidak menghitungnya.
+ */
+export const PERSONAL_BU = "Pribadi";
 
 export const REGISTRY_BUSINESS_UNITS = [
   "Haengbocake",
@@ -19,16 +23,23 @@ export const REGISTRY_BUSINESS_UNITS = [
   "Mamaya House",
   "Gritamora",
   GENERAL_BU,
+  PERSONAL_BU,
 ] as const;
 
+export function isPersonalBu(bu: string): boolean {
+  return bu === PERSONAL_BU;
+}
+
 export function buLabel(bu: string): string {
-  return bu === GENERAL_BU ? "Umum (lintas unit)" : bu;
+  if (bu === GENERAL_BU) return "Umum (lintas unit)";
+  if (bu === PERSONAL_BU) return "Pribadi (owner)";
+  return bu;
 }
 
 /** Pilihan cabang untuk satu BU. Kosong = BU tanpa cabang (dropdown disembunyikan). */
 export function branchesFor(bu: string): readonly string[] {
   if (bu === "Haengbocake") return HAENGBOCAKE_BRANCHES;
-  if (bu === "Yeobo Space") return YEOBO_BRANCH_ORDER;
+  if (bu === "Yeobo Space") return YEOBO_BRANCHES;
   return [];
 }
 

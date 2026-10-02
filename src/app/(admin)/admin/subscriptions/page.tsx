@@ -23,7 +23,7 @@ export default async function AdminSubscriptionsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Subscription"
-        subtitle="Langganan per unit & cabang, tanggal pembaruan, dan pembagian biayanya."
+        subtitle="Langganan per unit & cabang (atau pribadi owner), tanggal pembaruan, dan pembagian biayanya."
       />
       <SubscriptionsManager
         subscriptions={subscriptions}
