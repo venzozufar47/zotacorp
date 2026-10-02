@@ -1904,7 +1904,17 @@ function MonthlyRow({
           {numCell(payslip?.extra_work_pay)}
         </td>
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-emerald-700">
-          {numCell(payslip?.monthly_bonus)}
+          {payslip
+            ? formatRp(
+                Number(payslip.monthly_bonus ?? 0) +
+                  Number(payslip.cake_bonus ?? 0)
+              )
+            : "—"}
+          {Number(payslip?.cake_bonus ?? 0) > 0 && (
+            <span className="block text-[10px] text-muted-foreground">
+              termasuk cake {formatRp(Number(payslip?.cake_bonus))}
+            </span>
+          )}
         </td>
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-destructive/80">
           {payslip ? `−${formatRp(Number(payslip.debt_deduction))}` : "—"}
