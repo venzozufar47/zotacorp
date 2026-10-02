@@ -2,13 +2,9 @@
 
 import { useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import {
-  AlertCircle,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
+import { dailyTier, TIER_CAP, TIER_MIN } from "@/lib/cake-bonus/tier-formula";
 import type {
   DayBreakdown,
   PaymentRow,
@@ -22,11 +18,6 @@ interface Props {
   totalBonus: number;
 }
 
-const MONTHS_ID = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-];
-
 function formatDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString("id-ID", {
@@ -35,6 +26,9 @@ function formatDate(iso: string): string {
     month: "short",
   });
 }
+
+/** Rp 550.000 → "550rb" untuk label ringkas. */
+const rb = (n: number) => `${Math.round(n / 1000)}rb`;
 
 const KIND_LABEL: Record<string, string> = {
   dp: "DP",
@@ -58,14 +52,6 @@ export function CustomCakeBonusView({
   const pathname = usePathname();
   const sp = useSearchParams();
 
-  function setPeriod(m: number, y: number) {
-    const params = new URLSearchParams(sp.toString());
-    params.set("month", String(m));
-    params.set("year", String(y));
-    params.set("view", "bonus-cake");
-    router.push(`${pathname}?${params.toString()}`);
-  }
-
   function shiftMonth(delta: number) {
     let m = month + delta;
     let y = year;
@@ -76,227 +62,215 @@ export function CustomCakeBonusView({
       m = 1;
       y += 1;
     }
-    setPeriod(m, y);
+    const params = new URLSearchParams(sp.toString());
+    params.set("month", String(m));
+    params.set("year", String(y));
+    params.set("view", "bonus-cake");
+    router.push(`${pathname}?${params.toString()}`);
   }
 
-  const showLain = days.some((d) => d.lain !== 0);
-  const columns = [
-    "",
-    "Tgl",
-    "Semarang",
-    "Pare",
-    ...(showLain ? ["Lainnya"] : []),
-    "Total",
-    "Bonus",
-  ];
+  const totalOmset = days.reduce((s, d) => s + d.total, 0);
+  const bonusDays = days.filter((d) => d.bonus > 0).length;
+  // Terbaru di atas — yang biasanya dicek admin adalah hari-hari terakhir.
+  const ordered = [...days].reverse();
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard p-4 space-y-2">
-        <div className="flex items-baseline justify-between flex-wrap gap-2">
-          <div>
-            <h3 className="font-display text-base font-bold">Bonus Cake — Admin Haengbocake</h3>
-            <p className="text-xs text-muted-foreground">
-              Berdasarkan pembayaran order custom cake per hari (DP + pelunasan
-              − refund), Haengbocake Semarang & Pare.
-              <br />
-              Formula: ≥ Rp 550k = 10% · &gt; Rp 700k = 70k + 5% selisih.
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-              Total bonus {monthLabel}
-            </p>
-            <p className="font-display text-2xl font-extrabold tabular-nums">
-              {formatRp(totalBonus)}
-            </p>
-          </div>
-        </div>
-        <div className="rounded-lg border border-[var(--teal-300,#9bd3df)] bg-accent p-2 text-[11px] text-[var(--teal-700)] flex items-start gap-1.5">
-          <AlertCircle size={12} className="mt-0.5 shrink-0" />
-          <span>
-            Otomatis masuk ke <strong>cake_bonus</strong> di payslip pemegang
-            posisi <span className="font-mono">Admin Haengbocake</span> saat
-            generate. Hari = tanggal pembayaran dicatat di order (WIB). Order
-            dibatalkan, dibuang, atau klaim gratis tidak dihitung. Klik tanggal
-            untuk melihat pembayaran yang masuk hitungan.
-          </span>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-2.5 flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={() => shiftMonth(-1)}
-          className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
-          aria-label="Bulan sebelumnya"
-        >
-          <ChevronLeft size={14} />
-        </button>
-        <select
-          value={month}
-          onChange={(e) => setPeriod(Number(e.target.value), year)}
-          className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-        >
-          {MONTHS_ID.map((label, i) => (
-            <option key={i + 1} value={i + 1}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={year}
-          onChange={(e) => setPeriod(month, Number(e.target.value))}
-          className="h-8 rounded-md border border-border bg-background px-2 text-xs tabular-nums"
-        >
-          {Array.from({ length: 5 }, (_, i) => year - 2 + i).map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={() => shiftMonth(1)}
-          className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
-          aria-label="Bulan berikutnya"
-        >
-          <ChevronRight size={14} />
-        </button>
-        <span className="text-xs font-display font-bold uppercase tracking-wider text-muted-foreground">
-          {monthLabel}
-        </span>
-      </div>
-
-      {days.length === 0 ? (
-        <section className="rounded-2xl border border-border bg-card p-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            Tidak ada pembayaran order custom cake bulan ini.
+    <section className="rounded-2xl border-2 border-foreground bg-card shadow-hard p-4 space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-display text-base font-bold">
+            Bonus Cake — Admin Haengbocake
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Dihitung dari pembayaran order custom cake, per hari.
           </p>
-        </section>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => shiftMonth(-1)}
+            className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
+            aria-label="Bulan sebelumnya"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <span className="min-w-28 text-center text-xs font-display font-bold uppercase tracking-wider">
+            {monthLabel}
+          </span>
+          <button
+            type="button"
+            onClick={() => shiftMonth(1)}
+            className="size-8 inline-flex items-center justify-center rounded-md border border-border hover:bg-muted"
+            aria-label="Bulan berikutnya"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <Stat label="Total bonus" value={formatRp(totalBonus)} emphasis />
+        <Stat label="Omset order" value={formatRp(totalOmset)} />
+        <Stat
+          label="Hari berbonus"
+          value={`${bonusDays} / ${days.length}`}
+        />
+      </div>
+
+      <details className="group rounded-lg bg-accent px-3 py-2 text-[11px] text-[var(--teal-700)]">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium">
+          <Info size={12} className="shrink-0" />
+          Cara hitung
+          <ChevronDown
+            size={12}
+            className="ml-auto transition-transform group-open:rotate-180"
+          />
+        </summary>
+        <ul className="mt-2 space-y-1 list-disc pl-4">
+          <li>
+            Omset hari = DP + pelunasan − refund dari semua order (Semarang &
+            Pare), sesuai tanggal pembayaran dicatat (WIB).
+          </li>
+          <li>
+            Di bawah Rp {rb(TIER_MIN)} → tanpa bonus · Rp {rb(TIER_MIN)}–
+            {rb(TIER_CAP)} → 10% · di atas Rp {rb(TIER_CAP)} → Rp 70rb + 5%
+            dari selisihnya.
+          </li>
+          <li>Order dibatalkan, dibuang, atau klaim gratis tidak dihitung.</li>
+          <li>
+            Otomatis masuk <strong>cake_bonus</strong> di slip gaji pemegang
+            posisi <span className="font-mono">Admin Haengbocake</span> saat
+            generate.
+          </li>
+        </ul>
+      </details>
+
+      {ordered.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+          Belum ada pembayaran order custom cake di {monthLabel}.
+        </p>
       ) : (
-        <section className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  {columns.map((c, i) => (
-                    <th
-                      key={i}
-                      className={
-                        "py-1.5 px-2 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground " +
-                        (i <= 1 ? "text-left" : "text-right")
-                      }
-                    >
-                      {c}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {days.map((d) => (
-                  <DayRow
-                    key={d.date}
-                    day={d}
-                    showLain={showLain}
-                    colCount={columns.length}
-                  />
-                ))}
-                <tr className="bg-muted/20 font-bold">
-                  <td colSpan={columns.length - 2} className="px-2 py-2 text-right">
-                    Total bonus
-                  </td>
-                  <td className="px-2 py-2 text-right tabular-nums">
-                    {formatRp(days.reduce((s, d) => s + d.total, 0))}
-                  </td>
-                  <td className="px-2 py-2 text-right tabular-nums text-quaternary">
-                    {formatRp(totalBonus)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <ul className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+          {ordered.map((d) => (
+            <DayRow key={d.date} day={d} />
+          ))}
+        </ul>
       )}
+    </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  emphasis,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div
+      className={
+        "rounded-xl border p-2.5 " +
+        (emphasis
+          ? "border-foreground bg-accent"
+          : "border-border bg-muted/30")
+      }
+    >
+      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={
+          "mt-0.5 font-display font-extrabold tabular-nums " +
+          (emphasis ? "text-lg" : "text-sm")
+        }
+      >
+        {value}
+      </p>
     </div>
   );
 }
 
-function Amount({ value }: { value: number }) {
-  if (value === 0) return <span className="text-muted-foreground/40">—</span>;
+function TierChip({ total }: { total: number }) {
+  const tier = dailyTier(total);
+  if (tier === "none") {
+    return (
+      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+        &lt; {rb(TIER_MIN)}
+      </span>
+    );
+  }
   return (
-    <span className={value < 0 ? "text-destructive" : undefined}>
-      {value < 0 ? `− ${formatRp(-value)}` : formatRp(value)}
+    <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-800">
+      {tier === "flat" ? "10%" : "70rb + 5%"}
     </span>
   );
 }
 
-function DayRow({
-  day,
-  showLain,
-  colCount,
-}: {
-  day: DayBreakdown;
-  showLain: boolean;
-  colCount: number;
-}) {
+function DayRow({ day }: { day: DayBreakdown }) {
   const [expanded, setExpanded] = useState(false);
+  const split = [
+    day.semarang !== 0 && `Semarang ${formatRp(day.semarang)}`,
+    day.pare !== 0 && `Pare ${formatRp(day.pare)}`,
+    day.lain !== 0 && `Lainnya ${formatRp(day.lain)}`,
+  ].filter(Boolean);
 
   return (
-    <>
-      <tr
-        className={`border-b border-border/50 cursor-pointer hover:bg-muted/20 ${
-          day.bonus > 0 ? "" : "text-muted-foreground"
-        }`}
+    <li className={day.bonus > 0 ? "" : "text-muted-foreground"}>
+      <button
+        type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/30"
       >
-        <td className="px-2 py-1.5 align-top">
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </td>
-        <td className="px-2 py-1.5 align-top text-xs">{formatDate(day.date)}</td>
-        <td className="px-2 py-1.5 align-top text-right tabular-nums">
-          <Amount value={day.semarang} />
-        </td>
-        <td className="px-2 py-1.5 align-top text-right tabular-nums">
-          <Amount value={day.pare} />
-        </td>
-        {showLain && (
-          <td className="px-2 py-1.5 align-top text-right tabular-nums">
-            <Amount value={day.lain} />
-          </td>
-        )}
-        <td className="px-2 py-1.5 align-top text-right tabular-nums font-medium">
-          {formatRp(day.total)}
-        </td>
-        <td className="px-2 py-1.5 align-top text-right tabular-nums font-bold text-quaternary">
-          {day.bonus > 0 ? formatRp(day.bonus) : <span className="text-muted-foreground/40">—</span>}
-        </td>
-      </tr>
+        <ChevronRight
+          size={14}
+          className={
+            "shrink-0 transition-transform " + (expanded ? "rotate-90" : "")
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium">{formatDate(day.date)}</p>
+          <p className="truncate text-[10px] text-muted-foreground">
+            {split.join(" · ")}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-medium tabular-nums">
+            {formatRp(day.total)}
+          </p>
+          <TierChip total={day.total} />
+        </div>
+        <p
+          className={
+            "w-20 shrink-0 text-right text-sm tabular-nums " +
+            (day.bonus > 0 ? "font-bold text-quaternary" : "")
+          }
+        >
+          {day.bonus > 0 ? formatRp(day.bonus) : "—"}
+        </p>
+      </button>
       {expanded && (
-        <tr className="bg-muted/10">
-          <td colSpan={colCount} className="px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
-              Pembayaran {formatDate(day.date)} ({day.payments.length})
-            </p>
-            <ul className="space-y-1">
-              {day.payments.map((p) => (
-                <PaymentItem key={p.id} p={p} />
-              ))}
-            </ul>
-          </td>
-        </tr>
+        <ul className="space-y-1 bg-muted/10 px-3 pb-2.5 pt-1">
+          {day.payments.map((p) => (
+            <PaymentItem key={p.id} p={p} />
+          ))}
+        </ul>
       )}
-    </>
+    </li>
   );
 }
 
 function PaymentItem({ p }: { p: PaymentRow }) {
   const isRefund = p.kind === "refund";
+  const detail = [p.label, p.notes].filter(Boolean).join(" · ");
   return (
     <li className="flex items-center gap-2 rounded-md border border-border bg-card p-1.5">
       <span
         className={
-          "shrink-0 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider " +
+          "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider " +
           (isRefund
             ? "bg-red-100 text-red-800"
             : p.kind === "dp"
@@ -306,17 +280,17 @@ function PaymentItem({ p }: { p: PaymentRow }) {
       >
         {KIND_LABEL[p.kind] ?? p.kind}
       </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs break-words">
+      <div className="min-w-0 flex-1">
+        <p className="break-words text-xs">
           <span className="font-medium">{p.customerName}</span>
           <span className="text-muted-foreground">
             {" "}
             · {p.time} · {BRANCH_LABEL[p.branch ?? ""] ?? "cabang ?"}
           </span>
         </p>
-        {(p.label || p.notes) && (
-          <p className="text-[10px] text-muted-foreground break-words">
-            {[p.label, p.notes].filter(Boolean).join(" · ")}
+        {detail && (
+          <p className="break-words text-[10px] text-muted-foreground">
+            {detail}
           </p>
         )}
       </div>
