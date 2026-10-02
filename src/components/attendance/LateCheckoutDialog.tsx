@@ -26,6 +26,8 @@ interface LateCheckoutDialogProps {
   isFlexibleSchedule?: boolean;
   /** Admin-configured org timezone — always wins over browser local. */
   timezone?: string;
+  /** Label tombol pemicu; default untuk tabel riwayat. */
+  triggerLabel?: string;
 }
 
 export function LateCheckoutDialog({
@@ -35,6 +37,7 @@ export function LateCheckoutDialog({
   workEndTime,
   isFlexibleSchedule,
   timezone,
+  triggerLabel = "Missing — Add checkout",
 }: LateCheckoutDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -121,7 +124,7 @@ export function LateCheckoutDialog({
         onClick={() => setOpen(true)}
         className="text-[10px] font-display font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border-2 border-foreground bg-tertiary text-foreground hover:-translate-y-0.5 transition-transform shadow-hard-sm"
       >
-        Missing — Add checkout
+        {triggerLabel}
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-md">

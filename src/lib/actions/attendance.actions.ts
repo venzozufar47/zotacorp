@@ -1499,6 +1499,53 @@ export async function getTodayAttendance() {
   return data;
 }
 
+export interface MissedCheckout {
+  id: string;
+  date: string;
+  checkedInAt: string;
+}
+
+/**
+ * Hari yang SUDAH lewat dengan check-in tapi tanpa check-out — untuk
+ * peringatan di beranda karyawan. Tanpa check-out hari itu tidak dihitung
+ * sebagai hari kerja dan mengurangi gaji prorata.
+ *
+ * Dua pengaman supaya tidak menuduh orang yang memang masih bekerja:
+ *  - hari berjalan dikecualikan;
+ *  - baris yang check-in-nya < 16 jam lalu dianggap masih shift
+ *    (mis. check-in 22:00, jam 02:00 belum pulang) — shift sehari tidak
+ *    sepanjang itu, jadi lewat 16 jam baru dianggap lupa.
+ * Jendela 60 hari: yang lebih tua urusan koreksi admin, bukan peringatan
+ * harian yang menempel selamanya.
+ */
+export async function getMyMissedCheckouts(): Promise<MissedCheckout[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const now = Date.now();
+  const today = jakartaDateString(new Date(now));
+  const since = jakartaDateString(new Date(now - 60 * 86_400_000));
+  const shiftCutoff = new Date(now - 16 * 3_600_000).toISOString();
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_logs")
+    .select("id, date, checked_in_at")
+    .eq("user_id", user.id)
+    .not("checked_in_at", "is", null)
+    .is("checked_out_at", null)
+    .gte("date", since)
+    .lt("date", today)
+    .lt("checked_in_at", shiftCutoff)
+    .order("date", { ascending: true });
+
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    date: r.date as string,
+    checkedInAt: r.checked_in_at as string,
+  }));
+}
+
 export async function getMyAttendanceLogs(limit = 30) {
   const user = await getCurrentUser();
   if (!user) return [];

@@ -8,7 +8,13 @@ import {
   getCurrentProfile,
   getCachedAttendanceSettings,
 } from "@/lib/supabase/cached";
-import { getTodayAttendance, getMyStreak } from "@/lib/actions/attendance.actions";
+import {
+  getTodayAttendance,
+  getMyStreak,
+  getMyMissedCheckouts,
+} from "@/lib/actions/attendance.actions";
+import { MissedCheckoutCard } from "@/components/dashboard/MissedCheckoutCard";
+import { attendanceAffectsPay } from "@/lib/payslip/attendance-gate";
 import { getFloorToday } from "@/lib/actions/admin-home.actions";
 import { listExtraWorkKindsForUser } from "@/lib/actions/extra-work-kinds.actions";
 import {
@@ -130,6 +136,8 @@ export default async function DashboardPage() {
     ticketResolutionKpi,
     hasHaengbocakeRevenueAccess,
     hasYeoboRevenueAccess,
+    missedCheckouts,
+    payslipBasisRes,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -169,6 +177,12 @@ export default async function DashboardPage() {
     getStudioHeadRecentResolutionKpi(),
     canViewRevenueDashboard("haengbocake"),
     canViewRevenueDashboard("yeobo"),
+    getMyMissedCheckouts(),
+    supabase
+      .from("payslip_settings")
+      .select("calculation_basis")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -246,6 +260,18 @@ export default async function DashboardPage() {
           jadi lebih mendesak daripada catatan yang cuma perlu dibaca.
           Komponennya sendiri yang menghilang saat kosong. */}
       <CleaningRedoCard items={cleaningRedoPhotos} />
+
+      {/* Hari lewat dengan sign in tapi belum sign out — memotong gaji
+          prorata dan mengunci konfirmasi slip, jadi ditaruh tinggi. */}
+      <MissedCheckoutCard
+        items={missedCheckouts}
+        affectsPay={attendanceAffectsPay(
+          payslipBasisRes.data?.calculation_basis
+        )}
+        workEndTime={profile?.work_end_time ?? undefined}
+        isFlexibleSchedule={profile?.is_flexible_schedule ?? false}
+        timezone={settings?.timezone ?? undefined}
+      />
 
       {/* Catatan pembinaan dari admin. Diletakkan tinggi: kalau ada, ia hal
           pertama yang perlu dibaca hari itu. Komponennya sendiri yang
