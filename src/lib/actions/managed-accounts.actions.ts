@@ -32,12 +32,12 @@ const optional = (max: number) =>
 
 const inputSchema = z.object({
   id: z.string().uuid().nullable(),
+  service: z.string().trim().min(1, "Nama layanan / akun wajib diisi").max(120),
   login: z.string().trim().min(1, "Email / username wajib diisi").max(200),
   /** Wajib saat membuat; kosong saat edit = password tidak diubah. */
   password: z.string().max(500).nullable(),
   businessUnit: z.string().trim().min(1).default(GENERAL_BU),
   branch: optional(80),
-  service: optional(120),
   linkedPhone: optional(40),
   loginUrl: optional(300),
   notes: optional(1000),
@@ -51,7 +51,7 @@ const COLS =
 function toAccount(r: any): ManagedAccount {
   return {
     id: r.id,
-    service: r.service ?? null,
+    service: r.service,
     login: r.login,
     businessUnit: r.business_unit,
     branch: r.branch ?? null,
@@ -69,7 +69,7 @@ export async function listManagedAccounts(): Promise<ManagedAccount[]> {
     .from("managed_accounts")
     .select(COLS)
     .order("business_unit", { ascending: true })
-    .order("service", { ascending: true, nullsFirst: false })
+    .order("service", { ascending: true })
     .order("login", { ascending: true });
   if (error) {
     console.error("[managed-accounts] list failed", error);

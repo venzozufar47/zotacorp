@@ -93,7 +93,7 @@ export function AccountsManager({ accounts }: { accounts: ManagedAccount[] }) {
       m.set(a.businessUnit, arr);
     }
     for (const arr of m.values()) {
-      arr.sort((x, y) => (x.service ?? x.login).localeCompare(y.service ?? y.login));
+      arr.sort((x, y) => x.service.localeCompare(y.service));
     }
     return [...m.entries()].sort((a, b) => compareBu(a[0], b[0]));
   }, [accounts, query, buFilter]);
@@ -252,16 +252,13 @@ function AccountRow({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-semibold break-words">{a.service ?? a.login}</span>
+            <span className="font-semibold break-words">{a.service}</span>
             {a.branch && (
               <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold">
                 {a.branch}
               </span>
             )}
           </div>
-          {a.service && (
-            <p className="text-[11px] text-muted-foreground break-all">{a.login}</p>
-          )}
         </div>
         <button type="button" onClick={onEdit} className={smallBtn}>
           <Pencil size={13} /> Ubah
@@ -384,10 +381,11 @@ function AccountFormDialog({
   const [phone, setPhone] = useState(account?.linkedPhone ?? "");
   const [url, setUrl] = useState(account?.loginUrl ?? "");
   const [notes, setNotes] = useState(account?.notes ?? "");
-  const hasExtra = Boolean(account?.service || account?.linkedPhone || account?.loginUrl || account?.notes);
+  const hasExtra = Boolean(account?.linkedPhone || account?.loginUrl || account?.notes);
   const [extraOpen, setExtraOpen] = useState(hasExtra);
 
   function submit() {
+    if (!service.trim()) return void toast.error("Isi nama layanan / akun.");
     if (!login.trim()) return void toast.error("Isi email / username.");
     if (!account && !password) return void toast.error("Isi password.");
     start(async () => {
@@ -397,7 +395,7 @@ function AccountFormDialog({
         password: password || null,
         businessUnit: bu,
         branch,
-        service: service || null,
+        service,
         linkedPhone: phone || null,
         loginUrl: url || null,
         notes: notes || null,
@@ -411,7 +409,7 @@ function AccountFormDialog({
 
   function remove() {
     if (!account) return;
-    if (!confirm(`Hapus akun "${account.service ?? account.login}" beserta passwordnya?`)) return;
+    if (!confirm(`Hapus akun "${account.service}" beserta passwordnya?`)) return;
     start(async () => {
       const res = await deleteManagedAccount(account.id);
       if (!res.ok) return void toast.error(res.error);
@@ -423,11 +421,20 @@ function AccountFormDialog({
 
   return (
     <Shell title={account ? "Ubah akun" : "Tambah akun"} onClose={onClose}>
+      <Field label="Nama layanan / akun">
+        <input
+          className={inputCls}
+          autoFocus={!account}
+          placeholder="mis. Instagram Haengbocake Pare"
+          value={service}
+          onChange={(e) => setService(e.target.value)}
+        />
+      </Field>
+
       <Field label="Email / username">
         <input
           className={inputCls}
           autoComplete="off"
-          autoFocus={!account}
           value={login}
           onChange={(e) => setLogin(e.target.value)}
           placeholder="nama@email.com"
@@ -499,14 +506,6 @@ function AccountFormDialog({
         </button>
         {extraOpen && (
           <div className="space-y-2.5 border-t border-border p-3">
-            <Field label="Nama layanan / akun">
-              <input
-                className={inputCls}
-                placeholder="mis. Instagram Haengbocake Pare"
-                value={service}
-                onChange={(e) => setService(e.target.value)}
-              />
-            </Field>
             <Field label="Nomor terhubung">
               <input
                 className={inputCls}
