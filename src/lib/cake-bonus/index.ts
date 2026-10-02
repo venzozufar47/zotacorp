@@ -135,7 +135,7 @@ export async function getCakeBonusDetailByPosition(
   return {
     [CAKE_BONUS_POSITIONS.adminHaengbocake]: {
       amount: admin.totalBonus,
-      note: "Dihitung dari mutasi rekening koran (custom cake harian).",
+      note: "Dihitung dari pembayaran order custom cake per hari (DP + pelunasan − refund).",
     },
     [CAKE_BONUS_POSITIONS.decoratorSemarang]: {
       amount: dec.semarang.bonus,

@@ -204,9 +204,8 @@ export const POS_QRIS_CATEGORY = "QRIS (non-operasional)" as const;
  * pola yang sudah dipakai "QRIS (non-operasional)" untuk alasan yang
  * sama.
  *
- * Agar tetap terhitung sebagai omset custom cake (untuk bonus admin),
- * barisnya ditulis dengan `custom_cake_included = true` — lihat
- * `markCakePickedUpAtPos`.
+ * Bonus admin cake tidak bergantung pada baris ini — ia dihitung dari
+ * `cake_order_payments`, bukan dari mutasi kas.
  */
 export const CAKE_SETTLEMENT_CASH_CATEGORY =
   "Pelunasan Cake (non-operasional)" as const;

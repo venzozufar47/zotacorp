@@ -1,22 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
 import {
   AlertCircle,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Minus,
-  X,
 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
-import {
-  setCustomCakeIncluded,
-  type DayBreakdown,
-  type TxRow,
+import type {
+  DayBreakdown,
+  PaymentRow,
 } from "@/lib/actions/custom-cake-bonus.actions";
 
 interface Props {
@@ -25,10 +20,6 @@ interface Props {
   monthLabel: string;
   days: DayBreakdown[];
   totalBonus: number;
-  /** Angka acuan (bukan final) — bonus dihitung dari tanggal bukti
-   *  transaksi diupload, bukan tanggal settlement rekening. Tidak
-   *  mempengaruhi cake_bonus di payslip. */
-  referenceBonus: number;
 }
 
 const MONTHS_ID = [
@@ -45,13 +36,23 @@ function formatDate(iso: string): string {
   });
 }
 
+const KIND_LABEL: Record<string, string> = {
+  dp: "DP",
+  pelunasan: "Pelunasan",
+  refund: "Refund",
+};
+
+const BRANCH_LABEL: Record<string, string> = {
+  semarang: "Semarang",
+  pare: "Pare",
+};
+
 export function CustomCakeBonusView({
   month,
   year,
   monthLabel,
   days,
   totalBonus,
-  referenceBonus,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -78,6 +79,17 @@ export function CustomCakeBonusView({
     setPeriod(m, y);
   }
 
+  const showLain = days.some((d) => d.lain !== 0);
+  const columns = [
+    "",
+    "Tgl",
+    "Semarang",
+    "Pare",
+    ...(showLain ? ["Lainnya"] : []),
+    "Total",
+    "Bonus",
+  ];
+
   return (
     <div className="space-y-3">
       <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard p-4 space-y-2">
@@ -85,7 +97,8 @@ export function CustomCakeBonusView({
           <div>
             <h3 className="font-display text-base font-bold">Bonus Cake — Admin Haengbocake</h3>
             <p className="text-xs text-muted-foreground">
-              Berdasarkan transaksi custom cake harian (Haengbocake Semarang & Pare).
+              Berdasarkan pembayaran order custom cake per hari (DP + pelunasan
+              − refund), Haengbocake Semarang & Pare.
               <br />
               Formula: ≥ Rp 550k = 10% · &gt; Rp 700k = 70k + 5% selisih.
             </p>
@@ -97,15 +110,6 @@ export function CustomCakeBonusView({
             <p className="font-display text-2xl font-extrabold tabular-nums">
               {formatRp(totalBonus)}
             </p>
-            <p
-              className="text-[10px] text-muted-foreground mt-1"
-              title="Rumus tier per hari yang sama, tapi dihitung dari tanggal bukti transaksi (pembayaran) diupload — bukan tanggal settlement rekening. Angka pembanding saja, tidak masuk cake_bonus payslip."
-            >
-              Acuan (bukti transaksi diupload):{" "}
-              <span className="font-semibold tabular-nums">
-                {formatRp(referenceBonus)}
-              </span>
-            </p>
           </div>
         </div>
         <div className="rounded-lg border border-[var(--teal-300,#9bd3df)] bg-accent p-2 text-[11px] text-[var(--teal-700)] flex items-start gap-1.5">
@@ -113,7 +117,9 @@ export function CustomCakeBonusView({
           <span>
             Otomatis masuk ke <strong>cake_bonus</strong> di payslip pemegang
             posisi <span className="font-mono">Admin Haengbocake</span> saat
-            generate. Klik tanggal untuk verifikasi transaksi yang masuk hitungan.
+            generate. Hari = tanggal pembayaran dicatat di order (WIB). Order
+            dibatalkan, dibuang, atau klaim gratis tidak dihitung. Klik tanggal
+            untuk melihat pembayaran yang masuk hitungan.
           </span>
         </div>
       </div>
@@ -165,7 +171,7 @@ export function CustomCakeBonusView({
       {days.length === 0 ? (
         <section className="rounded-2xl border border-border bg-card p-6 text-center">
           <p className="text-sm text-muted-foreground">
-            Tidak ada transaksi Haengbocake bulan ini.
+            Tidak ada pembayaran order custom cake bulan ini.
           </p>
         </section>
       ) : (
@@ -174,17 +180,7 @@ export function CustomCakeBonusView({
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  {[
-                    "",
-                    "Tgl",
-                    "Jago",
-                    "Mandiri",
-                    "− Pare QRIS",
-                    "+ Cake kasir",
-                    "Semarang",
-                    "Total",
-                    "Bonus",
-                  ].map((c, i) => (
+                  {columns.map((c, i) => (
                     <th
                       key={i}
                       className={
@@ -199,10 +195,15 @@ export function CustomCakeBonusView({
               </thead>
               <tbody>
                 {days.map((d) => (
-                  <DayRow key={d.date} day={d} />
+                  <DayRow
+                    key={d.date}
+                    day={d}
+                    showLain={showLain}
+                    colCount={columns.length}
+                  />
                 ))}
                 <tr className="bg-muted/20 font-bold">
-                  <td colSpan={7} className="px-2 py-2 text-right">
+                  <td colSpan={columns.length - 2} className="px-2 py-2 text-right">
                     Total bonus
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">
@@ -221,9 +222,25 @@ export function CustomCakeBonusView({
   );
 }
 
-function DayRow({ day }: { day: DayBreakdown }) {
+function Amount({ value }: { value: number }) {
+  if (value === 0) return <span className="text-muted-foreground/40">—</span>;
+  return (
+    <span className={value < 0 ? "text-destructive" : undefined}>
+      {value < 0 ? `− ${formatRp(-value)}` : formatRp(value)}
+    </span>
+  );
+}
+
+function DayRow({
+  day,
+  showLain,
+  colCount,
+}: {
+  day: DayBreakdown;
+  showLain: boolean;
+  colCount: number;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const hasOverrides = day.transactions.some((t) => t.manualOverride !== null);
 
   return (
     <>
@@ -236,41 +253,18 @@ function DayRow({ day }: { day: DayBreakdown }) {
         <td className="px-2 py-1.5 align-top">
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </td>
-        <td className="px-2 py-1.5 align-top">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs">{formatDate(day.date)}</span>
-            {hasOverrides && (
-              <span
-                className="text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300"
-                title="Hari ini ada transaksi yang di-override admin"
-              >
-                manual
-              </span>
-            )}
-          </div>
+        <td className="px-2 py-1.5 align-top text-xs">{formatDate(day.date)}</td>
+        <td className="px-2 py-1.5 align-top text-right tabular-nums">
+          <Amount value={day.semarang} />
         </td>
         <td className="px-2 py-1.5 align-top text-right tabular-nums">
-          {day.jago > 0 ? formatRp(day.jago) : <span className="text-muted-foreground/40">—</span>}
+          <Amount value={day.pare} />
         </td>
-        <td className="px-2 py-1.5 align-top text-right tabular-nums">
-          {day.mandiri > 0 ? formatRp(day.mandiri) : <span className="text-muted-foreground/40">—</span>}
-        </td>
-        <td className="px-2 py-1.5 align-top text-right tabular-nums text-destructive">
-          {day.pareQrisDeduction > 0
-            ? `− ${formatRp(day.pareQrisDeduction)}`
-            : <span className="text-muted-foreground/40">—</span>}
-        </td>
-        {/* Pelunasan cake tunai yang diterima kasir Pare. Rekeningnya
-            sama dengan kolom di kiri, tapi tandanya berlawanan —
-            makanya dipisah, bukan dijumlahkan diam-diam. */}
-        <td className="px-2 py-1.5 align-top text-right tabular-nums">
-          {day.pareCakeSettlement > 0
-            ? `+ ${formatRp(day.pareCakeSettlement)}`
-            : <span className="text-muted-foreground/40">—</span>}
-        </td>
-        <td className="px-2 py-1.5 align-top text-right tabular-nums">
-          {day.semarang > 0 ? formatRp(day.semarang) : <span className="text-muted-foreground/40">—</span>}
-        </td>
+        {showLain && (
+          <td className="px-2 py-1.5 align-top text-right tabular-nums">
+            <Amount value={day.lain} />
+          </td>
+        )}
         <td className="px-2 py-1.5 align-top text-right tabular-nums font-medium">
           {formatRp(day.total)}
         </td>
@@ -280,13 +274,13 @@ function DayRow({ day }: { day: DayBreakdown }) {
       </tr>
       {expanded && (
         <tr className="bg-muted/10">
-          <td colSpan={9} className="px-3 py-2">
+          <td colSpan={colCount} className="px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
-              Detail transaksi {formatDate(day.date)} ({day.transactions.length})
+              Pembayaran {formatDate(day.date)} ({day.payments.length})
             </p>
             <ul className="space-y-1">
-              {day.transactions.map((tx) => (
-                <TxItem key={tx.id} tx={tx} />
+              {day.payments.map((p) => (
+                <PaymentItem key={p.id} p={p} />
               ))}
             </ul>
           </td>
@@ -296,102 +290,44 @@ function DayRow({ day }: { day: DayBreakdown }) {
   );
 }
 
-function TxItem({ tx }: { tx: TxRow }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [override, setOverride] = useState(tx.manualOverride);
-
-  // 3-state cycle: null (auto) → true (force include) → false (force exclude) → null
-  function cycle() {
-    const next = override === null ? true : override === true ? false : null;
-    setOverride(next);
-    startTransition(async () => {
-      const res = await setCustomCakeIncluded(tx.id, next);
-      if ("error" in res) {
-        toast.error(res.error);
-        setOverride(tx.manualOverride);
-        return;
-      }
-      router.refresh();
-    });
-  }
-
-  const effective = override ?? tx.autoIncluded;
-  const stateLabel =
-    override === null ? "auto" : override ? "wajib include" : "wajib exclude";
-  const Icon = effective ? Check : Minus;
-  const stateColor = effective
-    ? "text-emerald-600 bg-emerald-50 border-emerald-300"
-    : "text-muted-foreground bg-muted border-border";
-
+function PaymentItem({ p }: { p: PaymentRow }) {
+  const isRefund = p.kind === "refund";
   return (
-    <li
-      className={`flex items-center gap-2 rounded-md border p-1.5 ${
-        effective ? "border-border bg-card" : "border-border bg-muted/30 opacity-70"
-      }`}
-    >
-      <button
-        type="button"
-        onClick={cycle}
-        disabled={pending}
-        title={`Klik untuk cycle: ${stateLabel} → next`}
-        className={`shrink-0 size-6 inline-flex items-center justify-center rounded border ${stateColor} disabled:opacity-50`}
-        aria-label="Toggle inclusion"
-      >
-        {override === null ? (
-          <Icon size={12} />
-        ) : override ? (
-          <Check size={12} strokeWidth={3} />
-        ) : (
-          <X size={12} strokeWidth={3} />
-        )}
-      </button>
+    <li className="flex items-center gap-2 rounded-md border border-border bg-card p-1.5">
       <span
         className={
           "shrink-0 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider " +
-          (tx.bankKey === "jago"
-            ? "bg-sky-100 text-sky-800"
-            : tx.bankKey === "mandiri"
+          (isRefund
+            ? "bg-red-100 text-red-800"
+            : p.kind === "dp"
               ? "bg-amber-100 text-amber-800"
-              : tx.bankKey === "cashPare"
-                ? "bg-purple-100 text-purple-800"
-                : "bg-emerald-100 text-emerald-800")
+              : "bg-emerald-100 text-emerald-800")
         }
       >
-        {tx.bankLabel}
+        {KIND_LABEL[p.kind] ?? p.kind}
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-xs break-words">
-          {tx.description ?? "(no description)"}
+          <span className="font-medium">{p.customerName}</span>
+          <span className="text-muted-foreground">
+            {" "}
+            · {p.time} · {BRANCH_LABEL[p.branch ?? ""] ?? "cabang ?"}
+          </span>
         </p>
-        {tx.sourceDestination && (
+        {(p.label || p.notes) && (
           <p className="text-[10px] text-muted-foreground break-words">
-            from: {tx.sourceDestination}
-          </p>
-        )}
-        {tx.notes && (
-          <p className="text-[10px] text-muted-foreground italic break-words">
-            {tx.notes}
-          </p>
-        )}
-        {/* Alasan auto-exclude. Tanpa ini baris cuma tampil tak
-            tercentang dan admin harus menebak kenapa. */}
-        {tx.excludeReason && (
-          <p className="text-[10px] font-medium text-amber-700">
-            {tx.excludeReason === "kategori"
-              ? `bukan penjualan · kategori ${tx.category}`
-              : "penjualan ritel POS · bukan custom cake"}
+            {[p.label, p.notes].filter(Boolean).join(" · ")}
           </p>
         )}
       </div>
-      <span className="shrink-0 text-xs font-medium tabular-nums">
-        {formatRp(tx.credit)}
+      <span
+        className={
+          "shrink-0 text-xs font-medium tabular-nums " +
+          (isRefund ? "text-destructive" : "")
+        }
+      >
+        {isRefund ? `− ${formatRp(-p.amount)}` : formatRp(p.amount)}
       </span>
-      {override !== null && (
-        <span className="text-[9px] uppercase tracking-wider font-semibold text-amber-700">
-          manual
-        </span>
-      )}
     </li>
   );
 }

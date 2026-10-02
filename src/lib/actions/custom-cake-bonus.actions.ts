@@ -1,242 +1,50 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
-import {
-  CAKE_SETTLEMENT_CASH_CATEGORY,
-  HAENGBOCAKE_NON_OPERATING_CATEGORIES,
-  normalizePnLCategory,
-} from "@/lib/cashflow/categories";
 import { dailyTierBonus } from "@/lib/cake-bonus/tier-formula";
 
-// Hardcoded Haengbocake bank account IDs — derived from a one-time
-// listing query and unlikely to change. Storing as constants avoids
-// an extra SELECT round-trip on every page load.
-const BANK = {
-  jago: "330e6b97-84b9-4c4a-8f00-615afa93d079",
-  mandiri: "0b28aaa5-5ffd-4694-9cbf-7ea5ebb90875",
-  cashPare: "947136f6-4458-40e6-9c4b-fd3a2a183a9f",
-  cashSemarang: "a514d240-d75a-4621-8639-b445874a1b54",
-} as const;
-
-type BankKey = keyof typeof BANK;
-
-const BANK_LABEL: Record<BankKey, string> = {
-  jago: "Jago",
-  mandiri: "Mandiri",
-  cashPare: "Cash Pare (QRIS pengurang)",
-  cashSemarang: "Cash Semarang",
-};
-
 /**
- * Per-day bonus formula — see `dailyTierBonus` in `tier-formula.ts`
- * for the canonical implementation, shared with
- * `getCustomCakeBonusReferenceByUpload` below.
+ * Bonus "Admin Haengbocake" — omset custom cake per hari.
+ *
+ * SUMBER TUNGGAL: pembayaran yang diinput di order custom cake
+ * (`cake_order_payments`: DP + pelunasan, dikurangi refund). Tidak lagi
+ * membaca mutasi rekening/kas — dulu basisnya ditebak dari kredit Jago,
+ * Mandiri, Cash Pare & Cash Semarang lewat aturan teks + override manual,
+ * dan itu bocor (transfer pribadi, ritel POS, dll ikut terhitung).
+ *
+ * Aturan:
+ *   - Hari = hari kalender WIB dari `paid_at` (waktu pembayaran dicatat).
+ *   - Order `cancelled` / `discarded` TIDAK dihitung; `free_claim` juga
+ *     tidak (tidak ada uang masuk).
+ *   - Rumus tier per hari: `dailyTierBonus` (tidak berubah).
  */
 
-/**
- * Kategori kredit yang JELAS bukan penjualan custom cake, di luar
- * himpunan non-operasional. Ketiganya pernah muncul nyata sebagai
- * kredit di rekening Haengbocake:
- *   - "Salaries & Wages" → pergerakan pocket yang salah kategori
- *   - "Sales Refund"     → refund yang kembali masuk, bukan penjualan
- *   - "Penyesuaian"      → koreksi saldo kas, sengaja ambigu (lihat
- *                          komentar di `categories.ts`)
- */
-const NON_SALES_EXTRA_CATEGORIES = new Set<string>([
-  "Salaries & Wages",
-  "Sales Refund",
-  "Penyesuaian",
-]);
-
-/**
- * Gerbang kategori untuk basis bonus custom cake.
- *
- * KENAPA ADA: aturan teks di bawah menyaring pengirim per nama/kata
- * kunci, dan itu bocor — transfer pribadi masuk (Debar Boles, rekening
- * owner) tidak mengandung kata "pindah"/"pocket" mana pun, jadi lolos
- * sebagai "penjualan". Terukur: Rp 157 juta Wealth Transfer di Jago
- * ikut terhitung, hampir 2x total Sales aslinya. Komentar aturan Jago
- * memang sudah berbunyi "SALES = custom cake by definition" — fungsi
- * ini membuat niat itu literal alih-alih diwakili tebakan kata kunci.
- *
- * BENTUKNYA DAFTAR-HITAM, BUKAN DAFTAR-PUTIH. Kategori yang belum
- * dikenal (atau `null`, mis. baris yang diinput manual sebelum
- * dikategorikan) tetap LOLOS ke aturan teks. Arah salahnya disengaja:
- * daftar-putih akan diam-diam membuang penjualan asli yang kebetulan
- * berkategori tak terduga, dan itu memotong bonus orang tanpa jejak.
- * Kelebihan hitung terlihat; kekurangan hitung tidak.
- *
- * cashPare DIKECUALIKAN. Ember itu bukan penjualan melainkan
- * PENGURANG (setelmen QRIS yang pendapatan aslinya sudah tercatat di
- * Mandiri), dan seluruh isinya berkategori "QRIS (non-operasional)" —
- * yang ada di daftar non-operasional. Menerapkan gerbang ini di sana
- * akan menghapus pengurangnya dan justru MENAIKKAN bonus.
- */
-function isNonSalesCategory(
-  bankKey: BankKey,
-  category: string | null
-): boolean {
-  if (bankKey === "cashPare") return false;
-  if (!category) return false;
-  // Pelunasan cake tunai di kasir: kategorinya ADA di daftar
-  // non-operasional (supaya tidak dobel di PnL — pendapatannya sudah
-  // diakui lewat akrual cake), tapi untuk bonus ia penjualan custom
-  // cake asli. Dikecualikan di sini supaya aturannya terbaca di
-  // klasifikator, bukan menumpang kolom override `custom_cake_included`
-  // yang disediakan untuk keputusan manual manusia.
-  if (category === CAKE_SETTLEMENT_CASH_CATEGORY) return false;
-  // Normalisasi dulu supaya label kas ikut terbaca: "Diambil mas Venzo"
-  // → "Dividend" (non-operasional), "Haengbo Cust"/"Slice Haengbo" →
-  // "Sales" (tetap dihitung).
-  const norm = normalizePnLCategory("Haengbocake", category);
-  return (
-    (HAENGBOCAKE_NON_OPERATING_CATEGORIES as readonly string[]).includes(norm) ||
-    NON_SALES_EXTRA_CATEGORIES.has(norm)
-  );
-}
-
-/**
- * Default classification rules per bank account. Returns whether a
- * transaction would be auto-included in custom cake total (before any
- * manual override).
- */
-/**
- * Penjualan ritel dari layar kasir POS — BUKAN custom cake.
- *
- * Bonus ini dihitung dari omset custom cake (DP/pelunasan pesanan kue),
- * sedangkan POS mencatat penjualan etalase harian: roti, cookies, minuman.
- * Keduanya mendarat di rekening kas yang sama, jadi harus dibedakan lewat
- * deskripsi.
- *
- * Penanda yang dipakai adalah AWALAN deskripsi yang dibangun
- * `recordPosSale` (lihat `pos.actions.ts`): `POS ${method}${[nama]}: item`.
- * Awalan, bukan "mengandung kata cash" — kas Semarang penuh entri manual
- * seperti "dea pelunasan cash" atau "yusuf lunas cash" yang justru
- * pelunasan custom cake asli dan HARUS tetap dihitung. Menyaring dengan
- * kata "cash" akan membuang Rp 3,5 juta omset cake yang sah.
- *
- * cashPare dikecualikan: ember itu pengurang, dan isinya disaring
- * terpisah lewat syarat "qris" — POS Cash memang tidak pernah lolos ke
- * sana.
- */
-function isPosRetailSale(
-  bankKey: BankKey,
-  description: string | null
-): boolean {
-  if (bankKey === "cashPare") return false;
-  return (description ?? "").trim().toLowerCase().startsWith("pos cash");
-}
-
-/** Alasan sebuah baris otomatis dikeluarkan dari basis bonus, atau null
- *  kalau lolos. Dipakai UI untuk menjelaskan kotak yang tidak tercentang. */
-export type AutoExcludeReason = "kategori" | "pos-retail" | null;
-
-function autoExcludeReason(
-  bankKey: BankKey,
-  tx: { description: string | null; category: string | null }
-): AutoExcludeReason {
-  if (isNonSalesCategory(bankKey, tx.category)) return "kategori";
-  if (isPosRetailSale(bankKey, tx.description)) return "pos-retail";
-  return null;
-}
-
-function autoIncludeRule(
-  bankKey: BankKey,
-  tx: {
-    credit: number | string | null;
-    description: string | null;
-    source_destination: string | null;
-    notes: string | null;
-    category: string | null;
-  }
-): boolean {
-  const credit = Number(tx.credit ?? 0);
-  if (credit <= 0) return false;
-  // Gerbang lintas-rekening (kategori non-pendapatan + ritel POS) lebih
-  // dulu, jadi kebocoran yang sama tidak perlu ditambal per-bank di bawah.
-  if (autoExcludeReason(bankKey, tx) !== null) return false;
-  const desc = (tx.description ?? "").toLowerCase();
-  const src = (tx.source_destination ?? "").toLowerCase();
-  const notes = (tx.notes ?? "").toLowerCase();
-  switch (bankKey) {
-    case "jago":
-      // SALES = custom cake by definition. Exclude:
-      //   - Wholesale (Meidani) / mall outlet (Paragon) senders
-      //   - Internal pocket movements (Bank Jago's "Pockets" feature)
-      //   - Internal transfer from Mandiri (QRIS settlement moved over)
-      if (src.includes("meidani") || src.includes("paragon")) return false;
-      // Match bare "pindah" (not just "pindah dana") so typo'd notes like
-      // "Pindah dan qris haengbo" / "pindah dn" still get excluded — these
-      // are owner-internal QRIS-settlement transfers, never customer sales.
-      // Checked against notes + source too (not only the joined desc).
-      if (
-        desc.includes("pindah") ||
-        notes.includes("pindah") ||
-        src.includes("pindah")
-      )
-        return false;
-      if (desc.includes("main pocket movement")) return false;
-      if (desc.includes("pocket money")) return false;
-      return true;
-    case "mandiri":
-      // All credits = QRIS settlements. Pare portion is subtracted via
-      // the cashPare bucket below — don't filter Mandiri itself.
-      return true;
-    case "cashPare":
-      // Pelunasan cake tunai bukan setelmen QRIS — itu omset baru yang
-      // belum dihitung di rekening mana pun, jadi ikut sebagai
-      // penjualan (penjumlahannya menambah, lihat pareCakeSettlement).
-      if (tx.category === CAKE_SETTLEMENT_CASH_CATEGORY) return true;
-      // QRIS-flavored Pare entries count as the Mandiri-QRIS deduction.
-      // Matches both "POS QRIS: ..." (POSClient-generated) and manual
-      // "Penjualan Qris" / similar journal entries entered by admin.
-      // POS Cash / "Penjualan Cash" / "Cash Awal" don't match — those
-      // are local Pare cash and irrelevant to the bonus.
-      return desc.includes("qris");
-    case "cashSemarang":
-      // All credits = sales (mostly DP/lunas custom cake) by default.
-      // Exclusions:
-      //   - "ongkir" → shipping fee, not a sale
-      //   - "dari mas venzo" → owner capital injection / refund, not sale
-      if (notes.includes("ongkir") || desc.includes("ongkir")) return false;
-      if (notes.includes("dari mas venzo") || desc.includes("dari mas venzo"))
-        return false;
-      return true;
-  }
+export interface PaymentRow {
+  id: string;
+  orderId: string;
+  /** "HH:mm" WIB. */
+  time: string;
+  /** dp | pelunasan | refund */
+  kind: string;
+  label: string;
+  customerName: string;
+  branch: string | null;
+  orderStatus: string;
+  /** Bertanda: refund negatif. */
+  amount: number;
+  notes: string | null;
 }
 
 export interface DayBreakdown {
-  date: string; // yyyy-mm-dd
-  jago: number;
-  mandiri: number;
-  pareQrisDeduction: number; // negative contribution
-  /** Pelunasan cake tunai di kasir Pare — kontribusi POSITIF. Beda
-   *  ember dari pareQrisDeduction meski rekeningnya sama. */
-  pareCakeSettlement: number;
+  date: string; // yyyy-mm-dd (WIB)
   semarang: number;
+  pare: number;
+  /** Order tanpa cabang yang dikenal — tetap masuk total. */
+  lain: number;
   total: number;
   bonus: number;
-  transactions: TxRow[];
-}
-
-export interface TxRow {
-  id: string;
-  bankKey: BankKey;
-  bankLabel: string;
-  date: string;
-  description: string | null;
-  sourceDestination: string | null;
-  notes: string | null;
-  credit: number;
-  category: string | null;
-  /** Sebab baris ini auto-exclude oleh gerbang lintas-rekening (bukan oleh
-   *  aturan teks per-bank) — dipakai UI untuk menjelaskan kotak kosong. */
-  excludeReason: AutoExcludeReason;
-  autoIncluded: boolean;
-  manualOverride: boolean | null;
-  effectiveIncluded: boolean;
+  payments: PaymentRow[];
 }
 
 interface BonusMonth {
@@ -246,285 +54,108 @@ interface BonusMonth {
   totalBonus: number;
 }
 
-/** Pure compute: classify a fetched tx + collapse to display row. */
-function buildTxRow(
-  raw: {
-    id: string;
-    transaction_date: string;
-    description: string;
-    source_destination: string | null;
-    notes: string | null;
-    credit: number | string | null;
-    category: string | null;
-    custom_cake_included: boolean | null;
-    statement_id: string;
-  },
-  bankKey: BankKey
-): TxRow {
-  const credit = Number(raw.credit ?? 0);
-  const auto = autoIncludeRule(bankKey, raw);
-  const override = raw.custom_cake_included;
-  return {
-    id: raw.id,
-    bankKey,
-    bankLabel: BANK_LABEL[bankKey],
-    date: raw.transaction_date,
-    description: raw.description,
-    sourceDestination: raw.source_destination,
-    notes: raw.notes,
-    credit,
-    category: raw.category,
-    excludeReason: autoExcludeReason(bankKey, raw),
-    autoIncluded: auto,
-    manualOverride: override,
-    effectiveIncluded: override ?? auto,
-  };
-}
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 export async function getCustomCakeBonusMonth(
   month: number,
   year: number
 ): Promise<BonusMonth> {
   const role = await getCurrentRole();
-  if (role !== "admin")
-    return { month, year, days: [], totalBonus: 0 };
-
-  const supabase = await createClient();
-  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
-  const monthEnd =
-    month === 12
-      ? `${year + 1}-01-01`
-      : `${year}-${String(month + 1).padStart(2, "0")}-01`;
-
-  // Pull ALL credit transactions across the 4 Haengbocake accounts via
-  // JOIN to statements, then classify in-memory. PostgREST (dan
-  // `db-max-rows`) nge-cap response ke 1000 row per request; sebulan
-  // ramai bisa >1400 row credit (Cash Pare sendiri ~80/hari), jadi
-  // tanpa paginasi `.range()` tanggal-tanggal akhir bulan ke-potong
-  // dan hilang dari tabel bonus. Loop sampai partial page.
-  type RawRow = {
-    id: string;
-    transaction_date: string;
-    description: string;
-    source_destination: string | null;
-    notes: string | null;
-    credit: number | string | null;
-    category: string | null;
-    custom_cake_included: boolean | null;
-    statement_id: string;
-    cashflow_statements: { bank_account_id: string };
-  };
-  const rows: RawRow[] = [];
-  const PAGE = 1000;
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase
-      .from("cashflow_transactions")
-      .select(
-        "id, transaction_date, description, source_destination, notes, credit, category, custom_cake_included, statement_id, cashflow_statements!inner(bank_account_id)"
-      )
-      .gte("transaction_date", monthStart)
-      .lt("transaction_date", monthEnd)
-      .gt("credit", 0)
-      .in("cashflow_statements.bank_account_id", Object.values(BANK))
-      .order("transaction_date")
-      .order("id")
-      .range(offset, offset + PAGE - 1);
-    if (error) break;
-    const batch = (data ?? []) as unknown as RawRow[];
-    rows.push(...batch);
-    if (batch.length < PAGE) break;
-  }
-
-  // Index bank_account_id → BankKey
-  const idToKey = new Map<string, BankKey>();
-  for (const [key, id] of Object.entries(BANK)) idToKey.set(id, key as BankKey);
-
-  // Group by date. Drop entries that are pure noise (not sales at all)
-  // so the verification UI only shows rows admin actually needs to
-  // judge: Meidani/Paragon senders (admin verifies "yes exclude"),
-  // ambiguous senders (admin verifies "include"), POS QRIS Pare for
-  // deduction, etc.
-  const byDate = new Map<string, TxRow[]>();
-  for (const r of rows) {
-    const bankKey = idToKey.get(r.cashflow_statements.bank_account_id);
-    if (!bankKey) continue;
-    const desc = (r.description ?? "").toLowerCase();
-    if (bankKey === "cashPare") {
-      // Only QRIS-flavored entries are deductions; rest is Pare local
-      // cash (irrelevant to bonus). Matches POS-generated rows + manual
-      // "Penjualan Qris" journal entries.
-      //
-      // KECUALI pelunasan cake tunai yang diterima kasir: itu omset
-      // custom cake asli, bukan setelmen QRIS. Tanpa pengecualian ini
-      // baris tersebut terbuang di sini — SEBELUM `custom_cake_included`
-      // sempat dibaca — sehingga omset Pare hilang dari basis bonus
-      // sementara baris setara di Semarang terhitung. Penjumlahannya di
-      // bawah menambah, bukan mengurangi.
-      const isCakeSettlement =
-        r.category === CAKE_SETTLEMENT_CASH_CATEGORY;
-      if (!desc.includes("qris") && !isCakeSettlement) continue;
-    }
-    if (bankKey === "jago") {
-      // Internal pocket / Mandiri-to-Jago movements are not sales.
-      // Bare "pindah" (matches typo'd "pindah dan qris") so these
-      // owner-internal QRIS-settlement transfers stay out of the bonus.
-      const jagoNotes = (r.notes ?? "").toLowerCase();
-      const jagoSrc = (r.source_destination ?? "").toLowerCase();
-      if (
-        desc.includes("pindah") ||
-        jagoNotes.includes("pindah") ||
-        jagoSrc.includes("pindah") ||
-        desc.includes("main pocket movement") ||
-        desc.includes("pocket money")
-      ) {
-        continue;
-      }
-    }
-    if (bankKey === "cashSemarang") {
-      // Owner capital injections / personal transfers are not sales.
-      const notes = (r.notes ?? "").toLowerCase();
-      if (desc.includes("dari mas venzo") || notes.includes("dari mas venzo")) {
-        continue;
-      }
-    }
-    const txRow = buildTxRow(r, bankKey);
-    const arr = byDate.get(txRow.date) ?? [];
-    arr.push(txRow);
-    byDate.set(txRow.date, arr);
-  }
-
-  const days: DayBreakdown[] = [];
-  for (const [date, txs] of [...byDate.entries()].sort()) {
-    let jago = 0;
-    let mandiri = 0;
-    let pareQrisDeduction = 0;
-    let pareCakeSettlement = 0;
-    let semarang = 0;
-    for (const tx of txs) {
-      if (!tx.effectiveIncluded) continue;
-      if (tx.bankKey === "jago") jago += tx.credit;
-      else if (tx.bankKey === "mandiri") mandiri += tx.credit;
-      else if (tx.bankKey === "cashPare") {
-        // Satu rekening, dua makna. Setelmen QRIS = pengurang (omset
-        // aslinya sudah dihitung di Mandiri); pelunasan cake tunai =
-        // omset baru yang belum dihitung di mana pun.
-        if (tx.category === CAKE_SETTLEMENT_CASH_CATEGORY)
-          pareCakeSettlement += tx.credit;
-        else pareQrisDeduction += tx.credit;
-      } else if (tx.bankKey === "cashSemarang") semarang += tx.credit;
-    }
-    const total =
-      jago + mandiri - pareQrisDeduction + pareCakeSettlement + semarang;
-    const bonus = dailyTierBonus(total);
-    days.push({
-      date,
-      jago,
-      mandiri,
-      pareQrisDeduction,
-      pareCakeSettlement,
-      semarang,
-      total,
-      bonus,
-      transactions: txs,
-    });
-  }
-
-  const totalBonus = days.reduce((s, d) => s + d.bonus, 0);
-  return { month, year, days, totalBonus };
-}
-
-export interface UploadBasedBonusReference {
-  totalBonus: number;
-  totalOmset: number;
-}
-
-/**
- * Angka ACUAN untuk kartu bonus admin — bukan angka final, tidak
- * mempengaruhi `cake_bonus` di payslip. Rumus tier per hari sama
- * persis dengan `getCustomCakeBonusMonth`, tapi basis tanggalnya
- * `cake_order_payments.created_at` (kapan bukti transaksi/pembayaran
- * diupload/dicatat) alih-alih tanggal settlement di rekening.
- *
- * Sumber datanya `cake_order_payments`, bukan `cashflow_transactions`
- * — jadi omset per hari = jumlah nominal pembayaran (DP/pelunasan
- * positif, refund negatif) yang order induknya bukan cancelled/
- * discarded/free_claim. Dikelompokkan per hari kalender WIB, sama
- * seperti `wibMonthKey` di pnl.ts.
- */
-export async function getCustomCakeBonusReferenceByUpload(
-  month: number,
-  year: number
-): Promise<UploadBasedBonusReference> {
-  const role = await getCurrentRole();
-  if (role !== "admin") return { totalBonus: 0, totalOmset: 0 };
+  if (role !== "admin") return { month, year, days: [], totalBonus: 0 };
 
   const supabase = await createClient();
   const monthStartWib = `${year}-${String(month).padStart(2, "0")}-01`;
   const endY = month === 12 ? year + 1 : year;
   const endM = month === 12 ? 1 : month + 1;
   const monthEndWibExcl = `${endY}-${String(endM).padStart(2, "0")}-01`;
-  const utcStart = `${monthStartWib}T00:00:00+07:00`;
-  const utcEnd = `${monthEndWibExcl}T00:00:00+07:00`;
 
   type Row = {
-    amount_idr: number;
+    id: string;
+    cake_order_id: string;
     kind: string;
-    created_at: string;
-    cake_orders: { status: string; free_claim: boolean | null };
+    label: string;
+    amount_idr: number;
+    notes: string | null;
+    paid_at: string;
+    cake_orders: {
+      customer_name: string;
+      branch: string | null;
+      status: string;
+      free_claim: boolean | null;
+    };
   };
+
+  // PostgREST meng-cap 1000 row/request — paginasi sampai halaman parsial.
+  // Error SENGAJA dilempar (bukan break diam-diam): total parsial berarti
+  // bonus orang terpotong tanpa jejak.
   const rows: Row[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from("cake_order_payments")
       .select(
-        "amount_idr, kind, created_at, cake_orders!inner(status, free_claim)"
+        "id, cake_order_id, kind, label, amount_idr, notes, paid_at, cake_orders!inner(customer_name, branch, status, free_claim)"
       )
-      .gte("created_at", utcStart)
-      .lt("created_at", utcEnd)
+      .gte("paid_at", `${monthStartWib}T00:00:00+07:00`)
+      .lt("paid_at", `${monthEndWibExcl}T00:00:00+07:00`)
       .neq("cake_orders.status", "cancelled")
       .neq("cake_orders.status", "discarded")
-      .order("created_at")
+      .order("paid_at")
+      .order("id")
       .range(offset, offset + PAGE - 1);
-    if (error) break;
+    if (error) throw new Error(`Gagal memuat pembayaran order cake: ${error.message}`);
     const batch = (data ?? []) as unknown as Row[];
     rows.push(...batch);
     if (batch.length < PAGE) break;
   }
 
-  const byDay = new Map<string, number>();
+  const byDate = new Map<string, PaymentRow[]>();
   for (const r of rows) {
     if (r.cake_orders.free_claim) continue;
-    const t = Date.parse(r.created_at);
+    const t = Date.parse(r.paid_at);
     if (Number.isNaN(t)) continue;
-    const wib = new Date(t + 7 * 60 * 60 * 1000);
-    const dayKey = `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, "0")}-${String(wib.getUTCDate()).padStart(2, "0")}`;
-    const signed = r.kind === "refund" ? -r.amount_idr : r.amount_idr;
-    byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + signed);
+    const wib = new Date(t + WIB_OFFSET_MS);
+    const date = `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, "0")}-${String(wib.getUTCDate()).padStart(2, "0")}`;
+    const time = `${String(wib.getUTCHours()).padStart(2, "0")}:${String(wib.getUTCMinutes()).padStart(2, "0")}`;
+    const row: PaymentRow = {
+      id: r.id,
+      orderId: r.cake_order_id,
+      time,
+      kind: r.kind,
+      label: r.label,
+      customerName: r.cake_orders.customer_name,
+      branch: r.cake_orders.branch,
+      orderStatus: r.cake_orders.status,
+      amount: r.kind === "refund" ? -r.amount_idr : r.amount_idr,
+      notes: r.notes,
+    };
+    const arr = byDate.get(date) ?? [];
+    arr.push(row);
+    byDate.set(date, arr);
   }
 
-  let totalBonus = 0;
-  let totalOmset = 0;
-  for (const total of byDay.values()) {
-    totalBonus += dailyTierBonus(total);
-    totalOmset += total;
+  const days: DayBreakdown[] = [];
+  for (const [date, payments] of [...byDate.entries()].sort()) {
+    let semarang = 0;
+    let pare = 0;
+    let lain = 0;
+    for (const p of payments) {
+      if (p.branch === "semarang") semarang += p.amount;
+      else if (p.branch === "pare") pare += p.amount;
+      else lain += p.amount;
+    }
+    const total = semarang + pare + lain;
+    days.push({
+      date,
+      semarang,
+      pare,
+      lain,
+      total,
+      bonus: dailyTierBonus(total),
+      payments,
+    });
   }
-  return { totalBonus, totalOmset };
-}
 
-/** Manual override: null = revert to auto-classification. */
-export async function setCustomCakeIncluded(
-  txId: string,
-  included: boolean | null
-): Promise<{ ok: true } | { error: string }> {
-  const role = await getCurrentRole();
-  if (role !== "admin") return { error: "Forbidden" };
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("cashflow_transactions")
-    .update({ custom_cake_included: included })
-    .eq("id", txId);
-  if (error) return { error: error.message };
-  revalidatePath("/admin/payslips/variables");
-  return { ok: true };
+  const totalBonus = days.reduce((s, d) => s + d.bonus, 0);
+  return { month, year, days, totalBonus };
 }

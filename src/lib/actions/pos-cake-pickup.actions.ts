@@ -909,11 +909,9 @@ export async function markCakePickedUpAtPos(
  * Cermin pelunasan tunai ke rekening kas cabang.
  *
  * Kategorinya non-operasional supaya TIDAK dobel di PnL (pendapatannya
- * sudah diakui lewat akrual cake dari scheduled_at). Klasifikasi bonus
- * cake mengenali kategori ini sendiri — lihat `isNonSalesCategory` dan
- * `autoIncludeRule` di custom-cake-bonus.actions.ts — jadi baris ini
- * TIDAK perlu menumpang kolom override `custom_cake_included`, yang
- * memang disediakan untuk keputusan manual manusia.
+ * sudah diakui lewat akrual cake dari scheduled_at). Bonus admin cake
+ * tidak membaca baris kas ini — ia dihitung langsung dari
+ * `cake_order_payments` (custom-cake-bonus.actions.ts).
  *
  * Statement bulanan find-or-create: bulan yang ada pelunasan tapi
  * belum ada transaksi kas lain belum tentu punya statement.
