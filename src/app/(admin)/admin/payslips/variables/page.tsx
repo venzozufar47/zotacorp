@@ -285,6 +285,7 @@ async function CustomCakeBonusViewWrapper({
         monthLabel={monthLabel}
         days={data.days}
         totalBonus={data.totalBonus}
+        outstanding={data.outstanding}
       />
     </div>
   );

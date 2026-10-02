@@ -7,6 +7,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { dailyTier, TIER_CAP, TIER_MIN } from "@/lib/cake-bonus/tier-formula";
 import type {
   DayBreakdown,
+  OutstandingSummary,
   PaymentRow,
 } from "@/lib/actions/custom-cake-bonus.actions";
 
@@ -16,6 +17,7 @@ interface Props {
   monthLabel: string;
   days: DayBreakdown[];
   totalBonus: number;
+  outstanding: OutstandingSummary;
 }
 
 function formatDate(iso: string): string {
@@ -47,6 +49,7 @@ export function CustomCakeBonusView({
   monthLabel,
   days,
   totalBonus,
+  outstanding,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -108,9 +111,18 @@ export function CustomCakeBonusView({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Total bonus" value={formatRp(totalBonus)} emphasis />
         <Stat label="Omset order" value={formatRp(totalOmset)} />
+        <Stat
+          label="Outstanding"
+          value={formatRp(outstanding.amount)}
+          hint={
+            outstanding.orderCount > 0
+              ? `${outstanding.orderCount} order belum lunas`
+              : "Semua lunas"
+          }
+        />
         <Stat
           label="Hari berbonus"
           value={`${bonusDays} / ${days.length}`}
@@ -138,6 +150,11 @@ export function CustomCakeBonusView({
           </li>
           <li>Order dibatalkan, dibuang, atau klaim gratis tidak dihitung.</li>
           <li>
+            Outstanding = sisa tagihan (total order − sudah dibayar) dari order
+            yang punya pembayaran di bulan ini, per saat halaman dibuka. Belum
+            masuk omset, jadi belum ikut bonus.
+          </li>
+          <li>
             Otomatis masuk <strong>cake_bonus</strong> di slip gaji pemegang
             posisi <span className="font-mono">Admin Haengbocake</span> saat
             generate.
@@ -163,10 +180,12 @@ export function CustomCakeBonusView({
 function Stat({
   label,
   value,
+  hint,
   emphasis,
 }: {
   label: string;
   value: string;
+  hint?: string;
   emphasis?: boolean;
 }) {
   return (
@@ -189,6 +208,7 @@ function Stat({
       >
         {value}
       </p>
+      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -291,6 +311,11 @@ function PaymentItem({ p }: { p: PaymentRow }) {
         {detail && (
           <p className="break-words text-[10px] text-muted-foreground">
             {detail}
+          </p>
+        )}
+        {p.orderRemaining > 0 && (
+          <p className="text-[10px] font-medium text-amber-700">
+            Sisa tagihan order: {formatRp(p.orderRemaining)}
           </p>
         )}
       </div>

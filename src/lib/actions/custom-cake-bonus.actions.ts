@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { dailyTierBonus } from "@/lib/cake-bonus/tier-formula";
+import { summarizeFromOrder } from "@/lib/cake-orders/payment-summary";
 
 /**
  * Bonus "Admin Haengbocake" — omset custom cake per hari.
@@ -34,6 +35,8 @@ export interface PaymentRow {
   /** Bertanda: refund negatif. */
   amount: number;
   notes: string | null;
+  /** Sisa tagihan order induk PER SEKARANG (bukan per tanggal pembayaran). */
+  orderRemaining: number;
 }
 
 export interface DayBreakdown {
@@ -47,12 +50,22 @@ export interface DayBreakdown {
   payments: PaymentRow[];
 }
 
+export interface OutstandingSummary {
+  /** Jumlah sisa tagihan semua order yang punya pembayaran di bulan ini. */
+  amount: number;
+  /** Berapa order di antaranya yang masih punya sisa tagihan. */
+  orderCount: number;
+}
+
 interface BonusMonth {
   month: number;
   year: number;
   days: DayBreakdown[];
   totalBonus: number;
+  outstanding: OutstandingSummary;
 }
+
+const NO_OUTSTANDING: OutstandingSummary = { amount: 0, orderCount: 0 };
 
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
@@ -61,7 +74,8 @@ export async function getCustomCakeBonusMonth(
   year: number
 ): Promise<BonusMonth> {
   const role = await getCurrentRole();
-  if (role !== "admin") return { month, year, days: [], totalBonus: 0 };
+  if (role !== "admin")
+    return { month, year, days: [], totalBonus: 0, outstanding: NO_OUTSTANDING };
 
   const supabase = await createClient();
   const monthStartWib = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -82,6 +96,9 @@ export async function getCustomCakeBonusMonth(
       branch: string | null;
       status: string;
       free_claim: boolean | null;
+      total_idr: number;
+      paid_idr: number;
+      refund_idr: number;
     };
   };
 
@@ -94,7 +111,7 @@ export async function getCustomCakeBonusMonth(
     const { data, error } = await supabase
       .from("cake_order_payments")
       .select(
-        "id, cake_order_id, kind, label, amount_idr, notes, paid_at, cake_orders!inner(customer_name, branch, status, free_claim)"
+        "id, cake_order_id, kind, label, amount_idr, notes, paid_at, cake_orders!inner(customer_name, branch, status, free_claim, total_idr, paid_idr, refund_idr)"
       )
       .gte("paid_at", `${monthStartWib}T00:00:00+07:00`)
       .lt("paid_at", `${monthEndWibExcl}T00:00:00+07:00`)
@@ -107,6 +124,27 @@ export async function getCustomCakeBonusMonth(
     const batch = (data ?? []) as unknown as Row[];
     rows.push(...batch);
     if (batch.length < PAGE) break;
+  }
+
+  // Sisa tagihan per order (sekali per order, bukan per pembayaran).
+  // Aturan yang sama dengan gerbang kurang-bayar kasir POS. Order yang
+  // sudah di-refund penuh bukan piutang — uangnya memang dikembalikan.
+  const remainingByOrder = new Map<string, number>();
+  const outstanding: OutstandingSummary = { amount: 0, orderCount: 0 };
+  for (const r of rows) {
+    if (r.cake_orders.free_claim || remainingByOrder.has(r.cake_order_id)) continue;
+    const s = summarizeFromOrder({
+      total_idr: r.cake_orders.total_idr,
+      paid_idr: r.cake_orders.paid_idr,
+      refund_idr: r.cake_orders.refund_idr,
+      free_claim: r.cake_orders.free_claim ?? false,
+    });
+    const remaining = s.state === "refund" ? 0 : s.remaining;
+    remainingByOrder.set(r.cake_order_id, remaining);
+    if (remaining > 0) {
+      outstanding.amount += remaining;
+      outstanding.orderCount += 1;
+    }
   }
 
   const byDate = new Map<string, PaymentRow[]>();
@@ -128,6 +166,7 @@ export async function getCustomCakeBonusMonth(
       orderStatus: r.cake_orders.status,
       amount: r.kind === "refund" ? -r.amount_idr : r.amount_idr,
       notes: r.notes,
+      orderRemaining: remainingByOrder.get(r.cake_order_id) ?? 0,
     };
     const arr = byDate.get(date) ?? [];
     arr.push(row);
@@ -157,5 +196,5 @@ export async function getCustomCakeBonusMonth(
   }
 
   const totalBonus = days.reduce((s, d) => s + d.bonus, 0);
-  return { month, year, days, totalBonus };
+  return { month, year, days, totalBonus, outstanding };
 }
