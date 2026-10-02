@@ -1709,8 +1709,8 @@ function ComprehensiveMonthlyTable({
                 "Status",
                 "Net",
                 "Prorated",
-                "Hr bonus",
                 "OT",
+                "Hr bonus",
                 "Late",
                 "Deliv",
                 "Extra",
@@ -1888,11 +1888,11 @@ function MonthlyRow({
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
           {numCell(payslip?.prorated_salary)}
         </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-emerald-700">
-          {numCell(payslip?.bonus_day_pay)}
-        </td>
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
           {numCell(payslip?.overtime_pay)}
+        </td>
+        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-emerald-700">
+          {numCell(payslip?.bonus_day_pay)}
         </td>
         <td className="px-2 py-1.5 text-right text-xs tabular-nums text-destructive/80">
           {payslip ? `−${formatRp(Number(payslip.late_penalty))}` : "—"}
