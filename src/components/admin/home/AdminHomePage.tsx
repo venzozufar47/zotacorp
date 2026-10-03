@@ -635,8 +635,10 @@ function buildInbox(
             ? "Menunggu ACC akun"
             : p.kind === "late_proof"
               ? "Awaiting approval"
-              : "OT awaiting approval",
-      ago: agoLabel(p.date),
+              : p.minutes
+                ? `OT ${otDuration(p.minutes)} awaiting approval`
+                : "OT awaiting approval",
+      ago: agoLabel(p.at ?? p.date),
       isRegistration,
       href: isSim ? "/admin/sim-cards" : isTicket ? "/admin/tickets" : undefined,
     });
@@ -666,8 +668,18 @@ function greetingByHour() {
   return "Good night";
 }
 
+/** Sama dengan format di drawer karyawan: "25m", "1j 10m", "2j". */
+function otDuration(m: number): string {
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}j ${rem}m` : `${h}j`;
+}
+
 function agoLabel(iso: string) {
-  const d = new Date(iso);
+  // Tanggal-saja ("2026-10-03") berarti hari WIB itu, bukan 00:00 UTC —
+  // tanpa ini umur melenceng 7 jam.
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T00:00:00+07:00` : iso);
   const diffMs = Date.now() - d.getTime();
   const m = Math.round(diffMs / 60000);
   if (m < 1) return "now";

@@ -16,6 +16,11 @@ export type PendingConfirmationItem = {
   userAvatarUrl: string | null;
   userAvatarSeed: string | null;
   date: string;
+  /** Waktu kejadian sebenarnya (ISO) bila ada — dipakai untuk label umur
+   *  supaya tidak dihitung dari tengah malam tanggal absen. */
+  at?: string;
+  /** Durasi, khusus overtime. */
+  minutes?: number;
 };
 
 /**
@@ -25,7 +30,8 @@ export type PendingConfirmationItem = {
  *
  * Two source-of-truth statuses:
  *   - late_proof_status = 'pending' (with a proof url uploaded)
- *   - overtime_status   = 'pending' (only on rows flagged is_overtime)
+ *   - overtime_requests.status = 'pending' (same table the approve/reject
+ *     action and the employee drawer use)
  */
 export async function getPendingConfirmations(): Promise<PendingConfirmationItem[]> {
   const role = await getCurrentRole();
@@ -43,13 +49,14 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .not("late_proof_url", "is", null)
       .order("date", { ascending: false })
       .limit(200),
+    // Sumber SAMA dengan drawer karyawan & aksi Setujui/Tolak
+    // (`overtime_requests`), bukan `attendance_logs.overtime_status` —
+    // dua tabel itu bisa berbeda, dan Inbox tidak boleh menampilkan yang
+    // tidak bisa ditemukan/disetujui di drawer.
     supabase
-      .from("attendance_logs")
-      .select(
-        "id, date, user_id, profiles!inner(full_name, email, avatar_url, avatar_seed)"
-      )
-      .eq("overtime_status", "pending")
-      .eq("is_overtime", true)
+      .from("overtime_requests")
+      .select("attendance_log_id, date, user_id, overtime_minutes, created_at")
+      .eq("status", "pending")
       .order("date", { ascending: false })
       .limit(200),
     getPendingRegistrations(),
@@ -92,15 +99,44 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       date: r.date,
     });
   }
-  for (const r of (otRes.data ?? []) as unknown as Row[]) {
+  type OtRow = {
+    attendance_log_id: string;
+    date: string;
+    user_id: string;
+    overtime_minutes: number | null;
+    created_at: string;
+  };
+  const otRows = (otRes.data ?? []) as unknown as OtRow[];
+  const otUserIds = Array.from(new Set(otRows.map((r) => r.user_id)));
+  const otProfById = new Map<
+    string,
+    {
+      full_name: string | null;
+      email: string | null;
+      avatar_url: string | null;
+      avatar_seed: string | null;
+    }
+  >();
+  if (otUserIds.length > 0) {
+    const { data: otProfs } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, avatar_url, avatar_seed")
+      .in("id", otUserIds);
+    for (const p of otProfs ?? []) otProfById.set(p.id, p);
+  }
+  for (const r of otRows) {
+    const p = otProfById.get(r.user_id);
     items.push({
-      rowId: r.id,
+      // Tetap id baris absen: dipakai lonceng/jump ke rekap absen.
+      rowId: r.attendance_log_id,
       kind: "overtime",
       userId: r.user_id,
-      employeeName: r.profiles?.full_name || r.profiles?.email || "?",
-      userAvatarUrl: r.profiles?.avatar_url ?? null,
-      userAvatarSeed: r.profiles?.avatar_seed ?? null,
+      employeeName: p?.full_name || p?.email || "?",
+      userAvatarUrl: p?.avatar_url ?? null,
+      userAvatarSeed: p?.avatar_seed ?? null,
       date: r.date,
+      at: r.created_at,
+      minutes: Number(r.overtime_minutes ?? 0),
     });
   }
   // Sort by most recent date, late_proof before overtime as a stable tiebreaker.
