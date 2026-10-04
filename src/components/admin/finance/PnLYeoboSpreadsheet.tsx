@@ -29,6 +29,7 @@ import {
   ymLabelShort,
 } from "@/components/shared/MonthRangePicker";
 import { formatIDR } from "@/lib/cashflow/format";
+import { mayarMonthStatus } from "@/lib/cashflow/mayar-settlement";
 import { MONTH_NAMES } from "@/lib/utils/date-formats";
 import {
   orderYeoboBranches,
@@ -160,6 +161,9 @@ export function PnLYeoboSpreadsheet({
   const pathname = usePathname();
   const sp = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Waktu dibekukan per render-awal: status final hanya berganti di batas
+  // tengah malam, tak perlu jam berjalan.
+  const [nowMs] = useState(() => Date.now());
 
   // Branch options: canonical order, scoped to allowedBranches if given.
   const branchOptions = useMemo(() => {
@@ -456,14 +460,36 @@ export function PnLYeoboSpreadsheet({
                 <th className="sticky left-0 top-0 z-30 bg-muted text-left font-semibold px-3 py-2.5 border-b border-r border-border min-w-[220px]">
                   {branchView === ALL_BRANCHES ? "Semua cabang" : branchView}
                 </th>
-                {monthCells.map(({ month }) => (
-                  <th
-                    key={`${month.year}-${month.month}`}
-                    className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 border-b border-border whitespace-nowrap min-w-[120px]"
-                  >
-                    {monthLabel(month)}
-                  </th>
-                ))}
+                {monthCells.map(({ month }) => {
+                  const st = mayarMonthStatus(month.year, month.month, nowMs);
+                  const finalLabel = st
+                    ? `${st.finalDay} ${MONTH_NAMES[st.finalMonth - 1]} ${st.finalYear}`
+                    : "";
+                  return (
+                    <th
+                      key={`${month.year}-${month.month}`}
+                      className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 border-b border-border whitespace-nowrap min-w-[120px]"
+                    >
+                      {monthLabel(month)}
+                      {st && (
+                        <span
+                          title={
+                            st.final
+                              ? `Revenue Mayar bulan ini sudah lengkap (final sejak ${finalLabel} 00:00 WIB).`
+                              : `Revenue Mayar masuk setelah settlement (±4 hari), jadi bulan ini masih bisa bertambah. Dianggap final mulai ${finalLabel} 00:00 WIB.`
+                          }
+                          className={`block text-[10px] font-medium leading-tight mt-0.5 ${
+                            st.final ? "text-success" : "text-amber-700"
+                          }`}
+                        >
+                          {st.final
+                            ? "✓ Final"
+                            : `Belum final · ${st.finalDay} ${MONTH_NAMES[st.finalMonth - 1]}`}
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
                 <th className="sticky top-0 z-20 bg-muted text-right font-semibold px-3 py-2.5 border-b border-l border-border whitespace-nowrap min-w-[130px]">
                   Total
                 </th>
