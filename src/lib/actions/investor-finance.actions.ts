@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { computeLatestBalance } from "@/lib/cashflow/balance";
+import { getMayarWithdrawalAdjustment } from "@/lib/cashflow/mayar-balance";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import type { ActionResult } from "./_gates";
 
@@ -55,7 +57,24 @@ export async function getBankAccountBalance(accId: string): Promise<number> {
     }
     if (data.length < PAGE) break;
   }
-  return computeLatestBalance(rows);
+  const ledgerBalance = computeLatestBalance(rows);
+
+  // Rekening Mayar: ledger hanya naik, kurangi yang sudah dicairkan —
+  // angka yang sama dengan landing admin.
+  const { data: acct } = await supabase
+    .from("bank_accounts")
+    .select("bank")
+    .eq("id", accId)
+    .maybeSingle();
+  if (acct?.bank === "mayar") {
+    try {
+      const adj = await getMayarWithdrawalAdjustment(createAdminClient(), accId);
+      return ledgerBalance - adj.principal - adj.uncoveredFees;
+    } catch (e) {
+      console.error("[getBankAccountBalance] mayar withdrawal adjustment failed", e);
+    }
+  }
+  return ledgerBalance;
 }
 
 /**

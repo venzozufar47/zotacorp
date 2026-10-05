@@ -80,6 +80,9 @@ export interface AccountSummary {
   latestBalance: number;
   minDate: string | null;
   maxDate: string | null;
+  /** Khusus Mayar: dana yang sudah dicairkan ke rekening bank dan sudah
+   *  dikurangkan dari `latestBalance`. */
+  withdrawn?: { amount: number; count: number };
 }
 
 export async function getAccountSummaries(
@@ -136,7 +139,23 @@ export async function getAccountSummaries(
         }
         if (data.length < PAGE) break;
       }
-      out[id] = { latestBalance: computeLatestBalance(rows), minDate, maxDate };
+      const ledgerBalance = computeLatestBalance(rows);
+      if (bank === "mayar") {
+        // Ledger Mayar hanya naik; kurangi yang sudah dicairkan + biayanya.
+        try {
+          const adj = await getMayarWithdrawalAdjustment(createAdminClient(), id);
+          out[id] = {
+            latestBalance: ledgerBalance - adj.principal - adj.uncoveredFees,
+            minDate,
+            maxDate,
+            withdrawn: { amount: adj.principal, count: adj.count },
+          };
+          return;
+        } catch (e) {
+          console.error("[getAccountSummaries] mayar withdrawal adjustment failed", e);
+        }
+      }
+      out[id] = { latestBalance: ledgerBalance, minDate, maxDate };
     })
   );
 
@@ -1344,6 +1363,12 @@ export async function syncCashSheet(
 
 import { fetchAndParseMayar, fetchMayarBalance, type MayarBalance } from "@/lib/cashflow/mayar";
 import { makeOccurrenceKeys } from "@/lib/cashflow/dedupe";
+import {
+  MAYAR_FEE_REF,
+  MAYAR_WITHDRAWAL_FEE,
+  MAYAR_WITHDRAWAL_MARKER,
+  getMayarWithdrawalAdjustment,
+} from "@/lib/cashflow/mayar-balance";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -1372,31 +1397,13 @@ const MAYAR_DEDUPE_OPTS = {
   ignoreDescription: true,
 } as const;
 
-/**
- * Biaya penarikan dana Mayar — flat, dipotong Mayar SEBELUM transfer.
- *
- * Karena dipotong di sisi Mayar, biaya ini tidak pernah muncul sebagai
- * baris di rekening koran bank: nominal yang mendarat sudah bersih.
- * API Mayar juga tidak punya endpoint disbursement, jadi satu-satunya
- * jejaknya adalah baris penarikan di rekening bank tujuan. Tanpa
- * langkah ini, biayanya hilang diam-diam tanpa error.
- */
-const MAYAR_WITHDRAWAL_FEE = 2775;
-
-/**
- * Penanda counterparty penarikan Mayar di rekening koran. Mayar
- * mencairkan lewat entitas ini — deskripsi Mandiri berbunyi
- * "Transfer antar Mandiri · DARI SINAR DIGITAL TERDEP · … Permintaan
- * disbursement oleh …". Kata "Mayar" TIDAK muncul sama sekali, jadi
- * pencocokan harus lewat nama entitas ini.
- */
-const MAYAR_WITHDRAWAL_MARKER = "SINAR DIGITAL TERDEP";
+// Biaya penarikan (flat, dipotong Mayar SEBELUM transfer sehingga tidak
+// muncul di rekening koran bank), penanda penarikan, dan prefix ref
+// idempotensi ada di `lib/cashflow/mayar-balance.ts` — dipakai juga oleh
+// perhitungan saldo Mayar, jadi satu sumber.
 
 /** Kategori untuk baris biaya penarikan. */
 const MAYAR_FEE_CATEGORY = "Bank Administration";
-
-/** Prefix penanda idempotensi di kolom notes: `ref:<id tx bank>`. */
-const MAYAR_FEE_REF = "ref:";
 
 /**
  * Saldo Mayar LANGSUNG dari API (`fetchMayarBalance`) — bukan hasil

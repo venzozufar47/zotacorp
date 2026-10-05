@@ -266,6 +266,12 @@ export function FinanceLandingClient({
                           </p>
                         )}
                       </div>
+                      {sum?.withdrawn && sum.withdrawn.count > 0 && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Sudah dikurangi {sum.withdrawn.count} pencairan (Rp{" "}
+                          {formatIDR(sum.withdrawn.amount)}) + biaya pencairan
+                        </p>
+                      )}
                       {sum ? (
                         sum.minDate &&
                         sum.maxDate && (

@@ -21,6 +21,8 @@ import { formatIDR } from "@/lib/cashflow/format";
 import { verifyBalance } from "@/lib/cashflow/parsers/shared";
 import { sortChronologicalDesc, sortChronologicalAsc } from "@/lib/cashflow/chronological";
 import { computeLatestBalance } from "@/lib/cashflow/balance";
+import { getMayarWithdrawalAdjustment } from "@/lib/cashflow/mayar-balance";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
@@ -245,18 +247,44 @@ export default async function RekeningDetailPage({
     else mayarBalanceError = !res.ok ? res.error : "Gagal memuat saldo Mayar.";
   }
 
+  // Perkiraan saldo terkini dari ledger: pendapatan net − dana yang sudah
+  // dicairkan ke rekening bank − biaya pencairan yang belum tercatat.
+  // Selalu dihitung untuk Mayar: jadi cadangan saat API tak tersedia, dan
+  // pembanding silang saat API tersedia.
+  let mayarEstimate: {
+    balance: number;
+    principal: number;
+    count: number;
+    uncoveredFees: number;
+  } | null = null;
+  if (account.bank === "mayar") {
+    try {
+      const adj = await getMayarWithdrawalAdjustment(createAdminClient(), account.id);
+      mayarEstimate = {
+        ...adj,
+        balance: Number(latestBalance) - adj.principal - adj.uncoveredFees,
+      };
+    } catch (e) {
+      console.error("[rekening] mayar withdrawal adjustment failed", e);
+    }
+  }
+
   const displayLabel =
     account.bank === "cash"
       ? "Saldo kas fisik"
       : mayarBalance
         ? "Saldo tersedia"
-        : "Saldo terakhir";
+        : mayarEstimate
+          ? "Saldo terkini (perkiraan)"
+          : "Saldo terakhir";
   const displayBalance =
     account.bank === "cash"
       ? computeLatestBalance(tillRows)
       : mayarBalance
         ? mayarBalance.balanceActive
-        : latestBalance;
+        : mayarEstimate
+          ? mayarEstimate.balance
+          : latestBalance;
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -297,10 +325,28 @@ export default async function RekeningDetailPage({
             + Rp {formatIDR(mayarBalance.balancePending)} pending (belum bisa dicairkan)
           </p>
         )}
+        {mayarEstimate && (
+          <div className="col-span-full -mt-2 space-y-0.5 text-xs text-muted-foreground tabular-nums">
+            <p>
+              {mayarBalance ? "Perkiraan dari ledger: " : "Rincian: "}
+              Rp {formatIDR(Number(latestBalance))} (pendapatan net − biaya
+              yang sudah tercatat) − Rp {formatIDR(mayarEstimate.principal)} sudah
+              dicairkan ({mayarEstimate.count}×)
+              {mayarEstimate.uncoveredFees > 0 && (
+                <>
+                  {" "}
+                  − Rp {formatIDR(mayarEstimate.uncoveredFees)} biaya pencairan
+                  belum tercatat
+                </>
+              )}
+              {mayarBalance && <> = Rp {formatIDR(mayarEstimate.balance)}</>}
+            </p>
+          </div>
+        )}
         {mayarBalanceError && (
           <p className="col-span-full -mt-2 text-xs text-destructive">
-            Gagal ambil saldo real-time Mayar ({mayarBalanceError}) — angka di atas jatuh
-            kembali ke total ledger tercatat, bukan saldo tersedia yang sebenarnya.
+            Saldo real-time Mayar tidak bisa diambil ({mayarBalanceError}) — angka di
+            atas adalah perkiraan dari ledger dikurangi pencairan dan biayanya.
           </p>
         )}
         {/* Compact verification status — same invariant as before
