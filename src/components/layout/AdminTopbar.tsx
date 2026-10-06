@@ -5,6 +5,7 @@ import { useMemo, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
 import { AdminBackButton } from "./AdminBackButton";
+import { ShowcaseToggle } from "./ShowcaseToggle";
 import { QuickActionsMenu } from "@/components/admin/QuickActionsMenu";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
 
@@ -76,6 +77,7 @@ export function AdminTopbar({
         <span className="hidden lg:inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-card border border-border/70 text-[11.5px] font-medium text-foreground/80 shadow-sm">
           {dateLabel}
         </span>
+        <ShowcaseToggle />
         <button
           type="button"
           onClick={() => startRefresh(() => router.refresh())}

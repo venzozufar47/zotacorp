@@ -1265,3 +1265,20 @@
     animation: none !important;
   }
 }
+
+/* ── Mode Showcase (sembunyikan angka) — lihat components/shared/ShowcaseMode.tsx ──
+   Muat awal dengan mode aktif: halaman disembunyikan sampai angka selesai
+   dimask (atribut data-showcase-ready dipasang ShowcaseMode). */
+html[data-showcase="on"]:not([data-showcase-ready]) body {
+  visibility: hidden;
+}
+/* Input/textarea/select berisi angka — nilai control tidak boleh diubah. */
+[data-showcase-blur] {
+  filter: blur(6px) !important;
+}
+/* Konten yang tidak bisa dimask lewat teks (preview PDF dll.). */
+html[data-showcase="on"] iframe,
+html[data-showcase="on"] embed,
+html[data-showcase="on"] object {
+  filter: blur(16px) !important;
+}

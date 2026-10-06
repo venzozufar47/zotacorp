@@ -8,6 +8,8 @@ import { dictionary, type Language } from "@/lib/i18n/dictionary";
 import { LazyToaster } from "@/components/ui/LazyToaster";
 import { PwaRegister } from "@/components/shared/PwaRegister";
 import { BfcacheRefresh } from "@/components/shared/BfcacheRefresh";
+import { ShowcaseMode } from "@/components/shared/ShowcaseMode";
+import { SHOWCASE_STORAGE_KEY } from "@/lib/showcase/store";
 import "./globals.css";
 
 /**
@@ -97,10 +99,23 @@ export default async function RootLayout({
       lang={lang}
       data-theme="oceanic"
       className={`${jakarta.variable} ${poppins.variable} h-full antialiased`}
+      // Skrip Mode Showcase di bawah menambah atribut data-showcase* ke <html>
+      // sebelum hidrasi.
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col overflow-x-hidden">
+        {/* Mode Showcase: bila aktif, sembunyikan halaman SEBELUM paint pertama
+            (angka asli tidak boleh sempat terlihat saat reload). Pembukanya
+            ShowcaseMode setelah angka dimask; 6 detik = jaring pengaman bila
+            JS gagal supaya halaman tidak kosong selamanya. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem(${JSON.stringify(SHOWCASE_STORAGE_KEY)})==="1"){var d=document.documentElement;d.setAttribute("data-showcase","on");setTimeout(function(){d.setAttribute("data-showcase-ready","1")},6000)}}catch(e){}`,
+          }}
+        />
         <LanguageProvider initialLang={lang} initialDictionary={dictionary[lang]}>
           {children}
+          <ShowcaseMode />
           <LazyToaster />
           <PwaRegister />
           <BfcacheRefresh />
