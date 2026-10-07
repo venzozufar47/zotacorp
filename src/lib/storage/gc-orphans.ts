@@ -125,6 +125,11 @@ const TARGETS: Array<{
     minAgeHours: 48,
   },
   {
+    bucket: "task-evidence",
+    refs: [["assigned_task_completions", ["photo_path"]]],
+    minAgeHours: 48,
+  },
+  {
     bucket: "cake-order-attachments",
     refs: [["cake_order_attachments", ["storage_path"]]],
     minAgeHours: 7 * 24,

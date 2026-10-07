@@ -76,6 +76,16 @@ export const MEDIA_RETENTION_TARGETS: MediaRetentionTarget[] = [
     pathColumn: "storage_path",
     purgedColumn: "purged_at",
   },
+  {
+    // Bukti foto Tugas Karyawan (migrasi 173). Baris completion tetap sebagai
+    // jejak audit; admin melihat "foto sudah dihapus" bila path null + purged.
+    label: "task-evidence",
+    table: "assigned_task_completions",
+    bucket: "task-evidence",
+    dateColumn: "completed_at",
+    pathColumn: "photo_path",
+    purgedColumn: "photo_purged_at",
+  },
 ];
 
 export interface MediaRetentionResult {
