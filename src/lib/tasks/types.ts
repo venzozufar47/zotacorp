@@ -3,6 +3,11 @@ export type TaskStatus = "open" | "submitted" | "approved" | "cancelled";
 /** Bucket privat bukti foto. Path: `${uid}/${taskId}/r${round}/${itemId}-${uuid}.${ext}` */
 export const TASK_EVIDENCE_BUCKET = "task-evidence";
 
+/** Bucket privat lampiran foto admin (contoh/feedback). Path: `${adminId}/${uuid}.${ext}` */
+export const TASK_ATTACHMENT_BUCKET = "task-attachments";
+export const TASK_REFERENCE_MAX = 6;
+export const TASK_FEEDBACK_MAX = 4;
+
 /** Awalan path foto yang sah untuk (karyawan, task, ronde). */
 export function taskPhotoPrefix(userId: string, taskId: string, round: number): string {
   return `${userId}/${taskId}/r${round}/`;
@@ -21,6 +26,11 @@ export interface MyTaskItem {
   photoUrl: string | null;
 }
 
+export interface TaskPhotoRef {
+  id: string;
+  url: string;
+}
+
 export interface MyTask {
   id: string;
   title: string;
@@ -33,6 +43,10 @@ export interface MyTask {
   /** Sudah ditunda untuk hari ini (sign out tidak diblokir oleh task ini). */
   deferredToday: boolean;
   deferralReason: string | null;
+  /** Foto contoh/instruksi dari admin. */
+  referencePhotos: TaskPhotoRef[];
+  /** Foto yang menyertai penolakan terakhir (hanya bermakna saat ronde ulang). */
+  feedbackPhotos: TaskPhotoRef[];
 }
 
 export interface BlockingTask {
@@ -68,7 +82,17 @@ export interface AdminTaskDetailItem {
   photoPurged: boolean;
 }
 
+export interface AdminTaskAttachment {
+  id: string;
+  kind: "reference" | "feedback";
+  /** Untuk feedback: ronde yang ditolak. */
+  round: number;
+  /** null bila fotonya sudah dihapus (lewat masa simpan). */
+  url: string | null;
+}
+
 export interface AdminTaskDetail extends AdminTaskRow {
+  attachments: AdminTaskAttachment[];
   /** Salinan lain dari penugasan yang sama (satu batch) yang belum selesai/dibatalkan. */
   batchOthers: number;
   items: AdminTaskDetailItem[];

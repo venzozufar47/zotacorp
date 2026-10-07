@@ -31,6 +31,38 @@ function getCoords(): Promise<{ lat: number | null; lng: number | null }> {
   });
 }
 
+/** Deretan thumbnail foto dari admin; ketuk untuk memperbesar. */
+function PhotoStrip({
+  label,
+  photos,
+  onOpen,
+}: {
+  label: string;
+  photos: { id: string; url: string }[];
+  onOpen: (index: number) => void;
+}) {
+  if (photos.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold">{label}</p>
+      <div className="flex gap-2 overflow-x-auto pb-0.5">
+        {photos.map((ph, i) => (
+          <button
+            key={ph.id}
+            type="button"
+            onClick={() => onOpen(i)}
+            aria-label={`${label} ${i + 1}`}
+            className="shrink-0 size-16 rounded-lg overflow-hidden border-2 border-foreground"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={ph.url} alt="" className="size-full object-cover" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Kartu "Tugas untukmu" di beranda karyawan.
  *
@@ -174,6 +206,20 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
                 </div>
               </div>
 
+              <PhotoStrip
+                label="Foto contoh dari admin"
+                photos={task.referencePhotos}
+                onOpen={(index) =>
+                  setLightbox({
+                    photos: task.referencePhotos.map((ph, i) => ({
+                      url: ph.url,
+                      title: `Foto contoh ${i + 1}`,
+                    })),
+                    index,
+                  })
+                }
+              />
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span>
@@ -201,6 +247,19 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
                     <RotateCcw size={14} /> Belum disetujui — ulangi dari awal
                   </p>
                   <p className="text-foreground break-words">“{task.reviewNote}”</p>
+                  <PhotoStrip
+                    label="Foto dari admin"
+                    photos={task.feedbackPhotos}
+                    onOpen={(index) =>
+                      setLightbox({
+                        photos: task.feedbackPhotos.map((ph, i) => ({
+                          url: ph.url,
+                          title: `Foto feedback ${i + 1}`,
+                        })),
+                        index,
+                      })
+                    }
+                  />
                 </div>
               )}
 

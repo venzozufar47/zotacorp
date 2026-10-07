@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Camera, Loader2, Plus, X } from "lucide-react";
 import { updateAssignedTask } from "@/lib/actions/assigned-tasks.actions";
-import type { AdminTaskDetail } from "@/lib/tasks/types";
+import { TASK_REFERENCE_MAX, type AdminTaskDetail } from "@/lib/tasks/types";
+import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
 import { Field, inputCls } from "@/components/admin/registry/RegistryUi";
 
 interface DraftItem {
@@ -46,6 +47,10 @@ export function TaskEditForm({
     }))
   );
   const [pending, startTransition] = useTransition();
+  const existingRefs = detail.attachments.filter((a) => a.kind === "reference" && a.url);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [newPhotos, setNewPhotos] = useState<PickedPhoto[]>([]);
+  const keptRefs = existingRefs.length - removedIds.size;
 
   function move(idx: number, dir: -1 | 1) {
     setItems((prev) => {
@@ -79,6 +84,8 @@ export function TaskEditForm({
         description: description || null,
         items: cleaned.map((i) => ({ id: i.id, title: i.title, note: i.note })),
         applyToBatch,
+        addAttachmentPaths: newPhotos.map((p) => p.path),
+        removeAttachmentIds: [...removedIds],
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -188,6 +195,55 @@ export function TaskEditForm({
         </div>
       </Field>
 
+      <Field
+        label="Foto contoh"
+        hint={`Maksimal ${TASK_REFERENCE_MAX} foto. Foto yang dihapus hanya hilang dari tugas ini.`}
+      >
+        <div className="space-y-2">
+          {existingRefs.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {existingRefs.map((a) => {
+                const removed = removedIds.has(a.id);
+                return (
+                  <div key={a.id} className="relative size-20 shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={a.url as string}
+                      alt=""
+                      className={
+                        "size-full rounded-xl object-cover border-2 border-foreground " +
+                        (removed ? "opacity-30" : "")
+                      }
+                    />
+                    <button
+                      type="button"
+                      aria-label={removed ? "Batalkan hapus" : "Hapus foto"}
+                      onClick={() =>
+                        setRemovedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(a.id)) next.delete(a.id);
+                          else next.add(a.id);
+                          return next;
+                        })
+                      }
+                      className="absolute -top-2 -right-2 size-7 grid place-items-center rounded-full bg-foreground text-background shadow text-[10px] font-bold"
+                    >
+                      {removed ? "↺" : <X size={14} />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <AttachmentPicker
+            photos={newPhotos}
+            onChange={setNewPhotos}
+            max={TASK_REFERENCE_MAX}
+            remaining={TASK_REFERENCE_MAX - keptRefs}
+          />
+        </div>
+      </Field>
+
       {detail.batchOthers > 0 && (
         <label className="flex items-start gap-2 text-sm cursor-pointer">
           <input
@@ -197,8 +253,8 @@ export function TaskEditForm({
             onChange={(e) => setApplyToBatch(e.target.checked)}
           />
           <span>
-            Terapkan judul &amp; keterangan juga ke {detail.batchOthers} penerima lain dari
-            penugasan ini yang belum selesai.
+            Terapkan judul, keterangan &amp; foto contoh baru juga ke {detail.batchOthers}{" "}
+            penerima lain dari penugasan ini yang belum selesai.
             <span className="block text-[11px] text-muted-foreground">
               Daftar item hanya berubah untuk {detail.assigneeName}.
             </span>
@@ -209,7 +265,10 @@ export function TaskEditForm({
       <div className="sticky -bottom-4 -mx-4 -mb-4 mt-4 px-4 py-3 bg-card border-t border-border flex gap-2 sm:justify-end">
         <button
           type="button"
-          onClick={onCancel}
+          onClick={() => {
+            void discardPickedPhotos(newPhotos);
+            onCancel();
+          }}
           disabled={pending}
           className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
         >

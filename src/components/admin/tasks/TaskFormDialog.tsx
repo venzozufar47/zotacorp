@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
 import { createAssignedTask } from "@/lib/actions/assigned-tasks.actions";
 import { Field, Shell, inputCls } from "@/components/admin/registry/RegistryUi";
+import { TASK_REFERENCE_MAX } from "@/lib/tasks/types";
+import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
 import type { AssignableEmployee } from "./TasksManager";
 
 const MAX_ITEMS = 40;
@@ -30,6 +32,8 @@ export function TaskFormDialog({
     { key: "item-0", value: "" },
   ]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [photos, setPhotos] = useState<PickedPhoto[]>([]);
+  const sentRef = useRef(false);
   const [query, setQuery] = useState("");
   const itemRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const nextKey = useRef(1);
@@ -68,6 +72,7 @@ export function TaskFormDialog({
         description: description || null,
         items: items.map((i) => i.value.trim()).filter(Boolean).map((t) => ({ title: t })),
         assigneeIds: [...picked],
+        attachmentPaths: photos.map((p) => p.path),
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -78,15 +83,22 @@ export function TaskFormDialog({
           ? `Tugas dikirim ke ${res.data.created} karyawan`
           : "Tugas dikirim ke karyawan"
       );
+      sentRef.current = true;
       router.refresh();
       onClose();
     });
   }
 
+  /** Tutup tanpa kirim → buang foto yang sudah terunggah. */
+  function cancel() {
+    if (!sentRef.current) void discardPickedPhotos(photos);
+    onClose();
+  }
+
   const allShownPicked = shown.length > 0 && shown.every((e) => picked.has(e.id));
 
   return (
-    <Shell title="Tugas baru" onClose={onClose} wide>
+    <Shell title="Tugas baru" onClose={cancel} wide>
       <div className="space-y-4">
         <Field label="1. Judul tugas">
           <input
@@ -164,6 +176,13 @@ export function TaskFormDialog({
         </Field>
 
         <Field
+          label="Foto contoh (opsional)"
+          hint={`Contoh hasil atau instruksi bergambar — tampil di tugas karyawan. Maksimal ${TASK_REFERENCE_MAX} foto, dikompres otomatis.`}
+        >
+          <AttachmentPicker photos={photos} onChange={setPhotos} max={TASK_REFERENCE_MAX} />
+        </Field>
+
+        <Field
           label={`3. Penerima${picked.size > 0 ? ` · ${picked.size} dipilih` : ""}`}
           hint="Tiap karyawan mendapat salinan sendiri — progres dan verifikasinya terpisah."
         >
@@ -225,7 +244,7 @@ export function TaskFormDialog({
       <div className="sticky -bottom-4 -mx-4 -mb-4 mt-4 px-4 py-3 bg-card border-t border-border flex gap-2 sm:justify-end">
         <button
           type="button"
-          onClick={onClose}
+          onClick={cancel}
           disabled={pending}
           className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
         >

@@ -2,7 +2,7 @@
 
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { compressImageFile } from "@/lib/images/compress-image";
+import { compressImageStrict, MAX_EDGE_DOCUMENT } from "@/lib/images/compress-image";
 
 /**
  * Helpers for the public `cleaning-refs` bucket (admin reference photos).
@@ -24,7 +24,15 @@ export async function uploadCleaningRef(
   folder: string,
   file: File
 ): Promise<string | null> {
-  const out = await compressImageFile(file);
+  // Tegas: bucket membatasi tipe & ukuran (migrasi 174) — foto yang tidak bisa
+  // dikompres ditolak dengan pesan jelas, bukan diunggah mentah.
+  let out: File;
+  try {
+    out = await compressImageStrict(file, { maxDim: MAX_EDGE_DOCUMENT });
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : "Foto tidak bisa diproses.");
+    return null;
+  }
   const ext = out.name.split(".").pop()?.toLowerCase() || "jpg";
   const path = `${folder}/${crypto.randomUUID()}.${ext}`;
   const { error } = await client()

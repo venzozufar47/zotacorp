@@ -9,10 +9,11 @@ import {
   getAssignedTaskDetail,
   reviewAssignedTask,
 } from "@/lib/actions/assigned-tasks.actions";
-import { TASK_REJECT_NOTE_MAX, type AdminTaskDetail } from "@/lib/tasks/types";
+import { TASK_FEEDBACK_MAX, TASK_REJECT_NOTE_MAX, type AdminTaskDetail } from "@/lib/tasks/types";
 import { Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 import { PhotoLightbox, type LightboxPhoto } from "@/components/shared/PhotoLightbox";
 import { TaskEditForm } from "./TaskEditForm";
+import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
 import { timeAgo } from "./TasksManager";
 
 function fmtDateTime(iso: string): string {
@@ -96,6 +97,8 @@ export function TaskDetailView({
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [attLightbox, setAttLightbox] = useState<number | null>(null);
+  const [feedbackPhotos, setFeedbackPhotos] = useState<PickedPhoto[]>([]);
   const [pending, startTransition] = useTransition();
   const [now] = useState(() => Date.now());
 
@@ -106,6 +109,12 @@ export function TaskDetailView({
         .map((i) => ({ url: i.photoUrl as string, title: i.title })),
     [detail.items]
   );
+
+  const referenceAtt = detail.attachments.filter((a) => a.kind === "reference" && a.url);
+  const referencePhotos: LightboxPhoto[] = referenceAtt.map((a, i) => ({
+    url: a.url as string,
+    title: `Foto contoh ${i + 1}`,
+  }));
 
   function done(msg: string) {
     toast.success(msg);
@@ -127,10 +136,21 @@ export function TaskDetailView({
       return;
     }
     startTransition(async () => {
-      const res = await reviewAssignedTask(detail.id, "reject", note);
+      const res = await reviewAssignedTask(
+        detail.id,
+        "reject",
+        note,
+        feedbackPhotos.map((p) => p.path)
+      );
       if (!res.ok) toast.error(res.error);
       else done("Dikembalikan ke karyawan");
     });
+  }
+
+  function stopRejecting() {
+    void discardPickedPhotos(feedbackPhotos);
+    setFeedbackPhotos([]);
+    setRejecting(false);
   }
 
   function cancel() {
@@ -179,6 +199,27 @@ export function TaskDetailView({
           </p>
         )}
       </div>
+
+      {/* Lampiran admin (foto contoh) */}
+      {referenceAtt.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold">Foto contoh dari admin</p>
+          <div className="flex flex-wrap gap-2">
+            {referenceAtt.map((a, i) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setAttLightbox(i)}
+                aria-label={`Perbesar foto contoh ${i + 1}`}
+                className="size-16 rounded-lg overflow-hidden border-2 border-foreground"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={a.url as string} alt="" className="size-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Foto per item — 2 kolom di HP, 3 di layar lebar */}
       <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -291,6 +332,12 @@ export function TaskDetailView({
                   </button>
                 ))}
               </div>
+              <AttachmentPicker
+                photos={feedbackPhotos}
+                onChange={setFeedbackPhotos}
+                max={TASK_FEEDBACK_MAX}
+                label="Foto"
+              />
               <textarea
                 className={inputCls + " !mt-0"}
                 rows={2}
@@ -306,7 +353,7 @@ export function TaskDetailView({
               <div className="flex gap-2 sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => setRejecting(false)}
+                  onClick={stopRejecting}
                   disabled={pending}
                   className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted"
                 >
@@ -352,6 +399,12 @@ export function TaskDetailView({
         index={lightbox}
         onIndexChange={setLightbox}
         onClose={() => setLightbox(null)}
+      />
+      <PhotoLightbox
+        photos={referencePhotos}
+        index={attLightbox}
+        onIndexChange={setAttLightbox}
+        onClose={() => setAttLightbox(null)}
       />
     </div>
   );

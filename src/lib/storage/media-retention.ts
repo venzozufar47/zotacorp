@@ -86,6 +86,15 @@ export const MEDIA_RETENTION_TARGETS: MediaRetentionTarget[] = [
     pathColumn: "photo_path",
     purgedColumn: "photo_purged_at",
   },
+  {
+    // Lampiran foto admin pada tugas (migrasi 174).
+    label: "task-attachments",
+    table: "assigned_task_attachments",
+    bucket: "task-attachments",
+    dateColumn: "created_at",
+    pathColumn: "photo_path",
+    purgedColumn: "photo_purged_at",
+  },
 ];
 
 export interface MediaRetentionResult {

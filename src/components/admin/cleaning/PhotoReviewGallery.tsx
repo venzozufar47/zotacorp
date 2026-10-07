@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { formatDateID } from "@/lib/utils/date-formats";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import { compressImageFile } from "@/lib/images/compress-image";
+import { compressImageStrict, MAX_EDGE_DOCUMENT } from "@/lib/images/compress-image";
 import {
   getCleaningPhotoHistory,
   type PhotoHistoryRow,
@@ -69,7 +69,14 @@ function AttachmentUploader({
     // bukan satu per satu.
     const results = await Promise.all(
       selected.map(async (file) => {
-        const compressed = await compressImageFile(file);
+        let compressed: File;
+        try {
+          // Tegas: bucket membatasi tipe & ukuran (migrasi 174).
+          compressed = await compressImageStrict(file, { maxDim: MAX_EDGE_DOCUMENT });
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : `Gagal memproses ${file.name}`);
+          return null;
+        }
         const ext = compressed.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `review-attachments/${completionId}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage

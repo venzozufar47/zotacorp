@@ -24,7 +24,10 @@ import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import {
   TASK_DEFER_REASON_MAX,
   TASK_DEFER_REASON_MIN,
+  TASK_ATTACHMENT_BUCKET,
   TASK_EVIDENCE_BUCKET,
+  TASK_FEEDBACK_MAX,
+  TASK_REFERENCE_MAX,
   TASK_REJECT_NOTE_MAX,
   taskPhotoPrefix,
   type AdminTaskDetail,
@@ -69,6 +72,20 @@ async function signPhotos(paths: string[]): Promise<Map<string, string>> {
   return out;
 }
 
+/** Seperti signPhotos tapi untuk bucket lampiran admin. */
+async function signAttachments(paths: (string | null)[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unique = [...new Set(paths.filter((p): p is string => !!p))];
+  if (unique.length === 0) return out;
+  const { data } = await createAdminClient()
+    .storage.from(TASK_ATTACHMENT_BUCKET)
+    .createSignedUrls(unique, 1800);
+  for (const row of data ?? []) {
+    if (row.path && row.signedUrl) out.set(row.path, row.signedUrl);
+  }
+  return out;
+}
+
 async function removePhotos(paths: (string | null | undefined)[]) {
   const list = paths.filter((p): p is string => !!p);
   if (list.length === 0) return;
@@ -76,6 +93,72 @@ async function removePhotos(paths: (string | null | undefined)[]) {
     await createAdminClient().storage.from(TASK_EVIDENCE_BUCKET).remove(list);
   } catch (err) {
     console.error("[tasks] remove photo failed:", err);
+  }
+}
+
+/**
+ * Validasi path lampiran admin: harus di folder admin yang sedang login (klien
+ * mengunggah langsung ke storage, jadi server tidak boleh percaya string path),
+ * tanpa "..", dan filenya benar-benar ada.
+ */
+async function validateAttachmentPaths(
+  adminId: string,
+  paths: string[]
+): Promise<string | null> {
+  const db = createAdminClient();
+  for (const path of paths) {
+    if (
+      !path.startsWith(`${adminId}/`) ||
+      path.includes("..") ||
+      path.slice(adminId.length + 1).includes("/")
+    ) {
+      return "Lampiran tidak valid. Unggah ulang fotonya.";
+    }
+    const file = path.slice(adminId.length + 1);
+    const { data } = await db.storage
+      .from(TASK_ATTACHMENT_BUCKET)
+      .list(adminId, { search: file, limit: 1 });
+    if (!data || !data.some((o) => o.name === file)) {
+      return "Ada foto lampiran yang belum selesai diunggah. Coba lagi.";
+    }
+  }
+  return null;
+}
+
+async function insertAttachments(
+  db: any,
+  taskIds: string[],
+  paths: string[],
+  kind: "reference" | "feedback",
+  round: number,
+  adminId: string
+): Promise<string | null> {
+  if (taskIds.length === 0 || paths.length === 0) return null;
+  const rows = taskIds.flatMap((task_id) =>
+    paths.map((photo_path) => ({ task_id, kind, round, photo_path, uploaded_by: adminId }))
+  );
+  const { error } = await db.from("assigned_task_attachments").insert(rows);
+  return error ? error.message : null;
+}
+
+/**
+ * Hapus file lampiran dari storage hanya bila TIDAK ada lagi baris yang
+ * merujuknya — tugas yang di-assign ke banyak karyawan berbagi satu file.
+ */
+async function removeUnreferencedAttachmentFiles(db: any, paths: (string | null)[]) {
+  const unique = [...new Set(paths.filter((p): p is string => !!p))];
+  if (unique.length === 0) return;
+  const { data: stillUsed } = await db
+    .from("assigned_task_attachments")
+    .select("photo_path")
+    .in("photo_path", unique);
+  const used = new Set<string>((stillUsed ?? []).map((r: any) => r.photo_path));
+  const orphan = unique.filter((p) => !used.has(p));
+  if (orphan.length === 0) return;
+  try {
+    await createAdminClient().storage.from(TASK_ATTACHMENT_BUCKET).remove(orphan);
+  } catch (err) {
+    console.error("[tasks] remove attachment failed:", err);
   }
 }
 
@@ -100,6 +183,8 @@ const createSchema = z.object({
     .min(1, "Minimal satu item checklist")
     .max(40, "Maksimal 40 item"),
   assigneeIds: z.array(z.string().uuid()).min(1, "Pilih minimal satu karyawan").max(50),
+  /** Foto contoh dari admin (sudah diunggah ke bucket task-attachments). */
+  attachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX).optional(),
 });
 
 export type CreateAssignedTaskInput = z.input<typeof createSchema>;
@@ -115,6 +200,10 @@ export async function createAssignedTask(
   }
   const { title, description, items } = parsed.data;
   const assigneeIds = [...new Set(parsed.data.assigneeIds)];
+
+  const attachmentPaths = [...new Set(parsed.data.attachmentPaths ?? [])];
+  const attErr = await validateAttachmentPaths(gate.userId, attachmentPaths);
+  if (attErr) return { ok: false, error: attErr };
 
   const db = createAdminClient() as any;
 
@@ -165,6 +254,20 @@ export async function createAssignedTask(
     // Tanpa item, task tidak bisa dikerjakan — batalkan seluruh batch (cascade).
     await db.from("assigned_tasks").delete().eq("batch_id", batchId);
     return { ok: false, error: itemErr.message };
+  }
+
+  const insAttErr = await insertAttachments(
+    db,
+    tasks.map((t: any) => t.id),
+    attachmentPaths,
+    "reference",
+    1,
+    gate.userId
+  );
+  if (insAttErr) {
+    await db.from("assigned_tasks").delete().eq("batch_id", batchId);
+    await removeUnreferencedAttachmentFiles(db, attachmentPaths);
+    return { ok: false, error: insAttErr };
   }
 
   await Promise.all(
@@ -248,8 +351,14 @@ export async function getAssignedTaskDetail(
     .maybeSingle();
   if (!task) return { ok: false, error: "Tugas tidak ditemukan" };
 
-  const [rows, { data: items }, { data: completions }, { data: reviews }, { data: deferrals }] =
-    await Promise.all([
+  const [
+    rows,
+    { data: items },
+    { data: completions },
+    { data: reviews },
+    { data: deferrals },
+    { data: attachmentRows },
+  ] = await Promise.all([
       buildAdminRows([task]),
       db
         .from("assigned_task_items")
@@ -271,9 +380,15 @@ export async function getAssignedTaskDetail(
         .select("for_date, reason")
         .eq("task_id", taskId)
         .order("for_date", { ascending: false }),
+      db
+        .from("assigned_task_attachments")
+        .select("id, kind, round, photo_path")
+        .eq("task_id", taskId)
+        .order("created_at", { ascending: true }),
     ]);
 
   const urls = await signPhotos((completions ?? []).map((c: any) => c.photo_path).filter(Boolean));
+  const attUrls = await signAttachments((attachmentRows ?? []).map((a: any) => a.photo_path));
   const byItem = new Map<string, any>((completions ?? []).map((c: any) => [c.item_id, c]));
 
   let batchOthers = 0;
@@ -292,6 +407,12 @@ export async function getAssignedTaskDetail(
     data: {
       ...rows[0],
       batchOthers,
+      attachments: (attachmentRows ?? []).map((a: any) => ({
+        id: a.id,
+        kind: a.kind,
+        round: a.round,
+        url: a.photo_path ? attUrls.get(a.photo_path) ?? null : null,
+      })),
       reviewNote: task.review_note,
       items: (items ?? []).map((i: any) => {
         const c = byItem.get(i.id);
@@ -329,8 +450,11 @@ const updateSchema = z.object({
     )
     .min(1, "Minimal satu item checklist")
     .max(40, "Maksimal 40 item"),
-  /** Judul + keterangan juga diterapkan ke salinan lain (satu batch) yang belum selesai. */
+  /** Judul, keterangan + foto contoh BARU juga diterapkan ke salinan lain (satu batch) yang belum selesai. */
   applyToBatch: z.boolean().optional(),
+  /** Foto contoh baru (sudah diunggah) dan id lampiran contoh yang dibuang dari tugas ini. */
+  addAttachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX).optional(),
+  removeAttachmentIds: z.array(z.string().uuid()).max(TASK_REFERENCE_MAX * 2).optional(),
 });
 
 export type UpdateAssignedTaskInput = z.input<typeof updateSchema>;
@@ -356,6 +480,8 @@ export async function updateAssignedTask(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
   }
   const { taskId, title, description, items, applyToBatch } = parsed.data;
+  const addPaths = [...new Set(parsed.data.addAttachmentPaths ?? [])];
+  const removeIds = [...new Set(parsed.data.removeAttachmentIds ?? [])];
 
   const db = createAdminClient() as any;
   const { data: task } = await db
@@ -432,6 +558,45 @@ export async function updateAssignedTask(
     }
   }
 
+  // Lampiran contoh: batas jumlah dihitung dari yang ada - dibuang + baru.
+  if (addPaths.length > 0 || removeIds.length > 0) {
+    const { data: refRows } = await db
+      .from("assigned_task_attachments")
+      .select("id, photo_path")
+      .eq("task_id", taskId)
+      .eq("kind", "reference");
+    const current: any[] = refRows ?? [];
+    const removable = current.filter((r) => removeIds.includes(r.id));
+    if (current.length - removable.length + addPaths.length > TASK_REFERENCE_MAX) {
+      return { ok: false, error: `Maksimal ${TASK_REFERENCE_MAX} foto contoh.` };
+    }
+    const attErr = await validateAttachmentPaths(gate.userId, addPaths);
+    if (attErr) return { ok: false, error: attErr };
+
+    if (removable.length > 0) {
+      await db
+        .from("assigned_task_attachments")
+        .delete()
+        .in("id", removable.map((r) => r.id))
+        .eq("task_id", taskId);
+      await removeUnreferencedAttachmentFiles(db, removable.map((r) => r.photo_path));
+    }
+    if (addPaths.length > 0) {
+      let targets = [taskId];
+      if (applyToBatch && task.batch_id) {
+        const { data: sibs } = await db
+          .from("assigned_tasks")
+          .select("id")
+          .eq("batch_id", task.batch_id)
+          .neq("id", taskId)
+          .in("status", ["open", "submitted"]);
+        targets = [taskId, ...(sibs ?? []).map((x: any) => x.id as string)];
+      }
+      const insErr = await insertAttachments(db, targets, addPaths, "reference", 1, gate.userId);
+      if (insErr) return { ok: false, error: insErr };
+    }
+  }
+
   const header = { title, description: description || null };
   const { error: headErr } = await db.from("assigned_tasks").update(header).eq("id", taskId);
   if (headErr) return { ok: false, error: headErr.message };
@@ -459,7 +624,9 @@ export async function updateAssignedTask(
 export async function reviewAssignedTask(
   taskId: string,
   decision: "approve" | "reject",
-  note?: string
+  note?: string,
+  /** Foto yang menyertai penolakan (sudah diunggah ke bucket task-attachments). */
+  attachmentPaths?: string[]
 ): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
@@ -470,6 +637,13 @@ export async function reviewAssignedTask(
       return { ok: false, error: `Feedback maksimal ${TASK_REJECT_NOTE_MAX} karakter.` };
     }
   }
+
+  const feedbackPaths = decision === "reject" ? [...new Set(attachmentPaths ?? [])] : [];
+  if (feedbackPaths.length > TASK_FEEDBACK_MAX) {
+    return { ok: false, error: `Maksimal ${TASK_FEEDBACK_MAX} foto feedback.` };
+  }
+  const attErr = await validateAttachmentPaths(gate.userId, feedbackPaths);
+  if (attErr) return { ok: false, error: attErr };
 
   const db = createAdminClient() as any;
   const { data: task } = await db
@@ -506,6 +680,10 @@ export async function reviewAssignedTask(
     .select("id");
   if (!updated || updated.length === 0) {
     return { ok: false, error: "Tugas ini sudah diproses." };
+  }
+
+  if (feedbackPaths.length > 0) {
+    await insertAttachments(db, [taskId], feedbackPaths, "feedback", task.current_round, gate.userId);
   }
 
   await db.from("assigned_task_reviews").insert({
@@ -563,7 +741,8 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
   if (!tasks || tasks.length === 0) return [];
 
   const ids = tasks.map((t: any) => t.id as string);
-  const [{ data: items }, { data: completions }, { data: deferrals }] = await Promise.all([
+  const [{ data: items }, { data: completions }, { data: deferrals }, { data: attachments }] =
+    await Promise.all([
     supabase
       .from("assigned_task_items")
       .select("id, task_id, title, note, sort_order")
@@ -578,7 +757,14 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
       .select("task_id, reason")
       .in("task_id", ids)
       .eq("for_date", today),
+    supabase
+      .from("assigned_task_attachments")
+      .select("id, task_id, kind, round, photo_path")
+      .in("task_id", ids)
+      .not("photo_path", "is", null)
+      .order("created_at", { ascending: true }),
   ]);
+  const attUrls = await signAttachments((attachments ?? []).map((a: any) => a.photo_path));
 
   // Hanya completion yang MASIH punya foto yang dianggap selesai — selaras
   // dengan submitTask & gate (retensi 90 hari bisa mengosongkan photo_path).
@@ -613,6 +799,22 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
       }),
     deferredToday: deferralByTask.has(t.id),
     deferralReason: deferralByTask.get(t.id) ?? null,
+    referencePhotos: (attachments ?? [])
+      .filter((a: any) => a.task_id === t.id && a.kind === "reference" && attUrls.has(a.photo_path))
+      .map((a: any) => ({ id: a.id, url: attUrls.get(a.photo_path) as string })),
+    // Feedback ronde yang baru ditolak = ronde sekarang - 1.
+    feedbackPhotos:
+      t.current_round > 1
+        ? (attachments ?? [])
+            .filter(
+              (a: any) =>
+                a.task_id === t.id &&
+                a.kind === "feedback" &&
+                a.round === t.current_round - 1 &&
+                attUrls.has(a.photo_path)
+            )
+            .map((a: any) => ({ id: a.id, url: attUrls.get(a.photo_path) as string }))
+        : [],
   }));
 }
 

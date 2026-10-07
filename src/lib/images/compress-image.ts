@@ -57,14 +57,12 @@ export function extensionFor(blob: Blob): string {
   return blob.type === "image/webp" ? "webp" : "jpg";
 }
 
-export async function compressImageFile(
+/** Decode + resize + re-encode. null kalau gagal (format tak didukung, dst). */
+async function reencode(
   file: File,
-  opts?: { maxDim?: number; quality?: number }
-): Promise<File> {
-  if (!file.type.startsWith("image/")) return file;
-  const maxDim = opts?.maxDim ?? MAX_EDGE_DOCUMENT;
-  const quality = opts?.quality ?? IMAGE_QUALITY;
-
+  maxDim: number,
+  quality: number
+): Promise<File | null> {
   try {
     const bitmap = await createImageBitmap(file);
     const srcW = bitmap.width;
@@ -79,13 +77,13 @@ export async function compressImageFile(
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       bitmap.close?.();
-      return file;
+      return null;
     }
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close?.();
 
     const blob = await encodeCanvas(canvas, quality);
-    if (!blob || blob.size >= file.size) return file;
+    if (!blob) return null;
 
     const baseName = file.name.replace(/\.[^.]+$/, "") || "image";
     return new File([blob], `${baseName}.${extensionFor(blob)}`, {
@@ -93,6 +91,47 @@ export async function compressImageFile(
       lastModified: Date.now(),
     });
   } catch {
-    return file;
+    return null;
   }
+}
+
+export async function compressImageFile(
+  file: File,
+  opts?: { maxDim?: number; quality?: number }
+): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  const out = await reencode(
+    file,
+    opts?.maxDim ?? MAX_EDGE_DOCUMENT,
+    opts?.quality ?? IMAGE_QUALITY
+  );
+  return out && out.size < file.size ? out : file;
+}
+
+/**
+ * Versi TEGAS untuk fitur foto yang bucket-nya membatasi tipe & ukuran
+ * (kebersihan, tugas — lihat migrasi 174). Berbeda dari `compressImageFile`:
+ * hasilnya SELALU WebP/JPEG hasil encode ulang (walau tidak lebih kecil dari
+ * aslinya) dan GAGAL dengan pesan jelas bila foto tidak bisa diproses — tidak
+ * pernah diam-diam mengunggah file asli yang tidak terkompresi (mis. HEIC
+ * atau PNG besar).
+ */
+export async function compressImageStrict(
+  file: File,
+  opts?: { maxDim?: number; quality?: number }
+): Promise<File> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Hanya file foto yang bisa dilampirkan.");
+  }
+  const out = await reencode(
+    file,
+    opts?.maxDim ?? MAX_EDGE_PHOTO,
+    opts?.quality ?? IMAGE_QUALITY
+  );
+  if (!out) {
+    throw new Error(
+      "Foto tidak bisa diproses di perangkat ini. Coba foto lain atau ambil ulang dengan kamera."
+    );
+  }
+  return out;
 }
