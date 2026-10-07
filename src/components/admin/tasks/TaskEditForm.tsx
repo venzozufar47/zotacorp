@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Camera, Loader2, Plus, X } from "lucide-react";
 import { updateAssignedTask } from "@/lib/actions/assigned-tasks.actions";
 import type { AdminTaskDetail } from "@/lib/tasks/types";
-import { Field, inputCls, primaryBtn, smallBtn } from "@/components/admin/registry/RegistryUi";
+import { Field, inputCls } from "@/components/admin/registry/RegistryUi";
 
 interface DraftItem {
   /** id item di DB; undefined = item baru. */
@@ -90,10 +90,10 @@ export function TaskEditForm({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <Field label="Judul tugas">
         <input
-          className={inputCls}
+          className={inputCls + " h-11"}
           value={title}
           maxLength={120}
           onChange={(e) => setTitle(e.target.value)}
@@ -120,9 +120,9 @@ export function TaskEditForm({
       >
         <div className="space-y-2">
           {items.map((it, idx) => (
-            <div key={it.key} className="flex items-center gap-1.5">
+            <div key={it.key} className="flex items-center gap-1">
               <input
-                className={inputCls + " !mt-0"}
+                className={inputCls + " !mt-0 h-11"}
                 value={it.title}
                 maxLength={200}
                 disabled={itemsLocked}
@@ -144,7 +144,7 @@ export function TaskEditForm({
                     aria-label="Naikkan"
                     disabled={idx === 0}
                     onClick={() => move(idx, -1)}
-                    className="size-8 shrink-0 inline-flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground disabled:opacity-30"
+                    className="size-10 shrink-0 inline-flex items-center justify-center rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-30"
                   >
                     <ArrowUp size={14} />
                   </button>
@@ -153,7 +153,7 @@ export function TaskEditForm({
                     aria-label="Turunkan"
                     disabled={idx === items.length - 1}
                     onClick={() => move(idx, 1)}
-                    className="size-8 shrink-0 inline-flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground disabled:opacity-30"
+                    className="size-10 shrink-0 inline-flex items-center justify-center rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-30"
                   >
                     <ArrowDown size={14} />
                   </button>
@@ -162,7 +162,7 @@ export function TaskEditForm({
                       type="button"
                       aria-label="Hapus item"
                       onClick={() => remove(idx)}
-                      className="size-8 shrink-0 inline-flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground"
+                      className="size-10 shrink-0 inline-flex items-center justify-center rounded-xl hover:bg-muted text-muted-foreground"
                     >
                       <X size={15} />
                     </button>
@@ -174,7 +174,7 @@ export function TaskEditForm({
           {!itemsLocked && items.length < 40 && (
             <button
               type="button"
-              className={smallBtn}
+              className="h-11 px-3 rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 inline-flex items-center gap-1.5"
               onClick={() =>
                 setItems((prev) => [
                   ...prev,
@@ -206,12 +206,22 @@ export function TaskEditForm({
         </label>
       )}
 
-      <div className="flex justify-end gap-2 pt-1">
-        <button type="button" className={smallBtn} onClick={onCancel} disabled={pending}>
+      <div className="sticky -bottom-4 -mx-4 -mb-4 mt-4 px-4 py-3 bg-card border-t border-border flex gap-2 sm:justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={pending}
+          className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
           Batal
         </button>
-        <button type="button" className={primaryBtn} onClick={save} disabled={pending}>
-          {pending && <Loader2 size={14} className="animate-spin" />}
+        <button
+          type="button"
+          onClick={save}
+          disabled={pending || title.trim().length === 0}
+          className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+        >
+          {pending && <Loader2 size={15} className="animate-spin" />}
           Simpan
         </button>
       </div>

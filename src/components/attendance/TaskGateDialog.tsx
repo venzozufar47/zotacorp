@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { CheckCircle2, ClipboardCheck } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { deferTaskToTomorrow } from "@/lib/actions/assigned-tasks.actions";
 import {
@@ -34,11 +34,12 @@ interface Props {
  * Muncul saat sign out ditolak karena ada tugas yang belum dikirim.
  * Dua pilihan per tugas: kerjakan sekarang (tutup & arahkan ke kartu tugas)
  * atau "Selesaikan besok" dengan alasan wajib (tercatat, terlihat admin).
+ * Tombol selebar dialog & setinggi 44px supaya mudah ditekan di HP.
  */
 export function TaskGateDialog({ open, onOpenChange, tasks, onAllDeferred }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         {/* Body hanya ada saat dibuka → state (alasan, tugas tertunda) selalu bersih. */}
         {open && (
           <TaskGateBody
@@ -51,6 +52,9 @@ export function TaskGateDialog({ open, onOpenChange, tasks, onAllDeferred }: Pro
     </Dialog>
   );
 }
+
+const btnBase =
+  "w-full h-11 rounded-xl border-2 border-foreground text-sm font-semibold inline-flex items-center justify-center transition disabled:opacity-60";
 
 function TaskGateBody({
   tasks,
@@ -99,88 +103,95 @@ function TaskGateBody({
 
   return (
     <>
-        <DialogHeader>
-          <DialogTitle>Ada tugas yang belum selesai</DialogTitle>
-          <DialogDescription>
-            Selesaikan dan kirim dulu sebelum sign out. Kalau memang belum
-            sempat, kamu bisa menyelesaikannya besok dengan menuliskan alasan.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogHeader className="pr-8">
+        <DialogTitle className="flex items-center gap-2">
+          <ClipboardCheck size={18} className="shrink-0" />
+          Selesaikan tugas dulu
+        </DialogTitle>
+        <DialogDescription>
+          Ada tugas yang belum dikirim. Kerjakan sekarang, atau kalau memang belum sempat,
+          selesaikan besok dengan menuliskan alasannya.
+        </DialogDescription>
+      </DialogHeader>
 
-        <ul className="space-y-3">
-          {tasks.map((t) => {
-            const isDeferred = deferred.has(t.taskId);
-            return (
-              <li
-                key={t.taskId}
-                className="rounded-2xl border-2 border-foreground bg-card p-3 space-y-2"
-              >
-                <p className="font-semibold text-sm">{t.title}</p>
+      <ul className="space-y-3">
+        {tasks.map((t) => {
+          const isDeferred = deferred.has(t.taskId);
+          return (
+            <li
+              key={t.taskId}
+              className="rounded-2xl border-2 border-foreground bg-card p-3 space-y-3"
+            >
+              <div className="space-y-1">
+                <p className="font-semibold text-sm break-words">{t.title}</p>
                 <p className="text-xs text-muted-foreground">
                   {t.remaining.length > 0
-                    ? `Belum ada foto: ${t.remaining.join(", ")}`
+                    ? `${t.remaining.length} item belum berfoto: ${t.remaining.join(", ")}`
                     : "Semua item sudah difoto — tinggal tekan Kirim."}
                 </p>
+              </div>
 
-                {isDeferred ? (
-                  <p className="text-xs font-semibold text-success">
-                    Ditunda sampai besok.
-                  </p>
-                ) : deferring === t.taskId ? (
-                  <div className="space-y-2">
-                    <Textarea
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      maxLength={TASK_DEFER_REASON_MAX}
-                      placeholder="Kenapa belum bisa selesai hari ini?"
-                      rows={3}
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => confirmDefer(t.taskId)}
-                      >
-                        {pending ? "Menyimpan…" : "Tunda ke besok"}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        disabled={pending}
-                        onClick={() => {
-                          setDeferring(null);
-                          setReason("");
-                        }}
-                      >
-                        Batal
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" onClick={goToCard}>
-                      Kerjakan sekarang
-                    </Button>
-                    <Button
+              {isDeferred ? (
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-success">
+                  <CheckCircle2 size={16} /> Ditunda sampai besok
+                </p>
+              ) : deferring === t.taskId ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    maxLength={TASK_DEFER_REASON_MAX}
+                    placeholder="Kenapa belum bisa selesai hari ini?"
+                    rows={3}
+                    autoFocus
+                  />
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                    <button
                       type="button"
-                      size="sm"
-                      variant="outline"
+                      className={`${btnBase} bg-card hover:bg-muted`}
+                      disabled={pending}
                       onClick={() => {
-                        setDeferring(t.taskId);
+                        setDeferring(null);
                         setReason("");
                       }}
                     >
-                      Selesaikan besok
-                    </Button>
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      className={`${btnBase} bg-primary text-primary-foreground hover:opacity-90`}
+                      disabled={pending || reason.trim().length < TASK_DEFER_REASON_MIN}
+                      onClick={() => confirmDefer(t.taskId)}
+                    >
+                      {pending ? "Menyimpan…" : "Tunda ke besok"}
+                    </button>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    className={`${btnBase} bg-primary text-primary-foreground hover:opacity-90`}
+                    onClick={goToCard}
+                  >
+                    Kerjakan sekarang
+                  </button>
+                  <button
+                    type="button"
+                    className={`${btnBase} bg-card hover:bg-muted`}
+                    onClick={() => {
+                      setDeferring(t.taskId);
+                      setReason("");
+                    }}
+                  >
+                    Selesaikan besok
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </>
   );
 }

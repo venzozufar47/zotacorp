@@ -5,23 +5,17 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Camera,
-  CheckCircle2,
-  Circle,
+  Check,
   ClipboardCheck,
   Hourglass,
   Loader2,
   RotateCcw,
-  Undo2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { SelfieCaptureDialog } from "@/components/attendance/SelfieCaptureDialog";
+import { PhotoLightbox, type LightboxPhoto } from "@/components/shared/PhotoLightbox";
 import { extensionFor } from "@/lib/images/compress-image";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import {
-  completeTaskItem,
-  submitTask,
-  uncompleteTaskItem,
-} from "@/lib/actions/assigned-tasks.actions";
+import { completeTaskItem, submitTask } from "@/lib/actions/assigned-tasks.actions";
 import { TASK_EVIDENCE_BUCKET, taskPhotoPrefix, type MyTask } from "@/lib/tasks/types";
 import { TASK_CARD_ANCHOR } from "@/components/attendance/TaskGateDialog";
 
@@ -38,15 +32,19 @@ function getCoords(): Promise<{ lat: number | null; lng: number | null }> {
 }
 
 /**
- * Kartu "Tugas untukmu" di beranda karyawan. Tiap tugas = daftar item yang
- * masing-masing wajib berfoto (kamera langsung, tanpa galeri), lalu dikirim
- * ke admin untuk diverifikasi. Ditolak → ronde ulang dari awal + feedback.
- * Tidak dirender bila tidak ada tugas.
+ * Kartu "Tugas untukmu" di beranda karyawan.
+ *
+ * Alur dibuat satu jalur: ketuk "Foto" di tiap item → kamera → tersimpan →
+ * setelah semua berfoto, satu tombol besar "Kirim". Tugas yang sudah dikirim
+ * dilipat jadi satu baris (tidak ada yang perlu dilakukan). Tidak dirender
+ * bila tidak ada tugas. Target sentuh ≥ 44px; satu kolom, nyaman di HP dan
+ * tetap rapi di desktop (lebar dibatasi kontainer beranda).
  */
 export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
   const router = useRouter();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [selfieOpen, setSelfieOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
   const [, startTransition] = useTransition();
   const pendingRef = useRef<{ taskId: string; round: number; itemId: string } | null>(null);
 
@@ -76,7 +74,7 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
         .from(TASK_EVIDENCE_BUCKET)
         .upload(path, blob, { contentType: blob.type, upsert: false });
       if (upErr) {
-        toast.error("Gagal mengunggah foto.");
+        toast.error("Gagal mengunggah foto. Periksa koneksi lalu coba lagi.");
         setBusyKey(null);
         return;
       }
@@ -103,17 +101,6 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
     });
   }
 
-  function undo(taskId: string, itemId: string) {
-    const key = `${taskId}|${itemId}`;
-    startTransition(async () => {
-      setBusyKey(key);
-      const res = await uncompleteTaskItem({ taskId, itemId });
-      setBusyKey(null);
-      if (!res.ok) toast.error(res.error);
-      else router.refresh();
-    });
-  }
-
   function submit(taskId: string) {
     startTransition(async () => {
       setBusyKey(`${taskId}|submit`);
@@ -121,139 +108,202 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
       setBusyKey(null);
       if (!res.ok) toast.error(res.error);
       else {
-        toast.success("Tugas dikirim untuk diverifikasi ✓");
+        toast.success("Tugas dikirim — menunggu verifikasi admin ✓");
         router.refresh();
       }
     });
   }
 
   return (
-    <section id={TASK_CARD_ANCHOR} className="space-y-3 scroll-mt-4">
+    <section id={TASK_CARD_ANCHOR} className="space-y-3 scroll-mt-4" aria-label="Tugas untukmu">
       {tasks.map((task) => {
-        const done = task.items.filter((i) => i.done).length;
         const total = task.items.length;
+        const done = task.items.filter((i) => i.done).length;
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
         const open = task.status === "open";
         const allDone = total > 0 && done === total;
         const retry = open && task.round > 1;
+
+        // Sudah dikirim: satu baris ringkas, tidak ada aksi yang tersisa.
+        if (!open) {
+          return (
+            <div
+              key={task.id}
+              className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm"
+            >
+              <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-primary/15 shrink-0">
+                <Hourglass size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-display font-bold text-sm truncate">{task.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  Terkirim · menunggu verifikasi admin. Kamu bisa sign out seperti biasa.
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        const photos: LightboxPhoto[] = task.items
+          .filter((i) => i.photoUrl)
+          .map((i) => ({ url: i.photoUrl as string, title: i.title }));
+
         return (
           <div
             key={task.id}
-            className="rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm space-y-3"
+            className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden"
           >
-            <div className="flex items-start gap-3">
-              <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-warning/40 shrink-0">
-                {open ? <ClipboardCheck size={18} /> : <Hourglass size={18} />}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  Tugas untukmu
-                  {retry ? ` · Ulang (ke-${task.round})` : ""}
-                </p>
-                <p className="font-display font-bold text-sm">{task.title}</p>
-                {task.description && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{task.description}</p>
-                )}
+            {/* Header + progres */}
+            <div className="px-4 pt-4 pb-3 space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-warning/40 shrink-0">
+                  <ClipboardCheck size={18} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    Tugas untukmu{retry ? ` · ulang ke-${task.round}` : ""}
+                  </p>
+                  <h3 className="font-display font-bold text-base leading-snug break-words">
+                    {task.title}
+                  </h3>
+                  {task.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                      {task.description}
+                    </p>
+                  )}
+                </div>
               </div>
-              <span
-                className={
-                  "shrink-0 rounded-full border-2 border-foreground px-2.5 py-0.5 text-[11px] font-semibold " +
-                  (open ? "bg-warning/50" : "bg-success/30")
-                }
-              >
-                {open ? `${done}/${total}` : "Menunggu verifikasi"}
-              </span>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span>
+                    {done} dari {total} foto
+                  </span>
+                  <span className="text-muted-foreground">{pct}%</span>
+                </div>
+                <div
+                  className="h-2.5 rounded-full bg-muted overflow-hidden border border-foreground/20"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={total}
+                  aria-valuenow={done}
+                >
+                  <div
+                    className="h-full bg-success transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+
+              {retry && task.reviewNote && (
+                <div className="rounded-xl border-2 border-destructive/60 bg-destructive/10 px-3 py-2.5 text-sm space-y-1">
+                  <p className="font-bold text-destructive flex items-center gap-1.5">
+                    <RotateCcw size={14} /> Belum disetujui — ulangi dari awal
+                  </p>
+                  <p className="text-foreground break-words">“{task.reviewNote}”</p>
+                </div>
+              )}
+
+              {task.deferredToday ? (
+                <p className="rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  Ditunda untuk hari ini
+                  {task.deferralReason ? ` — “${task.deferralReason}”` : ""}. Besok wajib selesai
+                  sebelum sign out.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Wajib dikirim sebelum sign out. Tiap item perlu satu foto langsung dari kamera.
+                </p>
+              )}
             </div>
 
-            {retry && task.reviewNote && (
-              <div className="rounded-xl border-2 border-destructive/60 bg-destructive/10 px-3 py-2 text-xs space-y-0.5">
-                <p className="font-bold text-destructive flex items-center gap-1.5">
-                  <RotateCcw size={13} /> Belum disetujui — ulangi dari awal
-                </p>
-                <p className="text-foreground">Feedback: {task.reviewNote}</p>
-              </div>
-            )}
-
-            {open && task.deferredToday && (
-              <p className="text-xs text-muted-foreground">
-                Ditunda untuk hari ini
-                {task.deferralReason ? ` — “${task.deferralReason}”` : ""}. Besok
-                tugas ini wajib selesai sebelum sign out.
-              </p>
-            )}
-
-            <ul className="space-y-2">
-              {task.items.map((item) => {
-                const key = `${task.id}|${item.id}`;
-                const busy = busyKey === key;
+            {/* Item */}
+            <ul className="border-t border-border divide-y divide-border">
+              {task.items.map((item, idx) => {
+                const busy = busyKey === `${task.id}|${item.id}`;
+                const photoIdx = photos.findIndex((p) => p.url === item.photoUrl);
                 return (
-                  <li key={item.id} className="flex items-center gap-3">
-                    {item.done ? (
-                      <CheckCircle2 size={18} className="text-success shrink-0" />
-                    ) : (
-                      <Circle size={18} className="text-muted-foreground shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium leading-tight">{item.title}</p>
+                  <li key={item.id} className="flex items-center gap-3 px-4 py-3 min-h-16">
+                    <span
+                      className={
+                        "grid place-items-center size-7 shrink-0 rounded-full text-xs font-bold border-2 " +
+                        (item.done
+                          ? "bg-success border-foreground text-foreground"
+                          : "bg-card border-border text-muted-foreground")
+                      }
+                      aria-hidden
+                    >
+                      {item.done ? <Check size={14} strokeWidth={3} /> : idx + 1}
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium leading-snug break-words">{item.title}</p>
                       {item.note && (
-                        <p className="text-xs text-muted-foreground">{item.note}</p>
+                        <p className="text-xs text-muted-foreground break-words">{item.note}</p>
                       )}
                     </div>
-                    {item.photoUrl && (
-                      <a href={item.photoUrl} target="_blank" rel="noreferrer" className="shrink-0">
+
+                    {item.done && item.photoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setLightbox({ photos, index: Math.max(photoIdx, 0) })}
+                        aria-label={`Lihat foto ${item.title}`}
+                        className="shrink-0 rounded-lg overflow-hidden border-2 border-foreground size-12"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={item.photoUrl}
-                          alt={`Foto ${item.title}`}
-                          className="size-10 rounded-lg border-2 border-foreground object-cover"
-                        />
-                      </a>
+                        <img src={item.photoUrl} alt="" className="size-full object-cover" />
+                      </button>
                     )}
-                    {open &&
-                      (busy ? (
-                        <Loader2 size={16} className="animate-spin shrink-0" />
-                      ) : item.done ? (
-                        <button
-                          type="button"
-                          onClick={() => undo(task.id, item.id)}
-                          className="shrink-0 text-muted-foreground hover:text-foreground"
-                          title="Batalkan / foto ulang"
-                          aria-label={`Batalkan foto ${item.title}`}
-                        >
-                          <Undo2 size={16} />
-                        </button>
+
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openCamera(task.id, task.round, item.id)}
+                      className={
+                        "shrink-0 inline-flex items-center justify-center gap-1.5 h-11 min-w-11 px-3 rounded-xl text-sm font-semibold border-2 border-foreground transition disabled:opacity-60 " +
+                        (item.done
+                          ? "bg-card hover:bg-muted"
+                          : "bg-primary text-primary-foreground hover:opacity-90")
+                      }
+                    >
+                      {busy ? (
+                        <Loader2 size={16} className="animate-spin" />
                       ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => openCamera(task.id, task.round, item.id)}
-                          className="shrink-0 gap-1.5"
-                        >
-                          <Camera size={14} /> Foto
-                        </Button>
-                      ))}
+                        <Camera size={16} />
+                      )}
+                      <span>{item.done ? "Ulang" : "Foto"}</span>
+                    </button>
                   </li>
                 );
               })}
             </ul>
 
-            {open ? (
-              <Button
+            {/* Kirim */}
+            <div className="px-4 py-3 border-t border-border bg-muted/30">
+              <button
                 type="button"
-                className="w-full"
                 disabled={!allDone || busyKey === `${task.id}|submit`}
                 onClick={() => submit(task.id)}
+                className={
+                  "w-full h-12 rounded-xl border-2 border-foreground text-sm font-bold inline-flex items-center justify-center gap-2 transition " +
+                  (allDone
+                    ? "bg-success text-foreground shadow-hard-sm hover:opacity-90"
+                    : "bg-muted text-muted-foreground cursor-not-allowed")
+                }
               >
-                {busyKey === `${task.id}|submit`
-                  ? "Mengirim…"
-                  : allDone
-                    ? "Kirim untuk diverifikasi"
-                    : `Foto semua item dulu (${done}/${total})`}
-              </Button>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Sudah dikirim. Admin akan memeriksa — kamu bisa sign out seperti biasa.
-              </p>
-            )}
+                {busyKey === `${task.id}|submit` ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Mengirim…
+                  </>
+                ) : allDone ? (
+                  <>
+                    <Check size={16} strokeWidth={3} /> Kirim untuk diverifikasi
+                  </>
+                ) : (
+                  `Foto semua item dulu (${done}/${total})`
+                )}
+              </button>
+            </div>
           </div>
         );
       })}
@@ -265,6 +315,13 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
         title="Foto bukti tugas"
         description="Ambil foto langsung sebagai bukti item ini sudah dikerjakan."
         defaultFacingMode="environment"
+      />
+
+      <PhotoLightbox
+        photos={lightbox?.photos ?? []}
+        index={lightbox ? lightbox.index : null}
+        onIndexChange={(i) => setLightbox((l) => (l ? { ...l, index: i } : l))}
+        onClose={() => setLightbox(null)}
       />
     </section>
   );

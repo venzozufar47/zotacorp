@@ -701,25 +701,6 @@ export async function completeTaskItem(input: {
   return { ok: true };
 }
 
-export async function uncompleteTaskItem(input: {
-  taskId: string;
-  itemId: string;
-}): Promise<ActionResult> {
-  const own = await loadOwnOpenTask(input.taskId);
-  if (own.error !== undefined) return { ok: false, error: own.error };
-  const { task, db } = own;
-  const { data: removed } = await db
-    .from("assigned_task_completions")
-    .delete()
-    .eq("task_id", task.id)
-    .eq("item_id", input.itemId)
-    .eq("round", task.current_round)
-    .select("photo_path");
-  await removePhotos((removed ?? []).map((r: any) => r.photo_path));
-  revalidatePath("/dashboard");
-  return { ok: true };
-}
-
 export async function submitTask(taskId: string): Promise<ActionResult> {
   const own = await loadOwnOpenTask(taskId);
   if (own.error !== undefined) return { ok: false, error: own.error };
