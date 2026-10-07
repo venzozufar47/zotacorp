@@ -213,6 +213,41 @@ function summarize(row: RawInsightsRow | undefined, optimizationGoal?: string): 
   };
 }
 
+interface MetaApiError {
+  message?: string;
+  code?: number;
+  error_subcode?: number;
+  fbtrace_id?: string;
+}
+
+/**
+ * Pesan error Meta mentah ("API access blocked.") tidak memberi tahu apa
+ * yang harus dilakukan — padahal hampir semua penyebabnya ada di sisi Meta
+ * (token/app/akses aset), bukan di kode ini. Terjemahkan yang umum ke
+ * langkah konkret, dan selalu sertakan kode + fbtrace_id supaya bisa
+ * dilacak di Meta Business Support.
+ */
+function describeMetaError(err: MetaApiError | undefined, httpStatus: number): string {
+  const raw = err?.message ?? `Meta API error (HTTP ${httpStatus})`;
+  let hint = "";
+  if (err?.code === 190) {
+    hint =
+      "Token Meta kedaluwarsa atau dicabut — buat ulang System User token (ads_read) di Business Manager, lalu perbarui env di Vercel.";
+  } else if (err?.code === 200 || /api access blocked/i.test(raw)) {
+    hint =
+      "Meta memblokir akses API untuk token/app ini. Cek di Meta App Dashboard (Alerts/Restrictions, mode app Live, produk Marketing API aktif) dan di Business Settings → System Users bahwa user 'Zota App' masih punya akses ke ad account.";
+  } else if ([4, 17, 32, 613].includes(err?.code ?? -1)) {
+    hint = "Terlalu banyak request ke Meta API — coba lagi beberapa menit lagi.";
+  }
+  const detail = [
+    err?.code != null ? `kode ${err.code}${err.error_subcode ? `/${err.error_subcode}` : ""}` : null,
+    err?.fbtrace_id ? `trace ${err.fbtrace_id}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return [hint, `Meta: ${raw}${detail ? ` (${detail})` : ""}`].filter(Boolean).join(" ");
+}
+
 /** Satu tempat untuk build URL + fetch + cek error Graph API — dipakai
  *  semua fetcher di bawah supaya boilerplate-nya tidak diulang 5x. */
 async function graphFetch<T>(
@@ -227,9 +262,7 @@ async function graphFetch<T>(
   const res = await fetch(url.toString(), { cache: "no-store" });
   const json = await res.json();
   if (!res.ok) {
-    const message =
-      json?.error?.message ?? `Meta API error (HTTP ${res.status})`;
-    throw new Error(message);
+    throw new Error(describeMetaError(json?.error, res.status));
   }
   return json as T;
 }
