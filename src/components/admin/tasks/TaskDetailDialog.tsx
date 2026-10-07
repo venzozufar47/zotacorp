@@ -11,6 +11,7 @@ import {
 } from "@/lib/actions/assigned-tasks.actions";
 import { TASK_REJECT_NOTE_MAX, type AdminTaskDetail } from "@/lib/tasks/types";
 import { Shell, inputCls, primaryBtn, smallBtn } from "@/components/admin/registry/RegistryUi";
+import { TaskEditForm } from "./TaskEditForm";
 
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString("id-ID", {
@@ -42,6 +43,7 @@ export function TaskDetailDialog({
   const [detail, setDetail] = useState<AdminTaskDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -101,7 +103,18 @@ export function TaskDetailDialog({
         </div>
       )}
 
-      {detail && (
+      {detail && editing && (
+        <TaskEditForm
+          detail={detail}
+          onCancel={() => setEditing(false)}
+          onSaved={() => {
+            router.refresh();
+            onClose();
+          }}
+        />
+      )}
+
+      {detail && !editing && (
         <>
           <p className="text-xs text-muted-foreground">
             {detail.assigneeName} · ronde ke-{detail.round}
@@ -212,7 +225,7 @@ export function TaskDetailDialog({
             ))}
 
           {(detail.status === "open" || detail.status === "submitted") && !rejecting && (
-            <div className="flex justify-start">
+            <div className="flex justify-between items-center">
               <button
                 type="button"
                 className="text-xs text-muted-foreground underline hover:text-destructive"
@@ -220,6 +233,14 @@ export function TaskDetailDialog({
                 onClick={cancel}
               >
                 Batalkan tugas ini
+              </button>
+              <button
+                type="button"
+                className={smallBtn}
+                disabled={pending}
+                onClick={() => setEditing(true)}
+              >
+                Edit tugas
               </button>
             </div>
           )}

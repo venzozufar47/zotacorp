@@ -19,6 +19,7 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { diffTaskItems } from "@/lib/tasks/edit-diff";
 import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import {
   TASK_DEFER_REASON_MAX,
@@ -141,6 +142,9 @@ export async function createAssignedTask(
         assignee_id,
         created_by: gate.userId,
         batch_id: batchId,
+        // Push penugasan sudah menjadi "pengingat pertama" → pengingat
+        // berikutnya ~2 jam lagi, bukan di jam cron terdekat.
+        last_reminded_at: new Date().toISOString(),
       }))
     )
     .select("id, assignee_id");
@@ -272,10 +276,22 @@ export async function getAssignedTaskDetail(
   const urls = await signPhotos((completions ?? []).map((c: any) => c.photo_path).filter(Boolean));
   const byItem = new Map<string, any>((completions ?? []).map((c: any) => [c.item_id, c]));
 
+  let batchOthers = 0;
+  if (task.batch_id) {
+    const { count } = await db
+      .from("assigned_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("batch_id", task.batch_id)
+      .neq("id", taskId)
+      .in("status", ["open", "submitted"]);
+    batchOthers = count ?? 0;
+  }
+
   return {
     ok: true,
     data: {
       ...rows[0],
+      batchOthers,
       reviewNote: task.review_note,
       items: (items ?? []).map((i: any) => {
         const c = byItem.get(i.id);
@@ -297,6 +313,147 @@ export async function getAssignedTaskDetail(
       deferrals: (deferrals ?? []).map((d: any) => ({ forDate: d.for_date, reason: d.reason })),
     },
   };
+}
+
+const updateSchema = z.object({
+  taskId: z.string().uuid(),
+  title: z.string().trim().min(1, "Judul wajib diisi").max(120),
+  description: z.string().trim().max(1000).optional().nullable(),
+  items: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        title: z.string().trim().min(1, "Judul item wajib diisi").max(200),
+        note: z.string().trim().max(500).optional().nullable(),
+      })
+    )
+    .min(1, "Minimal satu item checklist")
+    .max(40, "Maksimal 40 item"),
+  /** Judul + keterangan juga diterapkan ke salinan lain (satu batch) yang belum selesai. */
+  applyToBatch: z.boolean().optional(),
+});
+
+export type UpdateAssignedTaskInput = z.input<typeof updateSchema>;
+
+/**
+ * Edit tugas.
+ *  - Judul/keterangan: boleh selama tugas belum selesai/dibatalkan (open atau
+ *    submitted), opsional ke seluruh salinan satu batch.
+ *  - Item (tambah/hapus/ubah/urut): HANYA saat `open`. Saat `submitted`, admin
+ *    sedang memeriksa foto per item — mengubah daftar item di tengah
+ *    pemeriksaan membingungkan; setujui/tolak dulu.
+ * Item dipertahankan lewat `id` (foto & status selesai ikut); item tanpa id =
+ * baru; item yang tidak dikirim = dihapus beserta foto buktinya.
+ * Urutan operasi: sisipkan → ubah → hapus, supaya tugas tidak pernah tanpa item.
+ */
+export async function updateAssignedTask(
+  input: UpdateAssignedTaskInput
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
+  }
+  const { taskId, title, description, items, applyToBatch } = parsed.data;
+
+  const db = createAdminClient() as any;
+  const { data: task } = await db
+    .from("assigned_tasks")
+    .select("id, title, assignee_id, status, batch_id")
+    .eq("id", taskId)
+    .maybeSingle();
+  if (!task) return { ok: false, error: "Tugas tidak ditemukan" };
+  if (task.status !== "open" && task.status !== "submitted") {
+    return { ok: false, error: "Tugas yang sudah selesai atau dibatalkan tidak bisa diedit." };
+  }
+
+  const { data: existing } = await db
+    .from("assigned_task_items")
+    .select("id, title, note, sort_order")
+    .eq("task_id", taskId)
+    .order("sort_order", { ascending: true });
+  const existingRows: any[] = existing ?? [];
+  const diff = diffTaskItems(existingRows, items);
+  if (!diff.ok) return { ok: false, error: diff.error };
+  const { added, removed, changed: itemsChanged } = diff;
+
+  if (itemsChanged && task.status !== "open") {
+    return {
+      ok: false,
+      error: "Item tidak bisa diubah saat tugas menunggu verifikasi. Setujui atau tolak dulu.",
+    };
+  }
+
+  if (itemsChanged) {
+    // 1. Sisipkan item baru.
+    if (added.length > 0) {
+      const { error: insErr } = await db.from("assigned_task_items").insert(
+        items
+          .map((it, idx) => ({ it, idx }))
+          .filter(({ it }) => !it.id)
+          .map(({ it, idx }) => ({
+            task_id: taskId,
+            title: it.title,
+            note: it.note || null,
+            sort_order: idx,
+          }))
+      );
+      if (insErr) return { ok: false, error: insErr.message };
+    }
+    // 2. Ubah judul/catatan/urutan item yang dipertahankan.
+    const updates = items
+      .map((it, idx) => ({ it, idx }))
+      .filter(({ it }) => it.id)
+      .map(({ it, idx }) =>
+        db
+          .from("assigned_task_items")
+          .update({ title: it.title, note: it.note || null, sort_order: idx })
+          .eq("id", it.id)
+          .eq("task_id", taskId)
+      );
+    const results = await Promise.all(updates);
+    const failed = results.find((r: any) => r.error);
+    if (failed) return { ok: false, error: failed.error.message };
+    // 3. Hapus item yang dibuang + foto buktinya (semua ronde).
+    if (removed.length > 0) {
+      const removedIds = removed.map((r) => r.id);
+      const { data: comps } = await db
+        .from("assigned_task_completions")
+        .select("photo_path")
+        .in("item_id", removedIds);
+      const { error: delErr } = await db
+        .from("assigned_task_items")
+        .delete()
+        .in("id", removedIds)
+        .eq("task_id", taskId);
+      if (delErr) return { ok: false, error: delErr.message };
+      await removePhotos((comps ?? []).map((c: any) => c.photo_path));
+    }
+  }
+
+  const header = { title, description: description || null };
+  const { error: headErr } = await db.from("assigned_tasks").update(header).eq("id", taskId);
+  if (headErr) return { ok: false, error: headErr.message };
+  if (applyToBatch && task.batch_id) {
+    await db
+      .from("assigned_tasks")
+      .update(header)
+      .eq("batch_id", task.batch_id)
+      .neq("id", taskId)
+      .in("status", ["open", "submitted"]);
+  }
+
+  // Karyawan perlu tahu kalau daftar yang harus dikerjakan berubah.
+  if (added.length > 0 || removed.length > 0) {
+    await pushUser(
+      task.assignee_id,
+      "Tugas diperbarui 📋",
+      `Checklist "${title}" diubah admin. Buka beranda untuk melihat item terbaru.`
+    );
+  }
+  revalidateAll();
+  return { ok: true };
 }
 
 export async function reviewAssignedTask(
@@ -336,8 +493,8 @@ export async function reviewAssignedTask(
           reviewed_at: now,
           review_note: feedback,
           submitted_at: null,
-          // Biar pengingat berikutnya tidak menunggu 2 jam dari ronde lama.
-          last_reminded_at: null,
+          // Push penolakan di bawah = pengingat pertama ronde ini.
+          last_reminded_at: now,
         };
 
   // Guard status: kalau admin lain sudah memproses, 0 baris terupdate.
@@ -423,9 +580,11 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
       .eq("for_date", today),
   ]);
 
+  // Hanya completion yang MASIH punya foto yang dianggap selesai — selaras
+  // dengan submitTask & gate (retensi 90 hari bisa mengosongkan photo_path).
   const current = (completions ?? []).filter((c: any) => {
     const t = tasks.find((x: any) => x.id === c.task_id);
-    return t && c.round === t.current_round;
+    return t && c.round === t.current_round && c.photo_path;
   });
   const urls = await signPhotos(current.map((c: any) => c.photo_path).filter(Boolean));
   const doneByItem = new Map<string, any>(current.map((c: any) => [c.item_id, c]));

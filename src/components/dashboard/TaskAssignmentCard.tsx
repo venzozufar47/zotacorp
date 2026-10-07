@@ -90,6 +90,9 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
       });
       if (!res.ok) {
         toast.error(res.error);
+        // Foto sudah ter-upload tapi tidak tersimpan (ronde berganti, item
+        // dihapus admin, dst) → buang supaya tidak jadi file yatim (best-effort).
+        void supabase.storage.from(TASK_EVIDENCE_BUCKET).remove([path]);
         setBusyKey(null);
         return;
       }

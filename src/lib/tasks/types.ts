@@ -69,6 +69,8 @@ export interface AdminTaskDetailItem {
 }
 
 export interface AdminTaskDetail extends AdminTaskRow {
+  /** Salinan lain dari penugasan yang sama (satu batch) yang belum selesai/dibatalkan. */
+  batchOthers: number;
   items: AdminTaskDetailItem[];
   reviewNote: string | null;
   reviews: { round: number; decision: "approved" | "rejected"; note: string | null; reviewedAt: string }[];

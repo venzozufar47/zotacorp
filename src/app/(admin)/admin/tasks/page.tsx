@@ -36,7 +36,11 @@ export default async function AdminTasksPage({
         title="Tugas"
         subtitle="Tugas sekali-jalan untuk karyawan — wajib foto per item dan diverifikasi di sini."
       />
+      {/* key = focus: tautan Inbox ke /admin/tasks?focus=<id lain> adalah
+          navigasi soft di rute yang sama — tanpa key, state `detailId`
+          (nilai awal useState) tidak ikut berganti dan dialog tidak terbuka. */}
       <TasksManager
+        key={focus ?? "none"}
         tasks={tasksRes.ok ? tasksRes.data ?? [] : []}
         employees={employeesRes.ok ? employeesRes.data ?? [] : []}
         loadError={tasksRes.ok ? null : tasksRes.error}
