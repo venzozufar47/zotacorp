@@ -239,8 +239,13 @@ function OutletPanel({
         </span>
       </div>
 
-      <WorstSkusSection outlet={outlet} rangeLabel={rangeLabel} />
-      <WastePanel outlet={outlet} rangeLabel={rangeLabel} />
+      {/* Dua daftar ini memang dibaca berdampingan (lihat catatan di
+          WastePanel), jadi satu baris dua kolom: lebih ringkas dan
+          SKU yang muncul di keduanya mudah dibandingkan. */}
+      <div className="grid items-start gap-x-8 gap-y-5 lg:grid-cols-2 [&>*]:min-w-0">
+        <WorstSkusSection outlet={outlet} rangeLabel={rangeLabel} />
+        <WastePanel outlet={outlet} rangeLabel={rangeLabel} />
+      </div>
       <DailyBreakdownSection outlet={outlet} rangeLabel={rangeLabel} />
       <HoursSection outlet={outlet} />
       <OwnersSection outlet={outlet} employees={employees} />
