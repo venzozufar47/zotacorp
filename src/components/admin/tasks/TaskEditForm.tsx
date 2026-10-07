@@ -196,7 +196,7 @@ export function TaskEditForm({
       </Field>
 
       <Field
-        label="Foto contoh"
+        label="Foto referensi"
         hint={`Maksimal ${TASK_REFERENCE_MAX} foto. Foto yang dihapus hanya hilang dari tugas ini.`}
       >
         <div className="space-y-2">
@@ -253,7 +253,7 @@ export function TaskEditForm({
             onChange={(e) => setApplyToBatch(e.target.checked)}
           />
           <span>
-            Terapkan judul, keterangan &amp; foto contoh baru juga ke {detail.batchOthers}{" "}
+            Terapkan judul, keterangan &amp; foto referensi baru juga ke {detail.batchOthers}{" "}
             penerima lain dari penugasan ini yang belum selesai.
             <span className="block text-[11px] text-muted-foreground">
               Daftar item hanya berubah untuk {detail.assigneeName}.

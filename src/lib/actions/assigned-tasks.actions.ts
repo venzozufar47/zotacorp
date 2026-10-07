@@ -183,7 +183,7 @@ const createSchema = z.object({
     .min(1, "Minimal satu item checklist")
     .max(40, "Maksimal 40 item"),
   assigneeIds: z.array(z.string().uuid()).min(1, "Pilih minimal satu karyawan").max(50),
-  /** Foto contoh dari admin (sudah diunggah ke bucket task-attachments). */
+  /** Foto referensi dari admin (sudah diunggah ke bucket task-attachments). */
   attachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX).optional(),
 });
 
@@ -450,9 +450,9 @@ const updateSchema = z.object({
     )
     .min(1, "Minimal satu item checklist")
     .max(40, "Maksimal 40 item"),
-  /** Judul, keterangan + foto contoh BARU juga diterapkan ke salinan lain (satu batch) yang belum selesai. */
+  /** Judul, keterangan + foto referensi BARU juga diterapkan ke salinan lain (satu batch) yang belum selesai. */
   applyToBatch: z.boolean().optional(),
-  /** Foto contoh baru (sudah diunggah) dan id lampiran contoh yang dibuang dari tugas ini. */
+  /** Foto referensi baru (sudah diunggah) dan id lampiran referensi yang dibuang dari tugas ini. */
   addAttachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX).optional(),
   removeAttachmentIds: z.array(z.string().uuid()).max(TASK_REFERENCE_MAX * 2).optional(),
 });
@@ -568,7 +568,7 @@ export async function updateAssignedTask(
     const current: any[] = refRows ?? [];
     const removable = current.filter((r) => removeIds.includes(r.id));
     if (current.length - removable.length + addPaths.length > TASK_REFERENCE_MAX) {
-      return { ok: false, error: `Maksimal ${TASK_REFERENCE_MAX} foto contoh.` };
+      return { ok: false, error: `Maksimal ${TASK_REFERENCE_MAX} foto referensi.` };
     }
     const attErr = await validateAttachmentPaths(gate.userId, addPaths);
     if (attErr) return { ok: false, error: attErr };

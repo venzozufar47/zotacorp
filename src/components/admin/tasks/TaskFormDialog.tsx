@@ -176,7 +176,7 @@ export function TaskFormDialog({
         </Field>
 
         <Field
-          label="Foto contoh (opsional)"
+          label="Foto referensi (opsional)"
           hint={`Contoh hasil atau instruksi bergambar — tampil di tugas karyawan. Maksimal ${TASK_REFERENCE_MAX} foto, dikompres otomatis.`}
         >
           <AttachmentPicker photos={photos} onChange={setPhotos} max={TASK_REFERENCE_MAX} />

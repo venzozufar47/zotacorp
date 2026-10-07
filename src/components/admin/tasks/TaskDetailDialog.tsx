@@ -113,7 +113,7 @@ export function TaskDetailView({
   const referenceAtt = detail.attachments.filter((a) => a.kind === "reference" && a.url);
   const referencePhotos: LightboxPhoto[] = referenceAtt.map((a, i) => ({
     url: a.url as string,
-    title: `Foto contoh ${i + 1}`,
+    title: `Foto referensi ${i + 1}`,
   }));
 
   function done(msg: string) {
@@ -200,17 +200,17 @@ export function TaskDetailView({
         )}
       </div>
 
-      {/* Lampiran admin (foto contoh) */}
+      {/* Lampiran admin (foto referensi) */}
       {referenceAtt.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-semibold">Foto contoh dari admin</p>
+          <p className="text-xs font-semibold">Foto referensi</p>
           <div className="flex flex-wrap gap-2">
             {referenceAtt.map((a, i) => (
               <button
                 key={a.id}
                 type="button"
                 onClick={() => setAttLightbox(i)}
-                aria-label={`Perbesar foto contoh ${i + 1}`}
+                aria-label={`Perbesar foto referensi ${i + 1}`}
                 className="size-16 rounded-lg overflow-hidden border-2 border-foreground"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}

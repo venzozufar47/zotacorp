@@ -207,13 +207,13 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
               </div>
 
               <PhotoStrip
-                label="Foto contoh dari admin"
+                label="Foto referensi"
                 photos={task.referencePhotos}
                 onOpen={(index) =>
                   setLightbox({
                     photos: task.referencePhotos.map((ph, i) => ({
                       url: ph.url,
-                      title: `Foto contoh ${i + 1}`,
+                      title: `Foto referensi ${i + 1}`,
                     })),
                     index,
                   })
