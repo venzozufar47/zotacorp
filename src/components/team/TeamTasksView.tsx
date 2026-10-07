@@ -38,13 +38,11 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
       </p>
 
       {members.map((m) => {
-        const active = m.tasks.filter((t) => t.status !== "approved");
         const running = m.tasks.filter((t) => t.status === "open").length;
         const waiting = m.tasks.filter((t) => t.status === "submitted").length;
         return (
           <details
             key={m.memberId}
-            open={active.length > 0}
             className="group rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden"
           >
             <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">

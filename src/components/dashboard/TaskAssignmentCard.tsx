@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Camera,
   Check,
+  ChevronDown,
   ClipboardCheck,
   Hourglass,
   Loader2,
@@ -79,6 +80,10 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
   const [lightbox, setLightbox] = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
   const [, startTransition] = useTransition();
   const pendingRef = useRef<{ taskId: string; round: number; itemId: string } | null>(null);
+  // Bawaan: semua tugas tertutup (ringkas); karyawan membuka yang ingin dikerjakan.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [showSubmitted, setShowSubmitted] = useState(false);
 
   if (tasks.length === 0) return null;
 
@@ -146,226 +151,332 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
     });
   }
 
+  // Urutan prioritas: ulang (ditolak) → perlu dikerjakan → ditunda hari ini.
+  // Yang sudah dikirim dipisah — tidak ada aksi tersisa, jadi cukup satu baris.
+  const rank = (t: MyTask) => (t.round > 1 ? 0 : t.deferredToday ? 2 : 1);
+  const openTasks = tasks.filter((t) => t.status === "open").sort((a, b) => rank(a) - rank(b));
+  const submittedTasks = tasks.filter((t) => t.status === "submitted");
+  const retryCount = openTasks.filter((t) => t.round > 1).length;
+  const actionable = openTasks.filter((t) => !t.deferredToday).length;
+
+  // Tugas yang dibuka bisa hilang dari daftar (mis. baru saja dikirim) → tertutup lagi.
+  const expanded =
+    expandedId !== null && openTasks.some((t) => t.id === expandedId) ? expandedId : null;
+
+  // Daftar panjang: tampilkan beberapa dulu, sisanya di balik satu tombol.
+  const LIMIT = 4;
+  const visibleOpen = showAll ? openTasks : openTasks.slice(0, LIMIT);
+  // Tugas yang sedang dibuka tidak boleh tersembunyi di balik "lihat lainnya".
+  const expandedHidden = expanded && !visibleOpen.some((t) => t.id === expanded);
+  const rows = expandedHidden
+    ? [...visibleOpen, ...openTasks.filter((t) => t.id === expanded)]
+    : visibleOpen;
+  const hiddenCount = openTasks.length - rows.length;
+
+  const summary = [
+    actionable > 0 ? `${actionable} perlu dikerjakan` : null,
+    openTasks.length - actionable > 0 ? `${openTasks.length - actionable} ditunda` : null,
+    submittedTasks.length > 0 ? `${submittedTasks.length} menunggu verifikasi` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <section id={TASK_CARD_ANCHOR} className="space-y-3 scroll-mt-4" aria-label="Tugas untukmu">
-      {tasks.map((task) => {
-        const total = task.items.length;
-        const done = task.items.filter((i) => i.done).length;
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-        const open = task.status === "open";
-        const allDone = total > 0 && done === total;
-        const retry = open && task.round > 1;
+    <section id={TASK_CARD_ANCHOR} className="scroll-mt-4" aria-label="Tugas untukmu">
+      <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden">
+        {/* Ringkasan satu baris */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-warning/40 shrink-0">
+            <ClipboardCheck size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-display font-bold text-sm leading-tight">
+              Tugas untukmu · {tasks.length}
+            </p>
+            <p className="text-xs text-muted-foreground leading-snug">{summary}</p>
+          </div>
+          {retryCount > 0 && (
+            <span className="shrink-0 rounded-full border-2 border-destructive/60 bg-destructive/10 px-2 py-0.5 text-[11px] font-bold text-destructive">
+              {retryCount} diulang
+            </span>
+          )}
+        </div>
 
-        // Sudah dikirim: satu baris ringkas, tidak ada aksi yang tersisa.
-        if (!open) {
-          return (
-            <div
-              key={task.id}
-              className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm"
-            >
-              <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-primary/15 shrink-0">
-                <Hourglass size={18} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-display font-bold text-sm truncate">{task.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  Terkirim · menunggu verifikasi admin. Kamu bisa sign out seperti biasa.
-                </p>
-              </div>
-            </div>
-          );
-        }
+        {/* Tugas yang perlu dikerjakan — akordeon, satu terbuka sekali waktu */}
+        {rows.length > 0 && (
+          <ul className="border-t border-border divide-y divide-border">
+            {rows.map((task) => {
+              const total = task.items.length;
+              const done = task.items.filter((i) => i.done).length;
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              const allDone = total > 0 && done === total;
+              const retry = task.round > 1;
+              const isOpen = expanded === task.id;
+              const photos: LightboxPhoto[] = task.items
+                .filter((i) => i.photoUrl)
+                .map((i) => ({ url: i.photoUrl as string, title: i.title }));
 
-        const photos: LightboxPhoto[] = task.items
-          .filter((i) => i.photoUrl)
-          .map((i) => ({ url: i.photoUrl as string, title: i.title }));
+              return (
+                <li key={task.id}>
+                  {/* Baris ringkas — selalu terlihat */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isOpen ? null : task.id)}
+                    aria-expanded={isOpen}
+                    className="w-full flex items-center gap-3 px-4 py-3 min-h-16 text-left hover:bg-muted/40"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-sm leading-snug break-words min-w-0">
+                          {task.title}
+                        </p>
+                        {retry && (
+                          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive">
+                            <RotateCcw size={10} /> Ulang
+                          </span>
+                        )}
+                        {task.deferredToday && (
+                          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                            Ditunda
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={allDone ? "h-full bg-success" : "h-full bg-primary"}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-semibold tabular-nums text-muted-foreground shrink-0">
+                          {done}/{total}
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={
+                        "shrink-0 text-muted-foreground transition-transform " +
+                        (isOpen ? "rotate-180" : "")
+                      }
+                    />
+                  </button>
 
-        return (
-          <div
-            key={task.id}
-            className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden"
-          >
-            {/* Header + progres */}
-            <div className="px-4 pt-4 pb-3 space-y-3">
-              <div className="flex items-start gap-3">
-                <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-warning/40 shrink-0">
-                  <ClipboardCheck size={18} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    Tugas untukmu{retry ? ` · ulang ke-${task.round}` : ""}
-                  </p>
-                  <h3 className="font-display font-bold text-base leading-snug break-words">
-                    {task.title}
-                  </h3>
-                  {task.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 break-words">
-                      {task.description}
-                    </p>
+                  {/* Rincian — hanya untuk tugas yang dibuka */}
+                  {isOpen && (
+                    <div className="border-t border-border bg-muted/20">
+                      <div className="px-4 pt-3 pb-3 space-y-3">
+                        {task.description && (
+                          <p className="text-xs text-muted-foreground break-words">
+                            {task.description}
+                          </p>
+                        )}
+
+                        <PhotoStrip
+                          label="Foto referensi"
+                          photos={task.referencePhotos}
+                          onOpen={(index) =>
+                            setLightbox({
+                              photos: task.referencePhotos.map((ph, i) => ({
+                                url: ph.url,
+                                title: `Foto referensi ${i + 1}`,
+                              })),
+                              index,
+                            })
+                          }
+                        />
+
+                        {retry && task.reviewNote && (
+                          <div className="rounded-xl border-2 border-destructive/60 bg-destructive/10 px-3 py-2.5 text-sm space-y-1">
+                            <p className="font-bold text-destructive flex items-center gap-1.5">
+                              <RotateCcw size={14} /> Belum disetujui — ulangi dari awal
+                            </p>
+                            <p className="text-foreground break-words">“{task.reviewNote}”</p>
+                            <PhotoStrip
+                              label="Foto dari admin"
+                              photos={task.feedbackPhotos}
+                              onOpen={(index) =>
+                                setLightbox({
+                                  photos: task.feedbackPhotos.map((ph, i) => ({
+                                    url: ph.url,
+                                    title: `Foto feedback ${i + 1}`,
+                                  })),
+                                  index,
+                                })
+                              }
+                            />
+                          </div>
+                        )}
+
+                        {task.deferredToday ? (
+                          <p className="rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">
+                            Ditunda untuk hari ini
+                            {task.deferralReason ? ` — “${task.deferralReason}”` : ""}. Besok wajib
+                            selesai sebelum sign out.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Wajib dikirim sebelum sign out. Tiap item perlu satu foto langsung dari
+                            kamera.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Item */}
+                      <ul className="border-t border-border divide-y divide-border bg-card">
+                        {task.items.map((item, idx) => {
+                          const busy = busyKey === `${task.id}|${item.id}`;
+                          const photoIdx = photos.findIndex((p) => p.url === item.photoUrl);
+                          return (
+                            <li key={item.id} className="flex items-center gap-3 px-4 py-3 min-h-16">
+                              <span
+                                className={
+                                  "grid place-items-center size-7 shrink-0 rounded-full text-xs font-bold border-2 " +
+                                  (item.done
+                                    ? "bg-success border-foreground text-foreground"
+                                    : "bg-card border-border text-muted-foreground")
+                                }
+                                aria-hidden
+                              >
+                                {item.done ? <Check size={14} strokeWidth={3} /> : idx + 1}
+                              </span>
+
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium leading-snug break-words">
+                                  {item.title}
+                                </p>
+                                {item.note && (
+                                  <p className="text-xs text-muted-foreground break-words">
+                                    {item.note}
+                                  </p>
+                                )}
+                              </div>
+
+                              {item.done && item.photoUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLightbox({ photos, index: Math.max(photoIdx, 0) })
+                                  }
+                                  aria-label={`Lihat foto ${item.title}`}
+                                  className="shrink-0 rounded-lg overflow-hidden border-2 border-foreground size-12"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={item.photoUrl} alt="" className="size-full object-cover" />
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => openCamera(task.id, task.round, item.id)}
+                                className={
+                                  "shrink-0 inline-flex items-center justify-center gap-1.5 h-11 min-w-11 px-3 rounded-xl text-sm font-semibold border-2 border-foreground transition disabled:opacity-60 " +
+                                  (item.done
+                                    ? "bg-card hover:bg-muted"
+                                    : "bg-primary text-primary-foreground hover:opacity-90")
+                                }
+                              >
+                                {busy ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Camera size={16} />
+                                )}
+                                <span>{item.done ? "Ulang" : "Foto"}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+
+                      {/* Kirim */}
+                      <div className="px-4 py-3 border-t border-border">
+                        <button
+                          type="button"
+                          disabled={!allDone || busyKey === `${task.id}|submit`}
+                          onClick={() => submit(task.id)}
+                          className={
+                            "w-full h-12 rounded-xl border-2 border-foreground text-sm font-bold inline-flex items-center justify-center gap-2 transition " +
+                            (allDone
+                              ? "bg-success text-foreground shadow-hard-sm hover:opacity-90"
+                              : "bg-muted text-muted-foreground cursor-not-allowed")
+                          }
+                        >
+                          {busyKey === `${task.id}|submit` ? (
+                            <>
+                              <Loader2 size={16} className="animate-spin" /> Mengirim…
+                            </>
+                          ) : allDone ? (
+                            <>
+                              <Check size={16} strokeWidth={3} /> Kirim untuk diverifikasi
+                            </>
+                          ) : (
+                            `Foto semua item dulu (${done}/${total})`
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   )}
-                </div>
-              </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
-              <PhotoStrip
-                label="Foto referensi"
-                photos={task.referencePhotos}
-                onOpen={(index) =>
-                  setLightbox({
-                    photos: task.referencePhotos.map((ph, i) => ({
-                      url: ph.url,
-                      title: `Foto referensi ${i + 1}`,
-                    })),
-                    index,
-                  })
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAll(true)}
+            className="w-full h-11 border-t border-border text-sm font-semibold text-primary hover:bg-muted/40"
+          >
+            Lihat {hiddenCount} tugas lainnya
+          </button>
+        )}
+        {showAll && openTasks.length > LIMIT && (
+          <button
+            type="button"
+            onClick={() => setShowAll(false)}
+            className="w-full h-11 border-t border-border text-sm font-medium text-muted-foreground hover:bg-muted/40"
+          >
+            Tampilkan lebih sedikit
+          </button>
+        )}
+
+        {/* Sudah dikirim — satu baris, bisa dibuka untuk melihat judulnya */}
+        {submittedTasks.length > 0 && (
+          <div className="border-t border-border">
+            <button
+              type="button"
+              onClick={() => setShowSubmitted((v) => !v)}
+              aria-expanded={showSubmitted}
+              className="w-full flex items-center gap-3 px-4 py-3 min-h-12 text-left hover:bg-muted/40"
+            >
+              <Hourglass size={16} className="shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-sm">
+                <b>{submittedTasks.length}</b> tugas menunggu verifikasi admin
+              </span>
+              <ChevronDown
+                size={18}
+                className={
+                  "shrink-0 text-muted-foreground transition-transform " +
+                  (showSubmitted ? "rotate-180" : "")
                 }
               />
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span>
-                    {done} dari {total} foto
-                  </span>
-                  <span className="text-muted-foreground">{pct}%</span>
-                </div>
-                <div
-                  className="h-2.5 rounded-full bg-muted overflow-hidden border border-foreground/20"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={total}
-                  aria-valuenow={done}
-                >
-                  <div
-                    className="h-full bg-success transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-
-              {retry && task.reviewNote && (
-                <div className="rounded-xl border-2 border-destructive/60 bg-destructive/10 px-3 py-2.5 text-sm space-y-1">
-                  <p className="font-bold text-destructive flex items-center gap-1.5">
-                    <RotateCcw size={14} /> Belum disetujui — ulangi dari awal
-                  </p>
-                  <p className="text-foreground break-words">“{task.reviewNote}”</p>
-                  <PhotoStrip
-                    label="Foto dari admin"
-                    photos={task.feedbackPhotos}
-                    onOpen={(index) =>
-                      setLightbox({
-                        photos: task.feedbackPhotos.map((ph, i) => ({
-                          url: ph.url,
-                          title: `Foto feedback ${i + 1}`,
-                        })),
-                        index,
-                      })
-                    }
-                  />
-                </div>
-              )}
-
-              {task.deferredToday ? (
-                <p className="rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">
-                  Ditunda untuk hari ini
-                  {task.deferralReason ? ` — “${task.deferralReason}”` : ""}. Besok wajib selesai
-                  sebelum sign out.
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Wajib dikirim sebelum sign out. Tiap item perlu satu foto langsung dari kamera.
-                </p>
-              )}
-            </div>
-
-            {/* Item */}
-            <ul className="border-t border-border divide-y divide-border">
-              {task.items.map((item, idx) => {
-                const busy = busyKey === `${task.id}|${item.id}`;
-                const photoIdx = photos.findIndex((p) => p.url === item.photoUrl);
-                return (
-                  <li key={item.id} className="flex items-center gap-3 px-4 py-3 min-h-16">
-                    <span
-                      className={
-                        "grid place-items-center size-7 shrink-0 rounded-full text-xs font-bold border-2 " +
-                        (item.done
-                          ? "bg-success border-foreground text-foreground"
-                          : "bg-card border-border text-muted-foreground")
-                      }
-                      aria-hidden
-                    >
-                      {item.done ? <Check size={14} strokeWidth={3} /> : idx + 1}
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium leading-snug break-words">{item.title}</p>
-                      {item.note && (
-                        <p className="text-xs text-muted-foreground break-words">{item.note}</p>
-                      )}
-                    </div>
-
-                    {item.done && item.photoUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setLightbox({ photos, index: Math.max(photoIdx, 0) })}
-                        aria-label={`Lihat foto ${item.title}`}
-                        className="shrink-0 rounded-lg overflow-hidden border-2 border-foreground size-12"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={item.photoUrl} alt="" className="size-full object-cover" />
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => openCamera(task.id, task.round, item.id)}
-                      className={
-                        "shrink-0 inline-flex items-center justify-center gap-1.5 h-11 min-w-11 px-3 rounded-xl text-sm font-semibold border-2 border-foreground transition disabled:opacity-60 " +
-                        (item.done
-                          ? "bg-card hover:bg-muted"
-                          : "bg-primary text-primary-foreground hover:opacity-90")
-                      }
-                    >
-                      {busy ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Camera size={16} />
-                      )}
-                      <span>{item.done ? "Ulang" : "Foto"}</span>
-                    </button>
+            </button>
+            {showSubmitted && (
+              <ul className="px-4 pb-3 space-y-1.5 text-sm text-muted-foreground">
+                {submittedTasks.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2 break-words">
+                    <Check size={14} className="shrink-0 text-success" />
+                    {t.title}
                   </li>
-                );
-              })}
-            </ul>
-
-            {/* Kirim */}
-            <div className="px-4 py-3 border-t border-border bg-muted/30">
-              <button
-                type="button"
-                disabled={!allDone || busyKey === `${task.id}|submit`}
-                onClick={() => submit(task.id)}
-                className={
-                  "w-full h-12 rounded-xl border-2 border-foreground text-sm font-bold inline-flex items-center justify-center gap-2 transition " +
-                  (allDone
-                    ? "bg-success text-foreground shadow-hard-sm hover:opacity-90"
-                    : "bg-muted text-muted-foreground cursor-not-allowed")
-                }
-              >
-                {busyKey === `${task.id}|submit` ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" /> Mengirim…
-                  </>
-                ) : allDone ? (
-                  <>
-                    <Check size={16} strokeWidth={3} /> Kirim untuk diverifikasi
-                  </>
-                ) : (
-                  `Foto semua item dulu (${done}/${total})`
-                )}
-              </button>
-            </div>
+                ))}
+                <li className="text-xs">Kamu bisa sign out seperti biasa.</li>
+              </ul>
+            )}
           </div>
-        );
-      })}
+        )}
+      </div>
 
       <SelfieCaptureDialog
         open={selfieOpen}
