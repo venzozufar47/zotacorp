@@ -493,7 +493,7 @@ export async function completeTaskItem(input: {
   // atau foto ronde lama dipakai ulang).
   const prefix = taskPhotoPrefix(user.id, task.id, task.current_round);
   if (!input.photoPath || !input.photoPath.startsWith(prefix) || input.photoPath.includes("..")) {
-    return { ok: false, error: "Foto wajib dilampirkan." };
+    return { ok: false, error: "Foto wajib dilampirkan (atau tugas sudah diperbarui — muat ulang beranda)." };
   }
   const slash = input.photoPath.lastIndexOf("/");
   const folder = input.photoPath.slice(0, slash);
