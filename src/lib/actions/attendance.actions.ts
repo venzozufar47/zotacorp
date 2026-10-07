@@ -32,6 +32,8 @@ import {
   hasPendingCleaningRedo,
 } from "@/lib/actions/cleaning.actions";
 import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
+import { getBlockingTasks } from "@/lib/tasks/blocking";
+import { taskGateMessage } from "@/lib/tasks/gate";
 // Nonaktif sementara 2026-09-12 — lihat komentar di pemanggilnya di bawah.
 // import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
 
@@ -861,6 +863,19 @@ export async function checkOut(payload?: CheckOutPayload) {
       error:
         "Ada foto kebersihan yang perlu diperbaiki dulu — lihat kartu di beranda.",
       cleaningRedoBlocked: true as const,
+    };
+  }
+
+  // Gate Tugas Karyawan (migrasi 173): tugas `open` yang belum dikirim dan
+  // belum ditunda untuk hari ini memblokir sign out. Sengaja DI SINI —
+  // sebelum round-trip konfirmasi geofence/lembur — supaya karyawan tidak
+  // mengisi catatan lalu ditolak. `lateCheckout` (hari lampau) dan edit
+  // admin tidak digate.
+  const taskBlocking = await getBlockingTasks(user.id);
+  if (taskBlocking.length > 0) {
+    return {
+      error: taskGateMessage(taskBlocking),
+      tasksIncomplete: taskBlocking,
     };
   }
 

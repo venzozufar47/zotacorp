@@ -9,6 +9,8 @@ import { checkIn, checkOut, breakOut, breakIn } from "@/lib/actions/attendance.a
 import { getPushGateStatus } from "@/lib/actions/push.actions";
 import { AttendancePushGate } from "./AttendancePushGate";
 import { CheckoutConfirmDialog } from "./CheckoutConfirmDialog";
+import { TaskGateDialog } from "./TaskGateDialog";
+import type { BlockingTask } from "@/lib/tasks/types";
 import { activeBreakWindow } from "@/lib/utils/break-windows";
 import { extensionFor } from "@/lib/images/compress-image";
 
@@ -21,6 +23,16 @@ import { extensionFor } from "@/lib/images/compress-image";
  * hidden by the tap). `ssr: false` skips server-rendering because the
  * modal is only ever visible after a click anyway.
  */
+/** Argumen satu kali percobaan sign out (dipakai ulang saat retry). */
+type CheckoutArgs = {
+  isOvertime: boolean;
+  overtimeReason: string;
+  latitude: number | null;
+  longitude: number | null;
+  note: string | null;
+  overrideCheckoutTime?: string | null;
+};
+
 const PasswordConfirmModal = dynamic(
   () => import("./PasswordConfirmModal").then((m) => m.PasswordConfirmModal),
   { ssr: false }
@@ -129,6 +141,12 @@ export function CheckInButton({
     overtimeReason: string;
     latitude: number | null;
     longitude: number | null;
+  } | null>(null);
+  // Sign out ditolak karena Tugas Karyawan belum dikirim → dialog pilihan
+  // (kerjakan / tunda besok). `args` disimpan untuk mengulang sign out.
+  const [taskGate, setTaskGate] = useState<{
+    tasks: BlockingTask[];
+    args: CheckoutArgs;
   } | null>(null);
   // Selfie capture + upload for check-in. `pendingCoordsRef` holds the GPS
   // fix from step 1 while the selfie dialog is open in step 2.
@@ -459,14 +477,7 @@ export function CheckInButton({
    * the GPS capture out of the retry path so the user doesn't get a second
    * permission prompt on resubmit.
    */
-  async function submitCheckout(args: {
-    isOvertime: boolean;
-    overtimeReason: string;
-    latitude: number | null;
-    longitude: number | null;
-    note: string | null;
-    overrideCheckoutTime?: string | null;
-  }) {
+  async function submitCheckout(args: CheckoutArgs) {
     const result = await checkOut({
       isOvertime: args.isOvertime,
       overtimeReason: args.overtimeReason,
@@ -499,6 +510,13 @@ export function CheckInButton({
         checkinTime: confirmResult.checkinTime ?? null,
       });
       setConfirmOpen(true);
+      return;
+    }
+
+    // Tugas Karyawan belum dikirim → dialog kerjakan / tunda besok.
+    const gated = (result as { tasksIncomplete?: BlockingTask[] } | undefined)?.tasksIncomplete;
+    if (gated && gated.length > 0) {
+      setTaskGate({ tasks: gated, args });
       return;
     }
 
@@ -718,6 +736,20 @@ export function CheckInButton({
           if (!o) pendingCoordsRef.current = null;
         }}
         onConfirm={handleSelfieConfirmed}
+      />
+
+      {/* Sign out diblokir Tugas Karyawan: kerjakan sekarang / tunda besok */}
+      <TaskGateDialog
+        open={taskGate !== null}
+        onOpenChange={(o) => {
+          if (!o) setTaskGate(null);
+        }}
+        tasks={taskGate?.tasks ?? []}
+        onAllDeferred={() => {
+          const args = taskGate?.args;
+          setTaskGate(null);
+          if (args) startTransition(async () => submitCheckout(args));
+        }}
       />
 
       {/* Checkout konfirmasi: outside location atau telat > 30 menit */}
