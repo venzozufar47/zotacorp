@@ -41,6 +41,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { parseBreakWindows } from "@/lib/utils/break-windows";
 import type { AttendanceBreakLog } from "@/lib/supabase/types";
 import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
+import { getMyOpenTasks } from "@/lib/actions/assigned-tasks.actions";
+import { TaskAssignmentCard } from "@/components/dashboard/TaskAssignmentCard";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
 import { ServiceLevelPanel } from "@/components/dashboard/ServiceLevelPanel";
 import { listMyServiceLevelOutlets } from "@/lib/pos/service-level-access";
@@ -138,6 +140,7 @@ export default async function DashboardPage() {
     hasYeoboRevenueAccess,
     missedCheckouts,
     payslipBasisRes,
+    myTasks,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -183,6 +186,7 @@ export default async function DashboardPage() {
       .select("calculation_basis")
       .eq("user_id", user.id)
       .maybeSingle(),
+    getMyOpenTasks(),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -254,6 +258,11 @@ export default async function DashboardPage() {
       )}
 
       <ProfileCompletionCard missingSections={missingSections} />
+
+      {/* Tugas dari admin (sekali-jalan, wajib foto + verifikasi). Memblokir
+          sign out selama belum dikirim/ditunda, jadi ditaruh tinggi. Komponen
+          menghilang sendiri saat kosong. */}
+      <TaskAssignmentCard tasks={myTasks} />
 
       {/* Foto kebersihan yang perlu diperbaiki — di ATAS catatan pembinaan:
           ini yang mengunci sign-in/checkout (lihat hasPendingCleaningRedo),
