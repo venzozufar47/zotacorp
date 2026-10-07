@@ -58,6 +58,8 @@ export interface BlockingTask {
 
 export interface AdminTaskRow {
   id: string;
+  /** Tanggal mulai (YYYY-MM-DD, Jakarta): sebelum ini tugas belum tampil di karyawan. */
+  startDate: string;
   title: string;
   description: string | null;
   assigneeId: string;
@@ -112,6 +114,9 @@ export interface TeamTaskItem {
 
 export interface TeamTask {
   id: string;
+  /** Tanggal mulai; `scheduled` = belum mulai (belum tampil di karyawan). */
+  startDate: string;
+  scheduled: boolean;
   title: string;
   status: "open" | "submitted" | "approved";
   round: number;

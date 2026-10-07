@@ -50,7 +50,7 @@ export async function getMyTeamTasks(): Promise<TeamMemberTasks[]> {
     db.from("profiles").select("id, full_name, nickname, is_active").in("id", memberIds),
     db
       .from("assigned_tasks")
-      .select("id, title, assignee_id, status, current_round, review_note, updated_at")
+      .select("id, title, assignee_id, status, current_round, review_note, updated_at, start_date")
       .in("assignee_id", memberIds)
       .or(`status.in.(open,submitted),and(status.eq.approved,updated_at.gte.${since})`)
       .order("created_at", { ascending: true }),
@@ -101,6 +101,8 @@ export async function getMyTeamTasks(): Promise<TeamMemberTasks[]> {
       });
     const entry: TeamTask = {
       id: t.id,
+      startDate: t.start_date,
+      scheduled: t.status === "open" && t.start_date > today,
       title: t.title,
       status: t.status,
       round: t.current_round,

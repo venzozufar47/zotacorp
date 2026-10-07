@@ -14,7 +14,8 @@ import { Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 import { PhotoLightbox, type LightboxPhoto } from "@/components/shared/PhotoLightbox";
 import { TaskEditForm } from "./TaskEditForm";
 import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
-import { timeAgo } from "./TasksManager";
+import { fmtStart, timeAgo } from "@/lib/tasks/format";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString("id-ID", {
@@ -184,7 +185,9 @@ export function TaskDetailView({
       <div className="space-y-1">
         <p className="text-sm font-medium">{detail.assigneeName}</p>
         <p className="text-xs text-muted-foreground">
-          {STATUS_TEXT[detail.status]}
+          {detail.status === "open" && detail.startDate > jakartaDateString(new Date(now))
+            ? `Terjadwal — mulai ${fmtStart(detail.startDate)}`
+            : STATUS_TEXT[detail.status]}
           {detail.round > 1 ? ` · pengulangan ke-${detail.round}` : ""}
           {detail.submittedAt && detail.status === "submitted"
             ? ` · dikirim ${timeAgo(detail.submittedAt, now)}`

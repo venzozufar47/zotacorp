@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, ClipboardList, Plus, RotateCcw, Search, Users } from "lucide-react";
 import type { AdminTaskRow, AdminTeam, TaskStatus } from "@/lib/tasks/types";
+import { jakartaDateString } from "@/lib/utils/jakarta";
+import { fmtStart, timeAgo } from "@/lib/tasks/format";
 import { TaskFormDialog } from "./TaskFormDialog";
 import { TaskDetailDialog } from "./TaskDetailDialog";
 import { TeamsDialog } from "./TeamsDialog";
@@ -28,22 +30,6 @@ const STATUS_TONE: Record<TaskStatus, string> = {
   approved: "bg-success/40",
   cancelled: "bg-muted text-muted-foreground",
 };
-
-/** "2 jam lalu", "kemarin", "3 hari lalu". */
-export function timeAgo(iso: string, now: number = Date.now()): string {
-  const mins = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
-  if (mins < 1) return "baru saja";
-  if (mins < 60) return `${mins} menit lalu`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} jam lalu`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? "kemarin" : `${days} hari lalu`;
-}
-
-function fmtYmd(ymd: string): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
-}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -83,6 +69,7 @@ export function TasksManager({
   const [detailId, setDetailId] = useState<string | null>(focusId);
   // Satu "sekarang" per render-tab agar label umur konsisten dalam satu tampilan.
   const [now] = useState(() => Date.now());
+  const today = jakartaDateString(new Date(now));
 
   const groups = useMemo(
     () => ({
@@ -215,6 +202,8 @@ export function TasksManager({
         <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {visible.map((t) => {
             const pct = t.itemCount > 0 ? Math.round((t.doneCount / t.itemCount) * 100) : 0;
+            // Belum mulai: belum tampil di karyawan.
+            const scheduled = t.status === "open" && t.startDate > today;
             return (
               <li key={t.id}>
                 <button
@@ -244,9 +233,9 @@ export function TasksManager({
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <span
-                        className={`rounded-full px-2.5 py-0.5 font-semibold border border-border ${STATUS_TONE[t.status]}`}
+                        className={`rounded-full px-2.5 py-0.5 font-semibold border border-border ${scheduled ? "bg-muted text-muted-foreground" : STATUS_TONE[t.status]}`}
                       >
-                        {STATUS_LABEL[t.status]}
+                        {scheduled ? `Terjadwal · mulai ${fmtStart(t.startDate)}` : STATUS_LABEL[t.status]}
                       </span>
                       <span className="text-muted-foreground tabular-nums">
                         {t.doneCount}/{t.itemCount} foto
@@ -277,7 +266,7 @@ export function TasksManager({
                       )}
                       {t.lastDeferral && t.status === "open" && (
                         <p className="rounded-lg bg-warning/30 px-2 py-1 text-foreground break-words">
-                          Ditunda {t.deferralCount}× · {fmtYmd(t.lastDeferral.forDate)}: “
+                          Ditunda {t.deferralCount}× · {fmtStart(t.lastDeferral.forDate)}: “
                           {t.lastDeferral.reason}”
                         </p>
                       )}

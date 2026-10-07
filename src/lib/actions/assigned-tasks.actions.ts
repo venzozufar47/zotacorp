@@ -18,7 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
-import { jakartaDateString } from "@/lib/utils/jakarta";
+import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
 import { diffTaskItems } from "@/lib/tasks/edit-diff";
 import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import {
@@ -170,6 +170,21 @@ function revalidateAll() {
 
 // ── Admin: buat / daftar / detail / review / batalkan ────────────────────
 
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_START_AHEAD_DAYS = 365;
+
+/** Validasi tanggal mulai: format benar, tidak di masa lalu, tidak terlalu jauh. */
+function checkStartDate(ymd: string, today: string): string | null {
+  if (!YMD.test(ymd) || Number.isNaN(new Date(ymd + "T00:00:00Z").getTime())) {
+    return "Tanggal mulai tidak valid.";
+  }
+  if (ymd < today) return "Tanggal mulai tidak boleh sebelum hari ini.";
+  if (ymd > jakartaDateMinusDays(today, -MAX_START_AHEAD_DAYS)) {
+    return "Tanggal mulai terlalu jauh ke depan (maksimal 1 tahun).";
+  }
+  return null;
+}
+
 const createSchema = z.object({
   title: z.string().trim().min(1, "Judul wajib diisi").max(120),
   description: z.string().trim().max(1000).optional().nullable(),
@@ -185,6 +200,8 @@ const createSchema = z.object({
   assigneeIds: z.array(z.string().uuid()).min(1, "Pilih minimal satu karyawan").max(50),
   /** Foto referensi dari admin (sudah diunggah ke bucket task-attachments). */
   attachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX).optional(),
+  /** Tanggal mulai (YYYY-MM-DD, Jakarta). Kosong = hari ini. */
+  startDate: z.string().optional(),
 });
 
 export type CreateAssignedTaskInput = z.input<typeof createSchema>;
@@ -200,6 +217,12 @@ export async function createAssignedTask(
   }
   const { title, description, items } = parsed.data;
   const assigneeIds = [...new Set(parsed.data.assigneeIds)];
+
+  const today = jakartaDateString(new Date());
+  const startDate = parsed.data.startDate || today;
+  const startErr = checkStartDate(startDate, today);
+  if (startErr) return { ok: false, error: startErr };
+  const startsNow = startDate <= today;
 
   const attachmentPaths = [...new Set(parsed.data.attachmentPaths ?? [])];
   const attErr = await validateAttachmentPaths(gate.userId, attachmentPaths);
@@ -231,9 +254,12 @@ export async function createAssignedTask(
         assignee_id,
         created_by: gate.userId,
         batch_id: batchId,
-        // Push penugasan sudah menjadi "pengingat pertama" → pengingat
-        // berikutnya ~2 jam lagi, bukan di jam cron terdekat.
-        last_reminded_at: new Date().toISOString(),
+        start_date: startDate,
+        // Mulai hari ini: push penugasan di bawah = pemberitahuan sekaligus
+        // "pengingat pertama" → pengingat berikutnya ~2 jam lagi. Terjadwal:
+        // dipush oleh cron pada tanggal mulainya (notifyStartedTasks).
+        start_notified_at: startsNow ? new Date().toISOString() : null,
+        last_reminded_at: startsNow ? new Date().toISOString() : null,
       }))
     )
     .select("id, assignee_id");
@@ -270,11 +296,13 @@ export async function createAssignedTask(
     return { ok: false, error: insAttErr };
   }
 
-  await Promise.all(
-    assigneeIds.map((uid) =>
-      pushUser(uid, "Tugas baru untukmu 📋", `${title} — buka beranda untuk mengerjakan.`)
-    )
-  );
+  if (startsNow) {
+    await Promise.all(
+      assigneeIds.map((uid) =>
+        pushUser(uid, "Tugas baru untukmu 📋", `${title} — buka beranda untuk mengerjakan.`)
+      )
+    );
+  }
   revalidateAll();
   return { ok: true, data: { created: tasks.length } };
 }
@@ -309,6 +337,7 @@ async function buildAdminRows(tasks: any[]): Promise<AdminTaskRow[]> {
     const defs = (deferrals ?? []).filter((d: any) => d.task_id === t.id);
     return {
       id: t.id,
+      startDate: t.start_date,
       title: t.title,
       description: t.description,
       assigneeId: t.assignee_id,
@@ -452,6 +481,8 @@ const updateSchema = z.object({
     .max(40, "Maksimal 40 item"),
   /** Judul, keterangan + foto referensi BARU juga diterapkan ke salinan lain (satu batch) yang belum selesai. */
   applyToBatch: z.boolean().optional(),
+  /** Ubah tanggal mulai — hanya selama tugas BELUM mulai. */
+  startDate: z.string().optional(),
   /** Foto referensi baru (sudah diunggah) dan id lampiran referensi yang dibuang dari tugas ini. */
   addAttachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX).optional(),
   removeAttachmentIds: z.array(z.string().uuid()).max(TASK_REFERENCE_MAX * 2).optional(),
@@ -486,7 +517,7 @@ export async function updateAssignedTask(
   const db = createAdminClient() as any;
   const { data: task } = await db
     .from("assigned_tasks")
-    .select("id, title, assignee_id, status, batch_id")
+    .select("id, title, assignee_id, status, batch_id, start_date, start_notified_at")
     .eq("id", taskId)
     .maybeSingle();
   if (!task) return { ok: false, error: "Tugas tidak ditemukan" };
@@ -597,16 +628,54 @@ export async function updateAssignedTask(
     }
   }
 
-  const header = { title, description: description || null };
+  const header: Record<string, unknown> = { title, description: description || null };
+
+  // Tanggal mulai: hanya boleh diubah selama tugas belum mulai. Pindah ke
+  // hari ini/lebih awal = mulai sekarang (karyawan diberi tahu); tetap di
+  // masa depan = tetap terjadwal.
+  const today = jakartaDateString(new Date());
+  let startsNowByEdit = false;
+  const newStart = parsed.data.startDate;
+  if (newStart && newStart !== task.start_date) {
+    if (task.start_date <= today) {
+      return { ok: false, error: "Tugas sudah dimulai — tanggal mulainya tidak bisa diubah." };
+    }
+    const startErr = checkStartDate(newStart, today);
+    if (startErr) return { ok: false, error: startErr };
+    header.start_date = newStart;
+    if (newStart <= today && !task.start_notified_at) {
+      startsNowByEdit = true;
+      header.start_notified_at = new Date().toISOString();
+      header.last_reminded_at = new Date().toISOString();
+    }
+  }
+
   const { error: headErr } = await db.from("assigned_tasks").update(header).eq("id", taskId);
   if (headErr) return { ok: false, error: headErr.message };
+  if (startsNowByEdit) {
+    await pushUser(task.assignee_id, "Tugas baru untukmu 📋", `${title} — buka beranda untuk mengerjakan.`);
+  }
   if (applyToBatch && task.batch_id) {
+    // Salinan lain: judul/keterangan selalu; tanggal mulai hanya untuk yang juga belum mulai.
+    const { start_date, start_notified_at, last_reminded_at, ...textOnly } = header as any;
+    void start_notified_at;
+    void last_reminded_at;
     await db
       .from("assigned_tasks")
-      .update(header)
+      .update(textOnly)
       .eq("batch_id", task.batch_id)
       .neq("id", taskId)
       .in("status", ["open", "submitted"]);
+    if (start_date) {
+      await db
+        .from("assigned_tasks")
+        .update({ start_date })
+        .eq("batch_id", task.batch_id)
+        .neq("id", taskId)
+        .eq("status", "open")
+        .gt("start_date", today)
+        .is("start_notified_at", null);
+    }
   }
 
   // Karyawan perlu tahu kalau daftar yang harus dikerjakan berubah.
@@ -737,6 +806,8 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
     .select("id, title, description, status, current_round, review_note")
     .eq("assignee_id", user.id)
     .in("status", ["open", "submitted"])
+    // Tugas terjadwal (belum mulai) belum tampil di karyawan.
+    .lte("start_date", today)
     .order("created_at", { ascending: true });
   if (!tasks || tasks.length === 0) return [];
 
@@ -829,10 +900,13 @@ async function loadOwnOpenTask(taskId: string): Promise<OwnTask> {
   const db = createAdminClient() as any;
   const { data: task } = await db
     .from("assigned_tasks")
-    .select("id, title, assignee_id, status, current_round")
+    .select("id, title, assignee_id, status, current_round, start_date")
     .eq("id", taskId)
     .maybeSingle();
   if (!task || task.assignee_id !== user.id) return { error: "Tugas tidak ditemukan" };
+  if (task.start_date > jakartaDateString(new Date())) {
+    return { error: "Tugas ini belum dimulai." };
+  }
   if (task.status !== "open") {
     return { error: "Tugas ini tidak sedang dikerjakan (sudah dikirim atau selesai)." };
   }

@@ -19,7 +19,9 @@ export async function getBlockingTasks(userId: string): Promise<BlockingTask[]> 
     .from("assigned_tasks")
     .select("id, title, status, current_round")
     .eq("assignee_id", userId)
-    .eq("status", "open");
+    .eq("status", "open")
+    // Tugas terjadwal (belum mulai) belum mewajibkan apa pun.
+    .lte("start_date", today);
   if (!tasks || tasks.length === 0) return [];
 
   const ids = tasks.map((t: any) => t.id as string);

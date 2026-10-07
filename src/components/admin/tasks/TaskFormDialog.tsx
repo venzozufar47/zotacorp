@@ -7,6 +7,7 @@ import { Loader2, Plus, X } from "lucide-react";
 import { createAssignedTask } from "@/lib/actions/assigned-tasks.actions";
 import { Field, Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 import { TASK_REFERENCE_MAX } from "@/lib/tasks/types";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
 import type { AssignableEmployee } from "./TasksManager";
 
@@ -33,6 +34,8 @@ export function TaskFormDialog({
   ]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
+  const today = jakartaDateString(new Date());
+  const [startDate, setStartDate] = useState(today);
   const sentRef = useRef(false);
   const [query, setQuery] = useState("");
   const itemRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -44,7 +47,7 @@ export function TaskFormDialog({
   }, [employees, query]);
 
   const filledItems = items.filter((i) => i.value.trim().length > 0).length;
-  const canSubmit = title.trim().length > 0 && filledItems > 0 && picked.size > 0;
+  const canSubmit = startDate >= today && title.trim().length > 0 && filledItems > 0 && picked.size > 0;
 
   function togglePick(id: string) {
     setPicked((prev) => {
@@ -73,6 +76,7 @@ export function TaskFormDialog({
         items: items.map((i) => i.value.trim()).filter(Boolean).map((t) => ({ title: t })),
         assigneeIds: [...picked],
         attachmentPaths: photos.map((p) => p.path),
+        startDate: startDate || today,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -108,6 +112,23 @@ export function TaskFormDialog({
             onChange={(e) => setTitle(e.target.value)}
             placeholder="mis. Pasang dekorasi studio besar"
             autoFocus
+          />
+        </Field>
+
+        <Field
+          label="Tanggal mulai"
+          hint={
+            startDate > today
+              ? "Tugas baru muncul di karyawan dan notifikasi dikirim pada tanggal ini."
+              : "Hari ini — tugas langsung muncul di karyawan dan notifikasi dikirim sekarang."
+          }
+        >
+          <input
+            type="date"
+            className={inputCls + " h-11"}
+            value={startDate}
+            min={today}
+            onChange={(e) => setStartDate(e.target.value || today)}
           />
         </Field>
 

@@ -6,6 +6,7 @@ import { ArrowDown, ArrowUp, Camera, Loader2, Plus, X } from "lucide-react";
 import { updateAssignedTask } from "@/lib/actions/assigned-tasks.actions";
 import { TASK_REFERENCE_MAX, type AdminTaskDetail } from "@/lib/tasks/types";
 import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import { Field, inputCls } from "@/components/admin/registry/RegistryUi";
 
 interface DraftItem {
@@ -34,6 +35,10 @@ export function TaskEditForm({
   onSaved: () => void;
 }) {
   const itemsLocked = detail.status !== "open";
+  const today = jakartaDateString(new Date());
+  // Tanggal mulai hanya bisa diubah selama tugas belum mulai.
+  const canEditStart = detail.status === "open" && detail.startDate > today;
+  const [startDate, setStartDate] = useState(detail.startDate);
   const [title, setTitle] = useState(detail.title);
   const [description, setDescription] = useState(detail.description ?? "");
   const [applyToBatch, setApplyToBatch] = useState(false);
@@ -86,6 +91,7 @@ export function TaskEditForm({
         applyToBatch,
         addAttachmentPaths: newPhotos.map((p) => p.path),
         removeAttachmentIds: [...removedIds],
+        startDate: canEditStart ? startDate : undefined,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -106,6 +112,21 @@ export function TaskEditForm({
           onChange={(e) => setTitle(e.target.value)}
         />
       </Field>
+
+      {canEditStart && (
+        <Field
+          label="Tanggal mulai"
+          hint="Tugas belum mulai. Memilih hari ini membuatnya langsung muncul di karyawan dan notifikasi dikirim."
+        >
+          <input
+            type="date"
+            className={inputCls + " h-11"}
+            value={startDate}
+            min={today}
+            onChange={(e) => setStartDate(e.target.value || detail.startDate)}
+          />
+        </Field>
+      )}
 
       <Field label="Keterangan (opsional)">
         <textarea

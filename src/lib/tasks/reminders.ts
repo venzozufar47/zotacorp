@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { sendPushToUser } from "@/lib/push/web-push";
-import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
+import { jakartaDateMinusDays, jakartaDateString, jakartaHour } from "@/lib/utils/jakarta";
 import {
   REMINDER_MAX_SHIFT_HOURS,
   isReminderDue,
@@ -12,10 +12,55 @@ import {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export interface TaskReminderSummary {
+  /** Tugas terjadwal yang tanggal mulainya tiba dan baru dipush hari ini. */
+  startPushed: number;
   signedIn: number;
   candidates: number;
   claimed: number;
   users: number;
+}
+
+/** Jam (WIB) push "Tugas baru" untuk tugas terjadwal — bukan tengah malam. */
+const START_PUSH_FROM_HOUR = 7;
+const START_PUSH_UNTIL_HOUR = 20;
+
+/**
+ * Tugas yang dijadwalkan ke depan tidak dipush saat dibuat. Begitu tanggal
+ * mulainya tiba (dan jam wajar), kirim push "Tugas baru" SEKALI. Klaim atomik
+ * lewat start_notified_at supaya cron ganda tidak mengirim dua kali.
+ */
+async function notifyStartedTasks(db: any, now: Date, today: string): Promise<number> {
+  const hour = jakartaHour(now);
+  if (hour < START_PUSH_FROM_HOUR || hour > START_PUSH_UNTIL_HOUR) return 0;
+
+  const { data: due } = await db
+    .from("assigned_tasks")
+    .select("id, title, assignee_id")
+    .eq("status", "open")
+    .is("start_notified_at", null)
+    .lte("start_date", today);
+  let pushed = 0;
+  for (const t of due ?? []) {
+    const { data: claimed } = await db
+      .from("assigned_tasks")
+      .update({ start_notified_at: now.toISOString(), last_reminded_at: now.toISOString() })
+      .eq("id", t.id)
+      .eq("status", "open")
+      .is("start_notified_at", null)
+      .select("id");
+    if (!claimed || claimed.length === 0) continue;
+    try {
+      await sendPushToUser(t.assignee_id, {
+        title: "Tugas baru untukmu 📋",
+        body: `${t.title} — buka beranda untuk mengerjakan.`,
+        url: "/dashboard",
+      });
+      pushed++;
+    } catch (err) {
+      console.error("[task-start-push] failed:", err);
+    }
+  }
+  return pushed;
 }
 
 /**
@@ -29,9 +74,16 @@ export interface TaskReminderSummary {
  */
 export async function runTaskReminders(now: Date = new Date()): Promise<TaskReminderSummary> {
   const db = createAdminClient() as any;
-  const summary: TaskReminderSummary = { signedIn: 0, candidates: 0, claimed: 0, users: 0 };
+  const summary: TaskReminderSummary = {
+    startPushed: 0,
+    signedIn: 0,
+    candidates: 0,
+    claimed: 0,
+    users: 0,
+  };
 
   const today = jakartaDateString(now);
+  summary.startPushed = await notifyStartedTasks(db, now, today);
   const yesterday = jakartaDateMinusDays(today, 1);
   const earliestIn = new Date(now.getTime() - REMINDER_MAX_SHIFT_HOURS * 3600 * 1000);
 
@@ -54,6 +106,8 @@ export async function runTaskReminders(now: Date = new Date()): Promise<TaskRemi
     .from("assigned_tasks")
     .select("id, title, assignee_id, last_reminded_at")
     .eq("status", "open")
+    // Hanya tugas yang sudah mulai (terjadwal tidak diingatkan).
+    .lte("start_date", today)
     .in("assignee_id", userIds)
     .or(dueFilter);
   const dueTasks = (tasks ?? []).filter((t: any) => isReminderDue(t.last_reminded_at, now));

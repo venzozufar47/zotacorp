@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, ChevronDown, Eye, Hourglass, RotateCcw } from "lucide-react";
 import { PhotoLightbox, type LightboxPhoto } from "@/components/shared/PhotoLightbox";
 import type { TeamMemberTasks, TeamTask } from "@/lib/tasks/types";
+import { fmtStart } from "@/lib/tasks/format";
 
 const STATUS_LABEL: Record<TeamTask["status"], string> = {
   open: "Dikerjakan",
@@ -38,7 +39,8 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
       </p>
 
       {members.map((m) => {
-        const running = m.tasks.filter((t) => t.status === "open").length;
+        const scheduledN = m.tasks.filter((t) => t.scheduled).length;
+        const running = m.tasks.filter((t) => t.status === "open" && !t.scheduled).length;
         const waiting = m.tasks.filter((t) => t.status === "submitted").length;
         return (
           <details
@@ -59,9 +61,10 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
                     ? "Tidak ada tugas"
                     : [
                         running > 0 ? `${running} dikerjakan` : null,
+                        scheduledN > 0 ? `${scheduledN} terjadwal` : null,
                         waiting > 0 ? `${waiting} menunggu verifikasi` : null,
-                        m.tasks.length - running - waiting > 0
-                          ? `${m.tasks.length - running - waiting} selesai`
+                        m.tasks.length - running - waiting - scheduledN > 0
+                          ? `${m.tasks.length - running - waiting - scheduledN} selesai`
                           : null,
                       ]
                         .filter(Boolean)
@@ -86,9 +89,9 @@ export function TeamTasksView({ members }: { members: TeamMemberTasks[] }) {
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-semibold text-sm break-words min-w-0">{t.title}</p>
                         <span
-                          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border border-border ${STATUS_TONE[t.status]}`}
+                          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border border-border ${t.scheduled ? "bg-muted text-muted-foreground" : STATUS_TONE[t.status]}`}
                         >
-                          {STATUS_LABEL[t.status]}
+                          {t.scheduled ? `Terjadwal · ${fmtStart(t.startDate)}` : STATUS_LABEL[t.status]}
                         </span>
                       </div>
 
