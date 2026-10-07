@@ -222,11 +222,11 @@ export function TaskMatrix({
 
   return (
     <div className="space-y-3">
-      {/* Ringkasan helicopter */}
+      {/* Ringkasan helicopter — hanya tugas pada rentang yang sedang ditampilkan */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <Stat label="Perlu verifikasi" value={totals.review} tone="bg-primary text-primary-foreground" />
         <Stat label="Dikerjakan" value={totals.running} tone="bg-warning/40" />
-        <Stat label="Terjadwal" value={totals.scheduled} tone="bg-muted" />
+        <Stat label="Terjadwal (rentang ini)" value={totals.scheduled} tone="bg-muted" />
         <Stat label="Selesai" value={totals.done} tone="bg-success/30" />
       </div>
 
@@ -569,7 +569,9 @@ function MatrixRowView({
               e.dataTransfer.dropEffect = "copy";
               if (hover !== key) onHover(key);
             }}
-            onDragLeave={() => {
+            onDragLeave={(e) => {
+              // Pindah ke elemen anak (chip) bukan "keluar dari sel".
+              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
               if (hover === key) onHover(null);
             }}
             onDrop={(e) => {
@@ -648,7 +650,9 @@ function CopyChip({
             ? `Pengulangan ke-${copy.round}`
             : copy.deferredToday
               ? "Ditunda hari ini"
-              : "Dikerjakan";
+              : age >= 1
+                ? `Dikerjakan · sudah ${age} hari`
+                : "Dikerjakan";
   return (
     <button
       type="button"

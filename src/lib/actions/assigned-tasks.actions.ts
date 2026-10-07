@@ -18,7 +18,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
-import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
+import { jakartaDateString } from "@/lib/utils/jakarta";
+import { checkStartDate } from "@/lib/tasks/start-date";
 import { diffTaskItems } from "@/lib/tasks/edit-diff";
 import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import {
@@ -169,21 +170,6 @@ function revalidateAll() {
 }
 
 // ── Admin: buat / daftar / detail / review / batalkan ────────────────────
-
-const YMD = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_START_AHEAD_DAYS = 365;
-
-/** Validasi tanggal mulai: format benar, tidak di masa lalu, tidak terlalu jauh. */
-function checkStartDate(ymd: string, today: string): string | null {
-  if (!YMD.test(ymd) || Number.isNaN(new Date(ymd + "T00:00:00Z").getTime())) {
-    return "Tanggal mulai tidak valid.";
-  }
-  if (ymd < today) return "Tanggal mulai tidak boleh sebelum hari ini.";
-  if (ymd > jakartaDateMinusDays(today, -MAX_START_AHEAD_DAYS)) {
-    return "Tanggal mulai terlalu jauh ke depan (maksimal 1 tahun).";
-  }
-  return null;
-}
 
 const createSchema = z.object({
   title: z.string().trim().min(1, "Judul wajib diisi").max(120),

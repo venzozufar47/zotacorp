@@ -18,6 +18,7 @@ import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
 import { sendPushToUser } from "@/lib/push/web-push";
+import { checkStartDate } from "@/lib/tasks/start-date";
 import {
   MATRIX_DAY_OPTIONS,
   type MatrixCopy,
@@ -29,21 +30,8 @@ import {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_START_AHEAD_DAYS = 365;
-
 function nameOf(p: any): string {
   return String(p?.full_name ?? "").trim() || String(p?.nickname ?? "").trim() || "—";
-}
-
-function checkStartDate(ymd: string, today: string): string | null {
-  if (!YMD.test(ymd) || Number.isNaN(new Date(ymd + "T00:00:00Z").getTime())) {
-    return "Tanggal mulai tidak valid.";
-  }
-  if (ymd < today) return "Tanggal mulai tidak boleh sebelum hari ini.";
-  if (ymd > jakartaDateMinusDays(today, -MAX_START_AHEAD_DAYS)) {
-    return "Tanggal mulai terlalu jauh ke depan (maksimal 1 tahun).";
-  }
-  return null;
 }
 
 async function pushNewTask(userId: string, title: string) {
