@@ -8,7 +8,7 @@ import { isSimOverdue, simStatus } from "@/lib/sim-cards/types";
 
 export type PendingConfirmationItem = {
   rowId: string;
-  kind: "late_proof" | "overtime" | "registration" | "ticket" | "sim_card";
+  kind: "late_proof" | "overtime" | "registration" | "ticket" | "sim_card" | "task_review";
   /** Owner of the attendance row — lets the admin drawer load this
    *  employee's stats + full pending-approval list when clicked. */
   userId: string;
@@ -39,7 +39,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
 
   const supabase = await createClient();
 
-  const [lateRes, otRes, registrations, ticketsRes, simRes] = await Promise.all([
+  const [lateRes, otRes, registrations, ticketsRes, simRes, taskRes] = await Promise.all([
     supabase
       .from("attendance_logs")
       .select(
@@ -73,6 +73,13 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       )
       .eq("is_active", true)
       .limit(200),
+    // Tugas Karyawan yang sudah dikirim & menunggu verifikasi (migrasi 173).
+    supabase
+      .from("assigned_tasks" as never)
+      .select("id, assignee_id, submitted_at")
+      .eq("status", "submitted")
+      .order("submitted_at", { ascending: true })
+      .limit(100),
   ]);
 
   type Row = {
@@ -236,5 +243,34 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     };
   });
 
-  return [...simItems, ...ticketItems, ...registrationItems, ...items];
+  // Tugas menunggu verifikasi — nama pengirim = karyawan penerima tugas.
+  type TaskRow = { id: string; assignee_id: string; submitted_at: string | null };
+  const taskRows = (taskRes.data ?? []) as unknown as TaskRow[];
+  const taskProfById = new Map<
+    string,
+    { full_name: string | null; avatar_url: string | null; avatar_seed: string | null }
+  >();
+  const taskAssigneeIds = Array.from(new Set(taskRows.map((t) => t.assignee_id)));
+  if (taskAssigneeIds.length > 0) {
+    const { data: tProfs } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, avatar_seed")
+      .in("id", taskAssigneeIds);
+    for (const p of tProfs ?? []) taskProfById.set(p.id, p);
+  }
+  const taskItems: PendingConfirmationItem[] = taskRows.map((t) => {
+    const p = taskProfById.get(t.assignee_id);
+    return {
+      rowId: t.id,
+      kind: "task_review",
+      userId: t.assignee_id,
+      employeeName: p?.full_name || "Karyawan",
+      userAvatarUrl: p?.avatar_url ?? null,
+      userAvatarSeed: p?.avatar_seed ?? null,
+      date: t.submitted_at ? jakartaDateString(new Date(t.submitted_at)) : today,
+      at: t.submitted_at ?? undefined,
+    };
+  });
+
+  return [...taskItems, ...simItems, ...ticketItems, ...registrationItems, ...items];
 }

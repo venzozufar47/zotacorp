@@ -121,6 +121,7 @@ function deriveCrumbs(pathname: string): string[] {
     "stock-gate": "Gate Absen Pulang",
     cleaning: "Kebersihan",
     tickets: "Tiket Studio",
+    tasks: "Tugas",
     // Karyawan
     users: "Users",
     payslips: "Slip Gaji",

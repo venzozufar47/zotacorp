@@ -610,9 +610,12 @@ function buildInbox(
     const isRegistration = p.kind === "registration";
     const isTicket = p.kind === "ticket";
     const isSim = p.kind === "sim_card";
+    const isTask = p.kind === "task_review";
     out.push({
       id: `pending-${p.kind}-${p.rowId}`,
-      tag: isSim
+      tag: isTask
+        ? "Tugas"
+        : isSim
         ? "SIM"
         : isTicket
           ? "Tiket"
@@ -622,12 +625,18 @@ function buildInbox(
               ? "Late proof"
               : "Overtime",
       tagTone:
-        isTicket || isSim ? "bad" : p.kind === "late_proof" ? "warn" : "info",
+        isTicket || isSim
+          ? "bad"
+          : p.kind === "late_proof" || isTask
+            ? "warn"
+            : "info",
       userId: p.userId,
       userName: p.employeeName,
       userAvatarUrl: p.userAvatarUrl,
       userAvatarSeed: p.userAvatarSeed,
-      desc: isSim
+      desc: isTask
+        ? "Tugas menunggu verifikasi"
+        : isSim
         ? "Nomor SIM lewat tenggat — perlu isi pulsa"
         : isTicket
           ? "Tiket studio perlu ditangani"
@@ -640,7 +649,13 @@ function buildInbox(
                 : "OT awaiting approval",
       ago: agoLabel(p.at ?? p.date),
       isRegistration,
-      href: isSim ? "/admin/sim-cards" : isTicket ? "/admin/tickets" : undefined,
+      href: isTask
+        ? `/admin/tasks?focus=${p.rowId}`
+        : isSim
+          ? "/admin/sim-cards"
+          : isTicket
+            ? "/admin/tickets"
+            : undefined,
     });
   }
   for (const d of disputes) {

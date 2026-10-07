@@ -143,6 +143,12 @@ export function buildAdminNav({
           color: "bg-quaternary",
         },
         {
+          href: "/admin/tasks",
+          icon: ClipboardCheck,
+          label: "Tugas",
+          color: "bg-primary",
+        },
+        {
           href: "/admin/tickets",
           icon: Ticket,
           label: "Tiket Studio",
