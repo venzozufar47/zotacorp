@@ -9,6 +9,7 @@ import { LazyToaster } from "@/components/ui/LazyToaster";
 import { PwaRegister } from "@/components/shared/PwaRegister";
 import { BfcacheRefresh } from "@/components/shared/BfcacheRefresh";
 import { ShowcaseMode } from "@/components/shared/ShowcaseMode";
+import { OverlayDragGuard } from "@/components/shared/OverlayDragGuard";
 import { SHOWCASE_STORAGE_KEY } from "@/lib/showcase/store";
 import "./globals.css";
 
@@ -116,6 +117,7 @@ export default async function RootLayout({
         <LanguageProvider initialLang={lang} initialDictionary={dictionary[lang]}>
           {children}
           <ShowcaseMode />
+          <OverlayDragGuard />
           <LazyToaster />
           <PwaRegister />
           <BfcacheRefresh />
