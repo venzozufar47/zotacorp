@@ -14,7 +14,6 @@ import {
   MapPin,
   Megaphone,
   PartyPopper,
-  Radio,
   Receipt,
   Repeat,
   Settings,
@@ -318,12 +317,6 @@ export function buildAdminNav({
           icon: KeyRound,
           label: "Akun & Password",
           color: "bg-quaternary",
-        },
-        {
-          href: "/admin/intercom",
-          icon: Radio,
-          label: "Intercom",
-          color: "bg-pop-emerald",
         },
         {
           href: "/admin/settings",
