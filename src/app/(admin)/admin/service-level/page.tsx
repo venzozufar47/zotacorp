@@ -145,16 +145,11 @@ export default async function ServiceLevelAdminPage({
       .order("default_branch", { ascending: true }),
     supabase
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, business_unit")
       .neq("role", "investor")
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
   ]);
-
-  const employees = (employeeRows ?? []).map((e) => ({
-    id: e.id,
-    name: e.full_name || e.email,
-  }));
 
   // Satu putaran per outlet — jumlah outlet POS segelintir, jadi ini
   // masih jauh lebih murah daripada memecah halaman jadi banyak request.
@@ -195,6 +190,19 @@ export default async function ServiceLevelAdminPage({
       };
     })
   );
+
+  // Service Level fitur Haengbocake → kandidat penanggung jawab hanya
+  // karyawan Haengbocake. Yang SUDAH tercatat sebagai penanggung jawab
+  // tetap ditampilkan walau bukan Haengbocake: `OwnersSection` menyimpan
+  // seluruh set centang, jadi menyembunyikannya akan membuat penugasan
+  // lama tak terlihat & tak bisa dilepas.
+  const assignedOwnerIds = new Set(outlets.flatMap((o) => o.owners.map((w) => w.userId)));
+  const employees = (employeeRows ?? [])
+    .filter((e) => e.business_unit === "Haengbocake" || assignedOwnerIds.has(e.id))
+    .map((e) => ({
+      id: e.id,
+      name: e.full_name || e.email,
+    }));
 
   return (
     <div className="space-y-5 animate-fade-up">
