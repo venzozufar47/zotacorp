@@ -100,3 +100,38 @@ export interface AdminTaskDetail extends AdminTaskRow {
   reviews: { round: number; decision: "approved" | "rejected"; note: string | null; reviewedAt: string }[];
   deferrals: { forDate: string; reason: string }[];
 }
+
+// ── Team leader (migrasi 175): pantau-saja ────────────────────────────────
+
+export interface TeamTaskItem {
+  id: string;
+  title: string;
+  done: boolean;
+  photoUrl: string | null;
+}
+
+export interface TeamTask {
+  id: string;
+  title: string;
+  status: "open" | "submitted" | "approved";
+  round: number;
+  items: TeamTaskItem[];
+  doneCount: number;
+  itemCount: number;
+  deferredToday: boolean;
+  deferralReason: string | null;
+  /** Feedback penolakan terakhir (hanya bermakna saat ronde ulang). */
+  reviewNote: string | null;
+}
+
+export interface TeamMemberTasks {
+  memberId: string;
+  name: string;
+  tasks: TeamTask[];
+}
+
+export interface AdminTeam {
+  leaderId: string;
+  leaderName: string;
+  members: { id: string; name: string }[];
+}

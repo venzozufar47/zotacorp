@@ -11,6 +11,7 @@ import { canFileTickets } from "@/lib/tickets/access";
 import { isSimPic } from "@/lib/sim-cards/access";
 import { isProcurementStaff } from "@/lib/procurement/access";
 import { hasPending360Evaluation } from "@/lib/evaluation-360/access";
+import { isTeamLeader } from "@/lib/tasks/team-access";
 
 export default async function EmployeeLayout({
   children,
@@ -34,7 +35,9 @@ export default async function EmployeeLayout({
     has360Eval,
     hasCakeFinance,
     hasMetaAds,
+    hasTeam,
   ] = await Promise.all([
+
     listMyAssignedBankAccountIds(),
     getCurrentProfile(),
     getMyCakeAccess(),
@@ -47,6 +50,7 @@ export default async function EmployeeLayout({
     hasPending360Evaluation(),
     isCakeFinanceAdmin(),
     isMetaAdsViewer(),
+    isTeamLeader(),
   ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -74,6 +78,7 @@ export default async function EmployeeLayout({
         hasSimCards={hasSimCards}
         hasProcurement={hasProcurement}
         has360Eval={has360Eval}
+        hasTeam={hasTeam}
         assignmentCount={assignmentCount}
         me={me}
       />
@@ -94,6 +99,7 @@ export default async function EmployeeLayout({
         hasSimCards={hasSimCards}
         hasProcurement={hasProcurement}
         has360Eval={has360Eval}
+        hasTeam={hasTeam}
         assignmentCount={assignmentCount}
         me={me}
       />

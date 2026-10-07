@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, ClipboardList, Plus, RotateCcw, Search } from "lucide-react";
-import type { AdminTaskRow, TaskStatus } from "@/lib/tasks/types";
+import { ChevronRight, ClipboardList, Plus, RotateCcw, Search, Users } from "lucide-react";
+import type { AdminTaskRow, AdminTeam, TaskStatus } from "@/lib/tasks/types";
 import { TaskFormDialog } from "./TaskFormDialog";
 import { TaskDetailDialog } from "./TaskDetailDialog";
+import { TeamsDialog } from "./TeamsDialog";
 
 export interface AssignableEmployee {
   id: string;
@@ -64,11 +65,13 @@ const EMPTY_COPY: Record<Tab, { title: string; hint: string }> = {
 export function TasksManager({
   tasks,
   employees,
+  teams,
   loadError,
   focusId,
 }: {
   tasks: AdminTaskRow[];
   employees: AssignableEmployee[];
+  teams: AdminTeam[];
   loadError: string | null;
   focusId: string | null;
 }) {
@@ -76,6 +79,7 @@ export function TasksManager({
   const [tab, setTab] = useState<Tab>(reviewCount > 0 || focusId ? "review" : "running");
   const [query, setQuery] = useState("");
   const [formOpen, setFormOpen] = useState(false);
+  const [teamsOpen, setTeamsOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(focusId);
   // Satu "sekarang" per render-tab agar label umur konsisten dalam satu tampilan.
   const [now] = useState(() => Date.now());
@@ -159,6 +163,16 @@ export function TasksManager({
             className="w-full h-11 rounded-xl border-2 border-border bg-background pl-9 pr-3 text-sm"
           />
         </label>
+        <button
+          type="button"
+          onClick={() => setTeamsOpen(true)}
+          aria-label="Kelola Team leader"
+          title="Team leader"
+          className="shrink-0 h-11 px-3 rounded-xl border-2 border-border text-sm font-medium inline-flex items-center gap-1.5 hover:bg-muted"
+        >
+          <Users size={16} />
+          <span className="hidden sm:inline">Tim{teams.length > 0 ? ` (${teams.length})` : ""}</span>
+        </button>
         <button
           type="button"
           onClick={() => setFormOpen(true)}
@@ -276,6 +290,9 @@ export function TasksManager({
         </ul>
       )}
 
+      {teamsOpen && (
+        <TeamsDialog teams={teams} employees={employees} onClose={() => setTeamsOpen(false)} />
+      )}
       {formOpen && <TaskFormDialog employees={employees} onClose={() => setFormOpen(false)} />}
       {detailId && <TaskDetailDialog taskId={detailId} onClose={() => setDetailId(null)} />}
     </div>

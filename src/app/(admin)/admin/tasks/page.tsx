@@ -6,6 +6,7 @@ import {
   listAssignableEmployees,
   listAssignedTasks,
 } from "@/lib/actions/assigned-tasks.actions";
+import { listTeams } from "@/lib/actions/team.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TasksManager } from "@/components/admin/tasks/TasksManager";
 
@@ -25,9 +26,10 @@ export default async function AdminTasksPage({
   if (role !== "admin") redirect("/dashboard");
 
   const { focus } = await searchParams;
-  const [tasksRes, employeesRes] = await Promise.all([
+  const [tasksRes, employeesRes, teamsRes] = await Promise.all([
     listAssignedTasks(),
     listAssignableEmployees(),
+    listTeams(),
   ]);
 
   return (
@@ -43,6 +45,7 @@ export default async function AdminTasksPage({
         key={focus ?? "none"}
         tasks={tasksRes.ok ? tasksRes.data ?? [] : []}
         employees={employeesRes.ok ? employeesRes.data ?? [] : []}
+        teams={teamsRes.ok ? teamsRes.data ?? [] : []}
         loadError={tasksRes.ok ? null : tasksRes.error}
         focusId={focus ?? null}
       />

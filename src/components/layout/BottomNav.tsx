@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, Target } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -19,6 +19,7 @@ export function BottomNav({
   hasSimCards = false,
   hasProcurement = false,
   has360Eval = false,
+  hasTeam = false,
   assignmentCount = 0,
   me = null,
 }: {
@@ -37,6 +38,8 @@ export function BottomNav({
   hasProcurement?: boolean;
   /** Show "Evaluasi" tab for users with ≥1 pending peer evaluation. */
   has360Eval?: boolean;
+  /** Menu "Tim" untuk Team leader (punya >= 1 anggota) — read-only. */
+  hasTeam?: boolean;
   assignmentCount?: number;
   me?: MenuViewer | null;
 }) {
@@ -49,6 +52,9 @@ export function BottomNav({
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     ...(hasTickets
       ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      : []),
+    ...(hasTeam
+      ? [{ href: "/tim", icon: Users, label: "Tim", color: "bg-quaternary" }]
       : []),
     ...(has360Eval
       ? [{ href: "/evaluasi", icon: ClipboardCheck, label: "Evaluasi", color: "bg-pop-pink" }]
