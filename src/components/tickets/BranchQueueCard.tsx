@@ -1,7 +1,8 @@
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { cn } from "@/lib/utils";
-import { agoLabel, STATUS_TONE } from "./TicketCard";
 import {
+  agoLabel,
+  STATUS_TONE,
   TICKET_CATEGORY_LABELS,
   TICKET_STATUS_LABELS,
   type TicketQueueSummary,

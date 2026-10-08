@@ -38,30 +38,14 @@ import {
   TICKET_STATUS_LABELS,
   ticketResolutionMs,
   formatDuration,
+  agoLabel,
+  STATUS_TONE,
   needsFilerConfirmation,
   type Ticket,
   type TicketViewerRole,
 } from "@/lib/tickets/types";
 
 type Context = "mine" | "queue" | "escalation" | "monitor";
-
-export const STATUS_TONE: Record<Ticket["status"], string> = {
-  open: "bg-warning/20 text-warning border-warning",
-  in_progress: "bg-accent text-[var(--teal-700)] border-[var(--teal-500)]",
-  escalated: "bg-pop-pink/30 text-foreground border-foreground",
-  owner_handling: "bg-primary/15 text-primary border-primary",
-  resolved: "bg-success/15 text-success border-success",
-  cancelled: "bg-muted text-muted-foreground border-border",
-};
-
-export function agoLabel(iso: string) {
-  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 1) return "baru saja";
-  if (m < 60) return `${m} mnt lalu`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} jam lalu`;
-  return `${Math.round(h / 24)} hari lalu`;
-}
 
 interface NotePrompt {
   title: string;

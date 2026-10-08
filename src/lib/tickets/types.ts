@@ -168,6 +168,30 @@ export function formatDuration(ms: number): string {
   return remH > 0 ? `${days} hari ${remH} jam` : `${days} hari`;
 }
 
+/**
+ * Warna badge status tiket. Sengaja di modul netral (bukan di TicketCard
+ * yang "use client"): server component mengimpornya, dan ekspor dari modul
+ * client hanya berupa referensi — memanggil/mengindeksnya di server error.
+ */
+export const STATUS_TONE: Record<TicketStatus, string> = {
+  open: "bg-warning/20 text-warning border-warning",
+  in_progress: "bg-accent text-[var(--teal-700)] border-[var(--teal-500)]",
+  escalated: "bg-pop-pink/30 text-foreground border-foreground",
+  owner_handling: "bg-primary/15 text-primary border-primary",
+  resolved: "bg-success/15 text-success border-success",
+  cancelled: "bg-muted text-muted-foreground border-border",
+};
+
+/** "baru saja" / "5 mnt lalu" / "3 jam lalu" / "2 hari lalu". */
+export function agoLabel(iso: string) {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 1) return "baru saja";
+  if (m < 60) return `${m} mnt lalu`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} jam lalu`;
+  return `${Math.round(h / 24)} hari lalu`;
+}
+
 /** Ukuran sampel & target KPI "Kecepatan Tiket Studio" di home dashboard Kepala Studio. */
 export const RECENT_RESOLUTION_SAMPLE_SIZE = 10;
 export const RECENT_RESOLUTION_TARGET_MS = 7 * 24 * 60 * 60 * 1000; // target: 7 hari
