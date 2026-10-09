@@ -10,15 +10,17 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Tags,
   Users,
 } from "lucide-react";
-import type { AdminTaskRow, AdminTeam, TaskStatus } from "@/lib/tasks/types";
+import type { AdminTaskRow, AdminTeam, TaskCategory, TaskStatus } from "@/lib/tasks/types";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { fmtStart, timeAgo } from "@/lib/tasks/format";
 import { TaskFormDialog } from "./TaskFormDialog";
 import { TaskDetailDialog } from "./TaskDetailDialog";
 import { TeamsDialog } from "./TeamsDialog";
 import { TaskMatrix } from "./TaskMatrix";
+import { CategoriesDialog } from "./CategoriesDialog";
 
 export interface AssignableEmployee {
   id: string;
@@ -26,9 +28,10 @@ export interface AssignableEmployee {
   businessUnit: string | null;
 }
 
-type Tab = "review" | "running" | "done";
+type Tab = "review" | "backlog" | "running" | "done";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
+  backlog: "Belum ditugaskan",
   open: "Dikerjakan",
   submitted: "Perlu verifikasi",
   approved: "Selesai",
@@ -36,6 +39,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const STATUS_TONE: Record<TaskStatus, string> = {
+  backlog: "bg-muted text-muted-foreground",
   open: "bg-warning/40",
   submitted: "bg-primary text-primary-foreground",
   approved: "bg-success/40",
@@ -52,6 +56,10 @@ const EMPTY_COPY: Record<Tab, { title: string; hint: string }> = {
     title: "Tidak ada yang perlu diverifikasi",
     hint: "Tugas yang sudah dikirim karyawan akan muncul di sini.",
   },
+  backlog: {
+    title: "Tidak ada tugas yang menunggu penugasan",
+    hint: "Tugas tanpa penerima muncul di sini; tugaskan lewat tampilan Matriks.",
+  },
   running: {
     title: "Tidak ada tugas yang sedang dikerjakan",
     hint: "Buat tugas baru untuk memberi pekerjaan ke karyawan.",
@@ -63,12 +71,14 @@ export function TasksManager({
   tasks,
   employees,
   teams,
+  categories,
   loadError,
   focusId,
 }: {
   tasks: AdminTaskRow[];
   employees: AssignableEmployee[];
   teams: AdminTeam[];
+  categories: TaskCategory[];
   loadError: string | null;
   focusId: string | null;
 }) {
@@ -77,6 +87,9 @@ export function TasksManager({
   const [query, setQuery] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  // "all" | "none" (tanpa kategori) | id kategori — hanya memfilter tampilan Daftar.
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [detailId, setDetailId] = useState<string | null>(focusId);
   const router = useRouter();
   // Matriks (helicopter view) adalah tampilan utama; Daftar untuk antrean verifikasi per status.
@@ -90,6 +103,7 @@ export function TasksManager({
   const groups = useMemo(
     () => ({
       review: tasks.filter((t) => t.status === "submitted"),
+      backlog: tasks.filter((t) => t.status === "backlog"),
       running: tasks.filter((t) => t.status === "open"),
       done: tasks.filter((t) => t.status === "approved" || t.status === "cancelled"),
     }),
@@ -98,15 +112,25 @@ export function TasksManager({
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = groups[tab];
+    const list = groups[tab].filter((t) =>
+      categoryFilter === "all"
+        ? true
+        : categoryFilter === "none"
+          ? t.categoryId === null
+          : t.categoryId === categoryFilter
+    );
     if (!q) return list;
     return list.filter(
-      (t) => t.title.toLowerCase().includes(q) || t.assigneeName.toLowerCase().includes(q)
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.assigneeName.toLowerCase().includes(q) ||
+        (t.categoryName ?? "").toLowerCase().includes(q)
     );
-  }, [groups, tab, query]);
+  }, [groups, tab, query, categoryFilter]);
 
   const tabs: { key: Tab; label: string; count: number; highlight?: boolean }[] = [
     { key: "review", label: "Verifikasi", count: groups.review.length, highlight: true },
+    { key: "backlog", label: "Belum ditugaskan", count: groups.backlog.length },
     { key: "running", label: "Berjalan", count: groups.running.length },
     { key: "done", label: "Selesai", count: groups.done.length },
   ];
@@ -144,6 +168,18 @@ export function TasksManager({
           ))}
         </div>
         <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => setCategoriesOpen(true)}
+            aria-label="Kelola kategori tugas"
+            title="Kategori tugas"
+            className="shrink-0 h-11 px-3 rounded-xl border-2 border-border text-sm font-medium inline-flex items-center gap-1.5 hover:bg-muted"
+          >
+            <Tags size={16} />
+            <span className="hidden sm:inline">
+              Kategori{categories.length > 0 ? ` (${categories.length})` : ""}
+            </span>
+          </button>
           <button
             type="button"
             onClick={() => setTeamsOpen(true)}
@@ -229,11 +265,40 @@ export function TasksManager({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari judul atau nama karyawan…"
+              placeholder="Cari judul, karyawan, atau kategori…"
               className="w-full h-11 rounded-xl border-2 border-border bg-background pl-9 pr-3 text-sm"
             />
           </label>
         </div>
+
+        {categories.length > 0 && (
+          <div
+            role="group"
+            aria-label="Filter kategori"
+            className="flex gap-1.5 overflow-x-auto pb-0.5"
+          >
+            {[
+              { key: "all", label: "Semua" },
+              ...categories.map((c) => ({ key: c.id, label: c.name })),
+              { key: "none", label: "Tanpa kategori" },
+            ].map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                aria-pressed={categoryFilter === c.key}
+                onClick={() => setCategoryFilter(c.key)}
+                className={
+                  "shrink-0 h-9 px-3 rounded-full border text-xs font-semibold whitespace-nowrap transition " +
+                  (categoryFilter === c.key
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground hover:bg-muted")
+                }
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        )}
 
 
         {visible.length === 0 ? (
@@ -262,7 +327,8 @@ export function TasksManager({
             {visible.map((t) => {
               const pct = t.itemCount > 0 ? Math.round((t.doneCount / t.itemCount) * 100) : 0;
               // Belum mulai: belum tampil di karyawan.
-              const scheduled = t.status === "open" && t.startDate > today;
+              const scheduled =
+                t.status === "open" && t.startDate !== null && t.startDate > today;
               return (
                 <li key={t.id}>
                   <button
@@ -275,13 +341,20 @@ export function TasksManager({
                         aria-hidden
                         className="grid place-items-center size-10 shrink-0 rounded-full bg-primary/15 text-primary text-xs font-bold"
                       >
-                        {initials(t.assigneeName)}
+                        {t.assigneeId ? initials(t.assigneeName) : "—"}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="font-display font-semibold leading-snug break-words">
                           {t.title}
                         </p>
-                        <p className="text-xs text-muted-foreground truncate">{t.assigneeName}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {t.assigneeName}
+                          {t.categoryName && (
+                            <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
+                              {t.categoryName}
+                            </span>
+                          )}
+                        </p>
                       </div>
                       <ChevronRight
                         size={18}
@@ -294,7 +367,9 @@ export function TasksManager({
                         <span
                           className={`rounded-full px-2.5 py-0.5 font-semibold border border-border ${scheduled ? "bg-muted text-muted-foreground" : STATUS_TONE[t.status]}`}
                         >
-                          {scheduled ? `Terjadwal · mulai ${fmtStart(t.startDate)}` : STATUS_LABEL[t.status]}
+                          {scheduled && t.startDate
+                            ? `Terjadwal · mulai ${fmtStart(t.startDate)}`
+                            : STATUS_LABEL[t.status]}
                         </span>
                         <span className="text-muted-foreground tabular-nums">
                           {t.doneCount}/{t.itemCount} foto
@@ -341,12 +416,16 @@ export function TasksManager({
         </>
       )}
 
+      {categoriesOpen && (
+        <CategoriesDialog categories={categories} onClose={() => setCategoriesOpen(false)} />
+      )}
       {teamsOpen && (
         <TeamsDialog teams={teams} employees={employees} onClose={() => setTeamsOpen(false)} />
       )}
       {formOpen && (
         <TaskFormDialog
           employees={employees}
+          categories={categories}
           onClose={() => {
             setFormOpen(false);
             setMatrixKey((k) => k + 1);

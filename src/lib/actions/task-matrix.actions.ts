@@ -70,11 +70,20 @@ export async function getTaskMatrix(
   const today = jakartaDateString(new Date());
   const to = jakartaDateMinusDays(from, -(days - 1));
 
-  const [{ data: tasks }, { data: people }, { data: openRows }] = await Promise.all([
+  const [
+    { data: tasks },
+    { data: people },
+    { data: openRows },
+    { data: backlog },
+    { data: categories },
+  ] = await Promise.all([
     db
       .from("assigned_tasks")
-      .select("id, title, assignee_id, status, current_round, start_date, batch_id, created_at")
+      .select(
+        "id, title, assignee_id, status, current_round, start_date, batch_id, created_at, category_id"
+      )
       .neq("status", "cancelled")
+      .neq("status", "backlog")
       // Mulai di dalam jendela, ATAU sudah mulai sebelumnya tapi belum selesai
       // (tetap terlihat di tepi kiri supaya tidak "hilang" dari pantauan).
       .or(
@@ -89,9 +98,40 @@ export async function getTaskMatrix(
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
     db.from("assigned_tasks").select("assignee_id").eq("status", "open"),
+    // Cetakan yang belum ditugaskan: tampil terus (tidak terikat jendela tanggal)
+    // sampai punya salinan aktif, supaya bisa langsung diseret ke karyawan.
+    db
+      .from("assigned_tasks")
+      .select("id, title, batch_id, category_id, created_at")
+      .eq("status", "backlog")
+      .order("created_at", { ascending: true })
+      .limit(500),
+    db
+      .from("assigned_task_categories")
+      .select("id, name")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
   ]);
 
-  const taskIds: string[] = (tasks ?? []).map((t: any) => t.id);
+  // Cetakan yang batch-nya sudah punya salinan aktif/selesai sudah terwakili
+  // oleh salinannya — hanya yang BELUM ditugaskan yang jadi baris sendiri.
+  const backlogBatchIds = (backlog ?? []).map((b: any) => b.batch_id).filter(Boolean);
+  const { data: activeCopies } = backlogBatchIds.length
+    ? await db
+        .from("assigned_tasks")
+        .select("batch_id")
+        .in("batch_id", backlogBatchIds)
+        .in("status", ["open", "submitted", "approved"])
+    : { data: [] };
+  const batchesWithCopies = new Set<string>((activeCopies ?? []).map((c: any) => c.batch_id));
+  const unassigned = (backlog ?? []).filter(
+    (b: any) => !b.batch_id || !batchesWithCopies.has(b.batch_id)
+  );
+  const categoryNameById = new Map<string, string>(
+    (categories ?? []).map((c: any) => [c.id, c.name])
+  );
+
+  const taskIds: string[] = [...(tasks ?? []), ...unassigned].map((t: any) => t.id);
   const [{ data: items }, { data: completions }, { data: deferrals }] = taskIds.length
     ? await Promise.all([
         db.from("assigned_task_items").select("id, task_id").in("task_id", taskIds),
@@ -143,9 +183,24 @@ export async function getTaskMatrix(
       title: t.title,
       itemCount: copy.itemCount,
       copies: [],
+      backlogTaskId: null,
+      categoryId: t.category_id ?? null,
+      categoryName: t.category_id ? categoryNameById.get(t.category_id) ?? null : null,
     };
     row.copies.push(copy);
     rows.set(rowId, row);
+  }
+  for (const b of unassigned) {
+    const rowId = b.batch_id ? `b:${b.batch_id}` : `t:${b.id}`;
+    rows.set(rowId, {
+      rowId,
+      title: b.title,
+      itemCount: itemCount.get(b.id) ?? 0,
+      copies: [],
+      backlogTaskId: b.id,
+      categoryId: b.category_id ?? null,
+      categoryName: b.category_id ? categoryNameById.get(b.category_id) ?? null : null,
+    });
   }
 
   const openByUser = new Map<string, number>();
@@ -159,12 +214,34 @@ export async function getTaskMatrix(
     openCount: openByUser.get(p.id) ?? 0,
   }));
 
-  // Baris dengan pekerjaan paling "hidup" (perlu verifikasi, lalu dikerjakan) di atas.
+  // Baris dengan pekerjaan paling "hidup" di atas: perlu verifikasi, lalu yang
+  // belum ditugaskan (menunggu keputusan admin), lalu yang sedang dikerjakan.
   const weight = (r: MatrixRow) =>
-    r.copies.some((c) => c.status === "submitted") ? 0 : r.copies.some((c) => c.status === "open") ? 1 : 2;
-  const sorted = [...rows.values()].sort((a, b) => weight(a) - weight(b) || a.title.localeCompare(b.title, "id"));
+    r.copies.some((c) => c.status === "submitted")
+      ? 0
+      : r.backlogTaskId
+        ? 1
+        : r.copies.some((c) => c.status === "open")
+          ? 2
+          : 3;
+  const sorted = [...rows.values()].sort(
+    (a, b) =>
+      weight(a) - weight(b) ||
+      (a.categoryName ?? "~").localeCompare(b.categoryName ?? "~", "id") ||
+      a.title.localeCompare(b.title, "id")
+  );
 
-  return { ok: true, data: { from, days, today, rows: sorted, employees } };
+  return {
+    ok: true,
+    data: {
+      from,
+      days,
+      today,
+      rows: sorted,
+      employees,
+      categories: (categories ?? []).map((c: any) => ({ id: c.id, name: c.name })),
+    },
+  };
 }
 
 // ── Tulis ────────────────────────────────────────────────────────────────
@@ -207,16 +284,18 @@ export async function assignEmployeesToTask(
   if (kind === "b") {
     const { data } = await db
       .from("assigned_tasks")
-      .select("id, title, description, assignee_id, status, batch_id")
+      .select("id, title, description, assignee_id, status, batch_id, category_id")
       .eq("batch_id", refId)
       .order("created_at", { ascending: true });
     siblings = data ?? [];
-    template = siblings[0];
+    // Cetakan backlog (bila ada) selalu jadi acuan: itu versi terbaru dari
+    // item/keterangan yang diedit admin sebelum ditugaskan.
+    template = siblings.find((s) => s.status === "backlog") ?? siblings[0];
     batchId = refId;
   } else {
     const { data } = await db
       .from("assigned_tasks")
-      .select("id, title, description, assignee_id, status, batch_id")
+      .select("id, title, description, assignee_id, status, batch_id, category_id")
       .eq("id", refId)
       .maybeSingle();
     template = data;
@@ -277,6 +356,7 @@ export async function assignEmployeesToTask(
         assignee_id,
         created_by: gate.userId,
         batch_id: batchId,
+        category_id: template.category_id ?? null,
         start_date: startDate,
         start_notified_at: startsNow ? nowIso : null,
         last_reminded_at: startsNow ? nowIso : null,

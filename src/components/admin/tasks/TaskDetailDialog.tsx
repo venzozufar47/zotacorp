@@ -39,6 +39,7 @@ const QUICK_FEEDBACK = [
 ];
 
 const STATUS_TEXT: Record<AdminTaskDetail["status"], string> = {
+  backlog: "Belum ditugaskan",
   open: "Sedang dikerjakan",
   submitted: "Menunggu verifikasi",
   approved: "Selesai",
@@ -99,6 +100,7 @@ export function TaskDetailView({
   const [note, setNote] = useState("");
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [attLightbox, setAttLightbox] = useState<number | null>(null);
+  const [extraLightbox, setExtraLightbox] = useState<number | null>(null);
   const [feedbackPhotos, setFeedbackPhotos] = useState<PickedPhoto[]>([]);
   const [pending, startTransition] = useTransition();
   const [now] = useState(() => Date.now());
@@ -115,6 +117,12 @@ export function TaskDetailView({
   const referencePhotos: LightboxPhoto[] = referenceAtt.map((a, i) => ({
     url: a.url as string,
     title: `Foto referensi ${i + 1}`,
+  }));
+
+  const extraAtt = detail.extraPhotos.filter((e) => e.url);
+  const extraPhotos: LightboxPhoto[] = extraAtt.map((e, i) => ({
+    url: e.url as string,
+    title: `Foto tambahan ${i + 1}`,
   }));
 
   function done(msg: string) {
@@ -155,11 +163,19 @@ export function TaskDetailView({
   }
 
   function cancel() {
-    if (!window.confirm("Batalkan tugas ini? Karyawan tidak lagi diwajibkan mengerjakannya.")) return;
+    const isBacklog = detail.status === "backlog";
+    if (
+      !window.confirm(
+        isBacklog
+          ? "Hapus tugas ini dari daftar belum ditugaskan?"
+          : "Batalkan tugas ini? Karyawan tidak lagi diwajibkan mengerjakannya."
+      )
+    )
+      return;
     startTransition(async () => {
       const res = await cancelAssignedTask(detail.id);
       if (!res.ok) toast.error(res.error);
-      else done("Tugas dibatalkan");
+      else done(detail.status === "backlog" ? "Tugas dihapus" : "Tugas dibatalkan");
     });
   }
 
@@ -177,15 +193,25 @@ export function TaskDetailView({
   }
 
   const canReview = detail.status === "submitted";
-  const canManage = detail.status === "open" || detail.status === "submitted";
+  const canManage =
+    detail.status === "backlog" || detail.status === "open" || detail.status === "submitted";
 
   return (
     <div className="space-y-4">
       {/* Ringkasan */}
       <div className="space-y-1">
-        <p className="text-sm font-medium">{detail.assigneeName}</p>
+        <p className="text-sm font-medium">
+          {detail.assigneeName}
+          {detail.categoryName && (
+            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold">
+              {detail.categoryName}
+            </span>
+          )}
+        </p>
         <p className="text-xs text-muted-foreground">
-          {detail.status === "open" && detail.startDate > jakartaDateString(new Date(now))
+          {detail.status === "open" &&
+          detail.startDate &&
+          detail.startDate > jakartaDateString(new Date(now))
             ? `Terjadwal — mulai ${fmtStart(detail.startDate)}`
             : STATUS_TEXT[detail.status]}
           {detail.round > 1 ? ` · pengulangan ke-${detail.round}` : ""}
@@ -195,6 +221,12 @@ export function TaskDetailView({
         </p>
         {detail.description && (
           <p className="text-sm text-muted-foreground break-words">{detail.description}</p>
+        )}
+        {detail.status === "backlog" && (
+          <p className="rounded-xl bg-muted px-3 py-2 text-xs text-foreground">
+            Belum ada penerima & tanggal mulai. Buka tampilan Matriks lalu seret karyawan ke tanggal
+            mulainya.
+          </p>
         )}
         {canReview && (
           <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs text-foreground">
@@ -260,6 +292,27 @@ export function TaskDetailView({
         })}
       </ul>
 
+      {/* Foto tambahan dari karyawan (di luar foto wajib per item) */}
+      {extraAtt.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold">Foto tambahan dari karyawan ({extraAtt.length})</p>
+          <div className="flex flex-wrap gap-2">
+            {extraAtt.map((e, i) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => setExtraLightbox(i)}
+                aria-label={`Perbesar foto tambahan ${i + 1}`}
+                className="size-20 rounded-lg overflow-hidden border-2 border-foreground"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={e.url as string} alt="" className="size-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Riwayat — dilipat agar panel tetap ringkas */}
       {(detail.deferrals.length > 0 || detail.reviews.length > 0) && (
         <div className="space-y-2">
@@ -313,7 +366,7 @@ export function TaskDetailView({
             disabled={pending}
             className="h-11 px-3 -mr-3 rounded-xl text-muted-foreground hover:text-destructive hover:bg-muted"
           >
-            Batalkan tugas
+            {detail.status === "backlog" ? "Hapus tugas" : "Batalkan tugas"}
           </button>
         </div>
       )}
@@ -402,6 +455,12 @@ export function TaskDetailView({
         index={lightbox}
         onIndexChange={setLightbox}
         onClose={() => setLightbox(null)}
+      />
+      <PhotoLightbox
+        photos={extraPhotos}
+        index={extraLightbox}
+        onIndexChange={setExtraLightbox}
+        onClose={() => setExtraLightbox(null)}
       />
       <PhotoLightbox
         photos={referencePhotos}

@@ -126,7 +126,10 @@ const TARGETS: Array<{
   },
   {
     bucket: "task-evidence",
-    refs: [["assigned_task_completions", ["photo_path"]]],
+    refs: [
+      ["assigned_task_completions", ["photo_path"]],
+      ["assigned_task_extra_photos", ["photo_path"]],
+    ],
     minAgeHours: 48,
   },
   {

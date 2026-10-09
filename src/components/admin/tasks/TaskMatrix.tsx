@@ -89,6 +89,8 @@ export function TaskMatrix({
   const [hover, setHover] = useState<string | null>(null);
   const [picker, setPicker] = useState<{ rowId: string; date: string } | null>(null);
   const [query, setQuery] = useState("");
+  // "all" | "none" (tanpa kategori) | id kategori — memfilter baris matriks.
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const dragRef = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
   const reqRef = useRef(0);
@@ -145,9 +147,22 @@ export function TaskMatrix({
     return m;
   }, [data, from]);
 
+  const visibleRows = useMemo(
+    () =>
+      (data?.rows ?? []).filter((r) =>
+        categoryFilter === "all"
+          ? true
+          : categoryFilter === "none"
+            ? r.categoryId === null
+            : r.categoryId === categoryFilter
+      ),
+    [data, categoryFilter]
+  );
+
   const totals = useMemo(() => {
     const all = (data?.rows ?? []).flatMap((r) => r.copies);
     return {
+      unassigned: (data?.rows ?? []).filter((r) => r.backlogTaskId).length,
       review: all.filter((c) => c.status === "submitted").length,
       running: all.filter((c) => c.status === "open" && c.startDate <= today).length,
       scheduled: all.filter((c) => isScheduled(c, today)).length,
@@ -223,7 +238,8 @@ export function TaskMatrix({
   return (
     <div className="space-y-3">
       {/* Ringkasan helicopter — hanya tugas pada rentang yang sedang ditampilkan */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <Stat label="Belum ditugaskan" value={totals.unassigned} tone="bg-card" />
         <Stat label="Perlu verifikasi" value={totals.review} tone="bg-primary text-primary-foreground" />
         <Stat label="Dikerjakan" value={totals.running} tone="bg-warning/40" />
         <Stat label="Terjadwal (rentang ini)" value={totals.scheduled} tone="bg-muted" />
@@ -260,6 +276,22 @@ export function TaskMatrix({
         <p className="text-sm font-semibold">{rangeLabel}</p>
         <div className="ml-auto flex items-center gap-2">
           {(busy || loading) && <Loader2 size={16} className="animate-spin text-muted-foreground" />}
+          {(data?.categories.length ?? 0) > 0 && (
+            <select
+              aria-label="Filter kategori"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="h-10 max-w-40 rounded-xl border border-border bg-background px-2 text-sm"
+            >
+              <option value="all">Semua kategori</option>
+              {data?.categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+              <option value="none">Tanpa kategori</option>
+            </select>
+          )}
           <select
             aria-label="Rentang hari"
             value={days}
@@ -292,7 +324,8 @@ export function TaskMatrix({
       <p className="text-xs text-muted-foreground">
         <span className="hidden md:inline">
           Seret nama karyawan dari panel kanan ke sel (tugas × tanggal) untuk menugaskan mulai
-          tanggal itu. Seret chip abu-abu (terjadwal) untuk menggeser jadwalnya.{" "}
+          tanggal itu — termasuk baris “Belum ditugaskan” yang belum punya penerima. Seret chip
+          abu-abu (terjadwal) untuk menggeser jadwalnya.{" "}
         </span>
         Ketuk sel kosong atau tombol + di baris untuk menugaskan. Ketuk chip untuk membuka tugas.
       </p>
@@ -338,7 +371,7 @@ export function TaskMatrix({
             })}
 
             {/* Baris tugas */}
-            {(data?.rows ?? []).length === 0 && !loading && (
+            {visibleRows.length === 0 && !loading && (
               <div
                 className="col-span-full px-4 py-10 text-center text-sm text-muted-foreground"
                 style={{ gridColumn: `1 / -1` }}
@@ -346,7 +379,7 @@ export function TaskMatrix({
                 Tidak ada tugas pada rentang ini.
               </div>
             )}
-            {(data?.rows ?? []).map((row) => (
+            {visibleRows.map((row) => (
               <MatrixRowView
                 key={row.rowId}
                 row={row}
@@ -531,9 +564,20 @@ function MatrixRowView({
       {/* Label baris (menempel di kiri saat digulir) */}
       <div className="sticky left-0 z-10 bg-card border-b border-r border-border px-3 py-2 flex flex-col gap-1 min-h-16">
         <div className="flex items-start gap-1">
-          <p className="flex-1 min-w-0 text-sm font-semibold leading-snug line-clamp-2 break-words">
-            {row.title}
-          </p>
+          {row.backlogTaskId ? (
+            <button
+              type="button"
+              onClick={() => onOpenTask(row.backlogTaskId as string)}
+              title="Buka / edit tugas ini"
+              className="flex-1 min-w-0 text-left text-sm font-semibold leading-snug line-clamp-2 break-words hover:underline"
+            >
+              {row.title}
+            </button>
+          ) : (
+            <p className="flex-1 min-w-0 text-sm font-semibold leading-snug line-clamp-2 break-words">
+              {row.title}
+            </p>
+          )}
           <button
             type="button"
             aria-label={`Tugaskan karyawan ke ${row.title}`}
@@ -543,8 +587,21 @@ function MatrixRowView({
             <Plus size={14} />
           </button>
         </div>
+        {row.categoryName && (
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground truncate">
+            {row.categoryName}
+          </p>
+        )}
         <p className="text-[11px] text-muted-foreground">
-          {row.copies.length} penerima · {doneN} selesai
+          {row.backlogTaskId ? (
+            <span className="rounded-full border border-dashed border-foreground/40 px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
+              Belum ditugaskan
+            </span>
+          ) : (
+            <>
+              {row.copies.length} penerima · {doneN} selesai
+            </>
+          )}
           {reviewN > 0 && (
             <span className="ml-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
               {reviewN} verifikasi

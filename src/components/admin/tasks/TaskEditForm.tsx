@@ -34,11 +34,13 @@ export function TaskEditForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const itemsLocked = detail.status !== "open";
+  const itemsLocked = detail.status !== "open" && detail.status !== "backlog";
   const today = jakartaDateString(new Date());
-  // Tanggal mulai hanya bisa diubah selama tugas belum mulai.
-  const canEditStart = detail.status === "open" && detail.startDate > today;
-  const [startDate, setStartDate] = useState(detail.startDate);
+  // Tanggal mulai hanya bisa diubah selama tugas belum mulai (backlog belum punya tanggal).
+  const canEditStart =
+    detail.status === "open" && detail.startDate !== null && detail.startDate > today;
+  const [startDate, setStartDate] = useState(detail.startDate ?? today);
+  const [categoryId, setCategoryId] = useState(detail.categoryId ?? "");
   const [title, setTitle] = useState(detail.title);
   const [description, setDescription] = useState(detail.description ?? "");
   const [applyToBatch, setApplyToBatch] = useState(false);
@@ -92,6 +94,7 @@ export function TaskEditForm({
         addAttachmentPaths: newPhotos.map((p) => p.path),
         removeAttachmentIds: [...removedIds],
         startDate: canEditStart ? startDate : undefined,
+        categoryId: categoryId || null,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -113,6 +116,26 @@ export function TaskEditForm({
         />
       </Field>
 
+      {detail.categoryOptions.length > 0 && (
+        <Field
+          label="Kategori"
+          hint="Hanya terlihat oleh admin. Berlaku untuk semua penerima tugas ini."
+        >
+          <select
+            className={inputCls + " h-11"}
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+          >
+            <option value="">Tanpa kategori</option>
+            {detail.categoryOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
       {canEditStart && (
         <Field
           label="Tanggal mulai"
@@ -123,7 +146,7 @@ export function TaskEditForm({
             className={inputCls + " h-11"}
             value={startDate}
             min={today}
-            onChange={(e) => setStartDate(e.target.value || detail.startDate)}
+            onChange={(e) => setStartDate(e.target.value || today)}
           />
         </Field>
       )}

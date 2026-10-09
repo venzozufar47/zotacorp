@@ -10,14 +10,26 @@ import {
   ClipboardCheck,
   Hourglass,
   Loader2,
+  Plus,
   RotateCcw,
+  X,
 } from "lucide-react";
 import { SelfieCaptureDialog } from "@/components/attendance/SelfieCaptureDialog";
 import { PhotoLightbox, type LightboxPhoto } from "@/components/shared/PhotoLightbox";
 import { extensionFor } from "@/lib/images/compress-image";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import { completeTaskItem, submitTask } from "@/lib/actions/assigned-tasks.actions";
-import { TASK_EVIDENCE_BUCKET, taskPhotoPrefix, type MyTask } from "@/lib/tasks/types";
+import {
+  addTaskExtraPhoto,
+  completeTaskItem,
+  removeTaskExtraPhoto,
+  submitTask,
+} from "@/lib/actions/assigned-tasks.actions";
+import {
+  TASK_EVIDENCE_BUCKET,
+  TASK_EXTRA_MAX,
+  taskPhotoPrefix,
+  type MyTask,
+} from "@/lib/tasks/types";
 import { TASK_CARD_ANCHOR } from "@/components/attendance/TaskGateDialog";
 
 /** Best-effort geolocation (hanya metadata). Tidak pernah reject. */
@@ -79,7 +91,8 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
   const [selfieOpen, setSelfieOpen] = useState(false);
   const [lightbox, setLightbox] = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
   const [, startTransition] = useTransition();
-  const pendingRef = useRef<{ taskId: string; round: number; itemId: string } | null>(null);
+  // itemId null = foto tambahan (di luar checklist wajib).
+  const pendingRef = useRef<{ taskId: string; round: number; itemId: string | null } | null>(null);
   // Bawaan: semua tugas tertutup (ringkas); karyawan membuka yang ingin dikerjakan.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -87,7 +100,7 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
 
   if (tasks.length === 0) return null;
 
-  function openCamera(taskId: string, round: number, itemId: string) {
+  function openCamera(taskId: string, round: number, itemId: string | null) {
     pendingRef.current = { taskId, round, itemId };
     setSelfieOpen(true);
   }
@@ -95,7 +108,7 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
   async function handlePhoto(blob: Blob) {
     const target = pendingRef.current;
     if (!target) return;
-    const key = `${target.taskId}|${target.itemId}`;
+    const key = `${target.taskId}|${target.itemId ?? "extra"}`;
     startTransition(async () => {
       setBusyKey(key);
       const supabase = createSupabaseClient();
@@ -106,7 +119,7 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
         setBusyKey(null);
         return;
       }
-      const path = `${taskPhotoPrefix(uid, target.taskId, target.round)}${target.itemId}-${crypto.randomUUID()}.${extensionFor(blob)}`;
+      const path = `${taskPhotoPrefix(uid, target.taskId, target.round)}${target.itemId ?? "extra"}-${crypto.randomUUID()}.${extensionFor(blob)}`;
       const { error: upErr } = await supabase.storage
         .from(TASK_EVIDENCE_BUCKET)
         .upload(path, blob, { contentType: blob.type, upsert: false });
@@ -116,13 +129,20 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
         return;
       }
       const coords = await getCoords();
-      const res = await completeTaskItem({
-        taskId: target.taskId,
-        itemId: target.itemId,
-        photoPath: path,
-        latitude: coords.lat,
-        longitude: coords.lng,
-      });
+      const res = target.itemId
+        ? await completeTaskItem({
+            taskId: target.taskId,
+            itemId: target.itemId,
+            photoPath: path,
+            latitude: coords.lat,
+            longitude: coords.lng,
+          })
+        : await addTaskExtraPhoto({
+            taskId: target.taskId,
+            photoPath: path,
+            latitude: coords.lat,
+            longitude: coords.lng,
+          });
       if (!res.ok) {
         toast.error(res.error);
         // Foto sudah ter-upload tapi tidak tersimpan (ronde berganti, item
@@ -133,8 +153,18 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
       }
       setSelfieOpen(false);
       setBusyKey(null);
-      toast.success("Foto tersimpan ✓");
+      toast.success(target.itemId ? "Foto tersimpan ✓" : "Foto tambahan tersimpan ✓");
       router.refresh();
+    });
+  }
+
+  function removeExtra(taskId: string, extraId: string) {
+    startTransition(async () => {
+      setBusyKey(`${taskId}|extra-${extraId}`);
+      const res = await removeTaskExtraPhoto({ taskId, extraId });
+      setBusyKey(null);
+      if (!res.ok) toast.error(res.error);
+      else router.refresh();
     });
   }
 
@@ -389,6 +419,76 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
                         })}
                       </ul>
 
+                      {/* Foto tambahan — opsional, di luar foto wajib per item */}
+                      <div className="px-4 py-3 border-t border-border space-y-2 bg-card">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold">
+                            Foto tambahan{" "}
+                            <span className="font-normal text-muted-foreground">
+                              (opsional · {task.extraPhotos.length}/{TASK_EXTRA_MAX})
+                            </span>
+                          </p>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-0.5">
+                          {task.extraPhotos.map((ph, i) => (
+                            <div key={ph.id} className="relative size-16 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLightbox({
+                                    photos: task.extraPhotos.map((p, j) => ({
+                                      url: p.url,
+                                      title: `Foto tambahan ${j + 1}`,
+                                    })),
+                                    index: i,
+                                  })
+                                }
+                                aria-label={`Lihat foto tambahan ${i + 1}`}
+                                className="size-full rounded-lg overflow-hidden border-2 border-foreground"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={ph.url} alt="" className="size-full object-cover" />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Hapus foto tambahan ${i + 1}`}
+                                disabled={busyKey === `${task.id}|extra-${ph.id}`}
+                                onClick={() => removeExtra(task.id, ph.id)}
+                                className="absolute -top-2 -right-2 size-7 grid place-items-center rounded-full bg-foreground text-background shadow"
+                              >
+                                {busyKey === `${task.id}|extra-${ph.id}` ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <X size={13} />
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                          {task.extraPhotos.length < TASK_EXTRA_MAX && (
+                            <button
+                              type="button"
+                              disabled={busyKey === `${task.id}|extra`}
+                              onClick={() => openCamera(task.id, task.round, null)}
+                              className="shrink-0 size-16 rounded-lg border-2 border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground grid place-items-center disabled:opacity-60"
+                              aria-label="Tambah foto tambahan"
+                            >
+                              {busyKey === `${task.id}|extra` ? (
+                                <Loader2 size={18} className="animate-spin" />
+                              ) : (
+                                <span className="flex flex-col items-center gap-0.5 text-[10px] font-semibold">
+                                  <Plus size={16} />
+                                  Foto
+                                </span>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Boleh tambah foto lain (mis. detail atau kondisi sebelum/sesudah) untuk
+                          memperkuat bukti. Tidak wajib.
+                        </p>
+                      </div>
+
                       {/* Kirim */}
                       <div className="px-4 py-3 border-t border-border">
                         <button
@@ -483,7 +583,7 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
         onOpenChange={setSelfieOpen}
         onConfirm={handlePhoto}
         title="Foto bukti tugas"
-        description="Ambil foto langsung sebagai bukti item ini sudah dikerjakan."
+        description="Ambil foto langsung sebagai bukti pengerjaan tugas ini."
         defaultFacingMode="environment"
       />
 

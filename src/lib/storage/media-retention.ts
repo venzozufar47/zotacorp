@@ -87,6 +87,15 @@ export const MEDIA_RETENTION_TARGETS: MediaRetentionTarget[] = [
     purgedColumn: "photo_purged_at",
   },
   {
+    // Foto tambahan karyawan pada tugas (migrasi 177) — satu bucket dengan bukti.
+    label: "task-extra-photos",
+    table: "assigned_task_extra_photos",
+    bucket: "task-evidence",
+    dateColumn: "created_at",
+    pathColumn: "photo_path",
+    purgedColumn: "photo_purged_at",
+  },
+  {
     // Lampiran foto admin pada tugas (migrasi 174).
     label: "task-attachments",
     table: "assigned_task_attachments",

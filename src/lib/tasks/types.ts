@@ -1,4 +1,8 @@
-export type TaskStatus = "open" | "submitted" | "approved" | "cancelled";
+/**
+ * `backlog` = cetakan tugas yang belum punya penerima & tanggal mulai (hanya
+ * terlihat admin). Admin menyeretnya ke karyawan di matriks → salinan `open`.
+ */
+export type TaskStatus = "backlog" | "open" | "submitted" | "approved" | "cancelled";
 
 /** Bucket privat bukti foto. Path: `${uid}/${taskId}/r${round}/${itemId}-${uuid}.${ext}` */
 export const TASK_EVIDENCE_BUCKET = "task-evidence";
@@ -7,6 +11,8 @@ export const TASK_EVIDENCE_BUCKET = "task-evidence";
 export const TASK_ATTACHMENT_BUCKET = "task-attachments";
 export const TASK_REFERENCE_MAX = 6;
 export const TASK_FEEDBACK_MAX = 4;
+/** Foto tambahan karyawan (di luar foto wajib per item) per tugas per ronde. */
+export const TASK_EXTRA_MAX = 10;
 
 /** Awalan path foto yang sah untuk (karyawan, task, ronde). */
 export function taskPhotoPrefix(userId: string, taskId: string, round: number): string {
@@ -47,6 +53,8 @@ export interface MyTask {
   referencePhotos: TaskPhotoRef[];
   /** Foto yang menyertai penolakan terakhir (hanya bermakna saat ronde ulang). */
   feedbackPhotos: TaskPhotoRef[];
+  /** Foto tambahan dari karyawan sendiri pada ronde ini (di luar foto wajib). */
+  extraPhotos: TaskPhotoRef[];
 }
 
 export interface BlockingTask {
@@ -58,12 +66,16 @@ export interface BlockingTask {
 
 export interface AdminTaskRow {
   id: string;
-  /** Tanggal mulai (YYYY-MM-DD, Jakarta): sebelum ini tugas belum tampil di karyawan. */
-  startDate: string;
+  /** Tanggal mulai (YYYY-MM-DD, Jakarta): sebelum ini tugas belum tampil di karyawan. Null = backlog. */
+  startDate: string | null;
   title: string;
   description: string | null;
-  assigneeId: string;
+  /** Null = belum ditugaskan (backlog). */
+  assigneeId: string | null;
   assigneeName: string;
+  /** Kategori (khusus admin — tidak pernah dikirim ke karyawan). */
+  categoryId: string | null;
+  categoryName: string | null;
   status: TaskStatus;
   round: number;
   itemCount: number;
@@ -93,8 +105,18 @@ export interface AdminTaskAttachment {
   url: string | null;
 }
 
+export interface AdminTaskExtraPhoto {
+  id: string;
+  /** null bila fotonya sudah dihapus (lewat masa simpan). */
+  url: string | null;
+}
+
 export interface AdminTaskDetail extends AdminTaskRow {
   attachments: AdminTaskAttachment[];
+  /** Foto tambahan dari karyawan pada ronde berjalan. */
+  extraPhotos: AdminTaskExtraPhoto[];
+  /** Pilihan kategori untuk form edit (khusus admin). */
+  categoryOptions: { id: string; name: string }[];
   /** Salinan lain dari penugasan yang sama (satu batch) yang belum selesai/dibatalkan. */
   batchOthers: number;
   items: AdminTaskDetailItem[];
@@ -139,4 +161,14 @@ export interface AdminTeam {
   leaderId: string;
   leaderName: string;
   members: { id: string; name: string }[];
+}
+
+// ── Kategori (khusus superadmin) ──────────────────────────────────────────
+
+export interface TaskCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+  /** Jumlah tugas (semua status, kecuali dibatalkan) yang memakai kategori ini. */
+  taskCount: number;
 }

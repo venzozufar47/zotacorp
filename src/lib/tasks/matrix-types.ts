@@ -24,6 +24,15 @@ export interface MatrixRow {
   title: string;
   itemCount: number;
   copies: MatrixCopy[];
+  /**
+   * Cetakan tugas yang belum ditugaskan ke siapa pun (status backlog) — baris
+   * ini belum punya salinan; menyeret karyawan ke sel membuat salinan pertama.
+   * Null untuk baris biasa.
+   */
+  backlogTaskId: string | null;
+  /** Kategori (khusus admin). */
+  categoryId: string | null;
+  categoryName: string | null;
 }
 
 export interface MatrixEmployee {
@@ -40,6 +49,7 @@ export interface TaskMatrixData {
   today: string;
   rows: MatrixRow[];
   employees: MatrixEmployee[];
+  categories: { id: string; name: string }[];
 }
 
 export const MATRIX_DAY_OPTIONS = [7, 14, 21, 31] as const;

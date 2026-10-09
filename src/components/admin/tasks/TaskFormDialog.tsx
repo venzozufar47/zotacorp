@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
 import { createAssignedTask } from "@/lib/actions/assigned-tasks.actions";
 import { Field, Shell, inputCls } from "@/components/admin/registry/RegistryUi";
-import { TASK_REFERENCE_MAX } from "@/lib/tasks/types";
+import { TASK_REFERENCE_MAX, type TaskCategory } from "@/lib/tasks/types";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
 import type { AssignableEmployee } from "./TasksManager";
@@ -15,19 +15,24 @@ const MAX_ITEMS = 40;
 
 /**
  * Form tugas baru, tiga langkah dalam satu layar: judul → checklist →
- * penerima. Tombol aksi menempel di bawah supaya selalu terjangkau di HP.
- * Di item checklist, Enter menambah baris baru dan langsung fokus ke sana.
+ * penerima. Penerima boleh dikosongkan: tugas disimpan sebagai "belum
+ * ditugaskan" dan ditugaskan nanti lewat matriks. Tombol aksi menempel di
+ * bawah supaya selalu terjangkau di HP. Di item checklist, Enter menambah
+ * baris baru dan langsung fokus ke sana.
  */
 export function TaskFormDialog({
   employees,
+  categories,
   onClose,
 }: {
   employees: AssignableEmployee[];
+  categories: TaskCategory[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [title, setTitle] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
   const [items, setItems] = useState<{ key: string; value: string }[]>([
     { key: "item-0", value: "" },
@@ -47,7 +52,9 @@ export function TaskFormDialog({
   }, [employees, query]);
 
   const filledItems = items.filter((i) => i.value.trim().length > 0).length;
-  const canSubmit = startDate >= today && title.trim().length > 0 && filledItems > 0 && picked.size > 0;
+  const isBacklog = picked.size === 0;
+  const canSubmit =
+    (isBacklog || startDate >= today) && title.trim().length > 0 && filledItems > 0;
 
   function togglePick(id: string) {
     setPicked((prev) => {
@@ -75,17 +82,20 @@ export function TaskFormDialog({
         description: description || null,
         items: items.map((i) => i.value.trim()).filter(Boolean).map((t) => ({ title: t })),
         assigneeIds: [...picked],
+        categoryId: categoryId || null,
         attachmentPaths: photos.map((p) => p.path),
-        startDate: startDate || today,
+        startDate: isBacklog ? undefined : startDate || today,
       });
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
       toast.success(
-        res.data && res.data.created > 1
-          ? `Tugas dikirim ke ${res.data.created} karyawan`
-          : "Tugas dikirim ke karyawan"
+        res.data?.backlog
+          ? "Tugas disimpan — belum ditugaskan"
+          : res.data && res.data.created > 1
+            ? `Tugas dikirim ke ${res.data.created} karyawan`
+            : "Tugas dikirim ke karyawan"
       );
       sentRef.current = true;
       router.refresh();
@@ -115,22 +125,41 @@ export function TaskFormDialog({
           />
         </Field>
 
-        <Field
-          label="Tanggal mulai"
-          hint={
-            startDate > today
-              ? "Tugas baru muncul di karyawan dan notifikasi dikirim pada tanggal ini."
-              : "Hari ini — tugas langsung muncul di karyawan dan notifikasi dikirim sekarang."
-          }
-        >
-          <input
-            type="date"
-            className={inputCls + " h-11"}
-            value={startDate}
-            min={today}
-            onChange={(e) => setStartDate(e.target.value || today)}
-          />
-        </Field>
+        {categories.length > 0 && (
+          <Field label="Kategori (opsional)" hint="Hanya terlihat oleh admin.">
+            <select
+              className={inputCls + " h-11"}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+            >
+              <option value="">Tanpa kategori</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        {!isBacklog && (
+          <Field
+            label="Tanggal mulai"
+            hint={
+              startDate > today
+                ? "Tugas baru muncul di karyawan dan notifikasi dikirim pada tanggal ini."
+                : "Hari ini — tugas langsung muncul di karyawan dan notifikasi dikirim sekarang."
+            }
+          >
+            <input
+              type="date"
+              className={inputCls + " h-11"}
+              value={startDate}
+              min={today}
+              onChange={(e) => setStartDate(e.target.value || today)}
+            />
+          </Field>
+        )}
 
         <Field label="Keterangan (opsional)">
           <textarea
@@ -204,8 +233,8 @@ export function TaskFormDialog({
         </Field>
 
         <Field
-          label={`3. Penerima${picked.size > 0 ? ` · ${picked.size} dipilih` : ""}`}
-          hint="Tiap karyawan mendapat salinan sendiri — progres dan verifikasinya terpisah."
+          label={`3. Penerima (opsional)${picked.size > 0 ? ` · ${picked.size} dipilih` : ""}`}
+          hint="Kosongkan untuk menyimpan tanpa penerima — tugas masuk “Belum ditugaskan” dan bisa diseret ke karyawan di matriks. Bila diisi, tiap karyawan mendapat salinan sendiri (progres & verifikasi terpisah)."
         >
           <div className="flex gap-2">
             <input
@@ -278,7 +307,11 @@ export function TaskFormDialog({
           className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
         >
           {pending && <Loader2 size={15} className="animate-spin" />}
-          {picked.size > 1 ? `Kirim ke ${picked.size} karyawan` : "Kirim tugas"}
+          {isBacklog
+            ? "Simpan tanpa penerima"
+            : picked.size > 1
+              ? `Kirim ke ${picked.size} karyawan`
+              : "Kirim tugas"}
         </button>
       </div>
     </Shell>
