@@ -20,6 +20,7 @@ import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { checkStartDate } from "@/lib/tasks/start-date";
+import { TASK_ASSIGNEE_LOCATION, listEligibleAssigneeIds } from "@/lib/tasks/eligible";
 import { diffTaskItems } from "@/lib/tasks/edit-diff";
 import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import {
@@ -276,18 +277,17 @@ export async function createAssignedTask(
     return { ok: true, data: { created: 1, backlog: true } };
   }
 
-  // Hanya karyawan aktif — tugas ke admin/investor/akun nonaktif tidak punya
-  // beranda & sign out yang bisa menyelesaikannya.
-  const { data: people } = await db
-    .from("profiles")
-    .select("id, role, is_active")
-    .in("id", assigneeIds);
-  const valid = new Set<string>(
-    (people ?? []).filter((p: any) => p.role === "employee" && p.is_active).map((p: any) => p.id)
-  );
-  const invalid = assigneeIds.filter((id) => !valid.has(id));
-  if (invalid.length > 0) {
-    return { ok: false, error: "Ada penerima yang bukan karyawan aktif." };
+  // Hanya karyawan aktif di lokasi yang dilayani fitur Tugas — tugas ke
+  // admin/investor/akun nonaktif tidak punya beranda & sign out yang bisa
+  // menyelesaikannya.
+  if (assigneeIds.length > 0) {
+    const eligible = await listEligibleAssigneeIds(db);
+    if (assigneeIds.some((id) => !eligible.has(id))) {
+      return {
+        ok: false,
+        error: `Penerima harus karyawan aktif ${TASK_ASSIGNEE_LOCATION}.`,
+      };
+    }
   }
 
   const batchId = crypto.randomUUID();
@@ -1313,11 +1313,12 @@ export async function listAssignableEmployees(): Promise<
   const role = await getCurrentRole();
   if (role !== "admin") return { ok: false, error: "Forbidden" };
   const db = createAdminClient() as any;
+  const eligible = [...(await listEligibleAssigneeIds(db))];
+  if (eligible.length === 0) return { ok: true, data: [] };
   const { data, error } = await db
     .from("profiles")
     .select("id, full_name, nickname, business_unit")
-    .eq("role", "employee")
-    .eq("is_active", true)
+    .in("id", eligible)
     .order("full_name", { ascending: true });
   if (error) return { ok: false, error: error.message };
   return {

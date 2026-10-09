@@ -19,6 +19,7 @@ import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
 import { sendPushToUser } from "@/lib/push/web-push";
 import { checkStartDate } from "@/lib/tasks/start-date";
+import { TASK_ASSIGNEE_LOCATION, listEligibleAssigneeIds } from "@/lib/tasks/eligible";
 import {
   MATRIX_DAY_OPTIONS,
   type MatrixCopy,
@@ -69,6 +70,7 @@ export async function getTaskMatrix(
   const db = createAdminClient() as any;
   const today = jakartaDateString(new Date());
   const to = jakartaDateMinusDays(from, -(days - 1));
+  const eligibleIds = [...(await listEligibleAssigneeIds(db))];
 
   const [
     { data: tasks },
@@ -91,12 +93,14 @@ export async function getTaskMatrix(
       )
       .order("created_at", { ascending: true })
       .limit(1500),
-    db
-      .from("profiles")
-      .select("id, full_name, nickname, business_unit")
-      .eq("role", "employee")
-      .eq("is_active", true)
-      .order("full_name", { ascending: true }),
+    // Panel karyawan hanya memuat yang boleh ditugaskan (lihat tasks/eligible).
+    eligibleIds.length
+      ? db
+          .from("profiles")
+          .select("id, full_name, nickname, business_unit")
+          .in("id", eligibleIds)
+          .order("full_name", { ascending: true })
+      : Promise.resolve({ data: [] }),
     db.from("assigned_tasks").select("assignee_id").eq("status", "open"),
     // Cetakan yang belum ditugaskan: tampil terus (tidak terikat jendela tanggal)
     // sampai punya salinan aktif, supaya bisa langsung diseret ke karyawan.
@@ -326,15 +330,9 @@ export async function assignEmployeesToTask(
   }
   if (!template) return { ok: false, error: "Tugas tidak ditemukan." };
 
-  const { data: people } = await db
-    .from("profiles")
-    .select("id, role, is_active")
-    .in("id", assigneeIds);
-  const valid = new Set<string>(
-    (people ?? []).filter((p: any) => p.role === "employee" && p.is_active).map((p: any) => p.id)
-  );
-  if (assigneeIds.some((id) => !valid.has(id))) {
-    return { ok: false, error: "Penerima harus karyawan aktif." };
+  const eligible = await listEligibleAssigneeIds(db);
+  if (assigneeIds.some((id) => !eligible.has(id))) {
+    return { ok: false, error: `Penerima harus karyawan aktif ${TASK_ASSIGNEE_LOCATION}.` };
   }
 
   const busy = new Set<string>(
