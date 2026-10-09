@@ -29,6 +29,7 @@ import {
 } from "@/lib/tasks/matrix-types";
 import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
 import { Shell, inputCls } from "@/components/admin/registry/RegistryUi";
+import { categoryStyle, type CategoryStyle } from "@/lib/tasks/category-colors";
 
 type Drag =
   | { kind: "employee"; employeeId: string }
@@ -370,22 +371,6 @@ export function TaskMatrix({
         <p className="text-sm font-semibold">{rangeLabel}</p>
         <div className="ml-auto flex items-center gap-2">
           {(busy || loading) && <Loader2 size={16} className="animate-spin text-muted-foreground" />}
-          {(data?.categories.length ?? 0) > 0 && (
-            <select
-              aria-label="Filter kategori"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-10 max-w-40 rounded-xl border border-border bg-background px-2 text-sm"
-            >
-              <option value="all">Semua kategori</option>
-              {data?.categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-              <option value="none">Tanpa kategori</option>
-            </select>
-          )}
           <select
             aria-label="Rentang hari"
             value={days}
@@ -413,6 +398,39 @@ export function TaskMatrix({
         <p className="rounded-xl border-2 border-destructive/60 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
+      )}
+
+      {/* Legenda kategori — sekaligus filter (ketuk untuk menyaring baris) */}
+      {(data?.categories.length ?? 0) > 0 && (
+        <div role="group" aria-label="Filter kategori" className="flex flex-wrap gap-1.5">
+          {[
+            ...(data?.categories ?? []).map((c) => ({ key: c.id, label: c.name, id: c.id as string | null })),
+            { key: "none", label: "Tanpa kategori", id: null as string | null },
+          ].map((c) => {
+            const st = categoryStyle(data?.categories ?? [], c.id);
+            const count = (data?.rows ?? []).filter((r) => r.categoryId === c.id).length;
+            if (c.key === "none" && count === 0) return null;
+            const active = categoryFilter === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setCategoryFilter(active ? "all" : c.key)}
+                className={
+                  "h-8 pl-2 pr-2.5 rounded-full border text-xs font-semibold inline-flex items-center gap-1.5 transition " +
+                  (active
+                    ? "border-foreground " + st.soft
+                    : "border-border text-muted-foreground hover:text-foreground hover:bg-muted")
+                }
+              >
+                <span className={"size-2.5 rounded-full shrink-0 " + st.dot} aria-hidden />
+                {c.label}
+                <span className="tabular-nums opacity-70">{count}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       <p className="text-xs text-muted-foreground">
@@ -505,6 +523,7 @@ export function TaskMatrix({
                 onOpenTask={onOpenTask}
                 onPick={(date) => setPicker({ rowId: row.rowId, date })}
                 onDelete={() => void handleDelete(row)}
+                catStyle={categoryStyle(data?.categories ?? [], row.categoryId)}
               />
             ))}
           </div>
@@ -665,6 +684,7 @@ function MatrixRowView({
   onOpenTask,
   onPick,
   onDelete,
+  catStyle,
 }: {
   row: MatrixRow;
   dates: string[];
@@ -681,6 +701,7 @@ function MatrixRowView({
   onOpenTask: (taskId: string) => void;
   onPick: (date: string) => void;
   onDelete: () => void;
+  catStyle: CategoryStyle;
 }) {
   const doneN = row.copies.filter((c) => c.status === "approved").length;
   const reviewN = row.copies.filter((c) => c.status === "submitted").length;
@@ -688,7 +709,12 @@ function MatrixRowView({
   return (
     <>
       {/* Label baris (menempel di kiri saat digulir) */}
-      <div className="sticky left-0 z-10 bg-card border-b border-r border-border px-3 py-2 flex flex-col gap-1 min-h-16">
+      <div
+        className={
+          "sticky left-0 z-10 bg-card border-b border-r border-border border-l-4 px-3 py-2 flex flex-col gap-1 min-h-16 " +
+          catStyle.bar
+        }
+      >
         <div className="flex items-start gap-1">
           {row.backlogTaskId ? (
             <button
@@ -723,8 +749,9 @@ function MatrixRowView({
           </button>
         </div>
         {row.categoryName && (
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground truncate">
-            {row.categoryName}
+          <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground min-w-0">
+            <span className={"size-2 rounded-full shrink-0 " + catStyle.dot} aria-hidden />
+            <span className="truncate">{row.categoryName}</span>
           </p>
         )}
         <p className="text-[11px] text-muted-foreground">

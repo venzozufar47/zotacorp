@@ -21,6 +21,7 @@ import { TaskDetailDialog } from "./TaskDetailDialog";
 import { TeamsDialog } from "./TeamsDialog";
 import { TaskMatrix } from "./TaskMatrix";
 import { CategoriesDialog } from "./CategoriesDialog";
+import { categoryStyle } from "@/lib/tasks/category-colors";
 
 export interface AssignableEmployee {
   id: string;
@@ -295,6 +296,15 @@ export function TasksManager({
                     : "border-border text-muted-foreground hover:text-foreground hover:bg-muted")
                 }
               >
+                {c.key !== "all" && (
+                  <span
+                    className={
+                      "mr-1.5 inline-block size-2.5 rounded-full align-middle " +
+                      categoryStyle(categories, c.key === "none" ? null : c.key).dot
+                    }
+                    aria-hidden
+                  />
+                )}
                 {c.label}
               </button>
             ))}
@@ -351,7 +361,18 @@ export function TasksManager({
                         <p className="text-xs text-muted-foreground truncate">
                           {t.assigneeName}
                           {t.categoryName && (
-                            <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
+                            <span
+                              className={
+                                "ml-1.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-foreground " +
+                                categoryStyle(categories, t.categoryId).soft
+                              }
+                            >
+                              <span
+                                className={
+                                  "size-1.5 rounded-full " + categoryStyle(categories, t.categoryId).dot
+                                }
+                                aria-hidden
+                              />
                               {t.categoryName}
                             </span>
                           )}
