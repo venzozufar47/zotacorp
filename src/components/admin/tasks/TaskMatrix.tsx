@@ -11,13 +11,15 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
 import {
   assignEmployeesToTask,
   getTaskMatrix,
   moveTaskStart,
+  reassignCopyToTask,
 } from "@/lib/actions/task-matrix.actions";
-import { cancelAssignedTask } from "@/lib/actions/assigned-tasks.actions";
+import { cancelAssignedTask, deleteAssignedTaskRow } from "@/lib/actions/assigned-tasks.actions";
 import {
   MATRIX_DAY_OPTIONS,
   type MatrixCopy,
@@ -30,7 +32,7 @@ import { Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 
 type Drag =
   | { kind: "employee"; employeeId: string }
-  | { kind: "copy"; taskId: string; rowId: string; startDate: string };
+  | { kind: "copy"; copy: MatrixCopy; rowId: string; rowTitle: string };
 
 const DOW = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -55,6 +57,16 @@ function initials(name: string): string {
 
 function isScheduled(c: MatrixCopy, today: string) {
   return c.status === "open" && c.startDate > today;
+}
+
+/** Boleh ditarik kembali (dibatalkan) dengan menyeret ke daftar karyawan. */
+function isWithdrawable(c: MatrixCopy) {
+  return c.status === "open" || c.status === "submitted";
+}
+
+/** Boleh dipindah ke tugas lain: belum dikerjakan sama sekali (tanpa foto/riwayat). */
+function isMovable(c: MatrixCopy) {
+  return c.status === "open" && c.round === 1 && c.doneCount === 0;
 }
 
 /** Warna chip menurut keadaan — satu bahasa visual di seluruh matriks. */
@@ -93,6 +105,8 @@ export function TaskMatrix({
   const [categoryFilter, setCategoryFilter] = useState("all");
   const dragRef = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Cermin state dari dragRef untuk dipakai saat render (ref tak boleh dibaca di render).
+  const [withdrawOk, setWithdrawOk] = useState(false);
   const reqRef = useRef(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
@@ -174,7 +188,44 @@ export function TaskMatrix({
     const d = dragRef.current;
     if (!d || date < today) return false;
     if (d.kind === "employee") return true;
-    return d.rowId === rowId && d.startDate > today && d.startDate !== date;
+    // Baris yang sama: hanya geser tanggal tugas terjadwal. Baris lain: pindah tugas.
+    if (d.rowId === rowId) return isScheduled(d.copy, today) && d.copy.startDate !== date;
+    return isMovable(d.copy);
+  }
+
+  /** Seret chip ke daftar karyawan = tarik kembali penugasannya. */
+  function canWithdraw(): boolean {
+    const d = dragRef.current;
+    return d !== null && d.kind === "copy" && isWithdrawable(d.copy);
+  }
+
+  async function handleWithdraw() {
+    const d = dragRef.current;
+    const allowed = canWithdraw();
+    dragRef.current = null;
+    setDragging(false);
+    setHover(null);
+    if (!d || d.kind !== "copy" || !allowed) return;
+    const c = d.copy;
+    const risky = c.status === "submitted" || c.doneCount > 0;
+    if (
+      risky &&
+      !window.confirm(
+        `Tarik ${c.assigneeName} dari "${d.rowTitle}"? ${
+          c.status === "submitted"
+            ? "Tugasnya sudah dikirim dan menunggu verifikasi."
+            : `Sudah ada ${c.doneCount} foto yang dikerjakan.`
+        } Tugas ini dibatalkan untuknya.`
+      )
+    )
+      return;
+    setBusy(true);
+    const res = await cancelAssignedTask(c.taskId);
+    setBusy(false);
+    if (!res.ok) toast.error(res.error);
+    else toast.success(`${c.assigneeName} ditarik dari "${d.rowTitle}"`);
+    reload();
+    onChanged();
   }
 
   async function runAssign(rowId: string, ids: string[], date: string) {
@@ -205,6 +256,34 @@ export function TaskMatrix({
     onChanged();
   }
 
+  async function handleDelete(row: MatrixRow) {
+    const active = row.copies.filter((c) => c.status === "open" || c.status === "submitted").length;
+    const done = row.copies.filter((c) => c.status === "approved").length;
+    const parts: string[] = [];
+    if (row.copies.length > 0) parts.push(`${row.copies.length} penerima`);
+    if (active > 0) parts.push(`${active} masih berjalan/menunggu verifikasi`);
+    if (done > 0) parts.push(`${done} sudah selesai`);
+    const detail = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+    if (
+      !window.confirm(
+        `Hapus permanen tugas "${row.title}"${detail}?\n\nSemua salinan, foto bukti, dan riwayat verifikasinya ikut terhapus dan tidak bisa dikembalikan.${
+          active > 0 ? " Tugas yang masih berjalan hilang dari karyawan." : ""
+        }`
+      )
+    )
+      return;
+    setBusy(true);
+    const res = await deleteAssignedTaskRow(row.rowId);
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Tugas dihapus");
+    reload();
+    onChanged();
+  }
+
   async function handleDrop(rowId: string, date: string) {
     const d = dragRef.current;
     // Periksa SEBELUM dragRef dikosongkan — canDrop membacanya.
@@ -215,9 +294,24 @@ export function TaskMatrix({
     if (!d || !allowed) return;
     if (d.kind === "employee") {
       await runAssign(rowId, [d.employeeId], date);
+    } else if (d.rowId !== rowId) {
+      setBusy(true);
+      const res = await reassignCopyToTask({
+        taskId: d.copy.taskId,
+        targetRowId: rowId,
+        startDate: date,
+      });
+      setBusy(false);
+      if (!res.ok) toast.error(res.error);
+      else
+        toast.success(
+          `${d.copy.assigneeName} dipindah dari "${d.rowTitle}" ke tugas lain, mulai ${parts(date).d} ${MONTH[parts(date).m - 1]}`
+        );
+      reload();
+      onChanged();
     } else {
       setBusy(true);
-      const res = await moveTaskStart({ taskId: d.taskId, startDate: date });
+      const res = await moveTaskStart({ taskId: d.copy.taskId, startDate: date });
       setBusy(false);
       if (!res.ok) toast.error(res.error);
       else toast.success(`Jadwal dipindah ke ${parts(date).d} ${MONTH[parts(date).m - 1]}`);
@@ -325,7 +419,8 @@ export function TaskMatrix({
         <span className="hidden md:inline">
           Seret nama karyawan dari panel kanan ke sel (tugas × tanggal) untuk menugaskan mulai
           tanggal itu — termasuk baris “Belum ditugaskan” yang belum punya penerima. Seret chip
-          abu-abu (terjadwal) untuk menggeser jadwalnya.{" "}
+          nama ke tanggal lain untuk menggeser jadwal (tugas terjadwal), ke baris tugas lain untuk
+          memindahkan (belum dikerjakan), atau ke daftar karyawan untuk menarik kembali.{" "}
         </span>
         Ketuk sel kosong atau tombol + di baris untuk menugaskan. Ketuk chip untuk membuka tugas.
       </p>
@@ -395,10 +490,11 @@ export function TaskMatrix({
                 onCopyDragStart={(c) => {
                   dragRef.current = {
                     kind: "copy",
-                    taskId: c.taskId,
+                    copy: c,
                     rowId: row.rowId,
-                    startDate: c.startDate,
+                    rowTitle: row.title,
                   };
+                  setWithdrawOk(isWithdrawable(c));
                   setDragging(true);
                 }}
                 onDragEnd={() => {
@@ -408,15 +504,42 @@ export function TaskMatrix({
                 }}
                 onOpenTask={onOpenTask}
                 onPick={(date) => setPicker({ rowId: row.rowId, date })}
+                onDelete={() => void handleDelete(row)}
               />
             ))}
           </div>
         </div>
 
         {/* Panel karyawan (desktop): sumber seret */}
-        <aside className="hidden md:flex flex-col w-56 shrink-0 rounded-2xl border border-border bg-card sticky top-20 max-h-[70vh]">
+        <aside
+          onDragOver={(e) => {
+            if (!canWithdraw()) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            if (hover !== "panel") setHover("panel");
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+            if (hover === "panel") setHover(null);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            void handleWithdraw();
+          }}
+          className={
+            "hidden md:flex flex-col w-56 shrink-0 rounded-2xl border bg-card sticky top-20 max-h-[70vh] transition-colors " +
+            (hover === "panel" && dragging && withdrawOk
+              ? "border-destructive ring-2 ring-destructive bg-destructive/5"
+              : "border-border")
+          }
+        >
           <div className="p-2 border-b border-border">
             <p className="px-1 pb-1.5 text-xs font-semibold">Karyawan · seret ke sel</p>
+            <p className="px-1 pb-1.5 text-[10px] text-muted-foreground">
+              {dragging && withdrawOk
+                ? "Lepas di sini untuk menarik penugasan"
+                : "Seret nama dari sel ke sini untuk menarik kembali penugasan"}
+            </p>
             <label className="relative block">
               <Search
                 size={14}
@@ -438,6 +561,7 @@ export function TaskMatrix({
                 employee={e}
                 onDragStart={() => {
                   dragRef.current = { kind: "employee", employeeId: e.id };
+                  setWithdrawOk(false);
                   setDragging(true);
                 }}
                 onDragEnd={() => {
@@ -540,6 +664,7 @@ function MatrixRowView({
   onDragEnd,
   onOpenTask,
   onPick,
+  onDelete,
 }: {
   row: MatrixRow;
   dates: string[];
@@ -555,6 +680,7 @@ function MatrixRowView({
   onDragEnd: () => void;
   onOpenTask: (taskId: string) => void;
   onPick: (date: string) => void;
+  onDelete: () => void;
 }) {
   const doneN = row.copies.filter((c) => c.status === "approved").length;
   const reviewN = row.copies.filter((c) => c.status === "submitted").length;
@@ -585,6 +711,15 @@ function MatrixRowView({
             className="shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label={`Hapus tugas ${row.title}`}
+            title="Hapus tugas"
+            onClick={onDelete}
+            className="shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-muted"
+          >
+            <Trash2 size={13} />
           </button>
         </div>
         {row.categoryName && (
@@ -695,6 +830,7 @@ function CopyChip({
   onOpen: () => void;
 }) {
   const scheduled = isScheduled(copy, today);
+  const canDrag = isWithdrawable(copy);
   const age = copy.status === "open" && !scheduled ? dayDiff(today, copy.startDate) : 0;
   const statusText =
     copy.status === "submitted"
@@ -713,9 +849,9 @@ function CopyChip({
   return (
     <button
       type="button"
-      draggable={scheduled}
+      draggable={canDrag}
       onDragStart={(e) => {
-        if (!scheduled) return;
+        if (!canDrag) return;
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", copy.taskId);
         onDragStart();
@@ -726,7 +862,7 @@ function CopyChip({
       className={
         "w-full text-left rounded-lg border px-1.5 py-1 text-[11px] leading-tight " +
         chipTone(copy, today) +
-        (scheduled ? " cursor-grab active:cursor-grabbing" : "")
+        (canDrag ? " cursor-grab active:cursor-grabbing" : "")
       }
     >
       <span className="flex items-center gap-1">

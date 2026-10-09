@@ -398,6 +398,90 @@ export async function assignEmployeesToTask(
   };
 }
 
+const reassignSchema = z.object({
+  taskId: z.string().uuid(),
+  targetRowId: z.string().regex(/^[bt]:[0-9a-f-]{36}$/, "Baris tidak valid"),
+  startDate: z.string(),
+});
+
+/**
+ * Pindahkan karyawan dari satu tugas ke tugas lain (seret chip ke baris lain).
+ * Salinan lama dibatalkan dan karyawan mendapat salinan baru di tugas tujuan
+ * pada `startDate`. Hanya untuk salinan yang BELUM dikerjakan sama sekali
+ * (status dikerjakan, ronde 1, tanpa foto) — yang sudah ada progres/riwayat
+ * tidak boleh dipindah supaya bukti & verifikasinya tidak hilang. Penugasan
+ * ke tujuan dilakukan DULU; baru setelah berhasil salinan lama dibatalkan,
+ * jadi kegagalan di tengah tidak pernah membuat karyawan kehilangan tugas.
+ */
+export async function reassignCopyToTask(
+  input: z.input<typeof reassignSchema>
+): Promise<ActionResult<{ newTaskId: string }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  const parsed = reassignSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
+  }
+  const { taskId, targetRowId, startDate } = parsed.data;
+
+  const db = createAdminClient() as any;
+  const { data: task } = await db
+    .from("assigned_tasks")
+    .select("id, assignee_id, status, current_round, batch_id")
+    .eq("id", taskId)
+    .maybeSingle();
+  if (!task) return { ok: false, error: "Tugas tidak ditemukan" };
+  if (task.status !== "open" || task.current_round !== 1 || !task.assignee_id) {
+    return { ok: false, error: "Hanya tugas yang belum dikerjakan yang bisa dipindah ke tugas lain." };
+  }
+
+  const sourceRowId = task.batch_id ? `b:${task.batch_id}` : `t:${task.id}`;
+  if (sourceRowId === targetRowId) {
+    return { ok: false, error: "Pilih baris tugas yang berbeda." };
+  }
+
+  const [{ count: photos }, { count: extras }] = await Promise.all([
+    db
+      .from("assigned_task_completions")
+      .select("id", { count: "exact", head: true })
+      .eq("task_id", taskId),
+    db
+      .from("assigned_task_extra_photos")
+      .select("id", { count: "exact", head: true })
+      .eq("task_id", taskId),
+  ]);
+  if ((photos ?? 0) > 0 || (extras ?? 0) > 0) {
+    return { ok: false, error: "Tugas ini sudah mulai dikerjakan (ada foto) — tidak bisa dipindah." };
+  }
+
+  const assigned = await assignEmployeesToTask({
+    rowId: targetRowId,
+    assigneeIds: [task.assignee_id],
+    startDate,
+  });
+  if (!assigned.ok) return assigned;
+  const newTaskId = assigned.data?.created[0]?.taskId;
+  if (!newTaskId) {
+    return { ok: false, error: "Karyawan itu sudah punya tugas tujuan yang belum selesai." };
+  }
+
+  // Batalkan salinan lama — bersyarat (masih open): kalau karyawan sempat
+  // mengirim/berubah di antara, batalkan salinan baru dan laporkan.
+  const { data: cancelled } = await db
+    .from("assigned_tasks")
+    .update({ status: "cancelled" })
+    .eq("id", taskId)
+    .eq("status", "open")
+    .select("id");
+  if (!cancelled || cancelled.length === 0) {
+    await db.from("assigned_tasks").update({ status: "cancelled" }).eq("id", newTaskId);
+    revalidateAll();
+    return { ok: false, error: "Tugas berubah saat dipindah — muat ulang lalu coba lagi." };
+  }
+  revalidateAll();
+  return { ok: true, data: { newTaskId } };
+}
+
 const moveSchema = z.object({ taskId: z.string().uuid(), startDate: z.string() });
 
 /** Geser tanggal mulai tugas yang BELUM mulai (seret chip ke kolom lain). */

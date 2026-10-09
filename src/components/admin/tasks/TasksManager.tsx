@@ -64,7 +64,7 @@ const EMPTY_COPY: Record<Tab, { title: string; hint: string }> = {
     title: "Tidak ada tugas yang sedang dikerjakan",
     hint: "Buat tugas baru untuk memberi pekerjaan ke karyawan.",
   },
-  done: { title: "Belum ada tugas selesai", hint: "Tugas yang disetujui atau dibatalkan tampil di sini." },
+  done: { title: "Belum ada tugas selesai", hint: "Tugas yang sudah disetujui tampil di sini." },
 };
 
 export function TasksManager({
@@ -105,7 +105,8 @@ export function TasksManager({
       review: tasks.filter((t) => t.status === "submitted"),
       backlog: tasks.filter((t) => t.status === "backlog"),
       running: tasks.filter((t) => t.status === "open"),
-      done: tasks.filter((t) => t.status === "approved" || t.status === "cancelled"),
+      // Dibatalkan = diarsipkan: tidak ditampilkan (hanya yang disetujui di tab Selesai).
+      done: tasks.filter((t) => t.status === "approved"),
     }),
     [tasks]
   );

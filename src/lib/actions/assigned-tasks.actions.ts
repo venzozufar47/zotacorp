@@ -912,6 +912,47 @@ export async function cancelAssignedTask(taskId: string): Promise<ActionResult> 
   return { ok: true };
 }
 
+/**
+ * Hapus PERMANEN satu penugasan (baris matriks): semua salinan beserta item,
+ * foto bukti, foto tambahan, riwayat verifikasi, dan foto referensi yang tak
+ * dipakai lagi. Beda dengan "batalkan" (soft, tugas tetap tercatat): ini untuk
+ * membuang tugas salah-buat/uji coba yang tidak bisa dibatalkan lagi (mis.
+ * sudah disetujui). Salinan yang masih berjalan ikut hilang dari karyawan.
+ */
+export async function deleteAssignedTaskRow(
+  rowId: string
+): Promise<ActionResult<{ deleted: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  const m = /^([bt]):([0-9a-f-]{36})$/.exec(rowId);
+  if (!m) return { ok: false, error: "Baris tidak valid" };
+
+  const db = createAdminClient() as any;
+  const { data: tasks } = await (m[1] === "b"
+    ? db.from("assigned_tasks").select("id, assignee_id, status").eq("batch_id", m[2])
+    : db.from("assigned_tasks").select("id, assignee_id, status").eq("id", m[2]));
+  const ids: string[] = (tasks ?? []).map((t: any) => t.id);
+  if (ids.length === 0) return { ok: false, error: "Tugas tidak ditemukan" };
+
+  // Kumpulkan path file SEBELUM baris dihapus (cascade menghilangkan petunjuknya).
+  const [{ data: comps }, { data: extras }, { data: atts }] = await Promise.all([
+    db.from("assigned_task_completions").select("photo_path").in("task_id", ids),
+    db.from("assigned_task_extra_photos").select("photo_path").in("task_id", ids),
+    db.from("assigned_task_attachments").select("photo_path").in("task_id", ids),
+  ]);
+
+  const { error } = await db.from("assigned_tasks").delete().in("id", ids);
+  if (error) return { ok: false, error: error.message };
+
+  await removePhotos([...(comps ?? []), ...(extras ?? [])].map((r: any) => r.photo_path));
+  await removeUnreferencedAttachmentFiles(db, (atts ?? []).map((r: any) => r.photo_path));
+
+  // Karyawan yang tugasnya ikut terhapus perlu beranda yang segar.
+  revalidateAll();
+  revalidatePath("/tim");
+  return { ok: true, data: { deleted: ids.length } };
+}
+
 // ── Karyawan ─────────────────────────────────────────────────────────────
 
 export async function getMyOpenTasks(): Promise<MyTask[]> {
