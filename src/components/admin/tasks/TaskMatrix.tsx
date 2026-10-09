@@ -785,7 +785,11 @@ function MatrixRowView({
             onDragOver={(e) => {
               if (!canDrop(row.rowId, date)) return;
               e.preventDefault();
-              e.dataTransfer.dropEffect = "copy";
+              // Harus sama dengan effectAllowed sumber seretan (karyawan = copy,
+              // chip = move) — kalau beda, browser membatalkan drop diam-diam
+              // walau sel sudah menyala.
+              e.dataTransfer.dropEffect =
+                e.dataTransfer.effectAllowed === "move" ? "move" : "copy";
               if (hover !== key) onHover(key);
             }}
             onDragLeave={(e) => {
