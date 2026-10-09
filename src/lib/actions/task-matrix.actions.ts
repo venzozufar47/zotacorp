@@ -214,20 +214,38 @@ export async function getTaskMatrix(
     openCount: openByUser.get(p.id) ?? 0,
   }));
 
-  // Baris dengan pekerjaan paling "hidup" di atas: perlu verifikasi, lalu yang
-  // belum ditugaskan (menunggu keputusan admin), lalu yang sedang dikerjakan.
-  const weight = (r: MatrixRow) =>
-    r.copies.some((c) => c.status === "submitted")
-      ? 0
-      : r.backlogTaskId
-        ? 1
-        : r.copies.some((c) => c.status === "open")
-          ? 2
-          : 3;
+  // URUTAN TETAP: baris tidak boleh melompat saat status/penerima berubah
+  // (admin sedang menyeret nama ke baris tertentu). Kunci urut:
+  //   1) kategori, sesuai urutan kategori (tanpa kategori di bawah) — baris
+  //      sekategori selalu berdampingan;
+  //   2) waktu penugasan DIBUAT (paling awal di batch, termasuk cetakan dan
+  //      salinan yang di luar jendela) — stabil walau jendela tanggal bergeser;
+  //   3) judul, hanya sebagai pemecah seri.
+  const batchIds = [...rows.keys()].filter((k) => k[0] === "b").map((k) => k.slice(2));
+  const { data: batchRows } = batchIds.length
+    ? await db.from("assigned_tasks").select("batch_id, created_at").in("batch_id", batchIds)
+    : { data: [] };
+  const createdAt = new Map<string, string>();
+  for (const b of batchRows ?? []) {
+    const key = `b:${b.batch_id}`;
+    const prev = createdAt.get(key);
+    if (!prev || b.created_at < prev) createdAt.set(key, b.created_at);
+  }
+  for (const t of tasks ?? []) {
+    if (!t.batch_id) createdAt.set(`t:${t.id}`, t.created_at);
+  }
+  for (const b of unassigned) {
+    if (!b.batch_id) createdAt.set(`t:${b.id}`, b.created_at);
+  }
+  const categoryOrder = new Map<string, number>(
+    (categories ?? []).map((c: any, i: number) => [c.id, i])
+  );
+  const orderOf = (r: MatrixRow) =>
+    r.categoryId ? categoryOrder.get(r.categoryId) ?? 9998 : 9999;
   const sorted = [...rows.values()].sort(
     (a, b) =>
-      weight(a) - weight(b) ||
-      (a.categoryName ?? "~").localeCompare(b.categoryName ?? "~", "id") ||
+      orderOf(a) - orderOf(b) ||
+      (createdAt.get(a.rowId) ?? "").localeCompare(createdAt.get(b.rowId) ?? "") ||
       a.title.localeCompare(b.title, "id")
   );
 

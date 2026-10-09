@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ChevronLeft,
@@ -492,9 +492,17 @@ export function TaskMatrix({
                 Tidak ada tugas pada rentang ini.
               </div>
             )}
-            {visibleRows.map((row) => (
+            {visibleRows.map((row, idx) => (
+              <Fragment key={row.rowId}>
+              {/* Penanda grup: baris sekategori selalu berdampingan di bawah satu judul */}
+              {(idx === 0 || visibleRows[idx - 1].categoryId !== row.categoryId) && (
+                <CategoryBand
+                  name={row.categoryName ?? "Tanpa kategori"}
+                  count={visibleRows.filter((r) => r.categoryId === row.categoryId).length}
+                  style={categoryStyle(data?.categories ?? [], row.categoryId)}
+                />
+              )}
               <MatrixRowView
-                key={row.rowId}
                 row={row}
                 dates={dates}
                 today={today}
@@ -525,6 +533,7 @@ export function TaskMatrix({
                 onDelete={() => void handleDelete(row)}
                 catStyle={categoryStyle(data?.categories ?? [], row.categoryId)}
               />
+              </Fragment>
             ))}
           </div>
         </div>
@@ -610,6 +619,30 @@ export function TaskMatrix({
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** Judul grup kategori — selebar grid, teksnya menempel di kiri saat digulir. */
+function CategoryBand({
+  name,
+  count,
+  style,
+}: {
+  name: string;
+  count: number;
+  style: CategoryStyle;
+}) {
+  return (
+    <div
+      className="border-b border-border bg-muted/60"
+      style={{ gridColumn: "1 / -1" }}
+    >
+      <div className="sticky left-0 inline-flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+        <span className={"size-2.5 rounded-full shrink-0 " + style.dot} aria-hidden />
+        {name}
+        <span className="font-semibold text-muted-foreground tabular-nums">{count}</span>
+      </div>
     </div>
   );
 }
