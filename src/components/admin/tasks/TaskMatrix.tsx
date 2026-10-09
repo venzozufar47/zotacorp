@@ -35,6 +35,20 @@ type Drag =
   | { kind: "employee"; employeeId: string }
   | { kind: "copy"; copy: MatrixCopy; rowId: string; rowTitle: string };
 
+/** Jumlah tugas aktif (dimulai di tanggal yang sama) yang dianggap sudah padat untuk satu orang. */
+const BUSY_THRESHOLD = 3;
+
+type StatusFilter = "all" | "review" | "running" | "scheduled" | "unassigned" | "done";
+
+const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
+  all: "Semua status",
+  review: "Perlu verifikasi",
+  running: "Sedang dikerjakan",
+  scheduled: "Terjadwal",
+  unassigned: "Belum ditugaskan",
+  done: "Sudah selesai",
+};
+
 const DOW = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
@@ -104,6 +118,13 @@ export function TaskMatrix({
   const [query, setQuery] = useState("");
   // "all" | "none" (tanpa kategori) | id kategori — memfilter baris matriks.
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // Id karyawan, atau "all": hanya baris yang punya penerima ini; chip orang lain diredupkan.
+  const [personFilter, setPersonFilter] = useState("all");
+  const [hideDone, setHideDone] = useState(false);
+  // Unit bisnis pada panel karyawan (sumber seret).
+  const [unitFilter, setUnitFilter] = useState("all");
+  const [dragEmployeeId, setDragEmployeeId] = useState<string | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
   // Cermin state dari dragRef untuk dipakai saat render (ref tak boleh dibaca di render).
@@ -164,15 +185,57 @@ export function TaskMatrix({
 
   const visibleRows = useMemo(
     () =>
-      (data?.rows ?? []).filter((r) =>
-        categoryFilter === "all"
-          ? true
-          : categoryFilter === "none"
-            ? r.categoryId === null
-            : r.categoryId === categoryFilter
-      ),
-    [data, categoryFilter]
+      (data?.rows ?? []).filter((r) => {
+        if (categoryFilter === "none" ? r.categoryId !== null : categoryFilter !== "all" && r.categoryId !== categoryFilter)
+          return false;
+        const allDone = r.copies.length > 0 && r.copies.every((c) => c.status === "approved");
+        if (hideDone && allDone) return false;
+        if (personFilter !== "all" && !r.copies.some((c) => c.assigneeId === personFilter)) return false;
+        switch (statusFilter) {
+          case "review":
+            return r.copies.some((c) => c.status === "submitted");
+          case "running":
+            return r.copies.some((c) => c.status === "open" && c.startDate <= today);
+          case "scheduled":
+            return r.copies.some((c) => isScheduled(c, today));
+          case "unassigned":
+            return r.backlogTaskId !== null;
+          case "done":
+            return allDone;
+          default:
+            return true;
+        }
+      }),
+    [data, categoryFilter, statusFilter, personFilter, hideDone, today]
   );
+
+  const filtersActive =
+    categoryFilter !== "all" || statusFilter !== "all" || personFilter !== "all" || hideDone;
+
+  // Beban per orang per tanggal mulai (tugas aktif) — dasar peringatan "sudah padat".
+  const loadByDay = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const row of data?.rows ?? []) {
+      for (const c of row.copies) {
+        // Yang sudah dikirim bukan beban lagi — hanya yang masih harus dikerjakan.
+        if (c.status !== "open") continue;
+        const key = `${c.assigneeId}|${c.startDate}`;
+        m.set(key, (m.get(key) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [data]);
+
+  // Saat seret karyawan: tanggal → jumlah tugas yang sudah dia pegang (untuk lencana di sel).
+  const dragDayLoad = useMemo(() => {
+    if (!dragging || !dragEmployeeId) return null;
+    const o: Record<string, number> = {};
+    for (const [key, n] of loadByDay) {
+      const [id, date] = key.split("|");
+      if (id === dragEmployeeId) o[date] = n;
+    }
+    return o;
+  }, [dragging, dragEmployeeId, loadByDay]);
 
   const totals = useMemo(() => {
     const all = (data?.rows ?? []).flatMap((r) => r.copies);
@@ -294,6 +357,16 @@ export function TaskMatrix({
     setHover(null);
     if (!d || !allowed) return;
     if (d.kind === "employee") {
+      const load = loadByDay.get(`${d.employeeId}|${date}`) ?? 0;
+      if (load >= BUSY_THRESHOLD) {
+        const who = data?.employees.find((e) => e.id === d.employeeId)?.name ?? "Karyawan ini";
+        if (
+          !window.confirm(
+            `${who} sudah punya ${load} tugas yang mulai tanggal ${parts(date).d} ${MONTH[parts(date).m - 1]}. Tetap tugaskan?`
+          )
+        )
+          return;
+      }
       await runAssign(rowId, [d.employeeId], date);
     } else if (d.rowId !== rowId) {
       setBusy(true);
@@ -323,9 +396,16 @@ export function TaskMatrix({
 
   const employees = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = data?.employees ?? [];
+    const list = (data?.employees ?? []).filter(
+      (e) => unitFilter === "all" || (e.businessUnit ?? "—") === unitFilter
+    );
     return q ? list.filter((e) => e.name.toLowerCase().includes(q)) : list;
-  }, [data, query]);
+  }, [data, query, unitFilter]);
+
+  const units = useMemo(
+    () => [...new Set((data?.employees ?? []).map((e) => e.businessUnit ?? "—"))].sort(),
+    [data]
+  );
 
   const gridCols = `clamp(108px, 22vw, 220px) repeat(${days}, minmax(92px, 1fr))`;
   const rangeLabel = `${parts(from).d} ${MONTH[parts(from).m - 1]} – ${parts(dates[dates.length - 1]).d} ${MONTH[parts(dates[dates.length - 1]).m - 1]} ${parts(dates[dates.length - 1]).y}`;
@@ -433,6 +513,58 @@ export function TaskMatrix({
         </div>
       )}
 
+      {/* Filter: status, karyawan, sembunyikan selesai */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label="Filter status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          className="h-9 rounded-xl border border-border bg-background px-2 text-sm"
+        >
+          {(Object.keys(STATUS_FILTER_LABEL) as StatusFilter[]).map((k) => (
+            <option key={k} value={k}>
+              {STATUS_FILTER_LABEL[k]}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter karyawan"
+          value={personFilter}
+          onChange={(e) => setPersonFilter(e.target.value)}
+          className="h-9 max-w-48 rounded-xl border border-border bg-background px-2 text-sm"
+        >
+          <option value="all">Semua karyawan</option>
+          {(data?.employees ?? []).map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
+        </select>
+        <label className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+          <input
+            type="checkbox"
+            className="size-4"
+            checked={hideDone}
+            onChange={(e) => setHideDone(e.target.checked)}
+          />
+          Sembunyikan yang sudah selesai
+        </label>
+        {filtersActive && (
+          <button
+            type="button"
+            onClick={() => {
+              setCategoryFilter("all");
+              setStatusFilter("all");
+              setPersonFilter("all");
+              setHideDone(false);
+            }}
+            className="h-9 px-3 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
+          >
+            Reset filter
+          </button>
+        )}
+      </div>
+
       <p className="text-xs text-muted-foreground">
         <span className="hidden md:inline">
           Seret nama karyawan dari panel kanan ke sel (tugas × tanggal) untuk menugaskan mulai
@@ -489,7 +621,9 @@ export function TaskMatrix({
                 className="col-span-full px-4 py-10 text-center text-sm text-muted-foreground"
                 style={{ gridColumn: `1 / -1` }}
               >
-                Tidak ada tugas pada rentang ini.
+                {filtersActive && (data?.rows ?? []).length > 0
+                  ? "Tidak ada tugas yang cocok dengan filter."
+                  : "Tidak ada tugas pada rentang ini."}
               </div>
             )}
             {visibleRows.map((row, idx) => (
@@ -498,7 +632,7 @@ export function TaskMatrix({
               {(idx === 0 || visibleRows[idx - 1].categoryId !== row.categoryId) && (
                 <CategoryBand
                   name={row.categoryName ?? "Tanpa kategori"}
-                  count={visibleRows.filter((r) => r.categoryId === row.categoryId).length}
+                  summary={categorySummary(visibleRows.filter((r) => r.categoryId === row.categoryId))}
                   style={categoryStyle(data?.categories ?? [], row.categoryId)}
                 />
               )}
@@ -521,6 +655,7 @@ export function TaskMatrix({
                     rowTitle: row.title,
                   };
                   setWithdrawOk(isWithdrawable(c));
+                  setDragEmployeeId(null);
                   setDragging(true);
                 }}
                 onDragEnd={() => {
@@ -532,6 +667,8 @@ export function TaskMatrix({
                 onPick={(date) => setPicker({ rowId: row.rowId, date })}
                 onDelete={() => void handleDelete(row)}
                 catStyle={categoryStyle(data?.categories ?? [], row.categoryId)}
+                dayLoad={dragDayLoad}
+                focusEmployeeId={personFilter === "all" ? null : personFilter}
               />
               </Fragment>
             ))}
@@ -581,6 +718,21 @@ export function TaskMatrix({
                 className="w-full h-9 rounded-lg border border-border bg-background pl-8 pr-2 text-sm"
               />
             </label>
+            {units.length > 1 && (
+              <select
+                aria-label="Filter unit bisnis"
+                value={unitFilter}
+                onChange={(e) => setUnitFilter(e.target.value)}
+                className="mt-1.5 w-full h-9 rounded-lg border border-border bg-background px-2 text-sm"
+              >
+                <option value="all">Semua unit</option>
+                {units.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <ul className="flex-1 overflow-y-auto p-2 space-y-1">
             {employees.map((e) => (
@@ -590,6 +742,7 @@ export function TaskMatrix({
                 onDragStart={() => {
                   dragRef.current = { kind: "employee", employeeId: e.id };
                   setWithdrawOk(false);
+                  setDragEmployeeId(e.id);
                   setDragging(true);
                 }}
                 onDragEnd={() => {
@@ -608,6 +761,7 @@ export function TaskMatrix({
 
       {picker && data && (
         <AssignPicker
+          loadByDay={loadByDay}
           row={data.rows.find((r) => r.rowId === picker.rowId)}
           employees={data.employees}
           initialDate={picker.date}
@@ -624,13 +778,29 @@ export function TaskMatrix({
 }
 
 /** Judul grup kategori — selebar grid, teksnya menempel di kiri saat digulir. */
+/** Ringkasan satu kelompok kategori: jumlah tugas, yang belum ditugaskan, progres selesai. */
+function categorySummary(rows: MatrixRow[]): string {
+  const copies = rows.flatMap((r) => r.copies);
+  const unassigned = rows.filter((r) => r.backlogTaskId).length;
+  const done = copies.filter((c) => c.status === "approved").length;
+  const review = copies.filter((c) => c.status === "submitted").length;
+  return [
+    `${rows.length} tugas`,
+    unassigned > 0 ? `${unassigned} belum ditugaskan` : null,
+    copies.length > 0 ? `${done}/${copies.length} selesai` : null,
+    review > 0 ? `${review} perlu verifikasi` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function CategoryBand({
   name,
-  count,
+  summary,
   style,
 }: {
   name: string;
-  count: number;
+  summary: string;
   style: CategoryStyle;
 }) {
   return (
@@ -641,7 +811,9 @@ function CategoryBand({
       <div className="sticky left-0 inline-flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
         <span className={"size-2.5 rounded-full shrink-0 " + style.dot} aria-hidden />
         {name}
-        <span className="font-semibold text-muted-foreground tabular-nums">{count}</span>
+        <span className="font-semibold normal-case tracking-normal text-muted-foreground tabular-nums">
+          {summary}
+        </span>
       </div>
     </div>
   );
@@ -718,6 +890,8 @@ function MatrixRowView({
   onPick,
   onDelete,
   catStyle,
+  dayLoad,
+  focusEmployeeId,
 }: {
   row: MatrixRow;
   dates: string[];
@@ -735,6 +909,10 @@ function MatrixRowView({
   onPick: (date: string) => void;
   onDelete: () => void;
   catStyle: CategoryStyle;
+  /** Saat menyeret karyawan: tanggal → jumlah tugas yang sudah dipegangnya. */
+  dayLoad: Record<string, number> | null;
+  /** Filter karyawan aktif: chip orang lain diredupkan. */
+  focusEmployeeId: string | null;
 }) {
   const doneN = row.copies.filter((c) => c.status === "approved").length;
   const reviewN = row.copies.filter((c) => c.status === "submitted").length;
@@ -847,12 +1025,26 @@ function MatrixRowView({
                       : "")
             }
           >
+            {droppable && dayLoad && (dayLoad[date] ?? 0) > 0 && (
+              <span
+                title={`Sudah punya ${dayLoad[date]} tugas yang mulai tanggal ini`}
+                className={
+                  "pointer-events-none absolute right-1 top-0.5 z-10 rounded-full px-1.5 text-[10px] font-bold " +
+                  (dayLoad[date] >= BUSY_THRESHOLD
+                    ? "bg-destructive text-white"
+                    : "bg-warning text-foreground")
+                }
+              >
+                {dayLoad[date]} tugas
+              </span>
+            )}
             {copies.map((c) => (
               <CopyChip
                 key={c.taskId}
                 copy={c}
                 today={today}
                 beforeWindow={c.startDate < from}
+                dim={focusEmployeeId !== null && c.assigneeId !== focusEmployeeId}
                 onDragStart={() => onCopyDragStart(c)}
                 onDragEnd={onDragEnd}
                 onOpen={() => onOpenTask(c.taskId)}
@@ -882,6 +1074,7 @@ function CopyChip({
   copy,
   today,
   beforeWindow,
+  dim,
   onDragStart,
   onDragEnd,
   onOpen,
@@ -889,6 +1082,7 @@ function CopyChip({
   copy: MatrixCopy;
   today: string;
   beforeWindow: boolean;
+  dim: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
   onOpen: () => void;
@@ -926,7 +1120,8 @@ function CopyChip({
       className={
         "w-full text-left rounded-lg border px-1.5 py-1 text-[11px] leading-tight " +
         chipTone(copy, today) +
-        (canDrag ? " cursor-grab active:cursor-grabbing" : "")
+        (canDrag ? " cursor-grab active:cursor-grabbing" : "") +
+        (dim ? " opacity-30" : "")
       }
     >
       <span className="flex items-center gap-1">
@@ -950,6 +1145,7 @@ function CopyChip({
 }
 
 function AssignPicker({
+  loadByDay,
   row,
   employees,
   initialDate,
@@ -957,6 +1153,7 @@ function AssignPicker({
   onClose,
   onSubmit,
 }: {
+  loadByDay: Map<string, number>;
   row: MatrixRow | undefined;
   employees: MatrixEmployee[];
   initialDate: string;
@@ -1029,8 +1226,17 @@ function AssignPicker({
                     onChange={() => toggle(e.id)}
                   />
                   <span className="flex-1 min-w-0 truncate">{e.name}</span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {isTaken ? "sudah ada" : `${e.openCount} tugas`}
+                  <span
+                    className={
+                      "shrink-0 text-[11px] " +
+                      ((loadByDay.get(`${e.id}|${date}`) ?? 0) >= BUSY_THRESHOLD
+                        ? "font-semibold text-destructive"
+                        : "text-muted-foreground")
+                    }
+                  >
+                    {isTaken
+                      ? "sudah ada"
+                      : `${e.openCount} tugas · ${loadByDay.get(`${e.id}|${date}`) ?? 0} di tgl ini`}
                   </span>
                 </label>
               );
