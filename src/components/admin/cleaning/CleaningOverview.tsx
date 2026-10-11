@@ -67,7 +67,7 @@ import type {
  * di-bookmark dan dibagikan.
  */
 const VIEWS = [
-  { key: "ringkasan", label: "Hasil kebersihan" },
+  { key: "ringkasan", label: "Hasil SOP" },
   { key: "karyawan", label: "Kerajinan karyawan" },
 ] as const;
 
@@ -514,7 +514,7 @@ export function CleaningOverview({
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline gap-2">
           <h2 className="font-display text-[15px] font-bold">
-            Hasil kebersihan per cabang
+            Hasil SOP per cabang
           </h2>
           <span className="text-[11.5px] text-muted-foreground">
             Skor {scopeLabel} · strip = 14 hari terakhir
@@ -948,7 +948,7 @@ function PersonBody({
           hint={`${emp.ok + emp.late} dari ${emp.dutyDays} hari duty`}
           tone={emp.pct >= 95 ? undefined : emp.pct >= 80 ? "warn" : "bad"}
         />
-        <Kpi label="Telat" value={String(emp.late)} hint="di luar jendela waktu" />
+        <Kpi label="Telat" value={String(emp.late)} hint="lewat batas waktu" />
         <Kpi
           label="Terlewat"
           value={String(emp.miss)}

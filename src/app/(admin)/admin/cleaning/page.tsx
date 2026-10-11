@@ -95,12 +95,12 @@ export default async function AdminCleaningPage({
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
-        title="Kebersihan"
-        subtitle="Seberapa bersih tiap cabang, dan siapa yang rajin menjalankan SOP. Penyusunan checklist, duty cabang, dan assignment ada di Pengaturan SOP."
+        title="SOP"
+        subtitle="Rutinitas berulang per cabang (kebersihan, buka/tutup toko, dst) — seberapa patuh dan tepat waktu. Beda dengan Tugas yang hanya sekali jalan. Penyusunan checklist, duty cabang, dan assignment ada di Pengaturan SOP."
       />
       {!reportRes.ok ? (
         <div className="rounded-2xl border border-destructive/40 bg-destructive/5 px-5 py-4 text-sm text-destructive">
-          {reportRes.error ?? "Gagal memuat laporan kebersihan."}
+          {reportRes.error ?? "Gagal memuat laporan SOP."}
         </div>
       ) : (
         <CleaningOverview

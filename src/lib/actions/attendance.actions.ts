@@ -164,7 +164,7 @@ export async function checkIn(payload: CheckInPayload) {
   if (await hasPendingCleaningRedo(user.id, "signin")) {
     return {
       error:
-        "Ada foto kebersihan yang perlu diperbaiki dulu — lihat kartu di beranda.",
+        "Ada foto SOP yang perlu diperbaiki dulu — lihat kartu di beranda.",
       cleaningRedoBlocked: true as const,
     };
   }
@@ -849,7 +849,7 @@ export async function checkOut(payload?: CheckOutPayload) {
   const cleaningBlocking = await getBlockingCleaning();
   if (cleaningBlocking.length > 0) {
     return {
-      error: "Selesaikan checklist kebersihan dulu sebelum check out.",
+      error: "Selesaikan checklist SOP dulu sebelum check out.",
       cleaningIncomplete: cleaningBlocking,
     };
   }
@@ -861,7 +861,7 @@ export async function checkOut(payload?: CheckOutPayload) {
   if (await hasPendingCleaningRedo(user.id, "checkout")) {
     return {
       error:
-        "Ada foto kebersihan yang perlu diperbaiki dulu — lihat kartu di beranda.",
+        "Ada foto SOP yang perlu diperbaiki dulu — lihat kartu di beranda.",
       cleaningRedoBlocked: true as const,
     };
   }

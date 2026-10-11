@@ -301,11 +301,11 @@ export function CleaningChecklistCard({ initial }: Props) {
 
   return (
     <section
-      aria-label="Checklist kebersihan"
+      aria-label="Checklist SOP"
       className="animate-fade-up animate-fade-up-delay-1"
     >
       <div className="flex items-center justify-between px-1 mb-2.5">
-        <span className="eyebrow text-muted-foreground">SOP Kebersihan</span>
+        <span className="eyebrow text-muted-foreground">SOP</span>
         <span
           aria-hidden
           className="h-px flex-1 ml-3 bg-gradient-to-r from-border to-transparent"
@@ -356,6 +356,12 @@ export function CleaningChecklistCard({ initial }: Props) {
                   <Clock className="size-3.5" />
                   {task.window_label}
                   {!task.window_open && " — di luar jam, belum bisa diisi"}
+                </p>
+              )}
+              {task.deadline_passed && !allDone && (
+                <p className="rounded-xl border-2 border-destructive/50 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+                  Lewat batas waktu — SOP ini tercatat tidak selesai tepat waktu. Tetap selesaikan
+                  sekarang; yang diselesaikan setelah batas dicatat terlambat.
                 </p>
               )}
 
@@ -476,7 +482,7 @@ export function CleaningChecklistCard({ initial }: Props) {
         open={selfieOpen}
         onOpenChange={setSelfieOpen}
         onConfirm={handleSelfieConfirmed}
-        title="Foto bukti kebersihan"
+        title="Foto bukti SOP"
         description="Ambil foto langsung sebagai bukti item ini sudah dikerjakan."
         referenceUrl={referenceUrl}
         defaultFacingMode="environment"

@@ -138,7 +138,7 @@ export function buildAdminNav({
         {
           href: "/admin/cleaning",
           icon: Sparkles,
-          label: "Kebersihan",
+          label: "SOP",
           badge: cleaningCount || undefined,
           color: "bg-quaternary",
         },

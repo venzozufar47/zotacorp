@@ -4,12 +4,15 @@
  *   before   → only until window_end
  *   after    → only from window_start
  *   between  → only within window_start..window_end
+ *   deadline → BATAS WAKTU: boleh dikirim kapan saja, tetapi yang selesai setelah
+ *              window_end dicatat TERLAMBAT dan yang belum selesai saat jamnya
+ *              lewat tampil sebagai tidak tercapai (lihat range-report).
  * Times are 'HH:MM' in the org's local timezone.
  *
  * Pure helpers — kept out of the "use server" actions file (whose exports must
  * all be async functions).
  */
-export type CleaningWindowMode = "anytime" | "before" | "after" | "between";
+export type CleaningWindowMode = "anytime" | "before" | "after" | "between" | "deadline";
 
 function hhmmToMin(s: string | null): number | null {
   if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
@@ -34,6 +37,18 @@ export function cleaningWindowOpen(
   return true; // anytime / unknown
 }
 
+/** Mode batas waktu: jam `end` sudah lewat pada `nowHhmm`? Selain deadline → false. */
+export function cleaningDeadlinePassed(
+  mode: string,
+  end: string | null,
+  nowHhmm: string
+): boolean {
+  if (mode !== "deadline") return false;
+  const e = hhmmToMin(end);
+  const n = hhmmToMin(nowHhmm);
+  return e != null && n != null && n > e;
+}
+
 /** Human label for the window, or null if unrestricted. */
 export function cleaningWindowLabel(
   mode: string,
@@ -43,5 +58,6 @@ export function cleaningWindowLabel(
   if (mode === "before" && end) return `Bisa dikerjakan sebelum ${end}`;
   if (mode === "after" && start) return `Bisa dikerjakan setelah ${start}`;
   if (mode === "between" && start && end) return `Bisa dikerjakan ${start}–${end}`;
+  if (mode === "deadline" && end) return `Selesaikan sebelum ${end}`;
   return null;
 }

@@ -288,6 +288,13 @@ export function BranchDutyManager({
                         {row.window_end}
                       </>
                     )}
+                    {row.window_mode === "deadline" && row.window_end && (
+                      <>
+                        {" · "}
+                        <Clock size={11} className="inline -mt-0.5" /> batas{" "}
+                        {row.window_end}
+                      </>
+                    )}
                     {row.window_mode === "between" &&
                       row.window_start &&
                       row.window_end && (
@@ -591,6 +598,7 @@ function DutyForm({
               <option value="after">Setelah jam…</option>
               <option value="before">Sebelum jam…</option>
               <option value="between">Antara…</option>
+              <option value="deadline">Batas waktu (terlambat bila lewat)…</option>
             </select>
             {(draft.window_mode === "after" ||
               draft.window_mode === "between") && (
@@ -602,7 +610,8 @@ function DutyForm({
               />
             )}
             {(draft.window_mode === "before" ||
-              draft.window_mode === "between") && (
+              draft.window_mode === "between" ||
+              draft.window_mode === "deadline") && (
               <Input
                 type="time"
                 value={draft.window_end}

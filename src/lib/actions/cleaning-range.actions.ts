@@ -35,9 +35,11 @@ const MAX_SPAN_DAYS = 366;
 const DAY_MS = 86_400_000;
 
 /** Satu-satunya tempat "telat" didefinisikan: hanya jendela dengan batas akhir
- *  yang bisa dilewati. `anytime` & `after` tidak punya tenggat. */
+ *  yang bisa dilewati. `anytime` & `after` tidak punya tenggat. `deadline`
+ *  (batas waktu) memang dibuat untuk ini: kiriman setelah jamnya tetap
+ *  diterima tetapi tercatat `late`. */
 function windowEndOf(mode: string | null, end: string | null): string | null {
-  return mode === "before" || mode === "between" ? end : null;
+  return mode === "before" || mode === "between" || mode === "deadline" ? end : null;
 }
 
 type ChecklistShape = {

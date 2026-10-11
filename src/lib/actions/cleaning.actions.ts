@@ -12,6 +12,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { isWorkdayFor, jakartaDayOfWeek } from "@/lib/utils/workdays";
 import { localHhmm } from "@/lib/utils/break-windows";
 import {
+  cleaningDeadlinePassed,
   cleaningWindowOpen,
   cleaningWindowLabel,
 } from "@/lib/utils/cleaning-window";
@@ -104,6 +105,8 @@ export interface TodayTask {
   window_open: boolean;
   /** Human label of the window, or null if unrestricted. */
   window_label: string | null;
+  /** Mode batas waktu & jamnya sudah lewat: masih boleh dikerjakan, tapi tercatat terlambat. */
+  deadline_passed: boolean;
   items: TodayTaskItem[];
 }
 
@@ -831,10 +834,19 @@ function normalizeWindow(
   start: string | null | undefined,
   end: string | null | undefined
 ): { window_mode: string; window_start: string | null; window_end: string | null } {
-  const m = mode === "before" || mode === "after" || mode === "between" ? mode : "anytime";
+  const m =
+    mode === "before" || mode === "after" || mode === "between" || mode === "deadline"
+      ? mode
+      : "anytime";
   const s = start?.trim() || null;
   const e = end?.trim() || null;
   if (m === "before") return { window_mode: m, window_start: null, window_end: e };
+  // Batas waktu tanpa jam tak bermakna → perlakukan sebagai tanpa batas.
+  if (m === "deadline") {
+    return e
+      ? { window_mode: m, window_start: null, window_end: e }
+      : { window_mode: "anytime", window_start: null, window_end: null };
+  }
   if (m === "after") return { window_mode: m, window_start: s, window_end: null };
   if (m === "between") return { window_mode: m, window_start: s, window_end: e };
   return { window_mode: "anytime", window_start: null, window_end: null };
@@ -1234,6 +1246,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
         nowHhmm
       ),
       window_label: cleaningWindowLabel(a.window_mode, a.window_start, a.window_end),
+      deadline_passed: cleaningDeadlinePassed(a.window_mode, a.window_end, nowHhmm),
       items: (checklist.items ?? [])
         .slice()
         .sort((x, y) => x.sort_order - y.sort_order)

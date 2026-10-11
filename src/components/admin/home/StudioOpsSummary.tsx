@@ -79,7 +79,7 @@ export function StudioOpsSummary({
               className="inline-flex items-center gap-1.5 text-[13px] font-medium text-foreground underline-offset-2 hover:underline hover:text-primary"
             >
               <Camera size={13} className="shrink-0" />
-              Review foto kebersihan
+              Review foto SOP
             </Link>
             <span className="block text-[11px] text-muted-foreground">
               Tinjau satu per satu, tandai Acc atau perlu ulang

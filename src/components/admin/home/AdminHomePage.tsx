@@ -236,7 +236,7 @@ export function AdminHomePage({
               </span>
               <div className="min-w-0">
                 <div className="font-display font-semibold text-[15px] lg:text-base text-foreground tracking-[-0.015em]">
-                  Kebersihan terlewat
+                  SOP terlewat
                 </div>
                 <div className="text-[11.5px] text-muted-foreground mt-0.5">
                   Hadir kemarin tapi checklist tidak diselesaikan
