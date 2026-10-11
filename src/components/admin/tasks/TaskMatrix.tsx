@@ -8,6 +8,8 @@ import {
   GripVertical,
   Hourglass,
   Loader2,
+  ArrowDown,
+  ArrowUp,
   Pencil,
   Plus,
   RefreshCw,
@@ -18,8 +20,9 @@ import {
   assignEmployeesToTask,
   getTaskMatrix,
   moveTaskStart,
+  getRowEditData,
   reassignCopyToTask,
-  updateRowDescription,
+  updateRowTask,
 } from "@/lib/actions/task-matrix.actions";
 import { cancelAssignedTask, deleteAssignedTaskRow } from "@/lib/actions/assigned-tasks.actions";
 import {
@@ -27,6 +30,7 @@ import {
   type MatrixCopy,
   type MatrixEmployee,
   type MatrixRow,
+  type RowEditData,
   type TaskMatrixData,
 } from "@/lib/tasks/matrix-types";
 import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
@@ -117,7 +121,7 @@ export function TaskMatrix({
   const [busy, setBusy] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const [picker, setPicker] = useState<{ rowId: string; date: string } | null>(null);
-  const [descEdit, setDescEdit] = useState<MatrixRow | null>(null);
+  const [rowEdit, setRowEdit] = useState<MatrixRow | null>(null);
   const [query, setQuery] = useState("");
   // "all" | "none" (tanpa kategori) | id kategori — memfilter baris matriks.
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -669,7 +673,7 @@ export function TaskMatrix({
                 onOpenTask={onOpenTask}
                 onPick={(date) => setPicker({ rowId: row.rowId, date })}
                 onDelete={() => void handleDelete(row)}
-                onEditDescription={() => setDescEdit(row)}
+                onEdit={() => setRowEdit(row)}
                 catStyle={categoryStyle(data?.categories ?? [], row.categoryId)}
                 dayLoad={dragDayLoad}
                 focusEmployeeId={personFilter === "all" ? null : personFilter}
@@ -763,13 +767,13 @@ export function TaskMatrix({
         </aside>
       </div>
 
-      {descEdit && (
-        <DescriptionDialog
-          key={descEdit.rowId}
-          row={descEdit}
-          onClose={() => setDescEdit(null)}
+      {rowEdit && (
+        <RowEditDialog
+          key={rowEdit.rowId}
+          row={rowEdit}
+          onClose={() => setRowEdit(null)}
           onSaved={() => {
-            setDescEdit(null);
+            setRowEdit(null);
             reload();
             onChanged();
           }}
@@ -836,8 +840,12 @@ function CategoryBand({
   );
 }
 
-/** Edit keterangan opsional satu tugas — berlaku ke semua salinan yang masih hidup. */
-function DescriptionDialog({
+/**
+ * Edit satu penugasan dari matriks: judul, checklist, keterangan. Judul &
+ * keterangan berlaku ke semua salinan yang masih hidup; checklist diganti
+ * utuh di semua salinan dan terkunci begitu ada yang mulai mengerjakan.
+ */
+function RowEditDialog({
   row,
   onClose,
   onSaved,
@@ -846,65 +854,212 @@ function DescriptionDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  type Draft = { key: string; title: string; note: string | null };
+  const [loaded, setLoaded] = useState<RowEditData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [title, setTitle] = useState(row.title);
   const [text, setText] = useState(row.description ?? "");
+  const [items, setItems] = useState<Draft[]>([]);
   const [saving, setSaving] = useState(false);
-  const unchanged = text.trim() === (row.description ?? "").trim();
+  const nextKey = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    getRowEditData(row.rowId).then((res) => {
+      if (!active) return;
+      if (res.ok && res.data) {
+        const d = res.data;
+        setLoaded(d);
+        setTitle(d.title);
+        setText(d.description ?? "");
+        setItems(d.items.map((i) => ({ key: `i-${nextKey.current++}`, title: i.title, note: i.note })));
+      } else if (!res.ok) {
+        setLoadError(res.error);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [row.rowId]);
+
+  const locked = loaded?.itemsLockedReason ?? null;
+  const cleaned = items.map((i) => ({ ...i, title: i.title.trim() })).filter((i) => i.title);
+  const itemsChanged =
+    loaded !== null &&
+    (cleaned.length !== loaded.items.length ||
+      cleaned.some((i, idx) => i.title !== loaded.items[idx].title));
+  const dirty =
+    loaded !== null &&
+    (title.trim() !== loaded.title ||
+      text.trim() !== (loaded.description ?? "").trim() ||
+      (!locked && itemsChanged));
+  const canSave = dirty && title.trim().length > 0 && (locked || cleaned.length > 0);
+
+  function move(idx: number, dir: -1 | 1) {
+    setItems((prev) => {
+      const j = idx + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  }
 
   async function save() {
     setSaving(true);
-    const res = await updateRowDescription({ rowId: row.rowId, description: text.trim() || null });
+    const res = await updateRowTask({
+      rowId: row.rowId,
+      title,
+      description: text.trim() || null,
+      items:
+        !locked && itemsChanged
+          ? cleaned.map((i) => ({ title: i.title, note: i.note }))
+          : undefined,
+    });
     setSaving(false);
     if (!res.ok) {
       toast.error(res.error);
       return;
     }
-    toast.success(text.trim() ? "Keterangan disimpan" : "Keterangan dihapus");
+    toast.success("Tugas diperbarui");
     onSaved();
   }
 
   return (
-    <Shell title="Keterangan tugas" onClose={onClose}>
-      <div className="space-y-3">
-        <p className="text-sm font-semibold break-words">{row.title}</p>
-        <label className="block text-xs font-semibold">
-          Keterangan (opsional)
-          <textarea
-            className={inputCls}
-            rows={5}
-            maxLength={1000}
-            autoFocus
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Detail tambahan untuk karyawan — kosongkan untuk menghapus"
-          />
-          <span className="mt-1 flex justify-between text-[11px] font-normal text-muted-foreground">
-            <span>
-              Berlaku untuk semua penerima tugas ini yang belum selesai
-              {row.copies.length > 0 ? ` (${row.copies.length} penerima)` : ""}.
-            </span>
-            <span className="tabular-nums">{text.length}/1000</span>
-          </span>
-        </label>
-        <div className="sticky -bottom-4 -mx-4 -mb-4 px-4 py-3 bg-card border-t border-border flex gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving || unchanged}
-            className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-          >
-            {saving && <Loader2 size={15} className="animate-spin" />}
-            Simpan
-          </button>
+    <Shell title="Edit tugas" onClose={onClose} wide>
+      {loadError && <p className="text-sm text-destructive">{loadError}</p>}
+      {!loaded && !loadError && (
+        <div className="py-10 grid place-items-center text-muted-foreground">
+          <Loader2 className="animate-spin" size={20} />
         </div>
-      </div>
+      )}
+      {loaded && (
+        <div className="space-y-4">
+          <label className="block text-xs font-semibold">
+            Judul tugas
+            <input
+              className={inputCls + " h-11"}
+              value={title}
+              maxLength={120}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold">Checklist (satu foto bukti per item)</p>
+            {locked && (
+              <p className="rounded-xl bg-warning/30 px-3 py-2 text-xs">
+                Checklist dikunci. {locked} Ubah checklist per penerima lewat panel detail tugas
+                (ketuk chip nama).
+              </p>
+            )}
+            {items.map((it, idx) => (
+              <div key={it.key} className="flex items-center gap-1">
+                <span className="grid place-items-center size-7 shrink-0 rounded-full bg-muted text-xs font-bold text-muted-foreground">
+                  {idx + 1}
+                </span>
+                <input
+                  className={inputCls + " !mt-0 h-11"}
+                  value={it.title}
+                  maxLength={200}
+                  disabled={!!locked}
+                  onChange={(e) =>
+                    setItems((prev) =>
+                      prev.map((v) => (v.key === it.key ? { ...v, title: e.target.value } : v))
+                    )
+                  }
+                />
+                {!locked && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Naikkan"
+                      disabled={idx === 0}
+                      onClick={() => move(idx, -1)}
+                      className="size-10 shrink-0 grid place-items-center rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-30"
+                    >
+                      <ArrowUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Turunkan"
+                      disabled={idx === items.length - 1}
+                      onClick={() => move(idx, 1)}
+                      className="size-10 shrink-0 grid place-items-center rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-30"
+                    >
+                      <ArrowDown size={14} />
+                    </button>
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        aria-label="Hapus item"
+                        onClick={() => setItems((prev) => prev.filter((v) => v.key !== it.key))}
+                        className="size-10 shrink-0 grid place-items-center rounded-xl hover:bg-muted text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+            {!locked && items.length < 40 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setItems((prev) => [
+                    ...prev,
+                    { key: `i-${nextKey.current++}`, title: "", note: null },
+                  ])
+                }
+                className="h-11 px-3 rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 inline-flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Tambah item
+              </button>
+            )}
+          </div>
+
+          <label className="block text-xs font-semibold">
+            Keterangan (opsional)
+            <textarea
+              className={inputCls}
+              rows={4}
+              maxLength={1000}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Detail tambahan untuk karyawan — kosongkan untuk menghapus"
+            />
+            <span className="mt-1 flex justify-between text-[11px] font-normal text-muted-foreground">
+              <span>
+                {loaded.liveCount > 0
+                  ? `Judul & keterangan berlaku untuk semua penerima yang belum selesai (${loaded.liveCount}).`
+                  : "Belum ada penerima — perubahan ini jadi acuan saat tugas ditugaskan."}
+              </span>
+              <span className="tabular-nums">{text.length}/1000</span>
+            </span>
+          </label>
+
+          <div className="sticky -bottom-4 -mx-4 -mb-4 px-4 py-3 bg-card border-t border-border flex gap-2 sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving || !canSave}
+              className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+            >
+              {saving && <Loader2 size={15} className="animate-spin" />}
+              Simpan
+            </button>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }
@@ -979,7 +1134,7 @@ function MatrixRowView({
   onOpenTask,
   onPick,
   onDelete,
-  onEditDescription,
+  onEdit,
   catStyle,
   dayLoad,
   focusEmployeeId,
@@ -999,7 +1154,7 @@ function MatrixRowView({
   onOpenTask: (taskId: string) => void;
   onPick: (date: string) => void;
   onDelete: () => void;
-  onEditDescription: () => void;
+  onEdit: () => void;
   catStyle: CategoryStyle;
   /** Saat menyeret karyawan: tanggal → jumlah tugas yang sudah dipegangnya. */
   dayLoad: Record<string, number> | null;
@@ -1076,9 +1231,9 @@ function MatrixRowView({
           </button>
           <button
             type="button"
-            aria-label={`Edit keterangan ${row.title}`}
-            title={row.description ? "Edit keterangan" : "Tambah keterangan"}
-            onClick={onEditDescription}
+            aria-label={`Edit tugas ${row.title}`}
+            title="Edit tugas (judul, checklist, keterangan)"
+            onClick={onEdit}
             className="relative shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <Pencil size={13} />

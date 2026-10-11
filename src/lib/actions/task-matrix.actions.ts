@@ -25,6 +25,7 @@ import {
   type MatrixCopy,
   type MatrixEmployee,
   type MatrixRow,
+  type RowEditData,
   type TaskMatrixData,
 } from "@/lib/tasks/matrix-types";
 
@@ -416,41 +417,175 @@ export async function assignEmployeesToTask(
   };
 }
 
-const descriptionSchema = z.object({
-  rowId: z.string().regex(/^[bt]:[0-9a-f-]{36}$/, "Baris tidak valid"),
+const LIVE_STATUSES = ["backlog", "open", "submitted"] as const;
+
+/** Salinan penugasan yang masih hidup (urut dari yang paling awal dibuat). */
+async function loadLiveRow(db: any, rowId: string): Promise<any[]> {
+  const q = db
+    .from("assigned_tasks")
+    .select("id, title, description, assignee_id, status, current_round, start_date, created_at")
+    .in("status", LIVE_STATUSES)
+    .order("created_at", { ascending: true });
+  const { data } = await (rowId[0] === "b" ? q.eq("batch_id", rowId.slice(2)) : q.eq("id", rowId.slice(2)));
+  return data ?? [];
+}
+
+/**
+ * Checklist hanya boleh diganti bila TIDAK ada progres di salinan mana pun:
+ * penggantian menghapus item lama, dan itu akan membuang foto bukti serta
+ * riwayat ronde sebelumnya. Mengembalikan alasan terkunci, atau null.
+ */
+async function itemsLockReason(db: any, live: any[]): Promise<string | null> {
+  if (live.some((t) => t.status === "submitted")) {
+    return "Ada penerima yang sudah mengirim tugas ini (menunggu verifikasi).";
+  }
+  if (live.some((t) => t.current_round > 1)) {
+    return "Ada penerima yang mengulang tugas ini setelah ditolak.";
+  }
+  const ids = live.map((t) => t.id);
+  const [{ count: photos }, { count: extras }] = await Promise.all([
+    db.from("assigned_task_completions").select("id", { count: "exact", head: true }).in("task_id", ids),
+    db.from("assigned_task_extra_photos").select("id", { count: "exact", head: true }).in("task_id", ids),
+  ]);
+  if ((photos ?? 0) > 0 || (extras ?? 0) > 0) {
+    return "Ada penerima yang sudah mulai mengerjakan (ada foto).";
+  }
+  return null;
+}
+
+const rowIdSchema = z.string().regex(/^[bt]:[0-9a-f-]{36}$/, "Baris tidak valid");
+
+/** Muat judul, keterangan, dan checklist satu penugasan untuk dialog Edit tugas. */
+export async function getRowEditData(rowId: string): Promise<ActionResult<RowEditData>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  if (!rowIdSchema.safeParse(rowId).success) return { ok: false, error: "Baris tidak valid" };
+
+  const db = createAdminClient() as any;
+  const live = await loadLiveRow(db, rowId);
+  if (live.length === 0) return { ok: false, error: "Tugas tidak ditemukan atau sudah selesai/dibatalkan." };
+
+  // Acuan: cetakan backlog bila ada (versi terbaru), kalau tidak salinan pertama.
+  const ref = live.find((t) => t.status === "backlog") ?? live[0];
+  const [{ data: items }, lockedReason] = await Promise.all([
+    db
+      .from("assigned_task_items")
+      .select("title, note, sort_order")
+      .eq("task_id", ref.id)
+      .order("sort_order", { ascending: true }),
+    itemsLockReason(db, live),
+  ]);
+  return {
+    ok: true,
+    data: {
+      title: ref.title,
+      description: ref.description ?? null,
+      items: (items ?? []).map((i: any) => ({ title: i.title, note: i.note ?? null })),
+      // Penerima = salinan hidup selain cetakan backlog.
+      liveCount: live.filter((t) => t.status !== "backlog").length,
+      itemsLockedReason: lockedReason,
+    },
+  };
+}
+
+const rowEditSchema = z.object({
+  rowId: rowIdSchema,
+  title: z.string().trim().min(1, "Judul wajib diisi").max(120, "Judul maksimal 120 karakter"),
   description: z.string().trim().max(1000, "Maksimal 1000 karakter").nullable(),
+  /** Undefined = checklist tidak diubah. */
+  items: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1, "Judul item wajib diisi").max(200),
+        note: z.string().trim().max(500).nullable().optional(),
+      })
+    )
+    .min(1, "Minimal satu item checklist")
+    .max(40, "Maksimal 40 item")
+    .optional(),
 });
 
 /**
- * Ubah keterangan (opsional) satu penugasan langsung dari matriks. Berlaku ke
- * semua salinan yang masih hidup (belum ditugaskan, dikerjakan, menunggu
- * verifikasi) — yang sudah disetujui/dibatalkan dibiarkan sebagai arsip.
- * Kosong = hapus keterangan.
+ * Edit satu penugasan langsung dari matriks: judul + keterangan berlaku ke
+ * semua salinan yang masih hidup (arsip disetujui/dibatalkan dibiarkan);
+ * checklist (bila dikirim) diganti utuh di semua salinan, hanya selama belum
+ * ada progres (lihat itemsLockReason — dicek ulang di sini karena data bisa
+ * berubah sejak dialog dibuka). Item baru disisipkan DULU, baru yang lama
+ * dihapus, supaya tugas tidak pernah sempat tanpa item.
  */
-export async function updateRowDescription(
-  input: z.input<typeof descriptionSchema>
-): Promise<ActionResult> {
+export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
-  const parsed = descriptionSchema.safeParse(input);
+  const parsed = rowEditSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
   }
-  const { rowId } = parsed.data;
+  const { rowId, title, items } = parsed.data;
   const description = parsed.data.description?.trim() ? parsed.data.description.trim() : null;
 
   const db = createAdminClient() as any;
-  const q = db
+  const live = await loadLiveRow(db, rowId);
+  if (live.length === 0) return { ok: false, error: "Tugas tidak ditemukan atau sudah selesai/dibatalkan." };
+  const liveIds: string[] = live.map((t) => t.id);
+
+  let itemTargets: any[] = [];
+  if (items) {
+    const reason = await itemsLockReason(db, live);
+    if (reason) return { ok: false, error: `Checklist tidak bisa diubah. ${reason}` };
+    itemTargets = live; // semua backlog/open tanpa progres
+  }
+
+  if (items && itemTargets.length > 0) {
+    const { data: oldItems } = await db
+      .from("assigned_task_items")
+      .select("id")
+      .in("task_id", itemTargets.map((t) => t.id));
+    const { data: inserted, error: insErr } = await db
+      .from("assigned_task_items")
+      .insert(
+        itemTargets.flatMap((t) =>
+          items.map((it, idx) => ({
+            task_id: t.id,
+            title: it.title,
+            note: it.note || null,
+            sort_order: idx,
+          }))
+        )
+      )
+      .select("id");
+    if (insErr || !inserted) return { ok: false, error: insErr?.message ?? "Gagal menyimpan checklist" };
+
+    const oldIds = (oldItems ?? []).map((i: any) => i.id);
+    if (oldIds.length > 0) {
+      const { error: delErr } = await db.from("assigned_task_items").delete().in("id", oldIds);
+      if (delErr) {
+        // Batalkan penyisipan supaya tidak ada item ganda.
+        await db.from("assigned_task_items").delete().in("id", inserted.map((i: any) => i.id));
+        return { ok: false, error: delErr.message };
+      }
+    }
+  }
+
+  const { error: headErr } = await db
     .from("assigned_tasks")
-    .update({ description })
-    .in("status", ["backlog", "open", "submitted"]);
-  const { data, error } = await (rowId[0] === "b"
-    ? q.eq("batch_id", rowId.slice(2))
-    : q.eq("id", rowId.slice(2))
-  ).select("id");
-  if (error) return { ok: false, error: error.message };
-  if (!data || data.length === 0) {
-    return { ok: false, error: "Tugas tidak ditemukan atau sudah selesai/dibatalkan." };
+    .update({ title, description })
+    .in("id", liveIds);
+  if (headErr) return { ok: false, error: headErr.message };
+
+  // Penerima yang tugasnya sudah tampil perlu tahu daftar yang harus dikerjakan berubah.
+  if (items) {
+    const today = jakartaDateString(new Date());
+    await Promise.all(
+      itemTargets
+        .filter((t) => t.status === "open" && t.assignee_id && t.start_date && t.start_date <= today)
+        .map((t) =>
+          sendPushToUser(t.assignee_id, {
+            title: "Tugas diperbarui 📋",
+            body: `Checklist "${title}" diubah admin. Buka beranda untuk melihat item terbaru.`,
+            url: "/dashboard",
+          }).catch((err: unknown) => console.error("[task-matrix] push failed:", err))
+        )
+    );
   }
   revalidateAll();
   return { ok: true };

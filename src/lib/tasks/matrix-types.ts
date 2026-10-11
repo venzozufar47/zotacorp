@@ -55,3 +55,14 @@ export interface TaskMatrixData {
 }
 
 export const MATRIX_DAY_OPTIONS = [7, 14, 21, 31] as const;
+
+/** Data yang dimuat dialog Edit tugas di matriks (satu penugasan = satu baris). */
+export interface RowEditData {
+  title: string;
+  description: string | null;
+  items: { title: string; note: string | null }[];
+  /** Jumlah penerima yang masih hidup (dikerjakan / menunggu verifikasi); 0 = baru cetakan belum ditugaskan. */
+  liveCount: number;
+  /** Alasan checklist tak boleh diubah (sudah ada progres/dikirim); null = boleh. */
+  itemsLockedReason: string | null;
+}
