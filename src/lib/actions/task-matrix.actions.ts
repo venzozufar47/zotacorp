@@ -82,7 +82,7 @@ export async function getTaskMatrix(
     db
       .from("assigned_tasks")
       .select(
-        "id, title, assignee_id, status, current_round, start_date, batch_id, created_at, category_id"
+        "id, title, description, assignee_id, status, current_round, start_date, batch_id, created_at, category_id"
       )
       .neq("status", "cancelled")
       .neq("status", "backlog")
@@ -106,7 +106,7 @@ export async function getTaskMatrix(
     // sampai punya salinan aktif, supaya bisa langsung diseret ke karyawan.
     db
       .from("assigned_tasks")
-      .select("id, title, batch_id, category_id, created_at")
+      .select("id, title, description, batch_id, category_id, created_at")
       .eq("status", "backlog")
       .order("created_at", { ascending: true })
       .limit(500),
@@ -187,6 +187,7 @@ export async function getTaskMatrix(
       title: t.title,
       itemCount: copy.itemCount,
       copies: [],
+      description: t.description ?? null,
       backlogTaskId: null,
       categoryId: t.category_id ?? null,
       categoryName: t.category_id ? categoryNameById.get(t.category_id) ?? null : null,
@@ -201,6 +202,7 @@ export async function getTaskMatrix(
       title: b.title,
       itemCount: itemCount.get(b.id) ?? 0,
       copies: [],
+      description: b.description ?? null,
       backlogTaskId: b.id,
       categoryId: b.category_id ?? null,
       categoryName: b.category_id ? categoryNameById.get(b.category_id) ?? null : null,
@@ -412,6 +414,46 @@ export async function assignEmployeesToTask(
       skipped,
     },
   };
+}
+
+const descriptionSchema = z.object({
+  rowId: z.string().regex(/^[bt]:[0-9a-f-]{36}$/, "Baris tidak valid"),
+  description: z.string().trim().max(1000, "Maksimal 1000 karakter").nullable(),
+});
+
+/**
+ * Ubah keterangan (opsional) satu penugasan langsung dari matriks. Berlaku ke
+ * semua salinan yang masih hidup (belum ditugaskan, dikerjakan, menunggu
+ * verifikasi) — yang sudah disetujui/dibatalkan dibiarkan sebagai arsip.
+ * Kosong = hapus keterangan.
+ */
+export async function updateRowDescription(
+  input: z.input<typeof descriptionSchema>
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  const parsed = descriptionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
+  }
+  const { rowId } = parsed.data;
+  const description = parsed.data.description?.trim() ? parsed.data.description.trim() : null;
+
+  const db = createAdminClient() as any;
+  const q = db
+    .from("assigned_tasks")
+    .update({ description })
+    .in("status", ["backlog", "open", "submitted"]);
+  const { data, error } = await (rowId[0] === "b"
+    ? q.eq("batch_id", rowId.slice(2))
+    : q.eq("id", rowId.slice(2))
+  ).select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Tugas tidak ditemukan atau sudah selesai/dibatalkan." };
+  }
+  revalidateAll();
+  return { ok: true };
 }
 
 const reassignSchema = z.object({

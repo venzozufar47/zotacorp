@@ -8,6 +8,7 @@ import {
   GripVertical,
   Hourglass,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -18,6 +19,7 @@ import {
   getTaskMatrix,
   moveTaskStart,
   reassignCopyToTask,
+  updateRowDescription,
 } from "@/lib/actions/task-matrix.actions";
 import { cancelAssignedTask, deleteAssignedTaskRow } from "@/lib/actions/assigned-tasks.actions";
 import {
@@ -115,6 +117,7 @@ export function TaskMatrix({
   const [busy, setBusy] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const [picker, setPicker] = useState<{ rowId: string; date: string } | null>(null);
+  const [descEdit, setDescEdit] = useState<MatrixRow | null>(null);
   const [query, setQuery] = useState("");
   // "all" | "none" (tanpa kategori) | id kategori — memfilter baris matriks.
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -666,6 +669,7 @@ export function TaskMatrix({
                 onOpenTask={onOpenTask}
                 onPick={(date) => setPicker({ rowId: row.rowId, date })}
                 onDelete={() => void handleDelete(row)}
+                onEditDescription={() => setDescEdit(row)}
                 catStyle={categoryStyle(data?.categories ?? [], row.categoryId)}
                 dayLoad={dragDayLoad}
                 focusEmployeeId={personFilter === "all" ? null : personFilter}
@@ -759,6 +763,19 @@ export function TaskMatrix({
         </aside>
       </div>
 
+      {descEdit && (
+        <DescriptionDialog
+          key={descEdit.rowId}
+          row={descEdit}
+          onClose={() => setDescEdit(null)}
+          onSaved={() => {
+            setDescEdit(null);
+            reload();
+            onChanged();
+          }}
+        />
+      )}
+
       {picker && data && (
         <AssignPicker
           loadByDay={loadByDay}
@@ -816,6 +833,79 @@ function CategoryBand({
         </span>
       </div>
     </div>
+  );
+}
+
+/** Edit keterangan opsional satu tugas — berlaku ke semua salinan yang masih hidup. */
+function DescriptionDialog({
+  row,
+  onClose,
+  onSaved,
+}: {
+  row: MatrixRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [text, setText] = useState(row.description ?? "");
+  const [saving, setSaving] = useState(false);
+  const unchanged = text.trim() === (row.description ?? "").trim();
+
+  async function save() {
+    setSaving(true);
+    const res = await updateRowDescription({ rowId: row.rowId, description: text.trim() || null });
+    setSaving(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(text.trim() ? "Keterangan disimpan" : "Keterangan dihapus");
+    onSaved();
+  }
+
+  return (
+    <Shell title="Keterangan tugas" onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-sm font-semibold break-words">{row.title}</p>
+        <label className="block text-xs font-semibold">
+          Keterangan (opsional)
+          <textarea
+            className={inputCls}
+            rows={5}
+            maxLength={1000}
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Detail tambahan untuk karyawan — kosongkan untuk menghapus"
+          />
+          <span className="mt-1 flex justify-between text-[11px] font-normal text-muted-foreground">
+            <span>
+              Berlaku untuk semua penerima tugas ini yang belum selesai
+              {row.copies.length > 0 ? ` (${row.copies.length} penerima)` : ""}.
+            </span>
+            <span className="tabular-nums">{text.length}/1000</span>
+          </span>
+        </label>
+        <div className="sticky -bottom-4 -mx-4 -mb-4 px-4 py-3 bg-card border-t border-border flex gap-2 sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || unchanged}
+            className="flex-1 sm:flex-none h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+          >
+            {saving && <Loader2 size={15} className="animate-spin" />}
+            Simpan
+          </button>
+        </div>
+      </div>
+    </Shell>
   );
 }
 
@@ -889,6 +979,7 @@ function MatrixRowView({
   onOpenTask,
   onPick,
   onDelete,
+  onEditDescription,
   catStyle,
   dayLoad,
   focusEmployeeId,
@@ -908,6 +999,7 @@ function MatrixRowView({
   onOpenTask: (taskId: string) => void;
   onPick: (date: string) => void;
   onDelete: () => void;
+  onEditDescription: () => void;
   catStyle: CategoryStyle;
   /** Saat menyeret karyawan: tanggal → jumlah tugas yang sudah dipegangnya. */
   dayLoad: Record<string, number> | null;
@@ -941,24 +1033,15 @@ function MatrixRowView({
               {row.title}
             </p>
           )}
-          <button
-            type="button"
-            aria-label={`Tugaskan karyawan ke ${row.title}`}
-            onClick={() => onPick(today)}
-            className="shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <Plus size={14} />
-          </button>
-          <button
-            type="button"
-            aria-label={`Hapus tugas ${row.title}`}
-            title="Hapus tugas"
-            onClick={onDelete}
-            className="shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-muted"
-          >
-            <Trash2 size={13} />
-          </button>
         </div>
+        {row.description && (
+          <p
+            title={row.description}
+            className="text-[11px] leading-snug text-muted-foreground line-clamp-2 break-words"
+          >
+            {row.description}
+          </p>
+        )}
         {row.categoryName && (
           <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground min-w-0">
             <span className={"size-2 rounded-full shrink-0 " + catStyle.dot} aria-hidden />
@@ -981,6 +1064,41 @@ function MatrixRowView({
             </span>
           )}
         </p>
+        <div className="flex items-center gap-1 pt-0.5">
+          <button
+            type="button"
+            aria-label={`Tugaskan karyawan ke ${row.title}`}
+            title="Tugaskan karyawan"
+            onClick={() => onPick(today)}
+            className="shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label={`Edit keterangan ${row.title}`}
+            title={row.description ? "Edit keterangan" : "Tambah keterangan"}
+            onClick={onEditDescription}
+            className="relative shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <Pencil size={13} />
+            {row.description && (
+              <span
+                className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary"
+                aria-hidden
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            aria-label={`Hapus tugas ${row.title}`}
+            title="Hapus tugas"
+            onClick={onDelete}
+            className="shrink-0 size-7 grid place-items-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-muted"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
 
       {dates.map((date) => {

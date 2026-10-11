@@ -24,6 +24,8 @@ export interface MatrixRow {
   title: string;
   itemCount: number;
   copies: MatrixCopy[];
+  /** Keterangan opsional tugas (dari salinan pertama; diedit langsung di matriks). */
+  description: string | null;
   /**
    * Cetakan tugas yang belum ditugaskan ke siapa pun (status backlog) — baris
    * ini belum punya salinan; menyeret karyawan ke sel membuat salinan pertama.
