@@ -1,18 +1,18 @@
 /**
  * Time-of-day window for a cleaning assignment (when it may be performed).
  *   anytime  → no restriction
- *   before   → only until window_end
+ *   before   → BATAS WAKTU: harus selesai sebelum window_end. Boleh dikirim
+ *              kapan saja, tetapi yang selesai setelah window_end dicatat
+ *              TERLAMBAT, dan yang belum selesai saat jamnya lewat tampil
+ *              sebagai tidak tercapai (lihat range-report). Tidak mengunci.
  *   after    → only from window_start
- *   between  → only within window_start..window_end
- *   deadline → BATAS WAKTU: boleh dikirim kapan saja, tetapi yang selesai setelah
- *              window_end dicatat TERLAMBAT dan yang belum selesai saat jamnya
- *              lewat tampil sebagai tidak tercapai (lihat range-report).
+ *   between  → only within window_start..window_end (mengunci di luar jam)
  * Times are 'HH:MM' in the org's local timezone.
  *
  * Pure helpers — kept out of the "use server" actions file (whose exports must
  * all be async functions).
  */
-export type CleaningWindowMode = "anytime" | "before" | "after" | "between" | "deadline";
+export type CleaningWindowMode = "anytime" | "before" | "after" | "between";
 
 function hhmmToMin(s: string | null): number | null {
   if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
@@ -31,19 +31,19 @@ export function cleaningWindowOpen(
   if (n == null) return true;
   const s = hhmmToMin(start);
   const e = hhmmToMin(end);
-  if (mode === "before") return e == null || n <= e;
+  // `before` = batas waktu: tidak pernah mengunci (telat dicatat, bukan ditolak).
   if (mode === "after") return s == null || n >= s;
   if (mode === "between") return s == null || e == null || (n >= s && n <= e);
   return true; // anytime / unknown
 }
 
-/** Mode batas waktu: jam `end` sudah lewat pada `nowHhmm`? Selain deadline → false. */
+/** Mode "sebelum jam" (batas waktu): jam `end` sudah lewat pada `nowHhmm`? Mode lain → false. */
 export function cleaningDeadlinePassed(
   mode: string,
   end: string | null,
   nowHhmm: string
 ): boolean {
-  if (mode !== "deadline") return false;
+  if (mode !== "before") return false;
   const e = hhmmToMin(end);
   const n = hhmmToMin(nowHhmm);
   return e != null && n != null && n > e;
@@ -55,9 +55,8 @@ export function cleaningWindowLabel(
   start: string | null,
   end: string | null
 ): string | null {
-  if (mode === "before" && end) return `Bisa dikerjakan sebelum ${end}`;
+  if (mode === "before" && end) return `Selesaikan sebelum ${end}`;
   if (mode === "after" && start) return `Bisa dikerjakan setelah ${start}`;
   if (mode === "between" && start && end) return `Bisa dikerjakan ${start}–${end}`;
-  if (mode === "deadline" && end) return `Selesaikan sebelum ${end}`;
   return null;
 }

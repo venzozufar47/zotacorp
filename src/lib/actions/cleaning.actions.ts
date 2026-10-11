@@ -834,15 +834,11 @@ function normalizeWindow(
   start: string | null | undefined,
   end: string | null | undefined
 ): { window_mode: string; window_start: string | null; window_end: string | null } {
-  const m =
-    mode === "before" || mode === "after" || mode === "between" || mode === "deadline"
-      ? mode
-      : "anytime";
+  const m = mode === "before" || mode === "after" || mode === "between" ? mode : "anytime";
   const s = start?.trim() || null;
   const e = end?.trim() || null;
-  if (m === "before") return { window_mode: m, window_start: null, window_end: e };
   // Batas waktu tanpa jam tak bermakna → perlakukan sebagai tanpa batas.
-  if (m === "deadline") {
+  if (m === "before") {
     return e
       ? { window_mode: m, window_start: null, window_end: e }
       : { window_mode: "anytime", window_start: null, window_end: null };

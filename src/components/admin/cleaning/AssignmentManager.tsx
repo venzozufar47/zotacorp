@@ -97,17 +97,15 @@ function weekdaySummary(weekdays: number): string {
 
 const WINDOW_MODES: { value: string; label: string }[] = [
   { value: "anytime", label: "Kapan saja" },
-  { value: "before", label: "Sebelum jam" },
+  { value: "before", label: "Sebelum jam (telat tercatat)" },
   { value: "after", label: "Setelah jam" },
   { value: "between", label: "Antara jam" },
-  { value: "deadline", label: "Batas waktu (terlambat bila lewat)" },
 ];
 
 function windowSummary(mode: string, start: string | null, end: string | null): string {
   if (mode === "before" && end) return `Sebelum ${end}`;
   if (mode === "after" && start) return `Setelah ${start}`;
   if (mode === "between" && start && end) return `${start}–${end}`;
-  if (mode === "deadline" && end) return `Batas ${end}`;
   return "Kapan saja";
 }
 
@@ -150,7 +148,7 @@ function WindowFields({
         />
       )}
       {mode === "between" && <span className="text-muted-foreground text-sm">–</span>}
-      {(mode === "before" || mode === "between" || mode === "deadline") && (
+      {(mode === "before" || mode === "between") && (
         <Input
           type="time"
           value={end}
