@@ -94,6 +94,8 @@ export interface TodayTaskItem {
   sort_order: number;
   units: TodayUnit[];
   done: boolean;
+  /** Mode batas waktu: ada foto/centang titik ini yang dikirim SETELAH batas → tercatat Telat. */
+  completed_late: boolean;
 }
 
 export interface TodayTask {
@@ -107,6 +109,8 @@ export interface TodayTask {
   window_label: string | null;
   /** Mode batas waktu & jamnya sudah lewat: masih boleh dikerjakan, tapi tercatat terlambat. */
   deadline_passed: boolean;
+  /** Jam batas ("HH:MM") bila mode batas waktu, selain itu null. */
+  deadline_time: string | null;
   items: TodayTaskItem[];
 }
 
@@ -1243,6 +1247,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
       ),
       window_label: cleaningWindowLabel(a.window_mode, a.window_start, a.window_end),
       deadline_passed: cleaningDeadlinePassed(a.window_mode, a.window_end, nowHhmm),
+      deadline_time: a.window_mode === "before" ? a.window_end : null,
       items: (checklist.items ?? [])
         .slice()
         .sort((x, y) => x.sort_order - y.sort_order)
@@ -1270,6 +1275,15 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
             sort_order: it.sort_order,
             units,
             done: units.every((u) => u.completion),
+            completed_late: units.some(
+              (u) =>
+                u.completion &&
+                cleaningDeadlinePassed(
+                  a.window_mode,
+                  a.window_end,
+                  localHhmm(new Date(u.completion.completed_at), tz)
+                )
+            ),
           };
         }),
       };

@@ -339,6 +339,11 @@ export function CleaningChecklistCard({ initial }: Props) {
                 >
                   {done}/{total}
                 </span>
+                {task.deadline_passed && !allDone && (
+                  <span className="text-[0.6875rem] font-bold rounded-full px-2 py-0.5 bg-destructive text-white">
+                    Terlambat
+                  </span>
+                )}
                 {task.block_checkout && (
                   <span className="inline-flex items-center gap-1 text-[0.6875rem] font-bold rounded-full px-2 py-0.5 bg-primary text-primary-foreground">
                     <Lock className="size-3" />
@@ -360,8 +365,19 @@ export function CleaningChecklistCard({ initial }: Props) {
               )}
               {task.deadline_passed && !allDone && (
                 <p className="rounded-xl border-2 border-destructive/50 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
-                  Lewat batas waktu — SOP ini tercatat tidak selesai tepat waktu. Tetap selesaikan
-                  sekarang; yang diselesaikan setelah batas dicatat terlambat.
+                  Lewat batas waktu{task.deadline_time ? ` ${task.deadline_time}` : ""} —{" "}
+                  <b>
+                    {done} dari {total} titik selesai
+                  </b>
+                  , {total - done} belum. SOP ini tercatat tidak selesai tepat waktu. Tetap
+                  selesaikan sekarang; yang dikerjakan setelah batas ditandai Telat.
+                </p>
+              )}
+              {task.deadline_passed && allDone && task.items.some((i) => i.completed_late) && (
+                <p className="rounded-xl border-2 border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                  Semua titik selesai, tapi {task.items.filter((i) => i.completed_late).length}{" "}
+                  titik dikerjakan setelah batas waktu
+                  {task.deadline_time ? ` ${task.deadline_time}` : ""} — tercatat Telat.
                 </p>
               )}
 
@@ -399,6 +415,11 @@ export function CleaningChecklistCard({ initial }: Props) {
                               </span>
                             )}
                           </p>
+                          {item.completed_late && (
+                            <span className="mt-1 inline-block text-[0.6875rem] font-bold rounded-full px-1.5 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-400">
+                              Telat — dikerjakan setelah batas waktu
+                            </span>
+                          )}
                           {item.note && (
                             <p className="text-xs text-muted-foreground mt-0.5">
                               {item.note}
