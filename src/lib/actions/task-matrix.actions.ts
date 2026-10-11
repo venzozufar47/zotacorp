@@ -743,6 +743,115 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
   return { ok: true };
 }
 
+/**
+ * Dipanggil SETELAH sebuah salinan dibatalkan lewat matriks (pindah/tarik/
+ * urungkan). Bila penugasannya jadi tak punya baris hidup sama sekali — tak
+ * ada cetakan backlog, tak ada salinan lain yang berjalan/menunggu/selesai —
+ * tugasnya akan lenyap dari matriks padahal belum dikerjakan (kasus tugas yang
+ * dibuat langsung dengan penerima, tanpa cetakan). Maka dibuatkan cetakan
+ * backlog dari salinan itu (judul, keterangan, kategori, item, foto referensi)
+ * sehingga tampil lagi sebagai "Belum ditugaskan".
+ */
+async function restoreTemplateIfOrphaned(db: any, sourceId: string, adminId: string): Promise<void> {
+  const { data: src } = await db
+    .from("assigned_tasks")
+    .select("id, title, description, category_id, batch_id, created_by, created_at")
+    .eq("id", sourceId)
+    .maybeSingle();
+  if (!src) return;
+
+  if (src.batch_id) {
+    const { count } = await db
+      .from("assigned_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("batch_id", src.batch_id)
+      .neq("id", src.id)
+      .in("status", ["backlog", "open", "submitted", "approved"]);
+    if ((count ?? 0) > 0) return; // baris masih terwakili
+  }
+
+  const { data: tpl, error } = await db
+    .from("assigned_tasks")
+    .insert({
+      title: src.title,
+      description: src.description,
+      status: "backlog",
+      assignee_id: null,
+      start_date: null,
+      // Tugas lama tanpa batch: beri batch baru agar bisa jadi baris matriks.
+      batch_id: src.batch_id ?? crypto.randomUUID(),
+      category_id: src.category_id,
+      created_by: src.created_by ?? adminId,
+      created_at: src.created_at,
+    })
+    .select("id")
+    .single();
+  if (error || !tpl) {
+    console.error("[task-matrix] gagal membuat cetakan backlog:", error?.message);
+    return;
+  }
+
+  const [{ data: items }, { data: refs }] = await Promise.all([
+    db
+      .from("assigned_task_items")
+      .select("title, note, sort_order")
+      .eq("task_id", src.id)
+      .order("sort_order", { ascending: true }),
+    db
+      .from("assigned_task_attachments")
+      .select("photo_path, uploaded_by")
+      .eq("task_id", src.id)
+      .eq("kind", "reference")
+      .not("photo_path", "is", null),
+  ]);
+  if ((items ?? []).length > 0) {
+    await db.from("assigned_task_items").insert(
+      (items ?? []).map((i: any) => ({
+        task_id: tpl.id,
+        title: i.title,
+        note: i.note,
+        sort_order: i.sort_order,
+      }))
+    );
+  }
+  if ((refs ?? []).length > 0) {
+    await db.from("assigned_task_attachments").insert(
+      (refs ?? []).map((r: any) => ({
+        task_id: tpl.id,
+        kind: "reference",
+        round: 1,
+        photo_path: r.photo_path,
+        uploaded_by: r.uploaded_by,
+      }))
+    );
+  }
+}
+
+/**
+ * Tarik penerima dari tugas lewat matriks (seret ke panel karyawan / Urungkan).
+ * Beda dengan cancelAssignedTask: kalau ini penerima terakhir, tugasnya
+ * kembali ke "Belum ditugaskan" (lihat restoreTemplateIfOrphaned), bukan hilang.
+ */
+export async function unassignCopy(taskId: string): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  if (!z.string().uuid().safeParse(taskId).success) return { ok: false, error: "Input tidak valid" };
+
+  const db = createAdminClient() as any;
+  const { data: updated } = await db
+    .from("assigned_tasks")
+    .update({ status: "cancelled" })
+    .eq("id", taskId)
+    .in("status", ["open", "submitted"])
+    .select("id");
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: "Tugas tidak bisa ditarik (sudah selesai atau dibatalkan)." };
+  }
+  await restoreTemplateIfOrphaned(db, taskId, gate.userId);
+  revalidateAll();
+  return { ok: true };
+}
+
 const reassignSchema = z.object({
   taskId: z.string().uuid(),
   targetRowId: z.string().regex(/^[bt]:[0-9a-f-]{36}$/, "Baris tidak valid"),
@@ -823,6 +932,8 @@ export async function reassignCopyToTask(
     revalidateAll();
     return { ok: false, error: "Tugas berubah saat dipindah — muat ulang lalu coba lagi." };
   }
+  // Tugas asal yang jadi tanpa penerima kembali ke "Belum ditugaskan", bukan hilang.
+  await restoreTemplateIfOrphaned(db, taskId, gate.userId);
   revalidateAll();
   return { ok: true, data: { newTaskId } };
 }

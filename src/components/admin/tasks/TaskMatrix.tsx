@@ -25,9 +25,10 @@ import {
   addRowReferences,
   getRowEditData,
   reassignCopyToTask,
+  unassignCopy,
   updateRowTask,
 } from "@/lib/actions/task-matrix.actions";
-import { cancelAssignedTask, deleteAssignedTaskRow } from "@/lib/actions/assigned-tasks.actions";
+import { deleteAssignedTaskRow } from "@/lib/actions/assigned-tasks.actions";
 import {
   MATRIX_DAY_OPTIONS,
   type MatrixCopy,
@@ -302,7 +303,7 @@ export function TaskMatrix({
     )
       return;
     setBusy(true);
-    const res = await cancelAssignedTask(c.taskId);
+    const res = await unassignCopy(c.taskId);
     setBusy(false);
     if (!res.ok) toast.error(res.error);
     else toast.success(`${c.assigneeName} ditarik dari "${d.rowTitle}"`);
@@ -327,7 +328,7 @@ export function TaskMatrix({
         action: {
           label: "Urungkan",
           onClick: async () => {
-            await Promise.all(created.map((c) => cancelAssignedTask(c.taskId)));
+            await Promise.all(created.map((c) => unassignCopy(c.taskId)));
             reload();
             onChanged();
           },
