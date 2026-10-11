@@ -65,4 +65,6 @@ export interface RowEditData {
   liveCount: number;
   /** Alasan checklist tak boleh diubah (sudah ada progres/dikirim); null = boleh. */
   itemsLockedReason: string | null;
+  /** Foto referensi yang sudah terpasang (path di bucket task-attachments + URL bertanda tangan). */
+  references: { path: string; url: string }[];
 }

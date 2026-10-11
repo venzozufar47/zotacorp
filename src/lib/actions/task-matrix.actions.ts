@@ -20,6 +20,13 @@ import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
 import { sendPushToUser } from "@/lib/push/web-push";
 import { checkStartDate } from "@/lib/tasks/start-date";
 import { TASK_ASSIGNEE_LOCATION, listEligibleAssigneeIds } from "@/lib/tasks/eligible";
+import { TASK_REFERENCE_MAX } from "@/lib/tasks/types";
+import {
+  insertAttachments,
+  removeUnreferencedAttachmentFiles,
+  signAttachments,
+  validateAttachmentPaths,
+} from "./_task-attachments";
 import {
   MATRIX_DAY_OPTIONS,
   type MatrixCopy,
@@ -467,14 +474,22 @@ export async function getRowEditData(rowId: string): Promise<ActionResult<RowEdi
 
   // Acuan: cetakan backlog bila ada (versi terbaru), kalau tidak salinan pertama.
   const ref = live.find((t) => t.status === "backlog") ?? live[0];
-  const [{ data: items }, lockedReason] = await Promise.all([
+  const [{ data: items }, lockedReason, { data: refRows }] = await Promise.all([
     db
       .from("assigned_task_items")
       .select("title, note, sort_order")
       .eq("task_id", ref.id)
       .order("sort_order", { ascending: true }),
     itemsLockReason(db, live),
+    db
+      .from("assigned_task_attachments")
+      .select("photo_path")
+      .eq("task_id", ref.id)
+      .eq("kind", "reference")
+      .not("photo_path", "is", null)
+      .order("created_at", { ascending: true }),
   ]);
+  const refUrls = await signAttachments((refRows ?? []).map((r: any) => r.photo_path));
   return {
     ok: true,
     data: {
@@ -484,6 +499,9 @@ export async function getRowEditData(rowId: string): Promise<ActionResult<RowEdi
       // Penerima = salinan hidup selain cetakan backlog.
       liveCount: live.filter((t) => t.status !== "backlog").length,
       itemsLockedReason: lockedReason,
+      references: (refRows ?? [])
+        .filter((r: any) => refUrls.has(r.photo_path))
+        .map((r: any) => ({ path: r.photo_path as string, url: refUrls.get(r.photo_path) as string })),
     },
   };
 }
@@ -503,6 +521,9 @@ const rowEditSchema = z.object({
     .min(1, "Minimal satu item checklist")
     .max(40, "Maksimal 40 item")
     .optional(),
+  /** Foto referensi baru (sudah diunggah ke bucket task-attachments) dan path foto lama yang dibuang. */
+  addAttachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX).optional(),
+  removeAttachmentPaths: z.array(z.string()).max(TASK_REFERENCE_MAX * 2).optional(),
 });
 
 /**
@@ -528,11 +549,51 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
   if (live.length === 0) return { ok: false, error: "Tugas tidak ditemukan atau sudah selesai/dibatalkan." };
   const liveIds: string[] = live.map((t) => t.id);
 
+  // Foto referensi: validasi & kuota per salinan SEBELUM ada yang ditulis.
+  const addPaths = [...new Set(parsed.data.addAttachmentPaths ?? [])];
+  const removePaths = [...new Set(parsed.data.removeAttachmentPaths ?? [])];
+  if (addPaths.length > 0 || removePaths.length > 0) {
+    const attErr = await validateAttachmentPaths(gate.userId, addPaths);
+    if (attErr) return { ok: false, error: attErr };
+    const { data: refRows } = await db
+      .from("assigned_task_attachments")
+      .select("task_id, photo_path")
+      .in("task_id", liveIds)
+      .eq("kind", "reference");
+    for (const id of liveIds) {
+      const mine = (refRows ?? []).filter((r: any) => r.task_id === id);
+      const after =
+        mine.filter((r: any) => !removePaths.includes(r.photo_path)).length + addPaths.length;
+      if (after > TASK_REFERENCE_MAX) {
+        return { ok: false, error: `Maksimal ${TASK_REFERENCE_MAX} foto referensi per tugas.` };
+      }
+    }
+  }
+
   let itemTargets: any[] = [];
   if (items) {
     const reason = await itemsLockReason(db, live);
     if (reason) return { ok: false, error: `Checklist tidak bisa diubah. ${reason}` };
     itemTargets = live; // semua backlog/open tanpa progres
+  }
+
+  // Foto baru dipasang DULU (bisa dibatalkan); yang lama dibuang paling akhir.
+  const rollbackAdded = async () => {
+    if (addPaths.length === 0) return;
+    await db
+      .from("assigned_task_attachments")
+      .delete()
+      .in("task_id", liveIds)
+      .eq("kind", "reference")
+      .in("photo_path", addPaths);
+    await removeUnreferencedAttachmentFiles(db, addPaths);
+  };
+  if (addPaths.length > 0) {
+    const addErr = await insertAttachments(db, liveIds, addPaths, "reference", 1, gate.userId);
+    if (addErr) {
+      await rollbackAdded();
+      return { ok: false, error: addErr };
+    }
   }
 
   if (items && itemTargets.length > 0) {
@@ -553,7 +614,10 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
         )
       )
       .select("id");
-    if (insErr || !inserted) return { ok: false, error: insErr?.message ?? "Gagal menyimpan checklist" };
+    if (insErr || !inserted) {
+      await rollbackAdded();
+      return { ok: false, error: insErr?.message ?? "Gagal menyimpan checklist" };
+    }
 
     const oldIds = (oldItems ?? []).map((i: any) => i.id);
     if (oldIds.length > 0) {
@@ -561,6 +625,7 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
       if (delErr) {
         // Batalkan penyisipan supaya tidak ada item ganda.
         await db.from("assigned_task_items").delete().in("id", inserted.map((i: any) => i.id));
+        await rollbackAdded();
         return { ok: false, error: delErr.message };
       }
     }
@@ -570,7 +635,21 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
     .from("assigned_tasks")
     .update({ title, description })
     .in("id", liveIds);
-  if (headErr) return { ok: false, error: headErr.message };
+  if (headErr) {
+    await rollbackAdded();
+    return { ok: false, error: headErr.message };
+  }
+
+  // Semua perubahan lain sudah berhasil → baru buang foto referensi lama (tak bisa dibatalkan).
+  if (removePaths.length > 0) {
+    await db
+      .from("assigned_task_attachments")
+      .delete()
+      .in("task_id", liveIds)
+      .eq("kind", "reference")
+      .in("photo_path", removePaths);
+    await removeUnreferencedAttachmentFiles(db, removePaths);
+  }
 
   // Penerima yang tugasnya sudah tampil perlu tahu daftar yang harus dikerjakan berubah.
   if (items) {

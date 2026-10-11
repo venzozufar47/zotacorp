@@ -21,12 +21,17 @@ import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { checkStartDate } from "@/lib/tasks/start-date";
 import { TASK_ASSIGNEE_LOCATION, listEligibleAssigneeIds } from "@/lib/tasks/eligible";
+import {
+  insertAttachments,
+  removeUnreferencedAttachmentFiles,
+  signAttachments,
+  validateAttachmentPaths,
+} from "./_task-attachments";
 import { diffTaskItems } from "@/lib/tasks/edit-diff";
 import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import {
   TASK_DEFER_REASON_MAX,
   TASK_DEFER_REASON_MIN,
-  TASK_ATTACHMENT_BUCKET,
   TASK_EVIDENCE_BUCKET,
   TASK_EXTRA_MAX,
   TASK_FEEDBACK_MAX,
@@ -75,20 +80,6 @@ async function signPhotos(paths: string[]): Promise<Map<string, string>> {
   return out;
 }
 
-/** Seperti signPhotos tapi untuk bucket lampiran admin. */
-async function signAttachments(paths: (string | null)[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  const unique = [...new Set(paths.filter((p): p is string => !!p))];
-  if (unique.length === 0) return out;
-  const { data } = await createAdminClient()
-    .storage.from(TASK_ATTACHMENT_BUCKET)
-    .createSignedUrls(unique, 1800);
-  for (const row of data ?? []) {
-    if (row.path && row.signedUrl) out.set(row.path, row.signedUrl);
-  }
-  return out;
-}
-
 async function removePhotos(paths: (string | null | undefined)[]) {
   const list = paths.filter((p): p is string => !!p);
   if (list.length === 0) return;
@@ -96,72 +87,6 @@ async function removePhotos(paths: (string | null | undefined)[]) {
     await createAdminClient().storage.from(TASK_EVIDENCE_BUCKET).remove(list);
   } catch (err) {
     console.error("[tasks] remove photo failed:", err);
-  }
-}
-
-/**
- * Validasi path lampiran admin: harus di folder admin yang sedang login (klien
- * mengunggah langsung ke storage, jadi server tidak boleh percaya string path),
- * tanpa "..", dan filenya benar-benar ada.
- */
-async function validateAttachmentPaths(
-  adminId: string,
-  paths: string[]
-): Promise<string | null> {
-  const db = createAdminClient();
-  for (const path of paths) {
-    if (
-      !path.startsWith(`${adminId}/`) ||
-      path.includes("..") ||
-      path.slice(adminId.length + 1).includes("/")
-    ) {
-      return "Lampiran tidak valid. Unggah ulang fotonya.";
-    }
-    const file = path.slice(adminId.length + 1);
-    const { data } = await db.storage
-      .from(TASK_ATTACHMENT_BUCKET)
-      .list(adminId, { search: file, limit: 1 });
-    if (!data || !data.some((o) => o.name === file)) {
-      return "Ada foto lampiran yang belum selesai diunggah. Coba lagi.";
-    }
-  }
-  return null;
-}
-
-async function insertAttachments(
-  db: any,
-  taskIds: string[],
-  paths: string[],
-  kind: "reference" | "feedback",
-  round: number,
-  adminId: string
-): Promise<string | null> {
-  if (taskIds.length === 0 || paths.length === 0) return null;
-  const rows = taskIds.flatMap((task_id) =>
-    paths.map((photo_path) => ({ task_id, kind, round, photo_path, uploaded_by: adminId }))
-  );
-  const { error } = await db.from("assigned_task_attachments").insert(rows);
-  return error ? error.message : null;
-}
-
-/**
- * Hapus file lampiran dari storage hanya bila TIDAK ada lagi baris yang
- * merujuknya — tugas yang di-assign ke banyak karyawan berbagi satu file.
- */
-async function removeUnreferencedAttachmentFiles(db: any, paths: (string | null)[]) {
-  const unique = [...new Set(paths.filter((p): p is string => !!p))];
-  if (unique.length === 0) return;
-  const { data: stillUsed } = await db
-    .from("assigned_task_attachments")
-    .select("photo_path")
-    .in("photo_path", unique);
-  const used = new Set<string>((stillUsed ?? []).map((r: any) => r.photo_path));
-  const orphan = unique.filter((p) => !used.has(p));
-  if (orphan.length === 0) return;
-  try {
-    await createAdminClient().storage.from(TASK_ATTACHMENT_BUCKET).remove(orphan);
-  } catch (err) {
-    console.error("[tasks] remove attachment failed:", err);
   }
 }
 

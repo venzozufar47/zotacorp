@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   assignEmployeesToTask,
@@ -36,6 +37,8 @@ import {
 import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
 import { Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 import { categoryStyle, type CategoryStyle } from "@/lib/tasks/category-colors";
+import { TASK_REFERENCE_MAX } from "@/lib/tasks/types";
+import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
 
 type Drag =
   | { kind: "employee"; employeeId: string }
@@ -861,6 +864,9 @@ function RowEditDialog({
   const [text, setText] = useState(row.description ?? "");
   const [items, setItems] = useState<Draft[]>([]);
   const [saving, setSaving] = useState(false);
+  // Foto referensi: yang baru diunggah (belum disimpan) dan path lama yang akan dibuang.
+  const [newPhotos, setNewPhotos] = useState<PickedPhoto[]>([]);
+  const [removedPaths, setRemovedPaths] = useState<Set<string>>(new Set());
   const nextKey = useRef(0);
 
   useEffect(() => {
@@ -888,11 +894,20 @@ function RowEditDialog({
     loaded !== null &&
     (cleaned.length !== loaded.items.length ||
       cleaned.some((i, idx) => i.title !== loaded.items[idx].title));
+  const photosChanged = newPhotos.length > 0 || removedPaths.size > 0;
+  const keptRefs = (loaded?.references.length ?? 0) - removedPaths.size;
   const dirty =
     loaded !== null &&
     (title.trim() !== loaded.title ||
       text.trim() !== (loaded.description ?? "").trim() ||
-      (!locked && itemsChanged));
+      (!locked && itemsChanged) ||
+      photosChanged);
+
+  /** Tutup tanpa menyimpan → buang foto yang sudah terlanjur terunggah. */
+  function cancel() {
+    void discardPickedPhotos(newPhotos);
+    onClose();
+  }
   const canSave = dirty && title.trim().length > 0 && (locked || cleaned.length > 0);
 
   function move(idx: number, dir: -1 | 1) {
@@ -915,6 +930,8 @@ function RowEditDialog({
         !locked && itemsChanged
           ? cleaned.map((i) => ({ title: i.title, note: i.note }))
           : undefined,
+      addAttachmentPaths: newPhotos.map((p) => p.path),
+      removeAttachmentPaths: [...removedPaths],
     });
     setSaving(false);
     if (!res.ok) {
@@ -926,7 +943,7 @@ function RowEditDialog({
   }
 
   return (
-    <Shell title="Edit tugas" onClose={onClose} wide>
+    <Shell title="Edit tugas" onClose={cancel} wide>
       {loadError && <p className="text-sm text-destructive">{loadError}</p>}
       {!loaded && !loadError && (
         <div className="py-10 grid place-items-center text-muted-foreground">
@@ -1019,6 +1036,56 @@ function RowEditDialog({
             )}
           </div>
 
+          <div className="space-y-2">
+            <p className="text-xs font-semibold">Foto referensi (opsional)</p>
+            <p className="text-[11px] text-muted-foreground">
+              Contoh hasil atau instruksi bergambar, tampil di tugas karyawan. Maksimal{" "}
+              {TASK_REFERENCE_MAX} foto, dikompres otomatis. Berlaku untuk semua penerima yang belum
+              selesai.
+            </p>
+            {loaded.references.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {loaded.references.map((r) => {
+                  const removed = removedPaths.has(r.path);
+                  return (
+                    <div key={r.path} className="relative size-20 shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={r.url}
+                        alt=""
+                        className={
+                          "size-full rounded-xl object-cover border-2 border-foreground " +
+                          (removed ? "opacity-30" : "")
+                        }
+                      />
+                      <button
+                        type="button"
+                        aria-label={removed ? "Batalkan hapus" : "Hapus foto"}
+                        onClick={() =>
+                          setRemovedPaths((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(r.path)) next.delete(r.path);
+                            else next.add(r.path);
+                            return next;
+                          })
+                        }
+                        className="absolute -top-2 -right-2 size-7 grid place-items-center rounded-full bg-foreground text-background shadow text-[10px] font-bold"
+                      >
+                        {removed ? "↺" : <X size={14} />}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <AttachmentPicker
+              photos={newPhotos}
+              onChange={setNewPhotos}
+              max={TASK_REFERENCE_MAX}
+              remaining={TASK_REFERENCE_MAX - keptRefs}
+            />
+          </div>
+
           <label className="block text-xs font-semibold">
             Keterangan (opsional)
             <textarea
@@ -1042,7 +1109,7 @@ function RowEditDialog({
           <div className="sticky -bottom-4 -mx-4 -mb-4 px-4 py-3 bg-card border-t border-border flex gap-2 sm:justify-end">
             <button
               type="button"
-              onClick={onClose}
+              onClick={cancel}
               disabled={saving}
               className="h-11 px-4 rounded-xl border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
