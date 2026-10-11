@@ -955,30 +955,51 @@ export async function moveTaskStart(input: z.input<typeof moveSchema>): Promise<
   const db = createAdminClient() as any;
   const { data: task } = await db
     .from("assigned_tasks")
-    .select("id, title, assignee_id, status, start_date, start_notified_at")
+    .select("id, title, assignee_id, status, start_date, start_notified_at, current_round")
     .eq("id", taskId)
     .maybeSingle();
   if (!task) return { ok: false, error: "Tugas tidak ditemukan" };
-  if (task.status !== "open" || task.start_date <= today) {
-    return { ok: false, error: "Hanya tugas terjadwal (belum mulai) yang bisa digeser." };
+  if (task.status !== "open") {
+    return { ok: false, error: "Hanya tugas yang masih dikerjakan yang bisa digeser jadwalnya." };
   }
   if (task.start_date === startDate) return { ok: true };
+
+  // Tugas yang SUDAH tampil di karyawan boleh digeser (mis. ditunda ke besok)
+  // asal belum dikerjakan sama sekali — kalau sudah ada foto/riwayat, menggesernya
+  // menyembunyikan pekerjaan yang sedang berjalan.
+  if (task.start_date <= today) {
+    if (task.current_round !== 1) {
+      return { ok: false, error: "Tugas ini sedang diulang setelah ditolak — tidak bisa digeser." };
+    }
+    const [{ count: photos }, { count: extras }] = await Promise.all([
+      db.from("assigned_task_completions").select("id", { count: "exact", head: true }).eq("task_id", taskId),
+      db.from("assigned_task_extra_photos").select("id", { count: "exact", head: true }).eq("task_id", taskId),
+    ]);
+    if ((photos ?? 0) > 0 || (extras ?? 0) > 0) {
+      return { ok: false, error: "Tugas sudah mulai dikerjakan (ada foto) — tidak bisa digeser." };
+    }
+  }
 
   const patch: Record<string, unknown> = { start_date: startDate };
   const startsNow = startDate <= today && !task.start_notified_at;
   if (startsNow) {
     patch.start_notified_at = new Date().toISOString();
     patch.last_reminded_at = new Date().toISOString();
+  } else if (startDate > today) {
+    // Dijadwal ulang ke masa depan: karyawan diberi tahu lagi saat tanggalnya tiba
+    // (cron "Tugas baru" memilih tugas dengan start_notified_at kosong).
+    patch.start_notified_at = null;
+    patch.last_reminded_at = null;
   }
   const { data: updated } = await db
     .from("assigned_tasks")
     .update(patch)
     .eq("id", taskId)
     .eq("status", "open")
-    .gt("start_date", today)
+    .eq("start_date", task.start_date)
     .select("id");
   if (!updated || updated.length === 0) {
-    return { ok: false, error: "Tugas sudah dimulai atau berubah — muat ulang." };
+    return { ok: false, error: "Tugas berubah saat digeser — muat ulang." };
   }
   if (startsNow) await pushNewTask(task.assignee_id, task.title);
   revalidateAll();

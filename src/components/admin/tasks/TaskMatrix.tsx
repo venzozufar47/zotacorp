@@ -271,8 +271,11 @@ export function TaskMatrix({
     const d = dragRef.current;
     if (!d || date < today) return false;
     if (d.kind === "employee") return true;
-    // Baris yang sama: hanya geser tanggal tugas terjadwal. Baris lain: pindah tugas.
-    if (d.rowId === rowId) return isScheduled(d.copy, today) && d.copy.startDate !== date;
+    // Baris yang sama: geser tanggal — tugas terjadwal, atau yang sudah tampil tapi
+    // belum dikerjakan sama sekali. Baris lain: pindah tugas.
+    if (d.rowId === rowId) {
+      return (isScheduled(d.copy, today) || isMovable(d.copy)) && d.copy.startDate !== date;
+    }
     return isMovable(d.copy);
   }
 
