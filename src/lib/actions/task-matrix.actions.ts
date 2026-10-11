@@ -144,7 +144,7 @@ export async function getTaskMatrix(
   );
 
   const taskIds: string[] = [...(tasks ?? []), ...unassigned].map((t: any) => t.id);
-  const [{ data: items }, { data: completions }, { data: deferrals }] = taskIds.length
+  const [{ data: items }, { data: completions }, { data: deferrals }, { data: refPhotos }] = taskIds.length
     ? await Promise.all([
         db.from("assigned_task_items").select("id, task_id").in("task_id", taskIds),
         db
@@ -156,8 +156,14 @@ export async function getTaskMatrix(
           .select("task_id")
           .in("task_id", taskIds)
           .eq("for_date", today),
+        db
+          .from("assigned_task_attachments")
+          .select("task_id, photo_path")
+          .in("task_id", taskIds)
+          .eq("kind", "reference")
+          .not("photo_path", "is", null),
       ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
 
   const assigneeIds = [...new Set<string>((tasks ?? []).map((t: any) => t.assignee_id))];
   const { data: assignees } = assigneeIds.length
@@ -196,6 +202,7 @@ export async function getTaskMatrix(
       itemCount: copy.itemCount,
       copies: [],
       description: t.description ?? null,
+      referenceCount: 0,
       backlogTaskId: null,
       categoryId: t.category_id ?? null,
       categoryName: t.category_id ? categoryNameById.get(t.category_id) ?? null : null,
@@ -211,11 +218,27 @@ export async function getTaskMatrix(
       itemCount: itemCount.get(b.id) ?? 0,
       copies: [],
       description: b.description ?? null,
+      referenceCount: 0,
       backlogTaskId: b.id,
       categoryId: b.category_id ?? null,
       categoryName: b.category_id ? categoryNameById.get(b.category_id) ?? null : null,
     });
   }
+
+  // Foto referensi dibagi antar salinan satu baris (file yang sama) → hitung yang unik.
+  const rowOfTask = new Map<string, string>();
+  for (const t of [...(tasks ?? []), ...unassigned]) {
+    rowOfTask.set(t.id, t.batch_id ? `b:${t.batch_id}` : `t:${t.id}`);
+  }
+  const refPaths = new Map<string, Set<string>>();
+  for (const r of refPhotos ?? []) {
+    const rowId = rowOfTask.get(r.task_id);
+    if (!rowId) continue;
+    const set = refPaths.get(rowId) ?? new Set<string>();
+    set.add(r.photo_path);
+    refPaths.set(rowId, set);
+  }
+  for (const [rowId, row] of rows) row.referenceCount = refPaths.get(rowId)?.size ?? 0;
 
   const openByUser = new Map<string, number>();
   for (const r of openRows ?? []) {

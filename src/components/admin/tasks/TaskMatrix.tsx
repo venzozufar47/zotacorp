@@ -10,6 +10,7 @@ import {
   Loader2,
   ArrowDown,
   ArrowUp,
+  ImageIcon,
   Pencil,
   Plus,
   RefreshCw,
@@ -1320,6 +1321,15 @@ function MatrixRowView({
           >
             <Trash2 size={13} />
           </button>
+          {row.referenceCount > 0 && (
+            <span
+              title={`${row.referenceCount} foto referensi terpasang`}
+              className="ml-auto inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+            >
+              <ImageIcon size={11} aria-hidden />
+              {row.referenceCount} ref
+            </span>
+          )}
         </div>
       </div>
 

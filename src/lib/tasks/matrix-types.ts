@@ -26,6 +26,8 @@ export interface MatrixRow {
   copies: MatrixCopy[];
   /** Keterangan opsional tugas (dari salinan pertama; diedit langsung di matriks). */
   description: string | null;
+  /** Jumlah foto referensi yang terpasang (foto unik di seluruh salinan baris ini). */
+  referenceCount: number;
   /**
    * Cetakan tugas yang belum ditugaskan ke siapa pun (status backlog) — baris
    * ini belum punya salinan; menyeret karyawan ke sel membuat salinan pertama.
