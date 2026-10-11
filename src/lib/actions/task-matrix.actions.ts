@@ -529,6 +529,56 @@ export async function getRowEditData(rowId: string): Promise<ActionResult<RowEdi
   };
 }
 
+/**
+ * Tambah foto referensi ke satu penugasan (semua salinan yang masih hidup)
+ * tanpa menyentuh bagian lain — dipakai seret-lepas foto langsung ke baris
+ * matriks. File sudah diunggah klien; di sini path divalidasi dan kuota per
+ * salinan dicek. Bila ditolak, file yang baru diunggah ikut dibersihkan.
+ */
+export async function addRowReferences(input: {
+  rowId: string;
+  paths: string[];
+}): Promise<ActionResult<{ added: number }>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  const parsed = z
+    .object({ rowId: rowIdSchema, paths: z.array(z.string()).min(1).max(TASK_REFERENCE_MAX) })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
+  }
+  const paths = [...new Set(parsed.data.paths)];
+  const db = createAdminClient() as any;
+  const fail = async (error: string): Promise<ActionResult<{ added: number }>> => {
+    await removeUnreferencedAttachmentFiles(db, paths);
+    return { ok: false, error };
+  };
+
+  const attErr = await validateAttachmentPaths(gate.userId, paths);
+  if (attErr) return fail(attErr);
+
+  const live = await loadLiveRow(db, parsed.data.rowId);
+  if (live.length === 0) return fail("Tugas tidak ditemukan atau sudah selesai/dibatalkan.");
+  const liveIds: string[] = live.map((t) => t.id);
+
+  const { data: refRows } = await db
+    .from("assigned_task_attachments")
+    .select("task_id")
+    .in("task_id", liveIds)
+    .eq("kind", "reference");
+  for (const id of liveIds) {
+    const have = (refRows ?? []).filter((r: any) => r.task_id === id).length;
+    if (have + paths.length > TASK_REFERENCE_MAX) {
+      return fail(`Maksimal ${TASK_REFERENCE_MAX} foto referensi per tugas.`);
+    }
+  }
+
+  const insErr = await insertAttachments(db, liveIds, paths, "reference", 1, gate.userId);
+  if (insErr) return fail(insErr);
+  revalidateAll();
+  return { ok: true, data: { added: paths.length } };
+}
+
 const rowEditSchema = z.object({
   rowId: rowIdSchema,
   title: z.string().trim().min(1, "Judul wajib diisi").max(120, "Judul maksimal 120 karakter"),

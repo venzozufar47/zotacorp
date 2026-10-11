@@ -26,6 +26,45 @@ export async function discardPickedPhotos(photos: PickedPhoto[]) {
 }
 
 /**
+ * Kompres (WebP/JPEG, sisi terpanjang 1280px) lalu unggah ke bucket
+ * task-attachments. Mengembalikan yang berhasil; kegagalan ditampilkan
+ * per foto lewat toast. Dipakai pemilih di bawah DAN seret-lepas foto
+ * langsung ke baris matriks.
+ */
+export async function uploadAttachmentFiles(files: File[]): Promise<PickedPhoto[]> {
+  if (files.length === 0) return [];
+  const supabase = createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth.user?.id;
+  if (!uid) {
+    toast.error("Sesi tidak valid.");
+    return [];
+  }
+  const results = await Promise.all(
+    files.map(async (file): Promise<PickedPhoto | null> => {
+      try {
+        const compressed = await compressImageStrict(file, { maxDim: MAX_EDGE_DOCUMENT });
+        const path = `${uid}/${crypto.randomUUID()}.${extensionFor(compressed)}`;
+        const { error } = await supabase.storage
+          .from(TASK_ATTACHMENT_BUCKET)
+          .upload(path, compressed, { contentType: compressed.type, upsert: false });
+        if (error) throw new Error(`Gagal mengunggah ${file.name}`);
+        return { path, previewUrl: URL.createObjectURL(compressed) };
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : `Gagal memproses ${file.name}`);
+        return null;
+      }
+    })
+  );
+  return results.filter((r): r is PickedPhoto => !!r);
+}
+
+/** True bila seretan membawa FILE dari luar (bukan seretan chip/karyawan internal). */
+export function isFileDrag(e: { dataTransfer: DataTransfer }): boolean {
+  return Array.from(e.dataTransfer.types).includes("Files");
+}
+
+/**
  * Pemilih lampiran foto untuk admin (boleh lebih dari satu; kamera atau
  * galeri). Tiap foto DIKOMPRES di perangkat (WebP/JPEG, sisi terpanjang
  * 1280px) lalu langsung diunggah, jadi kegagalan terlihat per foto sebelum
@@ -47,6 +86,7 @@ export function AttachmentPicker({
   label?: string;
 }) {
   const [busy, setBusy] = useState(0);
+  const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef(photos);
   useEffect(() => {
@@ -61,33 +101,7 @@ export function AttachmentPicker({
     if (files.length > room) toast.error(`Maksimal ${Math.min(max, remaining)} foto.`);
     if (selected.length === 0) return;
     setBusy((n) => n + selected.length);
-
-    const supabase = createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth.user?.id;
-    if (!uid) {
-      toast.error("Sesi tidak valid.");
-      setBusy((n) => n - selected.length);
-      return;
-    }
-
-    const results = await Promise.all(
-      selected.map(async (file): Promise<PickedPhoto | null> => {
-        try {
-          const compressed = await compressImageStrict(file, { maxDim: MAX_EDGE_DOCUMENT });
-          const path = `${uid}/${crypto.randomUUID()}.${extensionFor(compressed)}`;
-          const { error } = await supabase.storage
-            .from(TASK_ATTACHMENT_BUCKET)
-            .upload(path, compressed, { contentType: compressed.type, upsert: false });
-          if (error) throw new Error(`Gagal mengunggah ${file.name}`);
-          return { path, previewUrl: URL.createObjectURL(compressed) };
-        } catch (e) {
-          toast.error(e instanceof Error ? e.message : `Gagal memproses ${file.name}`);
-          return null;
-        }
-      })
-    );
-    const ok = results.filter((r): r is PickedPhoto => !!r);
+    const ok = await uploadAttachmentFiles(selected);
     setBusy((n) => n - selected.length);
     if (ok.length > 0) onChange([...photosRef.current, ...ok]);
     if (inputRef.current) inputRef.current.value = "";
@@ -99,7 +113,36 @@ export function AttachmentPicker({
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div
+      className={
+        "flex flex-wrap gap-2 rounded-xl transition " +
+        (over ? "ring-2 ring-primary ring-offset-2 bg-primary/5" : "")
+      }
+      onDragOver={(e) => {
+        if (room <= 0 || !isFileDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        if (!over) setOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setOver(false);
+      }}
+      onDrop={(e) => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        setOver(false);
+        if (room <= 0) return;
+        const images = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+        if (images.length === 0) {
+          toast.error("Hanya file foto yang bisa dilampirkan.");
+          return;
+        }
+        const dt = new DataTransfer();
+        images.forEach((f) => dt.items.add(f));
+        void handleFiles(dt.files);
+      }}
+    >
       {photos.map((p) => (
         <div key={p.path} className="relative size-20 shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -22,6 +22,7 @@ import {
   assignEmployeesToTask,
   getTaskMatrix,
   moveTaskStart,
+  addRowReferences,
   getRowEditData,
   reassignCopyToTask,
   updateRowTask,
@@ -39,7 +40,13 @@ import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
 import { Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 import { categoryStyle, type CategoryStyle } from "@/lib/tasks/category-colors";
 import { TASK_REFERENCE_MAX } from "@/lib/tasks/types";
-import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
+import {
+  AttachmentPicker,
+  discardPickedPhotos,
+  isFileDrag,
+  uploadAttachmentFiles,
+  type PickedPhoto,
+} from "./AttachmentPicker";
 
 type Drag =
   | { kind: "employee"; employeeId: string }
@@ -355,6 +362,41 @@ export function TaskMatrix({
       return;
     }
     toast.success("Tugas dihapus");
+    reload();
+    onChanged();
+  }
+
+  /** Foto diseret dari komputer ke label baris → jadi foto referensi tugas itu. */
+  async function handleDropFiles(row: MatrixRow, files: File[]) {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      toast.error("Hanya file foto yang bisa dijadikan referensi.");
+      return;
+    }
+    const room = TASK_REFERENCE_MAX - row.referenceCount;
+    if (room <= 0) {
+      toast.error(`Sudah ${TASK_REFERENCE_MAX} foto referensi (maksimal).`);
+      return;
+    }
+    const take = images.slice(0, room);
+    if (images.length > room) {
+      toast.message(`Hanya ${room} foto yang dimuat — sisa kuota referensi ${room}.`);
+    }
+    setBusy(true);
+    const uploaded = await uploadAttachmentFiles(take);
+    if (uploaded.length === 0) {
+      setBusy(false);
+      return;
+    }
+    const res = await addRowReferences({ rowId: row.rowId, paths: uploaded.map((p) => p.path) });
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      await discardPickedPhotos(uploaded);
+      return;
+    }
+    uploaded.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    toast.success(`${res.data?.added ?? uploaded.length} foto referensi ditambahkan ke "${row.title}"`);
     reload();
     onChanged();
   }
@@ -678,6 +720,7 @@ export function TaskMatrix({
                 onPick={(date) => setPicker({ rowId: row.rowId, date })}
                 onDelete={() => void handleDelete(row)}
                 onEdit={() => setRowEdit(row)}
+                onDropFiles={(files) => void handleDropFiles(row, files)}
                 catStyle={categoryStyle(data?.categories ?? [], row.categoryId)}
                 dayLoad={dragDayLoad}
                 focusEmployeeId={personFilter === "all" ? null : personFilter}
@@ -1203,6 +1246,7 @@ function MatrixRowView({
   onPick,
   onDelete,
   onEdit,
+  onDropFiles,
   catStyle,
   dayLoad,
   focusEmployeeId,
@@ -1223,12 +1267,16 @@ function MatrixRowView({
   onPick: (date: string) => void;
   onDelete: () => void;
   onEdit: () => void;
+  /** Foto dari luar (file) dilepas di label baris → tambahkan sebagai referensi. */
+  onDropFiles: (files: File[]) => void;
   catStyle: CategoryStyle;
   /** Saat menyeret karyawan: tanggal → jumlah tugas yang sudah dipegangnya. */
   dayLoad: Record<string, number> | null;
   /** Filter karyawan aktif: chip orang lain diredupkan. */
   focusEmployeeId: string | null;
 }) {
+  // Hanya seretan FILE yang disambut di label; seretan chip/karyawan tak tersentuh.
+  const [fileOver, setFileOver] = useState(false);
   const doneN = row.copies.filter((c) => c.status === "approved").length;
   const reviewN = row.copies.filter((c) => c.status === "submitted").length;
 
@@ -1236,11 +1284,33 @@ function MatrixRowView({
     <>
       {/* Label baris (menempel di kiri saat digulir) */}
       <div
+        onDragOver={(e) => {
+          if (!isFileDrag(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          if (!fileOver) setFileOver(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          setFileOver(false);
+        }}
+        onDrop={(e) => {
+          if (!isFileDrag(e)) return;
+          e.preventDefault();
+          setFileOver(false);
+          onDropFiles(Array.from(e.dataTransfer.files));
+        }}
         className={
           "sticky left-0 z-10 bg-card border-b border-r border-border border-l-4 px-3 py-2 flex flex-col gap-1 min-h-16 " +
-          catStyle.bar
+          catStyle.bar +
+          (fileOver ? " ring-2 ring-inset ring-primary bg-primary/10" : "")
         }
       >
+        {fileOver && (
+          <span className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-sm bg-primary/10 text-xs font-bold text-primary">
+            Lepas foto → referensi
+          </span>
+        )}
         <div className="flex items-start gap-1">
           {row.backlogTaskId ? (
             <button
