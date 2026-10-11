@@ -343,9 +343,14 @@ export async function assignEmployeesToTask(
       .eq("batch_id", refId)
       .order("created_at", { ascending: true });
     siblings = data ?? [];
-    // Cetakan backlog (bila ada) selalu jadi acuan: itu versi terbaru dari
-    // item/keterangan yang diedit admin sebelum ditugaskan.
-    template = siblings.find((s) => s.status === "backlog") ?? siblings[0];
+    // Acuan: cetakan backlog (versi terbaru yang diedit admin) → salinan hidup
+    // TERBARU (edit baris hanya menyentuh yang hidup, jadi salinan lama/selesai
+    // bisa berisi judul & item usang) → terakhir salinan apa pun.
+    const liveSibs = siblings.filter((s) => s.status === "open" || s.status === "submitted");
+    template =
+      siblings.find((s) => s.status === "backlog") ??
+      liveSibs[liveSibs.length - 1] ??
+      siblings[siblings.length - 1];
     batchId = refId;
   } else {
     const { data } = await db
@@ -690,6 +695,15 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
     if (insErr || !inserted) {
       await rollbackAdded();
       return { ok: false, error: insErr?.message ?? "Gagal menyimpan checklist" };
+    }
+
+    // Cek ulang sebelum item lama (beserta foto di atasnya) dihapus: karyawan
+    // bisa saja memotret di sela pemeriksaan awal dan sekarang.
+    const racedReason = await itemsLockReason(db, itemTargets);
+    if (racedReason) {
+      await db.from("assigned_task_items").delete().in("id", inserted.map((i: any) => i.id));
+      await rollbackAdded();
+      return { ok: false, error: `Checklist tidak bisa diubah. ${racedReason}` };
     }
 
     const oldIds = (oldItems ?? []).map((i: any) => i.id);

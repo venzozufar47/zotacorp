@@ -859,6 +859,30 @@ export async function deleteAssignedTaskRow(
   const ids: string[] = (tasks ?? []).map((t: any) => t.id);
   if (ids.length === 0) return { ok: false, error: "Tugas tidak ditemukan" };
 
+  // Jangan hapus pekerjaan yang sedang berjalan: penerima yang sudah memotret
+  // atau mengirim akan kehilangan bukti & riwayatnya. Admin harus menarik
+  // penerimanya dulu (seret ke daftar karyawan) — itu pembatalan yang tercatat.
+  // Tugas yang belum dikerjakan, sudah disetujui, atau dibatalkan boleh dihapus.
+  const active = (tasks ?? []).filter((t: any) => t.status === "open" || t.status === "submitted");
+  if (active.length > 0) {
+    const activeIds = active.map((t: any) => t.id as string);
+    const [{ count: photos }, { count: extras }] = await Promise.all([
+      db.from("assigned_task_completions").select("id", { count: "exact", head: true }).in("task_id", activeIds),
+      db.from("assigned_task_extra_photos").select("id", { count: "exact", head: true }).in("task_id", activeIds),
+    ]);
+    if (
+      active.some((t: any) => t.status === "submitted") ||
+      (photos ?? 0) > 0 ||
+      (extras ?? 0) > 0
+    ) {
+      return {
+        ok: false,
+        error:
+          "Ada penerima yang sudah mengerjakan atau menunggu verifikasi. Tarik penerimanya dulu (seret ke daftar karyawan) lalu hapus.",
+      };
+    }
+  }
+
   // Kumpulkan path file SEBELUM baris dihapus (cascade menghilangkan petunjuknya).
   const [{ data: comps }, { data: extras }, { data: atts }] = await Promise.all([
     db.from("assigned_task_completions").select("photo_path").in("task_id", ids),
@@ -1229,6 +1253,30 @@ export async function deferTaskToTomorrow(input: {
   if (error && (error as any).code !== "23505") return { ok: false, error: error.message };
   revalidateAll();
   return { ok: true };
+}
+
+/** Semua karyawan aktif — untuk memilih Team leader/anggota, TIDAK dibatasi cakupan penerima Tugas. */
+export async function listAllActiveEmployees(): Promise<
+  ActionResult<{ id: string; name: string; businessUnit: string | null }[]>
+> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return { ok: false, error: "Forbidden" };
+  const db = createAdminClient() as any;
+  const { data, error } = await db
+    .from("profiles")
+    .select("id, full_name, nickname, business_unit")
+    .eq("role", "employee")
+    .eq("is_active", true)
+    .order("full_name", { ascending: true });
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    data: (data ?? []).map((p: any) => ({
+      id: p.id,
+      name: String(p.full_name ?? "").trim() || String(p.nickname ?? "—"),
+      businessUnit: p.business_unit ?? null,
+    })),
+  };
 }
 
 /** Daftar karyawan aktif untuk pemilih penerima di form admin. */

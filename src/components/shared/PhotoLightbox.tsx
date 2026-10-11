@@ -207,6 +207,16 @@ function ZoomSurface({
     downAt.current = null;
   }
 
+  /** Browser mengambil alih gestur (mis. sistem): bersihkan saja, jangan dianggap geser/ketuk. */
+  function onPointerCancel(e: React.PointerEvent) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size === 0) setTouching(false);
+    pinch.current = null;
+    pan.current = null;
+    downAt.current = null;
+    suppressClick.current = true;
+  }
+
   return (
     <div
       ref={surfaceRef}
@@ -215,7 +225,7 @@ function ZoomSurface({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onWheel={(e) => zoomTo(t.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15))}
       onClick={(e) => {
         // Hanya tap di latar hitam (tanpa geser/cubit) yang menutup penampil.

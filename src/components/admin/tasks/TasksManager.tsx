@@ -71,13 +71,17 @@ const EMPTY_COPY: Record<Tab, { title: string; hint: string }> = {
 export function TasksManager({
   tasks,
   employees,
+  allEmployees,
   teams,
   categories,
   loadError,
   focusId,
 }: {
   tasks: AdminTaskRow[];
+  /** Calon PENERIMA tugas (dibatasi cakupan fitur Tugas). */
   employees: AssignableEmployee[];
+  /** Semua karyawan aktif — hanya untuk memilih Team leader/anggota. */
+  allEmployees: AssignableEmployee[];
   teams: AdminTeam[];
   categories: TaskCategory[];
   loadError: string | null;
@@ -442,7 +446,7 @@ export function TasksManager({
         <CategoriesDialog categories={categories} onClose={() => setCategoriesOpen(false)} />
       )}
       {teamsOpen && (
-        <TeamsDialog teams={teams} employees={employees} onClose={() => setTeamsOpen(false)} />
+        <TeamsDialog teams={teams} employees={allEmployees} onClose={() => setTeamsOpen(false)} />
       )}
       {formOpen && (
         <TaskFormDialog
