@@ -8,8 +8,8 @@
  *     legacy di-skip sampai admin sambungkan ke akun lewat /admin/sim-cards), dan
  *   - kirim 1 ringkasan berisi SEMUA nomor ke admin.
  *
- * Berhenti dengan sendirinya: begitu PIC mencatat isi pulsa (yang wajib
- * disertai bukti) dan `active_until` melewati hari ini, kartu keluar dari
+ * Berhenti dengan sendirinya: begitu PIC mencatat isi pulsa (bukti
+ * opsional) dan `active_until` melewati hari ini, kartu keluar dari
  * daftar overdue.
  */
 

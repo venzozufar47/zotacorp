@@ -62,6 +62,10 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
       router.push(`/admin/tasks?focus=${it.rowId}`);
       return;
     }
+    if (it.kind === "subscription") {
+      router.push("/admin/subscriptions");
+      return;
+    }
     // Pin the recap table to the right month + scroll target so the
     // existing in-page flash highlight kicks in.
     const [y, m] = it.date.split("-").map(Number);
@@ -142,7 +146,9 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
                               ? "bg-orange-100 text-orange-800"
                               : it.kind === "task_review"
                                 ? "bg-amber-100 text-amber-800"
-                                : "bg-sky-100 text-sky-800")
+                                : it.kind === "subscription"
+                                  ? "bg-violet-100 text-violet-800"
+                                  : "bg-sky-100 text-sky-800")
                     }
                   >
                     {it.kind === "late_proof"
@@ -155,13 +161,16 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
                             ? "SIM"
                             : it.kind === "task_review"
                               ? "Tugas"
-                              : "Overtime"}
+                              : it.kind === "subscription"
+                                ? "Langganan"
+                                : "Overtime"}
                   </span>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-foreground truncate">
                       {it.employeeName}
                     </p>
                     <p className="text-[10px] text-muted-foreground tabular-nums">
+                      {it.detail ? `${it.detail} · ` : ""}
                       {formatDate(it.date)}
                     </p>
                   </div>

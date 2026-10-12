@@ -96,6 +96,24 @@ export function nextRenewal(
   return next;
 }
 
+/** Tambah `n` hari kalender ke yyyy-mm-dd (UTC math, bebas zona waktu). */
+export function addDays(ymd: string, n: number): string {
+  const { y, m, d } = parseYmd(ymd);
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return fmtYmd(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+}
+
+/** Pengingat inbox/lonceng muncul mulai H-3 sebelum tanggal pembaruan. */
+export const RENEWAL_REMINDER_DAYS = 3;
+
+/** Teks pengingat pembaruan: `long` untuk deskripsi, `short` untuk lencana kecil. */
+export function renewalReminderText(days: number): { long: string; short: string } {
+  if (days < 0)
+    return { long: `Lewat ${-days} hari — belum diperpanjang`, short: `Telat ${-days}h` };
+  if (days === 0) return { long: "Jatuh tempo hari ini", short: "Hari ini" };
+  return { long: `Jatuh tempo ${days} hari lagi`, short: `H-${days}` };
+}
+
 export type RenewalStatus = "unset" | "overdue" | "today" | "soon" | "ok";
 
 export const RENEWAL_SOON_DAYS = 7;

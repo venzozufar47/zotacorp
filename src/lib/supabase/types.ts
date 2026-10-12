@@ -5999,7 +5999,7 @@ export type Database = {
           new_active_until: string | null
           new_grace_until: string | null
           note: string | null
-          proof_path: string
+          proof_path: string | null
           sim_card_id: string
           topped_up_by: string | null
         }
@@ -6010,7 +6010,7 @@ export type Database = {
           new_active_until?: string | null
           new_grace_until?: string | null
           note?: string | null
-          proof_path: string
+          proof_path?: string | null
           sim_card_id: string
           topped_up_by?: string | null
         }
@@ -6021,7 +6021,7 @@ export type Database = {
           new_active_until?: string | null
           new_grace_until?: string | null
           note?: string | null
-          proof_path?: string
+          proof_path?: string | null
           sim_card_id?: string
           topped_up_by?: string | null
         }

@@ -47,7 +47,7 @@ interface ProfileOpt {
 /**
  * Pengelola nomor kartu SIM. Admin: CRUD penuh + isi pulsa mewakili PIC.
  * PIC (isAdmin=false): hanya lihat nomornya sendiri + tombol Isi pulsa.
- * Upload bukti WAJIB — tombol simpan terkunci sampai file dipilih.
+ * Upload bukti opsional — tombol simpan hanya butuh masa aktif baru.
  */
 export function SimCardsManager({
   uid,
@@ -496,7 +496,7 @@ function CardFormDialog({
   );
 }
 
-// ─── Isi pulsa (bukti WAJIB) ────────────────────────────────────────────
+// ─── Isi pulsa (bukti opsional) ────────────────────────────────────────────
 function TopupDialog({
   uid,
   card,
@@ -515,23 +515,26 @@ function TopupDialog({
   const [note, setNote] = useState("");
 
   async function submit() {
-    if (!file) return void toast.error("Bukti screenshot wajib diunggah");
     if (!activeUntil) return void toast.error("Isi masa aktif yang baru");
     setBusy(true);
     const supabase = createSupabaseClient();
-    const ext = (file.name.split(".").pop() ?? "jpg")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-    const path = `${uid}/${crypto.randomUUID()}.${ext || "jpg"}`;
-    const { error: upErr } = await supabase.storage
-      .from("sim-topup-proofs")
-      .upload(path, file, {
-        contentType: file.type || "image/jpeg",
-        upsert: false,
-      });
-    if (upErr) {
-      setBusy(false);
-      return void toast.error(upErr.message);
+    // Bukti opsional — hanya diunggah bila dipilih.
+    let path: string | null = null;
+    if (file) {
+      const ext = (file.name.split(".").pop() ?? "jpg")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+      path = `${uid}/${crypto.randomUUID()}.${ext || "jpg"}`;
+      const { error: upErr } = await supabase.storage
+        .from("sim-topup-proofs")
+        .upload(path, file, {
+          contentType: file.type || "image/jpeg",
+          upsert: false,
+        });
+      if (upErr) {
+        setBusy(false);
+        return void toast.error(upErr.message);
+      }
     }
     const res = await recordSimTopup({
       simCardId: card.id,
@@ -543,7 +546,7 @@ function TopupDialog({
     });
     if (!res.ok) {
       // Rollback bukti supaya tidak jadi file yatim.
-      void supabase.storage.from("sim-topup-proofs").remove([path]);
+      if (path) void supabase.storage.from("sim-topup-proofs").remove([path]);
       setBusy(false);
       return void toast.error(res.error);
     }
@@ -589,9 +592,7 @@ function TopupDialog({
       </label>
 
       <div>
-        <span className="text-xs font-medium">
-          Bukti screenshot <span className="text-destructive">*</span>
-        </span>
+        <span className="text-xs font-medium">Bukti screenshot (opsional)</span>
         <label
           className={`mt-1 flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 cursor-pointer transition ${
             file
@@ -632,7 +633,7 @@ function TopupDialog({
       <button
         type="button"
         onClick={submit}
-        disabled={busy || !file || !activeUntil}
+        disabled={busy || !activeUntil}
         className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
       >
         {busy && <Loader2 size={14} className="animate-spin" />}
@@ -693,13 +694,17 @@ function HistoryDialog({
                 <span className="font-semibold text-foreground">
                   {t.createdAt.slice(0, 10)}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => openProof(t.proofPath)}
-                  className="text-primary underline underline-offset-2"
-                >
-                  Lihat bukti
-                </button>
+                {t.proofPath ? (
+                  <button
+                    type="button"
+                    onClick={() => openProof(t.proofPath!)}
+                    className="text-primary underline underline-offset-2"
+                  >
+                    Lihat bukti
+                  </button>
+                ) : (
+                  <span className="text-muted-foreground">Tanpa bukti</span>
+                )}
               </div>
               <div className="text-muted-foreground">
                 Aktif s/d {t.newActiveUntil ?? "—"}

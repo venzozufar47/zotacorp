@@ -5,10 +5,27 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { getPendingRegistrations } from "@/lib/actions/pending-registrations.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { isSimOverdue, simStatus } from "@/lib/sim-cards/types";
+import {
+  RENEWAL_REMINDER_DAYS,
+  addDays,
+  daysBetween,
+  renewalReminderText,
+} from "@/lib/subscriptions/types";
 
 export type PendingConfirmationItem = {
   rowId: string;
-  kind: "late_proof" | "overtime" | "registration" | "ticket" | "sim_card" | "task_review";
+  kind:
+    | "late_proof"
+    | "overtime"
+    | "registration"
+    | "ticket"
+    | "sim_card"
+    | "task_review"
+    | "subscription";
+  /** Khusus subscription: teks pengingat panjang ("Jatuh tempo 3 hari lagi"). */
+  detail?: string;
+  /** Khusus subscription: lencana singkat untuk Inbox ("H-3", "Hari ini"). */
+  shortLabel?: string;
   /** Owner of the attendance row — lets the admin drawer load this
    *  employee's stats + full pending-approval list when clicked. */
   userId: string;
@@ -39,7 +56,8 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
 
   const supabase = await createClient();
 
-  const [lateRes, otRes, registrations, ticketsRes, simRes, taskRes] = await Promise.all([
+  const todayYmd = jakartaDateString(new Date());
+  const [lateRes, otRes, registrations, ticketsRes, simRes, taskRes, subRes] = await Promise.all([
     supabase
       .from("attendance_logs")
       .select(
@@ -79,6 +97,16 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .select("id, assignee_id, submitted_at")
       .eq("status", "submitted")
       .order("submitted_at", { ascending: true })
+      .limit(100),
+    // Subscription aktif yang jatuh tempo ≤ 3 hari lagi — termasuk yang sudah
+    // lewat tapi belum diperpanjang (hilang sendiri begitu "Perpanjang" ditekan).
+    supabase
+      .from("subscriptions" as never)
+      .select("id, name, next_renewal_date")
+      .eq("is_active", true)
+      .not("next_renewal_date", "is", null)
+      .lte("next_renewal_date", addDays(todayYmd, RENEWAL_REMINDER_DAYS))
+      .order("next_renewal_date", { ascending: true })
       .limit(100),
   ]);
 
@@ -272,5 +300,32 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     };
   });
 
-  return [...taskItems, ...simItems, ...ticketItems, ...registrationItems, ...items];
+  // Subscription mendekati/lewat tenggat pembaruan. Tidak terikat karyawan —
+  // nama langganan dipakai sebagai judul; klik mengarah ke /admin/subscriptions.
+  type SubRow = { id: string; name: string; next_renewal_date: string };
+  const subItems: PendingConfirmationItem[] = (
+    (subRes.data ?? []) as unknown as SubRow[]
+  ).map((s) => {
+    const text = renewalReminderText(daysBetween(todayYmd, s.next_renewal_date));
+    return {
+      rowId: s.id,
+      kind: "subscription",
+      userId: s.id,
+      employeeName: s.name,
+      userAvatarUrl: null,
+      userAvatarSeed: null,
+      date: s.next_renewal_date,
+      detail: text.long,
+      shortLabel: text.short,
+    };
+  });
+
+  return [
+    ...taskItems,
+    ...simItems,
+    ...subItems,
+    ...ticketItems,
+    ...registrationItems,
+    ...items,
+  ];
 }

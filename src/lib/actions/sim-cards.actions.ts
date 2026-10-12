@@ -7,8 +7,8 @@
  * admin ATAU PIC terdaftar kartu tsb. Query pakai `.from("sim_cards" as
  * never)` (types hand-maintained di `src/lib/sim-cards/types.ts`).
  *
- * Aturan kunci: `recordSimTopup` MENOLAK tanpa `proofPath` — memperbarui
- * tenggat wajib disertai bukti screenshot.
+ * `recordSimTopup` menerima `proofPath` opsional — bukti screenshot boleh
+ * dilampirkan, tapi tidak wajib untuk memperbarui tenggat.
  */
 
 import { revalidatePath } from "next/cache";
@@ -162,7 +162,7 @@ export async function listSimTopups(
       simCardId: r.sim_card_id,
       toppedUpBy: r.topped_up_by ?? null,
       toppedUpByName: r.topped_up_by ? (byId.get(r.topped_up_by) ?? null) : null,
-      proofPath: r.proof_path,
+      proofPath: r.proof_path ?? null,
       newActiveUntil: r.new_active_until ?? null,
       newGraceUntil: r.new_grace_until ?? null,
       amountIdr: r.amount_idr ?? null,
@@ -316,8 +316,8 @@ export async function setSimCardArchived(
 // ─── Isi pulsa (admin atau PIC) ─────────────────────────────────────────
 const topupSchema = z.object({
   simCardId: z.string().uuid(),
-  /** WAJIB — path bukti di bucket `sim-topup-proofs`. */
-  proofPath: z.string().trim().min(1, "Bukti screenshot wajib diunggah"),
+  /** Opsional — path bukti di bucket `sim-topup-proofs`. */
+  proofPath: z.string().trim().nullable().optional(),
   newActiveUntil: ymd,
   newGraceUntil: ymd.optional().nullable(),
   amountIdr: z.number().int().nonnegative().optional().nullable(),
@@ -329,6 +329,7 @@ export type SimTopupInput = z.infer<typeof topupSchema>;
 /**
  * Catat isi pulsa + perbarui tenggat. Ini yang MENGHENTIKAN reminder:
  * begitu active_until melewati hari ini, kartu keluar dari daftar overdue.
+ * Bukti screenshot opsional; bila dikirim tetap divalidasi keberadaannya.
  */
 export async function recordSimTopup(
   input: SimTopupInput
@@ -349,26 +350,29 @@ export async function recordSimTopup(
 
   const admin = createAdminClient() as any;
 
-  // Bukti harus BENAR-BENAR ada di bucket & diunggah oleh akun ini.
-  // Tanpa cek ini, string path sembarang bisa "mematikan" reminder tanpa
-  // bukti sungguhan (path convention: `${uid}/${uuid}.ext`).
-  const slash = v.proofPath.indexOf("/");
-  if (slash <= 0) return { ok: false, error: "Path bukti tidak valid" };
-  const folder = v.proofPath.slice(0, slash);
-  const fileName = v.proofPath.slice(slash + 1);
-  if (folder !== gate.userId)
-    return { ok: false, error: "Bukti harus diunggah dari akun ini" };
-  const { data: files } = await admin.storage
-    .from("sim-topup-proofs")
-    .list(folder, { search: fileName, limit: 100 });
-  const exists = ((files ?? []) as any[]).some((f) => f.name === fileName);
-  if (!exists)
-    return { ok: false, error: "File bukti tidak ditemukan — ulangi unggah" };
+  // Bukti (bila ada) harus BENAR-BENAR ada di bucket & diunggah oleh akun ini,
+  // supaya path sembarang tidak tersimpan sebagai "bukti"
+  // (path convention: `${uid}/${uuid}.ext`).
+  const proofPath = v.proofPath || null;
+  if (proofPath) {
+    const slash = proofPath.indexOf("/");
+    if (slash <= 0) return { ok: false, error: "Path bukti tidak valid" };
+    const folder = proofPath.slice(0, slash);
+    const fileName = proofPath.slice(slash + 1);
+    if (folder !== gate.userId)
+      return { ok: false, error: "Bukti harus diunggah dari akun ini" };
+    const { data: files } = await admin.storage
+      .from("sim-topup-proofs")
+      .list(folder, { search: fileName, limit: 100 });
+    const exists = ((files ?? []) as any[]).some((f) => f.name === fileName);
+    if (!exists)
+      return { ok: false, error: "File bukti tidak ditemukan — ulangi unggah" };
+  }
 
   const { error: insErr } = await admin.from("sim_card_topups").insert({
     sim_card_id: v.simCardId,
     topped_up_by: gate.userId,
-    proof_path: v.proofPath,
+    proof_path: proofPath,
     new_active_until: v.newActiveUntil,
     new_grace_until: v.newGraceUntil || null,
     amount_idr: v.amountIdr ?? null,

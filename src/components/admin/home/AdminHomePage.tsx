@@ -611,10 +611,13 @@ function buildInbox(
     const isTicket = p.kind === "ticket";
     const isSim = p.kind === "sim_card";
     const isTask = p.kind === "task_review";
+    const isSub = p.kind === "subscription";
     out.push({
       id: `pending-${p.kind}-${p.rowId}`,
       tag: isTask
         ? "Tugas"
+        : isSub
+        ? "Langganan"
         : isSim
         ? "SIM"
         : isTicket
@@ -625,9 +628,9 @@ function buildInbox(
               ? "Late proof"
               : "Overtime",
       tagTone:
-        isTicket || isSim
+        isTicket || isSim || (isSub && p.shortLabel?.startsWith("Telat"))
           ? "bad"
-          : p.kind === "late_proof" || isTask
+          : p.kind === "late_proof" || isTask || isSub
             ? "warn"
             : "info",
       userId: p.userId,
@@ -636,6 +639,8 @@ function buildInbox(
       userAvatarSeed: p.userAvatarSeed,
       desc: isTask
         ? "Tugas menunggu verifikasi"
+        : isSub
+        ? (p.detail ?? "Langganan segera jatuh tempo")
         : isSim
         ? "Nomor SIM lewat tenggat — perlu isi pulsa"
         : isTicket
@@ -647,11 +652,15 @@ function buildInbox(
               : p.minutes
                 ? `OT ${otDuration(p.minutes)} awaiting approval`
                 : "OT awaiting approval",
-      ago: agoLabel(p.at ?? p.date),
+      // Subscription: tanggalnya di masa depan, jadi "umur" tak bermakna —
+      // tampilkan H-3 / Hari ini / Telat Nh.
+      ago: isSub ? (p.shortLabel ?? "") : agoLabel(p.at ?? p.date),
       isRegistration,
       href: isTask
         ? `/admin/tasks?focus=${p.rowId}`
-        : isSim
+        : isSub
+          ? "/admin/subscriptions"
+          : isSim
           ? "/admin/sim-cards"
           : isTicket
             ? "/admin/tickets"

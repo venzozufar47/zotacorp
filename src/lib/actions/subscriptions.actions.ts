@@ -23,6 +23,12 @@ import {
 
 const PATH = "/admin/subscriptions";
 
+/** Inbox beranda + lonceng admin ikut memuat ulang (pengingat jatuh tempo). */
+function revalidateSubs() {
+  revalidatePath(PATH);
+  revalidatePath("/admin");
+}
+
 const allocationSchema = z.object({
   businessUnit: z.string().trim().min(1, "Pilih business unit"),
   branch: z.string().trim().nullable(),
@@ -135,7 +141,7 @@ export async function saveSubscription(
   });
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath(PATH);
+  revalidateSubs();
   return { ok: true, data: { id: data as string } };
 }
 
@@ -163,7 +169,7 @@ export async function renewSubscription(
     .update({ next_renewal_date: next })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(PATH);
+  revalidateSubs();
   return { ok: true, data: { nextRenewalDate: next } };
 }
 
@@ -179,7 +185,7 @@ export async function setSubscriptionActive(
     .update({ is_active: active })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(PATH);
+  revalidateSubs();
   return { ok: true };
 }
 
@@ -189,6 +195,6 @@ export async function deleteSubscription(id: string): Promise<ActionResult> {
   const supabase = (await createClient()) as any;
   const { error } = await supabase.from("subscriptions").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath(PATH);
+  revalidateSubs();
   return { ok: true };
 }

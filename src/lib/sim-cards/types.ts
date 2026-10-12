@@ -43,7 +43,8 @@ export interface SimTopup {
   simCardId: string;
   toppedUpBy: string | null;
   toppedUpByName: string | null;
-  proofPath: string;
+  /** Null bila top-up dicatat tanpa bukti (opsional). */
+  proofPath: string | null;
   newActiveUntil: string | null;
   newGraceUntil: string | null;
   amountIdr: number | null;
