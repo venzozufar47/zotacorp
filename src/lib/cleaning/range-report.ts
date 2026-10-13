@@ -29,6 +29,7 @@
 import { isWorkdayFor } from "@/lib/utils/workdays";
 import { isOnDutyToday, type RotationMode } from "@/lib/utils/cleaning-rotation";
 import { resolveBranchDuty } from "@/lib/utils/cleaning-branch-duty";
+import { RUSHED_MAX_SEC_PER_PHOTO, RUSHED_MIN_PHOTOS } from "./governance";
 
 /**
  * Status satu titik pada satu hari.
@@ -81,6 +82,11 @@ export interface RangeAssignmentInput {
   rotationMemberCount: number;
   /** "HH:MM" batas akhir jendela waktu; null = tanpa batas (tak bisa telat). */
   windowEnd: string | null;
+  /** Hari sebelum tanggal ini tidak terjadwal (riwayat mulai di sini). null = sejak dulu. */
+  startsOn: string | null;
+  /** Masa uji: sampai tanggal ini (termasuk) hari yang tak dikerjakan tidak dihitung
+   *  terlewat, dan yang dikerjakan dihitung bersih tanpa telat/ulang. null = tanpa masa uji. */
+  trialUntil: string | null;
   items: RangeItemInput[];
 }
 
@@ -187,6 +193,19 @@ export interface EmployeeReport {
   streak: number;
 }
 
+/** Satu sesi SOP (orang · hari · checklist) yang foto-fotonya masuk terlalu cepat. */
+export interface RushedSession {
+  userId: string;
+  date: string;
+  checklistId: string;
+  checklistName: string;
+  branchKey: string;
+  photos: number;
+  /** Selang dari foto pertama ke terakhir, dalam menit. */
+  minutes: number;
+  secPerPhoto: number;
+}
+
 export interface CleaningRangeReport {
   from: string;
   to: string;
@@ -194,6 +213,7 @@ export interface CleaningRangeReport {
   branches: BranchReport[];
   points: PointReport[];
   employees: EmployeeReport[];
+  rushed: RushedSession[];
 }
 
 /** Urutan keparahan — dipakai memilih status "terburuk" & mengurutkan kartu. */
@@ -457,7 +477,12 @@ export function buildCleaningRangeReport(
         };
       pointAcc.set(pointKey, acc);
       for (const day of days) {
-        const expected = performerOn(a, day);
+        // Sebelum tanggal mulai: bukan jadwal siapa pun. Masa uji: belum dihitung
+        // (yang tak dikerjakan jadi `off`, yang dikerjakan dihitung bersih).
+        // Yang dikerjakan di luar jadwal tetap tercatat — buktinya nyata.
+        const beforeStart = !!a.startsOn && day.ymd < a.startsOn;
+        const inTrial = !!a.trialUntil && day.ymd <= a.trialUntil;
+        const expected = beforeStart || inTrial ? null : performerOn(a, day);
         const done = compByKey.get(`${item.id}|${day.ymd}`);
         // Tidak terjadwal DAN tidak dikerjakan → hari itu memang bukan urusan
         // siapa pun. Tidak terjadwal TAPI dikerjakan tetap dihitung bersih:
@@ -481,8 +506,10 @@ export function buildCleaningRangeReport(
         let status: CleaningDayStatus;
         if (done) {
           // Verdict mengalahkan jam: foto yang ditolak tetap perlu diulang
-          // walau dikirim tepat waktu.
-          if (redoKeys.has(`${item.id}|${day.ymd}`)) status = "redo";
+          // walau dikirim tepat waktu. Pengecualian: masa uji — belum ada yang
+          // dinilai, jadi yang dikerjakan cukup dihitung bersih.
+          if (inTrial) status = "ok";
+          else if (redoKeys.has(`${item.id}|${day.ymd}`)) status = "redo";
           else {
             const at = minutesOfDay(done.completedAt, tzOffsetMinutes);
             status = limit != null && at != null && at > limit ? "late" : "ok";
@@ -693,6 +720,59 @@ export function buildCleaningRangeReport(
   );
   employees.sort((a, b) => a.pct - b.pct || b.miss - a.miss);
 
+  // ── Sesi terburu-buru ────────────────────────────────────────────────────
+  // Sesi = satu orang · satu hari · satu checklist. Hanya foto yang dihitung
+  // (centang tanpa foto bisa wajar diketuk beruntun). Ini sinyal untuk
+  // ditinjau manusia, bukan bukti kecurangan: pekerjaan yang benar-benar
+  // dibersihkan lebih dulu pun bisa difoto beruntun.
+  const itemInfo = new Map<
+    string,
+    { checklistId: string; checklistName: string; branchKey: string }
+  >();
+  for (const a of assignments) {
+    const branchKey = branchKeyOf(a, userUnits);
+    for (const item of a.items)
+      if (!itemInfo.has(item.id))
+        itemInfo.set(item.id, {
+          checklistId: a.checklistId,
+          checklistName: a.checklistName,
+          branchKey,
+        });
+  }
+  const sessions = new Map<
+    string,
+    { userId: string; date: string; info: { checklistId: string; checklistName: string; branchKey: string }; times: number[] }
+  >();
+  for (const c of completions) {
+    if (!c.photoPath) continue;
+    const info = itemInfo.get(c.itemId);
+    if (!info) continue;
+    const t = Date.parse(c.completedAt);
+    if (Number.isNaN(t)) continue;
+    const key = `${c.userId}|${c.date}|${info.checklistId}`;
+    const s = sessions.get(key) ?? { userId: c.userId, date: c.date, info, times: [] };
+    s.times.push(t);
+    sessions.set(key, s);
+  }
+  const rushed: RushedSession[] = [];
+  for (const s of sessions.values()) {
+    if (s.times.length < RUSHED_MIN_PHOTOS) continue;
+    const spanSec = (Math.max(...s.times) - Math.min(...s.times)) / 1000;
+    const secPerPhoto = spanSec / (s.times.length - 1);
+    if (secPerPhoto >= RUSHED_MAX_SEC_PER_PHOTO) continue;
+    rushed.push({
+      userId: s.userId,
+      date: s.date,
+      checklistId: s.info.checklistId,
+      checklistName: s.info.checklistName,
+      branchKey: s.info.branchKey,
+      photos: s.times.length,
+      minutes: Math.round((spanSec / 60) * 10) / 10,
+      secPerPhoto: Math.round(secPerPhoto * 10) / 10,
+    });
+  }
+  rushed.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.secPerPhoto - b.secPerPhoto));
+
   return {
     from: days[0]?.ymd ?? today,
     to: days[days.length - 1]?.ymd ?? today,
@@ -700,5 +780,6 @@ export function buildCleaningRangeReport(
     branches,
     points,
     employees,
+    rushed,
   };
 }

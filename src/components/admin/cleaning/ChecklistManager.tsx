@@ -24,6 +24,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { cleaningRefUrl, uploadCleaningRef } from "@/lib/utils/cleaning-refs";
 import { useRunAction } from "./useRunAction";
+import { ChecklistGovernance } from "./ChecklistGovernance";
+import type { CleaningEmployee } from "./types";
 import {
   createChecklist,
   updateChecklist,
@@ -42,7 +44,13 @@ import {
   type ItemPhoto,
 } from "@/lib/actions/cleaning.actions";
 
-export function ChecklistManager({ initial }: { initial: CleaningChecklist[] }) {
+export function ChecklistManager({
+  initial,
+  employees = [],
+}: {
+  initial: CleaningChecklist[];
+  employees?: CleaningEmployee[];
+}) {
   const { run, pending, startTransition, router } = useRunAction();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
@@ -103,6 +111,7 @@ export function ChecklistManager({ initial }: { initial: CleaningChecklist[] }) 
         <ChecklistCard
           key={cl.id}
           checklist={cl}
+          employees={employees}
           open={!!open[cl.id]}
           onToggleOpen={() => setOpen((o) => ({ ...o, [cl.id]: !o[cl.id] }))}
           pending={pending}
@@ -115,12 +124,14 @@ export function ChecklistManager({ initial }: { initial: CleaningChecklist[] }) 
 
 function ChecklistCard({
   checklist: cl,
+  employees,
   open,
   onToggleOpen,
   pending,
   run,
 }: {
   checklist: CleaningChecklist;
+  employees: CleaningEmployee[];
   open: boolean;
   onToggleOpen: () => void;
   pending: boolean;
@@ -242,6 +253,11 @@ function ChecklistCard({
                 nonaktif
               </span>
             )}
+            {cl.owner_name && (
+              <span className="hidden sm:inline text-[11px] text-muted-foreground">
+                · pemilik: {cl.owner_name}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -291,7 +307,8 @@ function ChecklistCard({
           {cl.description && (
             <p className="px-4 pt-2 text-xs text-muted-foreground">{cl.description}</p>
           )}
-          <ul className="divide-y divide-border">
+          <ChecklistGovernance checklist={cl} employees={employees} />
+          <ul className="mt-3 divide-y divide-border border-t border-border">
             {cl.items.map((it, idx) => (
               <ItemRow
                 key={it.id}

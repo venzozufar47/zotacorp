@@ -1941,6 +1941,8 @@ export type Database = {
           rotation_mode: string
           rotation_order: number
           skip_holidays: boolean
+          starts_on: string | null
+          trial_until: string | null
           updated_at: string
           user_id: string | null
           weekdays: number
@@ -1963,6 +1965,8 @@ export type Database = {
           rotation_mode?: string
           rotation_order?: number
           skip_holidays?: boolean
+          starts_on?: string | null
+          trial_until?: string | null
           updated_at?: string
           user_id?: string | null
           weekdays?: number
@@ -1985,6 +1989,8 @@ export type Database = {
           rotation_mode?: string
           rotation_order?: number
           skip_holidays?: boolean
+          starts_on?: string | null
+          trial_until?: string | null
           updated_at?: string
           user_id?: string | null
           weekdays?: number
@@ -2064,13 +2070,55 @@ export type Database = {
           },
         ]
       }
+      cleaning_checklist_revisions: {
+        Row: {
+          changed_by: string | null
+          checklist_id: string
+          created_at: string
+          id: string
+          summary: string
+        }
+        Insert: {
+          changed_by?: string | null
+          checklist_id: string
+          created_at?: string
+          id?: string
+          summary: string
+        }
+        Update: {
+          changed_by?: string | null
+          checklist_id?: string
+          created_at?: string
+          id?: string
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_checklist_revisions_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_checklists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_checklist_revisions_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cleaning_checklists: {
         Row: {
           created_at: string
           description: string | null
           id: string
           is_active: boolean
+          last_reviewed_at: string | null
           name: string
+          owner_id: string | null
+          review_every_days: number | null
           updated_at: string
         }
         Insert: {
@@ -2078,7 +2126,10 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          last_reviewed_at?: string | null
           name: string
+          owner_id?: string | null
+          review_every_days?: number | null
           updated_at?: string
         }
         Update: {
@@ -2086,7 +2137,10 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          last_reviewed_at?: string | null
           name?: string
+          owner_id?: string | null
+          review_every_days?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -2133,6 +2187,77 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cleaning_item_issues: {
+        Row: {
+          checklist_id: string
+          created_at: string
+          date: string
+          id: string
+          item_id: string
+          reason: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          checklist_id: string
+          created_at?: string
+          date: string
+          id?: string
+          item_id: string
+          reason: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          checklist_id?: string
+          created_at?: string
+          date?: string
+          id?: string
+          item_id?: string
+          reason?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cleaning_item_issues_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_checklists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_item_issues_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "cleaning_checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_item_issues_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_item_issues_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2260,6 +2385,7 @@ export type Database = {
           photo_purged_at: string | null
           photo_req_id: string | null
           redo_reason: string | null
+          review_sampled: boolean
           review_note: string | null
           review_status: string
           reviewed_at: string | null
@@ -2281,6 +2407,7 @@ export type Database = {
           photo_purged_at?: string | null
           photo_req_id?: string | null
           redo_reason?: string | null
+          review_sampled?: boolean
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null
@@ -2302,6 +2429,7 @@ export type Database = {
           photo_purged_at?: string | null
           photo_req_id?: string | null
           redo_reason?: string | null
+          review_sampled?: boolean
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null

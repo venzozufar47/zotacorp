@@ -1,5 +1,6 @@
 import {
   ClipboardCheck,
+  ClipboardList,
   FileClock,
   Hourglass,
   MessageSquareWarning,
@@ -35,6 +36,8 @@ export const NOTIF_KINDS: Record<NotifKind, KindMeta> = {
   sim_card: { label: "SIM", Icon: Smartphone, tone: "bad" },
   task_review: { label: "Tugas", Icon: ClipboardCheck, tone: "warn" },
   subscription: { label: "Langganan", Icon: Repeat, tone: "warn" },
+  sop_review: { label: "SOP", Icon: ClipboardList, tone: "warn" },
+  sop_issue: { label: "Kendala SOP", Icon: MessageSquareWarning, tone: "warn" },
   dispute: { label: "Dispute", Icon: MessageSquareWarning, tone: "bad" },
 };
 
@@ -58,9 +61,13 @@ export const TONE_CLASSES: Record<
   },
 };
 
-/** Langganan yang sudah lewat tenggat naik jadi merah; selebihnya ikut jenisnya. */
+/** Langganan / tinjau SOP yang sudah lewat tenggat naik jadi merah; selebihnya ikut jenisnya. */
 export function notifTone(item: { kind: NotifKind; shortLabel?: string }): NotifTone {
-  if (item.kind === "subscription" && item.shortLabel?.startsWith("Telat")) return "bad";
+  if (
+    (item.kind === "subscription" || item.kind === "sop_review") &&
+    item.shortLabel?.startsWith("Telat")
+  )
+    return "bad";
   return NOTIF_KINDS[item.kind].tone;
 }
 
@@ -98,6 +105,9 @@ export function notifDesc(p: PendingConfirmationItem): string {
       return "Tugas menunggu verifikasi";
     case "subscription":
       return p.detail ?? "Langganan segera jatuh tempo";
+    case "sop_review":
+    case "sop_issue":
+      return p.detail ?? "SOP perlu perhatian";
     case "sim_card":
       return "Nomor SIM lewat tenggat — perlu isi pulsa";
     case "ticket":
@@ -111,9 +121,11 @@ export function notifDesc(p: PendingConfirmationItem): string {
   }
 }
 
-/** Langganan: tanggalnya di masa depan, jadi "umur" tak bermakna — pakai H-3 / Hari ini / Telat Nh. */
+/** Langganan / tinjau SOP: tanggalnya jatuh tempo, jadi "umur" tak bermakna — pakai H-3 / Hari ini / Telat Nh. */
 export function notifAgo(p: PendingConfirmationItem): string {
-  return p.kind === "subscription" ? (p.shortLabel ?? "") : agoLabel(p.at ?? p.date);
+  return p.kind === "subscription" || p.kind === "sop_review"
+    ? (p.shortLabel ?? "")
+    : agoLabel(p.at ?? p.date);
 }
 
 /** Tujuan klik untuk jenis yang punya halaman sendiri; undefined = ditangani pemanggil. */
@@ -123,6 +135,10 @@ export function notifHref(p: PendingConfirmationItem): string | undefined {
       return `/admin/tasks?focus=${p.rowId}`;
     case "subscription":
       return "/admin/subscriptions";
+    case "sop_review":
+      return "/admin/cleaning?setup=1";
+    case "sop_issue":
+      return "/admin/cleaning";
     case "sim_card":
       return "/admin/sim-cards";
     case "ticket":

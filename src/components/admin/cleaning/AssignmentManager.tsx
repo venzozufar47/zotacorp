@@ -397,6 +397,10 @@ export function AssignmentManager({
   const [winMode, setWinMode] = useState("anytime");
   const [winStart, setWinStart] = useState("");
   const [winEnd, setWinEnd] = useState("");
+  // Riwayat/jadwal mulai hari ini secara bawaan — hari sebelum dibuatnya
+  // assignment tidak boleh tampil sebagai "tidak dikerjakan" di rekap.
+  const [startsOn, setStartsOn] = useState(() => jakartaDateString(new Date()));
+  const [trialUntil, setTrialUntil] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
 
   function resetForm() {
@@ -410,11 +414,17 @@ export function AssignmentManager({
     setWinMode("anytime");
     setWinStart("");
     setWinEnd("");
+    setStartsOn(jakartaDateString(new Date()));
+    setTrialUntil("");
   }
 
   function onAssign() {
     if (!checklistId) {
       toast.error("Pilih checklist");
+      return;
+    }
+    if (startsOn && trialUntil && trialUntil < startsOn) {
+      toast.error("Masa uji tidak boleh berakhir sebelum tanggal mulai");
       return;
     }
     startTransition(async () => {
@@ -430,6 +440,8 @@ export function AssignmentManager({
               window_mode: winMode,
               window_start: winStart || null,
               window_end: winEnd || null,
+              starts_on: startsOn || null,
+              trial_until: trialUntil || null,
             })
           : await assignChecklist({
               checklist_id: checklistId,
@@ -440,6 +452,8 @@ export function AssignmentManager({
               window_mode: winMode,
               window_start: winStart || null,
               window_end: winEnd || null,
+              starts_on: startsOn || null,
+              trial_until: trialUntil || null,
             });
       if ("error" in res) {
         toast.error(res.error);
@@ -592,6 +606,16 @@ export function AssignmentManager({
           />
         </div>
 
+        <ScheduleFields
+          startsOn={startsOn}
+          trialUntil={trialUntil}
+          disabled={pending}
+          onChange={(s, t) => {
+            setStartsOn(s);
+            setTrialUntil(t);
+          }}
+        />
+
         {assignMode === "rotation" && (
           <RotationPreview
             memberNames={memberNames}
@@ -716,6 +740,7 @@ function SingleAssignmentCard({
             {a.business_unit ? ` · ${a.business_unit}` : ""}
           </p>
         </div>
+        <ScheduleBadge startsOn={a.starts_on} trialUntil={a.trial_until} />
         {a.block_checkout && (
           <span className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 bg-primary text-primary-foreground">
             <Lock size={11} />
@@ -780,6 +805,17 @@ function SingleAssignmentCard({
                     window_end: end || null,
                   }),
                 "Jam pengerjaan disimpan"
+              )
+            }
+          />
+          <ScheduleEditor
+            startsOn={a.starts_on}
+            trialUntil={a.trial_until}
+            disabled={pending}
+            onSave={(s, t) =>
+              run(
+                () => updateAssignment({ id: a.id, starts_on: s || null, trial_until: t || null }),
+                "Jadwal mulai & masa uji disimpan"
               )
             }
           />
@@ -878,6 +914,7 @@ function RotationCard({
             {head.business_unit ? ` · ${head.business_unit}` : ""}
           </p>
         </div>
+        <ScheduleBadge startsOn={head.starts_on} trialUntil={head.trial_until} />
         {head.block_checkout && (
           <span className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 bg-primary text-primary-foreground">
             <Lock size={11} />
@@ -987,6 +1024,22 @@ function RotationCard({
               )
             }
           />
+          <ScheduleEditor
+            startsOn={head.starts_on}
+            trialUntil={head.trial_until}
+            disabled={pending}
+            onSave={(s, t) =>
+              run(
+                () =>
+                  updateRotation({
+                    rotation_group_id: groupId,
+                    starts_on: s || null,
+                    trial_until: t || null,
+                  }),
+                "Jadwal mulai & masa uji disimpan"
+              )
+            }
+          />
           <div className="flex gap-2 flex-wrap">
             <button
               type="button"
@@ -1028,5 +1081,149 @@ function RotationCard({
         </div>
       )}
     </section>
+  );
+}
+
+// ─── Tanggal mulai & masa uji ───────────────────────────────────────────
+
+const dateInputCls =
+  "h-9 w-full rounded-lg border border-border bg-card px-2 text-sm";
+
+function fmtYmdShort(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+/** Lencana ringkas di kartu: "Masa uji s/d 20 Okt" / "Mulai 15 Okt". Hilang bila sudah lewat. */
+function ScheduleBadge({
+  startsOn,
+  trialUntil,
+}: {
+  startsOn: string | null;
+  trialUntil: string | null;
+}) {
+  const today = jakartaDateString(new Date());
+  const notStarted = !!startsOn && startsOn > today;
+  const inTrial = !!trialUntil && trialUntil >= today;
+  if (!notStarted && !inTrial) return null;
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">
+      {notStarted ? `Mulai ${fmtYmdShort(startsOn!)}` : `Masa uji s/d ${fmtYmdShort(trialUntil!)}`}
+    </span>
+  );
+}
+
+/** Dua kolom tanggal di form pembuatan. */
+function ScheduleFields({
+  startsOn,
+  trialUntil,
+  disabled,
+  onChange,
+}: {
+  startsOn: string;
+  trialUntil: string;
+  disabled: boolean;
+  onChange: (startsOn: string, trialUntil: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">Mulai berlaku</span>
+          <input
+            type="date"
+            value={startsOn}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value, trialUntil)}
+            className={dateInputCls}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            Masa uji sampai (opsional)
+          </span>
+          <input
+            type="date"
+            value={trialUntil}
+            min={startsOn || undefined}
+            disabled={disabled}
+            onChange={(e) => onChange(startsOn, e.target.value)}
+            className={dateInputCls}
+          />
+        </label>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Hari sebelum tanggal mulai tidak dihitung di rekap. Selama masa uji karyawan tetap melihat
+        checklist-nya, tapi tidak mengunci absen pulang dan hari yang terlewat belum dihitung —
+        pakai untuk 1–2 minggu pertama SOP baru.
+      </p>
+    </div>
+  );
+}
+
+/** Ubah tanggal mulai & masa uji assignment yang sudah ada (simpan dengan tombol). */
+function ScheduleEditor({
+  startsOn,
+  trialUntil,
+  disabled,
+  onSave,
+}: {
+  startsOn: string | null;
+  trialUntil: string | null;
+  disabled: boolean;
+  onSave: (startsOn: string, trialUntil: string) => void;
+}) {
+  const [s, setS] = useState(startsOn ?? "");
+  const [t, setT] = useState(trialUntil ?? "");
+  const dirty = s !== (startsOn ?? "") || t !== (trialUntil ?? "");
+  const invalid = !!s && !!t && t < s;
+  return (
+    <div className="space-y-1">
+      <span className="text-xs font-medium text-muted-foreground">Mulai berlaku & masa uji</span>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted-foreground">Mulai berlaku</span>
+          <input
+            type="date"
+            value={s}
+            disabled={disabled}
+            onChange={(e) => setS(e.target.value)}
+            className={dateInputCls}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="block text-[11px] text-muted-foreground">Masa uji sampai</span>
+          <input
+            type="date"
+            value={t}
+            min={s || undefined}
+            disabled={disabled}
+            onChange={(e) => setT(e.target.value)}
+            className={dateInputCls}
+          />
+        </label>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={disabled || !dirty || invalid}
+          onClick={() => onSave(s, t)}
+          className="gap-1.5"
+        >
+          <Check size={14} />
+          Simpan tanggal
+        </Button>
+      </div>
+      {invalid && (
+        <p className="text-[11px] text-destructive">Masa uji tidak boleh sebelum tanggal mulai.</p>
+      )}
+      <p className="text-[11px] text-muted-foreground">
+        Kosongkan kolom mulai berlaku bila riwayat harus dihitung sejak dulu.
+      </p>
+    </div>
   );
 }

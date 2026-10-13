@@ -15,6 +15,7 @@ import {
   listCleaningLocations,
 } from "@/lib/actions/cleaning.actions";
 import { getCleaningRangeReport } from "@/lib/actions/cleaning-range.actions";
+import { listOpenItemIssues } from "@/lib/actions/cleaning-governance.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
@@ -44,7 +45,7 @@ function ymdMinus(ymd: string, n: number): string {
 export default async function AdminCleaningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; gallery?: string }>;
+  searchParams: Promise<{ view?: string; gallery?: string; setup?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -54,6 +55,7 @@ export default async function AdminCleaningPage({
   const sp = await searchParams;
   const view: CleaningViewKey = sp.view === "karyawan" ? "karyawan" : "ringkasan";
   const initialGalleryOpen = sp.gallery === "1";
+  const initialSetupOpen = sp.setup === "1";
 
   const today = jakartaDateString(new Date());
   const from = ymdMinus(today, SCORE_DAYS - 1);
@@ -67,6 +69,7 @@ export default async function AdminCleaningPage({
     reportRes,
     employeesRes,
     holidays,
+    issues,
   ] = await Promise.all([
     listChecklists(),
     listAssignments(),
@@ -84,6 +87,7 @@ export default async function AdminCleaningPage({
       .neq("role", "investor")
       .order("full_name"),
     listHolidays(),
+    listOpenItemIssues(),
   ]);
 
   const employees = (employeesRes.data ?? []).map((e) => ({
@@ -112,6 +116,8 @@ export default async function AdminCleaningPage({
           locations={locations}
           employees={employees}
           holidays={holidays}
+          issues={issues}
+          initialSetupOpen={initialSetupOpen}
           initialGalleryOpen={initialGalleryOpen}
         />
       )}

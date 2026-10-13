@@ -25,6 +25,8 @@ import { ChecklistManager } from "./ChecklistManager";
 import { AssignmentManager } from "./AssignmentManager";
 import { BranchDutyManager } from "./BranchDutyManager";
 import { PhotoReviewGallery } from "./PhotoReviewGallery";
+import { SopGovernanceZone } from "./SopGovernanceZone";
+import type { ItemIssueRow } from "@/lib/actions/cleaning-governance.actions";
 import type { CleaningEmployee } from "./types";
 import type {
   CleaningChecklist,
@@ -319,7 +321,9 @@ export function CleaningOverview({
   locations,
   employees,
   holidays,
+  issues,
   initialGalleryOpen,
+  initialSetupOpen,
 }: {
   report: CleaningRangeReportWithNames;
   view: CleaningViewKey;
@@ -329,6 +333,10 @@ export function CleaningOverview({
   locations: CleaningLocation[];
   employees: CleaningEmployee[];
   holidays: HolidayRow[];
+  /** Kendala SOP terbuka dari karyawan. */
+  issues: ItemIssueRow[];
+  /** Buka drawer "Pengaturan SOP" saat halaman dimuat (`?setup=1`, dari pengingat tinjau ulang). */
+  initialSetupOpen?: boolean;
   /** Buka drawer "Telusur foto" langsung saat halaman dimuat — dipakai
    *  quick-access "Review foto kebersihan" di Beranda admin (`?gallery=1`). */
   initialGalleryOpen?: boolean;
@@ -338,7 +346,7 @@ export function CleaningOverview({
     // yang paling perlu dilihat yang terbuka lebih dulu.
     report.branches[0]?.key ?? null
   );
-  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(!!initialSetupOpen);
   const [gallery, setGallery] = useState<{ itemId?: string } | null>(
     initialGalleryOpen ? {} : null
   );
@@ -509,6 +517,15 @@ export function CleaningOverview({
           </ul>
         )}
       </section>
+
+      {/* Tata kelola SOP — kendala, tinjau ulang, sesi terburu-buru, titik bermasalah */}
+      <SopGovernanceZone
+        report={report}
+        checklists={checklists}
+        issues={issues}
+        onOpenSetup={() => setSetupOpen(true)}
+        onOpenGallery={(itemId) => setGallery(itemId ? { itemId } : {})}
+      />
 
       {/* Zona 2 — hasil per cabang */}
       <section className="space-y-3">
@@ -743,7 +760,7 @@ export function CleaningOverview({
           </p>
           <div className="space-y-8">
             <SetupSection title="Checklist & titik">
-              <ChecklistManager initial={checklists} />
+              <ChecklistManager initial={checklists} employees={employees} />
             </SetupSection>
             <SetupSection title="Duty cabang">
               <BranchDutyManager

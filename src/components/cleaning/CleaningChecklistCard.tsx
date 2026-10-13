@@ -10,6 +10,8 @@ import {
   Lock,
   Clock,
   Loader2,
+  FlaskConical,
+  MessageSquareWarning,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ import { SelfieCaptureDialog } from "@/components/attendance/SelfieCaptureDialog
 import { extensionFor } from "@/lib/images/compress-image";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cleaningRefUrl } from "@/lib/utils/cleaning-refs";
+import { reportItemIssue } from "@/lib/actions/cleaning-governance.actions";
 import {
   completeCleaningItem,
   uncompleteCleaningItem,
@@ -173,6 +176,10 @@ export function CleaningChecklistCard({ initial }: Props) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [selfieOpen, setSelfieOpen] = useState(false);
   const [referenceUrl, setReferenceUrl] = useState<string | undefined>(undefined);
+  // Form "ada kendala?" yang sedang terbuka (satu titik pada satu waktu).
+  const [issueFor, setIssueFor] = useState<{ assignmentId: string; itemId: string } | null>(null);
+  const [issueText, setIssueText] = useState("");
+  const [issueSending, setIssueSending] = useState(false);
   // Which (assignment, item, slot) the in-flight photo capture is for.
   const pendingRef = useRef<{
     assignmentId: string;
@@ -284,6 +291,29 @@ export function CleaningChecklistCard({ initial }: Props) {
     });
   }
 
+  async function sendIssue() {
+    if (!issueFor) return;
+    const reason = issueText.trim();
+    if (reason.length < 3) {
+      toast.error("Tuliskan kendalanya dulu.");
+      return;
+    }
+    setIssueSending(true);
+    const res = await reportItemIssue({
+      assignment_id: issueFor.assignmentId,
+      item_id: issueFor.itemId,
+      reason,
+    });
+    setIssueSending(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Kendala terkirim ke pemilik SOP");
+    setIssueFor(null);
+    setIssueText("");
+  }
+
   function undo(itemId: string, photoReqId: string | null) {
     const key = unitKey(itemId, photoReqId);
     startTransition(async () => {
@@ -363,6 +393,16 @@ export function CleaningChecklistCard({ initial }: Props) {
                   {!task.window_open && " — di luar jam, belum bisa diisi"}
                 </p>
               )}
+              {task.trial && (
+                <p className="flex items-start gap-1.5 rounded-xl border-2 border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-800 dark:text-sky-300">
+                  <FlaskConical className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    Masa uji{task.trial_until ? ` sampai ${task.trial_until}` : ""} — SOP ini
+                    belum dihitung dan tidak mengunci absen pulang. Coba kerjakan dan laporkan
+                    titik yang sulit lewat tombol Ada kendala di bawah tiap titik.
+                  </span>
+                </p>
+              )}
               {task.deadline_passed && !allDone && (
                 <p className="rounded-xl border-2 border-destructive/50 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
                   Lewat batas waktu{task.deadline_time ? ` ${task.deadline_time}` : ""} —{" "}
@@ -425,6 +465,57 @@ export function CleaningChecklistCard({ initial }: Props) {
                               {item.note}
                             </p>
                           )}
+                          {!item.done && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const same =
+                                  issueFor?.assignmentId === task.assignment_id &&
+                                  issueFor.itemId === item.id;
+                                setIssueFor(same ? null : { assignmentId: task.assignment_id, itemId: item.id });
+                                setIssueText("");
+                              }}
+                              className="mt-1 inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                            >
+                              <MessageSquareWarning className="size-3" />
+                              Ada kendala?
+                            </button>
+                          )}
+                          {issueFor?.assignmentId === task.assignment_id &&
+                            issueFor.itemId === item.id && (
+                              <div className="mt-2 space-y-1.5">
+                                <textarea
+                                  value={issueText}
+                                  onChange={(e) => setIssueText(e.target.value)}
+                                  rows={2}
+                                  maxLength={500}
+                                  placeholder="Mis. keran rusak, alat tidak ada, standarnya kurang jelas…"
+                                  className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs"
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={sendIssue}
+                                    disabled={issueSending}
+                                    className="h-8 gap-1.5 text-xs"
+                                  >
+                                    {issueSending && <Loader2 className="size-3 animate-spin" />}
+                                    Kirim ke pemilik SOP
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setIssueFor(null)}
+                                    disabled={issueSending}
+                                    className="h-8 text-xs"
+                                  >
+                                    Batal
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                         </div>
                         {/* Single-unit item: action lives on the header row. */}
                         {!multi && (

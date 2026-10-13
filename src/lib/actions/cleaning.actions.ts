@@ -17,6 +17,8 @@ import {
   cleaningWindowLabel,
 } from "@/lib/utils/cleaning-window";
 import { isOnDutyToday, type RotationMode } from "@/lib/utils/cleaning-rotation";
+import { logChecklistRevision, clip } from "@/lib/cleaning/revisions";
+import { isSampledSession } from "@/lib/cleaning/governance";
 import {
   branchDutySlotFor,
   resolveBranchDuty,
@@ -49,6 +51,15 @@ export interface CleaningChecklist {
   name: string;
   description: string | null;
   is_active: boolean;
+  created_at: string;
+  /** Pemilik SOP — yang bertanggung jawab menjaganya tetap mutakhir. */
+  owner_id: string | null;
+  owner_name: string | null;
+  /** Interval tinjau ulang (hari); null = tanpa jadwal. */
+  review_every_days: number | null;
+  last_reviewed_at: string | null;
+  /** Waktu perubahan terakhir (dari riwayat); null = belum pernah diubah sejak dicatat. */
+  revised_at: string | null;
   items: CleaningItem[];
 }
 
@@ -71,6 +82,10 @@ export interface CleaningAssignmentRow {
   rotation_member_count: number;
   rotation_anchor: string | null;
   skip_holidays: boolean;
+  /** Riwayat/jadwal mulai dari tanggal ini; null = sejak dulu. */
+  starts_on: string | null;
+  /** Masa uji sampai tanggal ini (termasuk); null = tanpa masa uji. */
+  trial_until: string | null;
 }
 
 /** One thing the employee must complete: a checkbox, a generic photo, or a
@@ -111,6 +126,10 @@ export interface TodayTask {
   deadline_passed: boolean;
   /** Jam batas ("HH:MM") bila mode batas waktu, selain itu null. */
   deadline_time: string | null;
+  /** Masa uji: belum dihitung & tidak mengunci absen pulang. */
+  trial: boolean;
+  /** Tanggal terakhir masa uji (YYYY-MM-DD) bila trial. */
+  trial_until: string | null;
   items: TodayTaskItem[];
 }
 
@@ -170,6 +189,49 @@ async function getTimezone(): Promise<string> {
   return settings?.timezone ?? "Asia/Jakarta";
 }
 
+/** Catat perubahan SOP atas nama admin yang sedang login. Tidak pernah melempar. */
+async function logRev(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  checklistId: string | null | undefined,
+  summary: string
+): Promise<void> {
+  const user = await getCurrentUser();
+  await logChecklistRevision(supabase, checklistId, user?.id ?? null, summary);
+}
+
+/** Riwayat untuk perubahan di level titik: cari SOP & judul titiknya dulu. */
+async function logItemRev(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  itemId: string,
+  what: string
+): Promise<void> {
+  const { data: it } = await supabase
+    .from("cleaning_checklist_items")
+    .select("checklist_id, title")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (it) await logRev(supabase, it.checklist_id, `Titik "${clip(it.title)}": ${what}`);
+}
+
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Validasi + normalisasi tanggal mulai / masa uji dari form. */
+function normalizeSchedule(
+  startsOn: string | null | undefined,
+  trialUntil: string | null | undefined
+):
+  | { ok: true; starts_on: string | null; trial_until: string | null }
+  | { ok: false; error: string } {
+  const s = startsOn?.trim() || null;
+  const t = trialUntil?.trim() || null;
+  if (s && !YMD_RE.test(s)) return { ok: false, error: "Tanggal mulai tidak valid." };
+  if (t && !YMD_RE.test(t)) return { ok: false, error: "Tanggal masa uji tidak valid." };
+  if (s && t && t < s) {
+    return { ok: false, error: "Masa uji tidak boleh berakhir sebelum tanggal mulai." };
+  }
+  return { ok: true, starts_on: s, trial_until: t };
+}
+
 interface UnitSpec {
   photo_req_id: string | null;
   label: string | null;
@@ -216,15 +278,31 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
   const { data, error } = await supabase
     .from("cleaning_checklists")
     .select(
-      "id, name, description, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))"
+      "id, name, description, is_active, created_at, owner_id, review_every_days, last_reviewed_at, owner:profiles!owner_id(full_name), items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))"
     )
     .order("created_at", { ascending: true });
   if (error || !data) return [];
+  // Perubahan terakhir tiap SOP (terbaru dulu → entri pertama per SOP menang).
+  const { data: revs } = await supabase
+    .from("cleaning_checklist_revisions")
+    .select("checklist_id, created_at")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  const revisedAt = new Map<string, string>();
+  for (const r of revs ?? []) {
+    if (!revisedAt.has(r.checklist_id)) revisedAt.set(r.checklist_id, r.created_at);
+  }
   return data.map((c) => ({
     id: c.id,
     name: c.name,
     description: c.description,
     is_active: c.is_active,
+    created_at: c.created_at,
+    owner_id: c.owner_id,
+    owner_name: (c.owner as { full_name?: string | null } | null)?.full_name ?? null,
+    review_every_days: c.review_every_days,
+    last_reviewed_at: c.last_reviewed_at,
+    revised_at: revisedAt.get(c.id) ?? null,
     items: (c.items ?? [])
       .slice()
       .sort((a, b) => a.sort_order - b.sort_order)
@@ -262,6 +340,7 @@ export async function createChecklist(input: {
     .select("id")
     .single();
   if (error || !data) return { error: error?.message ?? "Gagal membuat checklist." };
+  await logRev(supabase, data.id, `SOP dibuat: "${clip(name)}"`);
   revalidatePath("/admin/cleaning");
   return { ok: true, id: data.id };
 }
@@ -287,11 +366,24 @@ export async function updateChecklist(input: {
     patch.description = input.description?.trim() || null;
   }
   const supabase = await createClient();
+  const { data: before } = await supabase
+    .from("cleaning_checklists")
+    .select("name, description")
+    .eq("id", input.id)
+    .maybeSingle();
   const { error } = await supabase
     .from("cleaning_checklists")
     .update(patch)
     .eq("id", input.id);
   if (error) return { error: error.message };
+  if (before) {
+    if (patch.name !== undefined && patch.name !== before.name) {
+      await logRev(supabase, input.id, `Nama diubah: "${clip(before.name)}" → "${clip(patch.name)}"`);
+    }
+    if (patch.description !== undefined && (patch.description ?? null) !== (before.description ?? null)) {
+      await logRev(supabase, input.id, "Deskripsi diubah");
+    }
+  }
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -308,6 +400,7 @@ export async function setChecklistActive(input: {
     .update({ is_active: input.is_active, updated_at: new Date().toISOString() })
     .eq("id", input.id);
   if (error) return { error: error.message };
+  await logRev(supabase, input.id, input.is_active ? "SOP diaktifkan" : "SOP dinonaktifkan");
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -385,6 +478,7 @@ export async function duplicateChecklist(input: {
     }
   }
 
+  await logRev(supabase, newCl.id, `SOP dibuat sebagai salinan dari "${clip(src.name)}"`);
   revalidatePath("/admin/cleaning");
   return { ok: true, id: newCl.id };
 }
@@ -420,6 +514,7 @@ export async function addChecklistItem(input: {
     .select("id")
     .single();
   if (error || !data) return { error: error?.message ?? "Gagal menambah item." };
+  await logRev(supabase, input.checklist_id, `Titik ditambah: "${clip(title)}"`);
   revalidatePath("/admin/cleaning");
   return { ok: true, id: data.id };
 }
@@ -446,11 +541,31 @@ export async function updateChecklistItem(input: {
   if (input.requires_photo !== undefined) patch.requires_photo = input.requires_photo;
   if (Object.keys(patch).length === 0) return { ok: true };
   const supabase = await createClient();
+  const { data: before } = await supabase
+    .from("cleaning_checklist_items")
+    .select("checklist_id, title, note, requires_photo")
+    .eq("id", input.id)
+    .maybeSingle();
   const { error } = await supabase
     .from("cleaning_checklist_items")
     .update(patch)
     .eq("id", input.id);
   if (error) return { error: error.message };
+  if (before) {
+    const parts: string[] = [];
+    if (patch.title !== undefined && patch.title !== before.title) {
+      parts.push(`judul "${clip(before.title)}" → "${clip(patch.title)}"`);
+    }
+    if (patch.note !== undefined && (patch.note ?? null) !== (before.note ?? null)) {
+      parts.push("standar diubah");
+    }
+    if (patch.requires_photo !== undefined && patch.requires_photo !== before.requires_photo) {
+      parts.push(patch.requires_photo ? "foto jadi wajib" : "foto tidak lagi wajib");
+    }
+    if (parts.length > 0) {
+      await logRev(supabase, before.checklist_id, `Titik "${clip(patch.title ?? before.title)}": ${parts.join(", ")}`);
+    }
+  }
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -461,11 +576,30 @@ export async function deleteChecklistItem(input: {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
   const supabase = await createClient();
+  const [{ data: before }, { count: history }] = await Promise.all([
+    supabase
+      .from("cleaning_checklist_items")
+      .select("checklist_id, title")
+      .eq("id", input.id)
+      .maybeSingle(),
+    supabase
+      .from("cleaning_task_completions")
+      .select("id", { count: "exact", head: true })
+      .eq("item_id", input.id),
+  ]);
   const { error } = await supabase
     .from("cleaning_checklist_items")
     .delete()
     .eq("id", input.id);
   if (error) return { error: error.message };
+  if (before) {
+    // Menghapus titik ikut menghapus seluruh riwayat foto/centangnya (cascade).
+    await logRev(
+      supabase,
+      before.checklist_id,
+      `Titik dihapus: "${clip(before.title)}"${history ? ` (beserta ${history} catatan riwayat)` : ""}`
+    );
+  }
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -483,6 +617,14 @@ export async function reorderItems(input: {
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { error: failed.error.message };
+  if (input.ordered_ids[0]) {
+    const { data: first } = await supabase
+      .from("cleaning_checklist_items")
+      .select("checklist_id")
+      .eq("id", input.ordered_ids[0])
+      .maybeSingle();
+    await logRev(supabase, first?.checklist_id, "Urutan titik diubah");
+  }
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -517,6 +659,7 @@ export async function addItemPhoto(input: {
     .select("id")
     .single();
   if (error || !data) return { error: error?.message ?? "Gagal menambah foto." };
+  await logItemRev(supabase, input.item_id, input.reference_photo_path ? "slot foto + contoh ditambah" : "slot foto ditambah");
   revalidatePath("/admin/cleaning");
   return { ok: true, id: data.id };
 }
@@ -534,11 +677,27 @@ export async function updateItemPhoto(input: {
     patch.reference_photo_path = input.reference_photo_path;
   if (Object.keys(patch).length === 0) return { ok: true };
   const supabase = await createClient();
+  const { data: slot } = await supabase
+    .from("cleaning_item_photos")
+    .select("item_id, label, reference_photo_path")
+    .eq("id", input.id)
+    .maybeSingle();
   const { error } = await supabase
     .from("cleaning_item_photos")
     .update(patch)
     .eq("id", input.id);
   if (error) return { error: error.message };
+  if (slot) {
+    const parts: string[] = [];
+    if (patch.label !== undefined && (patch.label ?? null) !== (slot.label ?? null)) parts.push("label foto diubah");
+    if (
+      patch.reference_photo_path !== undefined &&
+      (patch.reference_photo_path ?? null) !== (slot.reference_photo_path ?? null)
+    ) {
+      parts.push(patch.reference_photo_path ? "foto contoh diganti" : "foto contoh dihapus");
+    }
+    if (parts.length > 0) await logItemRev(supabase, slot.item_id, parts.join(", "));
+  }
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -549,11 +708,17 @@ export async function deleteItemPhoto(input: {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
   const supabase = await createClient();
+  const { data: slot } = await supabase
+    .from("cleaning_item_photos")
+    .select("item_id")
+    .eq("id", input.id)
+    .maybeSingle();
   const { error } = await supabase
     .from("cleaning_item_photos")
     .delete()
     .eq("id", input.id);
   if (error) return { error: error.message };
+  if (slot) await logItemRev(supabase, slot.item_id, "slot foto dihapus");
   revalidatePath("/admin/cleaning");
   return { ok: true };
 }
@@ -567,7 +732,7 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
   const { data, error } = await supabase
     .from("cleaning_assignments")
     .select(
-      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, rotation_anchor, skip_holidays, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
+      "id, checklist_id, user_id, weekdays, block_checkout, is_active, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_member_count, rotation_anchor, skip_holidays, starts_on, trial_until, checklist:cleaning_checklists(name), profile:profiles(full_name, business_unit)"
     )
     .is("location_id", null) // branch duties are listed by listBranchDuties()
     .order("rotation_order", { ascending: true })
@@ -597,6 +762,8 @@ export async function listAssignments(): Promise<CleaningAssignmentRow[]> {
       rotation_member_count: a.rotation_member_count,
       rotation_anchor: a.rotation_anchor,
       skip_holidays: a.skip_holidays,
+      starts_on: a.starts_on,
+      trial_until: a.trial_until,
     };
   });
 }
@@ -861,6 +1028,10 @@ export async function assignChecklist(input: {
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
+  /** Riwayat mulai tanggal ini. Tidak dikirim → hari ini. null → sejak dulu. */
+  starts_on?: string | null;
+  /** Masa uji sampai tanggal ini (termasuk). */
+  trial_until?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -868,6 +1039,11 @@ export async function assignChecklist(input: {
     return { error: "Checklist dan karyawan wajib dipilih." };
   }
   const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
+  const sched = normalizeSchedule(
+    input.starts_on === undefined ? jakartaDateString(new Date()) : input.starts_on,
+    input.trial_until
+  );
+  if (!sched.ok) return { error: sched.error };
   const supabase = await createClient();
   const { error } = await supabase.from("cleaning_assignments").insert({
     checklist_id: input.checklist_id,
@@ -875,6 +1051,8 @@ export async function assignChecklist(input: {
     weekdays: input.weekdays,
     block_checkout: input.block_checkout,
     skip_holidays: input.skip_holidays ?? false,
+    starts_on: sched.starts_on,
+    trial_until: sched.trial_until,
     ...win,
   });
   if (error) {
@@ -895,6 +1073,8 @@ export async function updateAssignment(input: {
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
+  starts_on?: string | null;
+  trial_until?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -906,6 +1086,8 @@ export async function updateAssignment(input: {
     window_mode?: string;
     window_start?: string | null;
     window_end?: string | null;
+    starts_on?: string | null;
+    trial_until?: string | null;
     updated_at?: string;
   } = { updated_at: new Date().toISOString() };
   if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
@@ -919,6 +1101,21 @@ export async function updateAssignment(input: {
     patch.window_end = win.window_end;
   }
   const supabase = await createClient();
+  if (input.starts_on !== undefined || input.trial_until !== undefined) {
+    // Validasi pasangan tanggal terhadap nilai yang tersimpan bila hanya satu yang dikirim.
+    const { data: cur } = await supabase
+      .from("cleaning_assignments")
+      .select("starts_on, trial_until")
+      .eq("id", input.id)
+      .maybeSingle();
+    const sched = normalizeSchedule(
+      input.starts_on !== undefined ? input.starts_on : cur?.starts_on,
+      input.trial_until !== undefined ? input.trial_until : cur?.trial_until
+    );
+    if (!sched.ok) return { error: sched.error };
+    if (input.starts_on !== undefined) patch.starts_on = sched.starts_on;
+    if (input.trial_until !== undefined) patch.trial_until = sched.trial_until;
+  }
   const { error } = await supabase
     .from("cleaning_assignments")
     .update(patch)
@@ -960,6 +1157,9 @@ export async function assignRotation(input: {
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
+  /** Riwayat mulai tanggal ini. Tidak dikirim → hari ini. null → sejak dulu. */
+  starts_on?: string | null;
+  trial_until?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -968,6 +1168,11 @@ export async function assignRotation(input: {
   if (members.length < 2) return { error: "Rotasi butuh minimal 2 karyawan." };
   const mode: RotationMode = input.rotation_mode === "weekly" ? "weekly" : "daily";
   const win = normalizeWindow(input.window_mode, input.window_start, input.window_end);
+  const sched = normalizeSchedule(
+    input.starts_on === undefined ? jakartaDateString(new Date()) : input.starts_on,
+    input.trial_until
+  );
+  if (!sched.ok) return { error: sched.error };
   const supabase = await createClient();
 
   // Absorb existing assignments of this checklist for the chosen members.
@@ -986,6 +1191,8 @@ export async function assignRotation(input: {
     weekdays: input.weekdays,
     block_checkout: input.block_checkout,
     skip_holidays: input.skip_holidays ?? false,
+    starts_on: sched.starts_on,
+    trial_until: sched.trial_until,
     ...win,
     rotation_group_id: groupId,
     rotation_order: i,
@@ -1009,6 +1216,8 @@ export async function updateRotation(input: {
   window_mode?: string;
   window_start?: string | null;
   window_end?: string | null;
+  starts_on?: string | null;
+  trial_until?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const gate = await requireAdmin();
   if (!gate.ok) return { error: gate.error };
@@ -1020,6 +1229,8 @@ export async function updateRotation(input: {
     window_mode?: string;
     window_start?: string | null;
     window_end?: string | null;
+    starts_on?: string | null;
+    trial_until?: string | null;
     updated_at?: string;
   } = { updated_at: new Date().toISOString() };
   if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
@@ -1033,6 +1244,21 @@ export async function updateRotation(input: {
     patch.window_end = win.window_end;
   }
   const supabase = await createClient();
+  if (input.starts_on !== undefined || input.trial_until !== undefined) {
+    const { data: cur } = await supabase
+      .from("cleaning_assignments")
+      .select("starts_on, trial_until")
+      .eq("rotation_group_id", input.rotation_group_id)
+      .limit(1)
+      .maybeSingle();
+    const sched = normalizeSchedule(
+      input.starts_on !== undefined ? input.starts_on : cur?.starts_on,
+      input.trial_until !== undefined ? input.trial_until : cur?.trial_until
+    );
+    if (!sched.ok) return { error: sched.error };
+    if (input.starts_on !== undefined) patch.starts_on = sched.starts_on;
+    if (input.trial_until !== undefined) patch.trial_until = sched.trial_until;
+  }
   const { error } = await supabase
     .from("cleaning_assignments")
     .update(patch)
@@ -1058,7 +1284,7 @@ export async function setRotationMembers(input: {
   const { data: existing } = await supabase
     .from("cleaning_assignments")
     .select(
-      "user_id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, rotation_mode, rotation_anchor"
+      "user_id, checklist_id, weekdays, block_checkout, window_mode, window_start, window_end, rotation_mode, rotation_anchor, starts_on, trial_until, skip_holidays"
     )
     .eq("rotation_group_id", input.rotation_group_id);
   if (!existing || existing.length === 0) return { error: "Rotasi tidak ditemukan." };
@@ -1099,6 +1325,9 @@ export async function setRotationMembers(input: {
       window_mode: tmpl.window_mode,
       window_start: tmpl.window_start,
       window_end: tmpl.window_end,
+      skip_holidays: tmpl.skip_holidays,
+      starts_on: tmpl.starts_on,
+      trial_until: tmpl.trial_until,
       rotation_group_id: input.rotation_group_id,
       rotation_order: 0,
       rotation_mode: tmpl.rotation_mode,
@@ -1147,7 +1376,7 @@ export async function deleteRotation(input: {
 
 /** Assignment row + its full checklist payload, as the employee view needs it. */
 const TODAY_ASSIGNMENT_SELECT =
-  "id, checklist_id, weekdays, block_checkout, skip_holidays, window_mode, window_start, window_end, rotation_group_id, rotation_order, rotation_mode, rotation_anchor, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))";
+  "id, checklist_id, weekdays, block_checkout, skip_holidays, window_mode, window_start, window_end, starts_on, trial_until, rotation_group_id, rotation_order, rotation_mode, rotation_anchor, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, note, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))";
 
 export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
   const user = await getCurrentUser();
@@ -1217,6 +1446,8 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
   const tasks: TodayTask[] = [...(assignments ?? []), ...(branchAssignments ?? [])]
     .filter(
       (a) =>
+        // Belum mulai berlaku → belum tampil di karyawan.
+        !(a.starts_on && today < a.starts_on) &&
         isWorkdayFor(a.weekdays, dow) &&
         !(a.skip_holidays && isHoliday) &&
         (a.checklist as AssignmentChecklist)?.is_active &&
@@ -1234,11 +1465,16 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
     )
     .map((a) => {
       const checklist = a.checklist as AssignmentChecklist;
+      // Masa uji: tetap tampil supaya bisa dicoba, tapi tidak mengunci absen
+      // pulang & tidak ada penanda telat (belum dihitung).
+      const trial = !!a.trial_until && today <= a.trial_until;
       return {
       assignment_id: a.id,
       checklist_id: checklist.id,
       checklist_name: checklist.name,
-      block_checkout: a.block_checkout,
+      block_checkout: a.block_checkout && !trial,
+      trial,
+      trial_until: trial ? a.trial_until : null,
       window_open: cleaningWindowOpen(
         a.window_mode,
         a.window_start,
@@ -1246,7 +1482,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
         nowHhmm
       ),
       window_label: cleaningWindowLabel(a.window_mode, a.window_start, a.window_end),
-      deadline_passed: cleaningDeadlinePassed(a.window_mode, a.window_end, nowHhmm),
+      deadline_passed: !trial && cleaningDeadlinePassed(a.window_mode, a.window_end, nowHhmm),
       deadline_time: a.window_mode === "before" ? a.window_end : null,
       items: (checklist.items ?? [])
         .slice()
@@ -1275,7 +1511,7 @@ export async function getTodayCleaningTasks(): Promise<TodayCleaningTasks> {
             sort_order: it.sort_order,
             units,
             done: units.every((u) => u.completion),
-            completed_late: units.some(
+            completed_late: !trial && units.some(
               (u) =>
                 u.completion &&
                 cleaningDeadlinePassed(
@@ -1326,6 +1562,8 @@ async function autoResolveSupersededPhotos(
     .eq("item_id", itemId)
     .eq("photo_req_id", photoReqId)
     .eq("review_status", "unreviewed")
+    // Foto yang terpilih sebagai sampel tinjauan tetap menunggu keputusan manusia.
+    .eq("review_sampled", false)
     .neq("id", newCompletionId)
     // Jaga-jaga: hanya baris yang BENAR-BENAR lebih lama dari submission baru
     // ini yang disapu. Tidak seharusnya ada baris unreviewed yang lebih baru
@@ -1474,6 +1712,12 @@ export async function completeCleaningItem(input: {
   }
 
   const completedAt = new Date().toISOString();
+  // Sampel tinjauan: ~10% sesi (orang · hari · checklist) dipilih secara
+  // deterministik, jadi semua foto sesi itu menunggu dilihat manusia dan tidak
+  // disapu "Otomatis di-Acc". Hanya untuk foto — centang tak punya yang bisa ditinjau.
+  const sampled =
+    !!input.photo_path &&
+    isSampledSession(`${user.id}|${today}|${item.checklist_id}`);
   const { data: upserted, error } = await supabase
     .from("cleaning_task_completions")
     .upsert(
@@ -1488,6 +1732,7 @@ export async function completeCleaningItem(input: {
         longitude: input.longitude ?? null,
         note: input.note?.trim() || null,
         completed_at: completedAt,
+        review_sampled: sampled,
       },
       { onConflict: "user_id,item_id,date,photo_req_id" }
     )
@@ -1655,7 +1900,7 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
   const supabase = await createClient();
 
   const blockingSelect =
-    "id, weekdays, skip_holidays, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))";
+    "id, weekdays, skip_holidays, starts_on, trial_until, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order)))";
 
   const [{ data: assignments }, { data: completions }, { data: log }, holidays] =
     await Promise.all([
@@ -1708,6 +1953,8 @@ export async function getBlockingCleaning(): Promise<BlockingChecklist[]> {
   const blocking: BlockingChecklist[] = [];
 
   for (const a of [...(assignments ?? []), ...(branchAssignments ?? [])]) {
+    if (a.starts_on && today < a.starts_on) continue; // belum mulai berlaku
+    if (a.trial_until && today <= a.trial_until) continue; // masa uji → tidak mengunci
     if (!isWorkdayFor(a.weekdays, dow)) continue;
     if (a.skip_holidays && isHoliday) continue; // holiday → not blocking
     // Off-duty rotation members are NOT blocked by someone else's turn.
@@ -1807,7 +2054,7 @@ export async function getCleaningMonitor(input?: {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, user_id, weekdays, block_checkout, skip_holidays, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
+        "id, user_id, weekdays, block_checkout, skip_holidays, starts_on, trial_until, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id, label, reference_photo_path, sort_order))), profile:profiles!inner(full_name, business_unit, is_active)"
       )
       .eq("is_active", true),
     supabase
@@ -1833,6 +2080,7 @@ export async function getCleaningMonitor(input?: {
     // Branch duties have nobody to inner-join a profile against, so they never
     // reach here; they are reported by getBranchDutyMonitor() instead.
     if (!a.user_id) continue;
+    if (a.starts_on && date < a.starts_on) continue; // belum mulai berlaku
     if (!isWorkdayFor(a.weekdays, dow)) continue;
     if (a.skip_holidays && isHoliday) continue; // holiday → checklist skipped
     // For a rotation, attribute the day to ONLY the on-duty member; off-duty
@@ -1885,7 +2133,10 @@ export async function getCleaningMonitor(input?: {
       total_items: items.length,
       completed_items: completedCount,
       photo_missing: photoMissing,
-      is_exception: completedCount < items.length || photoMissing > 0,
+      // Masa uji belum dihitung sebagai pengecualian.
+      is_exception:
+        !(a.trial_until && date <= a.trial_until) &&
+        (completedCount < items.length || photoMissing > 0),
       items: monitorItems,
     });
   }

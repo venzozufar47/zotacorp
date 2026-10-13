@@ -138,14 +138,14 @@ export async function getCleaningRangeReport(input: {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, user_id, weekdays, skip_holidays, window_mode, window_end, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id))), profile:profiles!inner(is_active)"
+        "id, user_id, weekdays, skip_holidays, window_mode, window_end, starts_on, trial_until, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id))), profile:profiles!inner(is_active)"
       )
       .eq("is_active", true)
       .not("user_id", "is", null),
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, location_id, duty_slot, weekdays, skip_holidays, window_mode, window_end, rotation_anchor, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id)))"
+        "id, location_id, duty_slot, weekdays, skip_holidays, window_mode, window_end, starts_on, trial_until, rotation_anchor, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id)))"
       )
       .eq("is_active", true)
       .not("location_id", "is", null)
@@ -217,6 +217,8 @@ export async function getCleaningRangeReport(input: {
       rotationOrder: a.rotation_order,
       rotationMemberCount: a.rotation_member_count,
       windowEnd: windowEndOf(a.window_mode, a.window_end),
+      startsOn: a.starts_on ?? null,
+      trialUntil: a.trial_until ?? null,
       items,
     });
   }
@@ -242,6 +244,8 @@ export async function getCleaningRangeReport(input: {
       rotationOrder: 0,
       rotationMemberCount: 1,
       windowEnd: windowEndOf(a.window_mode, a.window_end),
+      startsOn: a.starts_on ?? null,
+      trialUntil: a.trial_until ?? null,
       items,
     });
   }
@@ -250,6 +254,9 @@ export async function getCleaningRangeReport(input: {
   const userIds = new Set<string>();
   for (const a of assignments) if (a.userId) userIds.add(a.userId);
   for (const p of poolRes.data ?? []) userIds.add(p.user_id);
+  // Pengganti yang mengerjakan tugas orang lain juga perlu terbaca namanya
+  // (daftar sesi terburu-buru memakai pelaksana sebenarnya).
+  for (const c of completions) userIds.add(c.user_id);
   const userUnits = new Map<string, string | null>();
   const names: Record<string, string> = {};
   if (userIds.size > 0) {

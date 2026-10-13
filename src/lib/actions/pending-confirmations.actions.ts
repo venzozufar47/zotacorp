@@ -5,6 +5,7 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { getPendingRegistrations } from "@/lib/actions/pending-registrations.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { isSimOverdue, simStatus } from "@/lib/sim-cards/types";
+import { reviewDue } from "@/lib/cleaning/governance";
 import {
   RENEWAL_REMINDER_DAYS,
   addDays,
@@ -21,10 +22,12 @@ export type PendingConfirmationItem = {
     | "ticket"
     | "sim_card"
     | "task_review"
-    | "subscription";
-  /** Khusus subscription: teks pengingat panjang ("Jatuh tempo 3 hari lagi"). */
+    | "subscription"
+    | "sop_review"
+    | "sop_issue";
+  /** Khusus subscription / SOP: teks panjang ("Jatuh tempo 3 hari lagi"). */
   detail?: string;
-  /** Khusus subscription: lencana singkat untuk Inbox ("H-3", "Hari ini"). */
+  /** Khusus subscription / SOP: lencana singkat untuk Inbox ("H-3", "Hari ini"). */
   shortLabel?: string;
   /** Owner of the attendance row — lets the admin drawer load this
    *  employee's stats + full pending-approval list when clicked. */
@@ -60,7 +63,17 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
   const supabase = await createClient();
 
   const todayYmd = jakartaDateString(new Date());
-  const [lateRes, otRes, registrations, ticketsRes, simRes, taskRes, subRes] = await Promise.all([
+  const [
+    lateRes,
+    otRes,
+    registrations,
+    ticketsRes,
+    simRes,
+    taskRes,
+    subRes,
+    sopRes,
+    issueRes,
+  ] = await Promise.all([
     supabase
       .from("attendance_logs")
       .select(
@@ -111,6 +124,19 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .lte("next_renewal_date", addDays(todayYmd, RENEWAL_REMINDER_DAYS))
       .order("next_renewal_date", { ascending: true })
       .limit(100),
+    // SOP aktif yang punya jadwal tinjau ulang — jatuh tempo dihitung di bawah.
+    supabase
+      .from("cleaning_checklists")
+      .select("id, name, created_at, review_every_days, last_reviewed_at")
+      .eq("is_active", true)
+      .not("review_every_days", "is", null),
+    // Kendala SOP yang dilaporkan karyawan dan belum ditutup.
+    supabase
+      .from("cleaning_item_issues")
+      .select("id, user_id, date, reason, created_at, item:cleaning_checklist_items(title)")
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(30),
   ]);
 
   type Row = {
@@ -331,12 +357,78 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     };
   });
 
+  // SOP yang sudah waktunya (atau lewat) ditinjau ulang. Judul = nama SOP.
+  const sopItems: PendingConfirmationItem[] = [];
+  for (const c of sopRes.data ?? []) {
+    const due = reviewDue(c, todayYmd);
+    if (!due || due.daysLeft > 0) continue;
+    sopItems.push({
+      rowId: c.id,
+      kind: "sop_review",
+      hasPerson: false,
+      userId: c.id,
+      employeeName: c.name,
+      userAvatarUrl: null,
+      userAvatarSeed: null,
+      date: due.dueYmd,
+      detail:
+        due.daysLeft === 0
+          ? "Waktunya tinjau ulang SOP"
+          : `Tinjau ulang SOP terlambat ${-due.daysLeft} hari`,
+      shortLabel: due.daysLeft === 0 ? "Tinjau" : `Telat ${-due.daysLeft}h`,
+    });
+  }
+  sopItems.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  // Kendala SOP dari karyawan — nama pelapor sebagai judul.
+  type IssueRow = {
+    id: string;
+    user_id: string;
+    date: string;
+    reason: string;
+    created_at: string;
+    item: { title?: string | null } | null;
+  };
+  const issueRows = (issueRes.data ?? []) as unknown as IssueRow[];
+  const issueUserIds = Array.from(new Set(issueRows.map((i) => i.user_id)));
+  const issueProfById = new Map<
+    string,
+    { full_name: string | null; avatar_url: string | null; avatar_seed: string | null }
+  >();
+  if (issueUserIds.length > 0) {
+    const { data: iProfs } = await supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, avatar_seed")
+      .in("id", issueUserIds);
+    for (const p of iProfs ?? []) issueProfById.set(p.id, p);
+  }
+  const issueItems: PendingConfirmationItem[] = issueRows.map((i) => {
+    const p = issueProfById.get(i.user_id);
+    return {
+      rowId: i.id,
+      kind: "sop_issue",
+      hasPerson: true,
+      userId: i.user_id,
+      employeeName: p?.full_name || "Karyawan",
+      userAvatarUrl: p?.avatar_url ?? null,
+      userAvatarSeed: p?.avatar_seed ?? null,
+      date: i.date,
+      at: i.created_at,
+      detail: `Kendala SOP — ${i.item?.title ?? "titik"}: ${i.reason}`,
+    };
+  });
+
+  // Urutan = prioritas di Inbox beranda (yang hanya memuat 6 teratas): hal yang
+  // memblokir orang (pendaftar, tugas, tiket) di atas pengingat berkala
+  // (langganan, tinjau SOP) supaya pengingat tidak menenggelamkan persetujuan.
   return [
     ...taskItems,
     ...simItems,
-    ...subItems,
     ...ticketItems,
     ...registrationItems,
+    ...issueItems,
+    ...sopItems,
+    ...subItems,
     ...items,
   ];
 }
