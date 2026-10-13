@@ -587,18 +587,27 @@ export async function deleteChecklistItem(input: {
       .select("id", { count: "exact", head: true })
       .eq("item_id", input.id),
   ]);
+  // Titik yang sudah punya riwayat tidak boleh dihapus langsung — cascade-nya
+  // menghapus seluruh foto/centang historisnya. (Trigger DB
+  // `cleaning_guard_item_delete` menjaga hal yang sama bila pemeriksaan ini
+  // terlewat balapan dengan kiriman baru.)
+  const HISTORY_MSG = (n: number) =>
+    `Titik ini punya ${n} catatan riwayat, jadi tidak bisa dihapus (riwayatnya ikut hilang). ` +
+    "Untuk membuangnya: duplikat SOP ini, hapus titik itu di salinan, lalu ganti assignment ke salinan — atau cukup ubah judul/standar & matikan foto wajibnya.";
+  if (history && history > 0) return { error: HISTORY_MSG(history) };
   const { error } = await supabase
     .from("cleaning_checklist_items")
     .delete()
     .eq("id", input.id);
-  if (error) return { error: error.message };
+  if (error) {
+    if (error.message.includes("ITEM_HAS_HISTORY")) {
+      const n = Number(/punya (\d+) catatan/.exec(error.message)?.[1] ?? 0);
+      return { error: HISTORY_MSG(n) };
+    }
+    return { error: error.message };
+  }
   if (before) {
-    // Menghapus titik ikut menghapus seluruh riwayat foto/centangnya (cascade).
-    await logRev(
-      supabase,
-      before.checklist_id,
-      `Titik dihapus: "${clip(before.title)}"${history ? ` (beserta ${history} catatan riwayat)` : ""}`
-    );
+    await logRev(supabase, before.checklist_id, `Titik dihapus: "${clip(before.title)}"`);
   }
   revalidatePath("/admin/cleaning");
   return { ok: true };

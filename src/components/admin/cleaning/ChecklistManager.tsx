@@ -290,7 +290,11 @@ function ChecklistCard({
             type="button"
             title="Hapus checklist"
             onClick={() => {
-              if (confirm(`Hapus checklist "${cl.name}" beserta semua item & assignment-nya?`)) {
+              if (
+                confirm(
+                  `Hapus checklist "${cl.name}" beserta semua item, assignment, dan SELURUH riwayat fotonya? Ini tidak bisa dibatalkan — bila hanya ingin berhenti dipakai, nonaktifkan saja.`
+                )
+              ) {
                 run(() => deleteChecklist({ id: cl.id }), "Checklist dihapus");
               }
             }}
