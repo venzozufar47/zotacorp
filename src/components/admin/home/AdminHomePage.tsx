@@ -10,6 +10,19 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import {
+  NOTIF_KINDS,
+  NotifLeading,
+  TONE_CLASSES,
+  TONE_RANK,
+  agoLabel,
+  notifAgo,
+  notifDesc,
+  notifHref,
+  notifTone,
+  type NotifKind,
+  type NotifTone,
+} from "@/components/admin/notifications/kinds";
 import { EmployeeDrawer, type DrawerSubject } from "./EmployeeDrawer";
 import type {
   AdminHomeToday,
@@ -27,10 +40,15 @@ import type { YeoboRevenue, YeoboUtilization } from "@/lib/actions/admin-home-ye
 import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
 import type { RevenueDashboardViewerRow } from "@/lib/actions/revenue-dashboard-viewers.actions";
 
+/** Baris Inbox yang tampil sebelum "Tampilkan N lainnya". */
+const INBOX_VISIBLE = 6;
+
 interface InboxItem {
   id: string;
-  tag: string;
-  tagTone: "warn" | "bad" | "info";
+  kind: NotifKind;
+  tone: NotifTone;
+  /** False = tidak menyangkut karyawan → ikon jenis, bukan avatar. */
+  hasPerson: boolean;
   userId: string;
   userName: string;
   userAvatarUrl: string | null;
@@ -84,6 +102,8 @@ export function AdminHomePage({
   cleaningReviewQuickAccess?: { freshUnreviewedCount: number } | null;
 }) {
   const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
+  const [kindFilter, setKindFilter] = useState<NotifKind | "all">("all");
+  const [inboxExpanded, setInboxExpanded] = useState(false);
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
 
@@ -95,13 +115,19 @@ export function AdminHomePage({
     timeZone: "Asia/Jakarta",
   });
 
-  const inbox = buildInbox(pendingConfirmations, disputes, userDirectory);
-  // Total SESUNGGUHNYA, bukan panjang `inbox` — buildInbox memotong ke 6
-  // baris teratas untuk daftar (lihat komentarnya), jadi count di sini
-  // HARUS dari sumber sebelum dipotong. Sebelumnya keduanya dari
-  // `inbox.length`, membuat bel notifikasi (dari pendingConfirmations
-  // mentah) dan teks "menunggu" di hero/Inbox tidak pernah sinkron begitu
-  // pending lebih dari 6.
+  const inboxAll = buildInbox(pendingConfirmations, disputes, userDirectory);
+  // Jumlah per jenis → chip filter. Filter yang jenisnya sudah habis (mis.
+  // semua langganan diperpanjang lalu halaman di-refresh) otomatis kembali
+  // ke "Semua" supaya Inbox tidak tampak kosong padahal masih ada isinya.
+  const kindCounts = new Map<NotifKind, number>();
+  for (const it of inboxAll) kindCounts.set(it.kind, (kindCounts.get(it.kind) ?? 0) + 1);
+  const activeKind: NotifKind | "all" =
+    kindFilter !== "all" && kindCounts.has(kindFilter) ? kindFilter : "all";
+  const inboxFiltered =
+    activeKind === "all" ? inboxAll : inboxAll.filter((i) => i.kind === activeKind);
+  const inbox = inboxExpanded ? inboxFiltered : inboxFiltered.slice(0, INBOX_VISIBLE);
+  // Total SESUNGGUHNYA (sebelum filter/potongan) — sumber yang sama dengan
+  // lonceng topbar, supaya angka di hero/Inbox/lonceng tidak pernah beda.
   const totalPending = pendingConfirmations.length + disputes.length;
   const onDutyCount = today.clockedInNow.filter((p) => !p.checkedOut).length;
   // Total omzet bulan ini SEMUA cabang — Haengbocake (POS+Cake, Pare+
@@ -278,11 +304,44 @@ export function AdminHomePage({
             sub={
               totalPending === 0
                 ? "All clear, nothing waiting"
-                : inbox.length < totalPending
-                  ? `${totalPending} waiting · showing ${inbox.length} most recent`
-                  : `${totalPending} waiting · resolve from here`
+                : activeKind === "all"
+                  ? `${totalPending} waiting · resolve from here`
+                  : `${inboxFiltered.length} ${NOTIF_KINDS[activeKind].label} · ${totalPending} waiting in total`
             }
           />
+          {/* Filter per jenis — hanya jenis yang sedang ada, dan hanya bila
+              ada ≥ 2 jenis (satu jenis saja = filter tak berguna). Bisa digeser
+              ke samping di layar sempit. */}
+          {kindCounts.size > 1 && (
+            <div
+              role="group"
+              aria-label="Filter notifikasi"
+              className="px-4 pb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <InboxFilterChip
+                active={activeKind === "all"}
+                onClick={() => {
+                  setKindFilter("all");
+                  setInboxExpanded(false);
+                }}
+                label="Semua"
+                count={inboxAll.length}
+              />
+              {[...kindCounts.entries()].map(([kind, n]) => (
+                <InboxFilterChip
+                  key={kind}
+                  active={activeKind === kind}
+                  onClick={() => {
+                    setKindFilter(kind);
+                    setInboxExpanded(false);
+                  }}
+                  label={NOTIF_KINDS[kind].label}
+                  count={n}
+                  Icon={NOTIF_KINDS[kind].Icon}
+                />
+              ))}
+            </div>
+          )}
           <div className="px-2 pb-2">
             {inbox.length === 0 ? (
               <div className="px-4 py-8 text-center text-muted-foreground text-[13px]">
@@ -299,25 +358,36 @@ export function AdminHomePage({
                   <InboxRow
                     key={it.id}
                     item={it}
-                    onSubject={() =>
-                      it.href
-                        ? router.push(it.href)
-                        : setDrawer({
-                            userId: it.userId,
-                            fullName: it.userName,
-                            avatarUrl: it.userAvatarUrl,
-                            avatarSeed: it.userAvatarSeed,
-                            caption: it.desc,
-                            pendingRegistration: it.isRegistration,
-                          })
-                    }
+                    onSubject={() => {
+                      if (it.href) {
+                        router.push(it.href);
+                        return;
+                      }
+                      // Drawer = profil karyawan; notifikasi tanpa karyawan
+                      // tidak punya drawer (selalu punya href, ini pengaman).
+                      if (!it.hasPerson) return;
+                      setDrawer({
+                        userId: it.userId,
+                        fullName: it.userName,
+                        avatarUrl: it.userAvatarUrl,
+                        avatarSeed: it.userAvatarSeed,
+                        caption: it.desc,
+                        pendingRegistration: it.isRegistration,
+                      });
+                    }}
                   />
                 ))}
-                {inbox.length < totalPending && (
-                  <p className="px-3 py-2 text-[11.5px] text-muted-foreground">
-                    +{totalPending - inbox.length} lainnya — lihat di halaman masing-masing
-                    (Kehadiran, Tiket Studio, dll).
-                  </p>
+                {inboxFiltered.length > INBOX_VISIBLE && (
+                  <button
+                    type="button"
+                    onClick={() => setInboxExpanded((v) => !v)}
+                    aria-expanded={inboxExpanded}
+                    className="w-full min-h-10 mt-1 rounded-xl text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
+                  >
+                    {inboxExpanded
+                      ? "Ringkas"
+                      : `Tampilkan ${inboxFiltered.length - INBOX_VISIBLE} lainnya`}
+                  </button>
                 )}
               </>
             )}
@@ -513,38 +583,35 @@ function InboxRow({
   item: InboxItem;
   onSubject: () => void;
 }) {
-  const tagClass: Record<InboxItem["tagTone"], string> = {
-    warn: "bg-warning/15 text-warning",
-    bad: "bg-destructive/15 text-destructive",
-    info: "bg-accent text-[var(--teal-700)]",
-  };
   return (
     <button
       type="button"
       onClick={onSubject}
-      className="group/sub w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-muted/50 transition"
+      className="group/sub w-full flex items-center gap-3 px-3 py-2.5 min-h-14 rounded-xl text-left hover:bg-muted/50 transition"
     >
-      {/* Fixed-width tag so every avatar + name lines up vertically
-          regardless of tag length (OVERTIME / LATE PROOF / DISPUTE). */}
-      <span
-        className={`shrink-0 w-[84px] inline-flex items-center justify-center text-[9.5px] font-semibold uppercase tracking-[0.06em] py-1 rounded-full ${tagClass[item.tagTone]}`}
-      >
-        {item.tag}
-      </span>
-      <EmployeeAvatar
-        size="sm"
-        full_name={item.userName}
-        avatar_url={item.userAvatarUrl}
-        avatar_seed={item.userAvatarSeed}
+      {/* Avatar + lencana ikon jenis bila menyangkut karyawan; ikon jenis
+          saja bila tidak (langganan, SIM tanpa PIC terdaftar). */}
+      <NotifLeading
+        kind={item.kind}
+        tone={item.tone}
+        hasPerson={item.hasPerson}
+        name={item.userName}
+        avatarUrl={item.userAvatarUrl}
+        avatarSeed={item.userAvatarSeed}
       />
-      {/* Two-line block: name over description, both truncating so long
-          names never push the timestamp out of alignment. */}
+      {/* Two-line block: name over "JENIS · deskripsi", both truncating so
+          long names never push the timestamp out of alignment. */}
       <span className="flex-1 min-w-0">
         <span className="block text-[13px] font-medium text-foreground truncate group-hover/sub:underline">
           {item.userName}
         </span>
-        <span className="block text-[11.5px] text-muted-foreground truncate">
-          {item.desc}
+        <span className="flex items-center gap-1.5 min-w-0 text-[11.5px] text-muted-foreground">
+          <span
+            className={`shrink-0 text-[9.5px] font-semibold uppercase tracking-[0.06em] ${TONE_CLASSES[item.tone].text}`}
+          >
+            {NOTIF_KINDS[item.kind].label}
+          </span>
+          <span className="truncate">{item.desc}</span>
         </span>
       </span>
       <span className="shrink-0 text-[10.5px] text-muted-foreground/80 tabular-nums">
@@ -554,6 +621,38 @@ function InboxRow({
         size={13}
         className="shrink-0 text-muted-foreground/70 group-hover/sub:text-foreground transition"
       />
+    </button>
+  );
+}
+
+function InboxFilterChip({
+  active,
+  onClick,
+  label,
+  count,
+  Icon,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  Icon?: (typeof NOTIF_KINDS)[NotifKind]["Icon"];
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "shrink-0 h-8 inline-flex items-center gap-1.5 px-3 rounded-full border text-[11.5px] font-medium transition",
+        active
+          ? "bg-foreground text-background border-foreground"
+          : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      )}
+    >
+      {Icon && <Icon size={12} strokeWidth={2.3} />}
+      {label}
+      <span className="tabular-nums opacity-80">{count}</span>
     </button>
   );
 }
@@ -607,72 +706,28 @@ function buildInbox(
 ): InboxItem[] {
   const out: InboxItem[] = [];
   for (const p of pending) {
-    const isRegistration = p.kind === "registration";
-    const isTicket = p.kind === "ticket";
-    const isSim = p.kind === "sim_card";
-    const isTask = p.kind === "task_review";
-    const isSub = p.kind === "subscription";
     out.push({
       id: `pending-${p.kind}-${p.rowId}`,
-      tag: isTask
-        ? "Tugas"
-        : isSub
-        ? "Langganan"
-        : isSim
-        ? "SIM"
-        : isTicket
-          ? "Tiket"
-          : isRegistration
-            ? "Pendaftar"
-            : p.kind === "late_proof"
-              ? "Late proof"
-              : "Overtime",
-      tagTone:
-        isTicket || isSim || (isSub && p.shortLabel?.startsWith("Telat"))
-          ? "bad"
-          : p.kind === "late_proof" || isTask || isSub
-            ? "warn"
-            : "info",
+      kind: p.kind,
+      tone: notifTone(p),
+      hasPerson: p.hasPerson,
       userId: p.userId,
       userName: p.employeeName,
       userAvatarUrl: p.userAvatarUrl,
       userAvatarSeed: p.userAvatarSeed,
-      desc: isTask
-        ? "Tugas menunggu verifikasi"
-        : isSub
-        ? (p.detail ?? "Langganan segera jatuh tempo")
-        : isSim
-        ? "Nomor SIM lewat tenggat — perlu isi pulsa"
-        : isTicket
-          ? "Tiket studio perlu ditangani"
-          : isRegistration
-            ? "Menunggu ACC akun"
-            : p.kind === "late_proof"
-              ? "Awaiting approval"
-              : p.minutes
-                ? `OT ${otDuration(p.minutes)} awaiting approval`
-                : "OT awaiting approval",
-      // Subscription: tanggalnya di masa depan, jadi "umur" tak bermakna —
-      // tampilkan H-3 / Hari ini / Telat Nh.
-      ago: isSub ? (p.shortLabel ?? "") : agoLabel(p.at ?? p.date),
-      isRegistration,
-      href: isTask
-        ? `/admin/tasks?focus=${p.rowId}`
-        : isSub
-          ? "/admin/subscriptions"
-          : isSim
-          ? "/admin/sim-cards"
-          : isTicket
-            ? "/admin/tickets"
-            : undefined,
+      desc: notifDesc(p),
+      ago: notifAgo(p),
+      isRegistration: p.kind === "registration",
+      href: notifHref(p),
     });
   }
   for (const d of disputes) {
     const subject = directory[d.userId];
     out.push({
       id: `dispute-${d.id}`,
-      tag: "Dispute",
-      tagTone: "bad",
+      kind: "dispute",
+      tone: "bad",
+      hasPerson: true,
       userId: d.userId,
       userName: subject?.full_name ?? "(unknown)",
       userAvatarUrl: subject?.avatar_url ?? null,
@@ -681,7 +736,9 @@ function buildInbox(
       ago: agoLabel(d.createdAt),
     });
   }
-  return out.slice(0, 6);
+  // Paling mendesak dulu (merah → kuning → biru). Sort stabil, jadi urutan
+  // asal tetap terjaga di dalam tiap tingkat.
+  return out.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
 }
 
 function greetingByHour() {
@@ -690,28 +747,6 @@ function greetingByHour() {
   if (h < 16) return "Good afternoon";
   if (h < 19) return "Good evening";
   return "Good night";
-}
-
-/** Sama dengan format di drawer karyawan: "25m", "1j 10m", "2j". */
-function otDuration(m: number): string {
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem > 0 ? `${h}j ${rem}m` : `${h}j`;
-}
-
-function agoLabel(iso: string) {
-  // Tanggal-saja ("2026-10-03") berarti hari WIB itu, bukan 00:00 UTC —
-  // tanpa ini umur melenceng 7 jam.
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T00:00:00+07:00` : iso);
-  const diffMs = Date.now() - d.getTime();
-  const m = Math.round(diffMs / 60000);
-  if (m < 1) return "now";
-  if (m < 60) return `${m}m`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h`;
-  const days = Math.round(h / 24);
-  return `${days}d`;
 }
 
 function firstName(full: string) {

@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
+import {
+  NOTIF_KINDS,
+  NotifLeading,
+  TONE_CLASSES,
+  notifAgo,
+  notifDesc,
+  notifHref,
+  notifTone,
+  sortByUrgency,
+  type NotifKind,
+} from "@/components/admin/notifications/kinds";
 
 interface Props {
   items: PendingConfirmationItem[];
@@ -41,6 +52,14 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
     };
   }, [open]);
 
+  const sorted = useMemo(() => sortByUrgency(items), [items]);
+  // Ringkasan jumlah per jenis (urutan = kemunculan pada daftar terurut).
+  const summary = useMemo(() => {
+    const counts = new Map<NotifKind, number>();
+    for (const it of sorted) counts.set(it.kind, (counts.get(it.kind) ?? 0) + 1);
+    return [...counts.entries()];
+  }, [sorted]);
+
   if (items.length === 0) return null;
 
   function jumpTo(it: PendingConfirmationItem) {
@@ -50,20 +69,9 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
       router.push("/admin/users");
       return;
     }
-    if (it.kind === "ticket") {
-      router.push("/admin/tickets");
-      return;
-    }
-    if (it.kind === "sim_card") {
-      router.push("/admin/sim-cards");
-      return;
-    }
-    if (it.kind === "task_review") {
-      router.push(`/admin/tasks?focus=${it.rowId}`);
-      return;
-    }
-    if (it.kind === "subscription") {
-      router.push("/admin/subscriptions");
+    const href = notifHref(it);
+    if (href) {
+      router.push(href);
       return;
     }
     // Pin the recap table to the right month + scroll target so the
@@ -119,64 +127,72 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
             "z-50 rounded-xl border-2 border-amber-300 bg-card shadow-hard p-2 " +
             (variant === "full"
               ? "absolute left-0 right-0 mt-1 origin-top"
-              : "absolute right-0 mt-1 w-[320px] origin-top-right")
+              : "absolute right-0 mt-1 w-[360px] max-w-[calc(100vw-1.5rem)] origin-top-right")
           }
         >
-          <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 pt-1 pb-2">
-            {items.length} butuh konfirmasi
-          </p>
+          <div className="px-2 pt-1 pb-2 space-y-1.5">
+            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              {items.length} butuh konfirmasi
+            </p>
+            {summary.length > 1 && (
+              <div className="flex flex-wrap gap-1">
+                {summary.map(([kind, n]) => {
+                  const { Icon, label, tone } = NOTIF_KINDS[kind];
+                  return (
+                    <span
+                      key={kind}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${TONE_CLASSES[tone].soft}`}
+                    >
+                      <Icon size={11} strokeWidth={2.4} />
+                      {label}
+                      <span className="tabular-nums">{n}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <ul className="max-h-[60vh] overflow-y-auto divide-y divide-border/40">
-            {items.map((it) => (
-              <li key={`${it.rowId}-${it.kind}`}>
-                <button
-                  type="button"
-                  onClick={() => jumpTo(it)}
-                  className="w-full text-left p-2 rounded-md hover:bg-amber-50 flex items-start gap-2"
-                >
-                  <span
-                    className={
-                      "shrink-0 mt-0.5 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider " +
-                      (it.kind === "late_proof"
-                        ? "bg-purple-100 text-purple-800"
-                        : it.kind === "registration"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : it.kind === "ticket"
-                            ? "bg-rose-100 text-rose-800"
-                            : it.kind === "sim_card"
-                              ? "bg-orange-100 text-orange-800"
-                              : it.kind === "task_review"
-                                ? "bg-amber-100 text-amber-800"
-                                : it.kind === "subscription"
-                                  ? "bg-violet-100 text-violet-800"
-                                  : "bg-sky-100 text-sky-800")
-                    }
+            {sorted.map((it) => {
+              const tone = notifTone(it);
+              return (
+                <li key={`${it.rowId}-${it.kind}`}>
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(it)}
+                    className="w-full text-left p-2 rounded-md hover:bg-amber-50 flex items-center gap-2.5 min-h-12"
                   >
-                    {it.kind === "late_proof"
-                      ? "Late proof"
-                      : it.kind === "registration"
-                        ? "Pendaftar"
-                        : it.kind === "ticket"
-                          ? "Tiket"
-                          : it.kind === "sim_card"
-                            ? "SIM"
-                            : it.kind === "task_review"
-                              ? "Tugas"
-                              : it.kind === "subscription"
-                                ? "Langganan"
-                                : "Overtime"}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">
-                      {it.employeeName}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground tabular-nums">
-                      {it.detail ? `${it.detail} · ` : ""}
-                      {formatDate(it.date)}
-                    </p>
-                  </div>
-                </button>
-              </li>
-            ))}
+                    <NotifLeading
+                      kind={it.kind}
+                      tone={tone}
+                      hasPerson={it.hasPerson}
+                      name={it.employeeName}
+                      avatarUrl={it.userAvatarUrl}
+                      avatarSeed={it.userAvatarSeed}
+                      size="sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-foreground truncate">
+                        {it.employeeName}
+                      </p>
+                      <p className="flex items-center gap-1.5 min-w-0 text-[10.5px] text-muted-foreground">
+                        <span
+                          className={`shrink-0 font-bold uppercase tracking-wider text-[9px] ${TONE_CLASSES[tone].text}`}
+                        >
+                          {NOTIF_KINDS[it.kind].label}
+                        </span>
+                        <span className="truncate tabular-nums">
+                          {notifDesc(it)} · {formatDate(it.date)}
+                        </span>
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-muted-foreground/80 tabular-nums">
+                      {notifAgo(it)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

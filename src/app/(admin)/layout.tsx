@@ -92,18 +92,26 @@ export default async function AdminLayout({
       getCleaningMisses(),
     ]);
 
+  // Badge menu Kehadiran HANYA untuk yang diselesaikan di halaman absensi
+  // (late proof + overtime). `pendingConfirmations` juga memuat langganan,
+  // SIM, tiket, tugas, dan pendaftar — memakai panjang totalnya membuat
+  // badge Kehadiran menunjukkan angka yang tidak ditemukan di halamannya.
+  const attendancePendingCount = pendingConfirmations.filter(
+    (i) => i.kind === "late_proof" || i.kind === "overtime"
+  ).length;
+
   return (
     <div className="flex min-h-screen bg-background">
       <RouteProgressBar />
       <AdminMobileNav
         pendingConfirmations={pendingConfirmations}
-        pendingCount={pendingConfirmations.length}
+        pendingCount={attendancePendingCount}
         disputesCount={disputes.length}
         cleaningCount={cleaningExceptions.length}
         isAdminZota
       />
       <AdminSidebar
-        pendingCount={pendingConfirmations.length}
+        pendingCount={attendancePendingCount}
         disputesCount={disputes.length}
         cleaningCount={cleaningExceptions.length}
         profile={profile}

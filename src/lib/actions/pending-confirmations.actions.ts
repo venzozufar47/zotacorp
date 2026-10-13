@@ -30,6 +30,9 @@ export type PendingConfirmationItem = {
    *  employee's stats + full pending-approval list when clicked. */
   userId: string;
   employeeName: string;
+  /** False bila notifikasi tidak menyangkut seorang karyawan (mis. langganan,
+   *  SIM tanpa penanggung jawab terdaftar) — UI menampilkan ikon, bukan avatar. */
+  hasPerson: boolean;
   userAvatarUrl: string | null;
   userAvatarSeed: string | null;
   date: string;
@@ -128,6 +131,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       rowId: r.id,
       kind: "late_proof",
       userId: r.user_id,
+      hasPerson: true,
       employeeName: r.profiles?.full_name || r.profiles?.email || "?",
       userAvatarUrl: r.profiles?.avatar_url ?? null,
       userAvatarSeed: r.profiles?.avatar_seed ?? null,
@@ -166,6 +170,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       rowId: r.attendance_log_id,
       kind: "overtime",
       userId: r.user_id,
+      hasPerson: true,
       employeeName: p?.full_name || p?.email || "?",
       userAvatarUrl: p?.avatar_url ?? null,
       userAvatarSeed: p?.avatar_seed ?? null,
@@ -187,6 +192,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     rowId: r.id,
     kind: "registration",
     userId: r.id,
+    hasPerson: true,
     employeeName: r.fullName,
     userAvatarUrl: r.avatarUrl,
     userAvatarSeed: r.avatarSeed,
@@ -220,6 +226,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       rowId: t.id,
       kind: "ticket",
       userId: t.created_by,
+      hasPerson: true,
       employeeName: p?.full_name || "Karyawan",
       userAvatarUrl: p?.avatar_url ?? null,
       userAvatarSeed: p?.avatar_seed ?? null,
@@ -264,6 +271,8 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       rowId: s.id,
       kind: "sim_card",
       userId: s.pic_user_id ?? s.id,
+      // PIC manual (pic_name tanpa akun) bukan karyawan terdaftar → tanpa avatar.
+      hasPerson: !!s.pic_user_id,
       employeeName: p?.full_name || s.pic_name || "Penanggung jawab",
       userAvatarUrl: p?.avatar_url ?? null,
       userAvatarSeed: p?.avatar_seed ?? null,
@@ -292,6 +301,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       rowId: t.id,
       kind: "task_review",
       userId: t.assignee_id,
+      hasPerson: true,
       employeeName: p?.full_name || "Karyawan",
       userAvatarUrl: p?.avatar_url ?? null,
       userAvatarSeed: p?.avatar_seed ?? null,
@@ -311,6 +321,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       rowId: s.id,
       kind: "subscription",
       userId: s.id,
+      hasPerson: false,
       employeeName: s.name,
       userAvatarUrl: null,
       userAvatarSeed: null,
