@@ -16,6 +16,7 @@ import { resolveItemIssue, type ItemIssueRow } from "@/lib/actions/cleaning-gove
 import { reviewDue, RUSHED_MAX_SEC_PER_PHOTO, RUSHED_MIN_PHOTOS } from "@/lib/cleaning/governance";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import type { CleaningChecklist } from "@/lib/actions/cleaning.actions";
+import type { GalleryFilter } from "./PhotoReviewGallery";
 import type { CleaningRangeReportWithNames } from "@/lib/actions/cleaning-range.actions";
 
 function fmtYmd(ymd: string): string {
@@ -87,7 +88,7 @@ export function SopGovernanceZone({
   checklists: CleaningChecklist[];
   issues: ItemIssueRow[];
   onOpenSetup: () => void;
-  onOpenGallery: (itemId?: string) => void;
+  onOpenGallery: (filter?: GalleryFilter) => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -264,7 +265,13 @@ export function SopGovernanceZone({
                   </div>
                   <button
                     type="button"
-                    onClick={() => onOpenGallery()}
+                    onClick={() =>
+                      onOpenGallery({
+                        userId: r.userId,
+                        checklistId: r.checklistId,
+                        date: r.date,
+                      })
+                    }
                     className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-semibold hover:bg-muted"
                   >
                     <Eye size={12} /> Foto
@@ -302,7 +309,7 @@ export function SopGovernanceZone({
                   </div>
                   <button
                     type="button"
-                    onClick={() => onOpenGallery(p.itemId)}
+                    onClick={() => onOpenGallery({ itemId: p.itemId })}
                     className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-semibold hover:bg-muted"
                   >
                     <Eye size={12} /> Foto

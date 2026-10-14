@@ -24,7 +24,7 @@ import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { ChecklistManager } from "./ChecklistManager";
 import { AssignmentManager } from "./AssignmentManager";
 import { BranchDutyManager } from "./BranchDutyManager";
-import { PhotoReviewGallery } from "./PhotoReviewGallery";
+import { PhotoReviewGallery, type GalleryFilter } from "./PhotoReviewGallery";
 import { SopGovernanceZone } from "./SopGovernanceZone";
 import type { ItemIssueRow } from "@/lib/actions/cleaning-governance.actions";
 import type { CleaningEmployee } from "./types";
@@ -347,7 +347,7 @@ export function CleaningOverview({
     report.branches[0]?.key ?? null
   );
   const [setupOpen, setSetupOpen] = useState(!!initialSetupOpen);
-  const [gallery, setGallery] = useState<{ itemId?: string } | null>(
+  const [gallery, setGallery] = useState<GalleryFilter | null>(
     initialGalleryOpen ? {} : null
   );
   const [coaching, setCoaching] = useState<{
@@ -524,7 +524,7 @@ export function CleaningOverview({
         checklists={checklists}
         issues={issues}
         onOpenSetup={() => setSetupOpen(true)}
-        onOpenGallery={(itemId) => setGallery(itemId ? { itemId } : {})}
+        onOpenGallery={(filter) => setGallery(filter ?? {})}
       />
 
       {/* Zona 2 — hasil per cabang */}
@@ -789,7 +789,13 @@ export function CleaningOverview({
           <PhotoReviewGallery
             checklists={checklists}
             employees={employees}
+            // key: dibuka ulang dengan saringan lain (tanpa menutup drawer) harus
+            // memuat ulang — state awal galeri hanya dibaca saat mount.
+            key={`${gallery.itemId ?? ""}|${gallery.userId ?? ""}|${gallery.checklistId ?? ""}|${gallery.date ?? ""}`}
             initialItemId={gallery.itemId}
+            initialUserId={gallery.userId}
+            initialChecklistId={gallery.checklistId}
+            initialDate={gallery.date}
             items={report.points.map((p) => ({
               id: p.itemId,
               title: p.title,

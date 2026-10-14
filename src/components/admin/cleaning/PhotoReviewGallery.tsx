@@ -403,11 +403,23 @@ function daysAgo(n: number): string {
  * Rows arrive with their signed URL already attached (one batch call server
  * side), so scrolling the grid costs nothing extra.
  */
+/** Saringan awal saat galeri dibuka dari tempat lain (kartu titik, sesi terburu-buru, dst). */
+export interface GalleryFilter {
+  itemId?: string;
+  userId?: string;
+  checklistId?: string;
+  /** Satu hari saja (YYYY-MM-DD). */
+  date?: string;
+}
+
 export function PhotoReviewGallery({
   checklists,
   employees,
   items = [],
   initialItemId,
+  initialUserId,
+  initialChecklistId,
+  initialDate,
 }: {
   checklists: CleaningChecklist[];
   employees: CleaningEmployee[];
@@ -416,25 +428,31 @@ export function PhotoReviewGallery({
   items?: Array<{ id: string; title: string; checklistId: string }>;
   /** Dibuka langsung tersaring ke satu titik (dari kartu titik / antrean). */
   initialItemId?: string;
+  /** Tersaring ke satu karyawan (dari daftar sesi terburu-buru). */
+  initialUserId?: string;
+  initialChecklistId?: string;
+  /** Tersaring ke satu hari (rentang dari = sampai = tanggal ini). */
+  initialDate?: string;
 }) {
+  // Dibuka dengan saringan awal → langsung mode telusur dengan filter terbuka.
+  const hasInitial = !!(initialItemId || initialUserId || initialChecklistId || initialDate);
   // Dibuka dari satu titik → rentangnya dilebarkan ke 30 hari. Titik yang
   // ditinjau justru yang lama tak tersentuh; 7 hari sering kosong sama sekali.
-  const [from, setFrom] = useState(() => daysAgo(initialItemId ? 30 : 7));
-  const [to, setTo] = useState(() => jakartaDateString(new Date()));
+  // Dibuka untuk satu hari tertentu → rentangnya tepat hari itu.
+  const [from, setFrom] = useState(() => initialDate ?? daysAgo(hasInitial ? 30 : 7));
+  const [to, setTo] = useState(() => initialDate ?? jakartaDateString(new Date()));
   const [checklistId, setChecklistId] = useState(
-    () => items.find((i) => i.id === initialItemId)?.checklistId ?? ""
+    () => initialChecklistId ?? items.find((i) => i.id === initialItemId)?.checklistId ?? ""
   );
   const [itemId, setItemId] = useState(initialItemId ?? "");
-  const [userId, setUserId] = useState("");
+  const [userId, setUserId] = useState(initialUserId ?? "");
 
   // Default = antrean "Perlu diputuskan" (unreviewed, tanpa batas tanggal —
   // lihat getCleaningPhotoHistory). Dibuka dari satu titik spesifik lewat
   // `initialItemId` justru minta riwayat titik ITU, jadi langsung mode
   // telusur dengan filter terbuka.
-  const [mode, setMode] = useState<"queue" | "browse">(
-    initialItemId ? "browse" : "queue"
-  );
-  const [filtersOpen, setFiltersOpen] = useState(!!initialItemId);
+  const [mode, setMode] = useState<"queue" | "browse">(hasInitial ? "browse" : "queue");
+  const [filtersOpen, setFiltersOpen] = useState(hasInitial);
 
   const [rows, setRows] = useState<PhotoHistoryRow[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -504,7 +522,7 @@ export function PhotoReviewGallery({
 
   // First paint only; afterwards the user drives it with "Tampilkan"/antrean.
   useEffect(() => {
-    load(initialItemId ? "browse" : "queue", {});
+    load(hasInitial ? "browse" : "queue", {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
