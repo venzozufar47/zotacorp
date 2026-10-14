@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  BookOpen,
   RotateCcw,
   Check,
   ChevronRight,
@@ -26,6 +27,7 @@ import { AssignmentManager } from "./AssignmentManager";
 import { BranchDutyManager } from "./BranchDutyManager";
 import { PhotoReviewGallery, type GalleryFilter } from "./PhotoReviewGallery";
 import { SopGovernanceZone } from "./SopGovernanceZone";
+import { SopGuideBody, SopGuideReminder } from "./SopGuide";
 import type { ItemIssueRow } from "@/lib/actions/cleaning-governance.actions";
 import type { CleaningEmployee } from "./types";
 import type {
@@ -347,6 +349,7 @@ export function CleaningOverview({
     report.branches[0]?.key ?? null
   );
   const [setupOpen, setSetupOpen] = useState(!!initialSetupOpen);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [gallery, setGallery] = useState<GalleryFilter | null>(
     initialGalleryOpen ? {} : null
   );
@@ -382,7 +385,14 @@ export function CleaningOverview({
     <div className="space-y-6">
       {/* Scope bar */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setGuideOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 h-9 text-sm font-semibold hover:bg-muted"
+          >
+            <BookOpen size={14} /> Panduan SOP
+          </button>
           <button
             type="button"
             onClick={() => setGallery({})}
@@ -752,6 +762,7 @@ export function CleaningOverview({
       {/* Drawer: Pengaturan SOP — 3 manager lama dipakai apa adanya */}
       {setupOpen && (
         <Drawer title="Pengaturan SOP" onClose={() => setSetupOpen(false)}>
+          <SopGuideReminder onOpenGuide={() => setGuideOpen(true)} />
           <p className="mb-4 text-[11.5px] leading-relaxed text-muted-foreground">
             Sekali disusun, jarang dibuka lagi — itu sebabnya ia tidak lagi jadi
             tab sejajar dengan pemantauan harian. Checklist menentukan titik &
@@ -780,6 +791,14 @@ export function CleaningOverview({
               />
             </SetupSection>
           </div>
+        </Drawer>
+      )}
+
+      {/* Drawer: panduan menyusun SOP — dirender setelah drawer Pengaturan SOP supaya
+          terbuka DI ATASNYA bila dibuka dari pengingat di dalamnya. */}
+      {guideOpen && (
+        <Drawer title="Panduan menyusun SOP: seberapa detail?" onClose={() => setGuideOpen(false)}>
+          <SopGuideBody />
         </Drawer>
       )}
 

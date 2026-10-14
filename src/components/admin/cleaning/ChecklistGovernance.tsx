@@ -140,7 +140,8 @@ export function ChecklistGovernance({
 
       <p className="text-[11px] text-muted-foreground">
         Pemilik menerima pengingat tinjau ulang & kendala/masukan dari rekan lewat notifikasi, dan punya halaman
-        <b> SOP saya</b> untuk menandai sudah ditinjau serta menutup kendala/masukan. Tanpa pemilik, semuanya masuk ke admin.
+        <b> SOP saya</b> untuk menandai sudah ditinjau serta menutup kendala/masukan. Tanpa pemilik, semuanya masuk ke admin. Saran panduan SOP: Tingkat A (risiko tinggi) tinjau tiap
+        30 hari, Tingkat B tiap 90 hari.
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
         <span>
