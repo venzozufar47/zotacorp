@@ -584,7 +584,6 @@ export type Database = {
           longitude: number
           name: string
           radius_m: number
-          sop_group: string | null
           updated_at: string
         }
         Insert: {
@@ -594,7 +593,6 @@ export type Database = {
           longitude: number
           name: string
           radius_m: number
-          sop_group?: string | null
           updated_at?: string
         }
         Update: {
@@ -604,7 +602,6 @@ export type Database = {
           longitude?: number
           name?: string
           radius_m?: number
-          sop_group?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -310,7 +310,11 @@ export function buildFindings(
         ymd: lastRedo.ymd,
         userId: lastRedo.userId,
       });
-    } else if (p.ageDays == null || p.ageDays >= 4) {
+    } else if (
+      // Titik yang belum pernah terjadwal (SOP belum mulai / masa uji) bukan "lama tak terpantau".
+      (p.ageDays == null && p.cells.some((c) => c.status !== "off")) ||
+      (p.ageDays != null && p.ageDays >= 4)
+    ) {
       push({
         ...base,
         id: `stale:${p.itemId}`,

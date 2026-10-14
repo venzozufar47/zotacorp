@@ -746,7 +746,14 @@ export function buildCleaningRangeReport(
       else if (c.status === "pending") b!.pending++;
       if (SEVERITY[c.status] < SEVERITY[b!.series[i]]) b!.series[i] = c.status;
     });
-    if (p.missStreak > 0 || (p.ageDays != null && p.ageDays >= 4) || p.ageDays == null)
+    // "Belum pernah bersih" hanya berarti masalah bila titiknya SUDAH terjadwal di rentang
+    // ini; SOP yang belum mulai / masih masa uji semua selnya `off`.
+    const everScheduled = p.cells.some((c) => c.status !== "off");
+    if (
+      p.missStreak > 0 ||
+      (p.ageDays != null && p.ageDays >= 4) ||
+      (p.ageDays == null && everScheduled)
+    )
       b.needsAttention++;
   }
   for (const b of branchMap.values()) {
