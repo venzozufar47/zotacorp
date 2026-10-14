@@ -9,6 +9,7 @@ import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { isMetaAdsViewer } from "@/lib/meta-ads/access";
 import { canFileTickets } from "@/lib/tickets/access";
 import { isSimPic } from "@/lib/sim-cards/access";
+import { isSopOwner } from "@/lib/cleaning/owner-access";
 import { isProcurementStaff } from "@/lib/procurement/access";
 import { hasPending360Evaluation } from "@/lib/evaluation-360/access";
 import { isTeamLeader } from "@/lib/tasks/team-access";
@@ -36,6 +37,7 @@ export default async function EmployeeLayout({
     hasCakeFinance,
     hasMetaAds,
     hasTeam,
+    hasSopOwner,
   ] = await Promise.all([
 
     listMyAssignedBankAccountIds(),
@@ -51,6 +53,7 @@ export default async function EmployeeLayout({
     isCakeFinanceAdmin(),
     isMetaAdsViewer(),
     isTeamLeader(),
+    isSopOwner(),
   ]);
   const hasFinance = assignedIds.length > 0;
   const me = profile
@@ -76,6 +79,7 @@ export default async function EmployeeLayout({
         hasMetaAds={hasMetaAds}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
+        hasSopOwner={hasSopOwner}
         hasProcurement={hasProcurement}
         has360Eval={has360Eval}
         hasTeam={hasTeam}
@@ -97,6 +101,7 @@ export default async function EmployeeLayout({
         hasMetaAds={hasMetaAds}
         hasTickets={hasTickets}
         hasSimCards={hasSimCards}
+        hasSopOwner={hasSopOwner}
         hasProcurement={hasProcurement}
         has360Eval={has360Eval}
         hasTeam={hasTeam}

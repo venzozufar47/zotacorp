@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, Target, Users } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, ClipboardList, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -18,6 +18,7 @@ export function Sidebar({
   hasMetaAds = false,
   hasTickets = false,
   hasSimCards = false,
+  hasSopOwner = false,
   hasProcurement = false,
   has360Eval = false,
   hasTeam = false,
@@ -40,6 +41,7 @@ export function Sidebar({
   /** Show "Tiket" tab for Yeobo Space employees / Kepala Studio. */
   hasTickets?: boolean;
   hasSimCards?: boolean;
+  hasSopOwner?: boolean;
   /** Tab "Pengadaan" untuk staf yang ditugaskan memantau stok bahan. */
   hasProcurement?: boolean;
   /** Show "Evaluasi" tab for users with ≥1 pending peer evaluation. */
@@ -75,6 +77,9 @@ export function Sidebar({
             color: "bg-quaternary",
           },
         ]
+      : []),
+    ...(hasSopOwner
+      ? [{ href: "/sop-saya", icon: ClipboardList, label: "SOP saya", color: "bg-quaternary" }]
       : []),
     ...(hasProcurement
       ? [

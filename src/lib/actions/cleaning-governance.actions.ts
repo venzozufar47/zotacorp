@@ -9,6 +9,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "./_supabase-admin";
+import { sendPushToUser, sendPushToAdmins } from "@/lib/push/web-push";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { logChecklistRevision, clip } from "@/lib/cleaning/revisions";
@@ -27,9 +29,30 @@ async function requireAdminUser(): Promise<
   return { ok: true, userId: user.id };
 }
 
+/**
+ * Admin, ATAU pemilik SOP itu sendiri. Pemilik bukan admin (RLS menolak tulisan
+ * sesinya), jadi penulisan setelah lolos pemeriksaan ini memakai service role —
+ * dan pemeriksaannya harus per-SOP: pemilik SOP A tidak boleh menyentuh SOP B.
+ */
+async function authorizeChecklist(
+  checklistId: string
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Tidak terautentikasi." };
+  if ((await getCurrentRole()) === "admin") return { ok: true, userId: user.id };
+  const { data } = await createAdminClient()
+    .from("cleaning_checklists")
+    .select("owner_id")
+    .eq("id", checklistId)
+    .maybeSingle();
+  if (data?.owner_id && data.owner_id === user.id) return { ok: true, userId: user.id };
+  return { ok: false, error: "Forbidden" };
+}
+
 function refresh() {
   try {
     revalidatePath("/admin/cleaning");
+    revalidatePath("/sop-saya");
     revalidatePath("/admin");
   } catch {
     // abaikan kegagalan revalidate
@@ -109,9 +132,9 @@ export async function markChecklistReviewed(input: {
   id: string;
   note?: string | null;
 }): Promise<Result> {
-  const gate = await requireAdminUser();
+  const gate = await authorizeChecklist(input.id);
   if (!gate.ok) return gate;
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("cleaning_checklists")
     .update({ last_reviewed_at: new Date().toISOString() })
@@ -215,9 +238,15 @@ export async function resolveItemIssue(input: {
   id: string;
   note?: string | null;
 }): Promise<Result> {
-  const gate = await requireAdminUser();
+  const supabase = createAdminClient();
+  const { data: issue } = await supabase
+    .from("cleaning_item_issues")
+    .select("checklist_id")
+    .eq("id", input.id)
+    .maybeSingle();
+  if (!issue) return { ok: false, error: "Kendala sudah ditutup atau tidak ditemukan." };
+  const gate = await authorizeChecklist(issue.checklist_id);
   if (!gate.ok) return gate;
-  const supabase = await createClient();
   const { data, error } = await supabase
     .from("cleaning_item_issues")
     .update({
@@ -299,6 +328,155 @@ export async function reportItemIssue(input: {
     reason,
   });
   if (error) return { ok: false, error: error.message };
+  await notifyIssueReported({
+    checklistId: item.checklist_id,
+    itemId: item.id,
+    reporterId: user.id,
+    reason,
+  });
   refresh();
   return { ok: true };
+}
+
+/**
+ * Beri tahu pemilik SOP (bukan pelapornya sendiri); tanpa pemilik → semua admin.
+ * Tidak pernah melempar — kegagalan push tak boleh menggagalkan laporannya.
+ */
+async function notifyIssueReported(p: {
+  checklistId: string;
+  itemId: string;
+  reporterId: string;
+  reason: string;
+}): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const [{ data: cl }, { data: it }, { data: who }] = await Promise.all([
+      admin.from("cleaning_checklists").select("name, owner_id").eq("id", p.checklistId).maybeSingle(),
+      admin.from("cleaning_checklist_items").select("title").eq("id", p.itemId).maybeSingle(),
+      admin.from("profiles").select("full_name, nickname").eq("id", p.reporterId).maybeSingle(),
+    ]);
+    const name = who?.nickname?.trim() || who?.full_name || "Karyawan";
+    const payload = {
+      title: `Kendala SOP — ${clip(cl?.name ?? "SOP", 40)}`,
+      body: `${name}: ${clip(it?.title ?? "titik", 40)} — ${clip(p.reason, 120)}`,
+    };
+    if (cl?.owner_id && cl.owner_id !== p.reporterId) {
+      const res = await sendPushToUser(cl.owner_id, { ...payload, url: "/sop-saya" });
+      // Pemilik belum mengaktifkan notifikasi → admin yang menerima.
+      if (res.delivered === 0) await sendPushToAdmins({ ...payload, url: "/admin/cleaning" });
+    } else if (!cl?.owner_id) {
+      await sendPushToAdmins({ ...payload, url: "/admin/cleaning" });
+    }
+  } catch (err) {
+    console.error("[sop] push kendala gagal", err);
+  }
+}
+
+// ─── Halaman pemilik SOP ─────────────────────────────────────────────────
+
+export interface OwnedSopIssue {
+  id: string;
+  item_title: string;
+  reason: string;
+  user_name: string;
+  date: string;
+  created_at: string;
+}
+
+export interface OwnedSop {
+  id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  review_every_days: number | null;
+  last_reviewed_at: string | null;
+  titik: number;
+  issues: OwnedSopIssue[];
+  recent: ChecklistRevisionRow[];
+}
+
+/** SOP yang dimiliki user ini + kendala terbukanya + 5 perubahan terakhir. */
+export async function listMyOwnedSops(): Promise<OwnedSop[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  // Service role, tapi DIKUNCI ke owner_id = user ini — pemilik bukan admin
+  // sehingga RLS tak memberinya akses baca ke riwayat & kendala.
+  const admin = createAdminClient();
+  const { data: cls } = await admin
+    .from("cleaning_checklists")
+    .select("id, name, is_active, created_at, review_every_days, last_reviewed_at, items:cleaning_checklist_items(id)")
+    .eq("owner_id", user.id)
+    .order("name", { ascending: true });
+  if (!cls || cls.length === 0) return [];
+  const ids = cls.map((c) => c.id);
+
+  const [{ data: issues }, { data: revs }] = await Promise.all([
+    admin
+      .from("cleaning_item_issues")
+      .select("id, checklist_id, date, reason, created_at, reporter:profiles!user_id(full_name), item:cleaning_checklist_items(title)")
+      .in("checklist_id", ids)
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(200),
+    admin
+      .from("cleaning_checklist_revisions")
+      .select("id, checklist_id, summary, created_at, author:profiles!changed_by(full_name)")
+      .in("checklist_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(300),
+  ]);
+
+  type IssueJoin = {
+    id: string;
+    checklist_id: string;
+    date: string;
+    reason: string;
+    created_at: string;
+    reporter: { full_name?: string | null } | null;
+    item: { title?: string | null } | null;
+  };
+  type RevJoin = {
+    id: string;
+    checklist_id: string;
+    summary: string;
+    created_at: string;
+    author: { full_name?: string | null } | null;
+  };
+  const issuesBy = new Map<string, OwnedSopIssue[]>();
+  for (const i of (issues ?? []) as unknown as IssueJoin[]) {
+    const list = issuesBy.get(i.checklist_id) ?? [];
+    list.push({
+      id: i.id,
+      item_title: i.item?.title ?? "—",
+      reason: i.reason,
+      user_name: i.reporter?.full_name ?? "—",
+      date: i.date,
+      created_at: i.created_at,
+    });
+    issuesBy.set(i.checklist_id, list);
+  }
+  const revsBy = new Map<string, ChecklistRevisionRow[]>();
+  for (const r of (revs ?? []) as unknown as RevJoin[]) {
+    const list = revsBy.get(r.checklist_id) ?? [];
+    if (list.length < 5)
+      list.push({
+        id: r.id,
+        summary: r.summary,
+        created_at: r.created_at,
+        changed_by_name: r.author?.full_name ?? null,
+      });
+    revsBy.set(r.checklist_id, list);
+  }
+
+  return cls.map((c) => ({
+    id: c.id,
+    name: c.name,
+    is_active: c.is_active,
+    created_at: c.created_at,
+    review_every_days: c.review_every_days,
+    last_reviewed_at: c.last_reviewed_at,
+    titik: (c.items as unknown[] | null)?.length ?? 0,
+    issues: issuesBy.get(c.id) ?? [],
+    recent: revsBy.get(c.id) ?? [],
+  }));
 }

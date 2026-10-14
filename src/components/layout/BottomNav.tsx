@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, Target, Users } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, ClipboardList, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -17,6 +17,7 @@ export function BottomNav({
   hasMetaAds = false,
   hasTickets = false,
   hasSimCards = false,
+  hasSopOwner = false,
   hasProcurement = false,
   has360Eval = false,
   hasTeam = false,
@@ -33,6 +34,7 @@ export function BottomNav({
   hasMetaAds?: boolean;
   hasTickets?: boolean;
   hasSimCards?: boolean;
+  hasSopOwner?: boolean;
   /** Tab "Pengadaan" — array item di file ini TERPISAH dari Sidebar.tsx,
    *  jadi setiap penambahan menu wajib dilakukan di KEDUANYA. */
   hasProcurement?: boolean;
@@ -68,6 +70,9 @@ export function BottomNav({
             color: "bg-quaternary",
           },
         ]
+      : []),
+    ...(hasSopOwner
+      ? [{ href: "/sop-saya", icon: ClipboardList, label: "SOP saya", color: "bg-quaternary" }]
       : []),
     ...(hasProcurement
       ? [

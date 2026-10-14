@@ -138,6 +138,10 @@ export function ChecklistGovernance({
         </label>
       </div>
 
+      <p className="text-[11px] text-muted-foreground">
+        Pemilik menerima pengingat tinjau ulang & kendala dari rekan lewat notifikasi, dan punya halaman
+        <b> SOP saya</b> untuk menandai sudah ditinjau serta menutup kendala. Tanpa pemilik, semuanya masuk ke admin.
+      </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
         <span>
           Ditinjau terakhir:{" "}
