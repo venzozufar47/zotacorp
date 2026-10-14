@@ -136,7 +136,7 @@ export function SopGovernanceZone({
     start(async () => {
       const res = await resolveItemIssue({ id });
       if (!res.ok) return void toast.error(res.error);
-      toast.success("Kendala ditandai selesai");
+      toast.success("Ditandai selesai");
       router.refresh();
     });
   }
@@ -158,8 +158,8 @@ export function SopGovernanceZone({
         {issues.length > 0 && (
           <Card
             icon={<MessageSquareWarning size={15} />}
-            title="Kendala dari karyawan"
-            hint="Titik yang sulit dikerjakan atau standarnya kurang jelas"
+            title="Kendala & masukan dari karyawan"
+            hint="Titik yang sulit dikerjakan, standar kurang jelas, atau usul perbaikan"
             count={issues.length}
             tone="warn"
           >

@@ -37,7 +37,7 @@ export const NOTIF_KINDS: Record<NotifKind, KindMeta> = {
   task_review: { label: "Tugas", Icon: ClipboardCheck, tone: "warn" },
   subscription: { label: "Langganan", Icon: Repeat, tone: "warn" },
   sop_review: { label: "SOP", Icon: ClipboardList, tone: "warn" },
-  sop_issue: { label: "Kendala SOP", Icon: MessageSquareWarning, tone: "warn" },
+  sop_issue: { label: "Masukan SOP", Icon: MessageSquareWarning, tone: "warn" },
   dispute: { label: "Dispute", Icon: MessageSquareWarning, tone: "bad" },
 };
 

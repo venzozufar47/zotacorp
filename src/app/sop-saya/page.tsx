@@ -37,7 +37,7 @@ export default async function SopOwnerPage() {
             SOP saya<span className="text-primary">.</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            SOP yang kamu jaga. Tinjau saat jadwalnya tiba, tanggapi kendala dari rekan, lalu
+            SOP yang kamu jaga. Tinjau saat jadwalnya tiba, tanggapi kendala & masukan dari rekan, lalu
             tandai selesai.
           </p>
         </div>

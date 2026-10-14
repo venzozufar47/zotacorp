@@ -60,7 +60,7 @@ function SopCard({ sop, today }: { sop: OwnedSop; today: string }) {
     start(async () => {
       const res = await resolveItemIssue({ id });
       if (!res.ok) return void toast.error(res.error);
-      toast.success("Kendala ditandai selesai");
+      toast.success("Ditandai selesai");
       router.refresh();
     });
   }
@@ -111,7 +111,7 @@ function SopCard({ sop, today }: { sop: OwnedSop; today: string }) {
       {sop.issues.length > 0 && (
         <div className="border-t border-border">
           <p className="flex items-center gap-1.5 px-4 pt-2.5 text-[11.5px] font-bold text-amber-700 dark:text-amber-400">
-            <MessageSquareWarning size={13} /> {sop.issues.length} kendala dari rekan
+            <MessageSquareWarning size={13} /> {sop.issues.length} kendala / masukan dari rekan
           </p>
           <ul className="divide-y divide-border">
             {sop.issues.map((i) => (
@@ -158,7 +158,7 @@ function SopCard({ sop, today }: { sop: OwnedSop; today: string }) {
         </div>
         <p className="text-[11px] text-muted-foreground">
           Mengubah titik atau standar dilakukan admin di Pengaturan SOP — sampaikan lewat
-          kendala atau langsung ke admin.
+          kendala / masukan atau langsung ke admin.
         </p>
       </div>
 

@@ -414,7 +414,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       userAvatarSeed: p?.avatar_seed ?? null,
       date: i.date,
       at: i.created_at,
-      detail: `Kendala SOP — ${i.item?.title ?? "titik"}: ${i.reason}`,
+      detail: `Kendala/masukan SOP — ${i.item?.title ?? "titik"}: ${i.reason}`,
     };
   });
 

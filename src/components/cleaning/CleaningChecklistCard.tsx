@@ -176,7 +176,7 @@ export function CleaningChecklistCard({ initial }: Props) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [selfieOpen, setSelfieOpen] = useState(false);
   const [referenceUrl, setReferenceUrl] = useState<string | undefined>(undefined);
-  // Form "ada kendala?" yang sedang terbuka (satu titik pada satu waktu).
+  // Form "ada kendala / masukan?" yang sedang terbuka (satu titik pada satu waktu).
   const [issueFor, setIssueFor] = useState<{ assignmentId: string; itemId: string } | null>(null);
   const [issueText, setIssueText] = useState("");
   const [issueSending, setIssueSending] = useState(false);
@@ -295,7 +295,7 @@ export function CleaningChecklistCard({ initial }: Props) {
     if (!issueFor) return;
     const reason = issueText.trim();
     if (reason.length < 3) {
-      toast.error("Tuliskan kendalanya dulu.");
+      toast.error("Tuliskan kendala atau masukanmu dulu.");
       return;
     }
     setIssueSending(true);
@@ -309,7 +309,7 @@ export function CleaningChecklistCard({ initial }: Props) {
       toast.error(res.error);
       return;
     }
-    toast.success("Kendala terkirim ke pemilik SOP");
+    toast.success("Terkirim ke pemilik SOP");
     setIssueFor(null);
     setIssueText("");
   }
@@ -399,7 +399,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                   <span>
                     Masa uji{task.trial_until ? ` sampai ${task.trial_until}` : ""} — SOP ini
                     belum dihitung dan tidak mengunci absen pulang. Coba kerjakan dan laporkan
-                    titik yang sulit lewat tombol Ada kendala di bawah tiap titik.
+                    titik yang sulit atau beri masukan lewat tombol Ada kendala / masukan di bawah tiap titik.
                   </span>
                 </p>
               )}
@@ -478,7 +478,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                               className="mt-1 inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                             >
                               <MessageSquareWarning className="size-3" />
-                              Ada kendala?
+                              Ada kendala / masukan?
                             </button>
                           )}
                           {issueFor?.assignmentId === task.assignment_id &&
@@ -489,7 +489,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                                   onChange={(e) => setIssueText(e.target.value)}
                                   rows={2}
                                   maxLength={500}
-                                  placeholder="Mis. keran rusak, alat tidak ada, standarnya kurang jelas…"
+                                  placeholder="Mis. keran rusak, alat tidak ada, standarnya kurang jelas, atau usul cara yang lebih baik…"
                                   className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs"
                                 />
                                 <div className="flex gap-2">

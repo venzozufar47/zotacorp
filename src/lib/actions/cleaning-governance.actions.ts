@@ -278,7 +278,7 @@ export async function reportItemIssue(input: {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Tidak terautentikasi." };
   const reason = input.reason?.trim() ?? "";
-  if (reason.length < 3) return { ok: false, error: "Tuliskan kendalanya (minimal 3 huruf)." };
+  if (reason.length < 3) return { ok: false, error: "Tuliskan kendala atau masukannya (minimal 3 huruf)." };
   if (reason.length > 500) return { ok: false, error: "Maksimal 500 karakter." };
 
   const supabase = await createClient();
@@ -318,7 +318,7 @@ export async function reportItemIssue(input: {
     .eq("date", today)
     .eq("status", "open")
     .maybeSingle();
-  if (dupe) return { ok: false, error: "Kendala untuk titik ini sudah Anda laporkan hari ini." };
+  if (dupe) return { ok: false, error: "Anda sudah mengirim kendala/masukan untuk titik ini hari ini." };
 
   const { error } = await supabase.from("cleaning_item_issues").insert({
     item_id: item.id,
@@ -357,7 +357,7 @@ async function notifyIssueReported(p: {
     ]);
     const name = who?.nickname?.trim() || who?.full_name || "Karyawan";
     const payload = {
-      title: `Kendala SOP — ${clip(cl?.name ?? "SOP", 40)}`,
+      title: `Kendala/masukan SOP — ${clip(cl?.name ?? "SOP", 40)}`,
       body: `${name}: ${clip(it?.title ?? "titik", 40)} — ${clip(p.reason, 120)}`,
     };
     if (cl?.owner_id && cl.owner_id !== p.reporterId) {
