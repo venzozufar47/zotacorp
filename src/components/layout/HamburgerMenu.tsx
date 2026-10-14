@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import { AccountSwitcher } from "@/components/auth/AccountSwitcher";
 
 type Variant = "sidebar" | "bottom";
 
@@ -126,8 +127,14 @@ export function HamburgerMenu({ variant, me = null }: HamburgerMenuProps) {
         {open && (
           <div
             role="menu"
-            className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border-2 border-foreground bg-popover shadow-hard py-1.5 animate-pop-in origin-bottom"
+            className="absolute bottom-full left-0 right-0 mb-2 max-h-[75vh] overflow-y-auto rounded-2xl border-2 border-foreground bg-popover shadow-hard py-1.5 animate-pop-in origin-bottom"
           >
+            {me && (
+              <>
+                <AccountSwitcher me={me} className="px-1" />
+                <div className="my-1.5 border-t-2 border-foreground/20 mx-2" />
+              </>
+            )}
             {items.map(({ href, icon: Icon, label, color }) => {
               const active = isActive(href);
               return (
@@ -216,7 +223,7 @@ export function HamburgerMenu({ variant, me = null }: HamburgerMenuProps) {
           />
           <div
             role="menu"
-            className="fixed bottom-0 left-0 right-0 z-50 bg-background rounded-t-3xl border-t-2 border-foreground shadow-hard pb-[env(safe-area-inset-bottom,0px)] md:hidden animate-pop-in origin-bottom"
+            className="fixed bottom-0 left-0 right-0 z-50 max-h-[88vh] overflow-y-auto bg-background rounded-t-3xl border-t-2 border-foreground shadow-hard pb-[env(safe-area-inset-bottom,0px)] md:hidden animate-pop-in origin-bottom"
           >
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b-2 border-foreground/10">
               <span className="font-display text-base font-bold">{t.nav.menu}</span>
@@ -230,6 +237,12 @@ export function HamburgerMenu({ variant, me = null }: HamburgerMenuProps) {
               </button>
             </div>
             <div className="py-2 px-2">
+              {me && (
+                <>
+                  <AccountSwitcher me={me} />
+                  <div className="my-1.5 border-t-2 border-foreground/10" />
+                </>
+              )}
               {items.map(({ href, icon: Icon, label, color }) => {
                 const active = isActive(href);
                 return (

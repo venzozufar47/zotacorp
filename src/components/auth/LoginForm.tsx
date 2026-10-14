@@ -10,18 +10,21 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { SavedAccountsChooser } from "@/components/auth/SavedAccountsChooser";
 
 /**
  * Auth landing form. Mounted on `/` (the new root) so anonymous
  * visitors don't pay an extra `/` → `/login` redirect. The legacy
  * `/login` route 308-redirects here for back-compat.
  */
-export function LoginForm() {
+export function LoginForm({ hasSavedAccounts = false }: { hasSavedAccounts?: boolean }) {
   const { t } = useTranslation();
   const tl = t.login;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forgotOpen, setForgotOpen] = useState(false);
+  // Ada akun tersimpan di perangkat ini (fitur ganti akun) → mulai dari pemilih akun.
+  const [mode, setMode] = useState<"choose" | "form">(hasSavedAccounts ? "choose" : "form");
 
   // Investor invite / password-recovery links dari Supabase mendarat di "/"
   // dengan token di URL hash (mis. #access_token=...&type=invite) karena
@@ -88,7 +91,9 @@ export function LoginForm() {
         <CardDescription>{tl.subtitle}</CardDescription>
       </CardHeader>
       <CardContent>
-        {forgotOpen ? (
+        {mode === "choose" ? (
+          <SavedAccountsChooser onUseOther={() => setMode("form")} onEmpty={() => setMode("form")} />
+        ) : forgotOpen ? (
           <ForgotPanel tl={tl} onBack={() => setForgotOpen(false)} />
         ) : (
         <>
@@ -143,6 +148,18 @@ export function LoginForm() {
             {tl.forgotCta}
           </button>
         </div>
+
+        {hasSavedAccounts && (
+          <div className="text-center mt-3">
+            <button
+              type="button"
+              onClick={() => setMode("choose")}
+              className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            >
+              Pilih akun tersimpan
+            </button>
+          </div>
+        )}
 
         <p className="text-center text-sm text-muted-foreground mt-5 font-medium">
           {tl.noAccount}{" "}

@@ -35,7 +35,7 @@ export default async function AdminLayout({
       return (
         <div className="flex min-h-screen bg-background">
           <RouteProgressBar />
-          <AdminMobileNav pendingConfirmations={[]} scope="yeobo-booth" />
+          <AdminMobileNav pendingConfirmations={[]} scope="yeobo-booth" profile={profile} />
           <AdminSidebar
             pendingCount={0}
             disputesCount={0}
@@ -52,13 +52,23 @@ export default async function AdminLayout({
       );
     }
 
-    const [assignedIds, hasCash, hasCakeFinance, hasMetaAds] = await Promise.all([
+    const [assignedIds, hasCash, hasCakeFinance, hasMetaAds, meProfile] = await Promise.all([
       listMyAssignedBankAccountIds(),
       hasAssignedCashDashboard(),
       isCakeFinanceAdmin(),
       isMetaAdsViewer(),
+      getCurrentProfile(),
     ]);
     const hasFinance = assignedIds.length > 0;
+    // Menu profil (avatar + ganti akun) butuh `me`; tanpa ini menu jatuh ke ikon generik.
+    const me = meProfile
+      ? {
+          id: meProfile.id,
+          full_name: meProfile.full_name ?? null,
+          avatar_url: meProfile.avatar_url ?? null,
+          avatar_seed: meProfile.avatar_seed ?? null,
+        }
+      : null;
     return (
       <div className="flex min-h-screen bg-background">
         <RouteProgressBar />
@@ -68,6 +78,7 @@ export default async function AdminLayout({
           hasCash={hasCash}
           hasCakeFinance={hasCakeFinance}
           hasMetaAds={hasMetaAds}
+          me={me}
         />
         <main className="flex-1 min-w-0">
           <div className="max-w-[1700px] mx-auto px-4 py-6 pb-24 md:px-6 md:pb-8">
@@ -79,6 +90,7 @@ export default async function AdminLayout({
         hasCash={hasCash}
         hasCakeFinance={hasCakeFinance}
         hasMetaAds={hasMetaAds}
+        me={me}
       />
       </div>
     );
@@ -109,6 +121,7 @@ export default async function AdminLayout({
         disputesCount={disputes.length}
         cleaningCount={cleaningExceptions.length}
         isAdminZota
+        profile={profile}
       />
       <AdminSidebar
         pendingCount={attendancePendingCount}

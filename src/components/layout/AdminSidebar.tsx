@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
-import { LogOut, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LogOut, ChevronRight, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import { AccountSwitcher } from "@/components/auth/AccountSwitcher";
 import {
   buildAdminNav,
   isBranchActive,
@@ -53,6 +54,27 @@ export function AdminSidebar({
 }) {
   const pathname = usePathname();
   const { t } = useTranslation();
+
+  // Menu akun di footer: tutup saat klik di luar / Escape / pindah halaman.
+  // Dibuka per-path: berpindah halaman otomatis menutupnya (tanpa effect).
+  const [accountOpenPath, setAccountOpenPath] = useState<string | null>(null);
+  const accountOpen = accountOpenPath === pathname;
+  const footRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!accountOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!footRef.current?.contains(e.target as Node)) setAccountOpenPath(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAccountOpenPath(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [accountOpen]);
 
   // `t` is referentially stable (LanguageProvider memoizes it), so this
   // only rebuilds when a badge count or the scope actually changes.
@@ -227,19 +249,42 @@ export function AdminSidebar({
         ))}
       </nav>
 
-      {/* Footer user card */}
-      <div className="px-3.5 py-3 border-t border-border/70">
-        <form action={signOut} className="contents">
+      {/* Footer user card — membuka menu akun (ganti akun / keluar), bukan lagi
+          sign-out sekali klik. */}
+      <div ref={footRef} className="relative px-3.5 py-3 border-t border-border/70">
+        {accountOpen && profile && (
+          <div
+            role="menu"
+            className="absolute bottom-full left-3 right-3 mb-1 max-h-[70vh] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-lg animate-pop-in origin-bottom"
+          >
+            <AccountSwitcher me={profile} />
+            <div className="my-1 border-t border-border/70" />
+            <form action={signOut}>
+              <button
+                type="submit"
+                role="menuitem"
+                className="group/out flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+              >
+                <LogOut size={14} />
+                {t.nav.signOut}
+              </button>
+            </form>
+          </div>
+        )}
+        {profile ? (
           <button
-            type="submit"
+            type="button"
+            onClick={() => setAccountOpenPath(accountOpen ? null : pathname)}
+            aria-expanded={accountOpen}
+            aria-haspopup="menu"
             className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl hover:bg-muted/70 transition text-left group/foot"
-            title="Sign out"
+            title="Akun"
           >
             <EmployeeAvatar
               size="sm"
-              full_name={profile?.full_name ?? null}
-              avatar_url={profile?.avatar_url ?? null}
-              avatar_seed={profile?.avatar_seed ?? null}
+              full_name={profile.full_name ?? null}
+              avatar_url={profile.avatar_url ?? null}
+              avatar_seed={profile.avatar_seed ?? null}
             />
             <span className="flex-1 min-w-0">
               <span className="block text-[12.5px] font-medium text-foreground leading-tight truncate">
@@ -251,15 +296,33 @@ export function AdminSidebar({
                 </span>
               )}
             </span>
-            <span
-              className="text-muted-foreground/60 group-hover/foot:text-destructive transition"
-              aria-hidden
-            >
-              <LogOut size={14} />
+            <span className="text-muted-foreground/60 transition" aria-hidden>
+              <ChevronsUpDown size={14} />
             </span>
-            <span className="sr-only">{t.nav.signOut}</span>
           </button>
-        </form>
+        ) : (
+          <form action={signOut} className="contents">
+            <button
+              type="submit"
+              className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl hover:bg-muted/70 transition text-left group/foot"
+              title="Sign out"
+            >
+              <EmployeeAvatar size="sm" full_name={null} avatar_url={null} avatar_seed={null} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-[12.5px] font-medium text-foreground leading-tight truncate">
+                  {displayName}
+                </span>
+              </span>
+              <span
+                className="text-muted-foreground/60 group-hover/foot:text-destructive transition"
+                aria-hidden
+              >
+                <LogOut size={14} />
+              </span>
+              <span className="sr-only">{t.nav.signOut}</span>
+            </button>
+          </form>
+        )}
       </div>
     </aside>
   );

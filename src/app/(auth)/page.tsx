@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { LoginForm } from "@/components/auth/LoginForm";
+import { readVault } from "@/lib/auth/account-vault";
 
 /**
  * Auth landing at `/` — eliminates the legacy `/` → `/login` hop
@@ -32,5 +33,13 @@ export default async function AuthLandingRoute() {
     // Real errors (missing env, network) fall through to the login
     // form so the user always has a path forward.
   }
-  return <LoginForm />;
+  // Akun tersimpan (ganti akun) → login mulai dari pemilih akun. Hanya cek ada/tidaknya;
+  // detail dimuat klien. Gagal baca cookie tak boleh menghalangi login.
+  let hasSavedAccounts = false;
+  try {
+    hasSavedAccounts = (await readVault()).length > 0;
+  } catch {
+    hasSavedAccounts = false;
+  }
+  return <LoginForm hasSavedAccounts={hasSavedAccounts} />;
 }

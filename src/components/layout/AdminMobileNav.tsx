@@ -9,6 +9,7 @@ import { signOut } from "@/lib/actions/auth.actions";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { PendingConfirmationsBell } from "./PendingConfirmationsBell";
 import { AdminBackButton } from "./AdminBackButton";
+import { AccountSwitcher, type SwitcherViewer } from "@/components/auth/AccountSwitcher";
 import {
   MOBILE_PRIMARY_HREFS,
   MOBILE_PRIMARY_HREFS_YEOBO,
@@ -40,6 +41,7 @@ export function AdminMobileNav({
   cleaningCount = 0,
   scope = "full",
   isAdminZota = false,
+  profile = null,
 }: {
   pendingConfirmations?: PendingConfirmationItem[];
   pendingCount?: number;
@@ -47,6 +49,8 @@ export function AdminMobileNav({
   cleaningCount?: number;
   scope?: AdminNavScope;
   isAdminZota?: boolean;
+  /** Akun aktif — untuk menu ganti akun di sheet. */
+  profile?: SwitcherViewer | null;
 }) {
   const pathname = usePathname();
   const { t } = useTranslation();
@@ -346,6 +350,12 @@ export function AdminMobileNav({
               ))}
 
               <div className="my-2 border-t-2 border-foreground/10" />
+              {profile && (
+                <>
+                  <AccountSwitcher me={profile} />
+                  <div className="my-2 border-t-2 border-foreground/10" />
+                </>
+              )}
               <form action={signOut}>
                 <button
                   type="submit"

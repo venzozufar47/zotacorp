@@ -10,6 +10,7 @@ import {
 import { getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { signOut } from "@/lib/actions/auth.actions";
 import { RouteProgressBar } from "@/components/ui/RouteProgressBar";
+import { InvestorAccountMenu } from "@/components/auth/InvestorAccountMenu";
 
 /**
  * Layout investor portal. Theme Oceanic Editorial — premium, kalem,
@@ -28,6 +29,15 @@ export default async function InvestorLayout({
 
   const profile = await getCurrentProfile();
   const firstName = profile?.full_name?.split(/\s+/)[0] ?? "Investor";
+  const me = profile
+    ? {
+        id: profile.id,
+        full_name: profile.full_name ?? null,
+        avatar_url: profile.avatar_url ?? null,
+        avatar_seed: profile.avatar_seed ?? null,
+        email: profile.email ?? null,
+      }
+    : null;
 
   const NAV = [
     { href: "/investor", label: "Beranda", icon: LayoutDashboard },
@@ -70,7 +80,8 @@ export default async function InvestorLayout({
               );
             })}
           </nav>
-          <div className="px-3 py-4 border-t border-border">
+          <div className="px-3 py-4 border-t border-border space-y-1">
+            {me && <InvestorAccountMenu me={me} variant="sidebar" />}
             <form action={signOut}>
               <button
                 type="submit"
@@ -109,16 +120,20 @@ export default async function InvestorLayout({
               </Link>
             );
           })}
-          <form action={signOut} className="flex-1 flex items-center justify-center">
-            <button
-              type="submit"
-              className="press-feedback flex flex-col items-center gap-0.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-destructive"
-              aria-label="Sign out"
-            >
-              <LogOut size={18} strokeWidth={2} />
-              Keluar
-            </button>
-          </form>
+          {me ? (
+            <InvestorAccountMenu me={me} variant="bottom" />
+          ) : (
+            <form action={signOut} className="flex-1 flex items-center justify-center">
+              <button
+                type="submit"
+                className="press-feedback flex flex-col items-center gap-0.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-destructive"
+                aria-label="Sign out"
+              >
+                <LogOut size={18} strokeWidth={2} />
+                Keluar
+              </button>
+            </form>
+          )}
         </div>
       </nav>
     </div>

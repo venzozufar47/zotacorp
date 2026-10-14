@@ -10,6 +10,7 @@ import { PwaRegister } from "@/components/shared/PwaRegister";
 import { BfcacheRefresh } from "@/components/shared/BfcacheRefresh";
 import { ShowcaseMode } from "@/components/shared/ShowcaseMode";
 import { OverlayDragGuard } from "@/components/shared/OverlayDragGuard";
+import { AccountSwitchSync } from "@/components/auth/AccountSwitchSync";
 import { SHOWCASE_STORAGE_KEY } from "@/lib/showcase/store";
 import "./globals.css";
 
@@ -118,6 +119,7 @@ export default async function RootLayout({
           {children}
           <ShowcaseMode />
           <OverlayDragGuard />
+          <AccountSwitchSync />
           <LazyToaster />
           <PwaRegister />
           <BfcacheRefresh />
