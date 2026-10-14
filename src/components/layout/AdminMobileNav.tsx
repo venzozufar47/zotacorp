@@ -153,7 +153,7 @@ export function AdminMobileNav({
             const { href, icon: Icon, label, badge, color } = item;
             const active = isBranchActive(item, activeHref);
             return (
-              <Link
+              <Link prefetch={false}
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
@@ -269,7 +269,7 @@ export function AdminMobileNav({
                     return (
                       <div key={href}>
                         <div className="flex items-center gap-1">
-                          <Link
+                          <Link prefetch={false}
                             href={href}
                             role="menuitem"
                             aria-current={active ? "page" : undefined}
@@ -325,7 +325,7 @@ export function AdminMobileNav({
                             {children.map((c) => {
                               const childActive = c.href === activeHref;
                               return (
-                                <Link
+                                <Link prefetch={false}
                                   key={c.href}
                                   href={c.href}
                                   role="menuitem"

@@ -1,5 +1,6 @@
 "use server";
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
@@ -92,6 +93,33 @@ export async function requireAdminOrInvestorForBu(
 }
 
 /**
+ * Apakah `userId` punya baris `bank_account_assignees` untuk rekening ini
+ * dengan salah satu scope di `scopes` (dipisah koma)?
+ *
+ * Hasilnya di-memo PER REQUEST (React `cache`, bukan antar request/user):
+ * satu render halaman kasir memanggil gate ini 5–6× untuk rekening yang
+ * sama, masing-masing satu query. Pemeriksaannya sendiri tidak berubah —
+ * tiap gate tetap memverifikasi user (`getCurrentUser`, jaringan) dan peran
+ * lebih dulu, lalu memakai hasil lookup yang sama persis dengan query
+ * sebelumnya (error / banyak baris → ditolak, seperti `maybeSingle()` lama).
+ * Perubahan assignment hanya dilakukan admin, yang lolos di cek peran
+ * SEBELUM sampai ke sini, jadi tidak ada risiko membaca nilai basi.
+ */
+const hasAssignment = cache(
+  async (bankAccountId: string, userId: string, scopes: string): Promise<boolean> => {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("bank_account_assignees")
+      .select("bank_account_id")
+      .eq("bank_account_id", bankAccountId)
+      .eq("user_id", userId)
+      .in("scope", scopes.split(","))
+      .maybeSingle();
+    return !!data;
+  }
+);
+
+/**
  * Admin + `scope='full'` assignees of `bankAccountId`. Used for
  * cashflow transaction CRUD on per-rekening ACL'd accounts (currently
  * cash rekening). Delete paths still call `requireAdmin` since
@@ -106,15 +134,8 @@ export async function requireAdminOrAssignee(
   if (!user) return { ok: false, error: "Not signed in" };
   const role = await getCurrentRole();
   if (role === "admin") return { ok: true, userId: user.id };
-  const supabase = await createClient();
-  const { data: assignment } = await supabase
-    .from("bank_account_assignees")
-    .select("bank_account_id")
-    .eq("bank_account_id", bankAccountId)
-    .eq("user_id", user.id)
-    .eq("scope", "full")
-    .maybeSingle();
-  if (!assignment) return { ok: false, error: "Forbidden" };
+  if (!(await hasAssignment(bankAccountId, user.id, "full")))
+    return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
 }
 
@@ -131,15 +152,8 @@ export async function requireAdminOrPosAssignee(
   if (!user) return { ok: false, error: "Not signed in" };
   const role = await getCurrentRole();
   if (role === "admin") return { ok: true, userId: user.id };
-  const supabase = await createClient();
-  const { data: assignment } = await supabase
-    .from("bank_account_assignees")
-    .select("bank_account_id")
-    .eq("bank_account_id", bankAccountId)
-    .eq("user_id", user.id)
-    .in("scope", ["full", "pos_only"])
-    .maybeSingle();
-  if (!assignment) return { ok: false, error: "Forbidden" };
+  if (!(await hasAssignment(bankAccountId, user.id, "full,pos_only")))
+    return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
 }
 
@@ -156,15 +170,8 @@ export async function requireInsightsViewer(
   if (!user) return { ok: false, error: "Not signed in" };
   const role = await getCurrentRole();
   if (role === "admin") return { ok: true, userId: user.id };
-  const supabase = await createClient();
-  const { data: assignment } = await supabase
-    .from("bank_account_assignees")
-    .select("bank_account_id")
-    .eq("bank_account_id", bankAccountId)
-    .eq("user_id", user.id)
-    .in("scope", ["full", "insights_only"])
-    .maybeSingle();
-  if (!assignment) return { ok: false, error: "Forbidden" };
+  if (!(await hasAssignment(bankAccountId, user.id, "full,insights_only")))
+    return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
 }
 

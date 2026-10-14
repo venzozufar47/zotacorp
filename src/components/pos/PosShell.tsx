@@ -104,7 +104,7 @@ export function PosShell({
       <header className="md:col-span-2 h-14 border-b border-border bg-card flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 z-20">
         {/* Kembali ke beranda Zota. "/" me-redirect sesuai peran (admin →
             /admin, karyawan → /dashboard), jadi satu tautan cukup untuk semua. */}
-        <Link
+        <Link prefetch={false}
           href="/"
           className="size-9 rounded-full border border-border bg-card text-foreground inline-flex items-center justify-center shrink-0 hover:bg-muted"
           aria-label="Kembali ke beranda Zota"

@@ -138,7 +138,7 @@ export function HamburgerMenu({ variant, me = null }: HamburgerMenuProps) {
             {items.map(({ href, icon: Icon, label, color }) => {
               const active = isActive(href);
               return (
-                <Link
+                <Link prefetch={false}
                   key={href}
                   href={href}
                   role="menuitem"
@@ -246,7 +246,7 @@ export function HamburgerMenu({ variant, me = null }: HamburgerMenuProps) {
               {items.map(({ href, icon: Icon, label, color }) => {
                 const active = isActive(href);
                 return (
-                  <Link
+                  <Link prefetch={false}
                     key={href}
                     href={href}
                     role="menuitem"

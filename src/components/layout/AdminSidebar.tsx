@@ -114,7 +114,7 @@ export function AdminSidebar({
       }}
     >
       {/* Brand block */}
-      <Link
+      <Link prefetch={false}
         href="/admin"
         className="flex items-center gap-3 px-5 pt-5 pb-4 group"
       >
@@ -167,7 +167,7 @@ export function AdminSidebar({
                         : undefined
                     }
                   >
-                    <Link
+                    <Link prefetch={false}
                       href={href}
                       aria-current={active ? "page" : undefined}
                       className={cn(
@@ -225,7 +225,7 @@ export function AdminSidebar({
                       {children.map((c) => {
                         const childActive = c.href === activeHref;
                         return (
-                          <Link
+                          <Link prefetch={false}
                             key={c.href}
                             href={c.href}
                             aria-current={childActive ? "page" : undefined}

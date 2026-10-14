@@ -182,7 +182,7 @@ export function BottomNav({
             const active =
               pathname === href || pathname.startsWith(href + "/");
             return (
-              <Link
+              <Link prefetch={false}
                 key={href}
                 href={href}
                 className="snap-start shrink-0 flex flex-col items-center gap-1 w-[64px] py-1 text-[11px] transition-colors"

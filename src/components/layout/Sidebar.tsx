@@ -171,7 +171,7 @@ export function Sidebar({
     <aside className={cn("flex flex-col w-60 bg-background border-r-2 border-foreground h-screen sticky top-0", className)}>
       {/* Brand — icon-only (tosca) mirrors admin treatment; reads well on all three themes' light sidebar surfaces */}
       <div className="px-6 py-6 border-b-2 border-foreground">
-        <Link href="/dashboard" className="inline-flex items-center gap-2 group">
+        <Link prefetch={false} href="/dashboard" className="inline-flex items-center gap-2 group">
           <img
             src="/zota-corp-logo-tosca.png"
             alt="Zota Corp"
@@ -189,7 +189,7 @@ export function Sidebar({
           const badge = "badge" in item ? item.badge : undefined;
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
-            <Link
+            <Link prefetch={false}
               key={href}
               href={href}
               className={cn(

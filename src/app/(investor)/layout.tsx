@@ -53,7 +53,7 @@ export default async function InvestorLayout({
         {/* Desktop sidebar */}
         <aside className="hidden md:flex flex-col w-60 border-r border-border bg-card sticky top-0 h-screen">
           <div className="px-6 py-6 border-b border-border">
-            <Link href="/investor" className="inline-flex items-center gap-2">
+            <Link prefetch={false} href="/investor" className="inline-flex items-center gap-2">
               <img
                 src="/zota-corp-logo-tosca.png"
                 alt="Zota Corp"
@@ -69,7 +69,7 @@ export default async function InvestorLayout({
             {NAV.map((it) => {
               const Icon = it.icon;
               return (
-                <Link
+                <Link prefetch={false}
                   key={it.href}
                   href={it.href}
                   className="press-feedback flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -110,7 +110,7 @@ export default async function InvestorLayout({
           {NAV.map((it) => {
             const Icon = it.icon;
             return (
-              <Link
+              <Link prefetch={false}
                 key={it.href}
                 href={it.href}
                 className="press-feedback flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-foreground"

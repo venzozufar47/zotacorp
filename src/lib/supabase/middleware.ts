@@ -26,6 +26,28 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
+  // IDENTITAS di proxy diverifikasi dengan `getClaims()`, BUKAN `getUser()`.
+  //
+  // Proxy jalan di SETIAP request (halaman, RSC, prefetch tautan). `getUser()`
+  // = satu round-trip ke Supabase Auth per request, dan tiap round-trip
+  // tercatat dua kali (gateway + auth) di Log Ingestion — ±1/3 dari seluruh
+  // baris log project ini (Okt 2026), dan 1 GB kuota Free terlampaui 3×.
+  //
+  // `getClaims()` memverifikasi tanda tangan JWT (ES256, kunci publik JWKS
+  // project ini) + masa berlaku SECARA LOKAL, dan tetap me-refresh access
+  // token yang kedaluwarsa lewat `getSession()` (cookie baru ikut tertulis
+  // lewat setAll di atas). Bila project memakai kunci simetris (HS*),
+  // auth-js otomatis jatuh kembali ke `getUser()` — jadi tak pernah lebih
+  // longgar dari sebelumnya. Ini juga pola resmi Supabase untuk middleware.
+  //
+  // Yang TIDAK terdeteksi di sini: sesi yang dicabut server-side
+  // (sign-out global, ganti password) sampai access token-nya kedaluwarsa
+  // (≤ umur JWT). Itu aman karena BUKAN lapisan otorisasi: setiap layout &
+  // halaman terproteksi tetap memverifikasi lewat `getCurrentUser()`
+  // (= `getUser()`, jaringan) — lihat lib/supabase/cached.ts — dan
+  // route API melakukan gate sendiri. Penonaktifan akun (`is_active`)
+  // tetap ditegakkan di sini lewat query profil di bawah.
+  //
   // `getUser()` MELEMPAR (bukan mengembalikan { error }) saat refresh token
   // di cookie tidak dikenal server auth — mis. token sudah dirotasi, sesi
   // dicabut, atau cookie tertinggal dari project Supabase lain. Tanpa
@@ -40,13 +62,19 @@ export async function updateSession(request: NextRequest) {
   //
   // Ditangani seperti "belum login": lanjut dengan user null, dan cookie
   // auth-nya dihapus supaya percobaan berikutnya bersih.
-  let user: Awaited<
-    ReturnType<typeof supabase.auth.getUser>
-  >["data"]["user"] = null;
+  // `getClaims()` mengembalikan { error } (tidak melempar) untuk refresh token
+  // yang tak dikenal / JWT tak valid, dan { data: null, error: null } untuk
+  // pengunjung anonim — jadi error apa pun = cookie basi, sama seperti
+  // perlakuan catch sebelumnya.
+  let userId: string | null = null;
   let authCookiesStale = false;
   try {
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
+    const { data, error } = await supabase.auth.getClaims();
+    if (error) {
+      authCookiesStale = true;
+    } else if (typeof data?.claims?.sub === "string" && data.claims.sub) {
+      userId = data.claims.sub;
+    }
   } catch {
     authCookiesStale = true;
   }
@@ -113,14 +141,14 @@ export async function updateSession(request: NextRequest) {
   const isApi = pathname.startsWith("/api");
 
   // Not logged in → force to landing (except public routes and API routes)
-  if (!user && !isPublic && !isApi) {
+  if (!userId && !isPublic && !isApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
   }
 
   // Logged in → resolve role once for all guards below
-  if (user) {
+  if (userId) {
     const employeeRoutes = ["/dashboard", "/attendance", "/profile", "/assignments"];
     const onEmployeeRoute = employeeRoutes.some(
       (r) => pathname === r || pathname.startsWith(r + "/")
@@ -133,7 +161,7 @@ export async function updateSession(request: NextRequest) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("role, is_active, resigned_at")
-        .eq("id", user.id)
+        .eq("id", userId)
         .single();
 
       // Resign gate: kalau akun di-nonaktifkan admin, force sign-out

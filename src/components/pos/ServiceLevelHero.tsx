@@ -108,7 +108,7 @@ export function ServiceLevelHero({
       </div>
     );
     return href ? (
-      <Link href={href} className="block">
+      <Link prefetch={false} href={href} className="block">
         {inner}
       </Link>
     ) : (
