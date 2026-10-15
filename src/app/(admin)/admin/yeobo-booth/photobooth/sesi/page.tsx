@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
+import { getCurrentRole } from "@/lib/supabase/cached";
 import {
   getBoothSessionSummary,
   listBoothDevices,
@@ -17,7 +17,8 @@ export default async function PhotoboothSessionsPage({
 }: {
   searchParams: Promise<{ device?: string }>;
 }) {
-  if (!(await canAccessYeoboBooth())) redirect("/dashboard");
+  // Sementara khusus superadmin (admin Zota).
+  if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
 
   const { device } = await searchParams;
   const [sessions, summary, devices] = await Promise.all([
