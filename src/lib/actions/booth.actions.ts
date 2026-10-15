@@ -32,7 +32,7 @@ const THUMB_URL_TTL_S = 300;
 const SESSION_LIMIT = 100;
 
 const DEVICE_COLUMNS =
-  "id, name, brand, location, camera_driver, app_version, camera_ready, printer_ready, queue_pending, last_seen_at, revoked_at, active_event_id, created_at";
+  "id, name, brand, location, camera_driver, app_version, camera_ready, printer_ready, queue_pending, last_seen_at, revoked_at, active_event_id, target_version, created_at";
 
 // ---------------------------------------------------------------- events
 
@@ -166,6 +166,37 @@ export async function setBoothDeviceEvent(
   const { error } = await supabase
     .from("booth_devices" as never)
     .update({ active_event_id: eventId } as never)
+    .eq("id", deviceId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(BASE_PATH);
+  return { ok: true };
+}
+
+const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+
+/**
+ * Pin satu perangkat ke versi agent tertentu (canary: uji di satu cabang dulu).
+ * Kosong = ikuti versi "latest" di manifest rilis. Mengisi versi yang lebih lama
+ * dari yang berjalan = rollback. Versi yang tidak ada di manifest tidak
+ * menghasilkan update (perangkat tetap di versinya).
+ */
+export async function setBoothDeviceTargetVersion(
+  deviceId: string,
+  version: string | null
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const clean = version?.trim() || null;
+  if (!z.string().uuid().safeParse(deviceId).success) {
+    return { ok: false, error: "Perangkat tidak valid" };
+  }
+  if (clean !== null && !VERSION_RE.test(clean)) {
+    return { ok: false, error: "Format versi harus seperti 0.2.1" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("booth_devices" as never)
+    .update({ target_version: clean } as never)
     .eq("id", deviceId);
   if (error) return { ok: false, error: error.message };
   revalidatePath(BASE_PATH);

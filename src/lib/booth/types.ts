@@ -18,6 +18,8 @@ export interface BoothDevice {
   queue_pending: number | null;
   last_seen_at: string | null;
   revoked_at: string | null;
+  /** Versi agent yang dipaksa untuk perangkat ini (canary); null = ikut versi terbaru. */
+  target_version: string | null;
   active_event_id: string | null;
   active_event_name: string | null;
   /** Dihitung di server supaya hasil render server & klien sama. */

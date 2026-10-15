@@ -9,6 +9,7 @@ import {
   revokeBoothDevice,
   rotateBoothDeviceToken,
   setBoothDeviceEvent,
+  setBoothDeviceTargetVersion,
 } from "@/lib/actions/booth.actions";
 import {
   BOOTH_BRAND_LABELS,
@@ -127,6 +128,20 @@ export function DevicesManager({ devices, events }: Props) {
     });
   }
 
+  function onTargetVersion(d: BoothDevice, value: string) {
+    if ((value.trim() || null) === d.target_version) return;
+    start(async () => {
+      const res = await setBoothDeviceTargetVersion(d.id, value);
+      if (!res.ok) {
+        toast.error(res.error);
+        router.refresh(); // put the field back to the saved value
+        return;
+      }
+      toast.success(value.trim() ? `Versi target ${value.trim()}` : "Ikut versi terbaru");
+      router.refresh();
+    });
+  }
+
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -223,6 +238,21 @@ export function DevicesManager({ devices, events }: Props) {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className={LABEL}>Versi target (kosong = terbaru)</label>
+                <input
+                  key={`${d.id}-${d.target_version ?? ""}`}
+                  className={FIELD}
+                  defaultValue={d.target_version ?? ""}
+                  placeholder="Mis. 0.2.1 untuk uji di cabang ini dulu"
+                  disabled={pending || !!d.revoked_at}
+                  onBlur={(e) => onTargetVersion(d, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                />
               </div>
 
               <div className="flex flex-wrap gap-2">
