@@ -284,21 +284,16 @@ export function buildAdminNav({
           label: "Yeobo Booth",
           color: "bg-pop-emerald",
           scopes: ["full", "yeobo-booth"],
+          // Subnav sengaja ringkas: hanya halaman yang TIDAK punya tombol di hub
+          // (/admin/yeobo-booth). Kalender, Semua Booking, Laporan, Freelance,
+          // Reminder, dan Akses Admin dibuka dari tombol-tombol di halaman hub.
           children: [
-            { href: "/admin/yeobo-booth/calendar", label: "Kalender" },
-            { href: "/admin/yeobo-booth/bookings", label: "Semua Booking" },
-            { href: "/admin/yeobo-booth/laporan", label: "Laporan" },
-            { href: "/admin/yeobo-booth/freelance", label: "Freelance" },
             // Dashboard Zota Booth: sementara khusus admin Zota (lihat booth.actions.ts).
             ...(isAdminZota
               ? [
                   { href: "/admin/yeobo-booth/photobooth", label: "Perangkat Photobooth" },
                   { href: "/admin/yeobo-booth/photobooth/sesi", label: "Sesi Foto" },
                 ]
-              : []),
-            { href: "/admin/yeobo-booth/settings", label: "Reminder WA" },
-            ...(isAdminZota
-              ? [{ href: "/admin/yeobo-booth/admins", label: "Akses Admin" }]
               : []),
           ],
         },
