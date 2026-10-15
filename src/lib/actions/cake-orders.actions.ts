@@ -327,18 +327,43 @@ export async function listMyCakeOrders(opts?: {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
   const supabase = await createServerClient();
-  let query = supabase
-    .from("cake_orders" as never)
-    .select("*")
-    .order("scheduled_at", { ascending: true });
-  if (opts?.onlyArchived) {
-    query = query.not("archived_at", "is", null);
-  } else if (!opts?.includeArchived) {
-    query = query.is("archived_at", null);
+
+  // PostgREST membatasi satu respons ke `max_rows` (1000). Tanpa paginasi,
+  // arsip (kini >1.000 pesanan, urut `scheduled_at` menaik) terpotong DIAM-DIAM
+  // dan yang hilang justru pesanan TERBARU — dilaporkan admin Okt 2026
+  // ("arsip cuma sampai tgl 8, dan cuma 1000"). Ambil per halaman sampai habis.
+  //
+  // - `id` jadi pengurut kedua: banyak pesanan berbagi `scheduled_at`, dan tanpa
+  //   tie-breaker pengurut yang tidak deterministik bisa menggandakan / melewatkan
+  //   baris di batas halaman.
+  // - Total dari `count: "exact"` pada halaman pertama jadi patokan berhenti, bukan
+  //   "halaman < 1000" — kalau `max_rows` server lebih kecil dari ukuran halaman,
+  //   cek terakhir itu akan berhenti terlalu dini.
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 50; // pagar pengaman (50.000 pesanan) — bukan batas bisnis
+  const rows: CakeOrder[] = [];
+  let total: number | null = null;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let query = supabase
+      .from("cake_orders" as never)
+      .select("*", { count: "exact" })
+      .order("scheduled_at", { ascending: true })
+      .order("id", { ascending: true });
+    if (opts?.onlyArchived) {
+      query = query.not("archived_at", "is", null);
+    } else if (!opts?.includeArchived) {
+      query = query.is("archived_at", null);
+    }
+    const from = rows.length;
+    const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);
+    if (error) return { ok: false, error: error.message };
+    if (total === null) total = count ?? null;
+    const batch = (data ?? []) as unknown as CakeOrder[];
+    rows.push(...batch);
+    if (batch.length === 0) break;
+    if (total !== null ? rows.length >= total : batch.length < PAGE_SIZE) break;
   }
-  const { data, error } = await query;
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as CakeOrder[] };
+  return { ok: true, data: rows };
 }
 
 export async function setCakeOrderArchived(
