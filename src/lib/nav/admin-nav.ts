@@ -289,8 +289,13 @@ export function buildAdminNav({
             { href: "/admin/yeobo-booth/bookings", label: "Semua Booking" },
             { href: "/admin/yeobo-booth/laporan", label: "Laporan" },
             { href: "/admin/yeobo-booth/freelance", label: "Freelance" },
-            { href: "/admin/yeobo-booth/photobooth", label: "Perangkat Photobooth" },
-            { href: "/admin/yeobo-booth/photobooth/sesi", label: "Sesi Foto" },
+            // Dashboard Zota Booth: sementara khusus admin Zota (lihat booth.actions.ts).
+            ...(isAdminZota
+              ? [
+                  { href: "/admin/yeobo-booth/photobooth", label: "Perangkat Photobooth" },
+                  { href: "/admin/yeobo-booth/photobooth/sesi", label: "Sesi Foto" },
+                ]
+              : []),
             { href: "/admin/yeobo-booth/settings", label: "Reminder WA" },
             ...(isAdminZota
               ? [{ href: "/admin/yeobo-booth/admins", label: "Akses Admin" }]

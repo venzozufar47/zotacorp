@@ -3,13 +3,14 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Images } from "lucide-react";
-import { canAccessYeoboBooth } from "@/lib/yeobo-booth/access";
+import { getCurrentRole } from "@/lib/supabase/cached";
 import { listBoothDevices, listBoothEvents } from "@/lib/actions/booth.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DevicesManager } from "@/components/booth/DevicesManager";
 
 export default async function PhotoboothDevicesPage() {
-  if (!(await canAccessYeoboBooth())) redirect("/dashboard");
+  // Sementara khusus superadmin (admin Zota).
+  if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
 
   const [devices, events] = await Promise.all([
     listBoothDevices(),

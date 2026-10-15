@@ -1,11 +1,11 @@
-"use server";
+﻿"use server";
 
 import { createHash, randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "./_supabase-admin";
-import { requireYeoboBoothAccess, type ActionResult } from "./_gates";
+import { requireAdmin, type ActionResult } from "./_gates";
 import { isBoothOnline } from "@/lib/booth/types";
 import type {
   BoothDevice,
@@ -16,8 +16,10 @@ import type {
 } from "@/lib/booth/types";
 
 /**
- * Dashboard Zota Booth. Akses = admin Zota atau admin Yeobo Booth (sama
- * dengan fungsi DB `booth_can_manage()` yang menjaga RLS tabel `booth_*`).
+ * Dashboard Zota Booth. Sementara HANYA admin Zota (superadmin). RLS tabel
+ * `booth_*` (`booth_can_manage()`) lebih longgar: admin Yeobo Booth juga lolos
+ * di DB, jadi membuka dashboard untuk mereka nanti cukup mengganti gate ini
+ * (+ nav + halaman) menjadi `requireYeoboBoothAccess`, tanpa migrasi.
  *
  * Baca daftar lewat client user (RLS ikut berlaku). Service role dipakai
  * HANYA untuk hal yang memang tertutup dari browser: menulis `token_hash`
@@ -35,7 +37,7 @@ const DEVICE_COLUMNS =
 // ---------------------------------------------------------------- events
 
 export async function listBoothEvents(): Promise<BoothEventOption[]> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return [];
   const supabase = await createClient();
   const { data } = await supabase
@@ -48,7 +50,7 @@ export async function listBoothEvents(): Promise<BoothEventOption[]> {
 // --------------------------------------------------------------- devices
 
 export async function listBoothDevices(): Promise<BoothDevice[]> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return [];
   const supabase = await createClient();
   const [{ data }, events] = await Promise.all([
@@ -87,7 +89,7 @@ const createSchema = z.object({
 export async function createBoothDevice(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: string; token: string }>> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) {
@@ -114,7 +116,7 @@ export async function createBoothDevice(
 export async function rotateBoothDeviceToken(
   deviceId: string
 ): Promise<ActionResult<{ token: string }>> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!z.string().uuid().safeParse(deviceId).success) {
     return { ok: false, error: "Perangkat tidak valid" };
@@ -134,7 +136,7 @@ export async function rotateBoothDeviceToken(
 }
 
 export async function revokeBoothDevice(deviceId: string): Promise<ActionResult> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!z.string().uuid().safeParse(deviceId).success) {
     return { ok: false, error: "Perangkat tidak valid" };
@@ -152,7 +154,7 @@ export async function setBoothDeviceEvent(
   deviceId: string,
   eventId: string | null
 ): Promise<ActionResult> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   if (
     !z.string().uuid().safeParse(deviceId).success ||
@@ -187,7 +189,7 @@ interface RawSession {
 export async function listBoothSessions(
   deviceId?: string
 ): Promise<BoothSessionRow[]> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return [];
   const supabase = await createClient();
   let query = supabase
@@ -203,7 +205,7 @@ export async function listBoothSessions(
   const { data } = await query;
   const rows = (data ?? []) as unknown as RawSession[];
 
-  // Thumbnail tersimpan di bucket privat → tanda tangan sekali jalan.
+  // Thumbnail tersimpan di bucket privat â†’ tanda tangan sekali jalan.
   const thumbPaths = rows
     .map((r) => r.photos.find((p) => p.kind === "thumb")?.storage_path)
     .filter((p): p is string => !!p);
@@ -237,7 +239,7 @@ export async function getBoothSessionSummary(
   deviceId?: string
 ): Promise<BoothSessionSummary> {
   const empty = { total: 0, today: 0, uploaded: 0, waiting: 0 };
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return empty;
   const supabase = await createClient();
   const midnight = new Date();
@@ -269,7 +271,7 @@ export async function getBoothSessionSummary(
 export async function deleteBoothSessionPhotos(
   sessionId: string
 ): Promise<ActionResult> {
-  const gate = await requireYeoboBoothAccess();
+  const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   if (!z.string().uuid().safeParse(sessionId).success) {
     return { ok: false, error: "Sesi tidak valid" };
