@@ -32,7 +32,7 @@ const THUMB_URL_TTL_S = 300;
 const SESSION_LIMIT = 100;
 
 const DEVICE_COLUMNS =
-  "id, name, brand, location, camera_driver, app_version, camera_ready, printer_ready, queue_pending, last_seen_at, revoked_at, active_event_id, target_version, created_at";
+  "id, name, brand, location, camera_driver, app_version, camera_ready, printer_ready, queue_pending, last_seen_at, revoked_at, active_event_id, target_version, diagnostics, created_at";
 
 // ---------------------------------------------------------------- events
 

@@ -6,6 +6,15 @@
 
 export type BoothBrand = "yeobo_booth" | "yeobo_space";
 
+/** Ringkasan kondisi perangkat dari heartbeat (teks biasa, tanpa data tamu). */
+export interface BoothDeviceDiagnostics {
+  camera?: string;
+  printer?: string;
+  cloud_error?: string;
+  update?: string;
+  uptime_s?: number;
+}
+
 export interface BoothDevice {
   id: string;
   name: string;
@@ -20,6 +29,7 @@ export interface BoothDevice {
   revoked_at: string | null;
   /** Versi agent yang dipaksa untuk perangkat ini (canary); null = ikut versi terbaru. */
   target_version: string | null;
+  diagnostics: BoothDeviceDiagnostics | null;
   active_event_id: string | null;
   active_event_name: string | null;
   /** Dihitung di server supaya hasil render server & klien sama. */
