@@ -50,6 +50,32 @@ function Flag({ label, value }: { label: string; value: boolean | null }) {
   );
 }
 
+/** Alasan yang dilaporkan agent: kamera, printer, error cloud, status update. */
+function Diagnostics({ device }: { device: BoothDevice }) {
+  const dx = device.diagnostics;
+  if (!dx) return null;
+  const rows: { label: string; text: string; bad: boolean }[] = [];
+  if (dx.camera) rows.push({ label: "Kamera", text: dx.camera, bad: device.camera_ready === false });
+  if (dx.printer) rows.push({ label: "Printer", text: dx.printer, bad: device.printer_ready === false });
+  if (dx.cloud_error) rows.push({ label: "Cloud", text: dx.cloud_error, bad: true });
+  if (dx.update) rows.push({ label: "Update", text: dx.update, bad: /failed/i.test(dx.update) });
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-xl bg-muted/50 p-3 space-y-1.5">
+      {rows.map((r) => (
+        <div key={r.label} className="text-xs leading-relaxed">
+          <span
+            className={`font-semibold ${r.bad ? "text-destructive" : "text-muted-foreground"}`}
+          >
+            {r.label}:
+          </span>{" "}
+          <span className="text-foreground break-words">{r.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function DevicesManager({ devices, events }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -221,6 +247,8 @@ export function DevicesManager({ devices, events }: Props) {
               <div className="text-xs text-muted-foreground">
                 Terakhir terlihat: {formatBoothTime(d.last_seen_at)} WIB
               </div>
+
+              <Diagnostics device={d} />
 
               <div>
                 <label className={LABEL}>Event aktif</label>
