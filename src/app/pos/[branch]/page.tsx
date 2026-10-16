@@ -17,6 +17,7 @@ import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions"
 import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
+import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { POSClient } from "@/components/pos/POSClient";
 
 /**
@@ -97,7 +98,7 @@ export default async function PosPage({
       dailyRevenue={
         dailyRevenueRes && dailyRevenueRes.ok ? dailyRevenueRes.data : null
       }
-      cashierName={profile?.full_name ?? null}
+      cashierName={cashierDisplayName(profile?.nickname, profile?.full_name)}
       receiptContent={receiptContent}
       products={products}
       isAdmin={role === "admin"}

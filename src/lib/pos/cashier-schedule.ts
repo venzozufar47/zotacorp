@@ -2,16 +2,15 @@
  * Nama kasir tetap per-cabang berdasarkan jadwal shift (dicetak di struk).
  * Dihitung dari waktu transaksi di WIB, bukan dari akun yang login.
  *
- * Cabang Pare:
+ * Cabang Pare (selalu NAMA PANGGILAN, bukan nama lengkap):
  *   - Senin–Sabtu 08.00–15.00 → Jara (Chelsy untuk transaksi sebelum 27 Jul 2026)
  *   - Senin–Sabtu 15.00–22.00 → Dinda
- *   - Di luar jam/hari itu (termasuk Minggu) → Debar Boles
+ *   - Di luar jam/hari itu (termasuk Minggu) → Boles (sebelum 16 Okt 2026: Debar Boles)
  *
  * Cabang Semarang: TIDAK dijadwal (banyak kasir gantian login sendiri-
- * sendiri, beda dari Pare). `fallback` (nama akun login) dipakai apa
- * adanya, KECUALI ada di `SEMARANG_DISPLAY_NAME` — pemendekan nama utk
- * struk saja, profil aslinya (nama lengkap, nickname+emoji) tidak
- * disentuh sama sekali.
+ * sendiri, beda dari Pare). `fallback` = nama akun login yang SUDAH berupa
+ * nama panggilan — lihat `cashierDisplayName`, dipakai halaman POS saat
+ * menyusun props. Profil aslinya (nama lengkap, nickname+emoji) tidak disentuh.
  *
  * Cabang lain: tidak dioverride (pakai `fallback`, mis. nama akun login).
  *
@@ -42,6 +41,7 @@ const PARE_EVENING: readonly CashierStint[] = [
 ];
 
 const PARE_OUTSIDE: readonly CashierStint[] = [
+  { from: "2026-10-16", name: "Boles" },
   { from: SINCE_FOREVER, name: "Debar Boles" },
 ];
 
@@ -75,13 +75,26 @@ function jakartaMinutesOfDay(d: Date): number {
 }
 
 /**
- * Pemendekan nama kasir Semarang untuk struk. Key = `full_name` persis
- * seperti di `profiles`, bukan nickname (nickname punya emoji, mis.
- * "Tasya🪷" — tidak cocok dicetak thermal).
+ * Nama kasir untuk struk = nama PANGGILAN: nickname profil bila ada (emoji dan
+ * simbol dibuang — printer thermal tak bisa mencetaknya, mis. "Tasya🪷" →
+ * "Tasya"), kalau kosong kata pertama nama lengkap ("Diva Ayu Ismayana" →
+ * "Diva"). Huruf pertama tiap kata dikapitalkan. Hanya untuk dicetak; profil
+ * tidak diubah.
  */
-const SEMARANG_DISPLAY_NAME: Readonly<Record<string, string>> = {
-  "Tasya Maynanda": "Tasya",
-};
+export function cashierDisplayName(
+  nickname: string | null | undefined,
+  fullName: string | null | undefined
+): string | null {
+  const clean = (v: string | null | undefined) =>
+    (v ?? "")
+      .replace(/[^\p{L}\p{N}\s'.-]/gu, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const nick = clean(nickname);
+  const base = nick || clean(fullName).split(" ")[0] || "";
+  if (!base) return null;
+  return base.replace(/(^|\s)(\p{L})/gu, (_, sp: string, ch: string) => sp + ch.toUpperCase());
+}
 
 /** Nama kasir Pare untuk sebuah instant. */
 export function resolvePareCashier(at: Date): string {
@@ -110,7 +123,5 @@ export function resolveCashierName(
   // Tanggal invalid (mis. timestamp tak terparse) → jangan lempar; pakai fallback.
   if (Number.isNaN(at.getTime())) return fallback;
   if (branch === "Pare") return resolvePareCashier(at);
-  if (branch === "Semarang" && fallback)
-    return SEMARANG_DISPLAY_NAME[fallback] ?? fallback;
   return fallback;
 }
