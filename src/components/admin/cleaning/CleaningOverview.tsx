@@ -1032,7 +1032,11 @@ function PersonBody({
   days: string[];
   onOpenPoint: (itemId: string) => void;
 }) {
-  const dutyDays = emp.days.filter((d) => d.status !== "off").slice(-10).reverse();
+  const dutyDays = emp.days
+    .filter((d) => d.status !== "off" || (d.trialMissed?.length ?? 0) > 0)
+    .slice(-10)
+    .reverse();
+  const hasTrialMissed = dutyDays.some((d) => (d.trialMissed?.length ?? 0) > 0);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-3 gap-2">
@@ -1080,9 +1084,27 @@ function PersonBody({
                     {d.checklistName ?? "—"}
                   </span>
                 </div>
-                <StatusPill status={d.status} />
+                {d.trialMissed?.length ? (
+                  <span className="inline-flex shrink-0 items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-amber-700 dark:text-amber-400">
+                    Belum lengkap · {d.trialMissed.length} item
+                  </span>
+                ) : (
+                  <StatusPill status={d.status} />
+                )}
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
+                {d.trialMissed?.map((p) => (
+                  <button
+                    key={`miss-${p.itemId}`}
+                    type="button"
+                    onClick={() => onOpenPoint(p.itemId)}
+                    title={`${p.title} — tidak dikerjakan`}
+                    className="inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-destructive/5 px-1.5 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
+                  >
+                    <X size={9} />
+                    <span className="max-w-[140px] truncate">{p.title} — tidak dikerjakan</span>
+                  </button>
+                ))}
                 {d.points.map((p) => (
                   <button
                     key={p.itemId}
@@ -1099,6 +1121,12 @@ function PersonBody({
             </li>
           ))}
         </ul>
+        {hasTrialMissed && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Masa uji: item yang tidak dikerjakan ditandai di sini, tetapi belum dihitung ke
+            kepatuhan maupun skor cabang.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -179,6 +179,10 @@ export interface EmployeeDay {
   status: CleaningDayStatus;
   checklistName: string | null;
   points: Array<{ itemId: string; title: string; status: CleaningDayStatus }>;
+  /** Item yang seharusnya dikerjakan tapi tidak, pada hari MASA UJI. Tidak masuk skor
+   *  (masa uji belum dinilai) — hanya ditampilkan supaya admin tidak melihat "Lengkap"
+   *  padahal ada yang terlewat. */
+  trialMissed?: Array<{ itemId: string; title: string }>;
 }
 
 export interface EmployeeReport {
@@ -495,6 +499,31 @@ export function buildCleaningRangeReport(
         // ruangannya nyata-nyata dibersihkan, dan membuangnya justru
         // meremehkan kebersihan yang benar-benar terjadi.
         if (!expected && !done) {
+          // Masa uji: tak dikerjakan tidak dihitung, tapi harus tetap terlihat di
+          // rincian orangnya — kalau tidak, harinya tampil "Lengkap" tanpa ada
+          // jejak item yang terlewat.
+          if (inTrial && !beforeStart) {
+            const who = performerOn(a, day);
+            const passed =
+              day.ymd < today || (day.ymd === today && limit != null && nowMinutes > limit);
+            if (who && passed) {
+              const perUser = empDays.get(who) ?? new Map<string, EmployeeDay>();
+              const ed =
+                perUser.get(day.ymd) ??
+                ({
+                  ymd: day.ymd,
+                  status: "off",
+                  checklistName: a.checklistName,
+                  points: [],
+                } satisfies EmployeeDay);
+              const miss = ed.trialMissed ?? [];
+              if (!miss.some((m) => m.itemId === item.id))
+                miss.push({ itemId: item.id, title: item.title });
+              ed.trialMissed = miss;
+              perUser.set(day.ymd, ed);
+              empDays.set(who, perUser);
+            }
+          }
           // Hanya tulis `off` kalau assignment lain belum mengisi hari ini —
           // pada rotasi, hari ini bisa jadi milik assignment pasangannya.
           if (!acc.byDay.has(day.ymd))
