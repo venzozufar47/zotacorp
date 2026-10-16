@@ -132,6 +132,9 @@ export interface PointCell {
   /** Pelaksana yang seharusnya (atau yang mengerjakan). null saat `off`. */
   userId: string | null;
   completedAt: string | null;
+  /** Mengapa sel `off`, bila bukan sekadar "tidak terjadwal": masa uji (terjadwal tapi
+   *  belum dinilai) atau penugasan belum mulai. */
+  note?: "trial" | "before_start";
 }
 
 export interface PointReport {
@@ -152,6 +155,11 @@ export interface PointReport {
   lastGoodYmd: string | null;
   /** Jumlah hari terjadwal sejak terakhir bersih. null = tidak pernah bersih. */
   ageDays: number | null;
+  /** Hari KALENDER sejak terakhir dikerjakan (0 = hari terakhir rentang). Untuk label —
+   *  `ageDays` menghitung hari terjadwal, jadi bisa menyesatkan ("hari ini" padahal kemarin). */
+  lastGoodAgo: number | null;
+  /** Alasan sel terakhir `off` (masa uji / belum mulai); undefined = memang tak terjadwal. */
+  currentNote?: "trial" | "before_start";
 }
 
 export interface BranchReport {
@@ -459,7 +467,7 @@ export function buildCleaningRangeReport(
   // banyak orang yang bergilir mengurusnya.
   const pointAcc = new Map<
     string,
-    { base: Omit<PointReport, "cells" | "current" | "missStreak" | "lastGoodYmd" | "ageDays">; byDay: Map<string, PointCell> }
+    { base: Omit<PointReport, "cells" | "current" | "missStreak" | "lastGoodYmd" | "ageDays" | "lastGoodAgo" | "currentNote">; byDay: Map<string, PointCell> }
   >();
   const empDays = new Map<string, Map<string, EmployeeDay>>();
 
@@ -532,6 +540,11 @@ export function buildCleaningRangeReport(
               status: "off",
               userId: null,
               completedAt: null,
+              note: beforeStart
+                ? "before_start"
+                : inTrial && performerOn(a, day)
+                  ? "trial"
+                  : undefined,
             });
           continue;
         }
@@ -651,6 +664,14 @@ export function buildCleaningRangeReport(
       missStreak,
       lastGoodYmd: lastGood?.ymd ?? null,
       ageDays,
+      lastGoodAgo: lastGood
+        ? Math.round(
+            (Date.parse(`${cells[cells.length - 1].ymd}T00:00:00Z`) -
+              Date.parse(`${lastGood.ymd}T00:00:00Z`)) /
+              86_400_000
+          )
+        : null,
+      currentNote: cells[cells.length - 1]?.note,
     });
   }
 

@@ -518,13 +518,13 @@ export function CleaningOverview({
                   </div>
                   <div className="text-[11px] text-muted-foreground">
                     {kind === "miss"
-                      ? `Belum dikerjakan ${p.missStreak} hari kerja · ${lastDoneLabel(p.ageDays)}`
+                      ? `Belum dikerjakan ${p.missStreak} hari kerja · ${lastDoneLabel(p.lastGoodAgo)}`
                       : kind === "redo"
                         ? `Foto ditandai perlu ulang · ${p.checklistName}`
                         : `${
                             p.ageDays == null
                               ? "Belum pernah dikerjakan sejak ditugaskan"
-                              : `Sudah ${p.ageDays} hari tidak dikerjakan`
+                              : `Terakhir dikerjakan ${ageLabel(p.lastGoodAgo)}`
                           } · ${p.checklistName}`}
                   </div>
                 </div>
@@ -995,6 +995,9 @@ function PointCard({
   const last = point.cells[point.cells.length - 1];
   const who = last?.userId ? names[last.userId] ?? null : null;
   const bad = point.current === "miss";
+  // `off` punya tiga sebab berbeda; "Tidak terjadwal" hanya benar untuk satu di antaranya.
+  const offTrial = point.current === "off" && point.currentNote === "trial";
+  const offNotStarted = point.current === "off" && point.currentNote === "before_start";
   return (
     <button
       type="button"
@@ -1006,18 +1009,28 @@ function PointCard({
     >
       <div className="flex items-start justify-between gap-2">
         <b className="min-w-0 truncate text-[12.5px]">{point.title}</b>
-        <StatusPill status={point.current} />
+        {offTrial || offNotStarted ? (
+          <span className="inline-flex shrink-0 items-center rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-sky-700 dark:text-sky-400">
+            {offTrial ? "Masa uji" : "Belum mulai"}
+          </span>
+        ) : (
+          <StatusPill status={point.current} />
+        )}
       </div>
       <div className="mt-1 text-[10.5px] text-muted-foreground">
         {point.current === "ok" || point.current === "late"
           ? `dikerjakan ${who ?? "—"}`
           : point.current === "pending"
-            ? `menunggu jadwal · ${lastDoneLabel(point.ageDays)}`
+            ? `menunggu jadwal · ${lastDoneLabel(point.lastGoodAgo)}`
             : point.current === "miss"
-              ? `belum dikerjakan ${point.missStreak} hari · ${lastDoneLabel(point.ageDays)}`
+              ? `belum dikerjakan ${point.missStreak} hari · ${lastDoneLabel(point.lastGoodAgo)}`
               : point.current === "miss_absent"
-                ? `shift tidak masuk ${point.missStreak} hari · ${lastDoneLabel(point.ageDays)}`
-                : `tidak terjadwal · ${lastDoneLabel(point.ageDays)}`}
+                ? `shift tidak masuk ${point.missStreak} hari · ${lastDoneLabel(point.lastGoodAgo)}`
+                : offTrial
+                  ? `dijadwalkan hari ini, belum dinilai (masa uji) · ${lastDoneLabel(point.lastGoodAgo)}`
+                  : offNotStarted
+                    ? "penugasan belum mulai"
+                    : `tidak ada jadwal hari ini · ${lastDoneLabel(point.lastGoodAgo)}`}
       </div>
       <div className="mt-0.5 text-[10.5px] text-muted-foreground">
         {point.photoSlots > 0 ? `${point.photoSlots} slot foto` : "tanpa foto"} ·{" "}
