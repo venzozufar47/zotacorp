@@ -977,6 +977,16 @@ export interface CleaningExceptionRow {
   completedItems: number;
   /** Tanggal WIB shift yang terlewat (YYYY-MM-DD). */
   date: string;
+  /** Status tiap item checklist hari itu — supaya admin tahu APA yang terlewat. */
+  items: Array<{
+    title: string;
+    /** Item dikerjakan (semua slot terisi). */
+    completed: boolean;
+    /** Jumlah slot foto wajib yang belum ada fotonya. */
+    photoMissing: number;
+  }>;
+  /** Sudah ada catatan pembinaan (konteks SOP) untuk tanggal miss ini. */
+  followedUp: boolean;
 }
 
 export async function getCleaningMisses(): Promise<CleaningExceptionRow[]> {
@@ -1005,23 +1015,50 @@ export async function getCleaningMisses(): Promise<CleaningExceptionRow[]> {
     }>).map((l) => [l.user_id, l])
   );
 
-  const rows: CleaningExceptionRow[] = exceptions
-    .filter((r) => attMap.has(r.user_id))
-    .map((r) => {
-      const att = attMap.get(r.user_id)!;
-      return {
-        userId: r.user_id,
-        userName: r.user_name,
-        businessUnit: r.business_unit,
-        avatarUrl: att.profiles?.avatar_url ?? null,
-        avatarSeed: att.profiles?.avatar_seed ?? null,
-        checklistName: r.checklist_name,
-        totalItems: r.total_items,
-        completedItems: r.completed_items,
-        date: monitor.date,
-      };
-    });
+  const present = exceptions.filter((r) => attMap.has(r.user_id));
 
-  rows.sort((a, b) => a.userName.localeCompare(b.userName));
+  // Tindak lanjut tercatat: catatan pembinaan SOP yang dibuat dari banner ini
+  // memakai `period_to` = tanggal miss. Select gagal / diblokir RLS → anggap
+  // belum ditindaklanjuti (banner tetap tampil, tidak pernah menyembunyikan miss).
+  const followedUpIds = new Set<string>();
+  if (present.length > 0) {
+    const { data: notes } = await supabase
+      .from("employee_coaching_notes" as never)
+      .select("user_id")
+      .eq("context", "cleaning")
+      .eq("period_to", monitor.date)
+      .in(
+        "user_id",
+        present.map((r) => r.user_id)
+      );
+    for (const n of (notes ?? []) as Array<{ user_id: string }>) followedUpIds.add(n.user_id);
+  }
+
+  const rows: CleaningExceptionRow[] = present.map((r) => {
+    const att = attMap.get(r.user_id)!;
+    return {
+      userId: r.user_id,
+      userName: r.user_name,
+      businessUnit: r.business_unit,
+      avatarUrl: att.profiles?.avatar_url ?? null,
+      avatarSeed: att.profiles?.avatar_seed ?? null,
+      checklistName: r.checklist_name,
+      totalItems: r.total_items,
+      completedItems: r.completed_items,
+      date: monitor.date,
+      items: (r.items ?? []).map((it) => ({
+        title: it.title,
+        completed: it.completed,
+        photoMissing: it.photo_missing,
+      })),
+      followedUp: followedUpIds.has(r.user_id),
+    };
+  });
+
+  // Yang BELUM ditindaklanjuti di atas; di dalam kelompok urut nama.
+  rows.sort(
+    (a, b) =>
+      Number(a.followedUp) - Number(b.followedUp) || a.userName.localeCompare(b.userName)
+  );
   return rows;
 }

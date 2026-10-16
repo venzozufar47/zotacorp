@@ -1,12 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
+  Camera,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  Loader2,
   ArrowRight,
   RefreshCw,
   Sparkles,
+  X as XIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
@@ -24,6 +31,7 @@ import {
   type NotifTone,
 } from "@/components/admin/notifications/kinds";
 import { EmployeeDrawer, type DrawerSubject } from "./EmployeeDrawer";
+import { createCoachingNote } from "@/lib/actions/cleaning-review.actions";
 import type {
   AdminHomeToday,
   CleaningExceptionRow,
@@ -253,47 +261,82 @@ export function AdminHomePage({
           terkonfirmasi: karyawan yang KEMARIN hadir + dijadwalkan bersih
           tapi checklistnya tidak diselesaikan sampai harinya berakhir.
           Hari berjalan sengaja tidak diflag (masih bisa dikerjakan). */}
-      {cleaningExceptions.length > 0 && (
-        <Card>
-          <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="grid place-items-center size-[26px] rounded-lg shrink-0 bg-destructive/15 text-destructive">
-                <Sparkles size={14} />
-              </span>
-              <div className="min-w-0">
-                <div className="font-display font-semibold text-[15px] lg:text-base text-foreground tracking-[-0.015em]">
-                  SOP terlewat
+      {cleaningExceptions.length > 0 && (() => {
+        const pendingCount = cleaningExceptions.filter((c) => !c.followedUp).length;
+        const missDate = cleaningExceptions[0].date;
+        return (
+          <Card>
+            <div className="px-5 pt-4 pb-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="grid place-items-center size-[26px] rounded-lg shrink-0 bg-destructive/15 text-destructive">
+                    <Sparkles size={14} />
+                  </span>
+                  <div className="font-display font-semibold text-[15px] lg:text-base text-foreground tracking-[-0.015em]">
+                    SOP kemarin belum lengkap
+                  </div>
                 </div>
-                <div className="text-[11.5px] text-muted-foreground mt-0.5">
-                  Hadir kemarin tapi checklist tidak diselesaikan
-                </div>
+                <span
+                  className={cn(
+                    "shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full tabular-nums",
+                    pendingCount > 0
+                      ? "bg-destructive/15 text-destructive"
+                      : "bg-success/15 text-success"
+                  )}
+                  title={
+                    pendingCount > 0
+                      ? `${pendingCount} karyawan belum diberi catatan`
+                      : "Semua sudah diberi catatan"
+                  }
+                >
+                  {pendingCount > 0 ? (
+                    <>
+                      <span className="sm:hidden">{pendingCount}</span>
+                      <span className="hidden sm:inline">{pendingCount} perlu tindak lanjut</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={12} strokeWidth={2.6} className="sm:hidden" />
+                      <span className="hidden sm:inline">Semua ditindaklanjuti</span>
+                    </>
+                  )}
+                </span>
+              </div>
+              <div className="mt-2 space-y-1 text-[11.5px] text-muted-foreground">
+                <p>
+                  Hadir pada {missDateFull(missDate)}, tapi checklist SOP-nya tidak
+                  diselesaikan.
+                </p>
+                <p className="text-muted-foreground/80">
+                  Harinya sudah lewat, jadi tidak bisa dikerjakan susulan. Buka nama
+                  untuk melihat yang terlewat dan beri catatan pembinaan. Kartu ini
+                  hilang otomatis besok.
+                </p>
               </div>
             </div>
-            <span className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full tabular-nums bg-destructive/15 text-destructive">
-              {cleaningExceptions.length}
-            </span>
-          </div>
-          <div className="px-2 pb-2">
-            {cleaningExceptions.map((c) => (
-              <CleaningMissRow
-                key={`${c.userId}-${c.checklistName}`}
-                row={c}
-                onSubject={() =>
-                  setDrawer({
-                    userId: c.userId,
-                    fullName: c.userName,
-                    avatarUrl: c.avatarUrl,
-                    avatarSeed: c.avatarSeed,
-                    caption: `Tidak selesaikan ${c.checklistName} (${missDateLabel(
-                      c.date
-                    )})`,
-                  })
-                }
-              />
-            ))}
-          </div>
-        </Card>
-      )}
+            <div className="px-2 pb-2">
+              {cleaningExceptions.map((c) => (
+                <CleaningMissItem
+                  key={`${c.userId}-${c.checklistName}`}
+                  row={c}
+                  defaultOpen={cleaningExceptions.length === 1 && !c.followedUp}
+                  onProfile={() =>
+                    setDrawer({
+                      userId: c.userId,
+                      fullName: c.userName,
+                      avatarUrl: c.avatarUrl,
+                      avatarSeed: c.avatarSeed,
+                      caption: `Tidak selesaikan ${c.checklistName} (${missDateLabel(
+                        c.date
+                      )})`,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
@@ -657,42 +700,245 @@ function InboxFilterChip({
   );
 }
 
-function CleaningMissRow({
+/** "Kamis, 15 Okt" — tanggal WIB absolut (kartu SOP selalu soal hari kemarin). */
+function missDateFull(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+/** Catatan pembinaan siap-kirim: fakta (item apa) + harapan, bisa diedit admin. */
+function missNoteDraft(row: CleaningExceptionRow): string {
+  const missing = row.items.filter((i) => !i.completed).map((i) => i.title);
+  const noPhoto = row.items
+    .filter((i) => i.completed && i.photoMissing > 0)
+    .map((i) => i.title);
+  const lines = [
+    `Pada ${missDateFull(row.date)} kamu hadir, tapi checklist "${row.checklistName}" baru selesai ${row.completedItems} dari ${row.totalItems} item.`,
+  ];
+  if (missing.length) lines.push(`Belum dikerjakan: ${missing.join(", ")}.`);
+  if (noPhoto.length) lines.push(`Foto wajib belum ada: ${noPhoto.join(", ")}.`);
+  lines.push(
+    "Mohon checklist dikerjakan lengkap di hari kerja berikutnya. Kalau ada kendala, kabari ya."
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Satu karyawan yang melewatkan SOP kemarin. Baris bisa DIBUKA (bukan lagi
+ * langsung melempar ke profil umum yang tak berkaitan): memperlihatkan item
+ * yang selesai / terlewat / fotonya kurang, lalu tindak lanjut — catatan
+ * pembinaan siap-kirim, dan penanda bila sudah ditindaklanjuti.
+ */
+function CleaningMissItem({
   row,
-  onSubject,
+  defaultOpen,
+  onProfile,
 }: {
   row: CleaningExceptionRow;
-  onSubject: () => void;
+  defaultOpen: boolean;
+  onProfile: () => void;
 }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(defaultOpen);
+  const [composing, setComposing] = useState(false);
+  const [body, setBody] = useState("");
+  const [sent, setSent] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const followed = row.followedUp || sent;
+  const firstName = row.userName.split(/\s+/)[0] ?? row.userName;
+  const problemCount = row.items.filter((i) => !i.completed || i.photoMissing > 0).length;
+  const allDoneButPhotos = row.completedItems === row.totalItems;
+
+  function openComposer() {
+    setBody(missNoteDraft(row));
+    setComposing(true);
+  }
+
+  function send() {
+    if (!body.trim()) {
+      toast.error("Catatan tidak boleh kosong");
+      return;
+    }
+    startTransition(async () => {
+      const res = await createCoachingNote({
+        userId: row.userId,
+        body: body.trim(),
+        context: "cleaning",
+        // period_to = tanggal miss → dipakai server untuk menandai "sudah ditindaklanjuti".
+        periodFrom: row.date,
+        periodTo: row.date,
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Gagal mengirim catatan");
+        return;
+      }
+      toast.success(`Catatan terkirim ke ${firstName}`);
+      setSent(true);
+      setComposing(false);
+      router.refresh();
+    });
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onSubject}
-      className="group/sub w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-muted/50 transition"
-    >
-      <EmployeeAvatar
-        size="sm"
-        full_name={row.userName}
-        avatar_url={row.avatarUrl}
-        avatar_seed={row.avatarSeed}
-      />
-      <span className="flex-1 min-w-0">
-        <span className="block text-[13px] font-medium text-foreground truncate group-hover/sub:underline">
-          {row.userName}
+    <div className="rounded-xl">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="group/sub w-full flex items-center gap-3 px-3 py-2.5 min-h-14 rounded-xl text-left hover:bg-muted/50 transition"
+      >
+        <EmployeeAvatar
+          size="sm"
+          full_name={row.userName}
+          avatar_url={row.avatarUrl}
+          avatar_seed={row.avatarSeed}
+        />
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13px] font-medium text-foreground truncate">
+            {row.userName}
+          </span>
+          <span className="block text-[11.5px] text-muted-foreground truncate">
+            {row.checklistName} ·{" "}
+            {allDoneButPhotos
+              ? "foto wajib belum lengkap"
+              : `${row.completedItems} dari ${row.totalItems} item selesai`}
+          </span>
         </span>
-        <span className="block text-[11.5px] text-muted-foreground truncate">
-          {row.checklistName} · {row.completedItems}/{row.totalItems} selesai
-        </span>
-      </span>
-      {/* Tanggal shift yang terlewat — biasanya "Kemarin". */}
-      <span className="shrink-0 inline-flex items-center text-[9.5px] font-semibold uppercase tracking-[0.06em] px-2 py-1 rounded-full bg-destructive/15 text-destructive">
-        {missDateLabel(row.date)}
-      </span>
-      <ArrowRight
-        size={13}
-        className="shrink-0 text-muted-foreground/70 group-hover/sub:text-foreground transition"
-      />
-    </button>
+        {followed ? (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full bg-success/15 text-success">
+            <Check size={11} strokeWidth={2.6} />
+            <span className="hidden sm:inline">Sudah diberi catatan</span>
+            <span className="sm:hidden">Dicatat</span>
+          </span>
+        ) : (
+          <span className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full bg-destructive/15 text-destructive">
+            <span className="hidden sm:inline">{problemCount} item bermasalah</span>
+            <span className="sm:hidden">{problemCount} item</span>
+          </span>
+        )}
+        <ChevronDown
+          size={15}
+          className={cn(
+            "shrink-0 text-muted-foreground/70 transition-transform duration-200",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+
+      {open && (
+        <div className="pl-[52px] pr-3 pb-3 space-y-3">
+          <ul className="space-y-1.5" aria-label="Status item checklist">
+            {row.items.map((it) => {
+              const state = !it.completed ? "missing" : it.photoMissing > 0 ? "photo" : "done";
+              return (
+                <li key={it.title} className="flex items-start gap-2 text-[12.5px]">
+                  <span
+                    className={cn(
+                      "mt-0.5 grid place-items-center size-[18px] rounded-full shrink-0",
+                      state === "done" && "bg-success/15 text-success",
+                      state === "missing" && "bg-destructive/15 text-destructive",
+                      state === "photo" && "bg-warning/15 text-warning"
+                    )}
+                    aria-hidden
+                  >
+                    {state === "done" && <Check size={11} strokeWidth={2.8} />}
+                    {state === "missing" && <XIcon size={11} strokeWidth={2.8} />}
+                    {state === "photo" && <Camera size={10} strokeWidth={2.4} />}
+                  </span>
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1",
+                      state === "done" ? "text-muted-foreground" : "text-foreground"
+                    )}
+                  >
+                    {it.title}
+                    {state === "missing" && (
+                      <span className="ml-1.5 text-destructive font-medium">Belum dikerjakan</span>
+                    )}
+                    {state === "photo" && (
+                      <span className="ml-1.5 text-warning font-medium">Foto belum ada</span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+
+          {composing ? (
+            <div className="space-y-2">
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={6}
+                maxLength={2000}
+                aria-label={`Catatan pembinaan untuk ${firstName}`}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13px] leading-relaxed"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Tampil di dashboard {firstName} saat ia masuk. Tidak dikirim sebagai
+                notifikasi. Silakan ubah dulu bila perlu.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={pending || !body.trim()}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {pending && <Loader2 size={14} className="animate-spin" />}
+                  Kirim catatan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComposing(false)}
+                  disabled={pending}
+                  className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-[13px] font-semibold"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {followed && (
+                <p className="text-[12px] text-success font-medium">
+                  Catatan sudah dikirim — tampil di dashboard {firstName}.
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {!followed && (
+                  <button
+                    type="button"
+                    onClick={openComposer}
+                    className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-[13px] font-semibold text-primary-foreground hover:opacity-90"
+                  >
+                    Beri catatan pembinaan
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onProfile}
+                  className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-[13px] font-semibold hover:bg-muted/50"
+                >
+                  Profil &amp; kehadiran
+                </button>
+                <Link
+                  prefetch={false}
+                  href="/admin/cleaning"
+                  className="inline-flex h-10 items-center gap-1 px-1 text-[12.5px] text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                >
+                  Buka halaman SOP <ArrowRight size={12} />
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
