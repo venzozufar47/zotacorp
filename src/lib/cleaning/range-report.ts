@@ -141,6 +141,9 @@ export interface PointReport {
   checklistName: string;
   branchKey: string;
   photoSlots: number;
+  /** Penanggung jawab tetap (penugasan per-orang), lepas dari masa uji/jadwal hari
+   *  itu. Kosong untuk duty cabang yang pelaksananya ditentukan kehadiran. */
+  assigneeIds: string[];
   cells: PointCell[];
   /** Status pada hari terakhir rentang. */
   current: CleaningDayStatus;
@@ -472,10 +475,13 @@ export function buildCleaningRangeReport(
             checklistName: a.checklistName,
             branchKey,
             photoSlots: item.photoSlots,
+            assigneeIds: [] as string[],
           },
           byDay: new Map<string, PointCell>(),
         };
       pointAcc.set(pointKey, acc);
+      if (a.kind === "person" && a.userId && !acc.base.assigneeIds.includes(a.userId))
+        acc.base.assigneeIds.push(a.userId);
       for (const day of days) {
         // Sebelum tanggal mulai: bukan jadwal siapa pun. Masa uji: belum dihitung
         // (yang tak dikerjakan jadi `off`, yang dikerjakan dihitung bersih).

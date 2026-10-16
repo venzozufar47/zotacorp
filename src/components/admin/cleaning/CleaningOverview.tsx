@@ -523,35 +523,40 @@ export function CleaningOverview({
                     tindak lanjutnya ke orang yang bertugas: rincian per hari + catatan. */}
                 {kind === "stale" && p.ageDays == null ? (
                   (() => {
-                    const uid = [...p.cells].reverse().find((c) => c.userId)?.userId ?? null;
-                    const emp = uid
-                      ? (report.employees.find(
-                          (e) => e.userId === uid && e.branchKey === p.branchKey
-                        ) ?? report.employees.find((e) => e.userId === uid))
-                      : undefined;
-                    if (!uid || !emp)
+                    // Penanggung jawab tetap dulu (masa uji membuat sel tanpa
+                    // pelaksana); cadangan: orang yang terakhir kebagian duty.
+                    const lastUid = [...p.cells].reverse().find((c) => c.userId)?.userId ?? null;
+                    const uids = p.assigneeIds.length ? p.assigneeIds : lastUid ? [lastUid] : [];
+                    if (uids.length === 0)
                       return (
                         <span className="shrink-0 text-[11px] text-muted-foreground">
-                          Petugas belum ditentukan
+                          Petugas ditentukan dari kehadiran
                         </span>
                       );
-                    const name = report.names[uid] ?? "—";
+                    const btn =
+                      "inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted";
                     return (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setPerson(emp)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
-                        >
-                          <User size={12} /> Rincian {name.split(" ")[0]}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCoaching({ userId: uid, name })}
-                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
-                        >
-                          <MessageSquarePlus size={12} /> Beri catatan
-                        </button>
+                      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                        {uids.map((uid) => {
+                          const name = report.names[uid] ?? "—";
+                          const emp = report.employees.find((e) => e.userId === uid);
+                          return (
+                            <span key={uid} className="inline-flex items-center gap-1.5">
+                              {emp && (
+                                <button type="button" onClick={() => setPerson(emp)} className={btn}>
+                                  <User size={12} /> Rincian {name.split(" ")[0]}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setCoaching({ userId: uid, name })}
+                                className={btn}
+                              >
+                                <MessageSquarePlus size={12} /> Catatan{uids.length > 1 ? ` ke ${name.split(" ")[0]}` : ""}
+                              </button>
+                            </span>
+                          );
+                        })}
                       </div>
                     );
                   })()
