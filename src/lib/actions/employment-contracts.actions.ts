@@ -588,6 +588,31 @@ export async function updateEmploymentContract(
   return { ok: true };
 }
 
+/**
+ * Arsipkan / kembalikan kontrak. Hanya mengisi `archived_at` (tampilan daftar
+ * admin): status tanda tangan, versi, isi, PDF, nomor surat, dan sisi karyawan
+ * TIDAK disentuh — kontrak tetap utuh dan bisa dikembalikan kapan saja.
+ */
+export async function setEmploymentContractArchived(
+  id: string,
+  archived: boolean
+): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!id) return { ok: false, error: "Kontrak tidak dikenal" };
+  const db = adminClient();
+  const { data, error } = await db
+    .from("employment_contracts" as never)
+    .update({ archived_at: archived ? new Date().toISOString() : null } as never)
+    .eq("id", id)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || (data as unknown[]).length === 0)
+    return { ok: false, error: "Kontrak tidak ditemukan" };
+  revalidateAll();
+  return { ok: true };
+}
+
 export async function deleteEmploymentContract(id: string): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };

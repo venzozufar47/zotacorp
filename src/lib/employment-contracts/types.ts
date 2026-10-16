@@ -149,6 +149,8 @@ export interface EmploymentContract {
   signed_version: number | null;
   /** Ringkasan perubahan versi terbaru — ditampilkan saat karyawan perlu TTD ulang. */
   update_note: string | null;
+  /** Diarsipkan admin (disembunyikan dari daftar utama); null = aktif. */
+  archived_at?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

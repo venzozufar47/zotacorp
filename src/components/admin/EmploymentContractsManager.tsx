@@ -16,6 +16,10 @@ import {
   Ban,
   Users,
   Copy,
+  ArrowUp,
+  ArrowDown,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import {
   upsertContractTemplate,
@@ -25,6 +29,7 @@ import {
   bulkIssueEmploymentContracts,
   updateEmploymentContract,
   deleteEmploymentContract,
+  setEmploymentContractArchived,
   getContractRenderData,
   getNextContractNumber,
   type ContractListRow,
@@ -35,6 +40,7 @@ import { contractNomorSurat } from "@/lib/employment-contracts/markdown";
 import {
   CONTRACT_FIELD_DEFS,
   CONTRACT_STATUS_LABELS,
+  contractNeedsSignature,
   contractSignState,
   emptyLampiran,
   type ContractFields,
@@ -74,13 +80,20 @@ export function EmploymentContractsManager({
   businessUnits: string[];
   employerSignatures: Record<string, EmployerSignatureStatus>;
 }) {
-  const [tab, setTab] = useState<"templates" | "contracts">("contracts");
+  const [tab, setTab] = useState<"templates" | "contracts" | "archive">("contracts");
+  // Arsip = disembunyikan dari daftar utama, TIDAK dihapus.
+  const activeContracts = useMemo(() => contracts.filter((c) => !c.archived_at), [contracts]);
+  const archivedContracts = useMemo(() => contracts.filter((c) => !!c.archived_at), [contracts]);
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b border-border">
         {[
           { id: "contracts", label: "Kontrak Karyawan" },
           { id: "templates", label: "Template per BU" },
+          {
+            id: "archive",
+            label: archivedContracts.length > 0 ? `Arsip (${archivedContracts.length})` : "Arsip",
+          },
         ].map((t) => (
           <button
             key={t.id}
@@ -102,9 +115,17 @@ export function EmploymentContractsManager({
           businessUnits={businessUnits}
           employerSignatures={employerSignatures}
         />
+      ) : tab === "archive" ? (
+        <ContractsTab
+          archivedView
+          contracts={archivedContracts}
+          employees={employees}
+          businessUnits={businessUnits}
+          employerSignatures={employerSignatures}
+        />
       ) : (
         <ContractsTab
-          contracts={contracts}
+          contracts={activeContracts}
           employees={employees}
           businessUnits={businessUnits}
           employerSignatures={employerSignatures}
@@ -115,6 +136,33 @@ export function EmploymentContractsManager({
 }
 
 // ── Templates tab ─────────────────────────────────────────────────────
+
+/**
+ * Kunci urut nomor surat: tahun → nomor urut → teks lengkap (pembeda awalan
+ * antar business unit, mis. /PK/YS/ vs /PK/HC/). Nomor tak terbaca / kosong
+ * selalu di paling akhir, baik naik maupun turun.
+ */
+function nomorSortKey(c: ContractListRow): { year: number; seq: number; text: string } | null {
+  const text = contractNomorSurat(c);
+  if (!text) return null;
+  const seq = /\d+/.exec(text);
+  const years = text.match(/\b(19|20)\d{2}\b/g);
+  return {
+    year: years ? Number(years[years.length - 1]) : 0,
+    seq: seq ? Number(seq[0]) : 0,
+    text,
+  };
+}
+
+function compareNomor(a: ContractListRow, b: ContractListRow, dir: 1 | -1): number {
+  const ka = nomorSortKey(a);
+  const kb = nomorSortKey(b);
+  if (!ka && !kb) return 0;
+  if (!ka) return 1; // kosong selalu di bawah
+  if (!kb) return -1;
+  const d = ka.year - kb.year || ka.seq - kb.seq || ka.text.localeCompare(kb.text, "id");
+  return d * dir;
+}
 
 function SignatureChip({ status }: { status: EmployerSignatureStatus | undefined }) {
   const filled = !!status && status.source !== "none";
@@ -308,15 +356,24 @@ function ContractsTab({
   employees,
   businessUnits,
   employerSignatures,
+  archivedView = false,
 }: {
   contracts: ContractListRow[];
   employees: ContractEmployee[];
   businessUnits: string[];
   employerSignatures: Record<string, EmployerSignatureStatus>;
+  /** true = tab Arsip: hanya baca + Kembalikan, tanpa penerbitan/edit. */
+  archivedView?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [issuing, setIssuing] = useState(false);
+  // Urut menurut nomor surat; naik = terkecil dulu. Header "No. Surat" membaliknya.
+  const [nomorDir, setNomorDir] = useState<1 | -1>(1);
+  const sortedContracts = useMemo(
+    () => [...contracts].sort((a, b) => compareNomor(a, b, nomorDir)),
+    [contracts, nomorDir]
+  );
   const [batching, setBatching] = useState(false);
   const [editing, setEditing] = useState<ContractListRow | null>(null);
   const [duplicating, setDuplicating] = useState<ContractListRow | null>(null);
@@ -349,6 +406,28 @@ function ContractsTab({
       router.refresh();
     });
 
+  const archive = (c: ContractListRow, archived: boolean) =>
+    startTransition(async () => {
+      // Kontrak yang masih menunggu tanda tangan karyawan hilang dari pantauan
+      // daftar utama bila diarsipkan — pastikan memang disengaja.
+      if (
+        archived &&
+        contractNeedsSignature(c) &&
+        !confirm(
+          `Kontrak ${c.employee_name} masih menunggu tanda tangan karyawan. Tetap diarsipkan? (Karyawan tetap bisa menandatangani; Anda bisa mengembalikannya dari tab Arsip.)`
+        )
+      )
+        return;
+      const res = await setEmploymentContractArchived(c.id, archived);
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(
+        archived
+          ? `Kontrak ${c.employee_name} dipindahkan ke Arsip`
+          : `Kontrak ${c.employee_name} dikembalikan ke daftar utama`
+      );
+      router.refresh();
+    });
+
   const remove = (id: string) =>
     startTransition(async () => {
       if (!confirm("Hapus kontrak ini permanen?")) return;
@@ -360,6 +439,13 @@ function ContractsTab({
 
   return (
     <div className="space-y-3">
+      {archivedView && (
+        <p className="text-xs text-muted-foreground">
+          Kontrak di sini hanya disembunyikan dari daftar utama — tidak dihapus, dan
+          karyawan tetap bisa melihat kontraknya. Tekan Kembalikan untuk memunculkannya lagi.
+        </p>
+      )}
+      {!archivedView && (
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span className="font-semibold text-foreground">TTD Pemberi Kerja:</span>
@@ -379,18 +465,32 @@ function ContractsTab({
           </button>
         </div>
       </div>
+      )}
 
       {contracts.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          <FileText className="mx-auto mb-2" size={24} />
-          Belum ada kontrak diterbitkan.
+          {archivedView ? <Archive className="mx-auto mb-2" size={24} /> : <FileText className="mx-auto mb-2" size={24} />}
+          {archivedView ? "Belum ada kontrak yang diarsipkan." : "Belum ada kontrak diterbitkan."}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border-2 border-foreground">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left">
               <tr>
-                <th className="px-3 py-2 font-semibold whitespace-nowrap">No. Surat</th>
+                <th
+                  className="px-3 py-2 font-semibold whitespace-nowrap"
+                  aria-sort={nomorDir === 1 ? "ascending" : "descending"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setNomorDir((d) => (d === 1 ? -1 : 1))}
+                    className="inline-flex items-center gap-1 font-semibold hover:text-primary"
+                    title={nomorDir === 1 ? "Terkecil dulu — klik untuk terbaru dulu" : "Terbaru dulu — klik untuk terkecil dulu"}
+                  >
+                    No. Surat
+                    {nomorDir === 1 ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+                  </button>
+                </th>
                 <th className="px-3 py-2 font-semibold">Karyawan</th>
                 <th className="px-3 py-2 font-semibold">Business Unit</th>
                 <th className="px-3 py-2 font-semibold">Status</th>
@@ -399,7 +499,7 @@ function ContractsTab({
               </tr>
             </thead>
             <tbody>
-              {contracts.map((c) => (
+              {sortedContracts.map((c) => (
                 <tr key={c.id} className="border-t border-border">
                   <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] tabular-nums">
                     {contractNomorSurat(c) ?? "—"}
@@ -426,21 +526,40 @@ function ContractsTab({
                       <IconBtn title="Unduh PDF" onClick={() => download(c)} disabled={busy === c.id}>
                         <Download size={15} />
                       </IconBtn>
-                      <IconBtn
-                        title="Duplikat ke karyawan lain"
-                        onClick={() => setDuplicating(c)}
-                      >
-                        <Copy size={15} />
-                      </IconBtn>
-                      {c.status !== "signed" && (
-                        <IconBtn title="Edit isian" onClick={() => setEditing(c)}>
-                          <Pencil size={15} />
+                      {archivedView ? (
+                        <IconBtn
+                          title="Kembalikan ke daftar utama"
+                          onClick={() => archive(c, false)}
+                          disabled={pending}
+                        >
+                          <ArchiveRestore size={15} />
                         </IconBtn>
-                      )}
-                      {c.status === "pending_signature" && (
-                        <IconBtn title="Akhiri" onClick={() => terminate(c.id)} disabled={pending}>
-                          <Ban size={15} />
-                        </IconBtn>
+                      ) : (
+                        <>
+                          <IconBtn
+                            title="Duplikat ke karyawan lain"
+                            onClick={() => setDuplicating(c)}
+                          >
+                            <Copy size={15} />
+                          </IconBtn>
+                          {c.status !== "signed" && (
+                            <IconBtn title="Edit isian" onClick={() => setEditing(c)}>
+                              <Pencil size={15} />
+                            </IconBtn>
+                          )}
+                          {c.status === "pending_signature" && (
+                            <IconBtn title="Akhiri" onClick={() => terminate(c.id)} disabled={pending}>
+                              <Ban size={15} />
+                            </IconBtn>
+                          )}
+                          <IconBtn
+                            title="Arsipkan (sembunyikan, tidak dihapus)"
+                            onClick={() => archive(c, true)}
+                            disabled={pending}
+                          >
+                            <Archive size={15} />
+                          </IconBtn>
+                        </>
                       )}
                       <IconBtn title="Hapus" onClick={() => remove(c.id)} disabled={pending} danger>
                         <Trash2 size={15} />
