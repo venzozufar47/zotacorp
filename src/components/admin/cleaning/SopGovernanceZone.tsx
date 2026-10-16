@@ -83,7 +83,11 @@ export function SopGovernanceZone({
   issues,
   onOpenSetup,
   onOpenGallery,
+  show,
 }: {
+  /** Bagian yang ditampilkan; default semuanya. Halaman Kepatuhan SOP hanya memakai "reviews" —
+   *  kendala, sesi terburu-buru, dan titik bermasalah sudah menjadi temuan di sana. */
+  show?: ReadonlyArray<"issues" | "reviews" | "rushed" | "problem">;
   report: CleaningRangeReportWithNames;
   checklists: CleaningChecklist[];
   issues: ItemIssueRow[];
@@ -111,7 +115,8 @@ export function SopGovernanceZone({
     [checklists]
   );
 
-  const rushed = report.rushed.slice(0, 8);
+  const on = (k: "issues" | "reviews" | "rushed" | "problem") => !show || show.includes(k);
+  const rushed = on("rushed") ? report.rushed.slice(0, 8) : [];
 
   // Titik yang paling sering gagal 14 hari terakhir. `miss_absent` tidak
   // dihitung — shift-nya tidak masuk, bukan kelemahan SOP-nya.
@@ -141,9 +146,10 @@ export function SopGovernanceZone({
     });
   }
 
-  if (issues.length === 0 && reviews.length === 0 && rushed.length === 0 && problem.length === 0 && ownerless === 0) {
-    return null;
-  }
+  const showIssues = on("issues") && issues.length > 0;
+  const showReviews = on("reviews") && (reviews.length > 0 || ownerless > 0);
+  const showProblem = on("problem") && problem.length > 0;
+  if (!showIssues && !showReviews && rushed.length === 0 && !showProblem) return null;
 
   return (
     <section className="space-y-3">
@@ -155,7 +161,7 @@ export function SopGovernanceZone({
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        {issues.length > 0 && (
+        {showIssues && (
           <Card
             icon={<MessageSquareWarning size={15} />}
             title="Kendala & masukan dari karyawan"
@@ -196,7 +202,7 @@ export function SopGovernanceZone({
           </Card>
         )}
 
-        {(reviews.length > 0 || ownerless > 0) && (
+        {showReviews && (
           <Card
             icon={<Settings size={15} />}
             title="SOP perlu ditinjau ulang"
@@ -287,7 +293,7 @@ export function SopGovernanceZone({
           </Card>
         )}
 
-        {problem.length > 0 && (
+        {showProblem && (
           <Card
             icon={<AlertTriangle size={15} />}
             title="Titik yang paling sering gagal"

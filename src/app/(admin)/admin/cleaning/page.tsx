@@ -16,6 +16,7 @@ import {
 } from "@/lib/actions/cleaning.actions";
 import { getCleaningRangeReport } from "@/lib/actions/cleaning-range.actions";
 import { listOpenItemIssues } from "@/lib/actions/cleaning-governance.actions";
+import { listFindingAcks, listSopFixes } from "@/lib/actions/cleaning-sop.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
@@ -31,10 +32,13 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
  *
  * Skor & strip SELALU 14 hari terakhir — tidak ada lagi pilihan rentang
  * (dulu hari ini / 7 / 30 hari), yang bikin skor bisa tidak sinkron dengan
- * strip yang memang selalu 14 hari.
+ * strip yang memang selalu 14 hari. Laporannya sendiri diambil 30 hari supaya
+ * tren (7 hari ini vs 7 hari sebelumnya) dan grafik harian punya bahan; angka
+ * yang berlabel "14 hari" tetap hanya menghitung 14 hari terakhir (`scoreDays`).
  */
 
 const SCORE_DAYS = 14;
+const REPORT_DAYS = 30;
 
 function ymdMinus(ymd: string, n: number): string {
   return new Date(Date.parse(`${ymd}T00:00:00Z`) - n * 86_400_000)
@@ -53,12 +57,13 @@ export default async function AdminCleaningPage({
   if (role !== "admin") redirect("/dashboard");
 
   const sp = await searchParams;
-  const view: CleaningViewKey = sp.view === "karyawan" ? "karyawan" : "ringkasan";
+  const view: CleaningViewKey =
+    sp.view === "karyawan" ? "karyawan" : sp.view === "sidak" ? "sidak" : "ringkasan";
   const initialGalleryOpen = sp.gallery === "1";
   const initialSetupOpen = sp.setup === "1";
 
   const today = jakartaDateString(new Date());
-  const from = ymdMinus(today, SCORE_DAYS - 1);
+  const from = ymdMinus(today, REPORT_DAYS - 1);
 
   const supabase = await createClient();
   const [
@@ -70,6 +75,8 @@ export default async function AdminCleaningPage({
     employeesRes,
     holidays,
     issues,
+    acks,
+    fixes,
   ] = await Promise.all([
     listChecklists(),
     listAssignments(),
@@ -88,6 +95,8 @@ export default async function AdminCleaningPage({
       .order("full_name"),
     listHolidays(),
     listOpenItemIssues(),
+    listFindingAcks(),
+    listSopFixes(),
   ]);
 
   const employees = (employeesRes.data ?? []).map((e) => ({
@@ -117,6 +126,8 @@ export default async function AdminCleaningPage({
           employees={employees}
           holidays={holidays}
           issues={issues}
+          acks={acks}
+          fixes={fixes}
           initialSetupOpen={initialSetupOpen}
           initialGalleryOpen={initialGalleryOpen}
         />

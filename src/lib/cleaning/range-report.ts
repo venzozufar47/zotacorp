@@ -224,6 +224,10 @@ export interface RushedSession {
 export interface CleaningRangeReport {
   from: string;
   to: string;
+  /** Berapa hari TERAKHIR yang dihitung ke skor cabang & kepatuhan karyawan. Rentang
+   *  laporan bisa lebih panjang (untuk tren & penelusuran penyebab), tetapi angka
+   *  kepatuhan yang dilabeli "N hari" selalu mengikuti nilai ini. */
+  scoreDays: number;
   days: RangeDay[];
   branches: BranchReport[];
   points: PointReport[];
@@ -760,7 +764,9 @@ export function buildCleaningRangeReport(
         perDay.get(d.ymd) ??
         ({ ymd: d.ymd, status: "off", checklistName: null, points: [] } satisfies EmployeeDay)
     );
-    const duty = rows.filter((r) => r.status !== "off" && r.status !== "pending");
+    // Statistik kepatuhan hanya atas `scoreDays` hari terakhir; `days` tetap seluruh rentang.
+    const scored = rows.slice(Math.max(0, rows.length - (input.scoreDays ?? rows.length)));
+    const duty = scored.filter((r) => r.status !== "off" && r.status !== "pending");
     const ok = duty.filter((r) => r.status === "ok").length;
     const late = duty.filter((r) => r.status === "late").length;
     const redo = duty.filter((r) => r.status === "redo").length;
@@ -856,6 +862,7 @@ export function buildCleaningRangeReport(
   return {
     from: days[0]?.ymd ?? today,
     to: days[days.length - 1]?.ymd ?? today,
+    scoreDays: input.scoreDays ?? days.length,
     days,
     branches,
     points,

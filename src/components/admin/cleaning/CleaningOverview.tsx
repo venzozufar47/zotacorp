@@ -6,17 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  AlertTriangle,
   BookOpen,
-  RotateCcw,
-  Check,
   ChevronRight,
-  Clock,
-  Eye,
   Images,
   Loader2,
   MessageSquarePlus,
-  User,
   Settings,
   X,
 } from "lucide-react";
@@ -28,6 +22,10 @@ import { AssignmentManager } from "./AssignmentManager";
 import { BranchDutyManager } from "./BranchDutyManager";
 import { PhotoReviewGallery, type GalleryFilter } from "./PhotoReviewGallery";
 import { SopGovernanceZone } from "./SopGovernanceZone";
+import { SopProvider } from "./sop/SopProvider";
+import { SopKepatuhan } from "./sop/SopKepatuhan";
+import { SopSidak } from "./sop/SopSidak";
+import { buildFindings, type FindingIssueInput, type SopFixRow } from "@/lib/cleaning/sop-findings";
 import { SopGuideBody, SopGuideReminder } from "./SopGuide";
 import type { ItemIssueRow } from "@/lib/actions/cleaning-governance.actions";
 import type { CleaningEmployee } from "./types";
@@ -39,12 +37,7 @@ import type {
 } from "@/lib/actions/cleaning.actions";
 import type { HolidayRow } from "@/lib/actions/holidays.actions";
 import type { CleaningRangeReportWithNames } from "@/lib/actions/cleaning-range.actions";
-import type {
-  BranchReport,
-  CleaningDayStatus,
-  EmployeeReport,
-  PointReport,
-} from "@/lib/cleaning/range-report";
+import type { CleaningDayStatus, EmployeeReport } from "@/lib/cleaning/range-report";
 
 /**
  * Halaman Kebersihan — satu halaman, bukan 5 tab.
@@ -72,7 +65,8 @@ import type {
  * di-bookmark dan dibagikan.
  */
 const VIEWS = [
-  { key: "ringkasan", label: "Hasil SOP" },
+  { key: "ringkasan", label: "Kepatuhan SOP" },
+  { key: "sidak", label: "Sidak foto" },
   { key: "karyawan", label: "Kerajinan karyawan" },
 ] as const;
 
@@ -182,13 +176,6 @@ function Legend() {
     </div>
   );
 }
-
-const ageLabel = (n: number | null) =>
-  n == null ? "belum pernah" : n === 0 ? "hari ini" : n === 1 ? "kemarin" : `${n} hari lalu`;
-
-/** "terakhir dikerjakan kemarin" / "belum pernah dikerjakan" — kalimat utuh, bukan potongan. */
-const lastDoneLabel = (n: number | null) =>
-  n == null ? "belum pernah dikerjakan" : `terakhir dikerjakan ${ageLabel(n)}`;
 
 /** "2026-09-28" → "28 Sep" — tanpa tahun, cukup untuk label ujung strip. */
 function shortDay(ymd: string): string {
@@ -304,29 +291,6 @@ function CoachingDialog({
   );
 }
 
-function reviewQueue(points: PointReport[]) {
-  const out = points
-    .map((p) => {
-      if (p.missStreak >= 1) return { p, kind: "miss" as const };
-      // Foto yang ditolak menunggu tindakan orang lain, jadi ia antre walau
-      // titiknya tidak "terlewat" — dan diletakkan di atas `stale` karena ada
-      // orang yang sedang menunggu jawaban.
-      if (p.cells.some((c) => c.status === "redo"))
-        return { p, kind: "redo" as const };
-      if (p.ageDays == null || p.ageDays >= 4) return { p, kind: "stale" as const };
-      return null;
-    })
-    .filter(
-      (x): x is { p: PointReport; kind: "miss" | "redo" | "stale" } => x !== null
-    );
-  const w = { miss: 0, redo: 1, stale: 2 };
-  return out.sort(
-    (a, b) =>
-      w[a.kind] - w[b.kind] ||
-      b.p.missStreak - a.p.missStreak ||
-      (b.p.ageDays ?? 999) - (a.p.ageDays ?? 999)
-  );
-}
 
 export function CleaningOverview({
   report,
@@ -338,6 +302,8 @@ export function CleaningOverview({
   employees,
   holidays,
   issues,
+  acks,
+  fixes,
   initialGalleryOpen,
   initialSetupOpen,
 }: {
@@ -351,6 +317,10 @@ export function CleaningOverview({
   holidays: HolidayRow[];
   /** Kendala SOP terbuka dari karyawan. */
   issues: ItemIssueRow[];
+  /** Temuan yang sudah dicek (`${itemId}|${ackKey}`). */
+  acks: string[];
+  /** Perbaikan SOP yang dipantau. */
+  fixes: SopFixRow[];
   /** Buka drawer "Pengaturan SOP" saat halaman dimuat (`?setup=1`, dari pengingat tinjau ulang). */
   initialSetupOpen?: boolean;
   /** Buka drawer "Telusur foto" langsung saat halaman dimuat — dipakai
@@ -379,13 +349,23 @@ export function CleaningOverview({
   const stripFrom = Math.max(0, report.days.length - 14);
   const stripDays = dayYmds.slice(stripFrom);
 
-  const queue = useMemo(() => reviewQueue(report.points), [report.points]);
-  const branchOf = useMemo(
-    () => new Map(report.branches.map((b) => [b.key, b])),
-    [report.branches]
+  const issueInputs = useMemo<FindingIssueInput[]>(
+    () =>
+      issues
+        .filter((i): i is ItemIssueRow & { item_id: string } => !!i.item_id)
+        .map((i) => ({ id: i.id, itemId: i.item_id, date: i.date, reason: i.reason, userName: i.user_name })),
+    [issues]
   );
-  const activeBranch = branchKey ? branchOf.get(branchKey) ?? null : null;
-  const branchPoints = report.points.filter((p) => p.branchKey === branchKey);
+  // Jumlah foto temuan untuk tombol/lencana sidak — sama dengan cakupan "Temuan" di Sidak foto.
+  const sidakCount = useMemo(
+    () =>
+      buildFindings(
+        report,
+        issueInputs,
+        new Set(acks)
+      ).filter((f) => f.kind !== "miss" && (f.ymd || f.kind === "rushed")).length,
+    [report, issueInputs, acks]
+  );
   const shownEmployees = report.employees.filter(
     (e) => allBranches || e.branchKey === branchKey
   );
@@ -424,238 +404,45 @@ export function CleaningOverview({
         </div>
       </div>
 
-      {/* Tab */}
-      <div className="flex gap-1 border-b border-border overflow-x-auto">
-        {VIEWS.map((v) => {
-          const on = v.key === view;
-          return (
-            <Link
-              key={v.key}
-              href={`/admin/cleaning?view=${v.key}`}
-              className={`press-feedback -mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold ${
-                on
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {v.label}
-              {v.key === "ringkasan" && queue.length > 0 && (
-                <span className="ml-1.5 rounded-full bg-destructive/10 px-1.5 text-[11px] font-bold text-destructive">
-                  {queue.length}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+      {/* Halaman: seg control seperti di desain (Kepatuhan SOP · Sidak foto · Kerajinan karyawan) */}
+      <div className="flex">
+        <div className="inline-flex max-w-full gap-[2px] overflow-x-auto rounded-[10px] bg-muted p-[3px]">
+          {VIEWS.map((v) => {
+            const on = v.key === view;
+            return (
+              <Link
+                key={v.key}
+                href={`/admin/cleaning?view=${v.key}`}
+                scroll={false}
+                className={`press-feedback whitespace-nowrap rounded-[8px] px-3 py-1.5 font-display text-[12px] !font-semibold ${
+                  on ? "bg-card text-primary shadow-[0_1px_3px_rgba(0,40,46,0.14)]" : "text-muted-foreground"
+                }`}
+              >
+                {v.label}
+                {v.key === "sidak" && sidakCount > 0 && (
+                  <span className="ml-[7px] inline-flex rounded-full bg-destructive/12 px-2 py-0.5 text-[10.5px] font-semibold text-destructive">
+                    {sidakCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
-      {view === "ringkasan" ? (
-        <>
-      {/* Zona 1 — Perlu ditinjau */}
-      <section className="space-y-2">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="font-display text-[15px] font-bold">Perlu ditinjau</h2>
-          <span
-            className={
-              "rounded-full px-2 py-0.5 text-[11px] font-bold " +
-              (queue.length
-                ? "bg-destructive/10 text-destructive"
-                : "bg-muted text-muted-foreground")
-            }
-          >
-            {queue.length}
-          </span>
-          <span className="text-[11.5px] text-muted-foreground">
-            Semua cabang · titik yang belum dikerjakan atau lama tak terpantau
-          </span>
-        </div>
-        {queue.length === 0 ? (
-          <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-            <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              <Check size={16} />
-            </span>
-            <div>
-              <b className="font-display text-[13.5px]">
-                Tidak ada yang perlu ditinjau.
-              </b>
-              <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-                Semua titik terjadwal sudah dikerjakan. Lihat hasil per cabang &
-                rekam jejak di bawah.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
-            {queue.slice(0, 8).map(({ p, kind }) => (
-              <li
-                key={p.itemId}
-                className="flex flex-wrap items-center gap-3 px-4 py-2.5"
-              >
-                <span
-                  className={
-                    "grid size-7 shrink-0 place-items-center rounded-full " +
-                    (kind === "miss"
-                      ? "bg-destructive/10 text-destructive"
-                      : kind === "redo"
-                        ? "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                        : "bg-amber-500/10 text-amber-600 dark:text-amber-400")
-                  }
-                >
-                  {kind === "miss" ? (
-                    <AlertTriangle size={15} />
-                  ) : kind === "redo" ? (
-                    <RotateCcw size={14} />
-                  ) : (
-                    <Clock size={14} />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold">
-                    {p.title}{" "}
-                    <span className="font-normal text-muted-foreground">
-                      — {branchOf.get(p.branchKey)?.name ?? "—"}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {kind === "miss"
-                      ? `Belum dikerjakan ${p.missStreak} hari kerja · ${lastDoneLabel(p.lastGoodAgo)}`
-                      : kind === "redo"
-                        ? `Foto ditandai perlu ulang · ${p.checklistName}`
-                        : `${
-                            p.ageDays == null
-                              ? "Belum pernah dikerjakan sejak ditugaskan"
-                              : `Terakhir dikerjakan ${ageLabel(p.lastGoodAgo)}`
-                          } · ${p.checklistName}`}
-                  </div>
-                </div>
-                {/* Titik yang belum pernah dikerjakan tidak punya foto untuk dilihat —
-                    tindak lanjutnya ke orang yang bertugas: rincian per hari + catatan. */}
-                {kind === "stale" && p.ageDays == null ? (
-                  (() => {
-                    // Penanggung jawab tetap dulu (masa uji membuat sel tanpa
-                    // pelaksana); cadangan: orang yang terakhir kebagian duty.
-                    const lastUid = [...p.cells].reverse().find((c) => c.userId)?.userId ?? null;
-                    const uids = p.assigneeIds.length ? p.assigneeIds : lastUid ? [lastUid] : [];
-                    if (uids.length === 0)
-                      return (
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
-                          Petugas ditentukan dari kehadiran
-                        </span>
-                      );
-                    const btn =
-                      "inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted";
-                    return (
-                      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                        {uids.map((uid) => {
-                          const name = report.names[uid] ?? "—";
-                          const emp = report.employees.find((e) => e.userId === uid);
-                          return (
-                            <span key={uid} className="inline-flex items-center gap-1.5">
-                              {emp && (
-                                <button type="button" onClick={() => setPerson(emp)} className={btn}>
-                                  <User size={12} /> Rincian {name.split(" ")[0]}
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setCoaching({ userId: uid, name })}
-                                className={btn}
-                              >
-                                <MessageSquarePlus size={12} /> Catatan{uids.length > 1 ? ` ke ${name.split(" ")[0]}` : ""}
-                              </button>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setGallery({ itemId: p.itemId })}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
-                  >
-                    <Eye size={12} /> Lihat foto
-                  </button>
-                )}
-              </li>
-            ))}
-            {queue.length > 8 && (
-              <li className="px-4 py-2 text-[11.5px] text-muted-foreground">
-                +{queue.length - 8} lagi — selesaikan yang di atas dulu.
-              </li>
-            )}
-          </ul>
-        )}
-      </section>
-
-      {/* Tata kelola SOP — kendala, tinjau ulang, sesi terburu-buru, titik bermasalah */}
-      <SopGovernanceZone
-        report={report}
-        checklists={checklists}
-        issues={issues}
-        onOpenSetup={() => setSetupOpen(true)}
-        onOpenGallery={(filter) => setGallery(filter ?? {})}
-      />
-
-      {/* Zona 2 — hasil per cabang */}
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="font-display text-[15px] font-bold">
-            Hasil SOP per cabang
-          </h2>
-          <span className="text-[11.5px] text-muted-foreground">
-            Skor {scopeLabel} · strip = 14 hari terakhir
-          </span>
-        </div>
-        {report.branches.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-            Belum ada checklist aktif yang ter-assign. Buka <b>Pengaturan SOP</b>{" "}
-            untuk menyusunnya.
-          </p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {report.branches.map((b) => (
-              <BranchCard
-                key={b.key}
-                branch={b}
-                stripDays={stripDays}
-                stripFrom={stripFrom}
-                active={b.key === branchKey}
-                onPick={() => setBranchKey(b.key)}
-              />
-            ))}
-          </div>
-        )}
-
-        {activeBranch && (
-          <>
-            <div className="flex flex-wrap items-baseline gap-2 pt-2">
-              <h3 className="font-display text-sm font-bold">
-                Kondisi terkini — {activeBranch.name}
-              </h3>
-              <span className="text-[11.5px] text-muted-foreground">
-                Urut: paling perlu dilihat dulu
-              </span>
-            </div>
-            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-              {branchPoints.map((p) => (
-                <PointCard
-                  key={p.itemId}
-                  point={p}
-                  stripDays={stripDays}
-                  stripFrom={stripFrom}
-                  names={report.names}
-                  onOpen={() => setGallery({ itemId: p.itemId })}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-        </>
+      {view !== "karyawan" ? (
+        <SopProvider report={report} issues={issueInputs} acks={acks} fixes={fixes}>
+          <SopPages
+            view={view}
+            sidakCount={sidakCount}
+            report={report}
+            checklists={checklists}
+            issues={issues}
+            onOpenSetup={() => setSetupOpen(true)}
+            onOpenGallery={(filter) => setGallery(filter ?? {})}
+          />
+        </SopProvider>
       ) : (
-      /* Tab kerajinan karyawan */
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-display text-[15px] font-bold">Kerajinan karyawan</h2>
@@ -895,6 +682,7 @@ export function CleaningOverview({
             emp={person}
             name={report.names[person.userId] ?? "—"}
             days={dayYmds}
+            scoreDays={report.scoreDays}
             onOpenPoint={(itemId) => {
               setPerson(null);
               setGallery({ itemId });
@@ -906,140 +694,44 @@ export function CleaningOverview({
   );
 }
 
-function BranchCard({
-  branch,
-  stripDays,
-  stripFrom,
-  active,
-  onPick,
-}: {
-  branch: BranchReport;
-  stripDays: string[];
-  stripFrom: number;
-  active: boolean;
-  onPick: () => void;
-}) {
-  const denom = branch.scheduled - branch.pending;
-  return (
-    <button
-      type="button"
-      onClick={onPick}
-      className={
-        "rounded-2xl border bg-card p-3 text-left transition " +
-        (active ? "border-primary ring-1 ring-primary/30" : "border-border hover:border-primary/40")
-      }
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate font-display text-[13.5px] font-bold">
-            {branch.name}
-          </div>
-          <div className="truncate text-[10.5px] text-muted-foreground">
-            {branch.unit ?? "Cabang"}
-          </div>
-        </div>
-        <div className="text-right">
-          <div
-            className={
-              "font-display text-lg font-bold tabular-nums " +
-              (branch.score >= 95
-                ? ""
-                : branch.score >= 85
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-destructive")
-            }
-          >
-            {branch.score}%
-          </div>
-          <div className="text-[10.5px] text-muted-foreground tabular-nums">
-            {branch.done}/{denom} titik
-          </div>
-        </div>
-      </div>
-      <div
-        className={
-          "mt-1.5 text-[11px] " +
-          (branch.needsAttention
-            ? "font-semibold text-destructive"
-            : "text-muted-foreground")
-        }
-      >
-        {branch.needsAttention
-          ? `${branch.needsAttention} titik perlu perhatian`
-          : "Semua titik terpantau"}
-      </div>
-      <div className="mt-2">
-        <Strip
-          cells={branch.series.slice(stripFrom)}
-          days={stripDays}
-          title="14 hari terakhir"
-        />
-      </div>
-    </button>
-  );
-}
 
-function PointCard({
-  point,
-  stripDays,
-  stripFrom,
-  names,
-  onOpen,
+
+/** Isi halaman Kepatuhan SOP / Sidak foto — dirender di dalam SopProvider. */
+function SopPages({
+  view,
+  sidakCount,
+  report,
+  checklists,
+  issues,
+  onOpenSetup,
+  onOpenGallery,
 }: {
-  point: PointReport;
-  stripDays: string[];
-  stripFrom: number;
-  names: Record<string, string>;
-  onOpen: () => void;
+  view: CleaningViewKey;
+  sidakCount: number;
+  report: CleaningRangeReportWithNames;
+  checklists: CleaningChecklist[];
+  issues: ItemIssueRow[];
+  onOpenSetup: () => void;
+  onOpenGallery: (filter?: GalleryFilter) => void;
 }) {
-  const last = point.cells[point.cells.length - 1];
-  const who = last?.userId ? names[last.userId] ?? null : null;
-  const bad = point.current === "miss";
-  // `off` punya tiga sebab berbeda; "Tidak terjadwal" hanya benar untuk satu di antaranya.
-  const offTrial = point.current === "off" && point.currentNote === "trial";
-  const offNotStarted = point.current === "off" && point.currentNote === "before_start";
+  const router = useRouter();
+  const go = (v: CleaningViewKey) => router.push(`/admin/cleaning?view=${v}`, { scroll: false });
+  if (view === "sidak") return <SopSidak onBack={() => go("ringkasan")} />;
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={
-        "rounded-2xl border bg-card p-3 text-left transition hover:border-primary/40 " +
-        (bad ? "border-destructive/40" : "border-border")
+    <SopKepatuhan
+      onOpenSidak={() => go("sidak")}
+      sidakCount={sidakCount}
+      footer={
+        <SopGovernanceZone
+          show={["reviews"]}
+          report={report}
+          checklists={checklists}
+          issues={issues}
+          onOpenSetup={onOpenSetup}
+          onOpenGallery={onOpenGallery}
+        />
       }
-    >
-      <div className="flex items-start justify-between gap-2">
-        <b className="min-w-0 truncate text-[12.5px]">{point.title}</b>
-        {offTrial || offNotStarted ? (
-          <span className="inline-flex shrink-0 items-center rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-sky-700 dark:text-sky-400">
-            {offTrial ? "Masa uji" : "Belum mulai"}
-          </span>
-        ) : (
-          <StatusPill status={point.current} />
-        )}
-      </div>
-      <div className="mt-1 text-[10.5px] text-muted-foreground">
-        {point.current === "ok" || point.current === "late"
-          ? `dikerjakan ${who ?? "—"}`
-          : point.current === "pending"
-            ? `menunggu jadwal · ${lastDoneLabel(point.lastGoodAgo)}`
-            : point.current === "miss"
-              ? `belum dikerjakan ${point.missStreak} hari · ${lastDoneLabel(point.lastGoodAgo)}`
-              : point.current === "miss_absent"
-                ? `shift tidak masuk ${point.missStreak} hari · ${lastDoneLabel(point.lastGoodAgo)}`
-                : offTrial
-                  ? `dijadwalkan hari ini, belum dinilai (masa uji) · ${lastDoneLabel(point.lastGoodAgo)}`
-                  : offNotStarted
-                    ? "penugasan belum mulai"
-                    : `tidak ada jadwal hari ini · ${lastDoneLabel(point.lastGoodAgo)}`}
-      </div>
-      <div className="mt-0.5 text-[10.5px] text-muted-foreground">
-        {point.photoSlots > 0 ? `${point.photoSlots} slot foto` : "tanpa foto"} ·{" "}
-        {point.checklistName}
-      </div>
-      <div className="mt-2">
-        <Strip cells={point.cells.slice(stripFrom).map((c) => c.status)} days={stripDays} />
-      </div>
-    </button>
+    />
   );
 }
 
@@ -1047,11 +739,14 @@ function PersonBody({
   emp,
   name,
   days,
+  scoreDays,
   onOpenPoint,
 }: {
   emp: EmployeeReport;
   name: string;
   days: string[];
+  /** Jendela yang dihitung ke kepatuhan (laporan bisa lebih panjang). */
+  scoreDays: number;
   onOpenPoint: (itemId: string) => void;
 }) {
   const dutyDays = emp.days
@@ -1063,7 +758,7 @@ function PersonBody({
     <div className="space-y-5">
       <div className="grid grid-cols-3 gap-2">
         <Kpi
-          label={`Kepatuhan ${emp.days.length} hari`}
+          label={`Kepatuhan ${scoreDays} hari`}
           value={`${emp.pct}%`}
           hint={`${emp.ok + emp.late} dari ${emp.dutyDays} hari duty`}
           tone={emp.pct >= 95 ? undefined : emp.pct >= 80 ? "warn" : "bad"}

@@ -188,6 +188,7 @@ export async function listChecklistRevisions(input: {
 
 export interface ItemIssueRow {
   id: string;
+  item_id: string | null;
   date: string;
   reason: string;
   created_at: string;
@@ -200,6 +201,7 @@ export interface ItemIssueRow {
 
 type IssueJoin = {
   id: string;
+  item_id: string | null;
   date: string;
   reason: string;
   created_at: string;
@@ -216,13 +218,14 @@ export async function listOpenItemIssues(): Promise<ItemIssueRow[]> {
   const { data } = await supabase
     .from("cleaning_item_issues")
     .select(
-      "id, date, reason, created_at, checklist_id, reporter:profiles!user_id(full_name), item:cleaning_checklist_items(title), checklist:cleaning_checklists(name, owner:profiles!owner_id(full_name))"
+      "id, item_id, date, reason, created_at, checklist_id, reporter:profiles!user_id(full_name), item:cleaning_checklist_items(title), checklist:cleaning_checklists(name, owner:profiles!owner_id(full_name))"
     )
     .eq("status", "open")
     .order("created_at", { ascending: false })
     .limit(100);
   return ((data ?? []) as unknown as IssueJoin[]).map((r) => ({
     id: r.id,
+    item_id: r.item_id,
     date: r.date,
     reason: r.reason,
     created_at: r.created_at,
