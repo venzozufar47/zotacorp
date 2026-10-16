@@ -367,95 +367,97 @@ export function CleaningChecklistCard({ initial }: Props) {
           const allDone = done === total;
           // Jendela waktu belum buka (atau sudah tutup): tak ada yang bisa diisi sekarang, jadi
           // tampilkan ringkas — hanya hal penting (nama, progres, kapan boleh dikerjakan).
+          // Jendela waktu belum buka (atau sudah tutup): tak ada yang bisa diisi sekarang, jadi
+          // tampilkan ringkas — hanya hal penting (nama, progres, kapan boleh dikerjakan).
           const locked = !task.window_open;
-          if (locked && !peeking.has(task.assignment_id)) {
-            const sub = [
-              task.window_label,
-              task.trial
-                ? `Masa uji${task.trial_until ? ` s/d ${formatDateID(task.trial_until)}` : ""}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <button
-                key={task.assignment_id}
-                type="button"
-                onClick={() => togglePeek(task.assignment_id)}
-                aria-expanded={false}
-                className="flex min-h-14 w-full items-center gap-3 rounded-xl border-2 border-foreground/15 bg-card px-3 py-2.5 text-left hover:bg-muted/40"
-              >
-                {allDone ? (
-                  <CheckCircle2 className="size-4 shrink-0 text-accent-foreground" />
-                ) : (
-                  <Lock className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate font-display text-sm font-bold">
-                      {task.checklist_name}
-                    </span>
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-bold ${
-                        allDone
-                          ? "bg-accent text-accent-foreground"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {done}/{total}
-                    </span>
+          const peek = locked && peeking.has(task.assignment_id);
+          // Satu baris header yang SAMA untuk tertutup maupun terbuka: seluruh baris = tombol
+          // buka/tutup, chevron selalu di kanan pada posisi yang sama (hanya berputar).
+          const lockedHeader = locked ? (
+            <button
+              type="button"
+              onClick={() => togglePeek(task.assignment_id)}
+              aria-expanded={peek}
+              aria-label={`${peek ? "Ringkas" : "Buka"} ${task.checklist_name}`}
+              className={`flex min-h-14 w-full items-center gap-3 border-2 border-foreground/15 bg-card px-3 py-2.5 text-left hover:bg-muted/40 ${
+                peek ? "rounded-t-xl" : "rounded-xl"
+              }`}
+            >
+              {allDone ? (
+                <CheckCircle2 className="size-4 shrink-0 text-accent-foreground" />
+              ) : (
+                <Lock className="size-4 shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate font-display text-sm font-bold">
+                    {task.checklist_name}
                   </span>
-                  <span className="block truncate text-xs text-muted-foreground">{sub}</span>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-bold ${
+                      allDone
+                        ? "bg-accent text-accent-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {done}/{total}
+                  </span>
                 </span>
-                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-              </button>
-            );
-          }
+                <span className="block truncate text-xs text-muted-foreground">
+                  {[
+                    task.window_label,
+                    task.trial
+                      ? `Masa uji${task.trial_until ? ` s/d ${formatDateID(task.trial_until)}` : ""}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </span>
+              <ChevronDown
+                className={`size-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                  peek ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+          ) : null;
+          if (locked && !peek) return <div key={task.assignment_id}>{lockedHeader}</div>;
           return (
             <div key={task.assignment_id} className="space-y-3">
-              {locked && (
-                <button
-                  type="button"
-                  onClick={() => togglePeek(task.assignment_id)}
-                  aria-expanded
-                  className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronDown className="size-3.5 rotate-180" />
-                  Ringkas
-                </button>
+              {lockedHeader}
+              {!locked && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Sparkles className="size-4 text-accent-foreground" />
+                  <h3 className="font-display font-bold text-sm">
+                    {task.checklist_name}
+                  </h3>
+                  <span
+                    className={`text-[0.6875rem] font-bold rounded-full px-2 py-0.5 ${
+                      allDone
+                        ? "bg-accent text-accent-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {done}/{total}
+                  </span>
+                  {task.deadline_passed && !allDone && (
+                    <span className="text-[0.6875rem] font-bold rounded-full px-2 py-0.5 bg-destructive text-white">
+                      Terlambat
+                    </span>
+                  )}
+                  {task.block_checkout && (
+                    <span className="inline-flex items-center gap-1 text-[0.6875rem] font-bold rounded-full px-2 py-0.5 bg-primary text-primary-foreground">
+                      <Lock className="size-3" />
+                      Wajib sebelum pulang
+                    </span>
+                  )}
+                </div>
               )}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Sparkles className="size-4 text-accent-foreground" />
-                <h3 className="font-display font-bold text-sm">
-                  {task.checklist_name}
-                </h3>
-                <span
-                  className={`text-[0.6875rem] font-bold rounded-full px-2 py-0.5 ${
-                    allDone
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {done}/{total}
-                </span>
-                {task.deadline_passed && !allDone && (
-                  <span className="text-[0.6875rem] font-bold rounded-full px-2 py-0.5 bg-destructive text-white">
-                    Terlambat
-                  </span>
-                )}
-                {task.block_checkout && (
-                  <span className="inline-flex items-center gap-1 text-[0.6875rem] font-bold rounded-full px-2 py-0.5 bg-primary text-primary-foreground">
-                    <Lock className="size-3" />
-                    Wajib sebelum pulang
-                  </span>
-                )}
-              </div>
 
-              {task.window_label && (
+              {task.window_label && !locked && (
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="size-3.5" />
                   {task.window_label}
-                  {!task.window_open && " — belum bisa diisi sekarang"}
                 </p>
               )}
               {task.trial && (
