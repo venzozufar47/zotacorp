@@ -19,6 +19,7 @@ import { applyDiscount } from "@/lib/pos/discount";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
+import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -137,6 +138,9 @@ export interface PosSaleSummary {
   /** Nama kasir yang membatalkan — diisi manual, default dari jadwal
    *  shift. Bukan `voided_by` (itu akun tablet). */
   voidedByName: string | null;
+  /** Nama panggilan kasir pembuat sale (dari profil `created_by`), untuk cetak ulang struk
+   *  cabang yang tidak dijadwal (Semarang). Null bila tak terbaca. */
+  cashierName: string | null;
   /** Untuk QRIS: status upload bukti foto nota customer ke
    *  `cashflow_transactions.attachment_path`. Null kalau sale bukan
    *  QRIS atau tidak punya cashflow_transaction_id (edge case).
@@ -1174,7 +1178,7 @@ export async function listPosSaleDates(
  * full history (insights, dll).
  */
 const POS_SALE_LIST_COLUMNS =
-  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at" as const;
+  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at, created_by" as const;
 
 export async function listRecentPosSales(
   bankAccountId: string,
@@ -1212,6 +1216,7 @@ export async function listRecentPosSales(
     payment_status: "paid" | "pending";
     settled_via: SettleVia | null;
     settled_at: string | null;
+    created_by: string | null;
   };
   let sales: SaleRow[] = [];
   if (saleDate) {
@@ -1268,6 +1273,29 @@ export async function listRecentPosSales(
   if (sales.length === 0) return [];
 
   const saleIds = sales.map((s) => s.id);
+  // Nama kasir pembuat sale (service role: kasir pos_only tak bisa membaca profil orang lain;
+  // hanya nama & nickname yang diambil, dan sale-nya sudah lolos gate rekening di atas).
+  const cashierByUser = new Map<string, string | null>();
+  const creatorIds = Array.from(
+    new Set(sales.map((s) => s.created_by).filter((v): v is string => !!v))
+  );
+  if (creatorIds.length > 0) {
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (url && key) {
+        const admin = createAdminClient<Database>(url, key);
+        const { data: profs } = await admin
+          .from("profiles")
+          .select("id, full_name, nickname")
+          .in("id", creatorIds);
+        for (const p of profs ?? [])
+          cashierByUser.set(p.id, cashierDisplayName(p.nickname, p.full_name));
+      }
+    } catch {
+      // Nama kasir hanya pelengkap cetak ulang — riwayat tetap tampil tanpanya.
+    }
+  }
   // Ambil attachment_path ledger hanya untuk QRIS — cash tidak wajib
   // bukti. Query terpisah (bukan embed) karena types.ts hand-written
   // tidak expose relationship; tetap satu round-trip dengan `.in(...)`.
@@ -1393,6 +1421,7 @@ export async function listRecentPosSales(
     voidedAt: s.voided_at,
     voidReason: s.void_reason,
     voidedByName: s.voided_by_name,
+    cashierName: s.created_by ? cashierByUser.get(s.created_by) ?? null : null,
     // Untuk QRIS selalu return boolean (true/false) supaya badge muncul
     // di UI — termasuk sale lama yang mungkin tidak punya
     // cashflow_transaction_id (data pre-link). Null khusus untuk cash

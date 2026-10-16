@@ -46,7 +46,7 @@ export function ReprintReceiptButton({
       if (Number.isNaN(saleAt.getTime())) {
         saleAt = new Date(`${sale.saleDate}T00:00:00+07:00`);
       }
-      data.cashierName = resolveCashierName(branch, saleAt, null);
+      data.cashierName = resolveCashierName(branch, saleAt, sale.cashierName);
       await sendToPrinter(buildReceiptBytes(data), loadReceiptTransport().method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");
