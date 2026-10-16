@@ -19,6 +19,7 @@ import { SelfieCaptureDialog } from "@/components/attendance/SelfieCaptureDialog
 import { extensionFor } from "@/lib/images/compress-image";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cleaningRefUrl } from "@/lib/utils/cleaning-refs";
+import { formatDateID } from "@/lib/utils/date-formats";
 import { reportItemIssue } from "@/lib/actions/cleaning-governance.actions";
 import {
   completeCleaningItem,
@@ -397,7 +398,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                 <p className="flex items-start gap-1.5 rounded-xl border-2 border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-800 dark:text-sky-300">
                   <FlaskConical className="mt-0.5 size-3.5 shrink-0" />
                   <span>
-                    Masa uji{task.trial_until ? ` sampai ${task.trial_until}` : ""} — SOP ini
+                    Masa uji{task.trial_until ? ` sampai ${formatDateID(task.trial_until)}` : ""} — SOP ini
                     belum dihitung dan tidak mengunci absen pulang. Coba kerjakan dan laporkan
                     titik yang sulit atau beri masukan lewat tombol Ada kendala / masukan di bawah tiap titik.
                   </span>
