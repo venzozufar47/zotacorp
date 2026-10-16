@@ -317,11 +317,35 @@ export interface BuildRangeReportInput {
   userUnits: ReadonlyMap<string, string | null>;
 }
 
-/** Kunci cabang: pakai lokasi bila ada, kalau tidak jatuh ke unit bisnis. */
-function branchKeyOf(a: RangeAssignmentInput, userUnits: BuildRangeReportInput["userUnits"]): string {
+/**
+ * Penugasan per-orang tidak punya lokasi sendiri, jadi dulu jatuh ke grup "unit bisnis"
+ * (mis. "Haengbocake") yang terpisah dari kartu cabangnya ("Haengbocake Semarang") —
+ * padahal itu tempat kerja yang sama. Bila SATU-SATUNYA lokasi yang namanya diawali nama
+ * unit itu hanya ada satu, penugasan orang itu digabung ke lokasi tsb. Kalau ambigu
+ * (mis. "Yeobo Space" punya 3 cabang) tetap grup unit — tidak menebak.
+ */
+function locationKeyOfUnit(
+  unit: string,
+  locationNames: BuildRangeReportInput["locationNames"]
+): string | null {
+  const u = unit.trim().toLowerCase();
+  if (!u) return null;
+  const hits: string[] = [];
+  for (const [id, name] of locationNames)
+    if (name.trim().toLowerCase().startsWith(u)) hits.push(id);
+  return hits.length === 1 ? `loc:${hits[0]}` : null;
+}
+
+/** Kunci cabang: pakai lokasi bila ada, lalu lokasi tunggal milik unit bisnisnya, kalau tidak grup unit. */
+function branchKeyOf(
+  a: RangeAssignmentInput,
+  userUnits: BuildRangeReportInput["userUnits"],
+  locationNames: BuildRangeReportInput["locationNames"]
+): string {
   if (a.locationId) return `loc:${a.locationId}`;
   const unit = a.userId ? userUnits.get(a.userId) ?? null : null;
-  return unit ? `unit:${unit}` : "unit:—";
+  if (!unit) return "unit:—";
+  return locationKeyOfUnit(unit, locationNames) ?? `unit:${unit}`;
 }
 
 export function buildCleaningRangeReport(
@@ -472,7 +496,7 @@ export function buildCleaningRangeReport(
   const empDays = new Map<string, Map<string, EmployeeDay>>();
 
   for (const a of assignments) {
-    const branchKey = branchKeyOf(a, userUnits);
+    const branchKey = branchKeyOf(a, userUnits, locationNames);
     const limit = windowEndMin.get(a.id) ?? null;
 
     for (const item of a.items) {
@@ -786,7 +810,7 @@ export function buildCleaningRangeReport(
     { checklistId: string; checklistName: string; branchKey: string }
   >();
   for (const a of assignments) {
-    const branchKey = branchKeyOf(a, userUnits);
+    const branchKey = branchKeyOf(a, userUnits, locationNames);
     for (const item of a.items)
       if (!itemInfo.has(item.id))
         itemInfo.set(item.id, {
