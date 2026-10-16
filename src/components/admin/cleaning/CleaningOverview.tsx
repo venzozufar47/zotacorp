@@ -16,6 +16,7 @@ import {
   Images,
   Loader2,
   MessageSquarePlus,
+  User,
   Settings,
   X,
 } from "lucide-react";
@@ -518,13 +519,51 @@ export function CleaningOverview({
                           } · ${p.checklistName}`}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setGallery({ itemId: p.itemId })}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
-                >
-                  <Eye size={12} /> Lihat foto
-                </button>
+                {/* Titik yang belum pernah dikerjakan tidak punya foto untuk dilihat —
+                    tindak lanjutnya ke orang yang bertugas: rincian per hari + catatan. */}
+                {kind === "stale" && p.ageDays == null ? (
+                  (() => {
+                    const uid = [...p.cells].reverse().find((c) => c.userId)?.userId ?? null;
+                    const emp = uid
+                      ? (report.employees.find(
+                          (e) => e.userId === uid && e.branchKey === p.branchKey
+                        ) ?? report.employees.find((e) => e.userId === uid))
+                      : undefined;
+                    if (!uid || !emp)
+                      return (
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          Petugas belum ditentukan
+                        </span>
+                      );
+                    const name = report.names[uid] ?? "—";
+                    return (
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setPerson(emp)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
+                        >
+                          <User size={12} /> Rincian {name.split(" ")[0]}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCoaching({ userId: uid, name })}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
+                        >
+                          <MessageSquarePlus size={12} /> Beri catatan
+                        </button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setGallery({ itemId: p.itemId })}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11.5px] font-semibold hover:bg-muted"
+                  >
+                    <Eye size={12} /> Lihat foto
+                  </button>
+                )}
               </li>
             ))}
             {queue.length > 8 && (
