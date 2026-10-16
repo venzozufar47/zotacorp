@@ -9,6 +9,7 @@ import {
   Circle,
   Lock,
   Clock,
+  ChevronDown,
   Loader2,
   FlaskConical,
   MessageSquareWarning,
@@ -172,6 +173,16 @@ function UnitControls({
 
 export function CleaningChecklistCard({ initial }: Props) {
   const [tasks, setTasks] = useState(initial.tasks);
+  // Checklist yang jendelanya BELUM buka tampil ringkas (satu baris); id di sini = sedang dibuka
+  // untuk dilihat (mode baca saja — tidak ada tombol isi sampai jendelanya buka).
+  const [peeking, setPeeking] = useState<Set<string>>(() => new Set());
+  const togglePeek = (id: string) =>
+    setPeeking((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [checkedIn] = useState(initial.checked_in);
   const [isPending, startTransition] = useTransition();
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -354,8 +365,65 @@ export function CleaningChecklistCard({ initial }: Props) {
           const done = task.items.filter((i) => i.done).length;
           const total = task.items.length;
           const allDone = done === total;
+          // Jendela waktu belum buka (atau sudah tutup): tak ada yang bisa diisi sekarang, jadi
+          // tampilkan ringkas — hanya hal penting (nama, progres, kapan boleh dikerjakan).
+          const locked = !task.window_open;
+          if (locked && !peeking.has(task.assignment_id)) {
+            const sub = [
+              task.window_label,
+              task.trial
+                ? `Masa uji${task.trial_until ? ` s/d ${formatDateID(task.trial_until)}` : ""}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <button
+                key={task.assignment_id}
+                type="button"
+                onClick={() => togglePeek(task.assignment_id)}
+                aria-expanded={false}
+                className="flex min-h-14 w-full items-center gap-3 rounded-xl border-2 border-foreground/15 bg-card px-3 py-2.5 text-left hover:bg-muted/40"
+              >
+                {allDone ? (
+                  <CheckCircle2 className="size-4 shrink-0 text-accent-foreground" />
+                ) : (
+                  <Lock className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate font-display text-sm font-bold">
+                      {task.checklist_name}
+                    </span>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-bold ${
+                        allDone
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {done}/{total}
+                    </span>
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">{sub}</span>
+                </span>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            );
+          }
           return (
             <div key={task.assignment_id} className="space-y-3">
+              {locked && (
+                <button
+                  type="button"
+                  onClick={() => togglePeek(task.assignment_id)}
+                  aria-expanded
+                  className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronDown className="size-3.5 rotate-180" />
+                  Ringkas
+                </button>
+              )}
               <div className="flex items-center gap-2 flex-wrap">
                 <Sparkles className="size-4 text-accent-foreground" />
                 <h3 className="font-display font-bold text-sm">
@@ -384,14 +452,10 @@ export function CleaningChecklistCard({ initial }: Props) {
               </div>
 
               {task.window_label && (
-                <p
-                  className={`flex items-center gap-1.5 text-xs ${
-                    task.window_open ? "text-muted-foreground" : "text-destructive font-medium"
-                  }`}
-                >
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="size-3.5" />
                   {task.window_label}
-                  {!task.window_open && " — di luar jam, belum bisa diisi"}
+                  {!task.window_open && " — belum bisa diisi sekarang"}
                 </p>
               )}
               {task.trial && (
@@ -519,7 +583,7 @@ export function CleaningChecklistCard({ initial }: Props) {
                             )}
                         </div>
                         {/* Single-unit item: action lives on the header row. */}
-                        {!multi && (
+                        {!multi && !locked && (
                           <UnitControls
                             assignmentId={task.assignment_id}
                             itemId={item.id}
@@ -565,19 +629,21 @@ export function CleaningChecklistCard({ initial }: Props) {
                               <span className="min-w-0 flex-1 text-xs text-foreground">
                                 {unit.label || `Foto ${i + 1}`}
                               </span>
-                              <UnitControls
-                                assignmentId={task.assignment_id}
-                                itemId={item.id}
-                                unit={unit}
-                                windowOpen={task.window_open}
-                                checkedIn={checkedIn}
-                                busy={
-                                  busyKey === unitKey(item.id, unit.photo_req_id) && isPending
-                                }
-                                onUndo={undo}
-                                onStartPhoto={startPhoto}
-                                onMarkDone={markDoneNoPhoto}
-                              />
+                              {!locked && (
+                                <UnitControls
+                                  assignmentId={task.assignment_id}
+                                  itemId={item.id}
+                                  unit={unit}
+                                  windowOpen={task.window_open}
+                                  checkedIn={checkedIn}
+                                  busy={
+                                    busyKey === unitKey(item.id, unit.photo_req_id) && isPending
+                                  }
+                                  onUndo={undo}
+                                  onStartPhoto={startPhoto}
+                                  onMarkDone={markDoneNoPhoto}
+                                />
+                              )}
                             </li>
                           ))}
                         </ul>
