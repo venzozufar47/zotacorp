@@ -221,6 +221,11 @@ function CoachingDialog({
   const router = useRouter();
   const [body, setBody] = useState("");
   const [pending, startTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   function submit() {
     if (!body.trim()) {
@@ -245,7 +250,10 @@ function CoachingDialog({
     });
   }
 
-  return (
+  // Portal ke <body>: nenek moyangnya (animasi halaman) membuat fixed relatif ke dirinya,
+  // sehingga dialog terpotong/miring di dalam konten alih-alih menutup layar.
+  if (!mounted) return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid w-screen h-screen place-items-center bg-foreground/40 p-4"
       onClick={onClose}
@@ -291,7 +299,8 @@ function CoachingDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
