@@ -185,6 +185,10 @@ function Legend() {
 const ageLabel = (n: number | null) =>
   n == null ? "belum pernah" : n === 0 ? "hari ini" : n === 1 ? "kemarin" : `${n} hari lalu`;
 
+/** "terakhir dikerjakan kemarin" / "belum pernah dikerjakan" — kalimat utuh, bukan potongan. */
+const lastDoneLabel = (n: number | null) =>
+  n == null ? "belum pernah dikerjakan" : `terakhir dikerjakan ${ageLabel(n)}`;
+
 /** "2026-09-28" → "28 Sep" — tanpa tahun, cukup untuk label ujung strip. */
 function shortDay(ymd: string): string {
   const m = /^\d{4}-(\d{2})-(\d{2})/.exec(ymd);
@@ -504,10 +508,14 @@ export function CleaningOverview({
                   </div>
                   <div className="text-[11px] text-muted-foreground">
                     {kind === "miss"
-                      ? `Belum dikerjakan ${p.missStreak} hari kerja · terakhir bersih ${ageLabel(p.ageDays)}`
+                      ? `Belum dikerjakan ${p.missStreak} hari kerja · ${lastDoneLabel(p.ageDays)}`
                       : kind === "redo"
                         ? `Foto ditandai perlu ulang · ${p.checklistName}`
-                        : `Tidak ada bukti ${ageLabel(p.ageDays)} · ${p.checklistName}`}
+                        : `${
+                            p.ageDays == null
+                              ? "Belum pernah dikerjakan sejak ditugaskan"
+                              : `Sudah ${p.ageDays} hari tidak dikerjakan`
+                          } · ${p.checklistName}`}
                   </div>
                 </div>
                 <button
@@ -951,12 +959,12 @@ function PointCard({
         {point.current === "ok" || point.current === "late"
           ? `dikerjakan ${who ?? "—"}`
           : point.current === "pending"
-            ? `menunggu jadwal · terakhir ${ageLabel(point.ageDays)}`
+            ? `menunggu jadwal · ${lastDoneLabel(point.ageDays)}`
             : point.current === "miss"
-              ? `belum dikerjakan ${point.missStreak} hari · terakhir ${ageLabel(point.ageDays)}`
+              ? `belum dikerjakan ${point.missStreak} hari · ${lastDoneLabel(point.ageDays)}`
               : point.current === "miss_absent"
-                ? `shift tidak masuk ${point.missStreak} hari · terakhir ${ageLabel(point.ageDays)}`
-                : `tidak terjadwal · terakhir ${ageLabel(point.ageDays)}`}
+                ? `shift tidak masuk ${point.missStreak} hari · ${lastDoneLabel(point.ageDays)}`
+                : `tidak terjadwal · ${lastDoneLabel(point.ageDays)}`}
       </div>
       <div className="mt-0.5 text-[10.5px] text-muted-foreground">
         {point.photoSlots > 0 ? `${point.photoSlots} slot foto` : "tanpa foto"} ·{" "}
