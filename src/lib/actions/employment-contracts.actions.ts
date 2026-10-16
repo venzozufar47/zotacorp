@@ -1,7 +1,7 @@
 "use server";
 
 import { createElement } from "react";
-import { readFile } from "fs/promises";
+import { access, readFile } from "fs/promises";
 import { join } from "path";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -703,9 +703,14 @@ async function pathToDataUrl(
 }
 
 /**
- * Tanda tangan PIHAK PERTAMA (Pemberi Kerja). Prioritas: file statis di
- * `public/signatures/Sign_Avenzoar_Transparant.png` (hardcode); kalau tak
- * ada, fallback ke gambar yang diupload ke storage (template TTD pad).
+ * Tanda tangan PIHAK PERTAMA (Pemberi Kerja). Prioritas: gambar yang diunggah
+ * lewat panel template (storage); kalau tidak ada, file bawaan di
+ * `public/signatures/Sign_Avenzoar_Transparant.png`.
+ *
+ * Dulu urutannya TERBALIK (file bawaan menang), sehingga unggahan di panel
+ * tidak pernah berpengaruh — panel terlihat "tersimpan" tapi PDF tetap
+ * memakai file bawaan. Kini unggahan menang; tanpa unggahan perilakunya sama
+ * persis dengan sebelumnya (semua kontrak lama memakai file bawaan).
  */
 const EMPLOYER_SIG_FILE = join(
   process.cwd(),
@@ -717,12 +722,68 @@ async function employerSignatureDataUrl(
   db: ReturnType<typeof adminClient>,
   storagePath: string | null
 ): Promise<string | null> {
+  const uploaded = await pathToDataUrl(db, storagePath);
+  if (uploaded) return uploaded;
   try {
     const buf = await readFile(EMPLOYER_SIG_FILE);
     return `data:image/png;base64,${buf.toString("base64")}`;
   } catch {
-    return pathToDataUrl(db, storagePath);
+    return null;
   }
+}
+
+/** Tanda tangan Pemberi Kerja yang BENAR-BENAR dipakai di PDF kontrak sebuah BU. */
+export interface EmployerSignatureStatus {
+  /** upload = diunggah lewat panel; bundled = file bawaan sistem; none = kosong. */
+  source: "upload" | "bundled" | "none";
+  /** URL gambar untuk pratinjau (signed URL 1 jam / path statis); null bila none. */
+  previewUrl: string | null;
+}
+
+/**
+ * Status tanda tangan Pemberi Kerja per business unit, dihitung dengan aturan
+ * yang sama dengan `employerSignatureDataUrl` — supaya panel admin menampilkan
+ * kondisi sebenarnya (sebelumnya hanya memeriksa kolom path di template, yang
+ * kosong walau PDF sudah memakai file bawaan → "Belum ada tanda tangan" palsu).
+ */
+export async function getEmployerSignatureStatus(): Promise<
+  Record<string, EmployerSignatureStatus>
+> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return {};
+  const db = adminClient();
+  const { data } = await db
+    .from("employment_contract_templates" as never)
+    .select("business_unit, employer_signature_path");
+  const rows = (data ?? []) as unknown as Array<{
+    business_unit: string;
+    employer_signature_path: string | null;
+  }>;
+
+  let bundled = false;
+  try {
+    await access(EMPLOYER_SIG_FILE);
+    bundled = true;
+  } catch {
+    bundled = false;
+  }
+
+  const out: Record<string, EmployerSignatureStatus> = {};
+  for (const r of rows) {
+    if (r.employer_signature_path) {
+      const { data: signed } = await db.storage
+        .from("employment-contracts")
+        .createSignedUrl(r.employer_signature_path, 3600);
+      if (signed?.signedUrl) {
+        out[r.business_unit] = { source: "upload", previewUrl: signed.signedUrl };
+        continue;
+      }
+    }
+    out[r.business_unit] = bundled
+      ? { source: "bundled", previewUrl: "/signatures/Sign_Avenzoar_Transparant.png" }
+      : { source: "none", previewUrl: null };
+  }
+  return out;
 }
 
 /** Signed URL untuk objek di bucket (PDF / tanda tangan). */

@@ -84,6 +84,26 @@ export function fillAndParse(
   return parseContractMarkdown(filled);
 }
 
+/**
+ * Nomor surat LENGKAP persis seperti tercetak di dokumen ("010/PK/YS/2026").
+ * `contract_number` hanya menyimpan nomor urut ("010"); format lengkap ada di
+ * baris "Nomor: …" pada badan kontrak (per template / business unit), jadi
+ * dibaca dari sana lewat interpolasi yang SAMA dengan render dokumen. Bila
+ * baris itu tidak ada / belum terisi, jatuh ke nomor urut.
+ */
+export function contractNomorSurat(c: {
+  body_markdown: string | null;
+  fields: ContractFields | null;
+  contract_number: string | null;
+}): string | null {
+  const filled = interpolate(c.body_markdown ?? "", (c.fields ?? {}) as Record<string, string>);
+  const m = /Nomor\s*:\s*([^\n]+)/i.exec(filled);
+  const text = m ? m[1].replace(/\*+/g, "").trim() : "";
+  // Tanda "/" kosong beruntun (mis. "//PK/YS/") = token belum terisi → jangan ditampilkan.
+  if (text && !text.startsWith("/") && !/\/\//.test(text)) return text;
+  return c.contract_number?.trim() || null;
+}
+
 /** Gabungkan spans jadi plain string (untuk preview sederhana / alt). */
 export function spansToText(spans: InlineSpan[]): string {
   return spans.map((s) => s.text).join("");

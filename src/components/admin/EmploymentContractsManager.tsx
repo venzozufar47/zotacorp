@@ -29,7 +29,9 @@ import {
   getNextContractNumber,
   type ContractListRow,
   type BulkContractRow,
+  type EmployerSignatureStatus,
 } from "@/lib/actions/employment-contracts.actions";
+import { contractNomorSurat } from "@/lib/employment-contracts/markdown";
 import {
   CONTRACT_FIELD_DEFS,
   CONTRACT_STATUS_LABELS,
@@ -64,11 +66,13 @@ export function EmploymentContractsManager({
   contracts,
   employees,
   businessUnits,
+  employerSignatures,
 }: {
   templates: EmploymentContractTemplate[];
   contracts: ContractListRow[];
   employees: ContractEmployee[];
   businessUnits: string[];
+  employerSignatures: Record<string, EmployerSignatureStatus>;
 }) {
   const [tab, setTab] = useState<"templates" | "contracts">("contracts");
   return (
@@ -93,12 +97,17 @@ export function EmploymentContractsManager({
         ))}
       </div>
       {tab === "templates" ? (
-        <TemplatesTab templates={templates} businessUnits={businessUnits} />
+        <TemplatesTab
+          templates={templates}
+          businessUnits={businessUnits}
+          employerSignatures={employerSignatures}
+        />
       ) : (
         <ContractsTab
           contracts={contracts}
           employees={employees}
           businessUnits={businessUnits}
+          employerSignatures={employerSignatures}
         />
       )}
     </div>
@@ -107,12 +116,34 @@ export function EmploymentContractsManager({
 
 // ── Templates tab ─────────────────────────────────────────────────────
 
+function SignatureChip({ status }: { status: EmployerSignatureStatus | undefined }) {
+  const filled = !!status && status.source !== "none";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        filled
+          ? "border-emerald-600/40 bg-emerald-50 text-emerald-800"
+          : "border-destructive/40 bg-destructive/10 text-destructive"
+      }`}
+    >
+      {filled ? "✓ Terisi" : "Belum ada"}
+      {filled && (
+        <span className="font-normal opacity-80">
+          · {status!.source === "upload" ? "diunggah" : "bawaan sistem"}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function TemplatesTab({
   templates,
   businessUnits,
+  employerSignatures,
 }: {
   templates: EmploymentContractTemplate[];
   businessUnits: string[];
+  employerSignatures: Record<string, EmployerSignatureStatus>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -226,18 +257,44 @@ function TemplatesTab({
       </div>
 
       {existing && (
-        <div className="rounded-xl border-2 border-foreground bg-card p-4 space-y-2">
-          <h3 className="font-semibold text-sm">
-            Tanda tangan Pemberi Kerja (dipakai otomatis di semua kontrak {bu})
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {existing.employer_signature_path
-              ? "Tanda tangan sudah tersimpan ✓. Tanda tangan ulang di bawah untuk mengganti."
-              : "Belum ada tanda tangan. Bubuhkan di bawah."}
-          </p>
-          <div className="max-w-md">
-            <SignaturePad onBlob={saveSignature} disabled={pending} />
+        <div className="rounded-xl border-2 border-foreground bg-card p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold text-sm">
+              Tanda tangan Pemberi Kerja (dipakai otomatis di semua kontrak {bu})
+            </h3>
+            <SignatureChip status={employerSignatures[bu]} />
           </div>
+          {employerSignatures[bu]?.previewUrl && (
+            <div className="inline-block rounded-lg border border-border bg-white p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={employerSignatures[bu].previewUrl!}
+                alt="Tanda tangan Pemberi Kerja saat ini"
+                className="max-h-28 w-auto"
+              />
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {employerSignatures[bu]?.source === "upload"
+              ? "Memakai tanda tangan yang diunggah lewat panel ini."
+              : employerSignatures[bu]?.source === "bundled"
+                ? `Memakai file tanda tangan bawaan sistem — sudah tampil di PDF semua kontrak ${bu}.`
+                : "Belum ada tanda tangan — bagian Pemberi Kerja di PDF kontrak akan kosong."}
+          </p>
+          <details open={!employerSignatures[bu] || employerSignatures[bu].source === "none"}>
+            <summary className="cursor-pointer text-xs font-semibold text-primary">
+              {employerSignatures[bu] && employerSignatures[bu].source !== "none"
+                ? "Ganti tanda tangan"
+                : "Bubuhkan tanda tangan"}
+            </summary>
+            <div className="mt-2 max-w-md space-y-1">
+              <p className="text-[11px] text-muted-foreground">
+                Berlaku untuk kontrak yang diterbitkan setelah ini. PDF kontrak yang
+                sudah ditandatangani karyawan tidak berubah.
+              </p>
+              <SignaturePad onBlob={saveSignature} disabled={pending} />
+            </div>
+          </details>
         </div>
       )}
     </div>
@@ -250,10 +307,12 @@ function ContractsTab({
   contracts,
   employees,
   businessUnits,
+  employerSignatures,
 }: {
   contracts: ContractListRow[];
   employees: ContractEmployee[];
   businessUnits: string[];
+  employerSignatures: Record<string, EmployerSignatureStatus>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -301,13 +360,24 @@ function ContractsTab({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end gap-2">
-        <button onClick={() => setBatching(true)} className={BTN_OUTLINE}>
-          <Users size={15} /> Terbitkan massal
-        </button>
-        <button onClick={() => setIssuing(true)} className={BTN_PRIMARY}>
-          <Plus size={15} /> Terbitkan kontrak
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">TTD Pemberi Kerja:</span>
+          {Array.from(new Set(contracts.map((c) => c.business_unit))).map((b) => (
+            <span key={b} className="inline-flex items-center gap-1.5">
+              {b}
+              <SignatureChip status={employerSignatures[b]} />
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setBatching(true)} className={BTN_OUTLINE}>
+            <Users size={15} /> Terbitkan massal
+          </button>
+          <button onClick={() => setIssuing(true)} className={BTN_PRIMARY}>
+            <Plus size={15} /> Terbitkan kontrak
+          </button>
+        </div>
       </div>
 
       {contracts.length === 0 ? (
@@ -320,6 +390,7 @@ function ContractsTab({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left">
               <tr>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">No. Surat</th>
                 <th className="px-3 py-2 font-semibold">Karyawan</th>
                 <th className="px-3 py-2 font-semibold">Business Unit</th>
                 <th className="px-3 py-2 font-semibold">Status</th>
@@ -330,6 +401,9 @@ function ContractsTab({
             <tbody>
               {contracts.map((c) => (
                 <tr key={c.id} className="border-t border-border">
+                  <td className="px-3 py-2 whitespace-nowrap font-mono text-[13px] tabular-nums">
+                    {contractNomorSurat(c) ?? "—"}
+                  </td>
                   <td className="px-3 py-2 font-medium">{c.employee_name}</td>
                   <td className="px-3 py-2">{c.business_unit}</td>
                   <td className="px-3 py-2">

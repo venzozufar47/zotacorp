@@ -5,6 +5,7 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
 import { listBusinessUnits } from "@/lib/actions/business-units.actions";
 import {
+  getEmployerSignatureStatus,
   listContractTemplates,
   listEmploymentContracts,
 } from "@/lib/actions/employment-contracts.actions";
@@ -24,10 +25,11 @@ export default async function AdminEmploymentContractsPage() {
   if (role !== "admin") redirect("/dashboard");
 
   const supabase = await createClient();
-  const [templates, contracts, businessUnits, { data: empRaw }] =
+  const [templates, contracts, employerSignatures, businessUnits, { data: empRaw }] =
     await Promise.all([
       listContractTemplates(),
       listEmploymentContracts(),
+      getEmployerSignatureStatus(),
       listBusinessUnits(),
       supabase
         .from("profiles")
@@ -67,6 +69,7 @@ export default async function AdminEmploymentContractsPage() {
         contracts={contracts}
         employees={employees}
         businessUnits={buNames}
+        employerSignatures={employerSignatures}
       />
     </div>
   );
