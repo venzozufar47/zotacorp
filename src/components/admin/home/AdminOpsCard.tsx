@@ -192,14 +192,14 @@ export function AdminOpsCard({
         <div className="mt-3 pt-3 border-t border-border/60 flex items-baseline justify-between gap-3">
           <div className="min-w-0">
             <Link
-              href="/admin/cleaning?gallery=1"
+              href="/admin/cleaning?view=sidak&tab=acak"
               className="inline-flex items-center gap-1.5 text-[13px] font-medium text-foreground underline-offset-2 hover:underline hover:text-primary"
             >
               <Camera size={13} className="shrink-0" />
               Review foto SOP
             </Link>
             <span className="block text-[11px] text-muted-foreground">
-              Tinjau satu per satu, tandai Acc atau perlu ulang
+              Sidak acak 10 foto, tandai Acc atau perlu ulang
             </span>
           </div>
           {!!cleaningReviewQuickAccess?.freshUnreviewedCount && (

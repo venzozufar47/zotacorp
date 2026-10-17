@@ -285,6 +285,7 @@ export function CleaningOverview({
   acks,
   fixes,
   revisions,
+  sidakTab,
   initialGalleryOpen,
   initialSetupOpen,
 }: {
@@ -304,6 +305,8 @@ export function CleaningOverview({
   fixes: SopFixRow[];
   /** Riwayat perubahan checklist — untuk mendeteksi apakah perbaikan benar-benar dilakukan. */
   revisions: RevisionRow[];
+  /** Tab awal Sidak foto: "acak" = Acak 10; kosong = cabang pertama. */
+  sidakTab?: "acak";
   /** Buka drawer "Pengaturan SOP" saat halaman dimuat (`?setup=1`, dari pengingat tinjau ulang). */
   initialSetupOpen?: boolean;
   /** Buka drawer "Telusur foto" langsung saat halaman dimuat — dipakai
@@ -407,7 +410,7 @@ export function CleaningOverview({
           revisions={revisions}
           onOpenSetup={() => setSetupOpen(true)}
         >
-          <SopPages view={view} checklists={checklists} onOpenSetup={() => setSetupOpen(true)} />
+          <SopPages view={view} sidakTab={sidakTab} checklists={checklists} onOpenSetup={() => setSetupOpen(true)} />
         </SopProvider>
       ) : (
       <section className="space-y-2">
@@ -666,16 +669,18 @@ export function CleaningOverview({
 /** Isi halaman Kepatuhan SOP / Sidak foto — dirender di dalam SopProvider. */
 function SopPages({
   view,
+  sidakTab,
   checklists,
   onOpenSetup,
 }: {
   view: CleaningViewKey;
+  sidakTab?: "acak";
   checklists: CleaningChecklist[];
   onOpenSetup: () => void;
 }) {
   const router = useRouter();
   const go = (v: CleaningViewKey) => router.push(`/admin/cleaning?view=${v}`, { scroll: false });
-  if (view === "sidak") return <SopSidak onBack={() => go("ringkasan")} />;
+  if (view === "sidak") return <SopSidak initialTab={sidakTab} onBack={() => go("ringkasan")} />;
   return (
     <SopKepatuhan
       onOpenSidak={() => go("sidak")}

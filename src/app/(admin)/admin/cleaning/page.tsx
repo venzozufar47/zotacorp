@@ -49,7 +49,7 @@ function ymdMinus(ymd: string, n: number): string {
 export default async function AdminCleaningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; gallery?: string; setup?: string }>;
+  searchParams: Promise<{ view?: string; tab?: string; gallery?: string; setup?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -59,6 +59,8 @@ export default async function AdminCleaningPage({
   const sp = await searchParams;
   const view: CleaningViewKey =
     sp.view === "karyawan" ? "karyawan" : sp.view === "sidak" ? "sidak" : "ringkasan";
+  // `?view=sidak&tab=acak` (pintasan dari Beranda) membuka tab Acak 10; selain itu cabang pertama.
+  const sidakTab = sp.tab === "acak" ? ("acak" as const) : undefined;
   const initialGalleryOpen = sp.gallery === "1";
   const initialSetupOpen = sp.setup === "1";
 
@@ -131,6 +133,7 @@ export default async function AdminCleaningPage({
           acks={acks}
           fixes={fixes}
           revisions={revisions}
+          sidakTab={sidakTab}
           initialSetupOpen={initialSetupOpen}
           initialGalleryOpen={initialGalleryOpen}
         />

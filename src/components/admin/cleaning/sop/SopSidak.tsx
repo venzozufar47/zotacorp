@@ -83,11 +83,11 @@ async function loadRandom(today: string): Promise<Card[]> {
   return seededShuffle(groupCards(res.rows.filter((r) => !!r.url)), `${today}|sidak`).slice(0, 10);
 }
 
-export function SopSidak({ onBack }: { onBack: () => void }) {
+export function SopSidak({ initialTab, onBack }: { initialTab?: typeof ACAK; onBack: () => void }) {
   const sop = useSop();
   const today = sop.report.to;
   const branches = useMemo(() => [...sop.report.branches].sort((a, b) => a.name.localeCompare(b.name)), [sop.report.branches]);
-  const [tab, setTab] = useState<string>(branches[0]?.key ?? ACAK);
+  const [tab, setTab] = useState<string>(initialTab ?? branches[0]?.key ?? ACAK);
   // Dua sumber, masing-masing dimuat sekali saat pertama dibutuhkan; ganti cabang hanya menyaring.
   const [latest, setLatest] = useState<Card[] | null>(null);
   const [random, setRandom] = useState<Card[] | null>(null);
