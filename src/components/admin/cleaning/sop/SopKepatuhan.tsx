@@ -30,11 +30,9 @@ const LEGEND_ORDER: readonly SegKey[] = ["ok", "miss", "abs", "redo", "late"];
  */
 export function SopKepatuhan({
   onOpenSidak,
-  sidakCount,
   footer,
 }: {
   onOpenSidak: () => void;
-  sidakCount: number;
   /** Blok tambahan di bawah (mis. SOP yang perlu ditinjau ulang). */
   footer?: React.ReactNode;
 }) {
@@ -108,7 +106,7 @@ export function SopKepatuhan({
           </p>
         </div>
         <button type="button" onClick={onOpenSidak} className={`${BTN_PRIMARY} ml-auto`}>
-          {`Mulai sidak foto${sidakCount > 0 ? ` (${sidakCount})` : ""} →`}
+          Mulai sidak foto →
         </button>
       </div>
 

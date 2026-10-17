@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Settings } from "lucide-react";
 import { getCleaningPhotoHistory, type PhotoHistoryRow } from "@/lib/actions/cleaning.actions";
-import { isSidakFinding, manualFinding, traceOf, type Finding } from "@/lib/cleaning/sop-findings";
+import { manualFinding, traceOf } from "@/lib/cleaning/sop-findings";
 import { jakartaDateMinusDays } from "@/lib/utils/jakarta";
-import { BTN, BTN_OK, BTN_PRIMARY, BTN_WARN, Kbd, KindPill, Pill, firstName } from "./shared";
+import { BTN, BTN_OK, BTN_PRIMARY, BTN_WARN, Kbd, Pill, firstName } from "./shared";
 import { PhotoPane } from "./PhotoPane";
 import { Runut } from "./FindingDetail";
 import { useSop } from "./SopProvider";
@@ -14,27 +14,30 @@ import { useSop } from "./SopProvider";
  * Halaman "Sidak foto": tumpukan kartu foto yang dinilai satu per satu — geser kanan / → untuk
  * oke, geser kiri / ← untuk minta ulang. Keputusan langsung tersimpan sebagai verdict foto
  * (sama dengan Telusur foto); runut penyebab titiknya tampil di samping sebagai konteks.
+ *
+ * Tab = satu per cabang (isinya "Semua": foto TERBARU tiap titik di cabang itu) + "Acak 10"
+ * (sampel acak foto yang belum ditinjau, lintas cabang).
  */
 
-type Scope = "temuan" | "antrean" | "semua" | "acak";
+const ACAK = "acak";
 
 interface Card {
   key: string;
   itemId: string;
   rows: PhotoHistoryRow[];
-  /** Temuan asal kartu (bila ada) — tindakan Oke/Minta ulang ikut menutupnya. */
-  f: Finding | null;
 }
+
+const byCompletedAt = (a: PhotoHistoryRow, b: PhotoHistoryRow) => (a.completed_at < b.completed_at ? -1 : 1);
 
 function groupCards(rows: PhotoHistoryRow[]): Card[] {
   const m = new Map<string, Card>();
   for (const r of rows) {
     const key = `${r.item_id}|${r.date}|${r.user_name}`;
-    const c = m.get(key) ?? { key, itemId: r.item_id, rows: [], f: null };
+    const c = m.get(key) ?? { key, itemId: r.item_id, rows: [] };
     c.rows.push(r);
     m.set(key, c);
   }
-  return [...m.values()].map((c) => ({ ...c, rows: c.rows.sort((a, b) => (a.completed_at < b.completed_at ? -1 : 1)) }));
+  return [...m.values()].map((c) => ({ ...c, rows: c.rows.sort(byCompletedAt) }));
 }
 
 /** Pengacakan deterministik per hari: urutannya stabil selama sidak berjalan. */
@@ -58,126 +61,103 @@ function seededShuffle<T>(list: T[], seed: string): T[] {
   return a;
 }
 
+/** Foto terbaru tiap titik dalam 30 hari terakhir (titik yang terakhir difoto kemarin memakai foto kemarin, dst). */
+async function loadLatestPerPoint(today: string): Promise<Card[]> {
+  const all: PhotoHistoryRow[] = [];
+  for (let page = 0; page < 8; page++) {
+    const res = await getCleaningPhotoHistory({ from: jakartaDateMinusDays(today, 29), to: today, limit: 200, offset: page * 200 });
+    if ("error" in res) throw new Error(res.error);
+    all.push(...res.rows);
+    if (!res.hasMore) break;
+  }
+  const latest = new Map<string, string>();
+  for (const r of all) if (r.url && (latest.get(r.item_id) ?? "") < r.date) latest.set(r.item_id, r.date);
+  return groupCards(all.filter((r) => !!r.url && latest.get(r.item_id) === r.date)).sort((a, b) =>
+    b.rows[0].date.localeCompare(a.rows[0].date)
+  );
+}
+
+async function loadRandom(today: string): Promise<Card[]> {
+  const res = await getCleaningPhotoHistory({ from: jakartaDateMinusDays(today, 13), to: today, review_status: "unreviewed", limit: 200 });
+  if ("error" in res) throw new Error(res.error);
+  return seededShuffle(groupCards(res.rows.filter((r) => !!r.url)), `${today}|sidak`).slice(0, 10);
+}
 
 export function SopSidak({ onBack }: { onBack: () => void }) {
   const sop = useSop();
   const today = sop.report.to;
-  const [scope, setScope] = useState<Scope>("temuan");
-  const [cards, setCards] = useState<Card[] | null>(null);
+  const branches = useMemo(() => [...sop.report.branches].sort((a, b) => a.name.localeCompare(b.name)), [sop.report.branches]);
+  const [tab, setTab] = useState<string>(branches[0]?.key ?? ACAK);
+  // Dua sumber, masing-masing dimuat sekali saat pertama dibutuhkan; ganti cabang hanya menyaring.
+  const [latest, setLatest] = useState<Card[] | null>(null);
+  const [random, setRandom] = useState<Card[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [i, setI] = useState(0);
   const [dec, setDec] = useState<Record<string, "ok" | "redo">>({});
-  const [slot, setSlot] = useState(0);
+  // Slot foto yang dipilih melekat pada SATU kartu: pindah kartu otomatis kembali ke slot pertama.
+  const [slotSel, setSlotSel] = useState<{ key: string; n: number }>({ key: "", n: 0 });
   const [busy, setBusy] = useState(false);
   const [dx, setDx] = useState(0);
   const [drag, setDrag] = useState(false);
   const startX = useRef(0);
-  const openRef = useRef(sop.open);
-  openRef.current = sop.open;
 
-  const baseCount = useMemo(() => sop.open.filter(isSidakFinding).length, [sop.open]);
-
-  // Muat kartu tiap kali cakupan berganti.
+  const isRandom = tab === ACAK;
   useEffect(() => {
+    if ((isRandom ? random : latest) !== null) return;
     let live = true;
-    setCards(null);
-    setErr(null);
-    setI(0);
-    setDec({});
-    setSlot(0);
-    (async () => {
-      try {
-        let out: Card[] = [];
-        if (scope === "temuan") {
-          const fs = openRef.current.filter(isSidakFinding).slice(0, 15);
-          const results = await Promise.all(
-            fs.map(async (f) => {
-              const date = f.kind === "rushed" && f.rushed ? f.rushed.date : f.ymd;
-              const res = await getCleaningPhotoHistory({
-                item_id: f.itemId,
-                from: date,
-                to: date,
-                user_id: f.kind === "rushed" && f.rushed ? f.rushed.userId : null,
-                limit: 20,
-              });
-              if ("error" in res) throw new Error(res.error);
-              return { f, rows: res.rows };
-            })
-          );
-          out = results
-            .filter((r) => r.rows.some((x) => !!x.url))
-            .map((r) => ({
-              key: `f:${r.f.id}`,
-              itemId: r.f.itemId,
-              f: r.f,
-              rows: r.rows.sort((a, b) => (a.completed_at < b.completed_at ? -1 : 1)),
-            }));
-        } else if (scope === "antrean") {
-          const res = await getCleaningPhotoHistory({ review_status: "unreviewed", limit: 120 });
-          if ("error" in res) throw new Error(res.error);
-          out = groupCards(res.rows.filter((r) => !!r.url));
-        } else if (scope === "semua") {
-          // Foto TERBARU tiap titik: titik yang terakhir difoto kemarin memakai foto kemarin, yang
-          // terakhir difoto lusa memakai foto lusa — tujuannya menyidak hasil foto paling baru.
-          const all: PhotoHistoryRow[] = [];
-          for (let page = 0; page < 8; page++) {
-            const res = await getCleaningPhotoHistory({ from: jakartaDateMinusDays(today, 29), to: today, limit: 200, offset: page * 200 });
-            if ("error" in res) throw new Error(res.error);
-            all.push(...res.rows);
-            if (!res.hasMore) break;
-          }
-          const latest = new Map<string, string>();
-          for (const r of all) if (r.url && (latest.get(r.item_id) ?? "") < r.date) latest.set(r.item_id, r.date);
-          out = groupCards(all.filter((r) => !!r.url && latest.get(r.item_id) === r.date)).sort((a, b) =>
-            a.rows[0].date < b.rows[0].date ? 1 : a.rows[0].date > b.rows[0].date ? -1 : 0
-          );
-        } else {
-          const res = await getCleaningPhotoHistory({ from: jakartaDateMinusDays(today, 13), to: today, review_status: "unreviewed", limit: 200 });
-          if ("error" in res) throw new Error(res.error);
-          out = seededShuffle(groupCards(res.rows.filter((r) => !!r.url)), `${today}|sidak`).slice(0, 10);
-        }
-        if (live) setCards(out);
-      } catch (e) {
-        if (live) setErr(e instanceof Error ? e.message : "Gagal memuat foto");
-      }
-    })();
+    (isRandom ? loadRandom(today) : loadLatestPerPoint(today))
+      .then((cards) => live && (isRandom ? setRandom(cards) : setLatest(cards)))
+      .catch((e) => live && setErr(e instanceof Error ? e.message : "Gagal memuat foto"));
     return () => {
       live = false;
     };
-  }, [scope, today]);
+  }, [isRandom, today, latest, random]);
 
-  const list = cards ?? [];
+  const cards = isRandom ? random : latest;
+  const list = useMemo(
+    () => (isRandom ? (cards ?? []) : (cards ?? []).filter((c) => sop.pointOf(c.itemId)?.branchKey === tab)),
+    [cards, isRandom, tab, sop]
+  );
+  const countOf = (key: string) => (latest ? latest.filter((c) => sop.pointOf(c.itemId)?.branchKey === key).length : null);
+
   const card = list[i];
+  const cardKey = card?.key;
+  const slot = cardKey && slotSel.key === cardKey ? slotSel.n : 0;
+  const setSlot = useCallback((n: number) => cardKey && setSlotSel({ key: cardKey, n }), [cardKey]);
   const fin = cards !== null && i >= list.length;
   const point = card ? sop.pointOf(card.itemId) : undefined;
   const trace = useMemo(() => (point ? traceOf(point, sop.nameOf) : null), [point, sop.nameOf]);
-  const cardFinding: Finding | null = card ? card.f ?? (point ? manualFinding(point, null) : null) : null;
+  const cardFinding = useMemo(() => (point ? manualFinding(point, null) : null), [point]);
+  const contact = trace?.who[0]?.userId ?? point?.assigneeIds[0] ?? null;
 
-  const contact = card ? (card.f?.userId ?? trace?.who[0]?.userId ?? point?.assigneeIds[0] ?? null) : null;
-  useEffect(() => setSlot(0), [i]);
-
-  const next = useCallback(() => setI((n) => n + 1), []);
+  function pickTab(next: string) {
+    setTab(next);
+    setI(0);
+    setDec({});
+    setDx(0);
+    setErr(null);
+  }
 
   const decideOk = useCallback(async () => {
     if (!card || busy) return;
     setBusy(true);
-    const ok = await sop.approve(card.f, card.rows);
+    const ok = await sop.approve(null, card.rows);
     setBusy(false);
     setDx(0);
     if (ok) {
       setDec((d) => ({ ...d, [card.key]: "ok" }));
-      next();
+      setI((n) => n + 1);
     }
-  }, [card, busy, sop, next]);
+  }, [card, busy, sop]);
 
   const decideRedo = useCallback(() => {
     if (!card || busy) return;
     setDx(0);
-    sop.askRedo(card.f, card.rows, slot, () => {
+    sop.askRedo(null, card.rows, slot, () => {
       setDec((d) => ({ ...d, [card.key]: "redo" }));
-      next();
+      setI((n) => n + 1);
     });
-  }, [card, busy, sop, slot, next]);
+  }, [card, busy, sop, slot]);
 
   // Pintasan papan ketik — dimatikan selama dialog terbuka atau saat mengetik.
   useEffect(() => {
@@ -191,15 +171,11 @@ export function SopSidak({ onBack }: { onBack: () => void }) {
         o: () => void decideOk(),
         arrowleft: decideRedo,
         r: decideRedo,
-        c: () => card && cardFinding && contact && sop.askNote({ ...cardFinding, userId: contact }),
-        s: () => card && cardFinding && sop.askFix(cardFinding),
+        c: () => cardFinding && contact && sop.askNote({ ...cardFinding, userId: contact }),
+        s: () => cardFinding && sop.askFix(cardFinding),
         z: () => setI((n) => Math.max(0, n - 1)),
-        "1": () => setSlot(0),
-        "2": () => setSlot(1),
-        "3": () => setSlot(2),
-        "4": () => setSlot(3),
       };
-      const fn = act[k];
+      const fn = act[k] ?? (/^[1-4]$/.test(k) ? () => setSlot(Number(k) - 1) : undefined);
       if (fn) {
         e.preventDefault();
         fn();
@@ -207,9 +183,19 @@ export function SopSidak({ onBack }: { onBack: () => void }) {
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [decideOk, decideRedo, card, cardFinding, contact, sop]);
+  }, [decideOk, decideRedo, setSlot, cardFinding, contact, sop]);
 
   const cnt = (v: "ok" | "redo") => Object.values(dec).filter((x) => x === v).length;
+  const tabs = [...branches.map((b) => ({ key: b.key, label: b.name })), { key: ACAK, label: "Acak 10" }];
+  const nextTab = tabs[tabs.findIndex((t) => t.key === tab) + 1];
+  const reviewPill = (rows: PhotoHistoryRow[]) =>
+    rows.some((r) => r.review_status === "redo") ? (
+      <Pill tone="warn">Diminta ulang</Pill>
+    ) : rows.every((r) => r.review_status === "ok") ? (
+      <Pill tone="ok">Sudah diterima</Pill>
+    ) : (
+      <Pill>Belum ditinjau</Pill>
+    );
 
   return (
     <div className="@container text-[13.5px] leading-[normal]">
@@ -217,29 +203,26 @@ export function SopSidak({ onBack }: { onBack: () => void }) {
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-[24px] font-bold leading-[normal] tracking-[-0.01em]">Sidak foto</h2>
           <p className="mt-[3px] max-w-[62ch] text-[12.5px] text-muted-foreground">
-            Nilai foto satu per satu. Geser kanan atau tekan → untuk oke, kiri atau ← untuk minta ulang. Catatan dan perbaikan SOP tetap satu klik dari kartu.
+            Nilai foto terbaru tiap titik, satu per satu. Geser kanan atau tekan → untuk oke, kiri atau ← untuk minta ulang. Catatan dan perbaikan SOP tetap satu klik dari kartu.
           </p>
         </div>
         <div className="ml-auto inline-flex max-w-full gap-[2px] overflow-x-auto rounded-[10px] bg-muted p-[3px]">
-          {(
-            [
-              ["temuan", `Temuan (${baseCount})`],
-              ["antrean", "Belum ditinjau"],
-              ["semua", "Semua (foto terbaru)"],
-              ["acak", "Acak 10"],
-            ] as const
-          ).map(([v, l]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setScope(v)}
-              className={`whitespace-nowrap rounded-[8px] px-3 py-1.5 font-display text-[12px] !font-semibold ${
-                scope === v ? "bg-card text-primary shadow-[0_1px_3px_rgba(0,40,46,0.14)]" : "text-muted-foreground"
-              }`}
-            >
-              {l}
-            </button>
-          ))}
+          {tabs.map((t) => {
+            const n = t.key === ACAK ? null : countOf(t.key);
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => pickTab(t.key)}
+                className={`whitespace-nowrap rounded-[8px] px-3 py-1.5 font-display text-[12px] !font-semibold ${
+                  tab === t.key ? "bg-card text-primary shadow-[0_1px_3px_rgba(0,40,46,0.14)]" : "text-muted-foreground"
+                }`}
+              >
+                {t.label}
+                {n != null && ` (${n})`}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -251,8 +234,13 @@ export function SopSidak({ onBack }: { onBack: () => void }) {
         <div className="rounded-2xl border border-destructive/40 bg-destructive/5 px-5 py-4 text-sm text-destructive">{err}</div>
       ) : list.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card px-5 py-10 text-center text-sm text-muted-foreground">
-          {scope === "temuan" ? "Tidak ada temuan berfoto yang menunggu." : scope === "antrean" ? "Semua foto sudah ditinjau." : "Tidak ada foto pada cakupan ini."}
-          <div className="mt-3">
+          {isRandom ? "Tidak ada foto yang belum ditinjau dalam 14 hari terakhir." : "Tidak ada foto dalam 30 hari terakhir untuk cabang ini."}
+          <div className="mt-3 flex justify-center gap-2">
+            {nextTab && (
+              <button type="button" onClick={() => pickTab(nextTab.key)} className={BTN}>
+                Lanjut ke {nextTab.label}
+              </button>
+            )}
             <button type="button" onClick={onBack} className={BTN}>
               Kembali ke kepatuhan
             </button>
@@ -277,12 +265,21 @@ export function SopSidak({ onBack }: { onBack: () => void }) {
                   <Tile label="Perbaikan SOP" value={sop.fixes.length} />
                 </div>
                 <div className="mt-3.5 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => { setI(0); setDec({}); }} className={BTN}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setI(0);
+                      setDec({});
+                    }}
+                    className={BTN}
+                  >
                     Ulangi
                   </button>
-                  <button type="button" onClick={() => setScope(scope === "acak" ? "semua" : "acak")} className={BTN}>
-                    Sidak lagi
-                  </button>
+                  {nextTab && (
+                    <button type="button" onClick={() => pickTab(nextTab.key)} className={BTN}>
+                      Lanjut ke {nextTab.label}
+                    </button>
+                  )}
                   <button type="button" onClick={onBack} className={BTN_PRIMARY}>
                     Kembali ke kepatuhan
                   </button>
@@ -328,7 +325,7 @@ export function SopSidak({ onBack }: { onBack: () => void }) {
                             {card.rows[0]?.user_name} · {card.rows[0]?.checklist_name}
                           </div>
                         </div>
-                        {card.f ? <KindPill kind={card.f.kind} /> : <Pill>Sidak rutin</Pill>}
+                        {reviewPill(card.rows)}
                       </div>
                     </div>
                     {dx > 30 && (
@@ -368,13 +365,18 @@ export function SopSidak({ onBack }: { onBack: () => void }) {
                       <Kbd>S</Kbd>
                     </button>
                   </div>
-                  <div className="mt-[10px] hidden flex-wrap gap-3 text-[11px] text-muted-foreground @min-[821px]:flex">
-                    <span>
-                      <kbd className="rounded bg-muted px-1.5 font-mono text-[10px]">←</kbd> minta ulang ·{" "}
-                      <kbd className="rounded bg-muted px-1.5 font-mono text-[10px]">→</kbd> oke ·{" "}
-                      <kbd className="rounded bg-muted px-1.5 font-mono text-[10px]">1–4</kbd> slot foto ·{" "}
-                      <kbd className="rounded bg-muted px-1.5 font-mono text-[10px]">Z</kbd> kembali
-                    </span>
+                  <div className="mt-[10px] hidden flex-wrap gap-x-1.5 text-[11px] text-muted-foreground @min-[821px]:flex">
+                    {[
+                      ["←", "minta ulang"],
+                      ["→", "oke"],
+                      ["1–4", "slot foto"],
+                      ["Z", "kembali"],
+                    ].map(([k, l], n) => (
+                      <span key={k}>
+                        <kbd className="rounded bg-muted px-1.5 font-mono text-[10px]">{k}</kbd> {l}
+                        {n < 3 && " ·"}
+                      </span>
+                    ))}
                   </div>
                 </>
               )
@@ -406,4 +408,3 @@ function Tile({ label, value, tone = "" }: { label: string; value: number; tone?
     </div>
   );
 }
-

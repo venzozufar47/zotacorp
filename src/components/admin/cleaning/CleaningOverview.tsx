@@ -26,7 +26,7 @@ import { SopProvider } from "./sop/SopProvider";
 import { STATUS_TEXT } from "./sop/shared";
 import { SopKepatuhan } from "./sop/SopKepatuhan";
 import { SopSidak } from "./sop/SopSidak";
-import { buildFindings, isSidakFinding, type FindingIssueInput, type RevisionRow, type SopFixRow } from "@/lib/cleaning/sop-findings";
+import type { FindingIssueInput, RevisionRow, SopFixRow } from "@/lib/cleaning/sop-findings";
 import { SopGuideBody, SopGuideReminder } from "./SopGuide";
 import type { ItemIssueRow } from "@/lib/actions/cleaning-governance.actions";
 import type { CleaningEmployee } from "./types";
@@ -339,16 +339,6 @@ export function CleaningOverview({
         .map((i) => ({ id: i.id, itemId: i.item_id, date: i.date, reason: i.reason })),
     [issues]
   );
-  // Jumlah foto temuan untuk tombol/lencana sidak — sama dengan cakupan "Temuan" di Sidak foto.
-  const sidakCount = useMemo(
-    () =>
-      buildFindings(
-        report,
-        issueInputs,
-        new Set(acks)
-      ).filter(isSidakFinding).length,
-    [report, issueInputs, acks]
-  );
   const shownEmployees = report.employees.filter(
     (e) => allBranches || e.branchKey === branchKey
   );
@@ -402,11 +392,6 @@ export function CleaningOverview({
                 }`}
               >
                 {v.label}
-                {v.key === "sidak" && sidakCount > 0 && (
-                  <span className="ml-[7px] inline-flex rounded-full bg-destructive/12 px-2 py-0.5 text-[10.5px] font-semibold text-destructive">
-                    {sidakCount}
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -422,7 +407,7 @@ export function CleaningOverview({
           revisions={revisions}
           onOpenSetup={() => setSetupOpen(true)}
         >
-          <SopPages view={view} sidakCount={sidakCount} checklists={checklists} onOpenSetup={() => setSetupOpen(true)} />
+          <SopPages view={view} checklists={checklists} onOpenSetup={() => setSetupOpen(true)} />
         </SopProvider>
       ) : (
       <section className="space-y-2">
@@ -681,12 +666,10 @@ export function CleaningOverview({
 /** Isi halaman Kepatuhan SOP / Sidak foto — dirender di dalam SopProvider. */
 function SopPages({
   view,
-  sidakCount,
   checklists,
   onOpenSetup,
 }: {
   view: CleaningViewKey;
-  sidakCount: number;
   checklists: CleaningChecklist[];
   onOpenSetup: () => void;
 }) {
@@ -696,7 +679,6 @@ function SopPages({
   return (
     <SopKepatuhan
       onOpenSidak={() => go("sidak")}
-      sidakCount={sidakCount}
       footer={<SopGovernanceZone checklists={checklists} onOpenSetup={onOpenSetup} />}
     />
   );

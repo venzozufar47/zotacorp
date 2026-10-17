@@ -379,12 +379,6 @@ export function buildFindings(
   );
 }
 
-/**
- * Temuan yang punya foto/sesi untuk disidak (cakupan "Temuan" di Sidak foto dan lencana tabnya).
- * Yang belum dikerjakan sama sekali tidak ikut: tak ada foto yang bisa dinilai.
- */
-export const isSidakFinding = (f: Finding): boolean => f.kind !== "miss" && !!f.ymd;
-
 /** Filter jenis masalah di bar → temuan yang relevan. Jenis lain (telat, shift) tak punya temuan: tampil semua. */
 export const matchesSeg = (f: Finding, seg: SegKey | null): boolean =>
   !seg || (seg !== "miss" && seg !== "redo") || f.kind === seg;
