@@ -15,7 +15,7 @@ import { useSop } from "./SopProvider";
  * (sama dengan Telusur foto); runut penyebab titiknya tampil di samping sebagai konteks.
  */
 
-type Scope = "temuan" | "antrean" | "hari" | "acak";
+type Scope = "temuan" | "antrean" | "semua" | "acak";
 
 interface Card {
   key: string;
@@ -120,10 +120,21 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
           const res = await source({ review_status: "unreviewed", limit: 120 });
           if ("error" in res) throw new Error(res.error);
           out = groupCards(res.rows.filter((r) => !!r.url));
-        } else if (scope === "hari") {
-          const res = await source({ from: today, to: today, limit: 200 });
-          if ("error" in res) throw new Error(res.error);
-          out = groupCards(res.rows.filter((r) => !!r.url));
+        } else if (scope === "semua") {
+          // Foto TERBARU tiap titik: titik yang terakhir difoto kemarin memakai foto kemarin, yang
+          // terakhir difoto lusa memakai foto lusa — tujuannya menyidak hasil foto paling baru.
+          const all: PhotoHistoryRow[] = [];
+          for (let page = 0; page < 8; page++) {
+            const res = await source({ from: ymdMinus(today, 29), to: today, limit: 200, offset: page * 200 });
+            if ("error" in res) throw new Error(res.error);
+            all.push(...res.rows);
+            if (!res.hasMore) break;
+          }
+          const latest = new Map<string, string>();
+          for (const r of all) if (r.url && (latest.get(r.item_id) ?? "") < r.date) latest.set(r.item_id, r.date);
+          out = groupCards(all.filter((r) => !!r.url && latest.get(r.item_id) === r.date)).sort((a, b) =>
+            a.rows[0].date < b.rows[0].date ? 1 : a.rows[0].date > b.rows[0].date ? -1 : 0
+          );
         } else {
           const res = await source({ from: ymdMinus(today, 13), to: today, review_status: "unreviewed", limit: 200 });
           if ("error" in res) throw new Error(res.error);
@@ -218,7 +229,7 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
             [
               ["temuan", `Temuan (${baseCount})`],
               ["antrean", "Belum ditinjau"],
-              ["hari", "Semua hari ini"],
+              ["semua", "Semua (foto terbaru)"],
               ["acak", "Acak 10"],
             ] as const
           ).map(([v, l]) => (
@@ -273,7 +284,7 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
                   <button type="button" onClick={() => { setI(0); setDec({}); }} className={BTN}>
                     Ulangi
                   </button>
-                  <button type="button" onClick={() => setScope(scope === "acak" ? "hari" : "acak")} className={BTN}>
+                  <button type="button" onClick={() => setScope(scope === "acak" ? "semua" : "acak")} className={BTN}>
                     Sidak lagi
                   </button>
                   <button type="button" onClick={onBack} className={BTN_PRIMARY}>
@@ -289,6 +300,9 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
                       className={`select-none overflow-hidden rounded-[18px] border border-border bg-card touch-pan-y ${drag ? "cursor-grabbing" : "cursor-grab transition-transform duration-200"}`}
                       style={{ transform: `translateX(${dx}px) rotate(${dx / 28}deg)` }}
                       onPointerDown={(e) => {
+                        // Tombol (tab slot foto, bandingkan) dan area yang bisa di-scroll TIDAK memulai geseran:
+                        // setPointerCapture ke kartu akan menelan klik tombol di dalamnya.
+                        if ((e.target as HTMLElement).closest("button,a,input,textarea,[data-noswipe]")) return;
                         startX.current = e.clientX;
                         setDrag(true);
                         e.currentTarget.setPointerCapture(e.pointerId);

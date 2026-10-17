@@ -95,7 +95,7 @@ export function PhotoPane({
         )}
       </div>
       {rows.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto px-2.5 py-2">
+        <div data-noswipe className="flex gap-1.5 overflow-x-auto px-2.5 py-2">
           {rows.map((r, i) => (
             <button
               key={r.completion_id}

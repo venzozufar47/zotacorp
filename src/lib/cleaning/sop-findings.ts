@@ -158,7 +158,14 @@ export function traceOf(
   const share = bad.length && who.length ? who[0].n / bad.length : 0;
   let cause: Trace["cause"];
   if (bad.length < 2) {
-    cause = { kind: "single", title: "Belum ada pola", hint: "Kejadian tunggal dalam 14 hari — cukup ditindak sekali." };
+    cause = {
+      kind: "single",
+      title: "Belum ada pola",
+      hint:
+        bad.length === 0
+          ? "Tidak ada hari bermasalah dalam 14 hari terakhir."
+          : "Baru 1 hari bermasalah dalam 14 hari — belum cukup untuk menyimpulkan penyebabnya (orang atau SOP). Cukup ditindak sekali lalu dipantau; bila terulang, polanya akan terlihat di sini.",
+    };
   } else if (share >= 0.6) {
     const first = nameOf(who[0].userId).split(" ")[0];
     cause = {
