@@ -441,7 +441,42 @@ export interface SopFixRow {
   createdAt: string;
 }
 
+/** Satu baris riwayat perubahan checklist (cleaning_checklist_revisions). */
+export interface RevisionRow {
+  checklistId: string;
+  /** ISO timestamp. */
+  at: string;
+  summary: string;
+}
+
+/** Riwayat yang BUKAN perubahan isi SOP: tinjau ulang, ganti pemilik, atur jadwal tinjau. */
+const NON_CONTENT_REVISION = /^(Ditinjau|Pemilik SOP|Tinjau ulang|Jadwal tinjau)/i;
+
+/**
+ * Perubahan isi checklist PERTAMA yang terjadi setelah perbaikan dicatat. null = checklist-nya
+ * belum disentuh — pemantauan efek belum boleh dimulai, karena tak ada yang dievaluasi.
+ */
+export function sopChangeAfter(
+  fixCreatedAt: string,
+  checklistId: string | null | undefined,
+  revisions: readonly RevisionRow[]
+): { on: string; summary: string } | null {
+  if (!checklistId) return null;
+  const t0 = Date.parse(fixCreatedAt);
+  let best: RevisionRow | null = null;
+  for (const r of revisions) {
+    if (r.checklistId !== checklistId || NON_CONTENT_REVISION.test(r.summary.trim())) continue;
+    const t = Date.parse(r.at);
+    if (Number.isNaN(t) || (!Number.isNaN(t0) && t < t0)) continue;
+    if (!best || t < Date.parse(best.at)) best = r;
+  }
+  if (!best) return null;
+  return { on: new Date(Date.parse(best.at) + 7 * 3_600_000).toISOString().slice(0, 10), summary: best.summary };
+}
+
 export interface FixProgress {
+  /** true = checklist belum diubah sejak perbaikan dicatat; pemantauan belum dimulai. */
+  waiting: boolean;
   /** Hari terjadwal yang sudah lewat sejak perbaikan (maks FIX_MONITOR_DAYS ditampilkan). */
   days: number;
   done: boolean;
@@ -451,14 +486,23 @@ export interface FixProgress {
   effective: boolean | null;
 }
 
-/** Evaluasi perbaikan: bandingkan kepatuhan titik sejak `startedOn` dengan angka dasarnya. */
-export function fixProgress(fix: Pick<SopFixRow, "startedOn" | "basePct">, point: PointReport | undefined): FixProgress {
-  const cells = (point?.cells ?? []).filter((c) => c.ymd > fix.startedOn && segOf(c.status) !== null);
+/**
+ * Evaluasi perbaikan: bandingkan kepatuhan titik SEJAK checklist-nya benar-benar diubah
+ * (`changedOn`, lihat `sopChangeAfter`) dengan angka dasarnya. Sebelum ada perubahan, tak ada
+ * yang dipantau.
+ */
+export function fixProgress(
+  fix: Pick<SopFixRow, "basePct">,
+  point: PointReport | undefined,
+  changedOn: string | null
+): FixProgress {
+  if (!changedOn) return { waiting: true, days: 0, done: false, afterPct: null, delta: null, effective: null };
+  const cells = (point?.cells ?? []).filter((c) => c.ymd > changedOn && segOf(c.status) !== null);
   const days = cells.length;
-  if (days === 0) return { days: 0, done: false, afterPct: null, delta: null, effective: null };
+  if (days === 0) return { waiting: false, days: 0, done: false, afterPct: null, delta: null, effective: null };
   const good = cells.filter((c) => c.status === "ok" || c.status === "late").length;
   const afterPct = Math.round((good / days) * 100);
   const delta = afterPct - fix.basePct;
   const done = days >= FIX_MONITOR_DAYS;
-  return { days: Math.min(days, FIX_MONITOR_DAYS), done, afterPct, delta, effective: done ? delta >= 5 : null };
+  return { waiting: false, days: Math.min(days, FIX_MONITOR_DAYS), done, afterPct, delta, effective: done ? delta >= 5 : null };
 }

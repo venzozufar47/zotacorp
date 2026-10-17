@@ -1,7 +1,7 @@
 "use client";
 
-import { FIX_MONITOR_DAYS, fixProgress, type SopFixRow } from "@/lib/cleaning/sop-findings";
-import { Pill, SectionLabel, fmtDay } from "./shared";
+import { FIX_MONITOR_DAYS, fixProgress, sopChangeAfter, type SopFixRow } from "@/lib/cleaning/sop-findings";
+import { BTN, Pill, SectionLabel, fmtDay } from "./shared";
 import { useSop } from "./SopProvider";
 
 /**
@@ -10,7 +10,7 @@ import { useSop } from "./SopProvider";
  * selalu sama dengan yang tampil di tempat lain.
  */
 export function FixLoop({ fixes }: { fixes: SopFixRow[] }) {
-  const { pointOf, branchName, titleOf } = useSop();
+  const { pointOf, branchName, titleOf, revisions, openSetup } = useSop();
   return (
     <section className="space-y-2">
       <div className="flex flex-wrap items-baseline gap-2">
@@ -24,8 +24,10 @@ export function FixLoop({ fixes }: { fixes: SopFixRow[] }) {
           </p>
         )}
         {fixes.slice(0, 8).map((x) => {
-          const pr = fixProgress(x, pointOf(x.itemId));
-          const tone = pr.done ? (pr.effective ? "ok" : "warn") : "muted";
+          const point = pointOf(x.itemId);
+          const change = sopChangeAfter(x.createdAt, point?.checklistId, revisions);
+          const pr = fixProgress(x, point, change?.on ?? null);
+          const tone = pr.waiting ? "warn" : pr.done ? (pr.effective ? "ok" : "warn") : "muted";
           return (
             <div key={x.id} className="flex flex-col gap-2.5 border-t border-border px-4 py-3 first:border-t-0">
               <div className="flex items-start gap-3">
@@ -36,19 +38,39 @@ export function FixLoop({ fixes }: { fixes: SopFixRow[] }) {
                   <div className="mt-0.5 text-[12px]">{x.action}</div>
                   {x.note && <div className="mt-0.5 text-[11.5px] text-muted-foreground">{x.note}</div>}
                 </div>
-                <Pill tone={tone}>{pr.done ? (pr.effective ? "Efektif" : "Belum efektif") : `Memantau ${pr.days}/${FIX_MONITOR_DAYS} hari`}</Pill>
+                <Pill tone={tone}>
+                  {pr.waiting
+                    ? "Menunggu perubahan SOP"
+                    : pr.done
+                      ? pr.effective
+                        ? "Efektif"
+                        : "Belum efektif"
+                      : `Memantau ${pr.days}/${FIX_MONITOR_DAYS} hari`}
+                </Pill>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                 <Step on>Temuan</Step>
                 <Dash />
-                <Step on>SOP diubah · {fmtDay(x.startedOn)}</Step>
+                {change ? <Step on>SOP diubah · {fmtDay(change.on)}</Step> : <Step cur>Menunggu perubahan SOP</Step>}
                 <Dash />
-                <Step on={pr.done} cur={!pr.done}>
+                <Step on={pr.done} cur={!pr.done && !pr.waiting}>
                   Pantau {pr.days}/{FIX_MONITOR_DAYS}
                 </Step>
                 <Dash />
                 <Step on={pr.done}>Evaluasi</Step>
               </div>
+              {pr.waiting ? (
+                <div className="flex flex-wrap items-center gap-2.5 rounded-xl bg-amber-500/10 px-3 py-2 text-[12px]">
+                  <span className="min-w-0 flex-1">
+                    Dicatat {fmtDay(x.startedOn)}, tetapi checklist-nya <b>belum diubah</b> sejak itu. Pemantauan efek baru dimulai setelah SOP diubah.
+                  </span>
+                  <button type="button" onClick={openSetup} className={`${BTN} !h-8 !text-[11.5px]`}>
+                    Buka Pengaturan SOP
+                  </button>
+                </div>
+              ) : (
+                change && <div className="text-[11.5px] text-muted-foreground">Perubahan terdeteksi: {change.summary}</div>
+              )}
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="rounded-xl bg-muted px-3 py-2 text-[11px] text-muted-foreground">
                   Sebelum (14 hari)

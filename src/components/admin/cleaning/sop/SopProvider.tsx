@@ -17,6 +17,7 @@ import {
   traceOf,
   type Finding,
   type FindingIssueInput,
+  type RevisionRow,
   type SopFixRow,
 } from "@/lib/cleaning/sop-findings";
 import { BTN, BTN_PRIMARY, fmtDay, firstName } from "./shared";
@@ -39,6 +40,9 @@ interface SopCtx {
   /** Temuan terbuka (sudah dikurangi yang dicek). */
   open: Finding[];
   fixes: SopFixRow[];
+  revisions: RevisionRow[];
+  /** Buka drawer Pengaturan SOP (tempat checklist benar-benar diubah). */
+  openSetup: () => void;
   /** Foto yang perlu dinilai + yang lain; semuanya persisten. */
   approve: (f: Finding | null, rows: PhotoHistoryRow[]) => Promise<boolean>;
   askRedo: (f: Finding | null, rows: PhotoHistoryRow[], defaultIdx?: number, onDone?: () => void) => void;
@@ -65,6 +69,8 @@ export function SopProvider({
   issues,
   acks,
   fixes,
+  revisions,
+  onOpenSetup,
   children,
 }: {
   report: Report;
@@ -72,6 +78,8 @@ export function SopProvider({
   /** `${itemId}|${ackKey}` dari server. */
   acks: string[];
   fixes: SopFixRow[];
+  revisions: RevisionRow[];
+  onOpenSetup: () => void;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -177,6 +185,8 @@ export function SopProvider({
     titleOf: (id) => points.get(id)?.title ?? "—",
     open,
     fixes,
+    revisions,
+    openSetup: onOpenSetup,
     approve,
     askRedo: (f, rows, idx = 0, onDone) => setDlg({ t: "redo", f, rows, idx, onDone }),
     askNote: (f) => setDlg({ t: "note", f }),
@@ -340,7 +350,7 @@ function NoteDialog({ f, onClose, onSent }: { f: Finding; onClose: () => void; o
 }
 
 function FixDialog({ f, onClose, onSaved }: { f: Finding; onClose: () => void; onSaved: () => void }) {
-  const { pointOf, nameOf, titleOf, branchName } = useSop();
+  const { pointOf, nameOf, titleOf, branchName, openSetup } = useSop();
   const point = pointOf(f.itemId);
   const tr = useMemo(() => (point ? traceOf(point, nameOf) : null), [point, nameOf]);
   const [i, setI] = useState(() => (tr?.cause.kind === "sop" ? 0 : 3));
@@ -352,7 +362,10 @@ function FixDialog({ f, onClose, onSaved }: { f: Finding; onClose: () => void; o
     start(async () => {
       const res = await createSopFix({ itemId: f.itemId, branchKey: f.branchKey, action: FIX_OPTIONS[i][0], note, basePct: base });
       if (!res.ok) return void toast.error(res.error);
-      toast.success("Perbaikan SOP dicatat · dipantau 7 hari kerja");
+      toast.success("Perbaikan SOP dicatat. Ubah checklist-nya di Pengaturan SOP — pemantauan 7 hari mulai saat itu.", {
+        duration: 9000,
+        action: { label: "Buka Pengaturan SOP", onClick: openSetup },
+      });
       onSaved();
     });
   }
@@ -361,7 +374,7 @@ function FixDialog({ f, onClose, onSaved }: { f: Finding; onClose: () => void; o
       <div>
         <h3 className="font-display text-base font-bold">Perbaiki SOP — {titleOf(f.itemId)}</h3>
         <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-          {branchName(f.branchKey)} · kepatuhan titik 14 hari terakhir {base}%. Setelah disimpan, efeknya dipantau 7 hari kerja. Perubahan isi SOP-nya sendiri tetap dilakukan di Pengaturan SOP.
+          {branchName(f.branchKey)} · kepatuhan titik 14 hari terakhir {base}%. Ini mencatat keputusannya; perubahan isi SOP-nya dilakukan di Pengaturan SOP. Pemantauan 7 hari kerja baru dimulai saat checklist-nya benar-benar diubah.
         </p>
       </div>
       <div className="flex flex-col gap-1.5">

@@ -16,7 +16,7 @@ import {
 } from "@/lib/actions/cleaning.actions";
 import { getCleaningRangeReport } from "@/lib/actions/cleaning-range.actions";
 import { listOpenItemIssues } from "@/lib/actions/cleaning-governance.actions";
-import { listFindingAcks, listSopFixes } from "@/lib/actions/cleaning-sop.actions";
+import { listChecklistRevisions, listFindingAcks, listSopFixes } from "@/lib/actions/cleaning-sop.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
@@ -77,6 +77,7 @@ export default async function AdminCleaningPage({
     issues,
     acks,
     fixes,
+    revisions,
   ] = await Promise.all([
     listChecklists(),
     listAssignments(),
@@ -97,6 +98,7 @@ export default async function AdminCleaningPage({
     listOpenItemIssues(),
     listFindingAcks(),
     listSopFixes(),
+    listChecklistRevisions(),
   ]);
 
   const employees = (employeesRes.data ?? []).map((e) => ({
@@ -128,6 +130,7 @@ export default async function AdminCleaningPage({
           issues={issues}
           acks={acks}
           fixes={fixes}
+          revisions={revisions}
           initialSetupOpen={initialSetupOpen}
           initialGalleryOpen={initialGalleryOpen}
         />

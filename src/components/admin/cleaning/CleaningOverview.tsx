@@ -25,7 +25,7 @@ import { SopGovernanceZone } from "./SopGovernanceZone";
 import { SopProvider } from "./sop/SopProvider";
 import { SopKepatuhan } from "./sop/SopKepatuhan";
 import { SopSidak } from "./sop/SopSidak";
-import { buildFindings, type FindingIssueInput, type SopFixRow } from "@/lib/cleaning/sop-findings";
+import { buildFindings, type FindingIssueInput, type RevisionRow, type SopFixRow } from "@/lib/cleaning/sop-findings";
 import { SopGuideBody, SopGuideReminder } from "./SopGuide";
 import type { ItemIssueRow } from "@/lib/actions/cleaning-governance.actions";
 import type { CleaningEmployee } from "./types";
@@ -304,6 +304,7 @@ export function CleaningOverview({
   issues,
   acks,
   fixes,
+  revisions,
   initialGalleryOpen,
   initialSetupOpen,
 }: {
@@ -321,6 +322,8 @@ export function CleaningOverview({
   acks: string[];
   /** Perbaikan SOP yang dipantau. */
   fixes: SopFixRow[];
+  /** Riwayat perubahan checklist — untuk mendeteksi apakah perbaikan benar-benar dilakukan. */
+  revisions: RevisionRow[];
   /** Buka drawer "Pengaturan SOP" saat halaman dimuat (`?setup=1`, dari pengingat tinjau ulang). */
   initialSetupOpen?: boolean;
   /** Buka drawer "Telusur foto" langsung saat halaman dimuat — dipakai
@@ -431,7 +434,14 @@ export function CleaningOverview({
       </div>
 
       {view !== "karyawan" ? (
-        <SopProvider report={report} issues={issueInputs} acks={acks} fixes={fixes}>
+        <SopProvider
+          report={report}
+          issues={issueInputs}
+          acks={acks}
+          fixes={fixes}
+          revisions={revisions}
+          onOpenSetup={() => setSetupOpen(true)}
+        >
           <SopPages
             view={view}
             sidakCount={sidakCount}

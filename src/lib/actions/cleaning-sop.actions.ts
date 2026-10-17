@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import { FIX_OPTIONS, type SopFixRow } from "@/lib/cleaning/sop-findings";
+import { FIX_OPTIONS, type RevisionRow, type SopFixRow } from "@/lib/cleaning/sop-findings";
 
 /**
  * Perbaikan SOP & "sudah dicek" untuk halaman /admin/cleaning (migrasi 189).
@@ -51,7 +51,20 @@ export async function listSopFixes(): Promise<SopFixRow[]> {
   }));
 }
 
-/** Catat perbaikan SOP pada satu titik; mulai dipantau hari ini. */
+/** Riwayat perubahan checklist (terbaru dulu) — dasar mendeteksi apakah SOP benar-benar diubah. */
+export async function listChecklistRevisions(): Promise<RevisionRow[]> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("cleaning_checklist_revisions")
+    .select("checklist_id, created_at, summary")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  return (data ?? []).map((r) => ({ checklistId: r.checklist_id, at: r.created_at, summary: r.summary }));
+}
+
+/** Catat perbaikan SOP pada satu titik. Pemantauan efeknya baru mulai saat checklist-nya diubah. */
 export async function createSopFix(input: {
   itemId: string;
   branchKey: string;
