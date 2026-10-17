@@ -1,6 +1,6 @@
 "use client";
 
-import { FIX_MONITOR_DAYS, fixProgress, sopChangeAfter, type SopFixRow } from "@/lib/cleaning/sop-findings";
+import { FIX_MONITOR_DAYS, fixProgress, sopChangeAfter } from "@/lib/cleaning/sop-findings";
 import { BTN, Pill, SectionLabel, fmtDay } from "./shared";
 import { useSop } from "./SopProvider";
 
@@ -9,8 +9,8 @@ import { useSop } from "./SopProvider";
  * dihitung langsung dari laporan (kepatuhan titik sejak hari perbaikan), bukan disimpan, jadi
  * selalu sama dengan yang tampil di tempat lain.
  */
-export function FixLoop({ fixes }: { fixes: SopFixRow[] }) {
-  const { pointOf, branchName, titleOf, revisions, openSetup } = useSop();
+export function FixLoop() {
+  const { fixes, pointOf, branchName, titleOf, revisions, openSetup } = useSop();
   return (
     <section className="space-y-2">
       <div className="flex flex-wrap items-baseline gap-2">

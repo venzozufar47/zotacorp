@@ -10,6 +10,7 @@ import {
   KIND_META,
   lossOf,
   manualFinding,
+  matchesSeg,
   traceOf,
   type Finding,
   type SegKey,
@@ -54,22 +55,28 @@ export function SopKepatuhan({
   const delta = now7.pct - prev7.pct;
   const series = useMemo(() => dailySeries(report, bid), [report, bid]);
 
+  // Telusuri penyebab hanya untuk 8 titik yang tampil, bukan untuk semua titik.
   const rows = useMemo(
     () =>
       report.points
         .filter((p) => !bid || p.branchKey === bid)
-        .map((p) => ({ p, tr: traceOf(p, sop.nameOf), ...lossOf(p, cause) }))
+        .map((p) => ({ p, ...lossOf(p, cause) }))
         .filter((r) => r.loss > 0)
         .sort((a, b) => b.loss - a.loss)
-        .slice(0, 8),
+        .slice(0, 8)
+        .map((r) => ({ ...r, tr: traceOf(r.p, sop.nameOf) })),
     [report.points, bid, cause, sop.nameOf]
+  );
+  const branchCounts = useMemo(
+    () => new Map(report.branches.map((b) => [b.key, aggregate(report, winDays, b.key)])),
+    [report, winDays]
   );
 
   const findings = useMemo(
     () =>
       sop.open
         .filter((f) => !bid || f.branchKey === bid)
-        .filter((f) => !cause || (cause === "miss" ? f.kind === "miss" : cause === "redo" ? f.kind === "redo" : true)),
+        .filter((f) => matchesSeg(f, cause)),
     [sop.open, bid, cause]
   );
 
@@ -134,7 +141,7 @@ export function SopKepatuhan({
               <i
                 key={d.ymd}
                 title={`${fmtDay(d.ymd)} — ${d.pct}%`}
-                className={`block w-1.5 rounded-sm ${d.pct >= 90 ? "bg-[#34c759]" : d.pct >= 75 ? "bg-[#ffcf70]" : "bg-[#ff3b30]"}`}
+                className={`block w-1.5 rounded-sm ${d.pct >= 90 ? SEG_BG.ok : d.pct >= 75 ? SEG_BG.late : SEG_BG.miss}`}
                 style={{ height: Math.max(4, (d.pct - 50) * 0.8) }}
               />
             ))}
@@ -160,7 +167,7 @@ export function SopKepatuhan({
         <div className="mt-4">
           <SectionLabel>Per cabang — klik untuk menyaring</SectionLabel>
           {branches.map((b) => {
-            const a = aggregate(report, winDays, b.key);
+            const a = branchCounts.get(b.key)!;
             const on = bid === b.key;
             return (
               <button
@@ -331,7 +338,7 @@ export function SopKepatuhan({
         </div>
       </div>
 
-      <FixLoop fixes={sop.fixes} />
+      <FixLoop />
       {footer}
     </div>
   );

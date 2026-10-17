@@ -1,8 +1,9 @@
 "use client";
 
 import { WEEKDAY_SHORT_NAMES, MONTH_NAMES } from "@/lib/utils/date-formats";
+import { jakartaHHMM } from "@/lib/utils/jakarta";
 import type { CleaningDayStatus } from "@/lib/cleaning/range-report";
-import { SEG_LABEL, segOf, type SegKey, type SegCounts, type FindingKind, KIND_META } from "@/lib/cleaning/sop-findings";
+import { SEG_LABEL, type SegKey, type SegCounts, type FindingKind, KIND_META } from "@/lib/cleaning/sop-findings";
 
 /** "2026-10-16" → "Jum 16 Okt". */
 export function fmtDay(ymd: string): string {
@@ -13,11 +14,10 @@ export function fmtDay(ymd: string): string {
 }
 
 /** "2026-10-16T09:12:00Z" → "16:12" (WIB). */
+
 export function fmtTimeWib(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "";
-  const d = new Date(t + 7 * 3_600_000);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : jakartaHHMM(d);
 }
 
 export const firstName = (full: string | undefined | null): string => (full ?? "").trim().split(/\s+/)[0] || "—";
@@ -171,5 +171,3 @@ export function Kbd({ children }: { children: React.ReactNode }) {
     </kbd>
   );
 }
-
-export { segOf };

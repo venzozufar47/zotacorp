@@ -15,9 +15,12 @@ import {
   firstName,
   fmtDay,
 } from "./shared";
-import { PhotoLoading, PhotoPane, pickDate, useDateGroups, usePointPhotos } from "./PhotoPane";
+import { PhotoLoading, PhotoPane, groupByDate, pickDate, usePointPhotos } from "./PhotoPane";
 import { useSop } from "./SopProvider";
+import type { PhotoHistoryRow } from "@/lib/actions/cleaning.actions";
 import { findingLine, traceOf, type Finding, type Trace } from "@/lib/cleaning/sop-findings";
+
+const NO_ROWS: PhotoHistoryRow[] = [];
 
 /** Runut penyebab: kepatuhan titik, dugaan akar masalah, dan siapa yang kebagian saat gagal. */
 export function Runut({ f, trace }: { f: Finding; trace: Trace }) {
@@ -79,13 +82,13 @@ export function FindingDetail({ f, onBack }: { f: Finding; onBack?: () => void }
   const point = sop.pointOf(f.itemId);
   const trace = useMemo(() => (point ? traceOf(point, sop.nameOf) : null), [point, sop.nameOf]);
   const photos = usePointPhotos(f.itemId, f.kind === "rushed" && f.rushed ? { userId: f.rushed.userId, date: f.rushed.date } : undefined);
-  const groups = useDateGroups(photos.rows);
+  const groups = useMemo(() => groupByDate(photos.rows), [photos.rows]);
   const [dateSel, setDateSel] = useState<string | null>(null);
   const [slot, setSlot] = useState(0);
   const [busy, startBusy] = useTransition();
 
   const date = dateSel && groups.some((g) => g.date === dateSel) ? dateSel : pickDate(groups, f.ymd);
-  const rows = groups.find((g) => g.date === date)?.rows ?? [];
+  const rows = groups.find((g) => g.date === date)?.rows ?? NO_ROWS;
   const hasPhoto = rows.some((r) => !!r.url);
   const allOk = rows.length > 0 && rows.every((r) => r.review_status === "ok");
   const canJudge = hasPhoto && f.kind !== "miss";
@@ -108,7 +111,7 @@ export function FindingDetail({ f, onBack }: { f: Finding; onBack?: () => void }
       const k = e.key.toLowerCase();
       if (k === "o" && showOk && !busy) doOk();
       else if (k === "r" && showRedo) doRedo();
-      else if (k === "c" && contact) sop.askNote(f);
+      else if (k === "c" && contact) sop.askNote({ ...f, userId: contact });
       else if (k === "s") sop.askFix(f);
       else if (k === "d" && !f.manual) sop.markChecked(f);
       else return;
@@ -194,7 +197,7 @@ export function FindingDetail({ f, onBack }: { f: Finding; onBack?: () => void }
           </button>
         )}
         {contact && (
-          <button type="button" onClick={() => sop.askNote(f)} className={`${BTN} !h-9`}>
+          <button type="button" onClick={() => sop.askNote({ ...f, userId: contact })} className={`${BTN} !h-9`}>
             Catat ke {contactName}
             <Kbd>C</Kbd>
           </button>

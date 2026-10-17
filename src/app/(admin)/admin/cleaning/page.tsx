@@ -16,7 +16,7 @@ import {
 } from "@/lib/actions/cleaning.actions";
 import { getCleaningRangeReport } from "@/lib/actions/cleaning-range.actions";
 import { listOpenItemIssues } from "@/lib/actions/cleaning-governance.actions";
-import { listChecklistRevisions, listFindingAcks, listSopFixes } from "@/lib/actions/cleaning-sop.actions";
+import { listAllChecklistRevisions, listFindingAcks, listSopFixes } from "@/lib/actions/cleaning-sop.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
@@ -98,7 +98,7 @@ export default async function AdminCleaningPage({
     listOpenItemIssues(),
     listFindingAcks(),
     listSopFixes(),
-    listChecklistRevisions(),
+    listAllChecklistRevisions(),
   ]);
 
   const employees = (employeesRes.data ?? []).map((e) => ({

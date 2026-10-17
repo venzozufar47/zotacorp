@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ImageOff, Loader2 } from "lucide-react";
 import { getCleaningPhotoHistory, type PhotoHistoryRow } from "@/lib/actions/cleaning.actions";
-import { fmtDay, fmtTimeWib, Pill } from "./shared";
+import { jakartaDateMinusDays, jakartaDateString } from "@/lib/utils/jakarta";
+import { firstName, fmtDay, fmtTimeWib, Pill } from "./shared";
 
 /**
  * Foto bukti satu titik pada satu hari: satu baris = satu slot foto. Slot dipilih lewat tab
@@ -70,7 +71,7 @@ export function PhotoPane({
           </div>
         )}
         <span className="absolute left-2.5 top-2.5 rounded-md bg-black/70 px-2 py-1 text-[11px] font-semibold text-white">
-          {fmtDay(cur.date)} · {fmtTimeWib(cur.completed_at)} · {cur.user_name.split(" ")[0]}
+          {fmtDay(cur.date)} · {fmtTimeWib(cur.completed_at)} · {firstName(cur.user_name)}
         </span>
         {tag && (
           <span className="absolute right-2.5 top-2.5 rounded-md bg-white/90 px-2 py-1 text-[11px] font-semibold text-foreground">
@@ -122,11 +123,6 @@ export function PhotoPane({
   );
 }
 
-/** Sumber data foto — bisa diganti (pratinjau/pengujian) tanpa menyentuh server. */
-export type PhotoSource = typeof getCleaningPhotoHistory;
-export const PhotoSourceContext = createContext<PhotoSource>(getCleaningPhotoHistory);
-export const usePhotoSource = () => useContext(PhotoSourceContext);
-
 /** Kelompokkan foto menjadi { tanggal → baris slot } (urut slot menurut waktu unggah). */
 export function groupByDate(rows: PhotoHistoryRow[]): Array<{ date: string; rows: PhotoHistoryRow[] }> {
   const m = new Map<string, PhotoHistoryRow[]>();
@@ -145,19 +141,17 @@ export function groupByDate(rows: PhotoHistoryRow[]): Array<{ date: string; rows
  * Mengembalikan hasil terbaru → terlama; `error` bila gagal.
  */
 export function usePointPhotos(itemId: string, opts?: { userId?: string | null; date?: string | null }) {
-  const source = usePhotoSource();
   const [state, setState] = useState<{ key: string; rows: PhotoHistoryRow[]; error: string | null } | null>(null);
   const key = `${itemId}|${opts?.userId ?? ""}|${opts?.date ?? ""}`;
   useEffect(() => {
     let live = true;
-    void source({
+    void getCleaningPhotoHistory({
       item_id: itemId,
       user_id: opts?.userId ?? null,
-      from: opts?.date ?? null,
-      to: opts?.date ?? null,
       // Mode "telusuri" (bukan antrean) butuh batas tanggal: titik tanpa tanggal memakai
       // 45 hari terakhir supaya tidak menyisir seluruh riwayat.
-      ...(opts?.date ? {} : { from: daysAgoYmd(45), to: daysAgoYmd(0) }),
+      from: opts?.date ?? daysAgoYmd(45),
+      to: opts?.date ?? daysAgoYmd(0),
       limit: 60,
     }).then((res) => {
       if (!live) return;
@@ -172,9 +166,7 @@ export function usePointPhotos(itemId: string, opts?: { userId?: string | null; 
   return { rows: loading ? [] : state.rows, error: loading ? null : state.error, loading };
 }
 
-function daysAgoYmd(n: number): string {
-  return new Date(Date.now() + 7 * 3_600_000 - n * 86_400_000).toISOString().slice(0, 10);
-}
+const daysAgoYmd = (n: number) => jakartaDateMinusDays(jakartaDateString(new Date()), n);
 
 export function PhotoLoading() {
   return (
@@ -188,8 +180,4 @@ export function PhotoLoading() {
 export function pickDate(groups: Array<{ date: string }>, preferred: string | null): string | null {
   if (preferred && groups.some((g) => g.date === preferred)) return preferred;
   return groups[0]?.date ?? null;
-}
-
-export function useDateGroups(rows: PhotoHistoryRow[]) {
-  return useMemo(() => groupByDate(rows), [rows]);
 }

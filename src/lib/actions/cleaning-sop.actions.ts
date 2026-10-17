@@ -52,7 +52,7 @@ export async function listSopFixes(): Promise<SopFixRow[]> {
 }
 
 /** Riwayat perubahan checklist (terbaru dulu) — dasar mendeteksi apakah SOP benar-benar diubah. */
-export async function listChecklistRevisions(): Promise<RevisionRow[]> {
+export async function listAllChecklistRevisions(): Promise<RevisionRow[]> {
   const gate = await requireAdmin();
   if (!gate.ok) return [];
   const supabase = await createClient();

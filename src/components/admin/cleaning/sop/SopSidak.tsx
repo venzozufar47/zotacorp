@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Settings } from "lucide-react";
-import type { PhotoHistoryRow } from "@/lib/actions/cleaning.actions";
-import { manualFinding, traceOf, type Finding } from "@/lib/cleaning/sop-findings";
+import { getCleaningPhotoHistory, type PhotoHistoryRow } from "@/lib/actions/cleaning.actions";
+import { isSidakFinding, manualFinding, traceOf, type Finding } from "@/lib/cleaning/sop-findings";
+import { jakartaDateMinusDays } from "@/lib/utils/jakarta";
 import { BTN, BTN_OK, BTN_PRIMARY, BTN_WARN, Kbd, KindPill, Pill, firstName } from "./shared";
-import { PhotoPane, usePhotoSource } from "./PhotoPane";
+import { PhotoPane } from "./PhotoPane";
 import { Runut } from "./FindingDetail";
 import { useSop } from "./SopProvider";
 
@@ -57,13 +58,11 @@ function seededShuffle<T>(list: T[], seed: string): T[] {
   return a;
 }
 
-const ymdMinus = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
 
-export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBack: () => void }) {
+export function SopSidak({ onBack }: { onBack: () => void }) {
   const sop = useSop();
-  const source = usePhotoSource();
   const today = sop.report.to;
-  const [scope, setScope] = useState<Scope>(initialScope ?? "temuan");
+  const [scope, setScope] = useState<Scope>("temuan");
   const [cards, setCards] = useState<Card[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [i, setI] = useState(0);
@@ -76,10 +75,7 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
   const openRef = useRef(sop.open);
   openRef.current = sop.open;
 
-  const baseCount = useMemo(
-    () => sop.open.filter((f) => f.kind !== "miss" && (f.ymd || f.kind === "rushed")).length,
-    [sop.open]
-  );
+  const baseCount = useMemo(() => sop.open.filter(isSidakFinding).length, [sop.open]);
 
   // Muat kartu tiap kali cakupan berganti.
   useEffect(() => {
@@ -93,11 +89,11 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
       try {
         let out: Card[] = [];
         if (scope === "temuan") {
-          const fs = openRef.current.filter((f) => f.kind !== "miss" && (f.ymd || f.kind === "rushed")).slice(0, 15);
+          const fs = openRef.current.filter(isSidakFinding).slice(0, 15);
           const results = await Promise.all(
             fs.map(async (f) => {
               const date = f.kind === "rushed" && f.rushed ? f.rushed.date : f.ymd;
-              const res = await source({
+              const res = await getCleaningPhotoHistory({
                 item_id: f.itemId,
                 from: date,
                 to: date,
@@ -117,7 +113,7 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
               rows: r.rows.sort((a, b) => (a.completed_at < b.completed_at ? -1 : 1)),
             }));
         } else if (scope === "antrean") {
-          const res = await source({ review_status: "unreviewed", limit: 120 });
+          const res = await getCleaningPhotoHistory({ review_status: "unreviewed", limit: 120 });
           if ("error" in res) throw new Error(res.error);
           out = groupCards(res.rows.filter((r) => !!r.url));
         } else if (scope === "semua") {
@@ -125,7 +121,7 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
           // terakhir difoto lusa memakai foto lusa — tujuannya menyidak hasil foto paling baru.
           const all: PhotoHistoryRow[] = [];
           for (let page = 0; page < 8; page++) {
-            const res = await source({ from: ymdMinus(today, 29), to: today, limit: 200, offset: page * 200 });
+            const res = await getCleaningPhotoHistory({ from: jakartaDateMinusDays(today, 29), to: today, limit: 200, offset: page * 200 });
             if ("error" in res) throw new Error(res.error);
             all.push(...res.rows);
             if (!res.hasMore) break;
@@ -136,7 +132,7 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
             a.rows[0].date < b.rows[0].date ? 1 : a.rows[0].date > b.rows[0].date ? -1 : 0
           );
         } else {
-          const res = await source({ from: ymdMinus(today, 13), to: today, review_status: "unreviewed", limit: 200 });
+          const res = await getCleaningPhotoHistory({ from: jakartaDateMinusDays(today, 13), to: today, review_status: "unreviewed", limit: 200 });
           if ("error" in res) throw new Error(res.error);
           out = seededShuffle(groupCards(res.rows.filter((r) => !!r.url)), `${today}|sidak`).slice(0, 10);
         }
@@ -148,7 +144,7 @@ export function SopSidak({ initialScope, onBack }: { initialScope?: Scope; onBac
     return () => {
       live = false;
     };
-  }, [scope, today, source]);
+  }, [scope, today]);
 
   const list = cards ?? [];
   const card = list[i];

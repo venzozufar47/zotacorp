@@ -2,7 +2,6 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { createCoachingNote, setCleaningPhotoVerdict, type CleaningRedoReason } from "@/lib/actions/cleaning-review.actions";
@@ -82,7 +81,6 @@ export function SopProvider({
   onOpenSetup: () => void;
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const [localAck, setLocalAck] = useState<Set<string>>(() => new Set());
   const [localUnack, setLocalUnack] = useState<Set<string>>(() => new Set());
   const [dlg, setDlg] = useState<Dlg>(null);
@@ -129,7 +127,6 @@ export function SopProvider({
           if (!res.ok) return void toast.error(res.error);
           hideLocal(f);
           toast.success("Kendala ditutup");
-          router.refresh();
           return;
         }
         hideLocal(f);
@@ -148,14 +145,13 @@ export function SopProvider({
             onClick: () => {
               const k = `${f.itemId}|${f.ackKey}`;
               setLocalUnack((s) => new Set(s).add(k));
-              void unackFinding({ itemId: f.itemId, ackKey: f.ackKey }).then(() => router.refresh());
+              void unackFinding({ itemId: f.itemId, ackKey: f.ackKey });
             },
           },
         });
-        router.refresh();
       })();
     },
-    [hideLocal, router]
+    [hideLocal]
   );
 
   const approve = useCallback(
@@ -171,28 +167,30 @@ export function SopProvider({
       }
       if (f) await persistAck(f);
       toast.success(todo.length ? `${todo.length} foto diterima` : "Sudah diterima");
-      router.refresh();
       return true;
     },
-    [persistAck, router]
+    [persistAck]
   );
 
-  const value: SopCtx = {
-    report,
-    nameOf,
-    pointOf: (id) => points.get(id),
-    branchName: (k) => branchNames.get(k) ?? "—",
-    titleOf: (id) => points.get(id)?.title ?? "—",
-    open,
-    fixes,
-    revisions,
-    openSetup: onOpenSetup,
-    approve,
-    askRedo: (f, rows, idx = 0, onDone) => setDlg({ t: "redo", f, rows, idx, onDone }),
-    askNote: (f) => setDlg({ t: "note", f }),
-    askFix: (f) => setDlg({ t: "fix", f }),
-    markChecked,
-  };
+  const value = useMemo<SopCtx>(
+    () => ({
+      report,
+      nameOf,
+      pointOf: (id) => points.get(id),
+      branchName: (k) => branchNames.get(k) ?? "—",
+      titleOf: (id) => points.get(id)?.title ?? "—",
+      open,
+      fixes,
+      revisions,
+      openSetup: onOpenSetup,
+      approve,
+      askRedo: (f, rows, idx = 0, onDone) => setDlg({ t: "redo", f, rows, idx, onDone }),
+      askNote: (f) => setDlg({ t: "note", f }),
+      askFix: (f) => setDlg({ t: "fix", f }),
+      markChecked,
+    }),
+    [report, nameOf, points, branchNames, open, fixes, revisions, onOpenSetup, approve, markChecked]
+  );
 
   return (
     <Ctx.Provider value={value}>
@@ -205,7 +203,6 @@ export function SopProvider({
             const f = dlg.f;
             setDlg(null);
             void persistAck(f);
-            router.refresh();
           }}
         />
       )}
@@ -217,7 +214,6 @@ export function SopProvider({
             const f = dlg.f;
             setDlg(null);
             void persistAck(f);
-            router.refresh();
           }}
         />
       )}
@@ -231,7 +227,6 @@ export function SopProvider({
             setDlg(null);
             if (f) void persistAck(f);
             onDone?.();
-            router.refresh();
           }}
         />
       )}
@@ -271,8 +266,7 @@ function periodOf(report: Report): { from: string; to: string } {
 
 function NoteDialog({ f, onClose, onSent }: { f: Finding; onClose: () => void; onSent: () => void }) {
   const { report, nameOf, titleOf, branchName } = useSop();
-  const uid = f.userId ?? (f.assigneeIds.length === 1 ? f.assigneeIds[0] : null);
-  const [target, setTarget] = useState<string | null>(uid ?? f.assigneeIds[0] ?? null);
+  const [target, setTarget] = useState<string | null>(f.userId ?? f.assigneeIds[0] ?? null);
   const title = titleOf(f.itemId);
   const draft =
     f.kind === "miss"
@@ -287,7 +281,7 @@ function NoteDialog({ f, onClose, onSent }: { f: Finding; onClose: () => void; o
   const [body, setBody] = useState(draft);
   const [pending, start] = useTransition();
   const who = target ? nameOf(target) : null;
-  const candidates = [...new Set([...(f.userId ? [f.userId] : []), ...f.assigneeIds])];
+  const candidates = [...new Set([f.userId, ...f.assigneeIds].filter((x): x is string => !!x))];
 
   function submit() {
     if (!target || !body.trim()) return;

@@ -23,9 +23,10 @@ import { BranchDutyManager } from "./BranchDutyManager";
 import { PhotoReviewGallery, type GalleryFilter } from "./PhotoReviewGallery";
 import { SopGovernanceZone } from "./SopGovernanceZone";
 import { SopProvider } from "./sop/SopProvider";
+import { STATUS_TEXT } from "./sop/shared";
 import { SopKepatuhan } from "./sop/SopKepatuhan";
 import { SopSidak } from "./sop/SopSidak";
-import { buildFindings, type FindingIssueInput, type RevisionRow, type SopFixRow } from "@/lib/cleaning/sop-findings";
+import { buildFindings, isSidakFinding, type FindingIssueInput, type RevisionRow, type SopFixRow } from "@/lib/cleaning/sop-findings";
 import { SopGuideBody, SopGuideReminder } from "./SopGuide";
 import type { ItemIssueRow } from "@/lib/actions/cleaning-governance.actions";
 import type { CleaningEmployee } from "./types";
@@ -45,24 +46,13 @@ import type { CleaningDayStatus, EmployeeReport } from "@/lib/cleaning/range-rep
  * Lima tab lama (Monitoring / Review Foto / Checklist / Duty Cabang /
  * Assignment) mencampur dua hal yang beda umur pakainya: memantau tiap hari,
  * dan menyusun SOP yang sekali diatur lalu jarang disentuh. Penyusunan turun ke
- * drawer "Pengaturan SOP"; halaman utama hanya menjawab dua pertanyaan —
- * seberapa bersih tiap cabang, dan siapa yang rajin menjalankannya.
- *
- * Yang BELUM ada di sini, dan sengaja: tombol verdict foto (Minta ulang / Oke)
- * dan "Kirim catatan pembinaan". Keduanya butuh kolom/tabel yang belum dibuat.
- * Menampilkannya sebagai tombol mati lebih buruk daripada tidak ada — ia
- * menjanjikan wewenang yang tidak dimiliki halaman ini.
+ * drawer "Pengaturan SOP"; halaman ini punya tiga tampilan (lihat VIEWS):
+ * Kepatuhan SOP & Sidak foto (komponen di ./sop/) dan Kerajinan karyawan.
  */
 
 /**
- * Dua tab, bukan lima.
- *
- * Desainnya satu halaman tanpa tab, dan itu benar untuk penyusunan SOP (yang
- * turun ke drawer). Tapi "kerajinan karyawan" menjawab pertanyaan yang berbeda
- * dari dua zona di atasnya — bukan "ruangan mana yang kotor" melainkan "siapa
- * yang perlu dibina" — dan sebagai zona ketiga ia selalu berada di bawah dua
- * blok besar, jadi praktis tak pernah terlihat. Tab-nya ber-URL supaya bisa
- * di-bookmark dan dibagikan.
+ * Tiga tampilan ber-URL (`?view=`) supaya bisa di-bookmark dan dibagikan. "Kerajinan karyawan"
+ * menjawab pertanyaan berbeda ("siapa yang perlu dibina") dari dua halaman SOP lainnya.
  */
 const VIEWS = [
   { key: "ringkasan", label: "Kepatuhan SOP" },
@@ -71,16 +61,6 @@ const VIEWS = [
 ] as const;
 
 export type CleaningViewKey = (typeof VIEWS)[number]["key"];
-
-const STATUS_LABEL: Record<CleaningDayStatus, string> = {
-  ok: "Lengkap",
-  late: "Telat",
-  redo: "Perlu ulang",
-  miss: "Belum dikerjakan",
-  miss_absent: "Shift tidak masuk",
-  pending: "Menunggu jadwal",
-  off: "Tidak terjadwal",
-};
 
 /** Satu skala warna untuk seluruh halaman: strip, sel heatmap, dan pill. */
 const CELL_CLASS: Record<CleaningDayStatus, string> = {
@@ -124,7 +104,7 @@ function StatusPill({ status }: { status: CleaningDayStatus }) {
     <span
       className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10.5px] font-semibold whitespace-nowrap ${PILL_CLASS[status]}`}
     >
-      {STATUS_LABEL[status]}
+      {STATUS_TEXT[status]}
     </span>
   );
 }
@@ -144,7 +124,7 @@ function Strip({
         {cells.map((s, i) => (
           <i
             key={days[i] ?? i}
-            title={`${days[i]} — ${STATUS_LABEL[s]}`}
+            title={`${days[i]} — ${STATUS_TEXT[s]}`}
             className={`h-3 flex-1 min-w-[3px] rounded-[2px] ${CELL_CLASS[s]}`}
           />
         ))}
@@ -356,7 +336,7 @@ export function CleaningOverview({
     () =>
       issues
         .filter((i): i is ItemIssueRow & { item_id: string } => !!i.item_id)
-        .map((i) => ({ id: i.id, itemId: i.item_id, date: i.date, reason: i.reason, userName: i.user_name })),
+        .map((i) => ({ id: i.id, itemId: i.item_id, date: i.date, reason: i.reason })),
     [issues]
   );
   // Jumlah foto temuan untuk tombol/lencana sidak — sama dengan cakupan "Temuan" di Sidak foto.
@@ -366,7 +346,7 @@ export function CleaningOverview({
         report,
         issueInputs,
         new Set(acks)
-      ).filter((f) => f.kind !== "miss" && (f.ymd || f.kind === "rushed")).length,
+      ).filter(isSidakFinding).length,
     [report, issueInputs, acks]
   );
   const shownEmployees = report.employees.filter(
@@ -442,15 +422,7 @@ export function CleaningOverview({
           revisions={revisions}
           onOpenSetup={() => setSetupOpen(true)}
         >
-          <SopPages
-            view={view}
-            sidakCount={sidakCount}
-            report={report}
-            checklists={checklists}
-            issues={issues}
-            onOpenSetup={() => setSetupOpen(true)}
-            onOpenGallery={(filter) => setGallery(filter ?? {})}
-          />
+          <SopPages view={view} sidakCount={sidakCount} checklists={checklists} onOpenSetup={() => setSetupOpen(true)} />
         </SopProvider>
       ) : (
       <section className="space-y-2">
@@ -710,19 +682,13 @@ export function CleaningOverview({
 function SopPages({
   view,
   sidakCount,
-  report,
   checklists,
-  issues,
   onOpenSetup,
-  onOpenGallery,
 }: {
   view: CleaningViewKey;
   sidakCount: number;
-  report: CleaningRangeReportWithNames;
   checklists: CleaningChecklist[];
-  issues: ItemIssueRow[];
   onOpenSetup: () => void;
-  onOpenGallery: (filter?: GalleryFilter) => void;
 }) {
   const router = useRouter();
   const go = (v: CleaningViewKey) => router.push(`/admin/cleaning?view=${v}`, { scroll: false });
@@ -731,16 +697,7 @@ function SopPages({
     <SopKepatuhan
       onOpenSidak={() => go("sidak")}
       sidakCount={sidakCount}
-      footer={
-        <SopGovernanceZone
-          show={["reviews"]}
-          report={report}
-          checklists={checklists}
-          issues={issues}
-          onOpenSetup={onOpenSetup}
-          onOpenGallery={onOpenGallery}
-        />
-      }
+      footer={<SopGovernanceZone checklists={checklists} onOpenSetup={onOpenSetup} />}
     />
   );
 }
@@ -837,7 +794,7 @@ function PersonBody({
                     key={p.itemId}
                     type="button"
                     onClick={() => onOpenPoint(p.itemId)}
-                    title={`${p.title} — ${STATUS_LABEL[p.status]}`}
+                    title={`${p.title} — ${STATUS_TEXT[p.status]}`}
                     className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
                   >
                     <i className={`size-2 rounded-[2px] ${CELL_CLASS[p.status]}`} />

@@ -5,6 +5,7 @@
  * dan di kepatuhan karyawan tidak mungkin saling membantah.
  */
 
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import type {
   CleaningDayStatus,
   CleaningRangeReport,
@@ -16,7 +17,6 @@ import type {
 
 /** Kunci tampilan: `miss_absent` dipanggil `abs`, `redo` tetap `redo`. */
 export type SegKey = "ok" | "late" | "redo" | "abs" | "miss";
-export const SEG_ORDER: readonly SegKey[] = ["ok", "late", "redo", "abs", "miss"];
 export const SEG_LABEL: Record<SegKey, string> = {
   ok: "Tepat waktu",
   late: "Telat",
@@ -24,8 +24,6 @@ export const SEG_LABEL: Record<SegKey, string> = {
   abs: "Shift tidak masuk",
   miss: "Tidak dikerjakan",
 };
-/** Segmen yang dihitung sebagai "masalah" pada tabel penyumbang. */
-export const PROBLEM_SEGS: readonly SegKey[] = ["miss", "abs", "redo", "late"];
 
 export function segOf(status: CleaningDayStatus): SegKey | null {
   switch (status) {
@@ -96,12 +94,24 @@ export function dailySeries(
   report: Pick<CleaningRangeReport, "points" | "days">,
   branchKey: string | null
 ): Array<{ ymd: string; pct: number; n: number }> {
-  const out: Array<{ ymd: string; pct: number; n: number }> = [];
-  report.days.forEach((d) => {
-    const c = aggregate(report, new Set([d.ymd]), branchKey);
-    if (c.n > 0) out.push({ ymd: d.ymd, pct: c.pct, n: c.n });
-  });
-  return out;
+  const by = new Map<string, SegCounts>();
+  for (const p of report.points) {
+    if (branchKey && p.branchKey !== branchKey) continue;
+    for (const cell of p.cells) {
+      const k = segOf(cell.status);
+      if (!k) continue;
+      const c = by.get(cell.ymd) ?? emptyCounts();
+      c[k]++;
+      c.n++;
+      by.set(cell.ymd, c);
+    }
+  }
+  return report.days
+    .filter((d) => by.has(d.ymd))
+    .map((d) => {
+      const c = finish(by.get(d.ymd)!);
+      return { ymd: d.ymd, pct: c.pct, n: c.n };
+    });
 }
 
 /* ── runut penyebab ──────────────────────────────────────────────────────── */
@@ -242,11 +252,10 @@ export interface FindingIssueInput {
   itemId: string;
   date: string;
   reason: string;
-  userName: string;
 }
 
 /** Hari kalender dari `ymd` ke `to` (≥0). */
-export function calDaysBetween(from: string, to: string): number {
+function calDaysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
@@ -370,6 +379,16 @@ export function buildFindings(
   );
 }
 
+/**
+ * Temuan yang punya foto/sesi untuk disidak (cakupan "Temuan" di Sidak foto dan lencana tabnya).
+ * Yang belum dikerjakan sama sekali tidak ikut: tak ada foto yang bisa dinilai.
+ */
+export const isSidakFinding = (f: Finding): boolean => f.kind !== "miss" && !!f.ymd;
+
+/** Filter jenis masalah di bar → temuan yang relevan. Jenis lain (telat, shift) tak punya temuan: tampil semua. */
+export const matchesSeg = (f: Finding, seg: SegKey | null): boolean =>
+  !seg || (seg !== "miss" && seg !== "redo") || f.kind === seg;
+
 /** Temuan sementara untuk titik yang dibuka manual dari tabel penyumbang masalah. */
 export function manualFinding(point: PointReport, userId: string | null): Finding {
   return {
@@ -471,7 +490,7 @@ export function sopChangeAfter(
     if (!best || t < Date.parse(best.at)) best = r;
   }
   if (!best) return null;
-  return { on: new Date(Date.parse(best.at) + 7 * 3_600_000).toISOString().slice(0, 10), summary: best.summary };
+  return { on: jakartaDateString(new Date(best.at)), summary: best.summary };
 }
 
 export interface FixProgress {
