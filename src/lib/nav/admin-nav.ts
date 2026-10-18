@@ -2,7 +2,6 @@ import {
   Brain,
   Cake,
   Calculator,
-  CalendarClock,
   Camera,
   ClipboardCheck,
   ClipboardList,
@@ -150,12 +149,6 @@ export function buildAdminNav({
           label: "SOP",
           badge: cleaningCount || undefined,
           color: "bg-quaternary",
-        },
-        {
-          href: "/admin/izin",
-          icon: CalendarClock,
-          label: "Ringkasan Izin",
-          color: "bg-tertiary",
         },
         {
           href: "/admin/briefing",

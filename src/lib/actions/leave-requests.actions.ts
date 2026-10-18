@@ -147,11 +147,11 @@ export async function submitLeaveRequest(
   } else {
     // Tidak ada leader tercatat (biasanya pemohonnya sendiri sudah level
     // Koordinator/Kepala Produksi) — jatuh ke admin sebagai fallback.
-    await sendPushToAdmins({ title, body, url: "/admin/izin" });
+    await sendPushToAdmins({ title, body, url: "/admin/attendance?view=izin" });
   }
 
   revalidatePath("/tim");
-  revalidatePath("/admin/izin");
+  revalidatePath("/admin/attendance");
   revalidatePath("/dashboard");
   return { ok: true, data: { id: (inserted as { id: string }).id } };
 }
@@ -250,7 +250,7 @@ export async function submitLeaveForMember(
 
   revalidatePath("/tim");
   revalidatePath("/dashboard");
-  revalidatePath("/admin/izin");
+  revalidatePath("/admin/attendance");
   return { ok: true, data: { id: (inserted as { id: string }).id } };
 }
 
@@ -398,7 +398,7 @@ export async function decideLeaveRequest(input: DecideLeaveRequestInput): Promis
   });
 
   revalidatePath("/tim");
-  revalidatePath("/admin/izin");
+  revalidatePath("/admin/attendance");
   revalidatePath("/dashboard");
   return { ok: true };
 }

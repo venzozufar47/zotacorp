@@ -333,7 +333,7 @@ type PanelTab = "persetujuan" | "catat" | "diputuskan";
 
 /**
  * Izin dari sisi atasan — satu panel, dipakai di halaman Tim (atasan langsung)
- * dan di /admin/izin (Owner, untuk karyawan tanpa atasan): antrean persetujuan,
+ * dan di tab Izin halaman Kehadiran admin (Owner, untuk karyawan tanpa atasan): antrean persetujuan,
  * catat izin atas nama anggota, dan keputusan terakhir.
  */
 export function LeaveApproverPanel({

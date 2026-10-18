@@ -1,10 +1,10 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { CalendarDays, CheckCircle2, Clock } from "lucide-react";
+import { CalendarClock, CalendarDays, CheckCircle2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type AttendanceView = "recap" | "matrix" | "live";
+export type AttendanceView = "recap" | "matrix" | "live" | "izin";
 
 const TABS: Array<{
   key: AttendanceView;
@@ -15,6 +15,7 @@ const TABS: Array<{
   { key: "recap", label: "Recap", icon: CheckCircle2 },
   { key: "matrix", label: "Matrix", icon: CalendarDays },
   { key: "live", label: "Live", icon: Clock, pulse: true },
+  { key: "izin", label: "Izin", icon: CalendarClock },
 ];
 
 export function AttendanceViewTabs({ current }: { current: AttendanceView }) {

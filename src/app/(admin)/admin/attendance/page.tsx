@@ -28,6 +28,7 @@ import {
   type MatrixCell,
 } from "@/components/admin/AttendanceMatrixView";
 import { AttendanceLiveView } from "@/components/admin/AttendanceLiveView";
+import { AdminLeaveSection } from "@/components/admin/AdminLeaveSection";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface SearchParams {
@@ -101,7 +102,9 @@ export default async function AdminAttendancePage({
       ? "matrix"
       : params.view === "live"
         ? "live"
-        : "recap";
+        : params.view === "izin"
+          ? "izin"
+          : "recap";
   const selectedBU = params.bu ?? "";
 
   // Notif bell sends ?focus=<rowId>. Resolve the row's position under
@@ -334,17 +337,19 @@ export default async function AdminAttendancePage({
 
       <div className="flex flex-wrap items-center gap-3">
         <AttendanceViewTabs current={view} />
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <SelfieAiStatusButton />
-          <AttendanceTopFilter
-            month={month}
-            year={year}
-            selectedUserId={params.userId ?? ""}
-            selectedBU={selectedBU}
-            employees={employees}
-            businessUnits={businessUnits}
-          />
-        </div>
+        {view !== "izin" && (
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <SelfieAiStatusButton />
+            <AttendanceTopFilter
+              month={month}
+              year={year}
+              selectedUserId={params.userId ?? ""}
+              selectedBU={selectedBU}
+              employees={employees}
+              businessUnits={businessUnits}
+            />
+          </div>
+        )}
       </div>
 
       {view === "recap" && (
@@ -380,6 +385,8 @@ export default async function AdminAttendancePage({
       {view === "live" && (
         <AttendanceLiveSection scopedUserIds={scopedUserIds} />
       )}
+
+      {view === "izin" && <AdminLeaveSection />}
     </div>
   );
 }
