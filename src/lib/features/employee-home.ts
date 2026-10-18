@@ -9,7 +9,7 @@ export const EMPLOYEE_HOME_FEATURES = {
   /** DIRILIS. Tombol "Ajukan izin" (pop-up) di bawah tombol absen untuk semua karyawan + banner "N pengajuan
    *  izin menunggu persetujuanmu" untuk atasan langsung → halaman Tim. */
   izin: true,
-  /** Notulen huddle & rapat → /notulen */
+  /** Notulen briefing kilat & rapat → /notulen */
   notulen: false,
   /** Scorecard cabang → /scorecard */
   scorecard: false,

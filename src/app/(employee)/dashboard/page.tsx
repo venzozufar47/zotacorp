@@ -501,7 +501,7 @@ export default async function DashboardPage() {
           <CalendarClock size={18} />
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Notulen huddle & rapat</span>
+          <span className="block font-display font-bold text-sm">Notulen briefing kilat & rapat</span>
           <span className="block text-xs text-muted-foreground">
             Lihat target hari ini dan notulen mingguan cabang.
           </span>

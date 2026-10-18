@@ -7,7 +7,8 @@ import { isTeamLeader } from "@/lib/tasks/team-access";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 
 /**
- * Notulen Huddle Harian & Rapat Mingguan (PRD-9).
+ * Notulen Briefing Kilat Harian (dulu disebut "huddle" — nama tabel/fungsi tetap `huddle`) &
+ * Rapat Mingguan (PRD-9).
  *
  * Siapa boleh menulis: admin atau siapa pun yang memegang `team_members`
  * sebagai leader (Koordinator Toko / Kepala Produksi) — cabang dipilih

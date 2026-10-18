@@ -99,7 +99,7 @@ function HuddleSection({
         toast.error(res.error);
         return;
       }
-      toast.success("Huddle tercatat");
+      toast.success("Briefing kilat tercatat");
       router.refresh();
     } finally {
       setSaving(false);
@@ -109,7 +109,7 @@ function HuddleSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Huddle hari ini</CardTitle>
+        <CardTitle>Briefing kilat hari ini</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {huddle ? (
@@ -148,7 +148,7 @@ function HuddleSection({
               <Input id="huddle-holds" value={holds} onChange={(e) => setHolds(e.target.value)} />
             </div>
             <Button onClick={submit} loading={saving} className="w-full">
-              Catat huddle
+              Catat briefing kilat
             </Button>
           </div>
         ) : (
