@@ -71,7 +71,8 @@ import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
 import { MessageSquareWarning, Gauge as GaugeIcon } from "lucide-react";
 import { canViewScorecard } from "@/lib/actions/scorecard.actions";
-import { Inbox, ShieldQuestion } from "lucide-react";
+import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon } from "lucide-react";
+import { hasAnsweredMonthlyPulse } from "@/lib/actions/pulse-survey.actions";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -153,6 +154,7 @@ export default async function DashboardPage() {
     pendingLeaveApprovals,
     canFileComplaintFlag,
     canViewScorecardFlag,
+    answeredMonthlyPulse,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -203,6 +205,7 @@ export default async function DashboardPage() {
     getPendingLeaveApprovalCountForMe(),
     canFileComplaint(),
     canViewScorecard(),
+    hasAnsweredMonthlyPulse(),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -517,6 +520,24 @@ export default async function DashboardPage() {
             <span className="block font-display font-bold text-sm">Scorecard cabang</span>
             <span className="block text-xs text-muted-foreground">
               Waste, selisih kas, omzet, dan keluhan — cabangmu.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
+
+      {!answeredMonthlyPulse && (
+        <Link
+          href="/survei"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-primary/10 px-4 py-3 shadow-hard-sm hover:bg-primary/20 transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+            <SurveyIcon size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">Survei bulanan (anonim)</span>
+            <span className="block text-xs text-muted-foreground">
+              3 pertanyaan, ±30 detik. Jawabanmu tidak tersimpan dengan nama.
             </span>
           </span>
           <span className="text-sm font-bold shrink-0">→</span>

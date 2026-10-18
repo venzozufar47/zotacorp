@@ -171,6 +171,12 @@ export function buildAdminNav({
           color: "bg-destructive",
         },
         {
+          href: "/admin/survei",
+          icon: ClipboardList,
+          label: "Survei Bulanan",
+          color: "bg-quaternary",
+        },
+        {
           href: "/admin/tasks",
           icon: ClipboardCheck,
           label: "Tugas",
