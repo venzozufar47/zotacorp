@@ -15,20 +15,12 @@ const TIMEOUT_MS = 20_000;
 
 export type MeterReading =
   | { status: "ok"; kwh: number }
-  | { status: "unreadable"; note: string }
+  | { status: "unreadable" }
   | { status: "error"; error: string };
 
-const PROMPT = `Ini foto layar atau meteran listrik prabayar (token PLN).
-Layar menampilkan SISA token/saldo dalam kWh. FORMATNYA TETAP: DUA ANGKA TERAKHIR adalah desimal
-(selalu ada ",00"). Contoh: layar "8068" berarti 80,68 kWh; "1466" berarti 14,66 kWh; "10000" berarti
-100,00 kWh. Tanda desimalnya sering kecil atau tidak terlihat — jangan bergantung padanya.
-Tugasmu: salin SEMUA digit yang tampil di layar, urut dari kiri ke kanan, TANPA titik/koma/spasi.
-Jawab HANYA JSON: {"is_meter": boolean, "digits": string, "note": string singkat}.
-Aturan:
-- digits hanya berisi angka 0-9 (contoh "8068"). Jangan membagi atau menambahkan desimal sendiri.
-- is_meter=false bila foto bukan layar/meteran listrik.
-- digits="" bila angka tidak jelas, terpotong, buram, atau ragu-ragu. Jangan menebak.
-- Ambil angka SISA kWh di layar, bukan nomor meter, tegangan, daya, atau tanggal.`;
+// Prompt sengaja pendek: tiap token input dibayar di setiap foto. Diuji pada foto asli — hasil sama
+// akuratnya dengan versi panjang (3 kali lebih sedikit token input).
+const PROMPT = `Foto meteran listrik prabayar PLN. Salin semua digit yang tampil di layar LCD (kiri ke kanan, tanpa titik/koma/spasi). Dua digit terakhir adalah desimal; jangan membagi sendiri. is_meter=false bila bukan meteran listrik; digits="" bila ragu atau tidak jelas. Abaikan nomor meter, tegangan, tanggal.`;
 
 interface GeminiBody {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -57,13 +49,15 @@ export async function readMeterKwh(bytes: ArrayBuffer, mime: string): Promise<Me
         ],
         generationConfig: {
           temperature: 0,
+          // Membaca angka di layar adalah OCR, bukan penalaran: "thinking" bawaan 2.5 Flash menambah
+          // ratusan token output tersembunyi per foto tanpa mengubah hasil (diuji pada foto asli).
+          thinkingConfig: { thinkingBudget: 0 },
           responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",
             properties: {
               is_meter: { type: "BOOLEAN" },
               digits: { type: "STRING" },
-              note: { type: "STRING" },
             },
             required: ["is_meter", "digits"],
           },
@@ -74,12 +68,12 @@ export async function readMeterKwh(bytes: ArrayBuffer, mime: string): Promise<Me
     if (!res.ok) return { status: "error", error: body.error?.message ?? `HTTP ${res.status}` };
     const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) return { status: "error", error: "Jawaban AI kosong" };
-    const parsed = JSON.parse(text) as { is_meter?: boolean; digits?: string; note?: string };
+    const parsed = JSON.parse(text) as { is_meter?: boolean; digits?: string };
     // Format layar token tetap: dua digit terakhir = desimal. Pembagiannya dilakukan DI SINI, bukan oleh
     // model, supaya "8068" tidak pernah terbaca 8068 atau 806,8 hanya karena titik desimalnya kecil.
     const digits = (parsed.digits ?? "").replace(/\s/g, "");
     if (!parsed.is_meter || !/^\d{1,8}$/.test(digits)) {
-      return { status: "unreadable", note: parsed.note?.slice(0, 200) ?? "" };
+      return { status: "unreadable" };
     }
     return { status: "ok", kwh: Number(digits) / 100 };
   } catch (e) {
