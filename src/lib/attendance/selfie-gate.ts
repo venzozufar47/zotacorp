@@ -116,7 +116,7 @@ export function buildPrompt(rules: SelfieRuleSet): string {
   const lines = ["Staff attendance selfie. Answer only from what is clearly visible."];
   if (f.indoor) {
     lines.push(
-      "bg: indoor=room interior (walls, ceiling, shelves, counter); outdoor=motorbike/vehicle, parking, street, sky, trees, direct sun, open porch or terrace; unclear=background not visible.",
+      "bg: indoor=any room interior (walls incl. posters or photo walls, ceiling, shelves, counter); outdoor=motorbike/vehicle, parking, street, sky, trees, direct sun, open porch or terrace; unclear=only if no background is visible.",
       "helmet: true if wearing a helmet.",
     );
   }
@@ -130,7 +130,7 @@ export function buildPrompt(rules: SelfieRuleSet): string {
   }
   if (f.apron) lines.push("apron: true if an apron, its straps or its bib is visible at the shoulders/chest.");
   if (f.lanyard) {
-    lines.push("lanyard: true if a lanyard strap or ID card hangs on the person's own neck/chest (not on a poster or standee).");
+    lines.push("lanyard: true if the person's own lanyard strap or ID card is visible on the neck/chest or held up (not on a poster or standee).");
   }
   if (rules.headCover) lines.push("cover: true if a beanie/cap/head covering is over the hair.");
   return lines.join("\n");
