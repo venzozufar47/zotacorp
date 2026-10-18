@@ -11,6 +11,7 @@ import {
   FileSignature,
   Gauge,
   Home as HomeIcon,
+  Inbox,
   KeyRound,
   MapPin,
   Megaphone,
@@ -155,6 +156,12 @@ export function buildAdminNav({
           icon: ShieldAlert,
           label: "Sistem SP",
           color: "bg-destructive",
+        },
+        {
+          href: "/persetujuan",
+          icon: Inbox,
+          label: "Daftar Tertahan",
+          color: "bg-tertiary",
         },
         {
           href: "/admin/tasks",
