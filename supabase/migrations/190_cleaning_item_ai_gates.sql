@@ -2,7 +2,7 @@
 --
 -- Satu baris = satu titik (item) yang fotonya dibaca AI. Checklist sudah milik satu cabang,
 -- jadi batas per-titik otomatis berarti batas per-cabang. Jenis awal: 'meter_kwh' — AI membaca
--- sisa token/kWh dari foto layar meteran; di bawah \min_value\ foto DITOLAK (karyawan harus
+-- sisa token/kWh dari foto layar meteran; di bawah \min_value foto DITOLAK (karyawan harus
 -- mengisi token lalu memfoto ulang). Angka tak terbaca / AI gagal TIDAK memblokir karyawan:
 -- foto diterima dan masuk antrean tinjauan manusia.
 --
