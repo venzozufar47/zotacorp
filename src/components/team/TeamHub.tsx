@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, ChevronRight, ClipboardList, MessageSquarePlus } from "lucide-react";
+import { ArrowLeft, CalendarClock, ChevronRight, ClipboardList, MessageSquarePlus, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type TeamSection = "izin" | "catatan" | "tugas";
+export type TeamSection = "izin" | "briefing" | "catatan" | "tugas";
 
 export const TEAM_SECTIONS: Record<
   TeamSection,
@@ -12,6 +12,11 @@ export const TEAM_SECTIONS: Record<
     title: "Perizinan",
     description: "Setujui pengajuan izin anggota atau catatkan izin atas nama mereka.",
     icon: CalendarClock,
+  },
+  briefing: {
+    title: "Briefing kilat",
+    description: "Catat target harian, kendala kemarin, dan pembagian tugas briefing cabang.",
+    icon: Zap,
   },
   catatan: {
     title: "Catatan pembinaan",
@@ -25,10 +30,10 @@ export const TEAM_SECTIONS: Record<
   },
 };
 
-const ORDER: TeamSection[] = ["izin", "catatan", "tugas"];
+const ORDER: TeamSection[] = ["izin", "briefing", "catatan", "tugas"];
 
 /**
- * Pilihan awal halaman Tim: tiga bagian dalam bentuk kartu besar, masing-masing
+ * Pilihan awal halaman Tim: empat bagian dalam bentuk kartu besar, masing-masing
  * dengan satu angka yang menandakan ada yang perlu perhatian (mis. izin yang
  * menunggu). Memilih satu membuka bagiannya lewat `?bagian=` — alamatnya bisa
  * dibagikan/di-bookmark dan tombol kembali browser berfungsi.
@@ -39,7 +44,7 @@ export function TeamHub({
   counts: Record<TeamSection, { value: number; label: string; urgent?: boolean }>;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {ORDER.map((key) => {
         const meta = TEAM_SECTIONS[key];
         const Icon = meta.icon;

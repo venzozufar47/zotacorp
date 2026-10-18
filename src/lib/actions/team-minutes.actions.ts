@@ -67,7 +67,6 @@ export interface HuddleView {
   whoHoldsWhat: string | null;
   postedByName: string | null;
   createdAt: string;
-  ackNames: string[];
 }
 
 export async function getTodayHuddle(branch: MinutesBranch): Promise<HuddleView | null> {
@@ -82,7 +81,6 @@ export async function getTodayHuddle(branch: MinutesBranch): Promise<HuddleView 
     .maybeSingle();
   if (!data) return null;
   const names = await namesFor([data.posted_by]);
-  const ackNames = await ackNamesFor("huddle", data.id);
   return {
     id: data.id,
     branch: data.branch,
@@ -92,8 +90,33 @@ export async function getTodayHuddle(branch: MinutesBranch): Promise<HuddleView 
     whoHoldsWhat: data.who_holds_what,
     postedByName: names.get(data.posted_by) ?? null,
     createdAt: data.created_at,
-    ackNames,
   };
+}
+
+/**
+ * Briefing kilat terbaru semua cabang, terbaru dulu — untuk halaman Tim
+ * (kepala tim) dan tab Briefing Kilat superadmin. Hanya kepala tim / admin.
+ */
+export async function listRecentHuddles(limit = 40): Promise<HuddleView[]> {
+  if (!(await canPost())) return [];
+  const { data } = await db()
+    .from("team_huddles")
+    .select("*")
+    .order("huddle_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  const rows = data ?? [];
+  const names = await namesFor(rows.map((r: any) => r.posted_by));
+  return rows.map((r: any) => ({
+    id: r.id,
+    branch: r.branch,
+    huddleDate: r.huddle_date,
+    targetToday: r.target_today,
+    yesterdayBlocker: r.yesterday_blocker,
+    whoHoldsWhat: r.who_holds_what,
+    postedByName: names.get(r.posted_by) ?? null,
+    createdAt: r.created_at,
+  }));
 }
 
 export interface PostHuddleInput {
@@ -123,7 +146,8 @@ export async function postHuddle(input: PostHuddleInput): Promise<ActionResult> 
   );
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath("/notulen");
+  revalidatePath("/tim");
+  revalidatePath("/admin/briefing");
   return { ok: true };
 }
 

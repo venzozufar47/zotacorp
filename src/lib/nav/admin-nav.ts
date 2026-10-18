@@ -33,6 +33,7 @@ import {
   TrendingUp,
   Users,
   Wallet,
+  Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n/dictionary";
@@ -161,6 +162,12 @@ export function buildAdminNav({
           icon: CalendarClock,
           label: "Ringkasan Izin",
           color: "bg-tertiary",
+        },
+        {
+          href: "/admin/briefing",
+          icon: Zap,
+          label: "Briefing Kilat",
+          color: "bg-quaternary",
         },
         {
           href: "/admin/sp",

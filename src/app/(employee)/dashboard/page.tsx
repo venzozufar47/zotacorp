@@ -492,24 +492,6 @@ export default async function DashboardPage() {
 
       <CleaningChecklistCard initial={cleaningTasks} />
 
-      {FEATURES.notulen && (
-      <Link
-        href="/notulen"
-        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
-      >
-        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
-          <CalendarClock size={18} />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block font-display font-bold text-sm">Notulen briefing kilat & rapat</span>
-          <span className="block text-xs text-muted-foreground">
-            Lihat target hari ini dan notulen mingguan cabang.
-          </span>
-        </span>
-        <span className="text-sm font-bold shrink-0">→</span>
-      </Link>
-      )}
-
       {FEATURES.scorecard && canViewScorecardFlag && (
         <Link
           href="/scorecard"
