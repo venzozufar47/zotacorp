@@ -153,6 +153,7 @@ export function CheckInButton({
   // Selfie capture + upload for check-in. `pendingCoordsRef` holds the GPS
   // fix from step 1 while the selfie dialog is open in step 2.
   const [selfieOpen, setSelfieOpen] = useState(false);
+  const submittingRef = useRef(false);
   const pendingCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
   // Filter selfie AI (hanya check-in karyawan yang dikenai aturan): panduan oval, dan dialog saat AI menolak.
   const [selfieGuide, setSelfieGuide] = useState<string | null>(null);
@@ -333,117 +334,129 @@ export function CheckInButton({
       return;
     }
 
+    // Satu pengiriman pada satu waktu. Tanpa ini, mengetuk "Gunakan foto" berulang saat unggah + pemeriksaan
+    // AI berjalan (beberapa detik) menumpuk antrean: tiap ketukan mengunggah foto baru dan memanggil AI lagi.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     startTransition(async () => {
-      const supabase = createSupabaseClient();
-      const { data: authData } = await supabase.auth.getUser();
-      const uid = authData.user?.id;
-      if (!uid) {
-        toast.error(t.checkIn.errGeneric);
-        return;
+      try {
+        await uploadAndSubmitSelfie(blob, coords);
+      } finally {
+        submittingRef.current = false;
       }
-
-      const today = new Date().toISOString().slice(0, 10);
-      // Unique per-day-per-user. If a browser re-tries, upsert overwrites
-      // rather than accumulating stale frames.
-      const path = `${uid}/${today}-${crypto.randomUUID()}.${extensionFor(blob)}`;
-
-      const { error: uploadErr } = await supabase.storage
-        .from("attendance-selfies")
-        .upload(path, blob, { contentType: blob.type, upsert: false });
-      if (uploadErr) {
-        toast.error(t.checkIn.selfieUploadFailed);
-        return;
-      }
-
-      const payload = {
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-        selfie_path: path,
-      };
-      const action = pendingActionRef.current;
-
-      // Kalau aksi server gagal (geofence/validasi), selfie yang sudah
-      // ter-upload jadi yatim → hapus lagi (best-effort; GC harian di
-      // cron backup jadi lapis kedua). Sumber kebocoran storage terbesar.
-      const removeOrphanSelfie = () => {
-        void supabase.storage.from("attendance-selfies").remove([path]);
-      };
-
-      // ── Break-out: start a break session ──
-      if (action === "break-out") {
-        const result = await breakOut(payload);
-        if (result?.error) {
-          toast.error(result.error);
-          removeOrphanSelfie();
-          return;
-        }
-        if (result?.data) {
-          setSelfieOpen(false);
-          setBreaks((b) => [...b, result.data as AttendanceBreakLog]);
-          toast.success(t.checkIn.toastBreakOut);
-          onSuccess?.();
-        }
-        return;
-      }
-
-      // ── Break-in: close the open break session ──
-      if (action === "break-in") {
-        const result = await breakIn(payload);
-        if (result?.error) {
-          toast.error(result.error);
-          removeOrphanSelfie();
-          return;
-        }
-        if (result?.data) {
-          const d = result.data as {
-            id: string;
-            late_return: boolean;
-            totalBreakMinutes?: number;
-          };
-          const nowIso = new Date().toISOString();
-          setSelfieOpen(false);
-          setBreaks((b) =>
-            b.map((x) =>
-              x.id === d.id
-                ? { ...x, break_in_at: nowIso, late_return: d.late_return }
-                : x
-            )
-          );
-          // Segarkan total istirahat hari ini — ambang munculnya centang
-          // lembur bergantung padanya. Tanpa ini nilainya tetap seperti
-          // saat halaman dimuat, sehingga centang muncul lebih awal
-          // daripada saat server benar-benar mulai mengkredit.
-          if (typeof d.totalBreakMinutes === "number") {
-            setLog((prev) =>
-              prev
-                ? { ...prev, total_break_minutes: d.totalBreakMinutes! }
-                : prev
-            );
-          }
-          if (d.late_return) toast.warning(t.checkIn.toastBreakInLate);
-          else toast.success(t.checkIn.toastBreakIn);
-          onSuccess?.();
-        }
-        return;
-      }
-
-      // ── Default: normal check-in ──
-      // Filter selfie AI: hanya untuk karyawan yang dikenai aturan (selfieGuide terisi). AI yang
-      // error/lambat dianggap lolos; yang menolak membuka dialog "foto ulang / tetap absen".
-      if (selfieGuide) {
-        const verdict = await verifyCheckInSelfie({ selfie_path: path }).catch(() => null);
-        if (verdict?.status === "reject") {
-          setSelfieReview({
-            path,
-            url: URL.createObjectURL(blob),
-            message: verdict.message,
-            coords,
-          });
-          return;
-        }
-      }
-      await submitCheckIn(payload, removeOrphanSelfie);
     });
+  }
+
+  async function uploadAndSubmitSelfie(blob: Blob, coords: { latitude: number; longitude: number }) {
+    const supabase = createSupabaseClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const uid = authData.user?.id;
+    if (!uid) {
+      toast.error(t.checkIn.errGeneric);
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    // Unique per-day-per-user. If a browser re-tries, upsert overwrites
+    // rather than accumulating stale frames.
+    const path = `${uid}/${today}-${crypto.randomUUID()}.${extensionFor(blob)}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("attendance-selfies")
+      .upload(path, blob, { contentType: blob.type, upsert: false });
+    if (uploadErr) {
+      toast.error(t.checkIn.selfieUploadFailed);
+      return;
+    }
+
+    const payload = {
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      selfie_path: path,
+    };
+    const action = pendingActionRef.current;
+
+    // Kalau aksi server gagal (geofence/validasi), selfie yang sudah
+    // ter-upload jadi yatim → hapus lagi (best-effort; GC harian di
+    // cron backup jadi lapis kedua). Sumber kebocoran storage terbesar.
+    const removeOrphanSelfie = () => {
+      void supabase.storage.from("attendance-selfies").remove([path]);
+    };
+
+    // ── Break-out: start a break session ──
+    if (action === "break-out") {
+      const result = await breakOut(payload);
+      if (result?.error) {
+        toast.error(result.error);
+        removeOrphanSelfie();
+        return;
+      }
+      if (result?.data) {
+        setSelfieOpen(false);
+        setBreaks((b) => [...b, result.data as AttendanceBreakLog]);
+        toast.success(t.checkIn.toastBreakOut);
+        onSuccess?.();
+      }
+      return;
+    }
+
+    // ── Break-in: close the open break session ──
+    if (action === "break-in") {
+      const result = await breakIn(payload);
+      if (result?.error) {
+        toast.error(result.error);
+        removeOrphanSelfie();
+        return;
+      }
+      if (result?.data) {
+        const d = result.data as {
+          id: string;
+          late_return: boolean;
+          totalBreakMinutes?: number;
+        };
+        const nowIso = new Date().toISOString();
+        setSelfieOpen(false);
+        setBreaks((b) =>
+          b.map((x) =>
+            x.id === d.id
+              ? { ...x, break_in_at: nowIso, late_return: d.late_return }
+              : x
+          )
+        );
+        // Segarkan total istirahat hari ini — ambang munculnya centang
+        // lembur bergantung padanya. Tanpa ini nilainya tetap seperti
+        // saat halaman dimuat, sehingga centang muncul lebih awal
+        // daripada saat server benar-benar mulai mengkredit.
+        if (typeof d.totalBreakMinutes === "number") {
+          setLog((prev) =>
+            prev
+              ? { ...prev, total_break_minutes: d.totalBreakMinutes! }
+              : prev
+          );
+        }
+        if (d.late_return) toast.warning(t.checkIn.toastBreakInLate);
+        else toast.success(t.checkIn.toastBreakIn);
+        onSuccess?.();
+      }
+      return;
+    }
+
+    // ── Default: normal check-in ──
+    // Filter selfie AI: hanya untuk karyawan yang dikenai aturan (selfieGuide terisi). AI yang
+    // error/lambat dianggap lolos; yang menolak membuka dialog "foto ulang / tetap absen".
+    if (selfieGuide) {
+      const verdict = await verifyCheckInSelfie({ selfie_path: path }).catch(() => null);
+      if (verdict?.status === "reject") {
+        setSelfieReview({
+          path,
+          url: URL.createObjectURL(blob),
+          message: verdict.message,
+          coords,
+        });
+        return;
+      }
+    }
+    await submitCheckIn(payload, removeOrphanSelfie);
   }
 
   /** Kirim check-in ke server dan tampilkan hasilnya (dipakai alur normal & "Tetap absen"). */
@@ -802,6 +815,7 @@ export function CheckInButton({
           if (!o) pendingCoordsRef.current = null;
         }}
         onConfirm={handleSelfieConfirmed}
+        busy={isPending}
         faceGuide={modalAction === "check-in" ? (selfieGuide ?? undefined) : undefined}
         retakeToken={retakeToken}
       />

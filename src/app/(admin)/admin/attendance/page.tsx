@@ -16,6 +16,7 @@ import {
 import { AttendanceRecapTable } from "@/components/admin/AttendanceRecapTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AttendanceTopFilter } from "@/components/admin/AttendanceTopFilter";
+import { SelfieAiStatusButton } from "@/components/admin/SelfieAiStatusButton";
 import { AttendanceSummaryCards } from "@/components/admin/AttendanceSummaryCards";
 import {
   AttendanceViewTabs,
@@ -333,7 +334,8 @@ export default async function AdminAttendancePage({
 
       <div className="flex flex-wrap items-center gap-3">
         <AttendanceViewTabs current={view} />
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <SelfieAiStatusButton />
           <AttendanceTopFilter
             month={month}
             year={year}

@@ -166,6 +166,22 @@ export function guideHint(rules: SelfieRuleSet): string {
   return text[0].toUpperCase() + text.slice(1);
 }
 
+/** Murni: label filter yang menyala, untuk panel status admin. */
+export function describeFilters(f: SelfieFilters): string[] {
+  const out: string[] = [];
+  if (f.face_full) out.push("Wajah penuh");
+  if (f.indoor) out.push("Dalam ruangan, tanpa helm");
+  if (f.no_mask) out.push("Tanpa masker");
+  if (f.apron) out.push("Apron");
+  if (f.lanyard) out.push("Lanyard");
+  return out;
+}
+
+/** Model Gemini yang dipakai (sama dengan yang dipanggil judgeSelfie). */
+export function selfieModelName(): string {
+  return process.env.GEMINI_MODEL || DEFAULT_MODEL;
+}
+
 /** Ada yang perlu diperiksa? (aturan dengan semua filter mati tidak memanggil AI.) */
 export function hasActiveFilters(rules: SelfieRuleSet): boolean {
   const f = rules.filters;

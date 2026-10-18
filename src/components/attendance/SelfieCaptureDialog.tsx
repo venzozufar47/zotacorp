@@ -32,6 +32,8 @@ interface Props {
   faceGuide?: string;
   /** Naikkan angkanya untuk memaksa "foto ulang" dari luar (mis. setelah AI menolak foto). */
   retakeToken?: number;
+  /** Induk sedang mengunggah/memeriksa foto: kunci tombol agar tidak terkirim berulang. */
+  busy?: boolean;
 }
 
 type CameraState = "requesting" | "ready" | "denied" | "unavailable";
@@ -60,6 +62,7 @@ export function SelfieCaptureDialog({
   defaultFacingMode = "user",
   faceGuide,
   retakeToken = 0,
+  busy = false,
 }: Props) {
   const { t } = useTranslation();
   const tc = t.checkIn;
@@ -313,12 +316,16 @@ export function SelfieCaptureDialog({
         <div className="flex gap-2">
           {preview ? (
             <>
-              <Button variant="outline" onClick={retake} className="flex-1">
+              <Button variant="outline" onClick={retake} disabled={busy} className="flex-1">
                 <RotateCcw size={14} className="mr-1.5" />
                 {tc.selfieRetake}
               </Button>
-              <Button onClick={confirm} className="flex-1">
-                <Check size={14} className="mr-1.5" />
+              <Button onClick={confirm} disabled={busy} className="flex-1">
+                {busy ? (
+                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                ) : (
+                  <Check size={14} className="mr-1.5" />
+                )}
                 {tc.selfieUseThis}
               </Button>
             </>
