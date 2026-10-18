@@ -10,7 +10,10 @@ import {
   type RekeningAuthorizers,
 } from "@/lib/actions/cashflow.actions";
 import { adminResetPosPin } from "@/lib/actions/pos-pin.actions";
-import { POS_OPERATIONS, type PosOperation } from "@/lib/pos-pin-format";
+import {
+  POS_CHECKLIST_OPERATIONS,
+  type PosChecklistOperation,
+} from "@/lib/pos-pin-format";
 import {
   isRoleEligible,
   POS_OPERATION_ELIGIBLE_HINT,
@@ -24,10 +27,9 @@ interface Props {
 }
 
 /** Header kolom pendek + label penuh untuk tooltip/summary. */
-const COLS: Record<PosOperation, { short: string; label: string }> = {
+const COLS: Record<PosChecklistOperation, { short: string; label: string }> = {
   production: { short: "Produksi", label: "Produksi — otorisasi setiap entry produksi." },
   withdrawal: { short: "Penarikan", label: "Penarikan — otorisasi setiap penarikan stok." },
-  opname: { short: "Opname", label: "Opname — otorisasi submit stock opname." },
   cake_pickup: { short: "Kue", label: "Serah terima kue — otorisasi penyelesaian pesanan custom cake di kasir." },
   sale_void: { short: "Batal", label: "Pembatalan transaksi — otorisasi pembatalan dari Riwayat." },
 };
@@ -72,7 +74,7 @@ export function RekeningAuthorizersCard({
   // Setelan sekali-jalan — dilipat supaya tidak mendominasi halaman tiap
   // kunjungan. Otomatis terbuka kalau belum ada satu pun yang ditugaskan,
   // supaya admin tetap menemukan fitur ini di rekening baru.
-  const noneAssigned = POS_OPERATIONS.every(
+  const noneAssigned = POS_CHECKLIST_OPERATIONS.every(
     (op) => (initial[op] ?? []).length === 0
   );
   const [open, setOpen] = useState(noneAssigned);
@@ -81,14 +83,14 @@ export function RekeningAuthorizersCard({
   const roleOf = (id: string) =>
     candidates.find((c) => c.userId === id)?.jobRole ?? null;
   // Hanya yang tercentang DAN peran tak pantas — dasar penanda amber.
-  const deviations = POS_OPERATIONS.reduce(
+  const deviations = POS_CHECKLIST_OPERATIONS.reduce(
     (n, op) =>
       n +
       (values[op] ?? []).filter((id) => !isRoleEligible(op, roleOf(id))).length,
     0
   );
 
-  function toggle(op: PosOperation, userId: string) {
+  function toggle(op: PosChecklistOperation, userId: string) {
     setValues((prev) => {
       const current = prev[op] ?? [];
       const next = current.includes(userId)
@@ -132,13 +134,13 @@ export function RekeningAuthorizersCard({
     });
   }
 
-  const dirty = POS_OPERATIONS.some((op) => !sameSet(values[op], initial[op]));
+  const dirty = POS_CHECKLIST_OPERATIONS.some((op) => !sameSet(values[op], initial[op]));
 
   const firstName = (id: string) =>
     candidates.find((c) => c.userId === id)?.fullName?.split(/\s+/)[0] ?? "✓";
 
   // Ringkasan saat terlipat — sekilas pandang tanpa membuka form.
-  const summary = POS_OPERATIONS.map((op) => {
+  const summary = POS_CHECKLIST_OPERATIONS.map((op) => {
     const ids = initial[op] ?? [];
     if (ids.length === 0) return `${COLS[op].short}: —`;
     if (ids.length === 1) return `${COLS[op].short}: ${firstName(ids[0])}`;
@@ -191,6 +193,8 @@ export function RekeningAuthorizersCard({
                 satu yang memasukkan PIN. Kosong = operasi itu tanpa PIN.
                 Sel terkunci = peran tidak sesuai matriks wewenang SOP
                 (arahkan kursor ke judul kolom). PIN Owner selalu diterima.
+                Opname tidak diatur di sini — otorisasinya kasir shift yang
+                bertugas.
               </p>
               <div className="flex items-center gap-3 text-[11px]">
                 <button
@@ -222,7 +226,7 @@ export function RekeningAuthorizersCard({
                       <th className="text-left font-medium text-muted-foreground py-1 px-1 sticky left-0 bg-card">
                         Karyawan
                       </th>
-                      {POS_OPERATIONS.map((op) => (
+                      {POS_CHECKLIST_OPERATIONS.map((op) => (
                         <th
                           key={op}
                           title={`${COLS[op].label}\nSOP: ${POS_OPERATION_ELIGIBLE_HINT[op]}`}
@@ -263,7 +267,7 @@ export function RekeningAuthorizersCard({
                             )}
                           </div>
                         </td>
-                        {POS_OPERATIONS.map((op) => {
+                        {POS_CHECKLIST_OPERATIONS.map((op) => {
                           const on = (values[op] ?? []).includes(c.userId);
                           const eligible = isRoleEligible(op, c.jobRole);
                           // Hanya sel BARU yang tak pantas yang dikunci; yang

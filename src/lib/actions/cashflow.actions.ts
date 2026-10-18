@@ -12,7 +12,7 @@ import { POS_QRIS_CATEGORY } from "@/lib/cashflow/categories";
 import { isCashDashboardReadOnly } from "@/lib/cashflow/cash-branches";
 import {
   isPosOperation,
-  POS_OPERATIONS,
+  POS_CHECKLIST_OPERATIONS,
   type PosOperation,
 } from "@/lib/pos-pin-format";
 
@@ -2524,7 +2524,9 @@ export async function setRekeningAuthorizers(input: {
   // mengandalkan error DB untuk sesuatu yang wajar dikirim UI).
   const rows: Array<{ operation: PosOperation; user_id: string }> = [];
   const everyone = new Set<string>();
-  for (const op of POS_OPERATIONS) {
+  // Opname bukan bagian checklist (otorisasinya kasir shift), jadi sisa baris
+  // opname lama ikut terhapus oleh hapus-lalu-sisipkan di bawah.
+  for (const op of POS_CHECKLIST_OPERATIONS) {
     const ids = Array.from(new Set(input.assignments[op] ?? [])).filter(
       (v): v is string => typeof v === "string" && v.length > 0
     );

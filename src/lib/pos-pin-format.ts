@@ -33,6 +33,20 @@ export const POS_OPERATIONS: readonly PosOperation[] = [
   "sale_void",
 ] as const;
 
+/**
+ * Operasi yang pemegang PIN-nya dipilih admin di kartu "Otorisasi POS".
+ * `opname` sengaja TIDAK ada: otorisasinya milik kasir shift yang bertugas
+ * (PIN shift, lihat `createStockOpname`), bukan authorizer tetap.
+ */
+export type PosChecklistOperation = Exclude<PosOperation, "opname">;
+
+export const POS_CHECKLIST_OPERATIONS: readonly PosChecklistOperation[] = [
+  "production",
+  "withdrawal",
+  "cake_pickup",
+  "sale_void",
+] as const;
+
 export function isPosOperation(v: string): v is PosOperation {
   return (POS_OPERATIONS as readonly string[]).includes(v);
 }

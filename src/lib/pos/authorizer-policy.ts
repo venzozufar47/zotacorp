@@ -1,21 +1,29 @@
 /**
  * Matriks wewenang PIN POS menurut SOP (Dokumen 4 — Kontrol Kas, Stok, dan
- * Matriks Wewenang, bagian 5). Modul murni tanpa dependensi supaya kartu
- * admin (klien) dan pengujian memakai satu sumber.
+ * Matriks Wewenang, bagian 5), disesuaikan keputusan pemilik. Modul murni
+ * tanpa dependensi supaya kartu admin (klien) dan pengujian memakai satu
+ * sumber.
  *
  * Prinsip SOP: yang menyetujui void bukan satu-satunya yang menginput; yang
- * mencatat penarikan tidak sendirian menyetujui opname; Kepala Produksi tidak
+ * mencatat penarikan tidak menyetujui sendirian; Kepala Produksi tidak
  * memegang kas maupun menyetujui void kasir. Karena itu pemegang PIN tiap
  * operasi dibatasi menurut `profiles.job_role`, bukan boleh siapa saja.
  *
- * Owner (admin) selalu sah di semua operasi — ditangani di
- * `verifyOperationPin`, tidak perlu dicentang di kartu.
+ * - Opname TIDAK ada di sini: otorisasinya milik kasir shift yang bertugas.
+ * - Void/Penarikan/Produksi/Kue tetap diinput kasir shift di POS; yang
+ *   dibatasi di sini adalah siapa yang PIN-nya menyetujui.
+ * - Owner (admin) selalu sah — ditangani di `verifyOperationPin`.
  *
- * Kebijakan ini penuntun, bukan pagar mati: Semarang belum punya Koordinator
- * Toko, jadi admin boleh membuat pengecualian secara sadar di kartu.
+ * job_role boleh gabungan ("Baker & Kepala Produksi", "Admin & Koordinator
+ * Toko") sesuai konvensi daftar peran per unit; cukup SATU komponen yang
+ * cocok. Label gabungan memungkinkan jabatan SOP ditambahkan tanpa
+ * menghilangkan "Baker" (akses produksi cake lewat tabel akses terpisah).
+ *
+ * Kebijakan ini penuntun, bukan pagar mati: admin bisa membuat
+ * pengecualian secara sadar di kartu.
  */
 
-import type { PosOperation } from "@/lib/pos-pin-format";
+import type { PosChecklistOperation } from "@/lib/pos-pin-format";
 
 const KOORDINATOR = "Koordinator Toko";
 const KEPALA_PRODUKSI = "Kepala Produksi";
@@ -23,22 +31,34 @@ const KEPALA_PRODUKSI = "Kepala Produksi";
 const STAF_DAPUR = ["Baker", "Staf Dapur"];
 const STAF_DEPAN = "Staf Depan";
 
-export const POS_OPERATION_ELIGIBLE_ROLES: Record<PosOperation, string[]> = {
+export const POS_OPERATION_ELIGIBLE_ROLES: Record<
+  PosChecklistOperation,
+  string[]
+> = {
   sale_void: [KOORDINATOR],
   withdrawal: [KOORDINATOR, KEPALA_PRODUKSI],
   production: [KEPALA_PRODUKSI, ...STAF_DAPUR],
-  opname: [KOORDINATOR],
   cake_pickup: [STAF_DEPAN, KOORDINATOR],
 };
 
 /** Teks pendek di kolom kartu: siapa yang pantas memegang PIN operasi ini. */
-export const POS_OPERATION_ELIGIBLE_HINT: Record<PosOperation, string> = {
+export const POS_OPERATION_ELIGIBLE_HINT: Record<
+  PosChecklistOperation,
+  string
+> = {
   sale_void: "Koordinator Toko + Owner",
   withdrawal: "Koordinator Toko, Kepala Produksi + Owner",
   production: "Kepala Produksi + 1 staf dapur senior + Owner",
-  opname: "Koordinator Toko + Owner",
   cake_pickup: "Staf Depan + Koordinator Toko",
 };
+
+/** "Baker & Kepala Produksi" → ["Baker", "Kepala Produksi"]. */
+function roleParts(jobRole: string): string[] {
+  return jobRole
+    .split("&")
+    .map((r) => r.trim())
+    .filter(Boolean);
+}
 
 /**
  * Apakah peran ini pantas mengotorisasi operasi tsb menurut SOP.
@@ -47,10 +67,10 @@ export const POS_OPERATION_ELIGIBLE_HINT: Record<PosOperation, string> = {
  * membuka wewenang.
  */
 export function isRoleEligible(
-  op: PosOperation,
+  op: PosChecklistOperation,
   jobRole: string | null | undefined
 ): boolean {
-  const role = jobRole?.trim();
-  if (!role) return false;
-  return POS_OPERATION_ELIGIBLE_ROLES[op].includes(role);
+  if (!jobRole) return false;
+  const allowed = POS_OPERATION_ELIGIBLE_ROLES[op];
+  return roleParts(jobRole).some((r) => allowed.includes(r));
 }
