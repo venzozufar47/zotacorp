@@ -64,6 +64,8 @@ import Link from "next/link";
 import { Brain, FileSignature, Ticket as TicketIcon, PackageSearch } from "lucide-react";
 import { isProcurementStaff } from "@/lib/procurement/access";
 import { getProcurementDashboardBadge } from "@/lib/actions/procurement.actions";
+import { getMyCashClosingBranchStatuses } from "@/lib/actions/cash-closing.actions";
+import { CashClosingCard } from "@/components/dashboard/CashClosingCard";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -141,6 +143,7 @@ export default async function DashboardPage() {
     missedCheckouts,
     payslipBasisRes,
     myTasks,
+    cashClosingStatuses,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -187,6 +190,7 @@ export default async function DashboardPage() {
       .eq("user_id", user.id)
       .maybeSingle(),
     getMyOpenTasks(),
+    getMyCashClosingBranchStatuses(),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -448,6 +452,10 @@ export default async function DashboardPage() {
       <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
 
       <CleaningChecklistCard initial={cleaningTasks} />
+
+      {/* Status tutup kas hari ini (per cabang yang bisa diakses). Render
+          sendiri nol kalau user bukan staf POS Haengbocake. */}
+      <CashClosingCard statuses={cashClosingStatuses} />
 
       {/* Tanggung jawab berjalan, bukan aksi hari ini — jadi masuk
           kelompok panel substantif, bukan tumpukan banner di atas.
