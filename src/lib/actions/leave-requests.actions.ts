@@ -19,7 +19,7 @@ import { LEAVE_KIND_LABEL } from "@/lib/leave/constants";
  * `getLeaveRequestsSummary` untuk ringkasannya.
  *
  * `leave_requests` / `team_members` belum di generated `Database` type —
- * sama pola dengan `cash-closing.actions.ts`: admin client di-cast `any`
+ * sama pola dengan `pos-shift.actions.ts`: admin client di-cast `any`
  * khusus untuk tabel-tabel itu.
  */
 

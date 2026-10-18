@@ -10,7 +10,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 /**
  * Scorecard Cabang (PRD-2) — 4 angka cabang (Dokumen 4 §6 / Rencana Tim
  * Mandiri bagian 4), dihitung LIVE dari data yang sudah ada (pos_sales,
- * pos_stock_movements, cash_closings dari PRD-1, customer_complaints dari
+ * pos_stock_movements, pos_shifts (selisih kas tutup shift), customer_complaints dari
  * PRD-3) — TIDAK ADA tabel snapshot baru. "2 minggu merah berturut-turut"
  * (bagian 4) dicek dengan menghitung ulang minggu lalu dari data historis
  * yang sama, bukan dari snapshot tersimpan — semua sumbernya punya
@@ -123,18 +123,25 @@ async function computeWastePercent(
   return produced > 0 ? (wasted / produced) * 100 : 0;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Jumlah HARI (30 hari terakhir) yang punya selisih hitungan kas saat tutup shift. Sumbernya shift kasir
+ * (`pos_shifts`) — bukan tutup kas harian lama. Shift yang ditutup paksa tidak punya hitungan, jadi tidak
+ * ikut dihitung (bukan selisih kasir).
+ */
 async function countCashDiffDays(bankAccountId: string, asOf: string): Promise<number> {
   const since = addDays(asOf, -29);
-  const admin = createAdminClient() as any;
-  const { count } = await admin
-    .from("cash_closings")
-    .select("id", { count: "exact", head: true })
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("pos_shifts")
+    .select("closed_at")
     .eq("bank_account_id", bankAccountId)
-    .neq("cash_diff", 0)
-    .gte("closing_date", since)
-    .lte("closing_date", asOf);
-  return count ?? 0;
+    .eq("status", "closed")
+    .is("forced_by", null)
+    .not("close_cash_diff", "is", null)
+    .neq("close_cash_diff", 0)
+    .gte("closed_at", `${since}T00:00:00+07:00`)
+    .lte("closed_at", `${asOf}T23:59:59+07:00`);
+  return new Set((data ?? []).map((r) => jakartaDateString(new Date(r.closed_at as string)))).size;
 }
 
 function wasteBand(pct: number): ScorecardBand {

@@ -19,6 +19,7 @@ import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
 import { POSClient } from "@/components/pos/POSClient";
+import { resolvePosShiftView } from "@/components/pos/shift-view";
 
 /**
  * Entry page POS per-cabang (`/pospare`, `/possemarang` → route internal
@@ -45,6 +46,16 @@ export default async function PosPage({
 
   const account = await findPosAccount(branch);
   if (!account) redirect("/");
+
+  // Gerbang kunci (mode shift): tanpa shift terbuka / sesi insidentil, POS menampilkan layar kunci.
+  const view = await resolvePosShiftView({
+    bankAccountId: account.id,
+    accountName: account.accountName,
+    basePath,
+    userId: user.id,
+    isAdmin: (await getCurrentRole()) === "admin",
+  });
+  if (!view.usable) return view.locked;
 
   const [
     products,
@@ -99,6 +110,8 @@ export default async function PosPage({
         dailyRevenueRes && dailyRevenueRes.ok ? dailyRevenueRes.data : null
       }
       cashierName={cashierDisplayName(profile?.nickname, profile?.full_name)}
+      fixedCashierName={view.fixedCashierName ?? null}
+      shiftSlot={view.shiftSlot}
       receiptContent={receiptContent}
       products={products}
       isAdmin={role === "admin"}

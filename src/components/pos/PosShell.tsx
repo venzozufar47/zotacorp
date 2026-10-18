@@ -71,6 +71,7 @@ export function PosShell({
   subtitle,
   actions,
   showShiftPill = true,
+  shiftSlot,
   children,
 }: {
   outletName: string;
@@ -89,6 +90,8 @@ export function PosShell({
   actions?: React.ReactNode;
   /** Set ke false di sub-pages tanpa konteks shift aktif (misal /pos/produk). */
   showShiftPill?: boolean;
+  /** Mode shift: kendali shift menggantikan pill statis. undefined = pill lama; null = tanpa pill. */
+  shiftSlot?: React.ReactNode | null;
   children: React.ReactNode;
 }) {
   const visible = insightsOnly
@@ -123,12 +126,14 @@ export function PosShell({
             {outletName}
           </p>
         </div>
-        {showShiftPill && (
-          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/15 text-success border border-success/30 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
-            <span className="size-1.5 rounded-full bg-success animate-pulse" />
-            Shift aktif
-          </span>
-        )}
+        {shiftSlot !== undefined
+          ? shiftSlot
+          : showShiftPill && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/15 text-success border border-success/30 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
+                <span className="size-1.5 rounded-full bg-success animate-pulse" />
+                Shift aktif
+              </span>
+            )}
       </header>
 
       {/* Left rail (desktop) */}

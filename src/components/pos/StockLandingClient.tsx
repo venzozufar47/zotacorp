@@ -36,6 +36,10 @@ interface Props {
   excluded: ExcludedStockProduct[];
   authorizers: PosAuthorizerMap;
   isAdmin: boolean;
+  /** Mode shift: pill/kendali shift di top bar. undefined = pill lama. */
+  shiftSlot?: React.ReactNode | null;
+  /** Mode shift menyala: opname dilakukan di dalam buka/tutup shift, jadi tombol "Opname Baru" disembunyikan. */
+  shiftMode?: boolean;
 }
 
 const TABS: { id: Tab; label: string }[] = [
@@ -57,6 +61,8 @@ export function StockLandingClient({
   excluded,
   authorizers,
   isAdmin,
+  shiftSlot,
+  shiftMode = false,
 }: Props) {
   const [tab, setTab] = useState<Tab>("on-hand");
   const [dialog, setDialog] = useState<"production" | "withdrawal" | null>(null);
@@ -80,6 +86,7 @@ export function StockLandingClient({
       active="stok"
       title="Stok"
       subtitle="kelola on-hand, produksi, penarikan & opname"
+      shiftSlot={shiftSlot}
     >
       <div className="max-w-5xl mx-auto px-3 sm:px-5 py-5 space-y-3.5">
 
@@ -148,7 +155,9 @@ export function StockLandingClient({
         />
       )}
 
-      {tab === "opname" && <OpnamePanel rows={opnames} basePath={basePath} />}
+      {tab === "opname" && (
+        <OpnamePanel rows={opnames} basePath={basePath} allowNew={!shiftMode} />
+      )}
 
       {tab === "pantauan" && (
         <StockReadinessView bankAccountId={bankAccountId} />
@@ -514,18 +523,26 @@ function MovementPanel({
 function OpnamePanel({
   rows,
   basePath,
+  allowNew,
 }: {
   rows: StockOpnameSummary[];
   basePath: string;
+  allowNew: boolean;
 }) {
   return (
     <div className="space-y-3">
-      <PosNavLink
-        href={`${basePath}/stok/opname/new`}
-        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium hover:opacity-90"
-      >
-        <Plus size={14} /> Opname Baru
-      </PosNavLink>
+      {allowNew ? (
+        <PosNavLink
+          href={`${basePath}/stok/opname/new`}
+          className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium hover:opacity-90"
+        >
+          <Plus size={14} /> Opname Baru
+        </PosNavLink>
+      ) : (
+        <p className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-2.5 text-center text-xs text-muted-foreground">
+          Opname dilakukan saat buka dan tutup shift.
+        </p>
+      )}
       {rows.length === 0 ? (
         <Empty text="Belum ada opname." />
       ) : (

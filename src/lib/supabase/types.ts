@@ -1011,6 +1011,7 @@ export type Database = {
           service_level_enabled: boolean
           service_level_open_hour: number
           service_level_target: number
+          shift_mode_enabled: boolean
           source_sheet: string | null
           source_url: string | null
           token_kwh_critical_threshold: number | null
@@ -1040,6 +1041,7 @@ export type Database = {
           service_level_enabled?: boolean
           service_level_open_hour?: number
           service_level_target?: number
+          shift_mode_enabled?: boolean
           source_sheet?: string | null
           source_url?: string | null
           token_kwh_critical_threshold?: number | null
@@ -1069,6 +1071,7 @@ export type Database = {
           service_level_enabled?: boolean
           service_level_open_hour?: number
           service_level_target?: number
+          shift_mode_enabled?: boolean
           source_sheet?: string | null
           source_url?: string | null
           token_kwh_critical_threshold?: number | null
@@ -7190,6 +7193,7 @@ export type Database = {
         Row: {
           bank_account_id: string
           cashflow_transaction_id: string | null
+          cashier_id: string | null
           created_at: string
           created_by: string | null
           customer_name: string | null
@@ -7206,6 +7210,7 @@ export type Database = {
           settled_at: string | null
           settled_by: string | null
           settled_via: string | null
+          shift_id: string | null
           total: number
           void_reason: string | null
           voided_at: string | null
@@ -7215,6 +7220,7 @@ export type Database = {
         Insert: {
           bank_account_id: string
           cashflow_transaction_id?: string | null
+          cashier_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_name?: string | null
@@ -7231,6 +7237,7 @@ export type Database = {
           settled_at?: string | null
           settled_by?: string | null
           settled_via?: string | null
+          shift_id?: string | null
           total: number
           void_reason?: string | null
           voided_at?: string | null
@@ -7240,6 +7247,7 @@ export type Database = {
         Update: {
           bank_account_id?: string
           cashflow_transaction_id?: string | null
+          cashier_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_name?: string | null
@@ -7256,6 +7264,7 @@ export type Database = {
           settled_at?: string | null
           settled_by?: string | null
           settled_via?: string | null
+          shift_id?: string | null
           total?: number
           void_reason?: string | null
           voided_at?: string | null
@@ -7278,6 +7287,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pos_sales_cashier_id_fkey"
+            columns: ["cashier_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_cashier_id_fkey"
+            columns: ["cashier_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pos_sales_discount_campaign_id_fkey"
             columns: ["discount_campaign_id"]
             isOneToOne: false
@@ -7296,6 +7319,13 @@ export type Database = {
             columns: ["settled_by"]
             isOneToOne: false
             referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_sales_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "pos_shifts"
             referencedColumns: ["id"]
           },
           {
@@ -7502,6 +7532,227 @@ export type Database = {
           },
         ]
       }
+      pos_shift_expenses: {
+        Row: {
+          amount: number
+          cashflow_transaction_id: string | null
+          category: string
+          created_at: string
+          entered_by: string
+          id: string
+          note: string
+          phase: string
+          photo_path: string | null
+          shift_id: string
+        }
+        Insert: {
+          amount: number
+          cashflow_transaction_id?: string | null
+          category: string
+          created_at?: string
+          entered_by: string
+          id?: string
+          note: string
+          phase: string
+          photo_path?: string | null
+          shift_id: string
+        }
+        Update: {
+          amount?: number
+          cashflow_transaction_id?: string | null
+          category?: string
+          created_at?: string
+          entered_by?: string
+          id?: string
+          note?: string
+          phase?: string
+          photo_path?: string | null
+          shift_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_shift_expenses_cashflow_transaction_id_fkey"
+            columns: ["cashflow_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shift_expenses_entered_by_fkey"
+            columns: ["entered_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shift_expenses_entered_by_fkey"
+            columns: ["entered_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shift_expenses_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "pos_shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pos_shifts: {
+        Row: {
+          bank_account_id: string
+          cashier_id: string
+          close_cash_counted: number | null
+          close_cash_diff: number | null
+          close_cash_expected: number | null
+          close_notes: string | null
+          close_opname_id: string | null
+          closed_at: string | null
+          closed_by_user: string | null
+          created_at: string
+          force_reason: string | null
+          forced_by: string | null
+          id: string
+          incidental_report: Json | null
+          open_cash_counted: number
+          open_cash_diff: number | null
+          open_cash_expected: number | null
+          open_notes: string | null
+          open_opname_id: string | null
+          opened_at: string
+          opened_by_user: string | null
+          status: string
+        }
+        Insert: {
+          bank_account_id: string
+          cashier_id: string
+          close_cash_counted?: number | null
+          close_cash_diff?: number | null
+          close_cash_expected?: number | null
+          close_notes?: string | null
+          close_opname_id?: string | null
+          closed_at?: string | null
+          closed_by_user?: string | null
+          created_at?: string
+          force_reason?: string | null
+          forced_by?: string | null
+          id?: string
+          incidental_report?: Json | null
+          open_cash_counted: number
+          open_cash_diff?: number | null
+          open_cash_expected?: number | null
+          open_notes?: string | null
+          open_opname_id?: string | null
+          opened_at?: string
+          opened_by_user?: string | null
+          status?: string
+        }
+        Update: {
+          bank_account_id?: string
+          cashier_id?: string
+          close_cash_counted?: number | null
+          close_cash_diff?: number | null
+          close_cash_expected?: number | null
+          close_notes?: string | null
+          close_opname_id?: string | null
+          closed_at?: string | null
+          closed_by_user?: string | null
+          created_at?: string
+          force_reason?: string | null
+          forced_by?: string | null
+          id?: string
+          incidental_report?: Json | null
+          open_cash_counted?: number
+          open_cash_diff?: number | null
+          open_cash_expected?: number | null
+          open_notes?: string | null
+          open_opname_id?: string | null
+          opened_at?: string
+          opened_by_user?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pos_shifts_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_cashier_id_fkey"
+            columns: ["cashier_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_cashier_id_fkey"
+            columns: ["cashier_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_close_opname_id_fkey"
+            columns: ["close_opname_id"]
+            isOneToOne: false
+            referencedRelation: "pos_stock_opnames"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_closed_by_user_fkey"
+            columns: ["closed_by_user"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_closed_by_user_fkey"
+            columns: ["closed_by_user"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_forced_by_fkey"
+            columns: ["forced_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_forced_by_fkey"
+            columns: ["forced_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_open_opname_id_fkey"
+            columns: ["open_opname_id"]
+            isOneToOne: false
+            referencedRelation: "pos_stock_opnames"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_opened_by_user_fkey"
+            columns: ["opened_by_user"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_shifts_opened_by_user_fkey"
+            columns: ["opened_by_user"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pos_stock_movements: {
         Row: {
           bank_account_id: string
@@ -7639,6 +7890,7 @@ export type Database = {
           notes: string | null
           opname_date: string
           opname_time: string | null
+          performed_by: string | null
         }
         Insert: {
           bank_account_id: string
@@ -7648,6 +7900,7 @@ export type Database = {
           notes?: string | null
           opname_date: string
           opname_time?: string | null
+          performed_by?: string | null
         }
         Update: {
           bank_account_id?: string
@@ -7657,6 +7910,7 @@ export type Database = {
           notes?: string | null
           opname_date?: string
           opname_time?: string | null
+          performed_by?: string | null
         }
         Relationships: [
           {
@@ -7664,6 +7918,20 @@ export type Database = {
             columns: ["bank_account_id"]
             isOneToOne: false
             referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_stock_opnames_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pos_stock_opnames_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_celebrations_public"
             referencedColumns: ["id"]
           },
         ]

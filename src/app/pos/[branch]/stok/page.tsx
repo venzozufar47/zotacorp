@@ -12,6 +12,7 @@ import {
 } from "@/lib/actions/pos-stock.actions";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import { StockLandingClient } from "@/components/pos/StockLandingClient";
+import { resolvePosShiftView } from "@/components/pos/shift-view";
 
 export default async function PosStockPage({
   params,
@@ -28,6 +29,16 @@ export default async function PosStockPage({
 
   const account = await findPosAccount(branch);
   if (!account) redirect("/");
+
+  const view = await resolvePosShiftView({
+    bankAccountId: account.id,
+    accountName: account.accountName,
+    basePath,
+    userId: user.id,
+    isAdmin: (await getCurrentRole()) === "admin",
+  });
+  // Admin boleh memantau halaman ini walau POS terkunci.
+  if (!view.usable && (await getCurrentRole()) !== "admin") redirect(basePath);
 
   const [onHand, movements, opnames, products, excluded, authorizers, role] =
     await Promise.all([
@@ -61,6 +72,8 @@ export default async function PosStockPage({
       excluded={excluded}
       authorizers={authorizers}
       isAdmin={role === "admin"}
+      shiftSlot={view.shiftSlot}
+      shiftMode={view.gate.mode !== "off"}
     />
   );
 }

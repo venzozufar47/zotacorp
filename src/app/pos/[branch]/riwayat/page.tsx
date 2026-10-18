@@ -27,6 +27,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { formatTime } from "@/lib/utils/date";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { sugarLevelLabel } from "@/lib/pos/sugar-levels";
+import { loadPosGate, isPosUsable } from "@/lib/pos/shift-gate";
 
 function formatDateLong(iso: string): string {
   const d = new Date(iso + "T00:00:00");
@@ -67,6 +68,9 @@ export default async function PosRiwayatPage({
 
   const role = await getCurrentRole();
   const isAdmin = role === "admin";
+
+  // Admin boleh memantau riwayat walau POS terkunci.
+  if (!isAdmin && !isPosUsable(await loadPosGate(account.id, user.id))) redirect(basePath);
 
   const receiptContent =
     (await getPosReceiptConfig(account.id).catch(() => null)) ??

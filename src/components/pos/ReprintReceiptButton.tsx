@@ -46,7 +46,10 @@ export function ReprintReceiptButton({
       if (Number.isNaN(saleAt.getTime())) {
         saleAt = new Date(`${sale.saleDate}T00:00:00+07:00`);
       }
-      data.cashierName = resolveCashierName(branch, saleAt, sale.cashierName);
+      // Sale dari sistem shift menyimpan kasirnya; sale lama (Pare) tetap mengikuti jadwal pada waktu itu.
+      data.cashierName = sale.cashierIsShift
+        ? sale.cashierName
+        : resolveCashierName(branch, saleAt, sale.cashierName);
       await sendToPrinter(buildReceiptBytes(data), loadReceiptTransport().method);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal memicu cetak");

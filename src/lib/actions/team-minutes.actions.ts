@@ -16,7 +16,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
  *
  * `team_huddles` / `team_weekly_minutes` / `team_minutes_acks` belum di
  * generated `Database` type — pola `db(): any` sama dengan
- * `cash-closing.actions.ts` dan `leave-requests.actions.ts`.
+ * `pos-shift.actions.ts` dan `leave-requests.actions.ts`.
  */
 
 export type ActionResult<T = undefined> =

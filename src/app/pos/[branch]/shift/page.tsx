@@ -8,6 +8,8 @@ import {
 } from "@/lib/actions/pos.actions";
 import { posBranchFromParam, posBasePath } from "@/lib/pos/branch";
 import PosShiftClient from "@/components/pos/PosShiftClient";
+import { resolvePosShiftView } from "@/components/pos/shift-view";
+import { listRecentShifts } from "@/lib/actions/pos-shift.actions";
 
 export default async function PosShiftPage({
   params,
@@ -31,12 +33,26 @@ export default async function PosShiftPage({
   ]);
   if (!result.ok || !result.data) redirect("/");
 
+  // Halaman Saldo tidak dikunci (cek saldo/riwayat shift boleh kapan saja); mode shift hanya mengubah
+  // tombol "Tutup shift" dan menambah riwayat shift (admin & assignee penuh).
+  const view = await resolvePosShiftView({
+    bankAccountId: account.id,
+    accountName: account.accountName,
+    basePath,
+    userId: user.id,
+    isAdmin: role === "admin",
+  });
+  const history = view.gate.mode === "off" ? [] : await listRecentShifts(account.id);
+
   return (
     <PosShiftClient
       accountName={account.accountName}
       basePath={basePath}
       summary={result.data}
       isAdmin={role === "admin"}
+      shiftSlot={view.shiftSlot}
+      shiftMode={view.gate.mode !== "off"}
+      history={history}
     />
   );
 }

@@ -81,6 +81,10 @@ interface Props {
   branch?: string | null;
   /** Nama kasir (opsional) — dicetak di struk. */
   cashierName?: string | null;
+  /** Mode shift menyala: nama di struk = kasir shift (atau akun login bila insidentil), TIDAK mengikuti jadwal. */
+  fixedCashierName?: string | null;
+  /** Kendali shift di top bar (pill + Tutup shift / Keluar insidentil). undefined = tampilan lama. */
+  shiftSlot?: React.ReactNode | null;
   /** Ringkasan Service Level dari snapshot. null = fitur mati / gagal
    *  dibaca — komponennya tidak dirender, layar kasir tetap utuh. */
   serviceLevel?: ServiceLevelSummary | null;
@@ -194,6 +198,8 @@ export function POSClient({
   basePath,
   branch = null,
   cashierName = null,
+  fixedCashierName = null,
+  shiftSlot,
   serviceLevel = null,
   dailyRevenue = null,
   receiptContent,
@@ -669,8 +675,8 @@ export function POSClient({
         branch: effBranch,
         address: rc.address,
         datetime: formatReceiptDateTime(now),
-        // Cabang Pare pakai jadwal shift; cabang lain pakai nama akun login.
-        cashierName: resolveCashierName(branch, now, cashierName),
+        // Mode shift: kasir shift. Selain itu cabang Pare pakai jadwal; cabang lain nama akun login.
+        cashierName: fixedCashierName ?? resolveCashierName(branch, now, cashierName),
         customerName: customerName.trim(),
         fulfillment: fulfillmentType,
         items: cartLines.map((l) => ({
@@ -1202,10 +1208,14 @@ export function POSClient({
             {accountName}
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/15 text-success border border-success/30 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
-          <span className="size-1.5 rounded-full bg-success animate-pulse" />
-          Shift aktif
-        </span>
+        {shiftSlot === undefined ? (
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/15 text-success border border-success/30 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
+            <span className="size-1.5 rounded-full bg-success animate-pulse" />
+            Shift aktif
+          </span>
+        ) : (
+          shiftSlot
+        )}
         <button
           type="button"
           onClick={() => setStrukSettingsOpen(true)}

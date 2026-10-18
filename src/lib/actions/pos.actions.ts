@@ -20,6 +20,8 @@ import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
 import { cashierDisplayName } from "@/lib/pos/cashier-schedule";
+import { createAdminClient as createShiftAdminClient } from "./_supabase-admin";
+import { saleShiftContext } from "@/lib/pos/shift-data";
 
 type PosProductUpdate = Database["public"]["Tables"]["pos_products"]["Update"];
 type PosProductVariantUpdate =
@@ -141,6 +143,9 @@ export interface PosSaleSummary {
   /** Nama panggilan kasir pembuat sale (dari profil `created_by`), untuk cetak ulang struk
    *  cabang yang tidak dijadwal (Semarang). Null bila tak terbaca. */
   cashierName: string | null;
+  /** true = `cashierName` adalah kasir shift (pos_sales.cashier_id), bukan sekadar akun pembuat — struk
+   *  memakainya apa adanya. false = sale lama: nama struk Pare tetap mengikuti jadwal. */
+  cashierIsShift: boolean;
   /** Untuk QRIS: status upload bukti foto nota customer ke
    *  `cashflow_transactions.attachment_path`. Null kalau sale bukan
    *  QRIS atau tidak punya cashflow_transaction_id (edge case).
@@ -689,6 +694,9 @@ export async function createPosSale(input: {
   const gate = await requireAdminOrPosAssignee(input.bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
+  // Mode shift: tempelkan shift berjalan + kasirnya (atau akun login bila insidentil). Null/null bila mati.
+  const shiftCtx = await saleShiftContext(createShiftAdminClient(), input.bankAccountId, gate.userId);
+
   const supabase = await createClient();
 
   // 1. Load produk katalog yang direferensikan (validasi milik rekening
@@ -928,6 +936,8 @@ export async function createPosSale(input: {
       discount_amount: discountAmount,
       discount_campaign_id: campaign?.id ?? null,
       created_by: gate.userId,
+      shift_id: shiftCtx.shiftId,
+      cashier_id: shiftCtx.cashierId,
       customer_name: input.customerName.trim(),
       fulfillment_type: input.fulfillmentType,
       payment_status: isPesanan ? "pending" : "paid",
@@ -1178,7 +1188,7 @@ export async function listPosSaleDates(
  * full history (insights, dll).
  */
 const POS_SALE_LIST_COLUMNS =
-  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at, created_by" as const;
+  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at, created_by, cashier_id" as const;
 
 export async function listRecentPosSales(
   bankAccountId: string,
@@ -1217,6 +1227,7 @@ export async function listRecentPosSales(
     settled_via: SettleVia | null;
     settled_at: string | null;
     created_by: string | null;
+    cashier_id: string | null;
   };
   let sales: SaleRow[] = [];
   if (saleDate) {
@@ -1277,7 +1288,11 @@ export async function listRecentPosSales(
   // hanya nama & nickname yang diambil, dan sale-nya sudah lolos gate rekening di atas).
   const cashierByUser = new Map<string, string | null>();
   const creatorIds = Array.from(
-    new Set(sales.map((s) => s.created_by).filter((v): v is string => !!v))
+    new Set(
+      sales
+        .map((s) => s.cashier_id ?? s.created_by)
+        .filter((v): v is string => !!v)
+    )
   );
   if (creatorIds.length > 0) {
     try {
@@ -1421,7 +1436,11 @@ export async function listRecentPosSales(
     voidedAt: s.voided_at,
     voidReason: s.void_reason,
     voidedByName: s.voided_by_name,
-    cashierName: s.created_by ? cashierByUser.get(s.created_by) ?? null : null,
+    cashierName:
+      s.cashier_id ?? s.created_by
+        ? cashierByUser.get((s.cashier_id ?? s.created_by) as string) ?? null
+        : null,
+    cashierIsShift: !!s.cashier_id,
     // Untuk QRIS selalu return boolean (true/false) supaya badge muncul
     // di UI — termasuk sale lama yang mungkin tidak punya
     // cashflow_transaction_id (data pre-link). Null khusus untuk cash

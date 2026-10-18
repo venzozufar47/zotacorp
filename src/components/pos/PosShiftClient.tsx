@@ -9,12 +9,20 @@ import type { PosShiftSummary } from "@/lib/actions/pos.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { formatDateTime } from "@/lib/utils/date";
 import { useRealtimeRefresh } from "@/lib/realtime/use-realtime-refresh";
+import type { ShiftHistoryRow } from "@/lib/actions/pos-shift.actions";
+import { describeCashDiff } from "@/lib/pos/shift-math";
 
 interface Props {
   accountName: string;
   basePath: string;
   summary: PosShiftSummary;
   isAdmin: boolean;
+  /** Mode shift: kendali shift di top bar (menggantikan pill lama). undefined = tampilan lama. */
+  shiftSlot?: React.ReactNode | null;
+  /** Mode shift menyala: "Tutup shift" lewat top bar, bukan tautan ke opname lama. */
+  shiftMode?: boolean;
+  /** Riwayat shift terbaru (hanya admin & assignee penuh yang mendapat isi). */
+  history?: ShiftHistoryRow[];
 }
 
 export default function PosShiftClient({
@@ -22,6 +30,9 @@ export default function PosShiftClient({
   basePath,
   summary,
   isAdmin,
+  shiftSlot,
+  shiftMode = false,
+  history = [],
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -78,13 +89,15 @@ export default function PosShiftClient({
         <RefreshCw size={13} className={isPending ? "animate-spin" : ""} />
         Refresh
       </button>
-      <PosNavLink
-        href={`${basePath}/stok/opname/new`}
-        className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-3 h-9 text-xs font-semibold hover:translate-x-[1px] hover:translate-y-[1px] transition-transform whitespace-nowrap"
-      >
-        <CheckCircle2 size={13} />
-        Tutup shift
-      </PosNavLink>
+      {!shiftMode && (
+        <PosNavLink
+          href={`${basePath}/stok/opname/new`}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground border-2 border-foreground px-3 h-9 text-xs font-semibold hover:translate-x-[1px] hover:translate-y-[1px] transition-transform whitespace-nowrap"
+        >
+          <CheckCircle2 size={13} />
+          Tutup shift
+        </PosNavLink>
+      )}
     </>
   );
 
@@ -97,6 +110,7 @@ export default function PosShiftClient({
       title="Cek Saldo Shift"
       subtitle={`${formatDateTime(asOf)} WIB`}
       actions={actions}
+      shiftSlot={shiftSlot}
     >
       <div className="max-w-5xl mx-auto px-3 sm:px-5 py-5 space-y-3.5">
         {openingTill === null ? (
@@ -195,8 +209,50 @@ export default function PosShiftClient({
             </div>
           </>
         )}
+
+        {history.length > 0 && <ShiftHistory rows={history} />}
       </div>
     </PosShell>
+  );
+}
+
+function wib(iso: string): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(iso));
+}
+
+function ShiftHistory({ rows }: { rows: ShiftHistoryRow[] }) {
+  return (
+    <div className="rounded-2xl border-2 border-foreground bg-card p-4 shadow-[3px_3px_0_0_var(--foreground)] space-y-2">
+      <h3 className="text-sm font-bold text-foreground">Riwayat shift</h3>
+      <div className="divide-y divide-border">
+        {rows.map((r) => (
+          <div key={r.id} className="py-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-medium text-foreground">{r.cashierName}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {wib(r.openedAt)} → {r.closedAt ? wib(r.closedAt) : "berjalan"}
+              </span>
+            </div>
+            <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+              <span>Buka: {describeCashDiff(r.openDiff)}</span>
+              <span>{r.forced ? "Ditutup paksa" : `Tutup: ${r.status === "open" ? "—" : describeCashDiff(r.closeDiff)}`}</span>
+              {r.expensesCount > 0 && (
+                <span>
+                  {r.expensesCount} pengeluaran · {formatRp(r.expensesTotal)}
+                </span>
+              )}
+              {r.forced && r.forceReason && <span>Alasan: {r.forceReason}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

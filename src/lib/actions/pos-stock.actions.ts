@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "./_supabase-admin";
+import { verifyShiftCashier } from "@/lib/pos/shift-data";
 import {
   requireAdminOrPosAssignee,
   type ActionResult,
@@ -492,6 +494,11 @@ export async function createStockOpname(input: {
   }>;
   /** Authorizer's PIN. Required when rekening has `opname_authorizer_id` set. */
   pin?: string;
+  /**
+   * Opname di dalam buka/tutup shift: kasir shift (yang PIN-nya diverifikasi di sini) otomatis berhak
+   * mengopname — tidak harus authorizer opname. Menggantikan `pin` di atas. Dicatat di `performed_by`.
+   */
+  shiftCashier?: { userId: string; pin: string };
   /** Set true setelah admin/kasir konfirmasi modal discrepancy.
    *  Tanpa flag ini, opname dengan selisih akan ditolak supaya
    *  kasir tidak sembarangan commit selisih. */
@@ -515,8 +522,20 @@ export async function createStockOpname(input: {
     if (!Number.isInteger(it.physicalCount) || it.physicalCount < 0)
       return { ok: false, error: "Jumlah fisik harus bilangan bulat ≥ 0" };
   }
-  const auth = await verifyOperationPin(input.bankAccountId, "opname", input.pin);
-  if (!auth.ok) return { ok: false, error: auth.error };
+  let performedBy: string | null = null;
+  if (input.shiftCashier) {
+    const cashier = await verifyShiftCashier(
+      createAdminClient(),
+      input.bankAccountId,
+      input.shiftCashier.userId,
+      input.shiftCashier.pin
+    );
+    if (!cashier.ok) return { ok: false, error: cashier.error };
+    performedBy = input.shiftCashier.userId;
+  } else {
+    const auth = await verifyOperationPin(input.bankAccountId, "opname", input.pin);
+    if (!auth.ok) return { ok: false, error: auth.error };
+  }
 
   const supabase = await createClient();
 
@@ -640,6 +659,7 @@ export async function createStockOpname(input: {
       opname_time: jakartaHHMM(now),
       notes: input.notes?.trim() || null,
       created_by: gate.userId,
+      performed_by: performedBy,
     })
     .select("id")
     .single();

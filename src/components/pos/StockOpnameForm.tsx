@@ -20,6 +20,16 @@ interface Props {
   skus: OpnameFormSku[];
   /** Siapa saja yang PIN-nya diterima untuk opname. Kosong = tanpa PIN. */
   authorizers: PosAuthorizerRef[];
+  /**
+   * Dipakai di dalam buka/tutup shift: kasir shift (PIN-nya sudah diverifikasi) mengopname, tanpa dialog PIN
+   * authorizer dan tanpa pindah halaman — hasilnya dikembalikan lewat `onDone`.
+   */
+  shift?: {
+    cashierId: string;
+    pin: string;
+    title: string;
+    onDone: (opnameId: string) => void;
+  };
 }
 
 function skuKey(s: OpnameFormSku) {
@@ -36,6 +46,7 @@ export function StockOpnameForm({
   basePath,
   skus,
   authorizers,
+  shift,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -119,6 +130,7 @@ export function StockOpnameForm({
         notes: notes.trim() || undefined,
         items,
         pin,
+        shiftCashier: shift ? { userId: shift.cashierId, pin: shift.pin } : undefined,
         allowDiscrepancy: opts?.allowDiscrepancy,
         payShortfallCash: opts?.payShortfallCash,
       });
@@ -144,6 +156,10 @@ export function StockOpnameForm({
       toast.success("Opname tersimpan");
       setPinOpen(false);
       setDiscrepancy(null);
+      if (shift) {
+        shift.onDone(res.data!.opnameId!);
+        return;
+      }
       router.push(`${basePath}/stok/opname/${res.data!.opnameId}`);
     });
   }
@@ -152,7 +168,7 @@ export function StockOpnameForm({
     e.preventDefault();
     if (includedSkus.length === 0)
       return toast.error("Minimal satu SKU harus disertakan");
-    if (authorizers.length > 0) {
+    if (!shift && authorizers.length > 0) {
       setPinError(null);
       setPinOpen(true);
       return;
@@ -163,14 +179,16 @@ export function StockOpnameForm({
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <header>
-        <PosNavLink
-          href={`${basePath}/stok`}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
-        >
-          <ArrowLeft size={12} /> Kembali ke Stok
-        </PosNavLink>
+        {!shift && (
+          <PosNavLink
+            href={`${basePath}/stok`}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
+          >
+            <ArrowLeft size={12} /> Kembali ke Stok
+          </PosNavLink>
+        )}
         <h1 className="font-semibold text-foreground flex items-center gap-2">
-          <ClipboardCheck size={16} /> Opname Baru
+          <ClipboardCheck size={16} /> {shift ? shift.title : "Opname Baru"}
         </h1>
         <p className="text-xs text-muted-foreground">{accountName}</p>
       </header>
