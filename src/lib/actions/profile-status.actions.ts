@@ -18,7 +18,47 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "./_supabase-admin";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
+
+/**
+ * Checklist Offboarding & Cabut Akses (PRD-13). Dipanggil DI SINI, bukan
+ * di jalur resign terpisah — `setUserResignStatus` adalah satu-satunya
+ * jalur resign di app, jadi pencabutan akses tidak bisa terlewat lewat
+ * jalur lain. PIN POS dan akses app (via `is_active=false`, sudah
+ * memblokir login lewat middleware yang ada) dicabut SEKETIKA, bukan
+ * menunggu siapa pun menyelesaikan checklist manual di bawahnya.
+ */
+async function createOffboardingChecklist(userId: string, triggeredBy: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = createAdminClient() as any;
+  const now = new Date().toISOString();
+
+  await admin.from("profiles").update({ pos_pin_hash: null }).eq("id", userId);
+  await admin.from("team_members").delete().or(`leader_id.eq.${userId},member_id.eq.${userId}`);
+  await admin.from("product_testers").delete().eq("user_id", userId);
+  await admin.from("hr_trusted_contacts").delete().eq("user_id", userId);
+
+  const { data: checklist, error } = await admin
+    .from("offboarding_checklists")
+    .insert({
+      user_id: userId,
+      triggered_by: triggeredBy,
+      pos_pin_revoked_at: now,
+      team_memberships_removed_at: now,
+      tester_roles_revoked_at: now,
+      trusted_contact_removed_at: now,
+    })
+    .select("id")
+    .single();
+  if (error || !checklist) return;
+
+  await admin.from("offboarding_manual_items").insert([
+    { checklist_id: checklist.id, label: "Kembalikan kunci" },
+    { checklist_id: checklist.id, label: "Kembalikan aset dan akses toko lainnya" },
+    { checklist_id: checklist.id, label: "Serah terima kas/kas kecil yang dipegang" },
+  ]);
+}
 
 type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -63,7 +103,12 @@ export async function setUserResignStatus(
     .eq("id", userId);
   if (error) return { ok: false, error: error.message };
 
+  if (resigned) {
+    await createOffboardingChecklist(userId, user.id);
+  }
+
   revalidatePath("/admin/users");
   revalidatePath("/admin");
+  revalidatePath("/admin/offboarding");
   return { ok: true, data: { id: userId, resigned } };
 }
