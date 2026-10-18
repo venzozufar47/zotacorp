@@ -34,6 +34,9 @@ import {
 import { guardCheckoutByStockOpname } from "@/lib/attendance/stock-opname-gate";
 import { getBlockingTasks } from "@/lib/tasks/blocking";
 import { taskGateMessage } from "@/lib/tasks/gate";
+import { createAdminClient } from "@/lib/actions/_supabase-admin";
+import { sendPushToAdmins } from "@/lib/push/web-push";
+import { looseDb, effectiveCheckInTime, SELFIE_SESSION_WINDOW_MS } from "@/lib/attendance/selfie-gate-db";
 // Nonaktif sementara 2026-09-12 — lihat komentar di pemanggilnya di bawah.
 // import { runSelfieAiCheck } from "@/lib/attendance/selfie-ai-check";
 
@@ -44,6 +47,44 @@ interface CheckInPayload {
    *  without a live selfie is rejected server-side. Client uploads to storage
    *  before calling this action and passes the resulting path. */
   selfie_path: string;
+  /** Karyawan memilih "Tetap absen" setelah AI menolak fotonya (lihat verifyCheckInSelfie). */
+  selfie_override?: boolean;
+}
+
+interface SelfieCheckRow {
+  selfie_path: string;
+  verdict: "ok" | "reject" | "error" | "skipped";
+  message: string | null;
+  created_at: string;
+}
+
+/**
+ * Putusan filter selfie untuk check-in ini dari hasil pemeriksaan yang SUDAH tersimpan (ditulis server,
+ * tak bisa dipalsukan klien). Tidak ada baris = unit bisnisnya tak dikenai filter. AI error/dilewati =
+ * "unchecked" (absen tetap lanjut). Ditolak AI hanya boleh lanjut bila karyawan memilih "Tetap absen".
+ */
+function resolveSelfieGate(
+  checks: SelfieCheckRow[],
+  selfiePath: string,
+  override: boolean
+):
+  | { error: string }
+  | {
+      verdict: "ok" | "overridden" | "unchecked" | null;
+      note: string | null;
+      attempts: number;
+      firstAttemptAt: string | null;
+    } {
+  const row = checks.find((c) => c.selfie_path === selfiePath);
+  const attempts = checks.filter((c) => c.verdict !== "skipped").length;
+  const firstAttemptAt = checks[0]?.created_at ?? null;
+  if (!row) return { verdict: null, note: null, attempts, firstAttemptAt };
+  if (row.verdict === "ok") return { verdict: "ok", note: null, attempts, firstAttemptAt };
+  if (row.verdict === "reject") {
+    if (!override) return { error: "Foto selfie belum sesuai. Foto ulang, atau pilih Tetap absen." };
+    return { verdict: "overridden", note: row.message, attempts, firstAttemptAt };
+  }
+  return { verdict: "unchecked", note: null, attempts, firstAttemptAt };
 }
 
 /**
@@ -196,7 +237,7 @@ export async function checkIn(payload: CheckInPayload) {
 
   const { data: existing } = await supabase
     .from("attendance_logs")
-    .select("id, checked_in_at, checked_out_at")
+    .select("id, checked_in_at, checked_out_at, selfie_ai_verdict")
     .eq("user_id", user.id)
     .eq("date", today)
     .maybeSingle();
@@ -207,6 +248,20 @@ export async function checkIn(payload: CheckInPayload) {
   // existing && existing.checked_out_at → handled below as a re-check-in
   // (UPDATE the row instead of INSERT). Common when a kasir taps Check
   // Out by mistake; they can recover by taking the Check In flow again.
+
+  // Filter selfie AI (migrasi 192): putusan + waktu percobaan pertama dari pemeriksaan tersimpan.
+  const { data: sessionChecks } = await looseDb(createAdminClient())
+    .from("attendance_selfie_checks")
+    .select("selfie_path, verdict, message, created_at")
+    .eq("user_id", user.id)
+    .gte("created_at", new Date(Date.now() - SELFIE_SESSION_WINDOW_MS).toISOString())
+    .order("created_at", { ascending: true });
+  const selfieGate = resolveSelfieGate(
+    (sessionChecks ?? []) as SelfieCheckRow[],
+    payload.selfie_path,
+    payload.selfie_override === true
+  );
+  if ("error" in selfieGate) return { error: selfieGate.error };
 
   // Get profile for per-user working time settings + name (used in WA notify)
   // + today's national-holiday lookup (for the holiday-bonus gate). Both are
@@ -229,7 +284,8 @@ export async function checkIn(payload: CheckInPayload) {
   const settings = await getCachedAttendanceSettings();
   const timezone = settings?.timezone ?? "Asia/Jakarta";
 
-  const now = new Date();
+  // Waktu absen = saat selfie PERTAMA sesi ini; foto ulang tidak boleh membuat karyawan terlambat.
+  const now = effectiveCheckInTime(new Date(), selfieGate.firstAttemptAt);
   const { status, late_minutes, bonus_day } = profile
     ? computeCheckInStatus(
         now,
@@ -271,6 +327,11 @@ export async function checkIn(payload: CheckInPayload) {
     checkout_outside_note: null,
     matched_location_id: decision.matchedLocationId,
     selfie_path: payload.selfie_path,
+    selfie_ai_flag: null,
+    selfie_ai_note: selfieGate.note,
+    selfie_ai_verdict: selfieGate.verdict,
+    selfie_ai_attempts: selfieGate.attempts,
+    selfie_ai_reviewed_at: null,
     is_early_arrival,
     is_overtime: false,
     overtime_minutes: 0,
@@ -319,6 +380,25 @@ export async function checkIn(payload: CheckInPayload) {
   // never blocks check-in. Guarded against double-firing via
   // `streak_last_milestone` on profiles.
   after(() => updateStreakAfterCheckIn(user.id));
+
+  // Karyawan tetap absen padahal AI menolak fotonya → kabari admin SEKALI per karyawan per hari
+  // (re-check-in di hari yang sama tidak mengirim push lagi). Inbox admin membaca kolom yang sama.
+  if (selfieGate.verdict === "overridden" && existing?.selfie_ai_verdict !== "overridden") {
+    const logId = data.id;
+    const who = profile?.full_name ?? "Karyawan";
+    const note = selfieGate.note;
+    after(async () => {
+      try {
+        await sendPushToAdmins({
+          title: `${who}: absen ditolak AI, tetap absen`,
+          body: note ?? "Foto selfie absen belum sesuai aturan.",
+          url: `/admin/attendance?focus=${logId}&selfie=1`,
+        });
+      } catch (err) {
+        console.error("[selfie-gate] push admin gagal", err);
+      }
+    });
+  }
 
   // Tanda anomali foto (migrasi 134) — murni penanda untuk admin, tidak
   // pernah menggagalkan check-in. Post-response sama seperti dua after()

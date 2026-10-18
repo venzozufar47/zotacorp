@@ -39,6 +39,8 @@ interface SearchParams {
   sortBy?: string;
   sortDir?: string;
   focus?: string;
+  /** "1" = buka foto selfie baris yang difokuskan (tautan dari Inbox "Absen ditolak AI"). */
+  selfie?: string;
   view?: string;
   bu?: string;
 }
@@ -122,6 +124,7 @@ export default async function AdminAttendancePage({
         next.set("month", String(fMonth));
         next.set("year", String(fYear));
         next.set("focus", params.focus);
+        if (params.selfie) next.set("selfie", params.selfie);
         if (params.userId) next.set("userId", params.userId);
         redirect(`/admin/attendance?${next.toString()}`);
       }
@@ -147,6 +150,7 @@ export default async function AdminAttendancePage({
         next.set("year", String(year));
         next.set("page", String(targetPage));
         next.set("focus", params.focus);
+        if (params.selfie) next.set("selfie", params.selfie);
         if (params.userId) next.set("userId", params.userId);
         redirect(`/admin/attendance?${next.toString()}`);
       }

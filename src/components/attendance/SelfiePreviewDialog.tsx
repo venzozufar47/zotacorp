@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { markSelfieOverrideReviewed } from "@/lib/actions/attendance-selfie.actions";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +26,11 @@ interface Props {
    *  don't need to thread it through. */
   aiFlag?: string | null;
   aiNote?: string | null;
+  /** Filter selfie AI (migrasi 192): ok | overridden | unchecked | null. Hanya admin yang melihat tombol tinjau. */
+  aiVerdict?: string | null;
+  aiReviewedAt?: string | null;
+  /** Admin boleh menandai kasus "tetap absen walau ditolak AI" sudah ditinjau. */
+  canReview?: boolean;
 }
 
 /**
@@ -35,12 +43,29 @@ export function SelfiePreviewDialog({
   title,
   aiFlag,
   aiNote,
+  aiVerdict,
+  aiReviewedAt,
+  canReview = false,
 }: Props) {
   const { t } = useTranslation();
   const ts = t.attendanceTable;
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+
+  async function markReviewed() {
+    if (!logId) return;
+    setReviewing(true);
+    const res = await markSelfieOverrideReviewed([logId]);
+    setReviewing(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("Ditandai sudah ditinjau");
+    onOpenChange(false);
+  }
 
   useEffect(() => {
     if (!logId) return;
@@ -97,6 +122,35 @@ export function SelfiePreviewDialog({
             <img src={url} alt="Selfie" className="w-full h-full object-cover" />
           )}
         </div>
+
+        {aiVerdict === "overridden" && (
+          <div className="space-y-2 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 text-xs text-foreground">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p>
+                  <strong className="font-semibold">AI menolak foto ini</strong>, tetapi karyawan memilih tetap
+                  absen{aiReviewedAt ? " (sudah ditinjau)" : ""}.
+                </p>
+                {aiNote && (
+                  <ul className="list-disc pl-4 text-muted-foreground">
+                    {aiNote.split("\n").filter(Boolean).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            {canReview && !aiReviewedAt && (
+              <Button size="sm" variant="outline" className="w-full" disabled={reviewing} onClick={markReviewed}>
+                {reviewing ? "Menyimpan…" : "Tandai sudah ditinjau"}
+              </Button>
+            )}
+          </div>
+        )}
+        {aiVerdict === "unchecked" && (
+          <p className="text-xs text-muted-foreground">AI tidak sempat memeriksa foto ini; absen lolos tanpa pemeriksaan.</p>
+        )}
 
         {aiFlag === "anomaly" && (
           <div className="flex items-start gap-2 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 text-xs text-foreground">

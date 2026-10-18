@@ -211,6 +211,9 @@ export type Database = {
           overtime_status: string | null
           selfie_ai_flag: string | null
           selfie_ai_note: string | null
+          selfie_ai_attempts: number
+          selfie_ai_reviewed_at: string | null
+          selfie_ai_verdict: string | null
           selfie_path: string | null
           selfie_purged_at: string | null
           status: string
@@ -243,6 +246,9 @@ export type Database = {
           overtime_status?: string | null
           selfie_ai_flag?: string | null
           selfie_ai_note?: string | null
+          selfie_ai_attempts?: number
+          selfie_ai_reviewed_at?: string | null
+          selfie_ai_verdict?: string | null
           selfie_path?: string | null
           selfie_purged_at?: string | null
           status?: string
@@ -275,6 +281,9 @@ export type Database = {
           overtime_status?: string | null
           selfie_ai_flag?: string | null
           selfie_ai_note?: string | null
+          selfie_ai_attempts?: number
+          selfie_ai_reviewed_at?: string | null
+          selfie_ai_verdict?: string | null
           selfie_path?: string | null
           selfie_purged_at?: string | null
           status?: string

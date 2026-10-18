@@ -17,6 +17,7 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
+import { SelfieAiBadge } from "@/components/attendance/SelfieAiBadge";
 import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/utils/date";
 import { formatRp } from "@/lib/cashflow/format";
@@ -52,6 +53,10 @@ export interface AttendanceDaySubject {
    *  yet). Purely informational, see migration 134. */
   selfieAiFlag?: string | null;
   selfieAiNote?: string | null;
+  /** Filter selfie AI check-in (migrasi 192). */
+  selfieAiVerdict?: string | null;
+  selfieAiAttempts?: number | null;
+  selfieAiReviewedAt?: string | null;
   /** True when the row is classified as a non-workday (no late penalty). */
   bonusDay?: boolean;
 }
@@ -352,7 +357,14 @@ export function AttendanceDayDrawer({
                         <AlertTriangle size={12} aria-label="AI flagged" />
                         AI: cek foto
                       </span>
-                    ) : null
+                    ) : (
+                      <SelfieAiBadge
+                        verdict={subject.selfieAiVerdict}
+                        reviewed={!!subject.selfieAiReviewedAt}
+                        attempts={subject.selfieAiAttempts}
+                        note={subject.selfieAiNote}
+                      />
+                    )
                   }
                 />
               )}

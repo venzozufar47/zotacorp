@@ -28,6 +28,10 @@ interface Props {
   /** Which camera to open first: "user" (front, default — for selfies) or
    *  "environment" (back — for cleaning evidence). The user can still flip. */
   defaultFacingMode?: FacingMode;
+  /** Teks panduan; bila diisi, tampil oval wajah + teks di atas kamera (hanya saat live, bukan preview). */
+  faceGuide?: string;
+  /** Naikkan angkanya untuk memaksa "foto ulang" dari luar (mis. setelah AI menolak foto). */
+  retakeToken?: number;
 }
 
 type CameraState = "requesting" | "ready" | "denied" | "unavailable";
@@ -54,6 +58,8 @@ export function SelfieCaptureDialog({
   description,
   referenceUrl,
   defaultFacingMode = "user",
+  faceGuide,
+  retakeToken = 0,
 }: Props) {
   const { t } = useTranslation();
   const tc = t.checkIn;
@@ -124,6 +130,12 @@ export function SelfieCaptureDialog({
       if (preview?.url) URL.revokeObjectURL(preview.url);
     };
   }, [preview]);
+
+  // Foto ulang atas perintah induk (token naik); render awal (token 0) tidak melakukan apa-apa.
+  useEffect(() => {
+    if (retakeToken > 0) void retake();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retakeToken]);
 
   async function takePhoto() {
     const video = videoRef.current;
@@ -230,6 +242,16 @@ export function SelfieCaptureDialog({
             >
               <SwitchCamera size={18} />
             </button>
+          )}
+
+          {/* Panduan wajah: oval + area di luarnya digelapkan. Tidak menangkap sentuhan. */}
+          {faceGuide && !preview && state === "ready" && (
+            <div className="pointer-events-none absolute inset-0 z-[5]">
+              <div className="absolute left-1/2 top-[8%] w-[66%] -translate-x-1/2 aspect-[3/4] rounded-[50%] border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]" />
+              <p className="absolute inset-x-2 bottom-2 rounded-lg bg-black/60 px-2 py-1 text-center text-[11px] font-medium leading-snug text-white">
+                {faceGuide}
+              </p>
+            </div>
           )}
 
           {preview && (

@@ -7,6 +7,7 @@ import { MapPin, MapPinOff, Clock, Coffee } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { checkIn, checkOut, breakOut, breakIn } from "@/lib/actions/attendance.actions";
 import { getPushGateStatus } from "@/lib/actions/push.actions";
+import { getSelfieGuide, verifyCheckInSelfie } from "@/lib/actions/attendance-selfie.actions";
 import { AttendancePushGate } from "./AttendancePushGate";
 import { CheckoutConfirmDialog } from "./CheckoutConfirmDialog";
 import { TaskGateDialog } from "./TaskGateDialog";
@@ -72,6 +73,7 @@ import type {
 import { formatMinutesHuman } from "@/lib/utils/date";
 import { overtimeEligibleFrom } from "@/lib/utils/attendance-overtime";
 import { SelfieCaptureDialog } from "./SelfieCaptureDialog";
+import { SelfieFeedbackDialog } from "./SelfieFeedbackDialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
@@ -152,6 +154,15 @@ export function CheckInButton({
   // fix from step 1 while the selfie dialog is open in step 2.
   const [selfieOpen, setSelfieOpen] = useState(false);
   const pendingCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  // Filter selfie AI (hanya check-in karyawan yang dikenai aturan): panduan oval, dan dialog saat AI menolak.
+  const [selfieGuide, setSelfieGuide] = useState<string | null>(null);
+  const [retakeToken, setRetakeToken] = useState(0);
+  const [selfieReview, setSelfieReview] = useState<{
+    path: string;
+    url: string;
+    message: string;
+    coords: { latitude: number; longitude: number };
+  } | null>(null);
   const { status: geoStatus, requestLocation } = useGeolocation();
   const { t } = useTranslation();
 
@@ -239,11 +250,16 @@ export function CheckInButton({
 
   /** GPS → selfie pipeline shared by check-in and break-out/in. */
   async function startSelfieFlow(action: ModalAction) {
-    const coords = await requestLocation();
+    // Panduan selfie diminta bersamaan dengan GPS; gagal/lambat tidak boleh menghalangi absen.
+    const [coords, guide] = await Promise.all([
+      requestLocation(),
+      action === "check-in" ? getSelfieGuide().catch(() => null) : Promise.resolve(null),
+    ]);
     if (!coords) {
       toast.error(t.checkIn.toastLocationRequired, { duration: 6000 });
       return;
     }
+    setSelfieGuide(guide?.hint || null);
     pendingActionRef.current = action;
     pendingCoordsRef.current = coords;
     setSelfieOpen(true);
@@ -412,37 +428,87 @@ export function CheckInButton({
       }
 
       // ── Default: normal check-in ──
-      const result = await checkIn(payload);
-
-      if (result?.error) {
-        toast.error(result.error);
-        removeOrphanSelfie();
-        return;
-      }
-
-      if (result?.data) {
-        setSelfieOpen(false);
-        setLog(result.data as AttendanceLog);
-        const status = (result.data as AttendanceLog).status;
-
-        if (status === "late") {
-          const mins = (result.data as AttendanceLog).late_minutes;
-          toast.warning(
-            t.checkIn.toastLateBy
-              .replace("{n}", String(mins))
-              .replace("{plural}", mins !== 1 ? "s" : "")
-          );
-        } else {
-          toast.success(t.checkIn.toastCheckedIn);
+      // Filter selfie AI: hanya untuk karyawan yang dikenai aturan (selfieGuide terisi). AI yang
+      // error/lambat dianggap lolos; yang menolak membuka dialog "foto ulang / tetap absen".
+      if (selfieGuide) {
+        const verdict = await verifyCheckInSelfie({ selfie_path: path }).catch(() => null);
+        if (verdict?.status === "reject") {
+          setSelfieReview({
+            path,
+            url: URL.createObjectURL(blob),
+            message: verdict.message,
+            coords,
+          });
+          return;
         }
-
-        // Fire-and-forget — don't keep the transition pending on the
-        // confetti animation, which would tie the button to its disabled
-        // state during the whole 400ms spread.
-        fireConfetti();
-
-        onSuccess?.();
       }
+      await submitCheckIn(payload, removeOrphanSelfie);
+    });
+  }
+
+  /** Kirim check-in ke server dan tampilkan hasilnya (dipakai alur normal & "Tetap absen"). */
+  async function submitCheckIn(
+    payload: { latitude: number; longitude: number; selfie_path: string; selfie_override?: boolean },
+    removeOrphanSelfie: () => void
+  ) {
+    const result = await checkIn(payload);
+
+    if (result?.error) {
+      toast.error(result.error);
+      removeOrphanSelfie();
+      return;
+    }
+
+    if (result?.data) {
+      setSelfieOpen(false);
+      setLog(result.data as AttendanceLog);
+      const status = (result.data as AttendanceLog).status;
+
+      if (status === "late") {
+        const mins = (result.data as AttendanceLog).late_minutes;
+        toast.warning(
+          t.checkIn.toastLateBy
+            .replace("{n}", String(mins))
+            .replace("{plural}", mins !== 1 ? "s" : "")
+        );
+      } else {
+        toast.success(t.checkIn.toastCheckedIn);
+      }
+
+      // Fire-and-forget — don't keep the transition pending on the
+      // confetti animation, which would tie the button to its disabled
+      // state during the whole 400ms spread.
+      fireConfetti();
+
+      onSuccess?.();
+    }
+  }
+
+  function closeSelfieReview() {
+    if (selfieReview) URL.revokeObjectURL(selfieReview.url);
+    setSelfieReview(null);
+  }
+
+  /** "Foto ulang": buang foto yang ditolak (hapus dari storage) lalu buka kamera lagi. */
+  function retakeAfterReject() {
+    const path = selfieReview?.path;
+    closeSelfieReview();
+    if (path) void createSupabaseClient().storage.from("attendance-selfies").remove([path]);
+    setRetakeToken((n) => n + 1);
+  }
+
+  /** "Tetap absen": karyawan menilai AI keliru; server mencatat & memberi tahu admin. */
+  function proceedDespiteReject() {
+    const review = selfieReview;
+    if (!review) return;
+    startTransition(async () => {
+      await submitCheckIn(
+        { ...review.coords, selfie_path: review.path, selfie_override: true },
+        () => {
+          void createSupabaseClient().storage.from("attendance-selfies").remove([review.path]);
+        }
+      );
+      closeSelfieReview();
     });
   }
 
@@ -736,6 +802,17 @@ export function CheckInButton({
           if (!o) pendingCoordsRef.current = null;
         }}
         onConfirm={handleSelfieConfirmed}
+        faceGuide={modalAction === "check-in" ? (selfieGuide ?? undefined) : undefined}
+        retakeToken={retakeToken}
+      />
+
+      <SelfieFeedbackDialog
+        open={selfieReview !== null}
+        photoUrl={selfieReview?.url ?? null}
+        message={selfieReview?.message ?? ""}
+        busy={isPending}
+        onRetake={retakeAfterReject}
+        onProceed={proceedDespiteReject}
       />
 
       {/* Sign out diblokir Tugas Karyawan: kerjakan sekarang / tunda besok */}

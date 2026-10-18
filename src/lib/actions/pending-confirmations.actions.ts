@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { getPendingRegistrations } from "@/lib/actions/pending-registrations.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { SELFIE_OVERRIDE_INBOX_DAYS } from "@/lib/attendance/selfie-gate-db";
 import { isSimOverdue, simStatus } from "@/lib/sim-cards/types";
 import { reviewDue } from "@/lib/cleaning/governance";
 import {
@@ -24,7 +25,8 @@ export type PendingConfirmationItem = {
     | "task_review"
     | "subscription"
     | "sop_review"
-    | "sop_issue";
+    | "sop_issue"
+    | "selfie_override";
   /** Khusus subscription / SOP: teks panjang ("Jatuh tempo 3 hari lagi"). */
   detail?: string;
   /** Khusus subscription / SOP: lencana singkat untuk Inbox ("H-3", "Hari ini"). */
@@ -73,6 +75,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     subRes,
     sopRes,
     issueRes,
+    selfieRes,
   ] = await Promise.all([
     supabase
       .from("attendance_logs")
@@ -137,6 +140,18 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .eq("status", "open")
       .order("created_at", { ascending: false })
       .limit(30),
+    // Karyawan tetap absen padahal AI menolak selfienya (migrasi 192); hilang setelah ditinjau
+    // atau otomatis setelah beberapa hari.
+    supabase
+      .from("attendance_logs")
+      .select(
+        "id, date, user_id, updated_at, selfie_ai_note, profiles!inner(full_name, email, avatar_url, avatar_seed)"
+      )
+      .eq("selfie_ai_verdict", "overridden")
+      .is("selfie_ai_reviewed_at", null)
+      .gte("date", addDays(todayYmd, -SELFIE_OVERRIDE_INBOX_DAYS))
+      .order("date", { ascending: false })
+      .limit(50),
   ]);
 
   type Row = {
@@ -418,6 +433,21 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     };
   });
 
+  const selfieItems: PendingConfirmationItem[] = (
+    (selfieRes.data ?? []) as unknown as (Row & { updated_at: string; selfie_ai_note: string | null })[]
+  ).map((r) => ({
+    rowId: r.id,
+    kind: "selfie_override",
+    hasPerson: true,
+    userId: r.user_id,
+    employeeName: r.profiles?.full_name || r.profiles?.email || "?",
+    userAvatarUrl: r.profiles?.avatar_url ?? null,
+    userAvatarSeed: r.profiles?.avatar_seed ?? null,
+    date: r.date,
+    at: r.updated_at,
+    detail: r.selfie_ai_note?.split("\n").filter(Boolean).join(" · ") || "Foto selfie absen belum sesuai aturan",
+  }));
+
   // Urutan = prioritas di Inbox beranda (yang hanya memuat 6 teratas): hal yang
   // memblokir orang (pendaftar, tugas, tiket) di atas pengingat berkala
   // (langganan, tinjau SOP) supaya pengingat tidak menenggelamkan persetujuan.
@@ -426,6 +456,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     ...simItems,
     ...ticketItems,
     ...registrationItems,
+    ...selfieItems,
     ...issueItems,
     ...sopItems,
     ...subItems,

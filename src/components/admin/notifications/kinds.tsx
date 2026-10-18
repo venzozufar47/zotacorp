@@ -5,6 +5,7 @@ import {
   Hourglass,
   MessageSquareWarning,
   Repeat,
+  ScanFace,
   Smartphone,
   Ticket,
   UserPlus,
@@ -38,6 +39,7 @@ export const NOTIF_KINDS: Record<NotifKind, KindMeta> = {
   subscription: { label: "Langganan", Icon: Repeat, tone: "warn" },
   sop_review: { label: "SOP", Icon: ClipboardList, tone: "warn" },
   sop_issue: { label: "Masukan SOP", Icon: MessageSquareWarning, tone: "warn" },
+  selfie_override: { label: "Absen ditolak AI", Icon: ScanFace, tone: "warn" },
   dispute: { label: "Dispute", Icon: MessageSquareWarning, tone: "bad" },
 };
 
@@ -108,6 +110,8 @@ export function notifDesc(p: PendingConfirmationItem): string {
     case "sop_review":
     case "sop_issue":
       return p.detail ?? "SOP perlu perhatian";
+    case "selfie_override":
+      return p.detail ?? "Karyawan tetap absen walau foto ditolak AI";
     case "sim_card":
       return "Nomor SIM lewat tenggat — perlu isi pulsa";
     case "ticket":
@@ -143,6 +147,8 @@ export function notifHref(p: PendingConfirmationItem): string | undefined {
       return "/admin/sim-cards";
     case "ticket":
       return "/admin/tickets";
+    case "selfie_override":
+      return `/admin/attendance?focus=${p.rowId}&selfie=1`;
     default:
       return undefined;
   }

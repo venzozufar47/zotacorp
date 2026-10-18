@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProgressRouter } from "@/lib/route-progress";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -13,6 +13,7 @@ import {
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { AttendanceNotesCell } from "@/components/attendance/AttendanceNotesCell";
 import { SelfiePreviewDialog } from "@/components/attendance/SelfiePreviewDialog";
+import { SelfieAiBadge } from "@/components/attendance/SelfieAiBadge";
 import { EarlyArrivalPill } from "@/components/attendance/EarlyArrivalPill";
 import { SortableHeader } from "./SortableHeader";
 import type { AdminAttendanceSortKey } from "@/lib/actions/attendance.actions";
@@ -72,6 +73,10 @@ interface AttendanceRow {
    *  (belum diperiksa). Murni penanda, lihat migrasi 134. */
   selfie_ai_flag: string | null;
   selfie_ai_note: string | null;
+  /** Filter selfie AI check-in (migrasi 192): ok | overridden | unchecked | null (tak dikenai filter). */
+  selfie_ai_verdict?: string | null;
+  selfie_ai_attempts?: number | null;
+  selfie_ai_reviewed_at?: string | null;
   is_early_arrival: boolean;
   extra_work?: { kind: string }[];
   is_overtime: boolean;
@@ -221,8 +226,28 @@ export function AttendanceRecapTable({
     title: string;
     aiFlag: string | null;
     aiNote: string | null;
+    aiVerdict: string | null;
+    aiReviewedAt: string | null;
   } | null>(null);
   const [drawerSubject, setDrawerSubject] = useState<AttendanceDaySubject | null>(null);
+
+  // Tautan Inbox "Absen ditolak AI" (?focus=<id>&selfie=1): langsung buka foto barisnya, sekali per tautan.
+  const autoOpenedSelfieRef = useRef<string | null>(null);
+  useEffect(() => {
+    const focusId = searchParams?.get("focus");
+    if (!focusId || searchParams?.get("selfie") !== "1" || autoOpenedSelfieRef.current === focusId) return;
+    const row = rows.find((r) => r.id === focusId);
+    if (!row?.selfie_path) return;
+    autoOpenedSelfieRef.current = focusId;
+    setSelfieLog({
+      id: row.id,
+      title: `${row.profiles.full_name} — ${formatLocalDate(row.date)}`,
+      aiFlag: row.selfie_ai_flag,
+      aiNote: row.selfie_ai_note,
+      aiVerdict: row.selfie_ai_verdict ?? null,
+      aiReviewedAt: row.selfie_ai_reviewed_at ?? null,
+    });
+  }, [searchParams, rows]);
 
   function openDrawer(row: AttendanceRow) {
     setDrawerSubject({
@@ -244,6 +269,9 @@ export function AttendanceRecapTable({
       selfiePath: row.selfie_path,
       selfieAiFlag: row.selfie_ai_flag,
       selfieAiNote: row.selfie_ai_note,
+      selfieAiVerdict: row.selfie_ai_verdict ?? null,
+      selfieAiAttempts: row.selfie_ai_attempts ?? null,
+      selfieAiReviewedAt: row.selfie_ai_reviewed_at ?? null,
       bonusDay: row.bonus_day ?? false,
     });
   }
@@ -573,6 +601,8 @@ export function AttendanceRecapTable({
                               title: `${row.profiles.full_name} — ${formatLocalDate(row.date)}`,
                               aiFlag: row.selfie_ai_flag,
                               aiNote: row.selfie_ai_note,
+                              aiVerdict: row.selfie_ai_verdict ?? null,
+                              aiReviewedAt: row.selfie_ai_reviewed_at ?? null,
                             })
                           }
                           className="font-medium tabular-nums text-primary underline-offset-2 hover:underline"
@@ -592,6 +622,12 @@ export function AttendanceRecapTable({
                           <AlertTriangle size={11} /> AI: cek foto
                         </span>
                       )}
+                      <SelfieAiBadge
+                        verdict={row.selfie_ai_verdict}
+                        reviewed={!!row.selfie_ai_reviewed_at}
+                        attempts={row.selfie_ai_attempts}
+                        note={row.selfie_ai_note}
+                      />
                       {row.is_early_arrival && <EarlyArrivalPill />}
                     </div>
                   </TableCell>
@@ -919,6 +955,9 @@ export function AttendanceRecapTable({
         title={selfieLog?.title ?? ""}
         aiFlag={selfieLog?.aiFlag ?? null}
         aiNote={selfieLog?.aiNote ?? null}
+        aiVerdict={selfieLog?.aiVerdict ?? null}
+        aiReviewedAt={selfieLog?.aiReviewedAt ?? null}
+        canReview
         onOpenChange={(o) => !o && setSelfieLog(null)}
       />
 
