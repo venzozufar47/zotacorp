@@ -8,6 +8,7 @@ import {
   getMyLeaveRequests,
   getLeaveApprovalQueue,
   getMyLeaderNames,
+  listInputableMembers,
   getRecentLeaveDecisions,
   listHaengbocakeColleagues,
 } from "@/lib/actions/leave-requests.actions";
@@ -19,16 +20,25 @@ export default async function IzinPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const [myRequests, approvalQueue, recentDecisions, colleagues, leaderNames, role, leader] =
-    await Promise.all([
-      getMyLeaveRequests(),
-      getLeaveApprovalQueue(),
-      getRecentLeaveDecisions(),
-      listHaengbocakeColleagues(),
-      getMyLeaderNames(),
-      getCurrentRole(),
-      isTeamLeader(),
-    ]);
+  const [
+    myRequests,
+    approvalQueue,
+    recentDecisions,
+    colleagues,
+    inputMembers,
+    leaderNames,
+    role,
+    leader,
+  ] = await Promise.all([
+    getMyLeaveRequests(),
+    getLeaveApprovalQueue(),
+    getRecentLeaveDecisions(),
+    listHaengbocakeColleagues(),
+    listInputableMembers(),
+    getMyLeaderNames(),
+    getCurrentRole(),
+    isTeamLeader(),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-6 space-y-4">
@@ -49,6 +59,7 @@ export default async function IzinPage() {
         approvalQueue={approvalQueue}
         recentDecisions={recentDecisions}
         colleagues={colleagues}
+        inputMembers={inputMembers}
         leaderNames={leaderNames}
         canApprove={role === "admin" || leader}
         nowMs={serverNowMs()}

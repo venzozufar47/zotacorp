@@ -51,6 +51,9 @@ export interface LeaveRequestView {
   approverNote: string | null;
   backupUserId: string | null;
   backupName: string | null;
+  /** Siapa yang mencatatkan izin ini atas nama karyawan; null = diajukan karyawan sendiri. */
+  enteredById: string | null;
+  enteredByName: string | null;
   decidedAt: string | null;
   createdAt: string;
 }
@@ -94,6 +97,8 @@ function hydrate(rows: any[], names: Map<string, string>): LeaveRequestView[] {
     approverNote: r.approver_note,
     backupUserId: r.backup_user_id,
     backupName: r.backup_user_id ? names.get(r.backup_user_id) ?? null : null,
+    enteredById: r.entered_by ?? null,
+    enteredByName: r.entered_by ? names.get(r.entered_by) ?? null : null,
     decidedAt: r.decided_at,
     createdAt: r.created_at,
   }));
@@ -163,6 +168,114 @@ export async function submitLeaveRequest(
   return { ok: true, data: { id: (inserted as { id: string }).id } };
 }
 
+/**
+ * Anggota yang boleh dicatatkan izinnya oleh pemanggil (jalur "atasan input"):
+ *  - atasan langsung → anggotanya di `team_members`;
+ *  - Owner (admin) → karyawan aktif yang TIDAK punya atasan (langsung di bawah Owner).
+ * Karyawan yang punya atasan tidak bisa diinput Owner — itu tugas atasannya.
+ */
+export async function listInputableMembers(): Promise<ColleagueOption[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const role = await getCurrentRole();
+  let ids: string[];
+  if (role === "admin") {
+    const [{ data: people }, { data: links }] = await Promise.all([
+      db().from("profiles").select("id").eq("role", "employee").eq("is_active", true),
+      db().from("team_members").select("member_id"),
+    ]);
+    const hasLeader = new Set<string>((links ?? []).map((l: { member_id: string }) => l.member_id));
+    ids = (people ?? []).map((p: { id: string }) => p.id).filter((id: string) => !hasLeader.has(id));
+  } else {
+    const { data: links } = await db().from("team_members").select("member_id").eq("leader_id", user.id);
+    ids = [...new Set<string>((links ?? []).map((l: { member_id: string }) => l.member_id))];
+  }
+  if (ids.length === 0) return [];
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", ids)
+    .eq("is_active", true)
+    .eq("role", "employee")
+    .order("full_name", { ascending: true });
+  return (data ?? []).map((p) => ({ id: p.id, name: p.full_name }));
+}
+
+/**
+ * Jalur kedua: atasan / Owner mencatatkan izin atas nama anggotanya. Langsung
+ * `approved` (yang mencatat sudah pihak yang memutuskan — tanpa persetujuan
+ * kedua) dan ditandai `entered_by` supaya riwayat menunjukkan bahwa ini bukan
+ * pengajuan karyawan. Izin tidak terhubung ke absen: hari itu tetap dihitung
+ * tidak masuk.
+ */
+export async function submitLeaveForMember(
+  input: SubmitLeaveRequestInput & { memberId: string }
+): Promise<ActionResult<{ id: string }>> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  if (!input.reason.trim()) return { ok: false, error: "Alasan wajib diisi" };
+  if (input.kind === "tukar_shift") {
+    if (!input.swapDate || !input.swapWithUserId) {
+      return { ok: false, error: "Tanggal dan rekan tukar shift wajib diisi" };
+    }
+    if (input.swapWithUserId === input.memberId) {
+      return { ok: false, error: "Rekan tukar shift tidak boleh orang yang sama" };
+    }
+  }
+
+  // Hak: atasan langsung anggota itu, atau Owner untuk karyawan tanpa atasan.
+  const role = await getCurrentRole();
+  const leaders = await leadersOf(input.memberId);
+  const allowed =
+    role === "admin" ? leaders.length === 0 : leaders.includes(user.id);
+  if (!allowed) {
+    return {
+      ok: false,
+      error:
+        role === "admin"
+          ? "Karyawan ini punya atasan langsung — izinnya dicatat atasannya."
+          : "Forbidden — kamu bukan atasan langsung karyawan ini",
+    };
+  }
+  const { data: member } = await db()
+    .from("profiles")
+    .select("id, role, is_active")
+    .eq("id", input.memberId)
+    .maybeSingle();
+  if (!member || member.role !== "employee" || !member.is_active) {
+    return { ok: false, error: "Karyawan tidak ditemukan atau tidak aktif" };
+  }
+
+  const { data: inserted, error } = await db()
+    .from("leave_requests")
+    .insert({
+      user_id: input.memberId,
+      kind: input.kind,
+      reason: input.reason.trim(),
+      planned_return: input.kind === "tukar_shift" ? null : input.plannedReturn?.trim() || null,
+      swap_date: input.kind === "tukar_shift" ? input.swapDate : null,
+      swap_with_user_id: input.kind === "tukar_shift" ? input.swapWithUserId : null,
+      status: "approved",
+      approver_id: user.id,
+      decided_at: new Date().toISOString(),
+      entered_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+
+  const names = await namesFor([user.id]);
+  await sendPushToUser(input.memberId, {
+    title: "Izin dicatat atasan",
+    body: `${LEAVE_KIND_LABEL[input.kind]} dicatat oleh ${names.get(user.id) ?? "atasanmu"}.`,
+    url: "/izin",
+  });
+
+  revalidatePath("/izin");
+  revalidatePath("/admin/izin");
+  return { ok: true, data: { id: (inserted as { id: string }).id } };
+}
+
 export async function getMyLeaveRequests(): Promise<LeaveRequestView[]> {
   const user = await getCurrentUser();
   if (!user) return [];
@@ -173,7 +286,7 @@ export async function getMyLeaveRequests(): Promise<LeaveRequestView[]> {
     .order("created_at", { ascending: false })
     .limit(30);
   const rows = data ?? [];
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   const names = await namesFor(ids);
   return hydrate(rows, names);
 }
@@ -213,7 +326,7 @@ export async function getRecentLeaveDecisions(): Promise<LeaveRequestView[]> {
     .order("decided_at", { ascending: false })
     .limit(30);
   const rows = data ?? [];
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   return hydrate(rows, await namesFor(ids));
 }
 
@@ -248,7 +361,7 @@ export async function getLeaveApprovalQueue(): Promise<LeaveRequestView[]> {
     rows = data ?? [];
   }
 
-  const ids = rows.flatMap((r) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id]);
+  const ids = rows.flatMap((r) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   const names = await namesFor(ids);
   return hydrate(rows, names);
 }
@@ -327,7 +440,7 @@ export async function getLeaveRequestsSummary(
     .gte("created_at", since)
     .order("created_at", { ascending: false });
   const rows = data ?? [];
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   const names = await namesFor(ids);
   return { ok: true, data: hydrate(rows, names) };
 }

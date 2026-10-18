@@ -52,6 +52,7 @@ export default async function AdminIzinPage() {
               <p className="text-xs text-muted-foreground">
                 {LEAVE_KIND_LABEL[r.kind]} · {STATUS_LABEL[r.status]}
                 {r.approverName ? ` oleh ${r.approverName}` : ""}
+                {r.enteredByName ? ` · diinput ${r.enteredByName}` : ""}
               </p>
               <p className="mt-1">{r.reason}</p>
             </div>

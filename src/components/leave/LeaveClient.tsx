@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import {
   submitLeaveRequest,
+  submitLeaveForMember,
   decideLeaveRequest,
   type LeaveKind,
   type LeaveRequestView,
@@ -33,7 +34,7 @@ import {
 import { LEAVE_KIND_LABEL } from "@/lib/leave/constants";
 import { cn } from "@/lib/utils";
 
-type Tab = "ajukan" | "riwayat" | "persetujuan";
+type Tab = "ajukan" | "input" | "riwayat" | "persetujuan";
 
 const KIND_META: Record<
   LeaveKind,
@@ -123,9 +124,14 @@ function HistoryRow({ r, leaderLabel, showName }: { r: LeaveRequestView; leaderL
       <span className={cn("w-1.5 shrink-0", status.bar)} aria-hidden />
       <div className="min-w-0 flex-1 space-y-1 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             {showName && <span className="truncate text-sm font-semibold">{r.userName}</span>}
             <KindChip kind={r.kind} />
+            {r.enteredByName && (
+              <span className="rounded-full bg-tertiary px-2 py-0.5 text-[10.5px] font-semibold">
+                Diinput {r.enteredByName}
+              </span>
+            )}
           </span>
           <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold", status.badge)}>
             {status.label}
@@ -269,42 +275,43 @@ function Empty({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function LeaveClient({
-  myRequests,
-  approvalQueue,
-  recentDecisions,
+type LeaveFormValues = {
+  kind: LeaveKind;
+  reason: string;
+  plannedReturn: string | null;
+  swapDate: string | null;
+  swapWithUserId: string | null;
+};
+
+/**
+ * Form izin yang dipakai DUA jalur: karyawan mengajukan, dan atasan/Owner
+ * mencatatkan atas nama anggota. `onSubmit` mengembalikan true bila berhasil
+ * (form dikosongkan). `slot` = isian tambahan di atas form (pemilih anggota).
+ */
+function LeaveForm({
   colleagues,
-  leaderNames,
-  canApprove,
-  nowMs,
+  excludeId,
+  submitLabel,
+  note,
+  slot,
+  canSubmit = true,
+  onSubmit,
 }: {
-  myRequests: LeaveRequestView[];
-  approvalQueue: LeaveRequestView[];
-  recentDecisions: LeaveRequestView[];
   colleagues: ColleagueOption[];
-  /** Atasan langsung pemanggil; kosong = pengajuan jatuh ke Owner. */
-  leaderNames: string[];
-  canApprove: boolean;
-  /** Date.now() dari server, untuk label "x jam lalu". */
-  nowMs: number;
+  /** Orang yang tak boleh jadi rekan tukar shift (pemohon sendiri). */
+  excludeId?: string;
+  submitLabel: React.ReactNode;
+  note?: React.ReactNode;
+  slot?: React.ReactNode;
+  canSubmit?: boolean;
+  onSubmit: (v: LeaveFormValues) => Promise<boolean>;
 }) {
-  const router = useRouter();
-  const [tab, setTab] = useState<Tab>(approvalQueue.length > 0 ? "persetujuan" : "ajukan");
   const [kind, setKind] = useState<LeaveKind>("sakit");
   const [reason, setReason] = useState("");
   const [plannedReturn, setPlannedReturn] = useState("");
   const [swapDate, setSwapDate] = useState("");
   const [swapWith, setSwapWith] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const leaderLabel = leaderNames.length > 0 ? leaderNames.join(" / ") : "Owner";
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: "ajukan", label: "Ajukan" },
-    { id: "riwayat", label: "Riwayat" },
-    ...(canApprove
-      ? [{ id: "persetujuan" as const, label: "Persetujuan", count: approvalQueue.length }]
-      : []),
-  ];
 
   async function handleSubmit() {
     if (!reason.trim()) {
@@ -317,196 +324,324 @@ export function LeaveClient({
     }
     setSaving(true);
     try {
-      const res = await submitLeaveRequest({
+      const ok = await onSubmit({
         kind,
         reason,
         plannedReturn: kind === "tukar_shift" ? null : plannedReturn || null,
         swapDate: kind === "tukar_shift" ? swapDate : null,
         swapWithUserId: kind === "tukar_shift" ? swapWith : null,
       });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      if (ok) {
+        setReason("");
+        setPlannedReturn("");
+        setSwapDate("");
+        setSwapWith("");
       }
-      toast.success(`Terkirim ke ${leaderLabel}`);
-      setReason("");
-      setPlannedReturn("");
-      setSwapDate("");
-      setSwapWith("");
-      setTab("riwayat");
-      router.refresh();
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <NowContext.Provider value={nowMs}>
-    <div className="space-y-4">
-      <div role="tablist" className="grid auto-cols-fr grid-flow-col gap-1 rounded-full border-2 border-foreground bg-muted p-1">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "inline-flex h-9 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition",
-              tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {t.label}
-            {!!t.count && (
-              <span
-                className={cn(
-                  "grid min-w-5 place-items-center rounded-full px-1 text-[11px] font-bold leading-5",
-                  tab === t.id ? "bg-primary-foreground text-primary" : "bg-destructive text-white"
-                )}
-              >
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
+    <div className="space-y-5">
+      {slot}
+      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Jenis izin">
+        {(Object.keys(KIND_META) as LeaveKind[]).map((k) => {
+          const Icon = KIND_META[k].icon;
+          const on = kind === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => setKind(k)}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-2xl border-2 px-2 py-3 text-xs font-bold transition",
+                on
+                  ? "border-foreground bg-primary text-primary-foreground shadow-hard-sm"
+                  : "border-border bg-card text-muted-foreground hover:border-foreground/60"
+              )}
+            >
+              <Icon className="size-5" />
+              {KIND_META[k].short}
+            </button>
+          );
+        })}
       </div>
 
-      {tab === "ajukan" && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Jenis izin">
-            {(Object.keys(KIND_META) as LeaveKind[]).map((k) => {
-              const Icon = KIND_META[k].icon;
-              const on = kind === k;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  onClick={() => setKind(k)}
+      <div className="space-y-1.5">
+        <Label htmlFor="reason">Alasan</Label>
+        <Textarea
+          id="reason"
+          rows={3}
+          placeholder={KIND_META[kind].reasonHint}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+
+      {kind !== "tukar_shift" ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="plannedReturn">Perkiraan kembali (opsional)</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {RETURN_CHIPS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setPlannedReturn(plannedReturn === c ? "" : c)}
+                className={cn(
+                  "rounded-full border-2 px-3 py-1 text-xs font-semibold transition",
+                  plannedReturn === c
+                    ? "border-foreground bg-tertiary"
+                    : "border-border text-muted-foreground hover:border-foreground/60"
+                )}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <Input
+            id="plannedReturn"
+            placeholder="Atau tulis sendiri"
+            value={plannedReturn}
+            onChange={(e) => setPlannedReturn(e.target.value)}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="swapDate">Tanggal ditukar</Label>
+            <Input id="swapDate" type="date" value={swapDate} onChange={(e) => setSwapDate(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Tukar dengan</Label>
+            <Select value={swapWith} onValueChange={(v) => v && setSwapWith(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Pilih rekan" />
+              </SelectTrigger>
+              <SelectContent>
+                {colleagues
+                  .filter((c) => c.id !== excludeId)
+                  .map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Button onClick={handleSubmit} loading={saving} disabled={!canSubmit} size="lg" className="w-full">
+          {submitLabel}
+        </Button>
+        {note && <p className="text-center text-xs text-muted-foreground">{note}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** Jalur atasan/Owner: pilih anggota lalu catat izinnya — langsung disetujui. */
+function MemberInputForm({
+  members,
+  colleagues,
+  onDone,
+}: {
+  members: ColleagueOption[];
+  colleagues: ColleagueOption[];
+  onDone: () => void;
+}) {
+  const [memberId, setMemberId] = useState("");
+  return (
+    <LeaveForm
+      colleagues={colleagues}
+      excludeId={memberId}
+      canSubmit={!!memberId}
+      submitLabel={
+        <>
+          <Check /> Catat izin (langsung disetujui)
+        </>
+      }
+      note="Izin dicatat atas nama anggota dan ditandai sebagai diinput olehmu. Anggota menerima pemberitahuan."
+      slot={
+        <div className="space-y-1.5">
+          <Label>Anggota</Label>
+          <Select value={memberId} onValueChange={(v) => v && setMemberId(v)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Pilih anggota" />
+            </SelectTrigger>
+            <SelectContent>
+              {members.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      }
+      onSubmit={async (v) => {
+        if (!memberId) {
+          toast.error("Pilih anggota dulu");
+          return false;
+        }
+        const res = await submitLeaveForMember({ memberId, ...v });
+        if (!res.ok) {
+          toast.error(res.error);
+          return false;
+        }
+        toast.success("Izin tercatat dan disetujui");
+        setMemberId("");
+        onDone();
+        return true;
+      }}
+    />
+  );
+}
+
+export function LeaveClient({
+  myRequests,
+  approvalQueue,
+  recentDecisions,
+  colleagues,
+  inputMembers,
+  leaderNames,
+  canApprove,
+  nowMs,
+}: {
+  myRequests: LeaveRequestView[];
+  approvalQueue: LeaveRequestView[];
+  recentDecisions: LeaveRequestView[];
+  colleagues: ColleagueOption[];
+  /** Anggota yang boleh dicatatkan izinnya oleh pemanggil (atasan / Owner). Kosong = tab Input tidak muncul. */
+  inputMembers: ColleagueOption[];
+  /** Atasan langsung pemanggil; kosong = pengajuan jatuh ke Owner. */
+  leaderNames: string[];
+  canApprove: boolean;
+  /** Date.now() dari server, untuk label "x jam lalu". */
+  nowMs: number;
+}) {
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>(approvalQueue.length > 0 ? "persetujuan" : "ajukan");
+
+  const leaderLabel = leaderNames.length > 0 ? leaderNames.join(" / ") : "Owner";
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "ajukan", label: "Ajukan" },
+    ...(inputMembers.length > 0 ? [{ id: "input" as const, label: "Input" }] : []),
+    { id: "riwayat", label: "Riwayat" },
+    ...(canApprove
+      ? [{ id: "persetujuan" as const, label: "Persetujuan", count: approvalQueue.length }]
+      : []),
+  ];
+
+  return (
+    <NowContext.Provider value={nowMs}>
+      <div className="space-y-4">
+        <div
+          role="tablist"
+          className="grid auto-cols-fr grid-flow-col gap-1 rounded-full border-2 border-foreground bg-muted p-1"
+        >
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "inline-flex h-9 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition",
+                tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {t.label}
+              {!!t.count && (
+                <span
                   className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-2xl border-2 px-2 py-3 text-xs font-bold transition",
-                    on
-                      ? "border-foreground bg-primary text-primary-foreground shadow-hard-sm"
-                      : "border-border bg-card text-muted-foreground hover:border-foreground/60"
+                    "grid min-w-5 place-items-center rounded-full px-1 text-[11px] font-bold leading-5",
+                    tab === t.id ? "bg-primary-foreground text-primary" : "bg-destructive text-white"
                   )}
                 >
-                  <Icon className="size-5" />
-                  {KIND_META[k].short}
-                </button>
-              );
-            })}
-          </div>
+                  {t.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="reason">Alasan</Label>
-            <Textarea
-              id="reason"
-              rows={3}
-              placeholder={KIND_META[kind].reasonHint}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </div>
+        {tab === "ajukan" && (
+          <LeaveForm
+            colleagues={colleagues}
+            submitLabel={
+              <>
+                <Send /> Kirim ke {leaderLabel}
+              </>
+            }
+            note={
+              leaderNames.length === 0
+                ? "Kamu belum punya atasan langsung tercatat, jadi pengajuan masuk ke Owner."
+                : undefined
+            }
+            onSubmit={async (v) => {
+              const res = await submitLeaveRequest(v);
+              if (!res.ok) {
+                toast.error(res.error);
+                return false;
+              }
+              toast.success(`Terkirim ke ${leaderLabel}`);
+              setTab("riwayat");
+              router.refresh();
+              return true;
+            }}
+          />
+        )}
 
-          {kind !== "tukar_shift" ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="plannedReturn">Perkiraan kembali (opsional)</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {RETURN_CHIPS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setPlannedReturn(plannedReturn === c ? "" : c)}
-                    className={cn(
-                      "rounded-full border-2 px-3 py-1 text-xs font-semibold transition",
-                      plannedReturn === c
-                        ? "border-foreground bg-tertiary"
-                        : "border-border text-muted-foreground hover:border-foreground/60"
-                    )}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-              <Input
-                id="plannedReturn"
-                placeholder="Atau tulis sendiri"
-                value={plannedReturn}
-                onChange={(e) => setPlannedReturn(e.target.value)}
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="swapDate">Tanggal ditukar</Label>
-                <Input id="swapDate" type="date" value={swapDate} onChange={(e) => setSwapDate(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Tukar dengan</Label>
-                <Select value={swapWith} onValueChange={(v) => v && setSwapWith(v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Pilih rekan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {colleagues.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
+        {tab === "input" && inputMembers.length > 0 && (
+          <MemberInputForm
+            members={inputMembers}
+            colleagues={colleagues}
+            onDone={() => {
+              router.refresh();
+            }}
+          />
+        )}
 
+        {tab === "riwayat" && (
           <div className="space-y-2">
-            <Button onClick={handleSubmit} loading={saving} size="lg" className="w-full">
-              <Send /> Kirim ke {leaderLabel}
-            </Button>
-            {leaderNames.length === 0 && (
-              <p className="text-center text-xs text-muted-foreground">
-                Kamu belum punya atasan langsung tercatat, jadi pengajuan masuk ke Owner.
-              </p>
+            {myRequests.length === 0 ? (
+              <Empty>Belum ada pengajuan.</Empty>
+            ) : (
+              myRequests.map((r) => <HistoryRow key={r.id} r={r} leaderLabel={leaderLabel} />)
             )}
           </div>
-        </div>
-      )}
+        )}
 
-      {tab === "riwayat" && (
-        <div className="space-y-2">
-          {myRequests.length === 0 ? (
-            <Empty>Belum ada pengajuan.</Empty>
-          ) : (
-            myRequests.map((r) => <HistoryRow key={r.id} r={r} leaderLabel={leaderLabel} />)
-          )}
-        </div>
-      )}
-
-      {tab === "persetujuan" && canApprove && (
-        <div className="space-y-4">
-          {approvalQueue.length === 0 ? (
-            <Empty>Tidak ada pengajuan yang menunggu. 🎉</Empty>
-          ) : (
-            <div className="space-y-3">
-              {approvalQueue.map((r) => (
-                <ApprovalCard key={r.id} r={r} colleagues={colleagues} onDecided={() => router.refresh()} />
-              ))}
-            </div>
-          )}
-          {recentDecisions.length > 0 && (
-            <div className="space-y-2">
-              <h2 className="font-display text-sm font-bold text-muted-foreground">
-                Sudah diputuskan (14 hari)
-              </h2>
-              {recentDecisions.map((r) => (
-                <HistoryRow key={r.id} r={r} leaderLabel={leaderLabel} showName />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+        {tab === "persetujuan" && canApprove && (
+          <div className="space-y-4">
+            {approvalQueue.length === 0 ? (
+              <Empty>Tidak ada pengajuan yang menunggu. 🎉</Empty>
+            ) : (
+              <div className="space-y-3">
+                {approvalQueue.map((r) => (
+                  <ApprovalCard key={r.id} r={r} colleagues={colleagues} onDecided={() => router.refresh()} />
+                ))}
+              </div>
+            )}
+            {recentDecisions.length > 0 && (
+              <div className="space-y-2">
+                <h2 className="font-display text-sm font-bold text-muted-foreground">
+                  Sudah diputuskan (14 hari)
+                </h2>
+                {recentDecisions.map((r) => (
+                  <HistoryRow key={r.id} r={r} leaderLabel={leaderLabel} showName />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </NowContext.Provider>
   );
 }
