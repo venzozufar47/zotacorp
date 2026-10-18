@@ -3,23 +3,32 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getCurrentUser } from "@/lib/supabase/cached";
+import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
   getMyLeaveRequests,
   getLeaveApprovalQueue,
+  getMyLeaderNames,
+  getRecentLeaveDecisions,
   listHaengbocakeColleagues,
 } from "@/lib/actions/leave-requests.actions";
+import { isTeamLeader } from "@/lib/tasks/team-access";
+import { serverNowMs } from "@/lib/leave/constants";
 import { LeaveClient } from "@/components/leave/LeaveClient";
 
 export default async function IzinPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const [myRequests, approvalQueue, colleagues] = await Promise.all([
-    getMyLeaveRequests(),
-    getLeaveApprovalQueue(),
-    listHaengbocakeColleagues(),
-  ]);
+  const [myRequests, approvalQueue, recentDecisions, colleagues, leaderNames, role, leader] =
+    await Promise.all([
+      getMyLeaveRequests(),
+      getLeaveApprovalQueue(),
+      getRecentLeaveDecisions(),
+      listHaengbocakeColleagues(),
+      getMyLeaderNames(),
+      getCurrentRole(),
+      isTeamLeader(),
+    ]);
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-6 space-y-4">
@@ -35,7 +44,15 @@ export default async function IzinPage() {
           Izin<span className="text-primary">.</span>
         </h1>
       </div>
-      <LeaveClient myRequests={myRequests} approvalQueue={approvalQueue} colleagues={colleagues} />
+      <LeaveClient
+        myRequests={myRequests}
+        approvalQueue={approvalQueue}
+        recentDecisions={recentDecisions}
+        colleagues={colleagues}
+        leaderNames={leaderNames}
+        canApprove={role === "admin" || leader}
+        nowMs={serverNowMs()}
+      />
     </div>
   );
 }

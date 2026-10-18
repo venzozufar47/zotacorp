@@ -11,3 +11,12 @@ export const LEAVE_KIND_LABEL: Record<LeaveKind, string> = {
   izin_keluar_toko: "Izin keluar toko",
   tukar_shift: "Tukar shift",
 };
+
+/**
+ * "Sekarang" dari server, dikirim ke klien supaya label "x jam lalu" sama di
+ * SSR dan hydration. Di luar komponen karena aturan `react-hooks/purity`
+ * melarang `Date.now()` langsung di render.
+ */
+export function serverNowMs(): number {
+  return Date.now();
+}

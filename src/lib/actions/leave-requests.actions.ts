@@ -178,6 +178,45 @@ export async function getMyLeaveRequests(): Promise<LeaveRequestView[]> {
   return hydrate(rows, names);
 }
 
+/**
+ * Nama atasan langsung pemanggil, supaya form menyebut ke SIAPA pengajuan
+ * dikirim. Kosong = tidak ada leader tercatat → jatuh ke Owner.
+ */
+export async function getMyLeaderNames(): Promise<string[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const leaderIds = await leadersOf(user.id);
+  if (leaderIds.length === 0) return [];
+  const names = await namesFor(leaderIds);
+  return leaderIds.map((id) => names.get(id) ?? "—");
+}
+
+/** Keputusan 14 hari terakhir atas anggota tim — untuk atasan melihat jejaknya. */
+export async function getRecentLeaveDecisions(): Promise<LeaveRequestView[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const { data: links } = await db()
+    .from("team_members")
+    .select("member_id")
+    .eq("leader_id", user.id);
+  const memberIds = [
+    ...new Set<string>((links ?? []).map((l: { member_id: string }) => l.member_id)),
+  ];
+  if (memberIds.length === 0) return [];
+  const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+  const { data } = await db()
+    .from("leave_requests")
+    .select("*")
+    .in("user_id", memberIds)
+    .neq("status", "pending")
+    .gte("decided_at", since)
+    .order("decided_at", { ascending: false })
+    .limit(30);
+  const rows = data ?? [];
+  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id]);
+  return hydrate(rows, await namesFor(ids));
+}
+
 /** Antrean persetujuan: admin melihat semua pending; leader hanya anggotanya. */
 export async function getLeaveApprovalQueue(): Promise<LeaveRequestView[]> {
   const user = await getCurrentUser();
