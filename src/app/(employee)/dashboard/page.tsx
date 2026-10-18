@@ -74,6 +74,8 @@ import { canViewScorecard } from "@/lib/actions/scorecard.actions";
 import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon } from "lucide-react";
 import { hasAnsweredMonthlyPulse } from "@/lib/actions/pulse-survey.actions";
 import { Wallet as BonusIcon } from "lucide-react";
+import { countPendingSopAcknowledgments } from "@/lib/actions/sop-documents.actions";
+import { BookCheck as SopIcon } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -156,6 +158,7 @@ export default async function DashboardPage() {
     canFileComplaintFlag,
     canViewScorecardFlag,
     answeredMonthlyPulse,
+    pendingSopCount,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -207,6 +210,7 @@ export default async function DashboardPage() {
     canFileComplaint(),
     canViewScorecard(),
     hasAnsweredMonthlyPulse(),
+    countPendingSopAcknowledgments(),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -539,6 +543,26 @@ export default async function DashboardPage() {
             <span className="block font-display font-bold text-sm">Survei bulanan (anonim)</span>
             <span className="block text-xs text-muted-foreground">
               3 pertanyaan, ±30 detik. Jawabanmu tidak tersimpan dengan nama.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
+
+      {pendingSopCount > 0 && (
+        <Link
+          href="/pengakuan-sop"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+            <SopIcon size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">
+              {pendingSopCount} SOP belum kamu akui
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Baca dan konfirmasi sudah memahami.
             </span>
           </span>
           <span className="text-sm font-bold shrink-0">→</span>
