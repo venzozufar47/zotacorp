@@ -2,10 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/supabase/cached";
-import { getMyTeamTasks } from "@/lib/actions/team.actions";
+import { getMyTeamCoachingNotes, getMyTeamTasks } from "@/lib/actions/team.actions";
 import { isTeamLeader } from "@/lib/tasks/team-access";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TeamTasksView } from "@/components/team/TeamTasksView";
+import { TeamCoachingNotesList } from "@/components/team/TeamCoachingNotesList";
 import { WriteCoachingNoteCard } from "@/components/team/WriteCoachingNoteCard";
 
 /**
@@ -17,7 +18,7 @@ export default async function TeamPage() {
   if (!user) redirect("/");
   if (!(await isTeamLeader())) redirect("/dashboard");
 
-  const members = await getMyTeamTasks();
+  const [members, notes] = await Promise.all([getMyTeamTasks(), getMyTeamCoachingNotes()]);
 
   return (
     <div className="space-y-5">
@@ -28,6 +29,7 @@ export default async function TeamPage() {
       <WriteCoachingNoteCard
         members={members.map((m) => ({ memberId: m.memberId, name: m.name }))}
       />
+      <TeamCoachingNotesList notes={notes} />
       <TeamTasksView members={members} />
     </div>
   );

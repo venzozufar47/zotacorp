@@ -124,3 +124,73 @@ export async function getMyTeamTasks(): Promise<TeamMemberTasks[]> {
     }))
     .sort((a: TeamMemberTasks, b: TeamMemberTasks) => a.name.localeCompare(b.name, "id"));
 }
+
+// ── Catatan pembinaan yang terkirim ke anggota ───────────────────────────
+
+export interface TeamCoachingNote {
+  id: string;
+  memberId: string;
+  memberName: string;
+  body: string;
+  createdAt: string;
+  acknowledgedAt: string | null;
+  /** null = catatan biasa; "teguran" = teguran lisan tercatat. SP tidak pernah sampai sini. */
+  spLevel: "teguran" | null;
+  /** Nama penulisnya; null kalau penulisnya pemanggil sendiri. */
+  authorName: string | null;
+  mine: boolean;
+}
+
+/**
+ * Catatan pembinaan untuk anggota tim si pemanggil, terbaru dulu — termasuk
+ * yang ditulis Owner atau leader lain, supaya leader tahu apa yang sudah
+ * disampaikan ke anggotanya dan apakah sudah dibaca.
+ *
+ * SP1–SP3 SENGAJA tidak ikut: sanksi milik Owner (SOP 6.8 — leader
+ * mengumpulkan fakta, tidak menjatuhkan sanksi) berikut tanggapan karyawan
+ * adalah urusan antara Owner dan karyawan itu. RLS tabelnya hanya membuka
+ * baris ke penerima dan admin, jadi dibaca lewat service-role SETELAH
+ * memastikan pemanggil memang leader dari anggotanya — id dari sesi.
+ */
+export async function getMyTeamCoachingNotes(): Promise<TeamCoachingNote[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const db = createAdminClient() as any;
+
+  const { data: links } = await db
+    .from("team_members")
+    .select("member_id")
+    .eq("leader_id", user.id);
+  const memberIds: string[] = [...new Set<string>((links ?? []).map((l: any) => l.member_id))];
+  if (memberIds.length === 0) return [];
+
+  const { data: notes } = await db
+    .from("employee_coaching_notes")
+    .select("id, user_id, author_id, body, created_at, acknowledged_at, sp_level")
+    .in("user_id", memberIds)
+    .or("sp_level.is.null,sp_level.eq.teguran")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (!notes || notes.length === 0) return [];
+
+  const personIds: string[] = [
+    ...new Set<string>(notes.flatMap((n: any) => [n.user_id, n.author_id].filter(Boolean))),
+  ];
+  const { data: people } = await db
+    .from("profiles")
+    .select("id, full_name, nickname")
+    .in("id", personIds);
+  const name = new Map<string, string>((people ?? []).map((p: any) => [p.id, nameOf(p)]));
+
+  return notes.map((n: any) => ({
+    id: n.id,
+    memberId: n.user_id,
+    memberName: name.get(n.user_id) ?? "—",
+    body: n.body,
+    createdAt: n.created_at,
+    acknowledgedAt: n.acknowledged_at,
+    spLevel: n.sp_level === "teguran" ? "teguran" : null,
+    authorName: n.author_id === user.id ? null : name.get(n.author_id) ?? null,
+    mine: n.author_id === user.id,
+  }));
+}
