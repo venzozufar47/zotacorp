@@ -28,8 +28,8 @@ import type { PosChecklistOperation } from "@/lib/pos-pin-format";
 
 const KOORDINATOR = "Koordinator Toko";
 const KEPALA_PRODUKSI = "Kepala Produksi";
-/** "1 staf dapur senior" di SOP — dipilih admin dari peran dapur ini. */
-const STAF_DAPUR = ["Baker", "Staf Dapur"];
+/** "Staf dapur senior" di SOP = Baker yang menggantikan input PIN saat Kepala Produksi libur. */
+const STAF_DAPUR = ["Baker"];
 const STAF_DEPAN = "Staf Depan";
 
 export const POS_OPERATION_ELIGIBLE_ROLES: Record<
@@ -49,7 +49,7 @@ export const POS_OPERATION_ELIGIBLE_HINT: Record<
 > = {
   sale_void: "hanya Koordinator Toko (aturan keras, PIN Owner tidak berlaku)",
   withdrawal: "Koordinator Toko, Kepala Produksi + Owner",
-  production: "Kepala Produksi + 1 staf dapur senior + Owner",
+  production: "Kepala Produksi + Baker senior (pengganti) + Owner",
   cake_pickup: "Staf Depan + Koordinator Toko",
 };
 
