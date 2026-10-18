@@ -11,6 +11,10 @@ import {
 } from "@/lib/actions/cashflow.actions";
 import { adminResetPosPin } from "@/lib/actions/pos-pin.actions";
 import { POS_OPERATIONS, type PosOperation } from "@/lib/pos-pin-format";
+import {
+  isRoleEligible,
+  POS_OPERATION_ELIGIBLE_HINT,
+} from "@/lib/pos/authorizer-policy";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -50,6 +54,11 @@ function sameSet(a: string[] | undefined, b: string[] | undefined): boolean {
  * chip, padahal cuma 9 orang dan 5 kolom). Dropdown hanya memuat
  * assignee rekening ini supaya admin tidak bisa menunjuk orang yang tak
  * ada hubungannya dengan outlet.
+ *
+ * Sel dikunci menurut matriks wewenang SOP (`authorizer-policy.ts`): peran
+ * yang tidak pantas — mis. Staf Depan untuk Batal/Opname — tidak bisa
+ * dicentang kecuali admin sengaja membuka "pengecualian". Centang lama yang
+ * menyimpang tetap tampil (amber) dan bisa dicabut.
  */
 export function RekeningAuthorizersCard({
   bankAccountId,
@@ -67,6 +76,17 @@ export function RekeningAuthorizersCard({
     (op) => (initial[op] ?? []).length === 0
   );
   const [open, setOpen] = useState(noneAssigned);
+  const [allowExceptions, setAllowExceptions] = useState(false);
+
+  const roleOf = (id: string) =>
+    candidates.find((c) => c.userId === id)?.jobRole ?? null;
+  // Hanya yang tercentang DAN peran tak pantas — dasar penanda amber.
+  const deviations = POS_OPERATIONS.reduce(
+    (n, op) =>
+      n +
+      (values[op] ?? []).filter((id) => !isRoleEligible(op, roleOf(id))).length,
+    0
+  );
 
   function toggle(op: PosOperation, userId: string) {
     setValues((prev) => {
@@ -169,7 +189,31 @@ export function RekeningAuthorizersCard({
               <p className="text-[11px] text-muted-foreground mt-2.5">
                 Centang siapa saja yang PIN-nya diterima per operasi — cukup
                 satu yang memasukkan PIN. Kosong = operasi itu tanpa PIN.
+                Sel terkunci = peran tidak sesuai matriks wewenang SOP
+                (arahkan kursor ke judul kolom). PIN Owner selalu diterima.
               </p>
+              <div className="flex items-center gap-3 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setAllowExceptions((v) => !v)}
+                  aria-pressed={allowExceptions}
+                  className={cn(
+                    "underline-offset-2 hover:underline",
+                    allowExceptions
+                      ? "text-warning font-medium"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {allowExceptions
+                    ? "Pengecualian dibuka — kunci peran dimatikan"
+                    : "Izinkan pengecualian dari SOP"}
+                </button>
+                {deviations > 0 && (
+                  <span className="text-warning font-medium">
+                    {deviations} centang di luar SOP
+                  </span>
+                )}
+              </div>
 
               <div className="overflow-x-auto -mx-1">
                 <table className="w-full border-collapse text-[12px] min-w-[420px]">
@@ -181,7 +225,7 @@ export function RekeningAuthorizersCard({
                       {POS_OPERATIONS.map((op) => (
                         <th
                           key={op}
-                          title={COLS[op].label}
+                          title={`${COLS[op].label}\nSOP: ${POS_OPERATION_ELIGIBLE_HINT[op]}`}
                           className="font-medium text-muted-foreground py-1 px-1 text-center whitespace-nowrap"
                         >
                           {COLS[op].short}
@@ -196,6 +240,9 @@ export function RekeningAuthorizersCard({
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="truncate text-foreground">
                               {c.fullName}
+                            </span>
+                            <span className="shrink-0 text-[10.5px] text-muted-foreground/80">
+                              {c.jobRole ?? "tanpa peran"}
                             </span>
                             {!c.hasPin && (
                               <span
@@ -218,6 +265,10 @@ export function RekeningAuthorizersCard({
                         </td>
                         {POS_OPERATIONS.map((op) => {
                           const on = (values[op] ?? []).includes(c.userId);
+                          const eligible = isRoleEligible(op, c.jobRole);
+                          // Hanya sel BARU yang tak pantas yang dikunci; yang
+                          // sudah tercentang selalu bisa dicabut.
+                          const locked = !on && !eligible && !allowExceptions;
                           return (
                             <td key={op} className="text-center px-1">
                               <button
@@ -225,13 +276,24 @@ export function RekeningAuthorizersCard({
                                 role="checkbox"
                                 aria-checked={on}
                                 aria-label={`${COLS[op].short} — ${c.fullName}`}
+                                title={
+                                  locked
+                                    ? `Terkunci — SOP ${COLS[op].short}: ${POS_OPERATION_ELIGIBLE_HINT[op]}`
+                                    : on && !eligible
+                                      ? "Di luar SOP — klik untuk mencabut"
+                                      : undefined
+                                }
                                 onClick={() => toggle(op, c.userId)}
-                                disabled={pending}
+                                disabled={pending || locked}
                                 className={cn(
                                   "grid place-items-center size-5 rounded-full border transition disabled:opacity-50",
-                                  on
+                                  on && eligible
                                     ? "border-[var(--teal-600)] bg-[var(--teal-600)] text-white"
-                                    : "border-border hover:border-muted-foreground/50"
+                                    : on
+                                      ? "border-warning bg-warning text-white"
+                                      : locked
+                                        ? "border-border/50 bg-muted/60 cursor-not-allowed opacity-40"
+                                        : "border-border hover:border-muted-foreground/50"
                                 )}
                               >
                                 {on && <Check size={11} strokeWidth={3} />}

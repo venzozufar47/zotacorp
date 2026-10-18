@@ -2434,6 +2434,8 @@ export async function listMyAssignedBankAccounts(): Promise<
 export interface RekeningAuthorizerCandidate {
   userId: string;
   fullName: string;
+  /** `profiles.job_role` — dasar kelayakan menurut matriks SOP. */
+  jobRole: string | null;
   hasPin: boolean;
 }
 
@@ -2456,12 +2458,13 @@ export async function listPosAuthorizerCandidates(
   if (ids.length === 0) return [];
   const { data: profs } = await supabase
     .from("profiles")
-    .select("id, full_name, pos_pin_hash")
+    .select("id, full_name, job_role, pos_pin_hash")
     .in("id", ids)
     .order("full_name");
   return (profs ?? []).map((p) => ({
     userId: p.id,
     fullName: p.full_name?.trim() || "(tanpa nama)",
+    jobRole: p.job_role?.trim() || null,
     hasPin: !!p.pos_pin_hash,
   }));
 }

@@ -132,6 +132,26 @@ export async function listAuthorizersFor(
   return (refs.get(operation) ?? []).map(strip);
 }
 
+/**
+ * Owner (profil ber-role admin yang sudah set PIN). Matriks SOP selalu
+ * menyertakan Owner di setiap operasi — tanpa ini void/opname hanya bisa
+ * jalan kalau Koordinator Toko sedang masuk. Tidak dicentang di kartu
+ * admin dan tidak muncul di modal PIN; hanya cadangan di gerbang server.
+ */
+async function loadOwnerRefs(): Promise<InternalRef[]> {
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("id, full_name, pos_pin_hash")
+    .eq("role", "admin")
+    .not("pos_pin_hash", "is", null);
+  return ((data ?? []) as unknown as ProfileRow[]).map((p) => ({
+    userId: p.id,
+    fullName: p.full_name?.trim() || "Owner",
+    hasPin: true,
+    pinHash: p.pos_pin_hash,
+  }));
+}
+
 export type PinVerdict =
   | { ok: true; authorizerId: string | null; authorizerName: string | null }
   | { ok: false; error: string };
@@ -158,7 +178,10 @@ export async function verifyOperationPin(
   if (refs.length === 0)
     return { ok: true, authorizerId: null, authorizerName: null };
 
-  const usable = refs.filter((r) => r.pinHash);
+  // Pemegang PIN yang sah = authorizer terdaftar + Owner. Dimuat sekali
+  // di sini, bukan di tiap cabang, supaya urutan cek tetap satu jalur.
+  const owners = await loadOwnerRefs();
+  const usable = [...refs.filter((r) => r.pinHash), ...owners];
   if (usable.length === 0) {
     // Terdaftar tapi belum satu pun punya PIN: operasinya terkunci sampai
     // admin membereskannya. Sebut namanya — pesan generik membuat kasir
