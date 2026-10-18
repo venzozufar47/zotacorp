@@ -485,10 +485,12 @@ export interface MyCoachingNote extends CoachingNoteRow {
 /**
  * Catatan pembinaan milik penelepon sendiri, terbaru dulu.
  *
- * Tampil di dashboard sampai 3 hari setelah DIBACA; sesudahnya `archived` dan
- * hanya muncul di Riwayat. Pengecualian: SP yang belum ditanggapi karyawan
- * (menerima / keberatan) tetap tampil — kalau disembunyikan, hak didengarnya
- * (Dokumen 3 §4, §7) tidak bisa dipakai lagi.
+ * Catatan biasa/teguran: tampil di dashboard sampai 3 hari setelah DIBACA;
+ * sesudahnya `archived` dan hanya muncul di Riwayat.
+ * SP1–SP3: SELALU tampil selama masih berlaku (`valid_until` belum lewat —
+ * definisi yang sama dengan `hasActiveSp`), dibaca/ditanggapi atau belum;
+ * baru masuk Riwayat setelah kedaluwarsa. SP tanpa tanggal berlaku dianggap
+ * belum kedaluwarsa.
  */
 export async function listMyCoachingNotes(): Promise<MyCoachingNote[]> {
   const user = await getCurrentUser();
@@ -523,6 +525,7 @@ export async function listMyCoachingNotes(): Promise<MyCoachingNote[]> {
     author: { full_name?: string } | null;
   };
   const now = Date.now();
+  const today = new Date().toISOString().slice(0, 10);
   return ((data ?? []) as Row[]).map((n) => ({
     id: n.id,
     userId: n.user_id,
@@ -531,9 +534,10 @@ export async function listMyCoachingNotes(): Promise<MyCoachingNote[]> {
     createdAt: n.created_at,
     acknowledgedAt: n.acknowledged_at,
     archived:
-      n.acknowledged_at !== null &&
-      now - Date.parse(n.acknowledged_at) > HIDE_AFTER_READ_MS &&
-      !(n.sp_level !== null && n.sp_level !== "teguran" && !n.employee_acceptance),
+      n.sp_level === "sp1" || n.sp_level === "sp2" || n.sp_level === "sp3"
+        ? n.valid_until !== null && n.valid_until < today
+        : n.acknowledged_at !== null &&
+          now - Date.parse(n.acknowledged_at) > HIDE_AFTER_READ_MS,
     periodFrom: n.period_from,
     periodTo: n.period_to,
     spLevel: n.sp_level,
