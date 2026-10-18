@@ -375,8 +375,13 @@ export async function getMyPendingRedoPhotos(): Promise<PendingRedoPhoto[]> {
   }));
 }
 
+export type SpLevel = "teguran" | "sp1" | "sp2" | "sp3";
+/** SP aktif berlaku 6 bulan sejak terbit (Dokumen 3 §3.2). */
+const SP_VALID_MONTHS = 6;
+
 export interface CoachingNoteRow {
   id: string;
+  userId: string;
   body: string;
   context: string;
   createdAt: string;
@@ -384,38 +389,87 @@ export interface CoachingNoteRow {
   authorName: string | null;
   periodFrom: string | null;
   periodTo: string | null;
+  spLevel: SpLevel | null;
+  sopReference: string | null;
+  validUntil: string | null;
+  employeeResponse: string | null;
+  employeeAcceptance: "menerima" | "menerima_keberatan" | null;
 }
 
-/** Kirim catatan pembinaan ke seorang karyawan. Tampil di dashboard-nya. */
+/**
+ * Kirim catatan pembinaan (atau SP) ke seorang karyawan. Tampil di
+ * dashboard-nya.
+ *
+ * Siapa boleh apa (ditegakkan DI DUA LAPIS — gate di sini untuk pesan
+ * error yang ramah, RLS `employee_coaching_notes_leader_insert` sebagai
+ * penjaga sungguhan karena baris ditulis lewat client ber-sesi):
+ * - sp1/sp2/sp3 (sanksi): admin (Owner) SAJA.
+ * - null / 'teguran': admin, atau kepala tim (leader di `team_members`)
+ *   untuk anggotanya sendiri.
+ */
 export async function createCoachingNote(input: {
   userId: string;
   body: string;
   context?: string;
   periodFrom?: string | null;
   periodTo?: string | null;
+  spLevel?: SpLevel | null;
+  sopReference?: string | null;
 }): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Belum masuk" };
   const body = input.body?.trim();
   if (!body) return { ok: false, error: "Catatan tidak boleh kosong" };
   if (body.length > 2000)
     return { ok: false, error: "Catatan maksimal 2000 karakter" };
   if (!input.userId) return { ok: false, error: "Karyawan tidak dikenal" };
 
-  const user = await getCurrentUser();
+  const spLevel = input.spLevel ?? null;
+  const isAdmin = (await requireAdmin()).ok;
+  if (spLevel === "sp1" || spLevel === "sp2" || spLevel === "sp3") {
+    if (!isAdmin) {
+      return { ok: false, error: "Sanksi (SP1/SP2/SP3) hanya bisa diterbitkan Owner" };
+    }
+  } else if (!isAdmin) {
+    const supabaseCheck = await createClient();
+    const { data: leaderRow } = await supabaseCheck
+      .from("team_members" as never)
+      .select("leader_id")
+      .eq("leader_id", user.id)
+      .eq("member_id", input.userId)
+      .maybeSingle();
+    if (!leaderRow) {
+      return { ok: false, error: "Kamu bukan atasan langsung karyawan ini" };
+    }
+  }
+
+  const validUntil =
+    spLevel === "sp1" || spLevel === "sp2" || spLevel === "sp3"
+      ? (() => {
+          const d = new Date();
+          d.setMonth(d.getMonth() + SP_VALID_MONTHS);
+          return d.toISOString().slice(0, 10);
+        })()
+      : null;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as any;
   const { error } = await supabase.from("employee_coaching_notes").insert({
     user_id: input.userId,
-    author_id: user?.id ?? null,
+    author_id: user.id,
     context: input.context ?? "cleaning",
     body,
     period_from: input.periodFrom ?? null,
     period_to: input.periodTo ?? null,
+    sp_level: spLevel,
+    sop_reference: input.sopReference?.trim() || null,
+    valid_until: validUntil,
   });
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/admin/cleaning");
+  revalidatePath("/admin/sp");
+  revalidatePath("/tim");
   revalidatePath("/dashboard");
   return { ok: true };
 }
@@ -432,32 +486,73 @@ export async function listMyCoachingNotes(): Promise<CoachingNoteRow[]> {
   const { data } = await supabase
     .from("employee_coaching_notes")
     .select(
-      "id, body, context, created_at, acknowledged_at, period_from, period_to, author:profiles!employee_coaching_notes_author_id_fkey(full_name)"
+      "id, user_id, body, context, created_at, acknowledged_at, period_from, period_to, sp_level, sop_reference, valid_until, employee_response, employee_acceptance, author:profiles!employee_coaching_notes_author_id_fkey(full_name)"
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(20);
   type Row = {
     id: string;
+    user_id: string;
     body: string;
     context: string;
     created_at: string;
     acknowledged_at: string | null;
     period_from: string | null;
     period_to: string | null;
+    sp_level: SpLevel | null;
+    sop_reference: string | null;
+    valid_until: string | null;
+    employee_response: string | null;
+    employee_acceptance: "menerima" | "menerima_keberatan" | null;
     author: { full_name?: string } | null;
   };
   return ((data ?? []) as Row[]).map((n) => ({
     id: n.id,
+    userId: n.user_id,
     body: n.body,
     context: n.context,
     createdAt: n.created_at,
     acknowledgedAt: n.acknowledged_at,
     periodFrom: n.period_from,
     periodTo: n.period_to,
+    spLevel: n.sp_level,
+    sopReference: n.sop_reference,
+    validUntil: n.valid_until,
+    employeeResponse: n.employee_response,
+    employeeAcceptance: n.employee_acceptance,
     authorName:
       (n.author as { full_name?: string } | null)?.full_name ?? null,
   }));
+}
+
+/**
+ * Karyawan menanggapi SP-nya sendiri: pembelaan tertulis (opsional) dan
+ * pernyataan menerima / menerima dengan keberatan (Dokumen 3 §4, §7).
+ * Hanya kolom ini yang boleh diubah subjek — dijaga trigger
+ * `coaching_note_guard_body` (migrasi 197), bukan cuma oleh gate ini.
+ */
+export async function respondToCoachingNote(input: {
+  id: string;
+  response?: string | null;
+  acceptance?: "menerima" | "menerima_keberatan" | null;
+}): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Belum masuk" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = (await createClient()) as any;
+  const { error } = await supabase
+    .from("employee_coaching_notes")
+    .update({
+      employee_response: input.response?.trim() || null,
+      employee_acceptance: input.acceptance ?? null,
+    })
+    .eq("id", input.id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/sp");
+  return { ok: true };
 }
 
 /** Tandai sudah dibaca. Hanya menggerakkan `acknowledged_at` — isi catatannya
@@ -478,6 +573,93 @@ export async function acknowledgeCoachingNote(
   if (error) return { ok: false, error: error.message };
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+export interface SpOverviewRow extends CoachingNoteRow {
+  userName: string;
+}
+
+/**
+ * Admin-only: daftar SP/teguran terbaru lintas karyawan, untuk halaman
+ * `/admin/sp`. `onlyActive` membatasi ke sp1/sp2/sp3 yang belum lewat
+ * `valid_until` — "siapa yang sedang punya SP aktif" (Dokumen 3 §3.2;
+ * juga input Lampiran C poin 4 kelak: SP aktif menggugurkan bonus).
+ */
+export async function listSpEntries(opts?: {
+  onlyActive?: boolean;
+  days?: number;
+}): Promise<ActionResult<SpOverviewRow[]>> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return gate;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = (await createClient()) as any;
+  let query = supabase
+    .from("employee_coaching_notes")
+    .select(
+      "id, user_id, body, context, created_at, acknowledged_at, period_from, period_to, sp_level, sop_reference, valid_until, employee_response, employee_acceptance, author:profiles!employee_coaching_notes_author_id_fkey(full_name), subject:profiles!employee_coaching_notes_user_id_fkey(full_name)"
+    )
+    .not("sp_level", "is", null)
+    .order("created_at", { ascending: false });
+
+  const today = new Date().toISOString().slice(0, 10);
+  if (opts?.onlyActive) {
+    query = query.in("sp_level", ["sp1", "sp2", "sp3"]).gte("valid_until", today);
+  } else if (opts?.days) {
+    const since = new Date(Date.now() - opts.days * 24 * 3600 * 1000).toISOString();
+    query = query.gte("created_at", since);
+  }
+
+  const { data, error } = await query;
+  if (error) return { ok: false, error: error.message };
+  type Row = {
+    id: string;
+    user_id: string;
+    body: string;
+    context: string;
+    created_at: string;
+    acknowledged_at: string | null;
+    period_from: string | null;
+    period_to: string | null;
+    sp_level: SpLevel | null;
+    sop_reference: string | null;
+    valid_until: string | null;
+    employee_response: string | null;
+    employee_acceptance: "menerima" | "menerima_keberatan" | null;
+    author: { full_name?: string } | null;
+    subject: { full_name?: string } | null;
+  };
+  const rows = ((data ?? []) as Row[]).map((n) => ({
+    id: n.id,
+    userId: n.user_id,
+    userName: n.subject?.full_name ?? "—",
+    body: n.body,
+    context: n.context,
+    createdAt: n.created_at,
+    acknowledgedAt: n.acknowledged_at,
+    periodFrom: n.period_from,
+    periodTo: n.period_to,
+    spLevel: n.sp_level,
+    sopReference: n.sop_reference,
+    validUntil: n.valid_until,
+    employeeResponse: n.employee_response,
+    employeeAcceptance: n.employee_acceptance,
+    authorName: n.author?.full_name ?? null,
+  }));
+  return { ok: true, data: rows };
+}
+
+/** SP aktif (sp1/sp2/sp3, belum lewat valid_until) milik satu karyawan. */
+export async function hasActiveSp(userId: string): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = createAdminClient() as any;
+  const today = new Date().toISOString().slice(0, 10);
+  const { count } = await admin
+    .from("employee_coaching_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .in("sp_level", ["sp1", "sp2", "sp3"])
+    .gte("valid_until", today);
+  return (count ?? 0) > 0;
 }
 
 /**

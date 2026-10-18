@@ -6,6 +6,7 @@ import { getMyTeamTasks } from "@/lib/actions/team.actions";
 import { isTeamLeader } from "@/lib/tasks/team-access";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TeamTasksView } from "@/components/team/TeamTasksView";
+import { WriteCoachingNoteCard } from "@/components/team/WriteCoachingNoteCard";
 
 /**
  * Team leader — memantau Tugas anggota tim (read-only). Karyawan yang bukan
@@ -23,6 +24,9 @@ export default async function TeamPage() {
       <PageHeader
         title="Tim saya"
         subtitle={`${members.length} anggota — pantau checklist tugas dan progresnya.`}
+      />
+      <WriteCoachingNoteCard
+        members={members.map((m) => ({ memberId: m.memberId, name: m.name }))}
       />
       <TeamTasksView members={members} />
     </div>

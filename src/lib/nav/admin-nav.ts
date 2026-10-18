@@ -18,6 +18,7 @@ import {
   Receipt,
   Repeat,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -148,6 +149,12 @@ export function buildAdminNav({
           icon: CalendarClock,
           label: "Ringkasan Izin",
           color: "bg-tertiary",
+        },
+        {
+          href: "/admin/sp",
+          icon: ShieldAlert,
+          label: "Sistem SP",
+          color: "bg-destructive",
         },
         {
           href: "/admin/tasks",
