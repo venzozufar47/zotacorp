@@ -3,7 +3,7 @@
  * (free tier). Modul biasa (bukan "use server"): dipanggil dari server action.
  *
  * Env:
- *  - GEMINI_API_KEY (wajib; buat gratis di https://aistudio.google.com/apikey)
+ *  - GOOGLE_GENAI_API_KEY (wajib; key Gemini yang sudah dipakai proyek ini). GEMINI_API_KEY diterima sebagai alias.
  *  - GEMINI_MODEL   (opsional; default di bawah — ganti bila model itu dipensiunkan)
  *
  * Hasilnya sengaja tiga keadaan, bukan benar/salah: "tak terbaca" dan "AI gagal" harus bisa
@@ -33,8 +33,8 @@ interface GeminiBody {
 }
 
 export async function readMeterKwh(bytes: ArrayBuffer, mime: string): Promise<MeterReading> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return { status: "error", error: "GEMINI_API_KEY belum diatur" };
+  const key = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!key) return { status: "error", error: "GOOGLE_GENAI_API_KEY belum diatur" };
   const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
