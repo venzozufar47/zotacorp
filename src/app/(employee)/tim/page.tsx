@@ -10,7 +10,7 @@ import {
   listInputableMembers,
 } from "@/lib/actions/leave-requests.actions";
 import { serverNowMs } from "@/lib/leave/constants";
-import { listRecentHuddles } from "@/lib/actions/team-minutes.actions";
+import { getMyBriefingBranches, listRecentHuddles } from "@/lib/actions/team-minutes.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { TeamBriefingPanel } from "@/components/team/TeamBriefingPanel";
 import { LeaveApproverPanel } from "@/components/leave/LeaveParts";
@@ -40,7 +40,7 @@ export default async function TeamPage({
   const { bagian } = await searchParams;
   const section = SECTIONS.find((k) => k === bagian) ?? null;
 
-  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings] = await Promise.all([
+  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches] = await Promise.all([
     getMyTeamTasks(),
     getMyTeamCoachingNotes(),
     getLeaveApprovalQueue(),
@@ -48,6 +48,7 @@ export default async function TeamPage({
     listHaengbocakeColleagues(),
     listInputableMembers(),
     listRecentHuddles(),
+    getMyBriefingBranches(),
   ]);
   const todayYmd = jakartaDateString(new Date(serverNowMs()));
 
@@ -68,7 +69,9 @@ export default async function TeamPage({
           counts={{
             izin: { value: leaveQueue.length, label: "menunggu persetujuan", urgent: true },
             briefing: {
-              value: briefings.filter((b) => b.huddleDate === todayYmd).length,
+              value: briefings.filter(
+                (b) => b.huddleDate === todayYmd && (myBranches.length === 0 || myBranches.includes(b.branch))
+              ).length,
               label: "tercatat hari ini",
             },
             catatan: {
@@ -90,7 +93,7 @@ export default async function TeamPage({
               nowMs={serverNowMs()}
             />
           )}
-          {section === "briefing" && <TeamBriefingPanel briefings={briefings} todayYmd={todayYmd} />}
+          {section === "briefing" && <TeamBriefingPanel briefings={briefings} todayYmd={todayYmd} branches={myBranches} />}
           {section === "catatan" && (
             <>
               <WriteCoachingNoteCard

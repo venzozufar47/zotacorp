@@ -113,24 +113,41 @@ function BriefingForm({ branch, today }: { branch: MinutesBranch; today: HuddleV
 /**
  * Notulensi Briefing Kilat harian — bagian dari halaman Tim (kepala tim), bukan
  * halaman sendiri. Satu briefing per cabang per hari: mencatat lagi di hari
- * yang sama memperbarui yang ada. Riwayat memuat briefing cabang terpilih.
+ * yang sama memperbarui yang ada. Cabang ditentukan otomatis dari penugasan kepala tim
+ * (`branches`); pilihan cabang hanya muncul bila ia bertugas di lebih dari satu cabang,
+ * atau bila cabangnya tidak terdeteksi (`branches` kosong → semua cabang ditawarkan).
  */
 export function TeamBriefingPanel({
   briefings,
   todayYmd,
+  branches,
 }: {
   briefings: HuddleView[];
   todayYmd: string;
+  branches: MinutesBranch[];
 }) {
-  const [branch, setBranch] = useState<MinutesBranch>("Pare");
+  const detected = branches.length > 0;
+  const available = detected ? branches : BRANCHES;
+  const [branch, setBranch] = useState<MinutesBranch>(available[0]);
   const forBranch = briefings.filter((b) => b.branch === branch);
   const today = forBranch.find((b) => b.huddleDate === todayYmd) ?? null;
   const history = forBranch.filter((b) => b.huddleDate !== todayYmd).slice(0, 14);
 
   return (
     <div className="space-y-4">
+      {available.length === 1 ? (
+        <p className="inline-flex items-center rounded-full border-2 border-foreground bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground">
+          Cabang {available[0]}
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {!detected && (
+            <p className="text-xs text-muted-foreground">
+              Cabangmu belum terdeteksi dari lokasi kerja — pilih cabang yang kamu briefing.
+            </p>
+          )}
       <div role="radiogroup" aria-label="Cabang" className="flex gap-2">
-        {BRANCHES.map((b) => (
+        {available.map((b) => (
           <button
             key={b}
             type="button"
@@ -148,6 +165,8 @@ export function TeamBriefingPanel({
           </button>
         ))}
       </div>
+        </div>
+      )}
 
       <section className="space-y-4 rounded-2xl border border-border bg-card p-4">
         <div className="flex items-start gap-2">
