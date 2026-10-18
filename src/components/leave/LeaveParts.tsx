@@ -53,16 +53,6 @@ function timeAgo(iso: string, now: number): string {
   return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
 
-/** "2026-10-24" → "Sab, 24 Okt". Tanggal murni, tanpa jam, jadi aman di SSR. */
-function dateLabel(ymd: string | null): string {
-  if (!ymd) return "—";
-  return new Date(`${ymd}T00:00:00`).toLocaleDateString("id-ID", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-}
-
 function KindChip({ kind }: { kind: LeaveKind }) {
   const Icon = KIND_META[kind].icon;
   return (
@@ -80,11 +70,6 @@ function RequestDetail({ r }: { r: LeaveRequestView }) {
       <p className="text-sm">{r.reason}</p>
       {r.plannedReturn && (
         <p className="text-xs text-muted-foreground">Kembali: {r.plannedReturn}</p>
-      )}
-      {r.kind === "tukar_shift" && (
-        <p className="text-xs text-muted-foreground">
-          Tukar dengan {r.swapWithName ?? "—"} · {dateLabel(r.swapDate)}
-        </p>
       )}
     </>
   );
@@ -138,7 +123,6 @@ function ApprovalCard({
   const [note, setNote] = useState("");
   const [backup, setBackup] = useState("");
   const [busy, setBusy] = useState<"approved" | "rejected" | null>(null);
-  const canPickBackup = r.kind !== "tukar_shift";
 
   async function decide(decision: "approved" | "rejected") {
     setBusy(decision);
@@ -187,25 +171,23 @@ function ApprovalCard({
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
-          {canPickBackup && (
-            <div>
-              <Label className="text-xs">Pengganti selama izin (opsional)</Label>
-              <Select value={backup} onValueChange={(v) => v && setBackup(v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Pilih rekan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {colleagues
-                    .filter((c) => c.id !== r.userId)
-                    .map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div>
+            <Label className="text-xs">Pengganti selama izin (opsional)</Label>
+            <Select value={backup} onValueChange={(v) => v && setBackup(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Pilih rekan" />
+              </SelectTrigger>
+              <SelectContent>
+                {colleagues
+                  .filter((c) => c.id !== r.userId)
+                  .map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
@@ -252,18 +234,14 @@ function Empty({ children }: { children: React.ReactNode }) {
 /** Jalur atasan/Owner: pilih anggota lalu catat izinnya — langsung disetujui. */
 function MemberInputForm({
   members,
-  colleagues,
   onDone,
 }: {
   members: ColleagueOption[];
-  colleagues: ColleagueOption[];
   onDone: () => void;
 }) {
   const [memberId, setMemberId] = useState("");
   return (
     <LeaveForm
-      colleagues={colleagues}
-      excludeId={memberId}
       canSubmit={!!memberId}
       submitLabel={
         <>
@@ -405,7 +383,6 @@ export function LeaveApproverPanel({
         {tab === "catat" && inputMembers.length > 0 && (
           <MemberInputForm
             members={inputMembers}
-            colleagues={colleagues}
             onDone={() => {
               router.refresh();
               setTab("diputuskan");

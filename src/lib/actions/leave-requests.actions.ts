@@ -32,7 +32,7 @@ function db(): any {
   return createAdminClient();
 }
 
-export type LeaveKind = "sakit" | "izin_keluar_toko" | "tukar_shift";
+export type LeaveKind = "sakit" | "izin_keluar_toko";
 export type LeaveStatus = "pending" | "approved" | "rejected";
 
 export interface LeaveRequestView {
@@ -42,9 +42,6 @@ export interface LeaveRequestView {
   kind: LeaveKind;
   reason: string;
   plannedReturn: string | null;
-  swapDate: string | null;
-  swapWithUserId: string | null;
-  swapWithName: string | null;
   status: LeaveStatus;
   approverId: string | null;
   approverName: string | null;
@@ -88,9 +85,6 @@ function hydrate(rows: any[], names: Map<string, string>): LeaveRequestView[] {
     kind: r.kind,
     reason: r.reason,
     plannedReturn: r.planned_return,
-    swapDate: r.swap_date,
-    swapWithUserId: r.swap_with_user_id,
-    swapWithName: r.swap_with_user_id ? names.get(r.swap_with_user_id) ?? null : null,
     status: r.status,
     approverId: r.approver_id,
     approverName: r.approver_id ? names.get(r.approver_id) ?? null : null,
@@ -122,8 +116,6 @@ export interface SubmitLeaveRequestInput {
   kind: LeaveKind;
   reason: string;
   plannedReturn?: string | null;
-  swapDate?: string | null;
-  swapWithUserId?: string | null;
 }
 
 export async function submitLeaveRequest(
@@ -134,9 +126,6 @@ export async function submitLeaveRequest(
   const role = await getCurrentRole();
   if (role === "investor") return { ok: false, error: "Forbidden" };
   if (!input.reason.trim()) return { ok: false, error: "Alasan wajib diisi" };
-  if (input.kind === "tukar_shift" && (!input.swapDate || !input.swapWithUserId)) {
-    return { ok: false, error: "Tanggal dan rekan tukar shift wajib diisi" };
-  }
 
   const { data: inserted, error } = await db()
     .from("leave_requests")
@@ -145,8 +134,6 @@ export async function submitLeaveRequest(
       kind: input.kind,
       reason: input.reason.trim(),
       planned_return: input.plannedReturn?.trim() || null,
-      swap_date: input.kind === "tukar_shift" ? input.swapDate : null,
-      swap_with_user_id: input.kind === "tukar_shift" ? input.swapWithUserId : null,
     })
     .select("id")
     .single();
@@ -215,15 +202,6 @@ export async function submitLeaveForMember(
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
   if (!input.reason.trim()) return { ok: false, error: "Alasan wajib diisi" };
-  if (input.kind === "tukar_shift") {
-    if (!input.swapDate || !input.swapWithUserId) {
-      return { ok: false, error: "Tanggal dan rekan tukar shift wajib diisi" };
-    }
-    if (input.swapWithUserId === input.memberId) {
-      return { ok: false, error: "Rekan tukar shift tidak boleh orang yang sama" };
-    }
-  }
-
   // Hak: atasan langsung anggota itu, atau Owner untuk karyawan tanpa atasan.
   const role = await getCurrentRole();
   const leaders = await leadersOf(input.memberId);
@@ -253,9 +231,7 @@ export async function submitLeaveForMember(
       user_id: input.memberId,
       kind: input.kind,
       reason: input.reason.trim(),
-      planned_return: input.kind === "tukar_shift" ? null : input.plannedReturn?.trim() || null,
-      swap_date: input.kind === "tukar_shift" ? input.swapDate : null,
-      swap_with_user_id: input.kind === "tukar_shift" ? input.swapWithUserId : null,
+      planned_return: input.plannedReturn?.trim() || null,
       status: "approved",
       approver_id: user.id,
       decided_at: new Date().toISOString(),
@@ -288,7 +264,7 @@ export async function getMyLeaveRequests(): Promise<LeaveRequestView[]> {
     .order("created_at", { ascending: false })
     .limit(30);
   const rows = data ?? [];
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   const names = await namesFor(ids);
   return hydrate(rows, names);
 }
@@ -328,7 +304,7 @@ export async function getRecentLeaveDecisions(): Promise<LeaveRequestView[]> {
     .order("decided_at", { ascending: false })
     .limit(30);
   const rows = data ?? [];
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   return hydrate(rows, await namesFor(ids));
 }
 
@@ -363,7 +339,7 @@ export async function getLeaveApprovalQueue(): Promise<LeaveRequestView[]> {
     rows = data ?? [];
   }
 
-  const ids = rows.flatMap((r) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  const ids = rows.flatMap((r) => [r.user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   const names = await namesFor(ids);
   return hydrate(rows, names);
 }
@@ -443,7 +419,7 @@ export async function getLeaveRequestsSummary(
     .gte("created_at", since)
     .order("created_at", { ascending: false });
   const rows = data ?? [];
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   const names = await namesFor(ids);
   return { ok: true, data: hydrate(rows, names) };
 }
@@ -451,20 +427,18 @@ export async function getLeaveRequestsSummary(
 /**
  * Data untuk pop-up izin di dashboard karyawan — diambil saat pop-up dibuka
  * (bukan di tiap muat dashboard, yang sudah berat). Karyawan hanya melihat
- * miliknya sendiri: rekan untuk tukar shift, nama atasan tujuan, riwayatnya.
+ * miliknya sendiri: nama atasan tujuan dan riwayatnya.
  */
 export async function getLeaveDialogData(): Promise<{
-  colleagues: ColleagueOption[];
   leaderNames: string[];
   myRequests: LeaveRequestView[];
   nowMs: number;
 }> {
-  const [colleagues, leaderNames, myRequests] = await Promise.all([
-    listHaengbocakeColleagues(),
+  const [leaderNames, myRequests] = await Promise.all([
     getMyLeaderNames(),
     getMyLeaveRequests(),
   ]);
-  return { colleagues, leaderNames, myRequests, nowMs: Date.now() };
+  return { leaderNames, myRequests, nowMs: Date.now() };
 }
 
 /**
@@ -481,7 +455,7 @@ export async function getOwnerLeaveQueue(): Promise<LeaveRequestView[]> {
   ]);
   const hasLeader = new Set<string>((links ?? []).map((l: { member_id: string }) => l.member_id));
   const rows = (pending ?? []).filter((r: any) => !hasLeader.has(r.user_id));
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   return hydrate(rows, await namesFor(ids));
 }
 
@@ -499,6 +473,6 @@ export async function getOwnerRecentDecisions(): Promise<LeaveRequestView[]> {
     .order("decided_at", { ascending: false })
     .limit(30);
   const rows = data ?? [];
-  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  const ids = rows.flatMap((r: any) => [r.user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   return hydrate(rows, await namesFor(ids));
 }

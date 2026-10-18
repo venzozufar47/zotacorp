@@ -7,14 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   getLeaveDialogData,
   submitLeaveRequest,
-  type ColleagueOption,
   type LeaveRequestView,
 } from "@/lib/actions/leave-requests.actions";
 import { LeaveForm } from "./LeaveForm";
 import { HistoryRow, NowContext, SegTabs } from "./LeaveParts";
 
 type DialogData = {
-  colleagues: ColleagueOption[];
   leaderNames: string[];
   myRequests: LeaveRequestView[];
   nowMs: number;
@@ -85,7 +83,6 @@ export function LeaveRequestDialog() {
                 />
                 {tab === "ajukan" ? (
                   <LeaveForm
-                    colleagues={data.colleagues}
                     submitLabel={
                       <>
                         <Send /> Kirim ke {leaderLabel}

@@ -9,7 +9,6 @@ import type { LeaveKind } from "@/lib/actions/leave-requests.actions";
 export const LEAVE_KIND_LABEL: Record<LeaveKind, string> = {
   sakit: "Izin sakit",
   izin_keluar_toko: "Izin keluar toko",
-  tukar_shift: "Tukar shift",
 };
 
 /**
