@@ -16,6 +16,7 @@ import {
 } from "@/lib/pos-pin-format";
 import {
   isRoleEligible,
+  isStrictOperation,
   POS_OPERATION_ELIGIBLE_HINT,
 } from "@/lib/pos/authorizer-policy";
 import { cn } from "@/lib/utils";
@@ -272,7 +273,11 @@ export function RekeningAuthorizersCard({
                           const eligible = isRoleEligible(op, c.jobRole);
                           // Hanya sel BARU yang tak pantas yang dikunci; yang
                           // sudah tercentang selalu bisa dicabut.
-                          const locked = !on && !eligible && !allowExceptions;
+                          // Operasi keras (void): tak bisa dibuka pengecualian.
+                          const locked =
+                            !on &&
+                            !eligible &&
+                            (!allowExceptions || isStrictOperation(op));
                           return (
                             <td key={op} className="text-center px-1">
                               <button

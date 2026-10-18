@@ -12,7 +12,8 @@
  * - Opname TIDAK ada di sini: otorisasinya milik kasir shift yang bertugas.
  * - Void/Penarikan/Produksi/Kue tetap diinput kasir shift di POS; yang
  *   dibatasi di sini adalah siapa yang PIN-nya menyetujui.
- * - Owner (admin) selalu sah — ditangani di `verifyOperationPin`.
+ * - Owner (admin) sah di semua operasi KECUALI void (aturan keras di bawah) —
+ *   ditangani di `verifyOperationPin`.
  *
  * job_role boleh gabungan ("Baker & Kepala Produksi", "Admin & Koordinator
  * Toko") sesuai konvensi daftar peran per unit; cukup SATU komponen yang
@@ -46,7 +47,7 @@ export const POS_OPERATION_ELIGIBLE_HINT: Record<
   PosChecklistOperation,
   string
 > = {
-  sale_void: "Koordinator Toko + Owner",
+  sale_void: "hanya Koordinator Toko (aturan keras, PIN Owner tidak berlaku)",
   withdrawal: "Koordinator Toko, Kepala Produksi + Owner",
   production: "Kepala Produksi + 1 staf dapur senior + Owner",
   cake_pickup: "Staf Depan + Koordinator Toko",
@@ -73,4 +74,19 @@ export function isRoleEligible(
   if (!jobRole) return false;
   const allowed = POS_OPERATION_ELIGIBLE_ROLES[op];
   return roleParts(jobRole).some((r) => allowed.includes(r));
+}
+
+/**
+ * Operasi yang aturannya KERAS, bukan penuntun: hanya peran yang pantas yang
+ * PIN-nya diterima server, tanpa pengecualian dan tanpa PIN Owner. Void hanya
+ * sah dengan PIN Koordinator Toko (keputusan pemilik); kasir shift hanya
+ * menginputnya. Siapa pun yang kebetulan tercentang di kartu tidak mengubah
+ * itu, dan kartu admin tidak membuka pengecualian untuk operasi ini.
+ */
+export const POS_STRICT_OPERATIONS: readonly PosChecklistOperation[] = [
+  "sale_void",
+] as const;
+
+export function isStrictOperation(op: string): op is PosChecklistOperation {
+  return (POS_STRICT_OPERATIONS as readonly string[]).includes(op);
 }

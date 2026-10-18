@@ -9,8 +9,8 @@
 --
 -- Penetapan per orang (keputusan pemilik): Debar Boles Ananta & Epafroditus Yuan Pico = Kepala Produksi,
 -- Nisa Alya Almaida = Koordinator Toko Pare, Tasya Maynanda = Admin sekaligus Koordinator Toko Semarang.
--- Idempotent: hanya mengubah baris yang MASIH berlabel lama. Siti Jauharatul Munawaroh sengaja tidak
--- disentuh (label Koordinator Toko-nya perlu ditinjau pemilik).
+-- Siti Jauharatul Munawaroh (Jara) kembali menjadi Staf Depan: Koordinator Toko Pare adalah Nisa.
+-- Idempotent: hanya mengubah baris yang MASIH berlabel lama.
 
 do $$
 declare
@@ -32,7 +32,8 @@ begin
     ('Debar Boles Ananta',     'Baker',      'Baker & Kepala Produksi'),
     ('Epafroditus Yuan Pico',  'Baker',      'Baker & Kepala Produksi'),
     ('Nisa Alya Almaida',      'Staf Depan', 'Staf Depan & Koordinator Toko'),
-    ('Tasya Maynanda',         'Admin',      'Admin & Koordinator Toko')
+    ('Tasya Maynanda',         'Admin',      'Admin & Koordinator Toko'),
+    ('Siti Jauharatul Munawaroh', 'Koordinator Toko', 'Staf Depan')
   ) as m(full_name, old_role, new_role)
   where p.full_name = m.full_name
     and p.business_unit = 'Haengbocake'

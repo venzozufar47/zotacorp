@@ -24,6 +24,7 @@
 
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { verifyPin } from "@/lib/pos-pin";
+import { isRoleEligible, isStrictOperation } from "@/lib/pos/authorizer-policy";
 import {
   authorizerNames,
   emptyPosAuthorizerMap,
@@ -39,12 +40,14 @@ type AuthorizerRow = { operation: string; user_id: string };
 type ProfileRow = {
   id: string;
   full_name: string | null;
+  job_role?: string | null;
   pos_pin_hash: string | null;
 };
 
 /** Ref + hash-nya. Hash tidak pernah keluar dari modul ini. */
 interface InternalRef extends PosAuthorizerRef {
   pinHash: string | null;
+  jobRole: string | null;
 }
 
 /**
@@ -72,7 +75,7 @@ async function loadRefs(
   const ids = Array.from(new Set(rows.map((r) => r.user_id)));
   const { data: profsRaw } = await db
     .from("profiles")
-    .select("id, full_name, pos_pin_hash")
+    .select("id, full_name, job_role, pos_pin_hash")
     .in("id", ids);
   const byId = new Map(
     ((profsRaw ?? []) as unknown as ProfileRow[]).map((p) => [p.id, p])
@@ -93,6 +96,7 @@ async function loadRefs(
       fullName: p.full_name?.trim() || "(tanpa nama)",
       hasPin: !!p.pos_pin_hash,
       pinHash: p.pos_pin_hash,
+      jobRole: p.job_role ?? null,
     });
     out.set(r.operation, list);
   }
@@ -149,6 +153,7 @@ async function loadOwnerRefs(): Promise<InternalRef[]> {
     fullName: p.full_name?.trim() || "Owner",
     hasPin: true,
     pinHash: p.pos_pin_hash,
+    jobRole: null,
   }));
 }
 
@@ -175,6 +180,22 @@ export async function verifyOperationPin(
   pin: string | undefined
 ): Promise<PinVerdict> {
   const refs = (await loadRefs(bankAccountId, operation)).get(operation) ?? [];
+
+  // Operasi KERAS (void): hanya Koordinator Toko, tanpa Owner, dan TIDAK
+  // pernah bebas-PIN — kartu admin yang kosong tidak boleh membuka void.
+  if (isStrictOperation(operation)) {
+    const usable = refs.filter(
+      (r) => r.pinHash && isRoleEligible(operation, r.jobRole)
+    );
+    if (usable.length === 0) {
+      return {
+        ok: false,
+        error: `${POS_OPERATION_LABEL_ID[operation]} hanya bisa disetujui PIN Koordinator Toko — belum ada Koordinator Toko ber-PIN yang terdaftar untuk cabang ini. Minta admin mengaturnya di Otorisasi POS.`,
+      };
+    }
+    return matchPin(usable, operation, pin);
+  }
+
   if (refs.length === 0)
     return { ok: true, authorizerId: null, authorizerName: null };
 
@@ -193,6 +214,15 @@ export async function verifyOperationPin(
     };
   }
 
+  return matchPin(usable, operation, pin);
+}
+
+/** Cocokkan PIN dengan salah satu pemegang yang sah (semuanya ber-hash). */
+function matchPin(
+  usable: InternalRef[],
+  operation: PosOperation,
+  pin: string | undefined
+): PinVerdict {
   if (!pin) return { ok: false, error: "PIN authorization required" };
   if (!isValidPinFormat(pin)) {
     return { ok: false, error: "PIN harus 4–6 digit angka." };
