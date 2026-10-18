@@ -19,13 +19,16 @@ export type MeterReading =
   | { status: "error"; error: string };
 
 const PROMPT = `Ini foto layar atau meteran listrik prabayar (token PLN).
-Baca SISA token/saldo listrik dalam kWh yang tertampil di layar.
-Jawab HANYA JSON: {"is_meter": boolean, "kwh": number atau null, "note": string singkat}.
+Layar menampilkan SISA token/saldo dalam kWh. FORMATNYA TETAP: DUA ANGKA TERAKHIR adalah desimal
+(selalu ada ",00"). Contoh: layar "8068" berarti 80,68 kWh; "1466" berarti 14,66 kWh; "10000" berarti
+100,00 kWh. Tanda desimalnya sering kecil atau tidak terlihat — jangan bergantung padanya.
+Tugasmu: salin SEMUA digit yang tampil di layar, urut dari kiri ke kanan, TANPA titik/koma/spasi.
+Jawab HANYA JSON: {"is_meter": boolean, "digits": string, "note": string singkat}.
 Aturan:
-- Pakai titik sebagai pemisah desimal (contoh layar "87,45" → 87.45).
+- digits hanya berisi angka 0-9 (contoh "8068"). Jangan membagi atau menambahkan desimal sendiri.
 - is_meter=false bila foto bukan layar/meteran listrik.
-- kwh=null bila angka tidak jelas, terpotong, buram, atau ada beberapa angka yang membingungkan. Jangan menebak.
-- Ambil angka SISA kWh, bukan nomor meter, tegangan, daya, atau tanggal.`;
+- digits="" bila angka tidak jelas, terpotong, buram, atau ragu-ragu. Jangan menebak.
+- Ambil angka SISA kWh di layar, bukan nomor meter, tegangan, daya, atau tanggal.`;
 
 interface GeminiBody {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -59,10 +62,10 @@ export async function readMeterKwh(bytes: ArrayBuffer, mime: string): Promise<Me
             type: "OBJECT",
             properties: {
               is_meter: { type: "BOOLEAN" },
-              kwh: { type: "NUMBER", nullable: true },
+              digits: { type: "STRING" },
               note: { type: "STRING" },
             },
-            required: ["is_meter"],
+            required: ["is_meter", "digits"],
           },
         },
       }),
@@ -71,13 +74,14 @@ export async function readMeterKwh(bytes: ArrayBuffer, mime: string): Promise<Me
     if (!res.ok) return { status: "error", error: body.error?.message ?? `HTTP ${res.status}` };
     const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) return { status: "error", error: "Jawaban AI kosong" };
-    const parsed = JSON.parse(text) as { is_meter?: boolean; kwh?: number | null; note?: string };
-    const kwh = typeof parsed.kwh === "number" && Number.isFinite(parsed.kwh) ? parsed.kwh : null;
-    // Angka di luar rentang masuk akal (negatif / ribuan kWh di layar token) = salah baca.
-    if (!parsed.is_meter || kwh == null || kwh < 0 || kwh > 100_000) {
+    const parsed = JSON.parse(text) as { is_meter?: boolean; digits?: string; note?: string };
+    // Format layar token tetap: dua digit terakhir = desimal. Pembagiannya dilakukan DI SINI, bukan oleh
+    // model, supaya "8068" tidak pernah terbaca 8068 atau 806,8 hanya karena titik desimalnya kecil.
+    const digits = (parsed.digits ?? "").replace(/\s/g, "");
+    if (!parsed.is_meter || !/^\d{1,8}$/.test(digits)) {
       return { status: "unreadable", note: parsed.note?.slice(0, 200) ?? "" };
     }
-    return { status: "ok", kwh };
+    return { status: "ok", kwh: Number(digits) / 100 };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : "AI gagal" };
   } finally {
