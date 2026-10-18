@@ -6,6 +6,7 @@ import { findPosAccount } from "./pos.actions";
 import { getComplaintCount } from "./customer-complaints.actions";
 import { WITHDRAWAL_REASON_META, type WithdrawalReason } from "@/lib/pos/withdrawal-reasons";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { resolveUserBranches } from "@/lib/branches/user-branches";
 
 /**
  * Scorecard Cabang (PRD-2) — 4 angka cabang (Dokumen 4 §6 / Rencana Tim
@@ -258,6 +259,20 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
   return { branch, metrics, previousMetrics, twoWeeksRedKeys };
 }
 
-export async function canViewScorecard(): Promise<boolean> {
-  return canView();
+/**
+ * Scorecard untuk beranda karyawan — selalu cabang MILIKNYA sendiri (otomatis dari lokasi kerja /
+ * anggota tim / penugasan POS, lihat `resolveUserBranches`). Cabang tak terdeteksi → kedua cabang
+ * ditampilkan (`detected: false`), karena scorecard memang terbuka untuk semua staf Haengbocake.
+ */
+export async function getMyScorecards(): Promise<{
+  detected: boolean;
+  scorecards: BranchScorecard[];
+}> {
+  const user = await getCurrentUser();
+  if (!user || !(await canView())) return { detected: false, scorecards: [] };
+  const branches = await resolveUserBranches(user.id);
+  const detected = branches.length > 0;
+  const list: ScorecardBranch[] = detected ? branches : ["Pare", "Semarang"];
+  const cards = await Promise.all(list.map((b) => getBranchScorecard(b)));
+  return { detected, scorecards: cards.filter((c): c is BranchScorecard => c !== null) };
 }

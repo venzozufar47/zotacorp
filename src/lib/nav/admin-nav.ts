@@ -29,6 +29,7 @@ import {
   Sparkles,
   Target,
   Ticket,
+  Trophy,
   TrendingUp,
   Users,
   Wallet,
@@ -161,6 +162,12 @@ export function buildAdminNav({
           icon: Zap,
           label: "Briefing Kilat",
           color: "bg-quaternary",
+        },
+        {
+          href: "/admin/scorecard",
+          icon: Trophy,
+          label: "Scorecard Cabang",
+          color: "bg-tertiary",
         },
         {
           href: "/admin/sp",

@@ -5,6 +5,7 @@ import { createAdminClient } from "./_supabase-admin";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { isTeamLeader } from "@/lib/tasks/team-access";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { resolveUserBranches } from "@/lib/branches/user-branches";
 
 /**
  * Notulen Briefing Kilat Harian (dulu disebut "huddle" — nama tabel/fungsi tetap `huddle`) &
@@ -275,47 +276,12 @@ export async function listHaengbocakeEmployeesForMinutes(): Promise<
   return (data ?? []).map((p) => ({ id: p.id, name: p.full_name }));
 }
 
-function branchOfLocation(name: string): MinutesBranch | null {
-  if (/pare/i.test(name)) return "Pare";
-  if (/semarang/i.test(name)) return "Semarang";
-  return null;
-}
-
-/** Hitung berapa orang (dari `ids`) bertugas di tiap cabang, lewat lokasi kerjanya. */
-async function branchCounts(ids: string[]): Promise<Map<MinutesBranch, number>> {
-  const out = new Map<MinutesBranch, number>();
-  if (ids.length === 0) return out;
-  const { data: links } = await db().from("employee_locations").select("employee_id, location_id").in("employee_id", ids);
-  const locIds = [...new Set<string>((links ?? []).map((l: any) => l.location_id))];
-  if (locIds.length === 0) return out;
-  const { data: locs } = await db().from("attendance_locations").select("id, name").in("id", locIds);
-  const branchOf = new Map<string, MinutesBranch>();
-  for (const l of locs ?? []) {
-    const b = branchOfLocation(String(l.name ?? ""));
-    if (b) branchOf.set(l.id, b);
-  }
-  for (const l of links ?? []) {
-    const b = branchOf.get(l.location_id);
-    if (b) out.set(b, (out.get(b) ?? 0) + 1);
-  }
-  return out;
-}
-
 /**
- * Cabang kepala tim, otomatis — urutan: (1) lokasi kerja dirinya sendiri; kalau kosong,
- * (2) cabang dengan anggota timnya terbanyak. Kosong = tidak terdeteksi (UI memperlihatkan
- * pilihan cabang). Lebih dari satu = bertugas di beberapa cabang.
+ * Cabang kepala tim, otomatis (lihat `resolveUserBranches`: lokasi sendiri → anggota tim →
+ * penugasan POS). Kosong = tidak terdeteksi → UI menawarkan pilihan cabang.
  */
 export async function getMyBriefingBranches(): Promise<MinutesBranch[]> {
   const user = await getCurrentUser();
   if (!user) return [];
-  const own = await branchCounts([user.id]);
-  if (own.size > 0) return [...own.keys()].sort();
-
-  const { data: links } = await db().from("team_members").select("member_id").eq("leader_id", user.id);
-  const memberIds = [...new Set<string>((links ?? []).map((l: any) => l.member_id))];
-  const byMembers = await branchCounts(memberIds);
-  if (byMembers.size === 0) return [];
-  const max = Math.max(...byMembers.values());
-  return [...byMembers.entries()].filter(([, n]) => n === max).map(([b]) => b).sort();
+  return resolveUserBranches(user.id);
 }

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { BranchScorecard, ScorecardBand } from "@/lib/actions/scorecard.actions";
@@ -22,10 +21,7 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
               Merah 2 minggu berturut-turut: {scorecard.twoWeeksRedKeys.join(", ")}
             </p>
             <p className="text-xs text-muted-foreground">
-              Bawa rencana perbaikan satu halaman ke rapat mingguan.{" "}
-              <Link href={`/notulen/${scorecard.branch.toLowerCase()}`} className="underline font-semibold">
-                Catat di notulen
-              </Link>
+              Bawa rencana perbaikan satu halaman ke rapat mingguan.
             </p>
           </div>
         </div>
@@ -56,7 +52,7 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Dihitung otomatis dari POS, tutup kas harian, dan log keluhan. Dibahas tiap rapat mingguan.
+        Dihitung otomatis dari POS, selisih kas saat tutup shift, dan log keluhan. Dibahas tiap rapat mingguan.
       </p>
     </div>
   );

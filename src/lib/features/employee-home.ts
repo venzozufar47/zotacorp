@@ -9,8 +9,6 @@ export const EMPLOYEE_HOME_FEATURES = {
   /** DIRILIS. Tombol "Ajukan izin" (pop-up) di bawah tombol absen untuk semua karyawan + banner "N pengajuan
    *  izin menunggu persetujuanmu" untuk atasan langsung → halaman Tim. */
   izin: true,
-  /** Scorecard cabang → /scorecard */
-  scorecard: false,
   /** Survei bulanan anonim → /survei */
   survei: false,
   /** Banner "N SOP belum kamu akui" → /pengakuan-sop */
