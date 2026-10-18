@@ -18,7 +18,7 @@ import { createCoachingNote } from "@/lib/actions/cleaning-review.actions";
  * dipisah dari `TeamTasksView` (yang eksplisit read-only untuk Tugas) —
  * ini kemampuan berbeda, bukan pengecualian atas aturan read-only itu.
  *
- * Pilihan tingkat dibatasi ke "Catatan biasa" / "Teguran lisan tercatat"
+ * Pilihan kategori dibatasi ke "Catatan biasa" / "Teguran serius"
  * di UI ini — SP1/SP2/SP3 tidak ditawarkan sama sekali karena memang
  * ditolak server (Owner-only), bukan cuma disembunyikan.
  */
@@ -85,7 +85,7 @@ export function WriteCoachingNoteCard({ members }: { members: { memberId: string
           </Select>
         </div>
         <div>
-          <Label>Tingkat</Label>
+          <Label>Kategori</Label>
           <Select
             value={isTeguran ? "teguran" : "catatan"}
             onValueChange={(v) => setIsTeguran(v === "teguran")}
@@ -95,7 +95,7 @@ export function WriteCoachingNoteCard({ members }: { members: { memberId: string
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="catatan">Catatan biasa</SelectItem>
-              <SelectItem value="teguran">Teguran lisan tercatat</SelectItem>
+              <SelectItem value="teguran">Teguran serius</SelectItem>
             </SelectContent>
           </Select>
         </div>

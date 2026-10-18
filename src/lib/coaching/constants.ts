@@ -5,18 +5,21 @@ import type { SpLevel } from "@/lib/actions/cleaning-review.actions";
  * hanya boleh mengekspor async function — sama alasan dengan
  * `lib/leave/constants.ts` (lihat komentarnya).
  */
+/** Kategori catatan tanpa tingkat (sp_level kosong). Kategori lain: SP_LEVEL_LABEL.teguran = "Teguran serius". */
+export const PLAIN_NOTE_LABEL = "Catatan biasa";
+
 export const SP_LEVEL_LABEL: Record<SpLevel, string> = {
-  teguran: "Teguran lisan tercatat",
+  teguran: "Teguran serius",
   sp1: "SP1",
   sp2: "SP2",
   sp3: "SP3",
 };
 
-/** Catatan yang sudah dibaca disembunyikan dari dashboard setelah sekian lama (tetap ada di Riwayat). */
+/** Catatan yang sudah dibaca disembunyikan dari dashboard karyawan setelah sekian lama (data tetap tersimpan). */
 export const HIDE_AFTER_READ_MS = 3 * 24 * 3600 * 1000;
 
 /**
- * Apakah catatan sudah tidak tampil di dashboard (hanya di Riwayat)?
+ * Apakah catatan sudah tidak tampil di dashboard karyawan?
  * - SP1–SP3: selalu tampil selama masih berlaku; arsip hanya setelah `validUntil`
  *   lewat (definisi sama dengan `hasActiveSp`). Tanpa tanggal = belum kedaluwarsa.
  * - Selain itu (catatan biasa, teguran): arsip bila sudah dibaca > 3 hari.

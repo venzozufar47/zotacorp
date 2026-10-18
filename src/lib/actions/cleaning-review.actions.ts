@@ -475,7 +475,7 @@ export async function createCoachingNote(input: {
   return { ok: true };
 }
 
-/** `archived` = tidak lagi tampil di dashboard, hanya di "Riwayat". Dihitung di server (satu jam dinding). */
+/** `archived` = sudah lewat masa tampil di dashboard (tidak ditampilkan lagi di sana). Dihitung di server. */
 export interface MyCoachingNote extends CoachingNoteRow {
   archived: boolean;
 }
@@ -484,10 +484,10 @@ export interface MyCoachingNote extends CoachingNoteRow {
  * Catatan pembinaan milik penelepon sendiri, terbaru dulu.
  *
  * Catatan biasa/teguran: tampil di dashboard sampai 3 hari setelah DIBACA;
- * sesudahnya `archived` dan hanya muncul di Riwayat.
+ * sesudahnya `archived` dan tidak ditampilkan lagi di dashboard.
  * SP1–SP3: SELALU tampil selama masih berlaku (`valid_until` belum lewat —
  * definisi yang sama dengan `hasActiveSp`), dibaca/ditanggapi atau belum;
- * baru masuk Riwayat setelah kedaluwarsa. SP tanpa tanggal berlaku dianggap
+ * baru `archived` setelah kedaluwarsa. SP tanpa tanggal berlaku dianggap
  * belum kedaluwarsa.
  */
 export async function listMyCoachingNotes(): Promise<MyCoachingNote[]> {
@@ -610,6 +610,8 @@ export interface SpOverviewRow extends CoachingNoteRow {
 export async function listSpEntries(opts?: {
   onlyActive?: boolean;
   days?: number;
+  /** Sertakan catatan biasa (tanpa tingkat) — dipakai riwayat lengkap Owner. */
+  includePlain?: boolean;
 }): Promise<ActionResult<SpOverviewRow[]>> {
   const gate = await requireAdmin();
   if (!gate.ok) return gate;
@@ -620,8 +622,8 @@ export async function listSpEntries(opts?: {
     .select(
       "id, user_id, body, context, created_at, acknowledged_at, period_from, period_to, sp_level, sop_reference, valid_until, employee_response, employee_acceptance, author:profiles!employee_coaching_notes_author_id_fkey(full_name), subject:profiles!employee_coaching_notes_user_id_fkey(full_name)"
     )
-    .not("sp_level", "is", null)
     .order("created_at", { ascending: false });
+  if (!opts?.includePlain) query = query.not("sp_level", "is", null);
 
   const today = new Date().toISOString().slice(0, 10);
   if (opts?.onlyActive) {

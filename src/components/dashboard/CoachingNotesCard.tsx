@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { MessageSquareText, Check, ChevronDown, History, Loader2, ShieldAlert } from "lucide-react";
+import { MessageSquareText, Check, Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { formatDateID } from "@/lib/utils/date-formats";
 import {
@@ -28,17 +28,15 @@ import { Button } from "@/components/ui/button";
  * langkah: karyawan menyatakan menerima / menerima dengan keberatan
  * (Dokumen 3 §4, §7 — hak didengar sebelum sanksi final).
  *
- * Catatan yang sudah dibaca disembunyikan dari dashboard 3 hari kemudian dan
- * pindah ke "Riwayat" (lihat `listMyCoachingNotes`) — tidak dihapus.
+ * Catatan yang sudah dibaca hilang dari dashboard 3 hari kemudian (lihat
+ * `isCoachingNoteArchived`) — tidak dihapus dari database, dan tidak ada riwayat
+ * di sini; leader (/tim) dan Owner tetap bisa membacanya.
  */
 export function CoachingNotesCard({ notes }: { notes: MyCoachingNote[] }) {
   const [acked, setAcked] = useState<Record<string, boolean>>({});
-  const [showHistory, setShowHistory] = useState(false);
   const [pending, startTransition] = useTransition();
-  if (notes.length === 0) return null;
-
   const active = notes.filter((n) => !n.archived);
-  const archived = notes.filter((n) => n.archived);
+  if (active.length === 0) return null;
 
   function ack(id: string) {
     setAcked((a) => ({ ...a, [id]: true }));
@@ -49,45 +47,17 @@ export function CoachingNotesCard({ notes }: { notes: MyCoachingNote[] }) {
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
-      {active.length > 0 && (
-        <>
-          <div className="flex items-center gap-2">
-            <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
-              <MessageSquareText size={15} />
-            </span>
-            <h2 className="font-display text-sm font-bold">Catatan pembinaan</h2>
-          </div>
-          <ul className="space-y-2">
-            {active.map((n) => (
-              <NoteItem key={n.id} n={n} seen={n.acknowledgedAt !== null || !!acked[n.id]} onAck={ack} pending={pending} />
-            ))}
-          </ul>
-        </>
-      )}
-
-      {archived.length > 0 && (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setShowHistory((v) => !v)}
-            aria-expanded={showHistory}
-            className="flex w-full items-center gap-2 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
-          >
-            <History size={14} />
-            <span className="flex-1">
-              {active.length === 0 ? "Catatan pembinaan — " : ""}Riwayat ({archived.length})
-            </span>
-            <ChevronDown size={14} className={showHistory ? "rotate-180 transition-transform" : "transition-transform"} />
-          </button>
-          {showHistory && (
-            <ul className="space-y-2">
-              {archived.map((n) => (
-                <NoteItem key={n.id} n={n} seen onAck={ack} pending={pending} />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
+          <MessageSquareText size={15} />
+        </span>
+        <h2 className="font-display text-sm font-bold">Catatan pembinaan</h2>
+      </div>
+      <ul className="space-y-2">
+        {active.map((n) => (
+          <NoteItem key={n.id} n={n} seen={n.acknowledgedAt !== null || !!acked[n.id]} onAck={ack} pending={pending} />
+        ))}
+      </ul>
     </section>
   );
 }

@@ -8,7 +8,7 @@ import { SpAdminClient } from "@/components/admin/sp/SpAdminClient";
 
 /**
  * Sistem SP (PRD-6) — terbitkan teguran/SP, lihat yang sedang aktif, dan
- * riwayat 90 hari. Dibangun di atas `employee_coaching_notes` yang sudah
+ * riwayat lengkap 1 tahun. Dibangun di atas `employee_coaching_notes` yang sudah
  * ada (migrasi 131, diperluas migrasi 197) — bukan tabel/halaman terpisah.
  */
 export default async function AdminSpPage() {
@@ -18,7 +18,7 @@ export default async function AdminSpPage() {
   const supabase = await createClient();
   const [activeRes, recentRes, employeesRes] = await Promise.all([
     listSpEntries({ onlyActive: true }),
-    listSpEntries({ days: 90 }),
+    listSpEntries({ days: 365, includePlain: true }),
     supabase
       .from("profiles")
       .select("id, full_name")
@@ -32,7 +32,8 @@ export default async function AdminSpPage() {
       <div>
         <h1 className="text-xl font-bold text-foreground">Sistem SP</h1>
         <p className="text-sm text-muted-foreground">
-          Teguran lisan tercatat dan SP1–SP3. Sanksi (SP1–SP3) hanya bisa diterbitkan dari sini.
+          Teguran serius dan SP1–SP3. Sanksi (SP1–SP3) hanya bisa diterbitkan dari sini. Riwayat lengkap
+          semua catatan pembinaan (termasuk catatan biasa) hanya ada di sini — Owner saja.
         </p>
       </div>
       <SpAdminClient

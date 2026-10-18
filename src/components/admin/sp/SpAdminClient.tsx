@@ -15,7 +15,7 @@ import {
   type SpLevel,
   type SpOverviewRow,
 } from "@/lib/actions/cleaning-review.actions";
-import { SP_LEVEL_LABEL } from "@/lib/coaching/constants";
+import { PLAIN_NOTE_LABEL, SP_LEVEL_LABEL } from "@/lib/coaching/constants";
 
 const STATUS_LABEL: Record<string, string> = {
   menerima: "Menerima",
@@ -39,12 +39,13 @@ function EntryRow({ r }: { r: SpOverviewRow }) {
           }
         >
           {isSanction && <ShieldAlert size={10} />}
-          {r.spLevel ? SP_LEVEL_LABEL[r.spLevel] : "—"}
+          {r.spLevel ? SP_LEVEL_LABEL[r.spLevel] : PLAIN_NOTE_LABEL}
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
         {dateLabel(r.createdAt)} · oleh {r.authorName ?? "—"}
         {r.validUntil ? ` · berlaku sampai ${dateLabel(r.validUntil)}` : ""}
+        {r.acknowledgedAt ? ` · dibaca ${dateLabel(r.acknowledgedAt)}` : " · belum dibaca"}
       </p>
       <p>{r.body}</p>
       {r.sopReference && <p className="text-xs text-muted-foreground">Rujukan: {r.sopReference}</p>}
@@ -182,7 +183,7 @@ export function SpAdminClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>Riwayat 90 hari</CardTitle>
+          <CardTitle>Riwayat catatan pembinaan (1 tahun)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {recent.length === 0 ? (
