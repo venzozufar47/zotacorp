@@ -6,7 +6,49 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+/**
+ * Base UI hanya bisa menampilkan LABEL item terpilih kalau daftar `items`
+ * diberikan di Root — tanpa itu, trigger yang tertutup menampilkan NILAI
+ * mentahnya (uuid karyawan, "catatan", dst.), karena popup belum ter-mount
+ * dan tidak ada yang tahu label-nya. Daripada mewajibkan tiap pemakaian
+ * mengulang daftar opsi sebagai `items`, kita menelusuri anak-anak dan
+ * mengambil `<SelectItem value>label</SelectItem>` secara otomatis.
+ * `items` eksplisit tetap diutamakan (mis. opsi yang dirender komponen lain).
+ */
+function collectItems(
+  node: React.ReactNode,
+  out: { value: unknown; label: React.ReactNode }[]
+) {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return
+    const props = child.props as { value?: unknown; children?: React.ReactNode }
+    if (child.type === SelectItem) {
+      out.push({ value: props.value, label: props.children })
+    } else if (props.children !== undefined) {
+      collectItems(props.children, out)
+    }
+  })
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>({
+  items,
+  children,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  let resolved: SelectPrimitive.Root.Props<Value, Multiple>["items"] = items
+  if (resolved === undefined) {
+    const found: { value: unknown; label: React.ReactNode }[] = []
+    collectItems(children, found)
+    if (found.length > 0) {
+      resolved = found as NonNullable<SelectPrimitive.Root.Props<Value, Multiple>["items"]>
+    }
+  }
+  return (
+    <SelectPrimitive.Root items={resolved} {...props}>
+      {children}
+    </SelectPrimitive.Root>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
