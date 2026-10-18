@@ -26,6 +26,7 @@ import { ExtraWorkButton } from "@/components/attendance/ExtraWorkButton";
 import { AttendanceStatusCard } from "@/components/attendance/AttendanceStatusCard";
 import { ProfileCompletionCard } from "@/components/profile/ProfileCompletionCard";
 import { CoachingNotesCard } from "@/components/dashboard/CoachingNotesCard";
+import { LeaveRequestDialog } from "@/components/leave/LeaveRequestDialog";
 import { CleaningRedoCard } from "@/components/dashboard/CleaningRedoCard";
 import {
   listMyCoachingNotes,
@@ -404,7 +405,7 @@ export default async function DashboardPage() {
 
       {FEATURES.izin && pendingLeaveApprovals > 0 && (
         <Link
-          href="/izin"
+          href="/tim"
           className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
         >
           <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
@@ -712,15 +713,7 @@ export default async function DashboardPage() {
           {/* Akses karyawan ke Izin sakit / keluar toko — tepat di bawah tombol
               absen karena itulah saat orang butuh (tak bisa masuk / mau keluar).
               Memakai saklar `izin` yang sama dengan banner atasan. */}
-          {FEATURES.izin && (
-            <Link
-              href="/izin"
-              className="flex items-center justify-center gap-2 rounded-full border-2 border-border px-4 py-2.5 text-sm font-semibold text-muted-foreground transition hover:border-foreground hover:text-foreground"
-            >
-              <CalendarClock size={16} />
-              Izin sakit / keluar toko
-            </Link>
-          )}
+          {FEATURES.izin && <LeaveRequestDialog />}
         </div>
       </section>
 

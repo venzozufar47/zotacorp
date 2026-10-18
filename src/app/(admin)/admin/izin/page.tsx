@@ -2,8 +2,15 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentRole } from "@/lib/supabase/cached";
-import { getLeaveRequestsSummary } from "@/lib/actions/leave-requests.actions";
-import { LEAVE_KIND_LABEL } from "@/lib/leave/constants";
+import {
+  getLeaveRequestsSummary,
+  getOwnerLeaveQueue,
+  getOwnerRecentDecisions,
+  listHaengbocakeColleagues,
+  listInputableMembers,
+} from "@/lib/actions/leave-requests.actions";
+import { LeaveApproverPanel } from "@/components/leave/LeaveParts";
+import { LEAVE_KIND_LABEL, serverNowMs } from "@/lib/leave/constants";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu",
@@ -20,11 +27,24 @@ export default async function AdminIzinPage() {
   const role = await getCurrentRole();
   if (role !== "admin") redirect("/dashboard");
 
-  const res = await getLeaveRequestsSummary(7);
+  const [res, ownerQueue, ownerDecisions, colleagues, inputMembers] = await Promise.all([
+    getLeaveRequestsSummary(7),
+    getOwnerLeaveQueue(),
+    getOwnerRecentDecisions(),
+    listHaengbocakeColleagues(),
+    listInputableMembers(),
+  ]);
   const rows = res.ok ? res.data ?? [] : [];
 
   return (
     <div className="space-y-4 p-4">
+      <LeaveApproverPanel
+        queue={ownerQueue}
+        recentDecisions={ownerDecisions}
+        colleagues={colleagues}
+        inputMembers={inputMembers}
+        nowMs={serverNowMs()}
+      />
       <div>
         <h1 className="text-xl font-bold text-foreground">Ringkasan Izin</h1>
         <p className="text-sm text-muted-foreground">

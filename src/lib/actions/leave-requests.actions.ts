@@ -156,14 +156,15 @@ export async function submitLeaveRequest(
   const title = `Pengajuan ${LEAVE_KIND_LABEL[input.kind].toLowerCase()} baru`;
   const body = "Ada pengajuan yang perlu persetujuanmu.";
   if (leaders.length > 0) {
-    await Promise.all(leaders.map((l) => sendPushToUser(l, { title, body, url: "/izin" })));
+    await Promise.all(leaders.map((l) => sendPushToUser(l, { title, body, url: "/tim" })));
   } else {
     // Tidak ada leader tercatat (biasanya pemohonnya sendiri sudah level
     // Koordinator/Kepala Produksi) — jatuh ke admin sebagai fallback.
-    await sendPushToAdmins({ title, body, url: "/izin" });
+    await sendPushToAdmins({ title, body, url: "/admin/izin" });
   }
 
-  revalidatePath("/izin");
+  revalidatePath("/tim");
+  revalidatePath("/admin/izin");
   revalidatePath("/dashboard");
   return { ok: true, data: { id: (inserted as { id: string }).id } };
 }
@@ -268,10 +269,11 @@ export async function submitLeaveForMember(
   await sendPushToUser(input.memberId, {
     title: "Izin dicatat atasan",
     body: `${LEAVE_KIND_LABEL[input.kind]} dicatat oleh ${names.get(user.id) ?? "atasanmu"}.`,
-    url: "/izin",
+    url: "/dashboard",
   });
 
-  revalidatePath("/izin");
+  revalidatePath("/tim");
+  revalidatePath("/dashboard");
   revalidatePath("/admin/izin");
   return { ok: true, data: { id: (inserted as { id: string }).id } };
 }
@@ -416,10 +418,11 @@ export async function decideLeaveRequest(input: DecideLeaveRequestInput): Promis
     body:
       input.note?.trim() ||
       (input.decision === "approved" ? "Pengajuanmu disetujui." : "Pengajuanmu ditolak."),
-    url: "/izin",
+    url: "/dashboard",
   });
 
-  revalidatePath("/izin");
+  revalidatePath("/tim");
+  revalidatePath("/admin/izin");
   revalidatePath("/dashboard");
   return { ok: true };
 }
@@ -443,4 +446,59 @@ export async function getLeaveRequestsSummary(
   const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
   const names = await namesFor(ids);
   return { ok: true, data: hydrate(rows, names) };
+}
+
+/**
+ * Data untuk pop-up izin di dashboard karyawan — diambil saat pop-up dibuka
+ * (bukan di tiap muat dashboard, yang sudah berat). Karyawan hanya melihat
+ * miliknya sendiri: rekan untuk tukar shift, nama atasan tujuan, riwayatnya.
+ */
+export async function getLeaveDialogData(): Promise<{
+  colleagues: ColleagueOption[];
+  leaderNames: string[];
+  myRequests: LeaveRequestView[];
+  nowMs: number;
+}> {
+  const [colleagues, leaderNames, myRequests] = await Promise.all([
+    listHaengbocakeColleagues(),
+    getMyLeaderNames(),
+    getMyLeaveRequests(),
+  ]);
+  return { colleagues, leaderNames, myRequests, nowMs: Date.now() };
+}
+
+/**
+ * Antrean Owner: pengajuan yang menunggu dari karyawan TANPA atasan langsung —
+ * yang memang jatuh ke Owner. Pengajuan yang punya atasan tidak ditampilkan
+ * (itu urusan atasannya; Owner tetap boleh menimpa lewat decideLeaveRequest).
+ */
+export async function getOwnerLeaveQueue(): Promise<LeaveRequestView[]> {
+  const role = await getCurrentRole();
+  if (role !== "admin") return [];
+  const [{ data: pending }, { data: links }] = await Promise.all([
+    db().from("leave_requests").select("*").eq("status", "pending").order("created_at", { ascending: true }),
+    db().from("team_members").select("member_id"),
+  ]);
+  const hasLeader = new Set<string>((links ?? []).map((l: { member_id: string }) => l.member_id));
+  const rows = (pending ?? []).filter((r: any) => !hasLeader.has(r.user_id));
+  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  return hydrate(rows, await namesFor(ids));
+}
+
+/** Keputusan 14 hari terakhir yang diambil/dicatat Owner sendiri. */
+export async function getOwnerRecentDecisions(): Promise<LeaveRequestView[]> {
+  const user = await getCurrentUser();
+  if (!user || (await getCurrentRole()) !== "admin") return [];
+  const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+  const { data } = await db()
+    .from("leave_requests")
+    .select("*")
+    .eq("approver_id", user.id)
+    .neq("status", "pending")
+    .gte("decided_at", since)
+    .order("decided_at", { ascending: false })
+    .limit(30);
+  const rows = data ?? [];
+  const ids = rows.flatMap((r: any) => [r.user_id, r.swap_with_user_id, r.approver_id, r.backup_user_id, r.entered_by]);
+  return hydrate(rows, await namesFor(ids));
 }
