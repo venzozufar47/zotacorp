@@ -71,7 +71,7 @@ import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
 import { MessageSquareWarning, Gauge as GaugeIcon } from "lucide-react";
 import { canViewScorecard } from "@/lib/actions/scorecard.actions";
-import { Inbox } from "lucide-react";
+import { Inbox, ShieldQuestion } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -522,6 +522,22 @@ export default async function DashboardPage() {
           <span className="text-sm font-bold shrink-0">→</span>
         </Link>
       )}
+
+      <Link
+        href="/pengaduan"
+        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
+      >
+        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
+          <ShieldQuestion size={18} />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block font-display font-bold text-sm">Pengaduan</span>
+          <span className="block text-xs text-muted-foreground">
+            Lapor masalah — boleh tanpa nama, dijaga kerahasiaannya.
+          </span>
+        </span>
+        <span className="text-sm font-bold shrink-0">→</span>
+      </Link>
 
       <Link
         href="/persetujuan"
