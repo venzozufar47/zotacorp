@@ -64,8 +64,7 @@ import Link from "next/link";
 import { Brain, FileSignature, Ticket as TicketIcon, PackageSearch } from "lucide-react";
 import { isProcurementStaff } from "@/lib/procurement/access";
 import { getProcurementDashboardBadge } from "@/lib/actions/procurement.actions";
-import { getMyCashClosingBranchStatuses } from "@/lib/actions/cash-closing.actions";
-import { CashClosingCard } from "@/components/dashboard/CashClosingCard";
+import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home";
 import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.actions";
 import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
@@ -153,7 +152,6 @@ export default async function DashboardPage() {
     missedCheckouts,
     payslipBasisRes,
     myTasks,
-    cashClosingStatuses,
     pendingLeaveApprovals,
     canFileComplaintFlag,
     canViewScorecardFlag,
@@ -205,12 +203,12 @@ export default async function DashboardPage() {
       .eq("user_id", user.id)
       .maybeSingle(),
     getMyOpenTasks(),
-    getMyCashClosingBranchStatuses(),
-    getPendingLeaveApprovalCountForMe(),
-    canFileComplaint(),
-    canViewScorecard(),
-    hasAnsweredMonthlyPulse(),
-    countPendingSopAcknowledgments(),
+    // Kartu fitur baru disembunyikan (lihat EMPLOYEE_HOME_FEATURES): query-nya dilewati selagi mati.
+    FEATURES.izin ? getPendingLeaveApprovalCountForMe() : Promise.resolve(0),
+    FEATURES.keluhan || FEATURES.risetProduk ? canFileComplaint() : Promise.resolve(false),
+    FEATURES.scorecard ? canViewScorecard() : Promise.resolve(false),
+    FEATURES.survei ? hasAnsweredMonthlyPulse() : Promise.resolve(true),
+    FEATURES.pengakuanSop ? countPendingSopAcknowledgments() : Promise.resolve(0),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -404,7 +402,7 @@ export default async function DashboardPage() {
           </Link>
         )}
 
-      {pendingLeaveApprovals > 0 && (
+      {FEATURES.izin && pendingLeaveApprovals > 0 && (
         <Link
           href="/izin"
           className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
@@ -493,10 +491,7 @@ export default async function DashboardPage() {
 
       <CleaningChecklistCard initial={cleaningTasks} />
 
-      {/* Status tutup kas hari ini (per cabang yang bisa diakses). Render
-          sendiri nol kalau user bukan staf POS Haengbocake. */}
-      <CashClosingCard statuses={cashClosingStatuses} />
-
+      {FEATURES.notulen && (
       <Link
         href="/notulen"
         className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
@@ -512,8 +507,9 @@ export default async function DashboardPage() {
         </span>
         <span className="text-sm font-bold shrink-0">→</span>
       </Link>
+      )}
 
-      {canViewScorecardFlag && (
+      {FEATURES.scorecard && canViewScorecardFlag && (
         <Link
           href="/scorecard"
           className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
@@ -531,7 +527,7 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {!answeredMonthlyPulse && (
+      {FEATURES.survei && !answeredMonthlyPulse && (
         <Link
           href="/survei"
           className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-primary/10 px-4 py-3 shadow-hard-sm hover:bg-primary/20 transition"
@@ -549,7 +545,7 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {pendingSopCount > 0 && (
+      {FEATURES.pengakuanSop && pendingSopCount > 0 && (
         <Link
           href="/pengakuan-sop"
           className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
@@ -569,6 +565,7 @@ export default async function DashboardPage() {
         </Link>
       )}
 
+      {FEATURES.pengaduan && (
       <Link
         href="/pengaduan"
         className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
@@ -584,7 +581,9 @@ export default async function DashboardPage() {
         </span>
         <span className="text-sm font-bold shrink-0">→</span>
       </Link>
+      )}
 
+      {FEATURES.persetujuan && (
       <Link
         href="/persetujuan"
         className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
@@ -600,7 +599,9 @@ export default async function DashboardPage() {
         </span>
         <span className="text-sm font-bold shrink-0">→</span>
       </Link>
+      )}
 
+      {FEATURES.bonus && (
       <Link
         href="/bonus"
         className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
@@ -616,8 +617,9 @@ export default async function DashboardPage() {
         </span>
         <span className="text-sm font-bold shrink-0">→</span>
       </Link>
+      )}
 
-      {canFileComplaintFlag && (
+      {FEATURES.risetProduk && canFileComplaintFlag && (
         <Link
           href="/riset-produk"
           className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
@@ -635,7 +637,7 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {canFileComplaintFlag && (
+      {FEATURES.keluhan && canFileComplaintFlag && (
         <Link
           href="/keluhan"
           className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
