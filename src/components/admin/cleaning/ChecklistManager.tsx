@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { cleaningRefUrl, uploadCleaningRef } from "@/lib/utils/cleaning-refs";
 import { useRunAction } from "./useRunAction";
+import { setItemAiGate } from "@/lib/actions/cleaning-sop.actions";
 import { ChecklistGovernance } from "./ChecklistGovernance";
 import type { CleaningEmployee } from "./types";
 import {
@@ -520,7 +521,86 @@ function ItemRow({
 
       {/* Requested photos (slots), each with its own reference */}
       {it.requires_photo && <PhotoSlots item={it} pending={pending} run={run} />}
+      {it.requires_photo && <AiGateRow item={it} pending={pending} run={run} />}
     </li>
+  );
+}
+
+/**
+ * Gate AI per titik: foto dibaca AI (Gemini gratis) dan sisa token di bawah batas ditolak,
+ * jadi karyawan wajib mengisi token dulu. Checklist milik satu cabang → batas ini per cabang.
+ */
+function AiGateRow({
+  item,
+  pending,
+  run,
+}: {
+  item: CleaningItem;
+  pending: boolean;
+  run: (fn: () => Promise<{ ok: true } | { error: string } | { ok: true; id: string }>, ok?: string) => void;
+}) {
+  const [on, setOn] = useState(false);
+  const [val, setVal] = useState(String(item.ai_gate_min ?? 100));
+  const active = item.ai_gate_min != null;
+  const save = (min: number | null, msg: string) =>
+    run(async () => {
+      const res = await setItemAiGate({ itemId: item.id, minKwh: min });
+      return res.ok ? { ok: true as const } : { error: res.error };
+    }, msg);
+
+  if (!active && !on) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOn(true)}
+        disabled={pending}
+        className="mt-1.5 ml-[52px] inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50"
+      >
+        + Gate AI: baca sisa token (kWh) dari foto
+      </button>
+    );
+  }
+  return (
+    <div className="mt-1.5 ml-[52px] flex flex-wrap items-center gap-2 rounded-lg bg-primary/5 px-2.5 py-1.5 text-[11.5px]">
+      <span className="font-semibold">Gate AI</span>
+      <span className="text-muted-foreground">foto ditolak bila sisa token di bawah</span>
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={1}
+        step="any"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        className="h-7 w-24 text-xs"
+        disabled={pending}
+      />
+      <span className="text-muted-foreground">kWh</span>
+      <Button
+        type="button"
+        size="sm"
+        className="h-7 px-2 text-[11px]"
+        disabled={pending || !(Number(val) > 0)}
+        onClick={() => {
+          save(Number(val), "Gate AI disimpan");
+          setOn(false);
+        }}
+      >
+        Simpan
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-7 px-2 text-[11px]"
+        disabled={pending}
+        onClick={() => {
+          if (active) save(null, "Gate AI dimatikan");
+          setOn(false);
+        }}
+      >
+        {active ? "Matikan" : "Batal"}
+      </Button>
+    </div>
   );
 }
 

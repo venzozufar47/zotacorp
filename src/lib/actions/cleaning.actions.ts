@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "./_supabase-admin";
+import { getAiGate, runAiGate, type GateOutcome } from "@/lib/cleaning/ai-gate";
 import {
   getCurrentUser,
   getCurrentRole,
@@ -44,6 +45,8 @@ export interface CleaningItem {
   sort_order: number;
   /** Requested photo slots. Empty + requires_photo → one generic photo. */
   photos: ItemPhoto[];
+  /** Gate AI aktif: batas minimal sisa token (kWh) yang dibaca dari foto. null = tanpa gate. */
+  ai_gate_min: number | null;
 }
 
 export interface CleaningChecklist {
@@ -282,6 +285,15 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
     )
     .order("created_at", { ascending: true });
   if (error || !data) return [];
+  // Gate AI per titik (tabel baru, hanya terbaca admin lewat RLS).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: gates } = await (supabase as any)
+    .from("cleaning_item_ai_gates")
+    .select("item_id, min_value")
+    .eq("is_active", true);
+  const gateMin = new Map<string, number>(
+    ((gates ?? []) as Array<{ item_id: string; min_value: number | string }>).map((g) => [g.item_id, Number(g.min_value)])
+  );
   // Perubahan terakhir tiap SOP (terbaru dulu → entri pertama per SOP menang).
   const { data: revs } = await supabase
     .from("cleaning_checklist_revisions")
@@ -312,6 +324,7 @@ export async function listChecklists(): Promise<CleaningChecklist[]> {
         note: it.note,
         requires_photo: it.requires_photo,
         sort_order: it.sort_order,
+        ai_gate_min: gateMin.get(it.id) ?? null,
         photos: (it.photos ?? [])
           .slice()
           .sort((a, b) => a.sort_order - b.sort_order)
@@ -1720,6 +1733,19 @@ export async function completeCleaningItem(input: {
     return { error: "Item ini wajib menyertakan foto bukti." };
   }
 
+  // Gate AI (mis. "Token listrik"): foto dibaca AI; jelas di bawah batas → ditolak sebelum disimpan.
+  let ai: GateOutcome | null = null;
+  if (input.photo_path) {
+    const admin = createAdminClient();
+    const gate = await getAiGate(admin, item.id);
+    if (gate) {
+      // Admin client mengunduh file — pastikan itu memang foto milik pengirim.
+      if (!input.photo_path.startsWith(`${user.id}/`)) return { error: "Foto tidak valid." };
+      ai = await runAiGate(admin, gate, input.photo_path);
+      if (ai.block) return { error: ai.block };
+    }
+  }
+
   const completedAt = new Date().toISOString();
   // Sampel tinjauan: ~10% sesi (orang · hari · checklist) dipilih secara
   // deterministik, jadi semua foto sesi itu menunggu dilihat manusia dan tidak
@@ -1741,7 +1767,9 @@ export async function completeCleaningItem(input: {
         longitude: input.longitude ?? null,
         note: input.note?.trim() || null,
         completed_at: completedAt,
-        review_sampled: sampled,
+        // Tak terbaca / AI gagal → wajib menunggu keputusan manusia (tak boleh disapu "Otomatis di-Acc").
+        review_sampled: sampled || !!ai?.needsReview,
+        ...(ai?.patch ?? {}),
       },
       { onConflict: "user_id,item_id,date,photo_req_id" }
     )
@@ -1818,6 +1846,13 @@ export async function resubmitCleaningPhoto(input: {
     return { error: "Tidak ada perbaikan yang perlu dikirim untuk foto ini." };
 
   const admin = createAdminClient();
+  let ai: GateOutcome | null = null;
+  const gate = await getAiGate(admin, row.item_id);
+  if (gate) {
+    if (!input.photo_path.startsWith(`${user.id}/`)) return { error: "Foto tidak valid." };
+    ai = await runAiGate(admin, gate, input.photo_path);
+    if (ai.block) return { error: ai.block };
+  }
   const completedAt = new Date().toISOString();
   const { data: upserted, error } = await admin
     .from("cleaning_task_completions")
@@ -1839,6 +1874,7 @@ export async function resubmitCleaningPhoto(input: {
         reviewed_at: null,
         review_note: null,
         redo_reason: null,
+        ...(ai ? { review_sampled: ai.needsReview, ...ai.patch } : {}),
       },
       { onConflict: "user_id,item_id,date,photo_req_id" }
     )
@@ -2204,6 +2240,9 @@ export interface PhotoHistoryRow {
   review_status: "unreviewed" | "ok" | "redo";
   /** Alasan diminta ulang — dibaca karyawan, jadi ditampilkan apa adanya. */
   review_note: string | null;
+  /** Hasil gate AI (hanya titik ber-gate): angka kWh yang dibaca, dan statusnya. */
+  ai_reading?: number | null;
+  ai_status?: string | null;
 }
 
 /**
@@ -2261,7 +2300,7 @@ export async function getCleaningPhotoHistory(input: {
   let q = supabase
     .from("cleaning_task_completions")
     .select(
-      "id, date, completed_at, photo_path, photo_purged_at, user_id, item_id, photo_req_id, assignment_id, review_status, review_note, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles!cleaning_task_completions_user_id_fkey(full_name)"
+      "id, date, completed_at, photo_path, photo_purged_at, user_id, item_id, photo_req_id, assignment_id, review_status, review_note, ai_reading, ai_status, item:cleaning_checklist_items!inner(title, checklist_id, checklist:cleaning_checklists!inner(name)), profile:profiles!cleaning_task_completions_user_id_fkey(full_name)"
     )
     // A checkbox item (never had a photo) is not evidence to review.
     .or("photo_path.not.is.null,photo_purged_at.not.is.null")
@@ -2304,6 +2343,8 @@ export async function getCleaningPhotoHistory(input: {
     assignment_id: string;
     review_status: string | null;
     review_note: string | null;
+    ai_reading: number | string | null;
+    ai_status: string | null;
     item: unknown;
     profile: unknown;
   }>;
@@ -2420,6 +2461,8 @@ export async function getCleaningPhotoHistory(input: {
             : ("unreviewed" as const),
       review_note:
         (r as unknown as { review_note?: string | null }).review_note ?? null,
+      ai_reading: r.ai_reading == null ? null : Number(r.ai_reading),
+      ai_status: r.ai_status ?? null,
     };
   });
 

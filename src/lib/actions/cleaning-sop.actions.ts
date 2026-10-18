@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { FIX_OPTIONS, type RevisionRow, type SopFixRow } from "@/lib/cleaning/sop-findings";
+import { clip, logChecklistRevision } from "@/lib/cleaning/revisions";
 
 /**
  * Perbaikan SOP & "sudah dicek" untuk halaman /admin/cleaning (migrasi 189).
@@ -62,6 +63,48 @@ export async function listAllChecklistRevisions(): Promise<RevisionRow[]> {
     .order("created_at", { ascending: false })
     .limit(2000);
   return (data ?? []).map((r) => ({ checklistId: r.checklist_id, at: r.created_at, summary: r.summary }));
+}
+
+/**
+ * Atur gate AI satu titik: foto dibaca AI dan sisa token (kWh) di bawah `minKwh` ditolak.
+ * `minKwh` null mematikan gate. Perubahan tercatat di riwayat checklist.
+ */
+export async function setItemAiGate(input: { itemId: string; minKwh: number | null }): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!input.itemId) return { ok: false, error: "Titik tidak dikenal" };
+  const min = input.minKwh == null ? null : Number(input.minKwh);
+  if (min != null && (!Number.isFinite(min) || min <= 0 || min > 100_000)) {
+    return { ok: false, error: "Batas harus angka lebih dari 0" };
+  }
+  const supabase = await createClient();
+  const { data: item } = await supabase
+    .from("cleaning_checklist_items")
+    .select("checklist_id, title, requires_photo")
+    .eq("id", input.itemId)
+    .maybeSingle();
+  if (!item) return { ok: false, error: "Titik tidak ditemukan" };
+  if (min != null && !item.requires_photo) return { ok: false, error: "Titik ini tidak mewajibkan foto" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { error } =
+    min == null
+      ? await db.from("cleaning_item_ai_gates").delete().eq("item_id", input.itemId)
+      : await db
+          .from("cleaning_item_ai_gates")
+          .upsert(
+            { item_id: input.itemId, kind: "meter_kwh", min_value: min, is_active: true, updated_by: gate.userId, updated_at: new Date().toISOString() },
+            { onConflict: "item_id" }
+          );
+  if (error) return { ok: false, error: error.message };
+  await logChecklistRevision(
+    supabase,
+    item.checklist_id,
+    gate.userId,
+    min == null ? `Titik "${clip(item.title)}": gate AI dimatikan` : `Titik "${clip(item.title)}": gate AI sisa token ≥ ${min} kWh`
+  );
+  revalidatePath("/admin/cleaning");
+  return { ok: true };
 }
 
 /** Catat perbaikan SOP pada satu titik. Pemantauan efeknya baru mulai saat checklist-nya diubah. */

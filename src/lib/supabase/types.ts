@@ -2386,6 +2386,9 @@ export type Database = {
           photo_req_id: string | null
           redo_reason: string | null
           review_sampled: boolean
+          ai_reading: number | null
+          ai_status: string | null
+          ai_checked_at: string | null
           review_note: string | null
           review_status: string
           reviewed_at: string | null
@@ -2408,6 +2411,9 @@ export type Database = {
           photo_req_id?: string | null
           redo_reason?: string | null
           review_sampled?: boolean
+          ai_reading?: number | null
+          ai_status?: string | null
+          ai_checked_at?: string | null
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null
@@ -2430,6 +2436,9 @@ export type Database = {
           photo_req_id?: string | null
           redo_reason?: string | null
           review_sampled?: boolean
+          ai_reading?: number | null
+          ai_status?: string | null
+          ai_checked_at?: string | null
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null

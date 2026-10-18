@@ -78,6 +78,15 @@ export function PhotoPane({
             {tag}
           </span>
         )}
+        {cur.ai_status && (
+          <span className="absolute right-2.5 top-11 rounded-md bg-white/90 px-2 py-1 text-[11px] font-semibold">
+            {cur.ai_status === "ok" && cur.ai_reading != null
+              ? `AI: ${cur.ai_reading.toLocaleString("id-ID", { maximumFractionDigits: 2 })} kWh`
+              : cur.ai_status === "unreadable"
+                ? "AI: tidak terbaca — cek manual"
+                : "AI gagal — cek manual"}
+          </span>
+        )}
         {cur.review_status !== "unreviewed" && (
           <span className="absolute bottom-2.5 left-2.5">
             <Pill tone={cur.review_status === "ok" ? "ok" : "warn"}>
