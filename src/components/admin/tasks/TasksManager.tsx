@@ -1,14 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   ClipboardList,
   LayoutGrid,
   List,
-  Network,
   Plus,
   RotateCcw,
   Search,
@@ -180,15 +178,6 @@ export function TasksManager({
               Kategori{categories.length > 0 ? ` (${categories.length})` : ""}
             </span>
           </button>
-          <Link
-            href="/admin/struktur"
-            aria-label="Atur struktur organisasi"
-            title="Struktur organisasi (atasan & Team leader)"
-            className="shrink-0 h-11 px-3 rounded-xl border-2 border-border text-sm font-medium inline-flex items-center gap-1.5 hover:bg-muted"
-          >
-            <Network size={16} />
-            <span className="hidden sm:inline">Struktur</span>
-          </Link>
           <button
             type="button"
             onClick={() => setFormOpen(true)}
