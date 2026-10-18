@@ -9,6 +9,7 @@ import {
   Coins,
   Database,
   FileSignature,
+  FlaskConical,
   Gauge,
   Home as HomeIcon,
   Inbox,
@@ -174,6 +175,18 @@ export function buildAdminNav({
           href: "/admin/survei",
           icon: ClipboardList,
           label: "Survei Bulanan",
+          color: "bg-quaternary",
+        },
+        {
+          href: "/admin/bonus",
+          icon: Calculator,
+          label: "Kalkulator Bonus",
+          color: "bg-success",
+        },
+        {
+          href: "/riset-produk",
+          icon: FlaskConical,
+          label: "Riset Produk",
           color: "bg-quaternary",
         },
         {

@@ -69,10 +69,11 @@ import { CashClosingCard } from "@/components/dashboard/CashClosingCard";
 import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.actions";
 import { CalendarClock } from "lucide-react";
 import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
-import { MessageSquareWarning, Gauge as GaugeIcon } from "lucide-react";
+import { MessageSquareWarning, Gauge as GaugeIcon, FlaskConical } from "lucide-react";
 import { canViewScorecard } from "@/lib/actions/scorecard.actions";
 import { Inbox, ShieldQuestion, ClipboardList as SurveyIcon } from "lucide-react";
 import { hasAnsweredMonthlyPulse } from "@/lib/actions/pulse-survey.actions";
+import { Wallet as BonusIcon } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -575,6 +576,40 @@ export default async function DashboardPage() {
         </span>
         <span className="text-sm font-bold shrink-0">→</span>
       </Link>
+
+      <Link
+        href="/bonus"
+        className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
+      >
+        <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
+          <BonusIcon size={18} />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block font-display font-bold text-sm">Bonus tim</span>
+          <span className="block text-xs text-muted-foreground">
+            Lihat rincian bonusmu dan cara hitungnya.
+          </span>
+        </span>
+        <span className="text-sm font-bold shrink-0">→</span>
+      </Link>
+
+      {canFileComplaintFlag && (
+        <Link
+          href="/riset-produk"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
+            <FlaskConical size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">Riset produk</span>
+            <span className="block text-xs text-muted-foreground">
+              Usulkan ide, catat percobaan, kelola tester dan kartu produk.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
 
       {canFileComplaintFlag && (
         <Link

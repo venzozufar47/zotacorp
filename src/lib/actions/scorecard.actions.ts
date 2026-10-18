@@ -154,7 +154,10 @@ function omzetBand(pct: number | null): ScorecardBand {
   return "red";
 }
 
-async function computeMetricsAsOf(
+/** Diekspor untuk dipakai ulang Kalkulator Bonus (PRD-10) — poin
+ *  scorecard bulan yang dibayar, dihitung "as of" akhir bulan itu, bukan
+ *  hari ini. */
+export async function computeMetricsAsOf(
   branch: ScorecardBranch,
   bankAccountId: string,
   dailyTarget: number | null,

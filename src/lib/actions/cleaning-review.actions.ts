@@ -648,6 +648,26 @@ export async function listSpEntries(opts?: {
   return { ok: true, data: rows };
 }
 
+/** SP (sp1/sp2/sp3) yang aktif KAPAN PUN selama [monthStart, monthEnd] —
+ *  dipakai gate kelayakan bonus (Lampiran C Dokumen 1 poin 4: "SP aktif
+ *  menggugurkan bonus"), beda dari `hasActiveSp` yang selalu cek hari ini. */
+export async function hasActiveSpInMonth(
+  userId: string,
+  monthStart: string,
+  monthEnd: string
+): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = createAdminClient() as any;
+  const { count } = await admin
+    .from("employee_coaching_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .in("sp_level", ["sp1", "sp2", "sp3"])
+    .lte("created_at", `${monthEnd}T23:59:59`)
+    .gte("valid_until", monthStart);
+  return (count ?? 0) > 0;
+}
+
 /** SP aktif (sp1/sp2/sp3, belum lewat valid_until) milik satu karyawan. */
 export async function hasActiveSp(userId: string): Promise<boolean> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
