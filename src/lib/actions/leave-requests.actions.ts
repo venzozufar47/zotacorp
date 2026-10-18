@@ -32,7 +32,7 @@ function db(): any {
   return createAdminClient();
 }
 
-export type LeaveKind = "sakit" | "izin_keluar_toko";
+export type LeaveKind = "sakit" | "izin_keluar_toko" | "lainnya";
 export type LeaveStatus = "pending" | "approved" | "rejected";
 
 export interface LeaveRequestView {

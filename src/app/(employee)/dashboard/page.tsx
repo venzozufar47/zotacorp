@@ -710,7 +710,7 @@ export default async function DashboardPage() {
           {extraWorkKindNames.length > 0 && (
             <ExtraWorkButton todayEntries={extraWorkToday} kinds={extraWorkKindNames} />
           )}
-          {/* Akses karyawan ke Izin sakit / keluar toko — tepat di bawah tombol
+          {/* Akses karyawan ke izin — tepat di bawah tombol
               absen karena itulah saat orang butuh (tak bisa masuk / mau keluar).
               Memakai saklar `izin` yang sama dengan banner atasan. */}
           {FEATURES.izin && <LeaveRequestDialog />}

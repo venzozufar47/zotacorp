@@ -6,9 +6,9 @@
  * URL (dan sisi admin tidak terpengaruh). Saat mati, query datanya untuk beranda juga dilewati.
  */
 export const EMPLOYEE_HOME_FEATURES = {
-  /** Tombol "Izin sakit / keluar toko" di bawah tombol absen (semua karyawan) + banner "N pengajuan izin
-   *  menunggu persetujuanmu" untuk atasan langsung → /izin */
-  izin: false,
+  /** DIRILIS. Tombol "Ajukan izin" (pop-up) di bawah tombol absen untuk semua karyawan + banner "N pengajuan
+   *  izin menunggu persetujuanmu" untuk atasan langsung → halaman Tim. */
+  izin: true,
   /** Notulen huddle & rapat → /notulen */
   notulen: false,
   /** Scorecard cabang → /scorecard */

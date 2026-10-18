@@ -58,7 +58,7 @@ export function LeaveRequestDialog() {
         className="flex w-full items-center justify-center gap-2 rounded-full border-2 border-border px-4 py-2.5 text-sm font-semibold text-muted-foreground transition hover:border-foreground hover:text-foreground"
       >
         <CalendarClock size={16} />
-        Izin sakit / keluar toko
+        Ajukan izin
       </button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>

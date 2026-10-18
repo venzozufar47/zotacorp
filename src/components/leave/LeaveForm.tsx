@@ -2,7 +2,7 @@
 
 import { useState, type ComponentType } from "react";
 import { toast } from "sonner";
-import { DoorOpen, Thermometer } from "lucide-react";
+import { DoorOpen, FileText, Thermometer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ export const KIND_META: Record<
     icon: DoorOpen,
     reasonHint: "Mis. ke bank, antar barang",
   },
+  lainnya: { short: "Lainnya", icon: FileText, reasonHint: "Jelaskan keperluannya" },
 };
 
 const RETURN_CHIPS = ["30 menit", "1 jam", "2 jam", "Besok"];
@@ -73,7 +74,7 @@ export function LeaveForm({
   return (
     <div className="space-y-5">
       {slot}
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Jenis izin">
+      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Jenis izin">
         {(Object.keys(KIND_META) as LeaveKind[]).map((k) => {
           const Icon = KIND_META[k].icon;
           const on = kind === k;
