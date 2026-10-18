@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { BranchScorecard, ScorecardBand } from "@/lib/actions/scorecard.actions";
 
@@ -18,7 +18,11 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
           <AlertTriangle size={16} className="mt-0.5 shrink-0 text-destructive" />
           <div>
             <p className="font-semibold text-destructive">
-              Merah 2 minggu berturut-turut: {scorecard.twoWeeksRedKeys.join(", ")}
+              Merah 2 minggu berturut-turut:{" "}
+              {scorecard.metrics
+                .filter((m) => scorecard.twoWeeksRedKeys.includes(m.key))
+                .map((m) => m.label)
+                .join(", ")}
             </p>
             <p className="text-xs text-muted-foreground">
               Bawa rencana perbaikan satu halaman ke rapat mingguan.
@@ -52,8 +56,38 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Dihitung otomatis dari POS, selisih kas saat tutup shift, dan log keluhan. Dibahas tiap rapat mingguan.
+        Dihitung otomatis dari POS, service level (kesiapan produk), dan log keluhan. Dibahas tiap rapat mingguan.
       </p>
+
+      <details className="group rounded-2xl border border-border bg-card px-4 py-3 text-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-[13px] font-bold">
+          Panduan warna
+          <ChevronDown size={16} className="text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="mt-3 space-y-4">
+          {scorecard.metrics.map((m) => (
+            <div key={m.key} className="space-y-1.5">
+              <p className="text-xs font-semibold text-foreground">{m.label}</p>
+              {m.ranges ? (
+                <ul className="space-y-1">
+                  {m.ranges.map((r) => (
+                    <li key={r.band} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className={`size-2.5 shrink-0 rounded-full ${BAND_META[r.band].dot}`} />
+                      <span className="w-12 shrink-0 font-semibold text-foreground">{BAND_META[r.band].label}</span>
+                      {r.text}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground">{m.rangesNote}</p>
+              )}
+            </div>
+          ))}
+          <p className="border-t border-border pt-2 text-[11px] text-muted-foreground">
+            Abu-abu (&quot;Diukur&quot; / &quot;Belum diatur&quot;) berarti datanya belum cukup — bukan nilai buruk.
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

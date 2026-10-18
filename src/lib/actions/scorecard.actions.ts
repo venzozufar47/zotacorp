@@ -7,11 +7,24 @@ import { getComplaintCount } from "./customer-complaints.actions";
 import { WITHDRAWAL_REASON_META, type WithdrawalReason } from "@/lib/pos/withdrawal-reasons";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { resolveUserBranches } from "@/lib/branches/user-branches";
+import {
+  SERVICE_LEVEL_GREEN_MIN,
+  SERVICE_LEVEL_YELLOW_MIN,
+  OMZET_GREEN_MIN,
+  OMZET_YELLOW_MIN,
+  WASTE_GREEN_MAX,
+  WASTE_YELLOW_MAX,
+  omzetRanges,
+  serviceLevelRanges,
+  wasteRanges,
+  type BandRange,
+} from "@/lib/scorecard/thresholds";
 
 /**
  * Scorecard Cabang (PRD-2) — 4 angka cabang (Dokumen 4 §6 / Rencana Tim
  * Mandiri bagian 4), dihitung LIVE dari data yang sudah ada (pos_sales,
- * pos_stock_movements, pos_shifts (selisih kas tutup shift), customer_complaints dari
+ * pos_stock_movements, pos_service_level_daily (kesiapan produk — menggantikan "hari selisih
+ * kas", yang selalu 0 karena kas ketat), customer_complaints dari
  * PRD-3) — TIDAK ADA tabel snapshot baru. "2 minggu merah berturut-turut"
  * (bagian 4) dicek dengan menghitung ulang minggu lalu dari data historis
  * yang sama, bukan dari snapshot tersimpan — semua sumbernya punya
@@ -29,12 +42,16 @@ export type ScorecardBranch = "Pare" | "Semarang";
 export type ScorecardBand = "green" | "yellow" | "red" | "measuring" | "unset";
 
 export interface ScorecardMetric {
-  key: "waste" | "cash_diff" | "omzet" | "complaints";
+  key: "waste" | "service_level" | "omzet" | "complaints";
   label: string;
   value: number;
   displayValue: string;
   band: ScorecardBand;
   note?: string;
+  /** Rentang tiap warna untuk panduan di tampilan — dari ambang yang SAMA dengan penentu band. */
+  ranges?: BandRange[];
+  /** Catatan panduan bila rentang belum ada (mis. ambang belum ditentukan). */
+  rangesNote?: string;
 }
 
 export interface BranchScorecard {
@@ -64,16 +81,6 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Senin–Minggu yang memuat `dateStr`, sebagai [start, end]. */
-function weekRangeContaining(dateStr: string): [string, string] {
-  const d = new Date(dateStr + "T00:00:00Z");
-  const dow = d.getUTCDay();
-  const diffToMonday = dow === 0 ? -6 : 1 - dow;
-  const start = addDays(dateStr, diffToMonday);
-  const end = addDays(start, 6);
-  return [start, end];
-}
-
 function monthStartOf(dateStr: string): string {
   return dateStr.slice(0, 7) + "-01";
 }
@@ -96,11 +103,15 @@ async function sumPaidPosTotal(
   return { total: rows.reduce((s, r) => s + r.total, 0), count: rows.length };
 }
 
+/**
+ * Persen susut pada jendela [start, end]. `null` = tidak ada produksi tercatat di jendela itu —
+ * BUKAN 0%: nol hijau palsu muncul tiap awal pekan saat belum ada produksi.
+ */
 async function computeWastePercent(
   bankAccountId: string,
   weekStart: string,
   weekEnd: string
-): Promise<number> {
+): Promise<number | null> {
   const lossReasons = new Set<WithdrawalReason>(
     (Object.entries(WITHDRAWAL_REASON_META) as [WithdrawalReason, { countsAsLoss: boolean }][])
       .filter(([, meta]) => meta.countsAsLoss)
@@ -121,44 +132,53 @@ async function computeWastePercent(
       wasted += r.qty;
     }
   }
-  return produced > 0 ? (wasted / produced) * 100 : 0;
+  return produced > 0 ? (wasted / produced) * 100 : null;
 }
 
 /**
- * Jumlah HARI (30 hari terakhir) yang punya selisih hitungan kas saat tutup shift. Sumbernya shift kasir
- * (`pos_shifts`) — bukan tutup kas harian lama. Shift yang ditutup paksa tidak punya hitungan, jadi tidak
- * ikut dihitung (bukan selisih kasir).
+ * Service level 7 hari terakhir, DIGABUNG (pooled) dari snapshot harian: Σ ready_sum ÷ Σ (SKU × sampel).
+ * Hari tanpa aktivitas / tanpa baseline (percent null) tidak ikut — sama dengan ringkasan di dashboard
+ * (`getServiceLevelSummary`). `null` = belum ada data terhitung. Ambang warna tetap (lihat
+ * `lib/scorecard/thresholds`), tidak mengikuti target per outlet.
  */
-async function countCashDiffDays(bankAccountId: string, asOf: string): Promise<number> {
-  const since = addDays(asOf, -29);
+async function pooledServiceLevel(
+  bankAccountId: string,
+  start: string,
+  end: string
+): Promise<number | null> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("pos_shifts")
-    .select("closed_at")
+  const { data: rows } = await admin
+    .from("pos_service_level_daily")
+    .select("ready_sum, tracked_skus, sample_count, percent")
     .eq("bank_account_id", bankAccountId)
-    .eq("status", "closed")
-    .is("forced_by", null)
-    .not("close_cash_diff", "is", null)
-    .neq("close_cash_diff", 0)
-    .gte("closed_at", `${since}T00:00:00+07:00`)
-    .lte("closed_at", `${asOf}T23:59:59+07:00`);
-  return new Set((data ?? []).map((r) => jakartaDateString(new Date(r.closed_at as string)))).size;
+    .gte("snapshot_date", start)
+    .lte("snapshot_date", end);
+  let ready = 0;
+  let total = 0;
+  for (const r of rows ?? []) {
+    const denom = r.tracked_skus * r.sample_count;
+    if (r.percent === null || denom === 0) continue;
+    ready += r.ready_sum;
+    total += denom;
+  }
+  return total > 0 ? ready / total : null;
 }
 
 function wasteBand(pct: number): ScorecardBand {
-  if (pct <= 3) return "green";
-  if (pct <= 5) return "yellow";
+  if (pct <= WASTE_GREEN_MAX) return "green";
+  if (pct <= WASTE_YELLOW_MAX) return "yellow";
   return "red";
 }
-function cashDiffBand(days: number): ScorecardBand {
-  if (days === 0) return "green";
-  if (days <= 2) return "yellow";
+function serviceLevelBand(pct: number | null): ScorecardBand {
+  if (pct === null) return "measuring";
+  if (pct >= SERVICE_LEVEL_GREEN_MIN) return "green";
+  if (pct >= SERVICE_LEVEL_YELLOW_MIN) return "yellow";
   return "red";
 }
 function omzetBand(pct: number | null): ScorecardBand {
   if (pct === null) return "unset";
-  if (pct >= 100) return "green";
-  if (pct >= 90) return "yellow";
+  if (pct >= OMZET_GREEN_MIN) return "green";
+  if (pct >= OMZET_YELLOW_MIN) return "yellow";
   return "red";
 }
 
@@ -171,18 +191,22 @@ export async function computeMetricsAsOf(
   dailyTarget: number | null,
   asOf: string
 ): Promise<ScorecardMetric[]> {
-  const [weekStart, weekEnd] = weekRangeContaining(asOf);
+  // 7 hari terakhir bergulir (bukan Senin–Minggu): tidak kosong tiap Senin, dan tidak ikut menghitung
+  // hari sesudah `asOf` saat Kalkulator Bonus menghitung akhir bulan lampau.
+  const weekEnd = asOf;
+  const weekStart = addDays(asOf, -6);
   const monthStart = monthStartOf(asOf);
   const daysElapsed = Number(asOf.slice(8, 10));
 
-  const [wastePct, cashDiffDays, mtd, complaintCount, txCount30] = await Promise.all([
+  const [wastePct, serviceLevel, mtd, complaintCount, txCount30] = await Promise.all([
     computeWastePercent(bankAccountId, weekStart, weekEnd),
-    countCashDiffDays(bankAccountId, asOf),
+    pooledServiceLevel(bankAccountId, weekStart, weekEnd),
     sumPaidPosTotal(bankAccountId, monthStart, asOf),
     getComplaintCount(branch, 30),
     sumPaidPosTotal(bankAccountId, addDays(asOf, -29), asOf).then((r) => r.count),
   ]);
 
+  const wasteMeasured = wastePct !== null;
   const targetPace = dailyTarget ? dailyTarget * daysElapsed : null;
   const omzetPct = targetPace && targetPace > 0 ? (mtd.total / targetPace) * 100 : null;
   const complaintsPer1000 = txCount30 > 0 ? (complaintCount / txCount30) * 1000 : 0;
@@ -193,18 +217,26 @@ export async function computeMetricsAsOf(
   return [
     {
       key: "waste",
-      label: "Waste mingguan",
-      value: wastePct,
-      displayValue: `${wastePct.toFixed(1)}%`,
-      band: wasteBand(wastePct),
-      note: `${weekStart} – ${weekEnd}`,
+      label: "Waste 7 hari terakhir",
+      value: wastePct ?? 0,
+      displayValue: wasteMeasured ? `${wastePct.toFixed(1)}%` : "Belum ada data",
+      band: wasteMeasured ? wasteBand(wastePct) : "measuring",
+      note: wasteMeasured
+        ? `${weekStart} – ${weekEnd}`
+        : "Belum ada produksi tercatat dalam 7 hari terakhir",
+      ranges: wasteRanges(),
     },
     {
-      key: "cash_diff",
-      label: "Hari selisih kas (30 hari)",
-      value: cashDiffDays,
-      displayValue: `${cashDiffDays} hari`,
-      band: cashDiffBand(cashDiffDays),
+      key: "service_level",
+      label: "Service level 7 hari terakhir",
+      value: serviceLevel ?? 0,
+      displayValue: serviceLevel !== null ? `${(serviceLevel * 100).toFixed(0)}%` : "Belum ada data",
+      band: serviceLevelBand(serviceLevel),
+      note:
+        serviceLevel !== null
+          ? "Produk ready saat toko buka"
+          : "Belum ada hari yang terhitung dalam 7 hari terakhir",
+      ranges: serviceLevelRanges(),
     },
     {
       key: "omzet",
@@ -212,6 +244,7 @@ export async function computeMetricsAsOf(
       value: omzetPct ?? 0,
       displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : "Target belum diatur",
       band: omzetBand(omzetPct),
+      ranges: omzetRanges(),
     },
     {
       key: "complaints",
@@ -223,6 +256,8 @@ export async function computeMetricsAsOf(
         complaintsBand === "green"
           ? "30 hari pengukuran pertama — dihitung hijau"
           : "Ambang belum ditentukan Owner",
+      rangesNote:
+        "Ambang belum ditentukan Owner (SOP: diisi setelah 30 hari pengukuran). Selama 30 hari pertama sejak 18 Okt 2026 angkanya otomatis dihitung hijau.",
     },
   ];
 }
