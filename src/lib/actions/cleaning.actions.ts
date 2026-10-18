@@ -1753,7 +1753,12 @@ export async function completeCleaningItem(input: {
   const sampled =
     !!input.photo_path &&
     isSampledSession(`${user.id}|${today}|${item.checklist_id}`);
-  const { data: upserted, error } = await supabase
+  // Titik ber-gate AI ditulis lewat service role: trigger cleaning_guard_ai_gate (migrasi 191)
+  // menolak sesi pengguna biasa menyimpan foto untuk titik itu, supaya gate tak bisa dilewati
+  // dengan menulis langsung ke tabel. Kepemilikan & giliran sudah diverifikasi di atas
+  // (user_id diisi dari sesi, bukan dari input).
+  const writer = ai ? createAdminClient() : supabase;
+  const { data: upserted, error } = await writer
     .from("cleaning_task_completions")
     .upsert(
       {

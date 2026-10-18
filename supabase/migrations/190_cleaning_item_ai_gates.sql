@@ -51,7 +51,7 @@ comment on column public.cleaning_task_completions.ai_status is 'ok = terbaca & 
 
 -- Titik "Token listrik" Haengbocake Semarang: standarnya "isi jika kurang dari 100,00 kWh".
 insert into public.cleaning_item_ai_gates (item_id, kind, min_value)
-select i.id, 'meter_kwh', 100
+select i.id, 'meter_kwh', 150
 from public.cleaning_checklist_items i
 where i.id = '0f44e0eb-78cf-44c4-8d44-be8b6de1c79b'
 on conflict (item_id) do nothing;
