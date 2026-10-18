@@ -22,7 +22,7 @@ export type PosGate =
   | { mode: "shift"; shiftId: string; cashierId: string; cashierName: string; openedAt: string }
   | { mode: "stale"; shiftId: string; cashierId: string; cashierName: string; openedAt: string }
   | { mode: "incidental"; userName: string }
-  | { mode: "locked"; lastClosedAt: string | null };
+  | { mode: "locked" };
 
 export function incidentalCookieName(bankAccountId: string): string {
   return `pos_incidental_${bankAccountId}`;
@@ -69,7 +69,7 @@ export async function loadPosGate(bankAccountId: string, userId: string): Promis
     return { mode: "incidental", userName: names.get(userId) ?? "Akun ini" };
   }
 
-  return { mode: "locked", lastClosedAt: last?.closedAt ?? null };
+  return { mode: "locked" };
 }
 
 /** Halaman POS yang butuh POS terbuka: true bila boleh dipakai sekarang. */

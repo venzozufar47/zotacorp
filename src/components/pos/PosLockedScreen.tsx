@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, LockKeyhole, Play, ShieldAlert, Users } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { startIncidentalSession } from "@/lib/actions/pos-shift.actions";
 import { ForceCloseDialog } from "./PosShiftControls";
@@ -19,24 +19,19 @@ interface Props {
   isAdmin: boolean;
   /** Mode stale: kasir & jam buka shift yang menggantung. */
   stale?: { cashierId: string; cashierName: string; openedAtLabel: string };
-  /** Mode locked: kapan shift terakhir ditutup (informasi). */
-  lastClosedLabel?: string | null;
+}
+
+/** "Cash Haengbocake Pare" → "POS Haengbocake Pare". */
+function posTitle(accountName: string): string {
+  const base = accountName.replace(/^cash\s+/i, "").trim();
+  return `POS ${base}`;
 }
 
 /**
- * Layar kunci POS. Semua fitur POS tertutup sampai kasir membuka shift (PIN + opname + hitung kas), kecuali
- * "Pakai tanpa shift" untuk pemakaian insidentil: tanpa PIN/opname/kas, transaksi tercatat atas akun login,
- * dan dilaporkan ke kasir shift berikutnya.
+ * Layar kunci POS — sengaja minimal. Semua fitur POS tertutup sampai kasir membuka shift, kecuali
+ * "Pakai tanpa shift" untuk pemakaian insidentil (tanpa PIN/opname/kas).
  */
-export function PosLockedScreen({
-  mode,
-  bankAccountId,
-  accountName,
-  basePath,
-  isAdmin,
-  stale,
-  lastClosedLabel,
-}: Props) {
+export function PosLockedScreen({ mode, bankAccountId, accountName, basePath, isAdmin, stale }: Props) {
   const router = useRouter();
   const [wizard, setWizard] = useState<"open" | "close" | null>(null);
   const [forceOpen, setForceOpen] = useState(false);
@@ -53,94 +48,67 @@ export function PosLockedScreen({
     });
   }
 
-  return (
-    <div data-pos-shell data-pos-palette="pink" className="flex min-h-screen flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-3 sm:px-4">
-        <Link
-          prefetch={false}
-          href="/"
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground hover:bg-muted"
-          aria-label="Kembali ke beranda Zota"
-          title="Kembali ke beranda Zota"
-        >
-          <ArrowLeft size={16} />
-        </Link>
-        <div className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-base font-bold text-primary-foreground">
-          Z
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[9px] font-semibold uppercase leading-none tracking-wider text-muted-foreground">POS</p>
-          <p className="truncate text-sm font-semibold leading-tight text-foreground">{accountName}</p>
-        </div>
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-muted px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          <LockKeyhole size={11} />
-          Terkunci
-        </span>
-      </header>
+  const primary =
+    "inline-flex h-14 w-full items-center justify-center rounded-2xl bg-primary text-base font-semibold text-primary-foreground transition hover:opacity-90";
+  const secondary =
+    "inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50";
 
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-5 px-5 py-10">
-        <div className="space-y-2 text-center">
-          <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary">
-            <LockKeyhole size={28} />
+  return (
+    <div data-pos-shell data-pos-palette="pink" className="relative flex min-h-screen flex-col bg-background">
+      <Link
+        prefetch={false}
+        href="/"
+        className="absolute left-4 top-4 inline-flex size-10 items-center justify-center rounded-full border border-border bg-card text-foreground hover:bg-muted"
+        aria-label="Kembali ke beranda Zota"
+        title="Kembali ke beranda Zota"
+      >
+        <ArrowLeft size={16} />
+      </Link>
+
+      <main className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-10 px-6 py-16 text-center">
+        <div className="space-y-5">
+          <div className="mx-auto inline-flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground">
+            Z
           </div>
-          <h1 className="text-xl font-bold text-foreground">
-            {mode === "stale" ? "Shift belum ditutup" : "POS terkunci"}
-          </h1>
           {mode === "stale" && stale ? (
-            <p className="text-sm text-muted-foreground">
-              Shift <strong className="text-foreground">{stale.cashierName}</strong> dibuka {stale.openedAtLabel} dan
-              belum ditutup. Kasir yang sama harus menutupnya dulu (opname + hitung kas), atau admin menutup paksa.
-            </p>
+            <div className="space-y-1.5">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                Shift {stale.cashierName} belum ditutup
+              </h1>
+              <p className="text-sm text-muted-foreground">Dibuka {stale.openedAtLabel}</p>
+            </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Mulai shift untuk membuka POS: pilih nama kasir, masukkan PIN, lalu opname stok dan hitung kas.
-              {lastClosedLabel ? ` Shift terakhir ditutup ${lastClosedLabel}.` : ""}
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Selamat datang di</p>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">{posTitle(accountName)}</h1>
+            </div>
           )}
         </div>
 
-        <div className="space-y-2.5">
+        <div className="w-full space-y-2">
           {mode === "locked" ? (
             <>
-              <button
-                type="button"
-                onClick={() => setWizard("open")}
-                className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground hover:opacity-90"
-              >
-                <Play size={18} />
+              <button type="button" onClick={() => setWizard("open")} className={primary}>
                 Mulai shift
               </button>
-              <button
-                type="button"
-                onClick={startIncidental}
-                disabled={pending}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
-              >
-                {pending ? <Loader2 size={15} className="animate-spin" /> : <Users size={15} />}
-                Pakai tanpa shift (insidentil)
+              <button type="button" onClick={startIncidental} disabled={pending} className={secondary}>
+                {pending && <Loader2 size={14} className="animate-spin" />}
+                Pakai tanpa shift
               </button>
-              <p className="px-2 text-center text-[11px] leading-relaxed text-muted-foreground">
-                Insidentil: tanpa PIN, opname, dan hitung kas. Transaksi tercatat atas akunmu dan dilaporkan ke kasir
-                shift berikutnya.
-              </p>
             </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => setWizard("close")}
-                className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Tutup shift {stale?.cashierName}
+              <button type="button" onClick={() => setWizard("close")} className={primary}>
+                Tutup shift
               </button>
               {isAdmin && (
                 <button
                   type="button"
                   onClick={() => setForceOpen(true)}
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-destructive/40 text-sm font-semibold text-destructive hover:bg-destructive/10"
+                  className={`${secondary} text-destructive hover:text-destructive`}
                 >
-                  <ShieldAlert size={15} />
-                  Tutup paksa (admin)
+                  <ShieldAlert size={14} />
+                  Tutup paksa
                 </button>
               )}
             </>

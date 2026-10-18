@@ -111,7 +111,6 @@ export async function resolvePosShiftView(args: {
         accountName={accountName}
         basePath={basePath}
         isAdmin={isAdmin}
-        lastClosedLabel={gate.lastClosedAt ? dayAndTime(gate.lastClosedAt) : null}
       />
     );
   return {
