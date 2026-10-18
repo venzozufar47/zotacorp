@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "./_supabase-admin";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { requireAdmin, type ActionResult } from "./_gates";
+import { isCoachingNoteArchived } from "@/lib/coaching/constants";
 
 /**
  * Verdict admin atas foto bukti + catatan pembinaan karyawan (stage 2).
@@ -474,9 +475,6 @@ export async function createCoachingNote(input: {
   return { ok: true };
 }
 
-/** Catatan yang sudah dibaca disembunyikan dari dashboard setelah sekian lama (tetap ada di Riwayat). */
-const HIDE_AFTER_READ_MS = 3 * 24 * 3600 * 1000;
-
 /** `archived` = tidak lagi tampil di dashboard, hanya di "Riwayat". Dihitung di server (satu jam dinding). */
 export interface MyCoachingNote extends CoachingNoteRow {
   archived: boolean;
@@ -533,11 +531,11 @@ export async function listMyCoachingNotes(): Promise<MyCoachingNote[]> {
     context: n.context,
     createdAt: n.created_at,
     acknowledgedAt: n.acknowledged_at,
-    archived:
-      n.sp_level === "sp1" || n.sp_level === "sp2" || n.sp_level === "sp3"
-        ? n.valid_until !== null && n.valid_until < today
-        : n.acknowledged_at !== null &&
-          now - Date.parse(n.acknowledged_at) > HIDE_AFTER_READ_MS,
+    archived: isCoachingNoteArchived(
+      { spLevel: n.sp_level, acknowledgedAt: n.acknowledged_at, validUntil: n.valid_until },
+      now,
+      today
+    ),
     periodFrom: n.period_from,
     periodTo: n.period_to,
     spLevel: n.sp_level,
