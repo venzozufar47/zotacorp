@@ -66,6 +66,8 @@ import { isProcurementStaff } from "@/lib/procurement/access";
 import { getProcurementDashboardBadge } from "@/lib/actions/procurement.actions";
 import { getMyCashClosingBranchStatuses } from "@/lib/actions/cash-closing.actions";
 import { CashClosingCard } from "@/components/dashboard/CashClosingCard";
+import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.actions";
+import { CalendarClock } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -144,6 +146,7 @@ export default async function DashboardPage() {
     payslipBasisRes,
     myTasks,
     cashClosingStatuses,
+    pendingLeaveApprovals,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -191,6 +194,7 @@ export default async function DashboardPage() {
       .maybeSingle(),
     getMyOpenTasks(),
     getMyCashClosingBranchStatuses(),
+    getPendingLeaveApprovalCountForMe(),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -383,6 +387,26 @@ export default async function DashboardPage() {
             <span className="text-sm font-bold shrink-0">→</span>
           </Link>
         )}
+
+      {pendingLeaveApprovals > 0 && (
+        <Link
+          href="/izin"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-warning/40 px-4 py-3 shadow-hard-sm hover:bg-warning/60 transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-card shrink-0">
+            <CalendarClock size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">
+              {pendingLeaveApprovals} pengajuan izin menunggu persetujuanmu
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Kamu atasan langsung pemohon — ketuk untuk tinjau.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
 
       {myTicketsSummary.awaitingConfirmation > 0 && (
         <Link
