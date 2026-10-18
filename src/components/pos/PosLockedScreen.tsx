@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { startIncidentalSession } from "@/lib/actions/pos-shift.actions";
+import { PosLogo } from "./PosLogo";
 import { ForceCloseDialog } from "./PosShiftControls";
 import { PosShiftWizard } from "./PosShiftWizard";
 import "./workstation.css";
@@ -67,9 +68,7 @@ export function PosLockedScreen({ mode, bankAccountId, accountName, basePath, is
 
       <main className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-10 px-6 py-16 text-center">
         <div className="space-y-5">
-          <div className="mx-auto inline-flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground">
-            Z
-          </div>
+          <PosLogo size={96} className="mx-auto" />
           {mode === "stale" && stale ? (
             <div className="space-y-1.5">
               <h1 className="text-2xl font-bold tracking-tight text-foreground">

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
 import { PosShell } from "./PosShell";
+import { PosLogo } from "./PosLogo";
 import "./workstation.css";
 import {
   BarChart3,
@@ -1197,9 +1198,7 @@ export function POSClient({
         >
           <ArrowLeft size={16} />
         </Link>
-        <div className="size-9 rounded-xl bg-primary text-primary-foreground inline-flex items-center justify-center font-bold text-base shrink-0">
-          Z
-        </div>
+        <PosLogo size={40} />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold leading-none">
             POS

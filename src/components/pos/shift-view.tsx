@@ -59,6 +59,7 @@ export async function resolvePosShiftView(args: {
       fixedCashierName: gate.cashierName,
       shiftSlot: (
         <PosShiftControls
+          key="pos-shift-controls"
           mode="shift"
           bankAccountId={bankAccountId}
           accountName={accountName}
@@ -79,6 +80,7 @@ export async function resolvePosShiftView(args: {
       fixedCashierName: gate.userName,
       shiftSlot: (
         <PosShiftControls
+          key="pos-shift-controls"
           mode="incidental"
           bankAccountId={bankAccountId}
           accountName={accountName}
