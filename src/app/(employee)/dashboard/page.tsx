@@ -68,6 +68,8 @@ import { getMyCashClosingBranchStatuses } from "@/lib/actions/cash-closing.actio
 import { CashClosingCard } from "@/components/dashboard/CashClosingCard";
 import { getPendingLeaveApprovalCountForMe } from "@/lib/actions/leave-requests.actions";
 import { CalendarClock } from "lucide-react";
+import { canFileComplaint } from "@/lib/actions/customer-complaints.actions";
+import { MessageSquareWarning } from "lucide-react";
 
 const PROFILE_SECTIONS: { title: string; keys: string[] }[] = [
   {
@@ -147,6 +149,7 @@ export default async function DashboardPage() {
     myTasks,
     cashClosingStatuses,
     pendingLeaveApprovals,
+    canFileComplaintFlag,
   ] = await Promise.all([
     getCurrentProfile(),
     getTodayAttendance(),
@@ -195,6 +198,7 @@ export default async function DashboardPage() {
     getMyOpenTasks(),
     getMyCashClosingBranchStatuses(),
     getPendingLeaveApprovalCountForMe(),
+    canFileComplaint(),
   ]);
   const [revenueSummary, yeoboRevenue] = await Promise.all([
     hasHaengbocakeRevenueAccess ? getRevenueSummaryForHome() : Promise.resolve(null),
@@ -496,6 +500,24 @@ export default async function DashboardPage() {
         </span>
         <span className="text-sm font-bold shrink-0">→</span>
       </Link>
+
+      {canFileComplaintFlag && (
+        <Link
+          href="/keluhan"
+          className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
+        >
+          <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">
+            <MessageSquareWarning size={18} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-display font-bold text-sm">Keluhan & insiden pelanggan</span>
+            <span className="block text-xs text-muted-foreground">
+              Catat keluhan baru atau tutup yang masih terbuka.
+            </span>
+          </span>
+          <span className="text-sm font-bold shrink-0">→</span>
+        </Link>
+      )}
 
       {/* Tanggung jawab berjalan, bukan aksi hari ini — jadi masuk
           kelompok panel substantif, bukan tumpukan banner di atas.
