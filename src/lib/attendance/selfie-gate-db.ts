@@ -47,6 +47,7 @@ export async function loadSelfieRules(client: Admin, userId: string): Promise<Se
       face_full: f.face_full === true,
       no_mask: f.no_mask === true,
       apron: f.apron === true,
+      lanyard: f.lanyard === true,
     },
     headCover: userRule?.head_cover === true,
   };

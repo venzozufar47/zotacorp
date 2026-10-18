@@ -15,6 +15,7 @@ export type SelfieIssue =
   | "face_blurry"
   | "mask"
   | "no_apron"
+  | "no_lanyard"
   | "no_head_cover";
 
 export interface SelfieFilters {
@@ -22,6 +23,7 @@ export interface SelfieFilters {
   face_full: boolean;
   no_mask: boolean;
   apron: boolean;
+  lanyard: boolean;
 }
 
 export interface SelfieRuleSet {
@@ -32,12 +34,13 @@ export interface SelfieRuleSet {
 
 /** Apa yang diamati AI. Field yang filternya mati tidak diminta, jadi bernilai undefined. */
 export interface SelfieObservation {
-  location?: "indoor" | "outdoor" | "unclear";
+  bg?: "indoor" | "outdoor" | "unclear";
   helmet?: boolean;
   face?: "full" | "cropped" | "angled" | "blurry";
-  mask?: "none" | "covering" | "clear_shield";
+  mask?: "none" | "covering" | "shield";
   apron?: boolean;
-  head_cover?: boolean;
+  lanyard?: boolean;
+  cover?: boolean;
 }
 
 export type SelfieJudgement =
@@ -49,7 +52,7 @@ const DEFAULT_MODEL = "gemini-2.5-flash";
 const TIMEOUT_MS = 10_000;
 
 const ISSUE_MESSAGE: Record<SelfieIssue, string> = {
-  outdoor: "Latar belakang terlihat di luar ruangan. Absen dari dalam toko, ya.",
+  outdoor: "Latar belakang terlihat di luar ruangan. Absen dari dalam ruangan, ya.",
   unclear_bg: "Latar belakang belum jelas. Pastikan dinding atau ruangan di belakangmu ikut terlihat.",
   helmet: "Helm masih dipakai. Lepas helm sebelum foto.",
   face_cropped:
@@ -58,6 +61,7 @@ const ISSUE_MESSAGE: Record<SelfieIssue, string> = {
   face_blurry: "Foto buram atau kurang terang. Pegang ponsel dengan stabil dan cari tempat yang lebih terang.",
   mask: "Masker menutupi hidung atau mulut. Lepas masker saat foto absen.",
   no_apron: "Apron belum terlihat. Pakai apron, dan pastikan tali atau bagian atasnya terlihat di bahu atau dada.",
+  no_lanyard: "Lanyard belum terlihat. Kalungkan lanyard, dan pastikan tali atau kartunya terlihat di dada.",
   no_head_cover: "Penutup kepala (kupluk atau topi yang menutupi rambut) belum terlihat.",
 };
 
@@ -71,6 +75,7 @@ const ISSUE_ORDER: SelfieIssue[] = [
   "face_angled",
   "face_blurry",
   "no_apron",
+  "no_lanyard",
   "no_head_cover",
 ];
 
@@ -79,9 +84,9 @@ export function issuesFromObservation(obs: SelfieObservation, rules: SelfieRuleS
   const found = new Set<SelfieIssue>();
   const f = rules.filters;
   if (f.indoor) {
-    if (obs.location === "outdoor") found.add("outdoor");
+    if (obs.bg === "outdoor") found.add("outdoor");
     // Latar tak jelas = ditolak (keputusan: "latar harus jelas indoor").
-    else if (obs.location !== "indoor") found.add("unclear_bg");
+    else if (obs.bg !== "indoor") found.add("unclear_bg");
     if (obs.helmet) found.add("helmet");
   }
   if (f.face_full) {
@@ -92,7 +97,8 @@ export function issuesFromObservation(obs: SelfieObservation, rules: SelfieRuleS
   // Face shield bening yang wajahnya tetap terlihat BOLEH; hanya penutup hidung/mulut yang ditolak.
   if (f.no_mask && obs.mask === "covering") found.add("mask");
   if (f.apron && obs.apron !== true) found.add("no_apron");
-  if (rules.headCover && obs.head_cover !== true) found.add("no_head_cover");
+  if (f.lanyard && obs.lanyard !== true) found.add("no_lanyard");
+  if (rules.headCover && obs.cover !== true) found.add("no_head_cover");
   return ISSUE_ORDER.filter((i) => found.has(i));
 }
 
@@ -101,32 +107,32 @@ export function messageFromIssues(issues: SelfieIssue[]): string {
   return issues.map((i) => ISSUE_MESSAGE[i]).join("\n");
 }
 
-/** Murni: hanya filter yang menyala yang diminta ke model (output & input lebih pendek). */
+/**
+ * Murni: prompt hanya memuat filter yang menyala (tiap token input dibayar di setiap foto). Sengaja
+ * ringkas dan berbahasa Inggris (lebih hemat token); pesan ke karyawan tetap dibuat kode berbahasa Indonesia.
+ */
 export function buildPrompt(rules: SelfieRuleSet): string {
   const f = rules.filters;
-  const lines = ["Foto selfie absen karyawan toko kue. Jawab JSON sesuai skema; nilai hanya yang benar-benar terlihat."];
+  const lines = ["Staff attendance selfie. Answer only from what is clearly visible."];
   if (f.indoor) {
     lines.push(
-      "location: indoor bila latar jelas ruangan (dinding, plafon, lampu, rak, etalase, dapur). outdoor bila terlihat motor/kendaraan, parkiran, jalan, langit, pohon, cahaya matahari langsung, atau teras terbuka (termasuk teras depan toko). unclear bila latar tidak cukup terlihat.",
-      "helmet: true bila helm sedang dipakai.",
+      "bg: indoor=room interior (walls, ceiling, shelves, counter); outdoor=motorbike/vehicle, parking, street, sky, trees, direct sun, open porch or terrace; unclear=background not visible.",
+      "helmet: true if wearing a helmet.",
     );
   }
   if (f.face_full) {
     lines.push(
-      "face: full bila seluruh kepala (dahi atau tepi hijab sampai dagu) masuk bingkai, menghadap kamera, kedua mata jelas. cropped bila ada bagian kepala terpotong. angled bila wajah miring/menoleh/menunduk. blurry bila buram.",
+      "face: full=whole head (forehead or hijab edge to chin) in frame, facing camera, both eyes clear; cropped=head cut off; angled=turned/tilted/looking down; blurry.",
     );
   }
   if (f.no_mask) {
-    lines.push(
-      "mask: covering bila masker atau kain menutupi hidung atau mulut. clear_shield bila hanya pelindung wajah plastik bening dan wajah tetap terlihat. none bila tidak ada. Kacamata, topi, dan hijab bukan masker.",
-    );
+    lines.push("mask: covering=mask or cloth over nose or mouth; shield=clear plastic face shield only; none. Glasses, caps, hijab are not masks.");
   }
-  if (f.apron) {
-    lines.push("apron: true bila apron terlihat, termasuk bila hanya tali atau bagian atasnya di bahu/dada.");
+  if (f.apron) lines.push("apron: true if an apron, its straps or its bib is visible at the shoulders/chest.");
+  if (f.lanyard) {
+    lines.push("lanyard: true if a lanyard strap or ID card hangs on the person's own neck/chest (not on a poster or standee).");
   }
-  if (rules.headCover) {
-    lines.push("head_cover: true bila kupluk/beanie/topi atau penutup kepala menutupi rambut.");
-  }
+  if (rules.headCover) lines.push("cover: true if a beanie/cap/head covering is over the hair.");
   return lines.join("\n");
 }
 
@@ -134,13 +140,14 @@ function buildSchema(rules: SelfieRuleSet) {
   const f = rules.filters;
   const properties: Record<string, unknown> = {};
   if (f.indoor) {
-    properties.location = { type: "STRING", enum: ["indoor", "outdoor", "unclear"] };
+    properties.bg = { type: "STRING", enum: ["indoor", "outdoor", "unclear"] };
     properties.helmet = { type: "BOOLEAN" };
   }
   if (f.face_full) properties.face = { type: "STRING", enum: ["full", "cropped", "angled", "blurry"] };
-  if (f.no_mask) properties.mask = { type: "STRING", enum: ["none", "covering", "clear_shield"] };
+  if (f.no_mask) properties.mask = { type: "STRING", enum: ["none", "covering", "shield"] };
   if (f.apron) properties.apron = { type: "BOOLEAN" };
-  if (rules.headCover) properties.head_cover = { type: "BOOLEAN" };
+  if (f.lanyard) properties.lanyard = { type: "BOOLEAN" };
+  if (rules.headCover) properties.cover = { type: "BOOLEAN" };
   return { type: "OBJECT", properties, required: Object.keys(properties) };
 }
 
@@ -150,6 +157,7 @@ export function guideHint(rules: SelfieRuleSet): string {
   const parts: string[] = [];
   if (f.face_full) parts.push("seluruh wajah di dalam oval");
   if (f.apron) parts.push("bahu dan apron terlihat");
+  if (f.lanyard) parts.push("lanyard terlihat di dada");
   if (f.indoor) parts.push("di dalam ruangan, tanpa helm");
   if (f.no_mask) parts.push("tanpa masker");
   if (rules.headCover) parts.push("pakai penutup kepala");
@@ -161,7 +169,7 @@ export function guideHint(rules: SelfieRuleSet): string {
 /** Ada yang perlu diperiksa? (aturan dengan semua filter mati tidak memanggil AI.) */
 export function hasActiveFilters(rules: SelfieRuleSet): boolean {
   const f = rules.filters;
-  return f.indoor || f.face_full || f.no_mask || f.apron || rules.headCover;
+  return f.indoor || f.face_full || f.no_mask || f.apron || f.lanyard || rules.headCover;
 }
 
 interface GeminiBody {
@@ -193,6 +201,8 @@ export async function judgeSelfie(bytes: ArrayBuffer, mime: string, rules: Selfi
           temperature: 0,
           // Mengamati isi foto (bukan bernalar panjang): thinking bawaan 2.5 Flash hanya menambah biaya.
           thinkingConfig: { thinkingBudget: 0 },
+          // Jawaban normal ~25 token; batas ini hanya pagar bila model meracau.
+          maxOutputTokens: 120,
           responseMimeType: "application/json",
           responseSchema: buildSchema(rules),
         },
