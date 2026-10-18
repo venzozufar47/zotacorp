@@ -15,7 +15,7 @@ export const TEAM_SECTIONS: Record<
   },
   briefing: {
     title: "Briefing kilat",
-    description: "Catat target harian, kendala kemarin, dan pembagian tugas briefing cabang.",
+    description: "Catat target dan fokus harian, kendala kemarin, serta tanya jawab dan pembagian tugas.",
     icon: Zap,
   },
   catatan: {

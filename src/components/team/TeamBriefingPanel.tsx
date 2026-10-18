@@ -36,7 +36,7 @@ export function BriefingBody({ b }: { b: HuddleView }) {
   return (
     <div className="space-y-1.5 text-sm">
       <p>
-        <span className="font-semibold">Target:</span> {b.targetToday}
+        <span className="font-semibold">Target dan fokus:</span> {b.targetToday}
       </p>
       {b.yesterdayBlocker && (
         <p>
@@ -45,7 +45,7 @@ export function BriefingBody({ b }: { b: HuddleView }) {
       )}
       {b.whoHoldsWhat && (
         <p>
-          <span className="font-semibold">Siapa pegang apa:</span> {b.whoHoldsWhat}
+          <span className="font-semibold">Tanya jawab / pembagian tugas:</span> {b.whoHoldsWhat}
         </p>
       )}
     </div>
@@ -86,7 +86,7 @@ function BriefingForm({ branch, today }: { branch: MinutesBranch; today: HuddleV
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor="bk-target">Target hari ini</Label>
+        <Label htmlFor="bk-target">Target dan fokus hari ini</Label>
         <Textarea
           id="bk-target"
           rows={2}
@@ -96,11 +96,17 @@ function BriefingForm({ branch, today }: { branch: MinutesBranch; today: HuddleV
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="bk-blocker">Kendala kemarin (opsional)</Label>
+        <Label htmlFor="bk-blocker" className="flex-wrap gap-x-1.5">
+          Kendala kemarin jika ada
+          <span className="text-xs font-normal text-muted-foreground">
+            (Kualitas &amp; kebersihan / Penjualan / Pelayanan / Operasional / Keselamatan &amp; kesiapan /
+            Motivasi dan budaya tim)
+          </span>
+        </Label>
         <Input id="bk-blocker" value={blocker} onChange={(e) => setBlocker(e.target.value)} />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="bk-holds">Siapa pegang apa (opsional)</Label>
+        <Label htmlFor="bk-holds">Tanya jawab atau pembagian tugas hari ini</Label>
         <Input id="bk-holds" value={holds} onChange={(e) => setHolds(e.target.value)} />
       </div>
       <Button onClick={submit} loading={saving} size="lg" className="w-full">
