@@ -474,8 +474,23 @@ export async function createCoachingNote(input: {
   return { ok: true };
 }
 
-/** Catatan pembinaan milik penelepon sendiri, terbaru dulu. */
-export async function listMyCoachingNotes(): Promise<CoachingNoteRow[]> {
+/** Catatan yang sudah dibaca disembunyikan dari dashboard setelah sekian lama (tetap ada di Riwayat). */
+const HIDE_AFTER_READ_MS = 3 * 24 * 3600 * 1000;
+
+/** `archived` = tidak lagi tampil di dashboard, hanya di "Riwayat". Dihitung di server (satu jam dinding). */
+export interface MyCoachingNote extends CoachingNoteRow {
+  archived: boolean;
+}
+
+/**
+ * Catatan pembinaan milik penelepon sendiri, terbaru dulu.
+ *
+ * Tampil di dashboard sampai 3 hari setelah DIBACA; sesudahnya `archived` dan
+ * hanya muncul di Riwayat. Pengecualian: SP yang belum ditanggapi karyawan
+ * (menerima / keberatan) tetap tampil — kalau disembunyikan, hak didengarnya
+ * (Dokumen 3 §4, §7) tidak bisa dipakai lagi.
+ */
+export async function listMyCoachingNotes(): Promise<MyCoachingNote[]> {
   const user = await getCurrentUser();
   if (!user) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -490,7 +505,7 @@ export async function listMyCoachingNotes(): Promise<CoachingNoteRow[]> {
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(50);
   type Row = {
     id: string;
     user_id: string;
@@ -507,6 +522,7 @@ export async function listMyCoachingNotes(): Promise<CoachingNoteRow[]> {
     employee_acceptance: "menerima" | "menerima_keberatan" | null;
     author: { full_name?: string } | null;
   };
+  const now = Date.now();
   return ((data ?? []) as Row[]).map((n) => ({
     id: n.id,
     userId: n.user_id,
@@ -514,6 +530,10 @@ export async function listMyCoachingNotes(): Promise<CoachingNoteRow[]> {
     context: n.context,
     createdAt: n.created_at,
     acknowledgedAt: n.acknowledged_at,
+    archived:
+      n.acknowledged_at !== null &&
+      now - Date.parse(n.acknowledged_at) > HIDE_AFTER_READ_MS &&
+      !(n.sp_level !== null && n.sp_level !== "teguran" && !n.employee_acceptance),
     periodFrom: n.period_from,
     periodTo: n.period_to,
     spLevel: n.sp_level,

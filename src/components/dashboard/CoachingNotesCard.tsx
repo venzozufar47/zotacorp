@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { MessageSquareText, Check, Loader2, ShieldAlert } from "lucide-react";
+import { MessageSquareText, Check, ChevronDown, History, Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { formatDateID } from "@/lib/utils/date-formats";
 import {
   acknowledgeCoachingNote,
   respondToCoachingNote,
   type CoachingNoteRow,
+  type MyCoachingNote,
 } from "@/lib/actions/cleaning-review.actions";
 import { SP_LEVEL_LABEL } from "@/lib/coaching/constants";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,11 +27,18 @@ import { Button } from "@/components/ui/button";
  * tetap tampil, tidak menghilang saat ditandai. SP (sp1/sp2/sp3) tambah satu
  * langkah: karyawan menyatakan menerima / menerima dengan keberatan
  * (Dokumen 3 §4, §7 — hak didengar sebelum sanksi final).
+ *
+ * Catatan yang sudah dibaca disembunyikan dari dashboard 3 hari kemudian dan
+ * pindah ke "Riwayat" (lihat `listMyCoachingNotes`) — tidak dihapus.
  */
-export function CoachingNotesCard({ notes }: { notes: CoachingNoteRow[] }) {
+export function CoachingNotesCard({ notes }: { notes: MyCoachingNote[] }) {
   const [acked, setAcked] = useState<Record<string, boolean>>({});
+  const [showHistory, setShowHistory] = useState(false);
   const [pending, startTransition] = useTransition();
   if (notes.length === 0) return null;
+
+  const active = notes.filter((n) => !n.archived);
+  const archived = notes.filter((n) => n.archived);
 
   function ack(id: string) {
     setAcked((a) => ({ ...a, [id]: true }));
@@ -41,90 +49,115 @@ export function CoachingNotesCard({ notes }: { notes: CoachingNoteRow[] }) {
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
-          <MessageSquareText size={15} />
-        </span>
-        <h2 className="font-display text-sm font-bold">Catatan pembinaan</h2>
-      </div>
-      <ul className="space-y-2">
-        {notes.map((n) => {
-          const seen = n.acknowledgedAt !== null || acked[n.id];
-          const isSanction = n.spLevel === "sp1" || n.spLevel === "sp2" || n.spLevel === "sp3";
-          return (
-            <li
-              key={n.id}
-              className={
-                "rounded-xl border px-3 py-2.5 space-y-2 " +
-                (isSanction
-                  ? "border-destructive/50 bg-destructive/5"
-                  : seen
-                    ? "border-border bg-muted/30"
-                    : "border-primary/40 bg-primary/5")
-              }
-            >
-              {n.spLevel && (
-                <span
-                  className={
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold " +
-                    (isSanction
-                      ? "bg-destructive/15 text-destructive"
-                      : "bg-muted text-muted-foreground")
-                  }
-                >
-                  {isSanction && <ShieldAlert size={10} />}
-                  {SP_LEVEL_LABEL[n.spLevel]}
-                </span>
-              )}
-              <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
-                {n.body}
-              </p>
-              {n.sopReference && (
-                <p className="text-[11px] text-muted-foreground">Rujukan: {n.sopReference}</p>
-              )}
-              {n.validUntil && (
-                <p className="text-[11px] text-muted-foreground">
-                  Berlaku sampai {formatDateID(n.validUntil)}
-                </p>
-              )}
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted-foreground">
-                <span>{formatDateID(n.createdAt)}</span>
-                {n.authorName && <span>· {n.authorName}</span>}
-                {n.periodFrom && n.periodTo && (
-                  <span>
-                    · periode {formatDateID(n.periodFrom)}–
-                    {formatDateID(n.periodTo)}
-                  </span>
-                )}
-                {!seen ? (
-                  <button
-                    type="button"
-                    onClick={() => ack(n.id)}
-                    disabled={pending}
-                    className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-[10.5px] font-semibold text-foreground hover:bg-muted disabled:opacity-50"
-                  >
-                    {pending ? (
-                      <Loader2 size={11} className="animate-spin" />
-                    ) : (
-                      <Check size={11} />
-                    )}
-                    Sudah saya baca
-                  </button>
-                ) : (
-                  <span className="ml-auto inline-flex items-center gap-1">
-                    <Check size={11} /> sudah dibaca
-                  </span>
-                )}
-              </div>
+      {active.length > 0 && (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-primary">
+              <MessageSquareText size={15} />
+            </span>
+            <h2 className="font-display text-sm font-bold">Catatan pembinaan</h2>
+          </div>
+          <ul className="space-y-2">
+            {active.map((n) => (
+              <NoteItem key={n.id} n={n} seen={n.acknowledgedAt !== null || !!acked[n.id]} onAck={ack} pending={pending} />
+            ))}
+          </ul>
+        </>
+      )}
 
-              {isSanction && (
-                <SanctionResponse note={n} />
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      {archived.length > 0 && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            aria-expanded={showHistory}
+            className="flex w-full items-center gap-2 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <History size={14} />
+            <span className="flex-1">
+              {active.length === 0 ? "Catatan pembinaan — " : ""}Riwayat ({archived.length})
+            </span>
+            <ChevronDown size={14} className={showHistory ? "rotate-180 transition-transform" : "transition-transform"} />
+          </button>
+          {showHistory && (
+            <ul className="space-y-2">
+              {archived.map((n) => (
+                <NoteItem key={n.id} n={n} seen onAck={ack} pending={pending} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </section>
+  );
+}
+
+function NoteItem({
+  n,
+  seen,
+  onAck,
+  pending,
+}: {
+  n: CoachingNoteRow;
+  seen: boolean;
+  onAck: (id: string) => void;
+  pending: boolean;
+}) {
+  const isSanction = n.spLevel === "sp1" || n.spLevel === "sp2" || n.spLevel === "sp3";
+  return (
+    <li
+      className={
+        "rounded-xl border px-3 py-2.5 space-y-2 " +
+        (isSanction
+          ? "border-destructive/50 bg-destructive/5"
+          : seen
+            ? "border-border bg-muted/30"
+            : "border-primary/40 bg-primary/5")
+      }
+    >
+      {n.spLevel && (
+        <span
+          className={
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold " +
+            (isSanction ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground")
+          }
+        >
+          {isSanction && <ShieldAlert size={10} />}
+          {SP_LEVEL_LABEL[n.spLevel]}
+        </span>
+      )}
+      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">{n.body}</p>
+      {n.sopReference && <p className="text-[11px] text-muted-foreground">Rujukan: {n.sopReference}</p>}
+      {n.validUntil && (
+        <p className="text-[11px] text-muted-foreground">Berlaku sampai {formatDateID(n.validUntil)}</p>
+      )}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted-foreground">
+        <span>{formatDateID(n.createdAt)}</span>
+        {n.authorName && <span>· {n.authorName}</span>}
+        {n.periodFrom && n.periodTo && (
+          <span>
+            · periode {formatDateID(n.periodFrom)}–{formatDateID(n.periodTo)}
+          </span>
+        )}
+        {!seen ? (
+          <button
+            type="button"
+            onClick={() => onAck(n.id)}
+            disabled={pending}
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-[10.5px] font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+          >
+            {pending ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+            Sudah saya baca
+          </button>
+        ) : (
+          <span className="ml-auto inline-flex items-center gap-1">
+            <Check size={11} /> sudah dibaca
+          </span>
+        )}
+      </div>
+
+      {isSanction && <SanctionResponse note={n} />}
+    </li>
   );
 }
 
