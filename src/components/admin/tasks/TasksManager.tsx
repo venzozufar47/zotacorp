@@ -1,24 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   ClipboardList,
   LayoutGrid,
   List,
+  Network,
   Plus,
   RotateCcw,
   Search,
   Tags,
-  Users,
 } from "lucide-react";
-import type { AdminTaskRow, AdminTeam, TaskCategory, TaskStatus } from "@/lib/tasks/types";
+import type { AdminTaskRow, TaskCategory, TaskStatus } from "@/lib/tasks/types";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { fmtStart, timeAgo } from "@/lib/tasks/format";
 import { TaskFormDialog } from "./TaskFormDialog";
 import { TaskDetailDialog } from "./TaskDetailDialog";
-import { TeamsDialog } from "./TeamsDialog";
 import { TaskMatrix } from "./TaskMatrix";
 import { CategoriesDialog } from "./CategoriesDialog";
 import { categoryStyle } from "@/lib/tasks/category-colors";
@@ -71,8 +71,6 @@ const EMPTY_COPY: Record<Tab, { title: string; hint: string }> = {
 export function TasksManager({
   tasks,
   employees,
-  allEmployees,
-  teams,
   categories,
   loadError,
   focusId,
@@ -80,9 +78,6 @@ export function TasksManager({
   tasks: AdminTaskRow[];
   /** Calon PENERIMA tugas (dibatasi cakupan fitur Tugas). */
   employees: AssignableEmployee[];
-  /** Semua karyawan aktif — hanya untuk memilih Team leader/anggota. */
-  allEmployees: AssignableEmployee[];
-  teams: AdminTeam[];
   categories: TaskCategory[];
   loadError: string | null;
   focusId: string | null;
@@ -91,7 +86,6 @@ export function TasksManager({
   const [tab, setTab] = useState<Tab>(reviewCount > 0 || focusId ? "review" : "running");
   const [query, setQuery] = useState("");
   const [formOpen, setFormOpen] = useState(false);
-  const [teamsOpen, setTeamsOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   // "all" | "none" (tanpa kategori) | id kategori — hanya memfilter tampilan Daftar.
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -186,16 +180,15 @@ export function TasksManager({
               Kategori{categories.length > 0 ? ` (${categories.length})` : ""}
             </span>
           </button>
-          <button
-            type="button"
-            onClick={() => setTeamsOpen(true)}
-            aria-label="Kelola Team leader"
-            title="Team leader"
+          <Link
+            href="/admin/struktur"
+            aria-label="Atur struktur organisasi"
+            title="Struktur organisasi (atasan & Team leader)"
             className="shrink-0 h-11 px-3 rounded-xl border-2 border-border text-sm font-medium inline-flex items-center gap-1.5 hover:bg-muted"
           >
-            <Users size={16} />
-            <span className="hidden sm:inline">Tim{teams.length > 0 ? ` (${teams.length})` : ""}</span>
-          </button>
+            <Network size={16} />
+            <span className="hidden sm:inline">Struktur</span>
+          </Link>
           <button
             type="button"
             onClick={() => setFormOpen(true)}
@@ -444,9 +437,6 @@ export function TasksManager({
 
       {categoriesOpen && (
         <CategoriesDialog categories={categories} onClose={() => setCategoriesOpen(false)} />
-      )}
-      {teamsOpen && (
-        <TeamsDialog teams={teams} employees={allEmployees} onClose={() => setTeamsOpen(false)} />
       )}
       {formOpen && (
         <TaskFormDialog

@@ -11,14 +11,11 @@
  * sesi, bukan dari klien.
  */
 
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { getCurrentUser } from "@/lib/supabase/cached";
 import { createAdminClient } from "./_supabase-admin";
-import { requireAdmin, type ActionResult } from "./_gates";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { signEvidencePhotos } from "@/lib/tasks/sign";
-import type { AdminTeam, TeamMemberTasks, TeamTask } from "@/lib/tasks/types";
+import type { TeamMemberTasks, TeamTask } from "@/lib/tasks/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -126,86 +123,4 @@ export async function getMyTeamTasks(): Promise<TeamMemberTasks[]> {
       tasks: (byMember.get(p.id) ?? []).sort((a, b) => order[a.status] - order[b.status]),
     }))
     .sort((a: TeamMemberTasks, b: TeamMemberTasks) => a.name.localeCompare(b.name, "id"));
-}
-
-// ── Admin: kelola tim ────────────────────────────────────────────────────
-
-export async function listTeams(): Promise<ActionResult<AdminTeam[]>> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return gate;
-  const db = createAdminClient() as any;
-  const { data: links, error } = await db.from("team_members").select("leader_id, member_id");
-  if (error) return { ok: false, error: error.message };
-  const ids = [...new Set<string>((links ?? []).flatMap((l: any) => [l.leader_id, l.member_id]))];
-  if (ids.length === 0) return { ok: true, data: [] };
-  const { data: people } = await db
-    .from("profiles")
-    .select("id, full_name, nickname")
-    .in("id", ids);
-  const name = new Map<string, string>((people ?? []).map((p: any) => [p.id, nameOf(p)]));
-
-  const teams = new Map<string, AdminTeam>();
-  for (const l of links ?? []) {
-    const team: AdminTeam = teams.get(l.leader_id) ?? {
-      leaderId: l.leader_id,
-      leaderName: name.get(l.leader_id) ?? "—",
-      members: [],
-    };
-    team.members.push({ id: l.member_id, name: name.get(l.member_id) ?? "—" });
-    teams.set(l.leader_id, team);
-  }
-  const out = [...teams.values()].sort((a, b) => a.leaderName.localeCompare(b.leaderName, "id"));
-  for (const t of out) t.members.sort((a, b) => a.name.localeCompare(b.name, "id"));
-  return { ok: true, data: out };
-}
-
-const saveSchema = z.object({
-  leaderId: z.string().uuid(),
-  memberIds: z.array(z.string().uuid()).max(100),
-});
-
-/** Ganti seluruh anggota satu leader. `memberIds` kosong = bubarkan tim. */
-export async function saveTeam(input: z.input<typeof saveSchema>): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return gate;
-  const parsed = saveSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Input tidak valid" };
-  const { leaderId } = parsed.data;
-  const memberIds = [...new Set(parsed.data.memberIds)];
-  if (memberIds.includes(leaderId)) {
-    return { ok: false, error: "Leader tidak bisa menjadi anggota timnya sendiri." };
-  }
-
-  const db = createAdminClient() as any;
-  if (memberIds.length > 0) {
-    const everyone = [leaderId, ...memberIds];
-    const { data: people } = await db
-      .from("profiles")
-      .select("id, role, is_active")
-      .in("id", everyone);
-    const ok = new Set<string>(
-      (people ?? []).filter((p: any) => p.role === "employee" && p.is_active).map((p: any) => p.id)
-    );
-    if (everyone.some((id) => !ok.has(id))) {
-      return { ok: false, error: "Leader dan anggota harus karyawan aktif." };
-    }
-  }
-
-  // Ganti-set: tambahkan yang baru dulu, baru hapus yang tidak dipilih lagi,
-  // supaya kegagalan di tengah tidak mengosongkan tim.
-  if (memberIds.length > 0) {
-    const { error: upErr } = await db.from("team_members").upsert(
-      memberIds.map((member_id) => ({ leader_id: leaderId, member_id, created_by: gate.userId })),
-      { onConflict: "leader_id,member_id", ignoreDuplicates: true }
-    );
-    if (upErr) return { ok: false, error: upErr.message };
-  }
-  let del = db.from("team_members").delete().eq("leader_id", leaderId);
-  if (memberIds.length > 0) del = del.not("member_id", "in", `(${memberIds.join(",")})`);
-  const { error: delErr } = await del;
-  if (delErr) return { ok: false, error: delErr.message };
-
-  revalidatePath("/admin/tasks");
-  revalidatePath("/tim");
-  return { ok: true };
 }

@@ -3,11 +3,9 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import {
-  listAllActiveEmployees,
   listAssignableEmployees,
   listAssignedTasks,
 } from "@/lib/actions/assigned-tasks.actions";
-import { listTeams } from "@/lib/actions/team.actions";
 import { listTaskCategories } from "@/lib/actions/task-categories.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TasksManager } from "@/components/admin/tasks/TasksManager";
@@ -28,11 +26,9 @@ export default async function AdminTasksPage({
   if (role !== "admin") redirect("/dashboard");
 
   const { focus } = await searchParams;
-  const [tasksRes, employeesRes, allEmployeesRes, teamsRes, categoriesRes] = await Promise.all([
+  const [tasksRes, employeesRes, categoriesRes] = await Promise.all([
     listAssignedTasks(),
     listAssignableEmployees(),
-    listAllActiveEmployees(),
-    listTeams(),
     listTaskCategories(),
   ]);
 
@@ -49,8 +45,6 @@ export default async function AdminTasksPage({
         key={focus ?? "none"}
         tasks={tasksRes.ok ? tasksRes.data ?? [] : []}
         employees={employeesRes.ok ? employeesRes.data ?? [] : []}
-        allEmployees={allEmployeesRes.ok ? allEmployeesRes.data ?? [] : []}
-        teams={teamsRes.ok ? teamsRes.data ?? [] : []}
         categories={categoriesRes.ok ? categoriesRes.data ?? [] : []}
         loadError={tasksRes.ok ? null : tasksRes.error}
         focusId={focus ?? null}

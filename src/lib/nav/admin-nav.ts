@@ -18,6 +18,7 @@ import {
   LogOut,
   MapPin,
   Megaphone,
+  Network,
   PartyPopper,
   Receipt,
   Repeat,
@@ -237,6 +238,12 @@ export function buildAdminNav({
           href: "/admin/users",
           icon: Users,
           label: t.nav.users,
+          color: "bg-pop-pink",
+        },
+        {
+          href: "/admin/struktur",
+          icon: Network,
+          label: "Struktur Organisasi",
           color: "bg-pop-pink",
         },
         {

@@ -1255,30 +1255,6 @@ export async function deferTaskToTomorrow(input: {
   return { ok: true };
 }
 
-/** Semua karyawan aktif — untuk memilih Team leader/anggota, TIDAK dibatasi cakupan penerima Tugas. */
-export async function listAllActiveEmployees(): Promise<
-  ActionResult<{ id: string; name: string; businessUnit: string | null }[]>
-> {
-  const role = await getCurrentRole();
-  if (role !== "admin") return { ok: false, error: "Forbidden" };
-  const db = createAdminClient() as any;
-  const { data, error } = await db
-    .from("profiles")
-    .select("id, full_name, nickname, business_unit")
-    .eq("role", "employee")
-    .eq("is_active", true)
-    .order("full_name", { ascending: true });
-  if (error) return { ok: false, error: error.message };
-  return {
-    ok: true,
-    data: (data ?? []).map((p: any) => ({
-      id: p.id,
-      name: String(p.full_name ?? "").trim() || String(p.nickname ?? "—"),
-      businessUnit: p.business_unit ?? null,
-    })),
-  };
-}
-
 /** Daftar karyawan aktif untuk pemilih penerima di form admin. */
 export async function listAssignableEmployees(): Promise<
   ActionResult<{ id: string; name: string; businessUnit: string | null }[]>

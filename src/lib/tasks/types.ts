@@ -157,12 +157,6 @@ export interface TeamMemberTasks {
   tasks: TeamTask[];
 }
 
-export interface AdminTeam {
-  leaderId: string;
-  leaderName: string;
-  members: { id: string; name: string }[];
-}
-
 // ── Kategori (khusus superadmin) ──────────────────────────────────────────
 
 export interface TaskCategory {
