@@ -23,6 +23,8 @@ import { BranchDutyManager } from "./BranchDutyManager";
 import { PhotoReviewGallery, type GalleryFilter } from "./PhotoReviewGallery";
 import { SopGovernanceZone } from "./SopGovernanceZone";
 import { SopProvider } from "./sop/SopProvider";
+import { SopDocsAdminClient } from "@/components/admin/sop-docs/SopDocsAdminClient";
+import type { SopDocumentAdminView } from "@/lib/actions/sop-documents.actions";
 import { STATUS_TEXT } from "./sop/shared";
 import { SopKepatuhan } from "./sop/SopKepatuhan";
 import { SopSidak } from "./sop/SopSidak";
@@ -58,6 +60,7 @@ const VIEWS = [
   { key: "ringkasan", label: "Kepatuhan SOP" },
   { key: "sidak", label: "Sidak foto" },
   { key: "karyawan", label: "Kerajinan karyawan" },
+  { key: "pengakuan", label: "Pengakuan SOP" },
 ] as const;
 
 export type CleaningViewKey = (typeof VIEWS)[number]["key"];
@@ -286,6 +289,7 @@ export function CleaningOverview({
   fixes,
   revisions,
   sidakTab,
+  sopDocuments,
   initialGalleryOpen,
   initialSetupOpen,
 }: {
@@ -307,6 +311,8 @@ export function CleaningOverview({
   revisions: RevisionRow[];
   /** Tab awal Sidak foto: "acak" = Acak 10; kosong = cabang pertama. */
   sidakTab?: "acak";
+  /** Dokumen SOP tertulis untuk tab "Pengakuan SOP" (hanya dimuat saat tab itu dibuka). */
+  sopDocuments?: SopDocumentAdminView[];
   /** Buka drawer "Pengaturan SOP" saat halaman dimuat (`?setup=1`, dari pengingat tinjau ulang). */
   initialSetupOpen?: boolean;
   /** Buka drawer "Telusur foto" langsung saat halaman dimuat — dipakai
@@ -401,7 +407,15 @@ export function CleaningOverview({
         </div>
       </div>
 
-      {view !== "karyawan" ? (
+      {view === "pengakuan" ? (
+        <section className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            SOP tertulis yang wajib dibaca & diakui setiap karyawan. Mengedit isi menaikkan versi dan
+            meminta pengakuan ulang dari semua orang.
+          </p>
+          <SopDocsAdminClient documents={sopDocuments ?? []} />
+        </section>
+      ) : view !== "karyawan" ? (
         <SopProvider
           report={report}
           issues={issueInputs}

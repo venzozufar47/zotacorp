@@ -19,6 +19,7 @@ import { listOpenItemIssues } from "@/lib/actions/cleaning-governance.actions";
 import { listAllChecklistRevisions, listFindingAcks, listSopFixes } from "@/lib/actions/cleaning-sop.actions";
 import { listHolidays } from "@/lib/actions/holidays.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { listSopDocumentsAdmin } from "@/lib/actions/sop-documents.actions";
 
 /**
  * Kebersihan — satu halaman.
@@ -58,7 +59,13 @@ export default async function AdminCleaningPage({
 
   const sp = await searchParams;
   const view: CleaningViewKey =
-    sp.view === "karyawan" ? "karyawan" : sp.view === "sidak" ? "sidak" : "ringkasan";
+    sp.view === "karyawan"
+      ? "karyawan"
+      : sp.view === "sidak"
+        ? "sidak"
+        : sp.view === "pengakuan"
+          ? "pengakuan"
+          : "ringkasan";
   // `?view=sidak&tab=acak` (pintasan dari Beranda) membuka tab Acak 10; selain itu cabang pertama.
   const sidakTab = sp.tab === "acak" ? ("acak" as const) : undefined;
   const initialGalleryOpen = sp.gallery === "1";
@@ -68,6 +75,8 @@ export default async function AdminCleaningPage({
   const from = ymdMinus(today, REPORT_DAYS - 1);
 
   const supabase = await createClient();
+  // Dokumen Pengakuan SOP hanya dimuat saat tab itu dibuka.
+  const sopDocuments = view === "pengakuan" ? await listSopDocumentsAdmin() : undefined;
   const [
     checklists,
     assignments,
@@ -134,6 +143,7 @@ export default async function AdminCleaningPage({
           fixes={fixes}
           revisions={revisions}
           sidakTab={sidakTab}
+          sopDocuments={sopDocuments}
           initialSetupOpen={initialSetupOpen}
           initialGalleryOpen={initialGalleryOpen}
         />

@@ -1,5 +1,4 @@
 import {
-  BookCheck,
   Brain,
   Cake,
   Calculator,
@@ -149,12 +148,6 @@ export function buildAdminNav({
           icon: Sparkles,
           label: "SOP",
           badge: cleaningCount || undefined,
-          color: "bg-quaternary",
-        },
-        {
-          href: "/admin/sop-pengakuan",
-          icon: BookCheck,
-          label: "Pengakuan SOP",
           color: "bg-quaternary",
         },
         {

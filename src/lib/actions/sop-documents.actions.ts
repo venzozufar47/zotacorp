@@ -115,7 +115,7 @@ export async function createSopDocument(input: {
     updated_by: gate.userId,
   });
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/admin/sop-pengakuan");
+  revalidatePath("/admin/cleaning");
   revalidatePath("/pengakuan-sop");
   return { ok: true };
 }
@@ -149,7 +149,7 @@ export async function updateSopDocument(input: {
     })
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/admin/sop-pengakuan");
+  revalidatePath("/admin/cleaning");
   revalidatePath("/pengakuan-sop");
   return { ok: true };
 }
@@ -162,7 +162,7 @@ export async function setSopDocumentActive(input: { id: string; isActive: boolea
     .update({ is_active: input.isActive, updated_by: gate.userId, updated_at: new Date().toISOString() })
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/admin/sop-pengakuan");
+  revalidatePath("/admin/cleaning");
   revalidatePath("/pengakuan-sop");
   return { ok: true };
 }
