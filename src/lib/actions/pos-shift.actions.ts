@@ -116,6 +116,38 @@ export async function getOpeningBriefing(
   return { ok: true, data: { report, hasContent: incidentalReportHasContent(report) } };
 }
 
+/**
+ * Kas laci yang seharusnya ada SEBELUM pengeluaran bernota yang baru diinput (hitungan terakhir + gerakan
+ * ledger sampai sekarang). Klien mengurangkan nota yang sedang diinput, lalu membandingkannya dengan hitungan
+ * fisik — rumus sama dengan `openShift`/`closeShift`, yang tetap menghitung ulang di server saat simpan.
+ * null = tidak ada pembanding (shift pertama / shift sebelumnya ditutup paksa).
+ */
+export async function getShiftCashExpectation(input: {
+  bankAccountId: string;
+  phase: "open" | "close";
+}): Promise<ActionResult<{ base: number | null; since: string | null }>> {
+  const access = await requireShiftAccess(input.bankAccountId);
+  if (!access.ok) return { ok: false, error: access.error };
+  const admin = createAdminClient();
+  const nowIso = new Date().toISOString();
+  if (input.phase === "open") {
+    const prev = await lastClosedShift(admin, input.bankAccountId);
+    if (!prev || prev.closeCashCounted === null) return { ok: true, data: { base: null, since: null } };
+    const net = netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso));
+    return { ok: true, data: { base: prev.closeCashCounted + net, since: prev.closedAt } };
+  }
+  const shift = await findOpenShift(admin, input.bankAccountId);
+  if (!shift) return { ok: false, error: "Tidak ada shift yang terbuka." };
+  const { data: row } = await admin
+    .from("pos_shifts")
+    .select("opened_at, open_cash_counted")
+    .eq("id", shift.id)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "Tidak ada shift yang terbuka." };
+  const net = netCash(await cashMovementInWindow(admin, input.bankAccountId, row.opened_at, nowIso));
+  return { ok: true, data: { base: Number(row.open_cash_counted) + net, since: row.opened_at } };
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Sesi insidentil
 // ─────────────────────────────────────────────────────────────────────

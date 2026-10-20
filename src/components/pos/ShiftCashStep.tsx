@@ -5,11 +5,12 @@ import { Camera, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   discardShiftNota,
+  getShiftCashExpectation,
   uploadShiftNota,
   type ShiftExpenseInput,
 } from "@/lib/actions/pos-shift.actions";
 import { compressImageStrict } from "@/lib/images/compress-image";
-import { NOTA_CATEGORIES, type NotaCategory } from "@/lib/pos/shift-math";
+import { CASH_DIFF_ALERT, NOTA_CATEGORIES, type NotaCategory } from "@/lib/pos/shift-math";
 
 const CATEGORY_LABEL: Record<NotaCategory, string> = {
   "Cost of Goods Sold": "Bahan / belanja produksi",
@@ -29,6 +30,8 @@ interface DraftExpense extends ShiftExpenseInput {
 
 interface Props {
   bankAccountId: string;
+  /** Menentukan pembanding kas seharusnya (buka: dari tutup shift sebelumnya; tutup: dari hitungan buka). */
+  phase: "open" | "close";
   /** Mis. "Hitung kas — buka shift". */
   title: string;
   submitLabel: string;
@@ -40,10 +43,10 @@ interface Props {
 
 /**
  * Langkah hitung kas: uang tunai di laci (hitungan fisik), pengeluaran bernota (opsional, nota WAJIB per
- * pengeluaran), dan catatan (opsional). Tanpa kas kecil, QRIS, atau token listrik. Kas "seharusnya" tidak
- * ditampilkan sebelum disimpan — hitung dulu apa adanya, selisihnya dihitung server.
+ * pengeluaran), dan catatan (opsional). Tanpa kas kecil, QRIS, atau token listrik. Kas "seharusnya" dan selisih
+ * langsung ditampilkan selagi mengetik (hitungan fisik = SESUDAH nota); selisih resmi tetap dihitung server.
  */
-export function ShiftCashStep({ bankAccountId, title, submitLabel, busy, error, onSubmit }: Props) {
+export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, error, onSubmit }: Props) {
   const [counted, setCounted] = useState("");
   const [notes, setNotes] = useState("");
   const [expenses, setExpenses] = useState<DraftExpense[]>([]);
@@ -54,6 +57,24 @@ export function ShiftCashStep({ bankAccountId, title, submitLabel, busy, error, 
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [base, setBase] = useState<number | null>(null);
+  const [expectedState, setExpectedState] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let alive = true;
+    getShiftCashExpectation({ bankAccountId, phase })
+      .then((res) => {
+        if (!alive) return;
+        if (res.ok && res.data) {
+          setBase(res.data.base);
+          setExpectedState("ready");
+        } else setExpectedState("error");
+      })
+      .catch(() => alive && setExpectedState("error"));
+    return () => {
+      alive = false;
+    };
+  }, [bankAccountId, phase]);
 
   // Wizard ditutup di tengah jalan: nota yang sudah terunggah tapi belum tersimpan di shift dibuang, supaya tidak
   // menumpuk di bucket sementara. (Setelah simpan berhasil, berkas sementara sudah dipindah server — membuangnya
@@ -124,18 +145,72 @@ export function ShiftCashStep({ bankAccountId, title, submitLabel, busy, error, 
 
   const countedNum = counted === "" ? null : parseInt(counted, 10);
   const total = expenses.reduce((s, e) => s + e.amount, 0);
+  // Kas seharusnya = hitungan terakhir + gerakan ledger − nota yang diinput di layar ini (uang nota sudah
+  // keluar dari laci, jadi hitungan fisik adalah SESUDAH nota).
+  const expected = base === null ? null : base - total;
+  const liveDiff = expected !== null && countedNum !== null ? countedNum - expected : null;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
       <header>
         <h1 className="font-semibold text-foreground">{title}</h1>
         <p className="text-xs text-muted-foreground">
-          Hitung uang tunai di laci apa adanya. Selisihnya dihitung sistem setelah disimpan.
+          Hitung uang tunai yang ada di laci SAAT INI, yaitu setelah uang untuk pengeluaran bernota dikeluarkan.
         </p>
       </header>
 
+      <div className="rounded-xl border border-border bg-card px-3 py-2.5 text-sm">
+        {expectedState === "loading" ? (
+          <span className="inline-flex items-center gap-2 text-muted-foreground">
+            <Loader2 size={13} className="animate-spin" /> Memuat kas seharusnya…
+          </span>
+        ) : expected === null ? (
+          <span className="text-muted-foreground">
+            {expectedState === "error"
+              ? "Kas seharusnya tidak bisa dimuat. Hitung apa adanya; selisih dihitung sistem setelah disimpan."
+              : "Tidak ada pembanding kas (shift pertama atau shift sebelumnya ditutup paksa)."}
+          </span>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Kas seharusnya di laci</span>
+              <span className="font-semibold tabular-nums text-foreground">{rp(expected)}</span>
+            </div>
+            {total > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Sudah dikurangi pengeluaran bernota {rp(total)} yang kamu input di bawah.
+              </p>
+            )}
+            {liveDiff !== null && (
+              <div
+                className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 font-medium ${
+                  liveDiff === 0
+                    ? "bg-success/10 text-foreground"
+                    : Math.abs(liveDiff) >= CASH_DIFF_ALERT
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-warning/10 text-foreground"
+                }`}
+              >
+                <span>{liveDiff === 0 ? "Kas sesuai" : liveDiff < 0 ? "Kurang" : "Lebih (surplus)"}</span>
+                <span className="tabular-nums">{liveDiff === 0 ? "✓" : rp(Math.abs(liveDiff))}</span>
+              </div>
+            )}
+            {liveDiff !== null && liveDiff !== 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Hitung ulang uang di laci. Pengeluaran bernota yang belum diinput? Tambahkan dulu di bawah.
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Angka ini perkiraan saat ini; selisih resmi dihitung sistem saat disimpan.
+            </p>
+          </div>
+        )}
+      </div>
+
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">Uang tunai di laci (Rp)</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          Uang tunai di laci, setelah pengeluaran bernota (Rp)
+        </span>
         <input
           type="text"
           inputMode="numeric"
@@ -155,7 +230,8 @@ export function ShiftCashStep({ bankAccountId, title, submitLabel, busy, error, 
           {total > 0 && <span className="text-xs tabular-nums text-muted-foreground">Total {rp(total)}</span>}
         </div>
         <p className="text-xs text-muted-foreground">
-          Uang laci yang dipakai membeli sesuatu. Wajib foto nota; otomatis tercatat di keuangan atas namamu.
+          Uang laci yang dipakai membeli sesuatu dan sudah keluar dari laci, jadi TIDAK ikut dihitung di &ldquo;Uang tunai
+          di laci&rdquo; di atas. Wajib foto nota; otomatis tercatat di keuangan atas namamu.
         </p>
 
         {expenses.map((e) => (

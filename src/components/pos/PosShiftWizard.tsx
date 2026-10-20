@@ -243,6 +243,7 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
       {step === "cash" && (
         <ShiftCashStep
           bankAccountId={bankAccountId}
+          phase={mode}
           title={isOpen ? "Hitung kas — buka shift" : "Hitung kas — tutup shift"}
           submitLabel={isOpen ? "Mulai shift" : "Tutup shift"}
           busy={saving}
