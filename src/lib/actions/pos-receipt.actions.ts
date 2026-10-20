@@ -12,8 +12,9 @@ import {
 
 /**
  * Upload bukti foto QRIS ke sale POS. Dipanggil client POSClient tepat
- * setelah `createPosSale` sukses untuk method=qris — wajib oleh
- * compliance (kasir harus snap nota QRIS dari customer sebagai bukti).
+ * setelah `createPosSale` sukses untuk method=qris — HANYA bila kasir memilih "tidak ada
+ * verifikasi bunyi" BukuPay (lihat QrisVerificationPicker). Kalau ada bunyi BukuPay, tidak ada
+ * foto dan fungsi ini tidak dipanggil.
  *
  * Lampiran disimpan di bucket `cashflow-receipts` (reuse infrastruktur
  * yang sama dengan receipt cash). Kolom `attachment_path` di

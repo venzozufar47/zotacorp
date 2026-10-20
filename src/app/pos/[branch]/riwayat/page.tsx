@@ -320,6 +320,7 @@ export default async function PosRiwayatPage({
                       <QrisReceiptBadge
                         saleId={s.id}
                         initialUploaded={s.receiptUploaded}
+                        verification={s.qrisVerification}
                       />
                     )}
                 </div>

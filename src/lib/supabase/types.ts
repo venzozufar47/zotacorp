@@ -6939,6 +6939,7 @@ export type Database = {
           id: string
           payment_method: string
           payment_status: string
+          qris_verification: string | null
           pending_at: string | null
           sale_date: string
           sale_time: string
@@ -6966,6 +6967,7 @@ export type Database = {
           id?: string
           payment_method: string
           payment_status?: string
+          qris_verification?: string | null
           pending_at?: string | null
           sale_date: string
           sale_time?: string
@@ -6993,6 +6995,7 @@ export type Database = {
           id?: string
           payment_method?: string
           payment_status?: string
+          qris_verification?: string | null
           pending_at?: string | null
           sale_date?: string
           sale_time?: string

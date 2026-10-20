@@ -1,4 +1,8 @@
 /**
+ * Verifikasi pembayaran QRIS saat checkout (POS Pare & Semarang): kasir memilih "sudah ada verifikasi
+ * bunyi BukuPay" (langsung diterima, tanpa foto) atau "tidak ada bunyi" (foto bukti wajib). Flag ini
+ * menyalakan/mematikan seluruh langkah verifikasi itu. Pilihan dicatat di pos_sales.qris_verification.
+ *
  * Upload foto bukti QRIS saat checkout di POSClient. Aman menyala —
  * createPosSale sekarang link cashflow_transaction_id via admin client
  * (fix RLS di commit 91cbd7f), jadi attachPosQrisReceipt langsung

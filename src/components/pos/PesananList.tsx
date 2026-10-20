@@ -26,8 +26,11 @@ import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import type { PosProduct, PosProductVariant } from "@/lib/actions/pos.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
-import { validateReceiptImage } from "@/lib/pos/receipt-file";
-import { compressReceiptFile } from "@/lib/pos/receipt-upload";
+import {
+  QrisVerificationPicker,
+  qrisVerificationOk,
+  type QrisVerification,
+} from "./QrisVerificationPicker";
 import type { PendingPesanan } from "@/lib/actions/pos-pesanan.actions";
 import {
   isSugarLevel,
@@ -781,25 +784,35 @@ function SettlePesananDialog({
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<"cash" | "qris" | "admin">("cash");
   const [cashReceived, setCashReceived] = useState<number | null>(null);
+  const [qrisVerification, setQrisVerification] = useState<QrisVerification | null>(null);
   const [qrisReceipt, setQrisReceipt] = useState<File | null>(null);
 
   const total = pesanan.total;
   const submitDisabled =
     pending ||
     (mode === "cash" && (cashReceived == null || cashReceived < total)) ||
-    (mode === "qris" && QRIS_RECEIPT_AT_CHECKOUT && !qrisReceipt);
+    (mode === "qris" &&
+      QRIS_RECEIPT_AT_CHECKOUT &&
+      !qrisVerificationOk(qrisVerification, qrisReceipt));
 
   function handleSubmit() {
     startTransition(async () => {
       const res = await settlePesanan({
         saleId: pesanan.id,
         settledVia: mode,
+        qrisVerification: mode === "qris" ? qrisVerification ?? undefined : undefined,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyelesaikan pesanan");
         return;
       }
-      if (mode === "qris" && qrisReceipt && QRIS_RECEIPT_AT_CHECKOUT) {
+      // Foto hanya ada (dan diunggah) kalau tidak ada verifikasi bunyi.
+      if (
+        mode === "qris" &&
+        qrisVerification === "photo" &&
+        qrisReceipt &&
+        QRIS_RECEIPT_AT_CHECKOUT
+      ) {
         const form = new FormData();
         form.set("saleId", pesanan.id);
         form.set("file", qrisReceipt);
@@ -883,61 +896,13 @@ function SettlePesananDialog({
           />
         )}
         {mode === "qris" && QRIS_RECEIPT_AT_CHECKOUT && (
-          <div>
-            <p className="text-xs font-medium text-foreground mb-1.5">
-              Foto nota QRIS dari customer{" "}
-              <span className="text-destructive">*</span>
-            </p>
-            <label
-              className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition ${
-                qrisReceipt
-                  ? "border-success/50 bg-success/10"
-                  : "border-dashed border-border bg-muted/30 hover:bg-muted"
-              } ${pending ? "opacity-50 pointer-events-none" : ""}`}
-            >
-              <input
-                type="file"
-                // `image/*` (bukan daftar subtipe) supaya Chrome Android
-                // menawarkan Kamera, bukan galeri saja — lihat
-                // lib/pos/receipt-file.ts. Tipe asli divalidasi di bawah.
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  const err = f ? validateReceiptImage(f) : null;
-                  if (err) {
-                    toast.error(err);
-                    e.target.value = "";
-                    return;
-                  }
-                  if (!f) {
-                    setQrisReceipt(null);
-                    return;
-                  }
-                  // Kompres sekarang, bukan saat submit — lihat
-                  // lib/pos/receipt-upload.ts.
-                  void compressReceiptFile(f).then(setQrisReceipt);
-                }}
-              />
-              <Camera size={16} className="text-foreground shrink-0" />
-              <span className="text-sm text-foreground truncate flex-1">
-                {qrisReceipt ? qrisReceipt.name : "Ambil foto / pilih gambar"}
-              </span>
-              {qrisReceipt && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setQrisReceipt(null);
-                  }}
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                  aria-label="Hapus foto"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </label>
-          </div>
+          <QrisVerificationPicker
+            verification={qrisVerification}
+            onVerification={setQrisVerification}
+            file={qrisReceipt}
+            onFile={setQrisReceipt}
+            disabled={pending}
+          />
         )}
         {mode === "admin" && (
           <div className="rounded-xl border border-dashed border-pop-amber/50 bg-pop-amber/10 px-3 py-2.5 text-xs text-foreground">

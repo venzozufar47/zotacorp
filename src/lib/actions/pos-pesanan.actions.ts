@@ -472,6 +472,8 @@ export async function updatePesananItems(input: {
 export async function settlePesanan(input: {
   saleId: string;
   settledVia: SettleVia;
+  /** Khusus QRIS: "audio" (bunyi BukuPay, tanpa foto) atau "photo" (foto bukti). */
+  qrisVerification?: "audio" | "photo";
 }): Promise<ActionResult<{ saleId: string }>> {
   if (!input.saleId) return { ok: false, error: "saleId wajib" };
   if (
@@ -638,6 +640,8 @@ export async function settlePesanan(input: {
     .update({
       cashflow_transaction_id: tx.id,
       payment_method: input.settledVia,
+      qris_verification:
+        input.settledVia === "qris" ? input.qrisVerification ?? null : null,
       payment_status: "paid",
       settled_via: input.settledVia,
       settled_at: nowIso,

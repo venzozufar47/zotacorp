@@ -10,7 +10,6 @@ import "./workstation.css";
 import {
   BarChart3,
   Boxes,
-  Camera,
   History,
   Home,
   Loader2,
@@ -39,8 +38,11 @@ import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
 import { applyDiscount, type RoundingMode } from "@/lib/pos/discount";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
-import { validateReceiptImage } from "@/lib/pos/receipt-file";
-import { compressReceiptFile } from "@/lib/pos/receipt-upload";
+import {
+  QrisVerificationPicker,
+  qrisVerificationOk,
+  type QrisVerification,
+} from "./QrisVerificationPicker";
 import {
   buildReceiptBytes,
   formatReceiptDateTime,
@@ -219,8 +221,9 @@ export function POSClient({
   // Baris cart yang sedang diatur diskonnya; null = dialog tertutup.
   const [discountFor, setDiscountFor] = useState<string | null>(null);
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
-  // QRIS wajib upload foto nota customer sebagai bukti — state-nya
-  // di-reset setiap kali konfirmasi dibuka/ditutup.
+  // QRIS: kasir memilih "ada verifikasi bunyi BukuPay" (tanpa foto) atau "tidak ada bunyi" (foto bukti
+  // wajib) — state-nya di-reset setiap kali konfirmasi dibuka/ditutup.
+  const [qrisVerification, setQrisVerification] = useState<QrisVerification | null>(null);
   const [qrisReceipt, setQrisReceipt] = useState<File | null>(null);
   // Cash payment: jumlah uang yang diterima kasir dari customer.
   // null = belum diisi → tombol Bayar disabled (UX: jangan biarkan
@@ -618,8 +621,16 @@ export function POSClient({
       toast.error("Atas nama pemesan wajib diisi");
       return;
     }
-    if (QRIS_RECEIPT_AT_CHECKOUT && method === "qris" && !qrisReceipt) {
-      toast.error("QRIS wajib foto nota customer");
+    if (
+      QRIS_RECEIPT_AT_CHECKOUT &&
+      method === "qris" &&
+      !qrisVerificationOk(qrisVerification, qrisReceipt)
+    ) {
+      toast.error(
+        qrisVerification === "photo"
+          ? "Tidak ada bunyi BukuPay — foto bukti pembayaran wajib"
+          : "Pilih dulu: sudah ada verifikasi bunyi BukuPay atau tidak"
+      );
       return;
     }
     startTransition(async () => {
@@ -630,12 +641,21 @@ export function POSClient({
         customerName: customerName.trim(),
         fulfillmentType,
         itemFulfillmentOverrides,
+        qrisVerification:
+          method === "qris" ? qrisVerification ?? undefined : undefined,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyimpan penjualan");
         return;
       }
-      if (QRIS_RECEIPT_AT_CHECKOUT && method === "qris" && qrisReceipt && res.data?.saleId) {
+      // Foto hanya ada (dan diunggah) kalau tidak ada verifikasi bunyi.
+      if (
+        QRIS_RECEIPT_AT_CHECKOUT &&
+        method === "qris" &&
+        qrisVerification === "photo" &&
+        qrisReceipt &&
+        res.data?.saleId
+      ) {
         const form = new FormData();
         form.set("saleId", res.data.saleId);
         form.set("file", qrisReceipt);
@@ -647,6 +667,7 @@ export function POSClient({
           toast.error(`Tersimpan tapi foto gagal upload: ${att.error}`);
           resetCart();
           setQrisReceipt(null);
+          setQrisVerification(null);
           setCartOpen(false);
           return;
         }
@@ -715,6 +736,7 @@ export function POSClient({
       setFulfillmentType("dine_in");
       setItemFulfillmentOverrides({});
       setQrisReceipt(null);
+      setQrisVerification(null);
       setCashReceived(null);
       setCartOpen(false);
     });
@@ -812,13 +834,15 @@ export function POSClient({
   // Tombol Bayar disabled saat:
   //  - cart kosong / sedang submit
   //  - cash tapi uang diterima < finalTotal
-  //  - QRIS + flag receipt aktif tapi belum upload foto
+  //  - QRIS belum memilih verifikasi, atau memilih "tanpa bunyi" tapi belum ada foto
   const payDisabled =
     itemCount === 0 ||
     pending ||
     !customerName.trim() ||
     (payMode === "cash" && (cashReceived == null || cashReceived < finalTotal)) ||
-    (QRIS_RECEIPT_AT_CHECKOUT && payMode === "qris" && !qrisReceipt);
+    (QRIS_RECEIPT_AT_CHECKOUT &&
+      payMode === "qris" &&
+      !qrisVerificationOk(qrisVerification, qrisReceipt));
 
   const cartPanel = (
     <div className="flex flex-col h-full bg-card min-h-0">
@@ -1099,64 +1123,13 @@ export function POSClient({
           />
         )}
         {payMode === "qris" && QRIS_RECEIPT_AT_CHECKOUT && (
-          <div>
-            <p className="text-xs font-medium text-foreground mb-1.5">
-              Foto nota QRIS dari customer{" "}
-              <span className="text-destructive">*</span>
-            </p>
-            <label
-              className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition ${
-                qrisReceipt
-                  ? "border-success/50 bg-success/10"
-                  : "border-dashed border-border bg-muted/30 hover:bg-muted"
-              } ${pending ? "opacity-50 pointer-events-none" : ""}`}
-            >
-              <input
-                type="file"
-                // `image/*` (bukan daftar subtipe) supaya Chrome Android
-                // menawarkan Kamera, bukan galeri saja — lihat
-                // lib/pos/receipt-file.ts. Tipe asli divalidasi di bawah.
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  const err = f ? validateReceiptImage(f) : null;
-                  if (err) {
-                    toast.error(err);
-                    e.target.value = "";
-                    return;
-                  }
-                  if (!f) {
-                    setQrisReceipt(null);
-                    return;
-                  }
-                  // Kompres sekarang, bukan saat submit — lihat
-                  // lib/pos/receipt-upload.ts.
-                  void compressReceiptFile(f).then(setQrisReceipt);
-                }}
-              />
-              <Camera size={16} className="text-foreground shrink-0" />
-              <span className="text-sm text-foreground truncate flex-1">
-                {qrisReceipt ? qrisReceipt.name : "Ambil foto / pilih gambar"}
-              </span>
-              {qrisReceipt && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setQrisReceipt(null);
-                  }}
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                  aria-label="Hapus foto"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </label>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Wajib sebagai bukti audit.
-            </p>
-          </div>
+          <QrisVerificationPicker
+            verification={qrisVerification}
+            onVerification={setQrisVerification}
+            file={qrisReceipt}
+            onFile={setQrisReceipt}
+            disabled={pending}
+          />
         )}
 
         <button

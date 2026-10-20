@@ -110,6 +110,9 @@ export interface MarkPickupInput {
     proofPath?: string | null;
     proofMimeType?: string | null;
     proofSizeBytes?: number | null;
+    /** Khusus QRIS: "audio" = sudah ada verifikasi bunyi BukuPay, jadi tanpa foto (dicatat di catatan
+     *  pelunasan); "photo" = tidak ada bunyi, foto bukti dilampirkan. */
+    qrisVerification?: "audio" | "photo";
   } | null;
   /** Wajib true kalau setelah settlement masih ada sisa tagihan. */
   acknowledgeUnpaid?: boolean;
@@ -832,7 +835,15 @@ export async function markCakePickedUpAtPos(
         amountIdr: recordedIdr,
         paymentOptionId: input.settlement.paymentOptionId,
         label: `Pelunasan (Kasir ${branchLabel})`,
-        notes: input.settlement.notes?.trim() || null,
+        notes:
+          [
+            settleMethod === "qris" && input.settlement.qrisVerification === "audio"
+              ? "Diverifikasi bunyi BukuPay (tanpa foto)"
+              : null,
+            input.settlement.notes?.trim() || null,
+          ]
+            .filter(Boolean)
+            .join(" — ") || null,
         // Nama diambil dari PIN yang barusan lolos, tidak pernah dari
         // klien. Null kalau cabang ini belum punya authorizer
         // `cake_pickup` — lihat migrasi 133.

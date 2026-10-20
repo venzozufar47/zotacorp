@@ -152,6 +152,8 @@ export interface PosSaleSummary {
    *  Dipakai di /pos/riwayat supaya kasir tahu mana yang belum
    *  upload bukti. */
   receiptUploaded: boolean | null;
+  /** Cara QRIS diverifikasi: "audio" = bunyi BukuPay (tanpa foto), "photo" = bukti foto; null = sale lama / bukan QRIS. */
+  qrisVerification: "audio" | "photo" | null;
   items: Array<{
     productName: string;
     variantName: string | null;
@@ -653,6 +655,9 @@ export async function createPosSale(input: {
    *  catalog, "c:<localId>" untuk custom). Value yang sama dengan
    *  transaction-level boleh di-omit. */
   itemFulfillmentOverrides?: Record<string, FulfillmentType>;
+  /** Khusus QRIS: "audio" = sudah ada verifikasi bunyi BukuPay (tanpa foto bukti), "photo" = tidak ada
+   *  bunyi → kasir melampirkan foto. Dicatat di pos_sales.qris_verification. */
+  qrisVerification?: "audio" | "photo";
 }): Promise<
   ActionResult<{ saleId: string; total: number; branch: string | null }>
 > {
@@ -931,6 +936,8 @@ export async function createPosSale(input: {
       cashflow_transaction_id: null,
       sale_date: saleDate,
       payment_method: input.paymentMethod,
+      qris_verification:
+        input.paymentMethod === "qris" ? input.qrisVerification ?? null : null,
       total,
       gross_total: grossTotal,
       discount_amount: discountAmount,
@@ -1188,7 +1195,7 @@ export async function listPosSaleDates(
  * full history (insights, dll).
  */
 const POS_SALE_LIST_COLUMNS =
-  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at, created_by, cashier_id" as const;
+  "id, sale_date, sale_time, payment_method, total, gross_total, discount_amount, voided_at, void_reason, voided_by_name, cashflow_transaction_id, customer_name, fulfillment_type, payment_status, settled_via, settled_at, created_by, cashier_id, qris_verification" as const;
 
 export async function listRecentPosSales(
   bankAccountId: string,
@@ -1228,6 +1235,7 @@ export async function listRecentPosSales(
     settled_at: string | null;
     created_by: string | null;
     cashier_id: string | null;
+    qris_verification: "audio" | "photo" | null;
   };
   let sales: SaleRow[] = [];
   if (saleDate) {
@@ -1458,6 +1466,7 @@ export async function listRecentPosSales(
               )
             : false
         : null,
+    qrisVerification: s.payment_method === "qris" ? s.qris_verification ?? null : null,
     items: itemsBySale.get(s.id) ?? [],
   }));
 }

@@ -33,6 +33,7 @@ import {
   type PosAuthorizerRef,
 } from "@/lib/pos-pin-format";
 import { PosPinAuthDialog } from "./PosPinAuthDialog";
+import { QrisVerificationPicker, type QrisVerification } from "./QrisVerificationPicker";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 
 const CARD =
@@ -245,6 +246,8 @@ function PickupDialog({
     fileName: string;
   } | null>(null);
   const [uploadingProof, setUploadingProof] = useState(false);
+  // QRIS: "audio" = sudah ada verifikasi bunyi BukuPay (tanpa foto); "photo" = tidak ada bunyi → foto wajib.
+  const [qrisVerification, setQrisVerification] = useState<QrisVerification | null>(null);
 
   const amount = useMemo(() => {
     const n = Math.round(Number(amountRaw.replace(/[^\d]/g, "")) || 0);
@@ -269,7 +272,10 @@ function PickupDialog({
     : null;
   const cashVerified =
     methodKind !== "cash" || (cashReceived != null && cashReceived >= amount);
-  const qrisVerified = methodKind !== "qris" || proof != null;
+  const qrisVerified =
+    methodKind !== "qris" ||
+    qrisVerification === "audio" ||
+    (qrisVerification === "photo" && proof != null);
 
   function selectMethod(id: string) {
     setMethodId(id);
@@ -277,6 +283,7 @@ function PickupDialog({
     setCashReceived(null);
     if (proof) URL.revokeObjectURL(proof.previewUrl);
     setProof(null);
+    setQrisVerification(null);
   }
 
   function selectWaive(kind: "cake_konten" | "lainnya") {
@@ -285,6 +292,7 @@ function PickupDialog({
     setCashReceived(null);
     if (proof) URL.revokeObjectURL(proof.previewUrl);
     setProof(null);
+    setQrisVerification(null);
   }
 
   async function handleProofPick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -331,6 +339,8 @@ function PickupDialog({
               proofPath: proof?.path ?? null,
               proofMimeType: proof?.mimeType ?? null,
               proofSizeBytes: proof?.sizeBytes ?? null,
+              qrisVerification:
+                methodKind === "qris" ? qrisVerification ?? undefined : undefined,
             }
           : null,
         waiveReason: isWaiving
@@ -489,14 +499,28 @@ function PickupDialog({
                   />
                 )}
                 {methodKind === "qris" && (
-                  <QrisProofField
-                    proof={proof}
-                    uploading={uploadingProof}
-                    onPick={handleProofPick}
-                    onRemove={() => {
-                      if (proof) URL.revokeObjectURL(proof.previewUrl);
-                      setProof(null);
+                  <QrisVerificationPicker
+                    verification={qrisVerification}
+                    onVerification={(v) => {
+                      setQrisVerification(v);
+                      // Ada bunyi BukuPay → foto yang sempat diunggah tidak dipakai.
+                      if (v === "audio" && proof) {
+                        URL.revokeObjectURL(proof.previewUrl);
+                        setProof(null);
+                      }
                     }}
+                    disabled={uploadingProof}
+                    photoSlot={
+                      <QrisProofField
+                        proof={proof}
+                        uploading={uploadingProof}
+                        onPick={handleProofPick}
+                        onRemove={() => {
+                          if (proof) URL.revokeObjectURL(proof.previewUrl);
+                          setProof(null);
+                        }}
+                      />
+                    }
                   />
                 )}
 
@@ -668,10 +692,9 @@ function CashVerifyField({
 }
 
 /**
- * Verifikasi QRIS: foto nota WAJIB sebelum tombol "Tandai sudah diambil"
- * aktif — meniru satu-per-satu perilaku `QRIS_RECEIPT_AT_CHECKOUT` di
- * checkout POS biasa (bukti audit, dan memaksa kasir benar-benar
- * melihat layar customer alih-alih menekan chip QRIS secara refleks).
+ * Foto bukti QRIS — hanya muncul bila kasir memilih "tidak ada verifikasi bunyi" BukuPay (lihat
+ * `QrisVerificationPicker`). Wajib sebelum tombol "Tandai sudah diambil" aktif; kalau ada bunyi,
+ * pembayaran diterima tanpa foto.
  */
 function QrisProofField({
   proof,
@@ -687,7 +710,7 @@ function QrisProofField({
   return (
     <div>
       <p className="text-[11px] font-medium text-foreground mb-1">
-        Foto nota QRIS dari customer{" "}
+        Foto bukti pembayaran QRIS{" "}
         <span className="text-destructive">*</span>
       </p>
       <label
@@ -730,7 +753,7 @@ function QrisProofField({
         )}
       </label>
       <p className="mt-1 text-[10.5px] text-muted-foreground">
-        Wajib sebagai bukti audit.
+        Wajib sebagai bukti, karena tidak ada verifikasi bunyi.
       </p>
     </div>
   );

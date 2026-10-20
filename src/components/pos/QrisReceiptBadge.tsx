@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Camera, CameraOff, Loader2, X } from "lucide-react";
+import { Camera, CameraOff, Loader2, Volume2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   attachPosQrisReceipt,
@@ -14,6 +14,8 @@ interface Props {
   saleId: string;
   /** Status awal dari SSR — badge langsung tampil tanpa fetch. */
   initialUploaded: boolean;
+  /** "audio" = QRIS diverifikasi bunyi BukuPay → tidak butuh foto, badge hanya penanda. */
+  verification?: "audio" | "photo" | null;
 }
 
 /**
@@ -28,10 +30,23 @@ interface Props {
  * Setelah upload sukses, refresh list lewat `router.refresh()` agar
  * row lain yang tidak ikut re-render tetap konsisten.
  */
-export function QrisReceiptBadge({ saleId, initialUploaded }: Props) {
+export function QrisReceiptBadge({ saleId, initialUploaded, verification }: Props) {
   const [open, setOpen] = useState(false);
   const [uploaded, setUploaded] = useState(initialUploaded);
   const router = useRouter();
+
+  // Diverifikasi bunyi BukuPay: tidak ada foto yang perlu ditagih, jadi bukan "Belum". Kalau kasir
+  // tetap melampirkan foto (mis. lewat jalur lama), foto itu masih bisa dibuka seperti biasa.
+  if (verification === "audio" && !uploaded) {
+    return (
+      <span
+        title="Diverifikasi bunyi BukuPay — tanpa foto bukti"
+        className="inline-flex items-center gap-0.5 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-success"
+      >
+        <Volume2 size={10} /> Bunyi
+      </span>
+    );
+  }
 
   return (
     <>
