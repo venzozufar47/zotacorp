@@ -62,6 +62,7 @@ export function ManualTransactionDialog({
   const [category, setCategory] = useState("");
   const [branch, setBranch] = useState("");
   const [addAnother, setAddAnother] = useState(false);
+  const [drawerNeutral, setDrawerNeutral] = useState(false);
 
   // Per-rekening profile — cash hides sumber/detail + branch picker,
   // and inherits branch from the rekening's default.
@@ -82,6 +83,7 @@ export function ManualTransactionDialog({
       setNotes("");
       setAmount("");
       setRunningBalance("");
+      setDrawerNeutral(false);
     } else {
       setDate(today);
       setTime("");
@@ -94,6 +96,7 @@ export function ManualTransactionDialog({
       setCategory("");
       setBranch("");
       setAddAnother(false);
+      setDrawerNeutral(false);
     }
   }
 
@@ -141,6 +144,7 @@ export function ManualTransactionDialog({
         runningBalance: rb,
         category: category || null,
         branch: effectiveBranch || null,
+        drawerNeutral: isCash && drawerNeutral,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -379,6 +383,24 @@ export function ManualTransactionDialog({
               Cabang <strong className="text-foreground">{account.defaultBranch}</strong>{" "}
               otomatis di-tag (ikut rekening ini).
             </p>
+          )}
+
+          {isCash && (
+            <label className="flex items-start gap-2 text-sm text-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={drawerNeutral}
+                onChange={(e) => setDrawerNeutral(e.target.checked)}
+                className="mt-0.5 rounded border-border"
+              />
+              <span>
+                Pembukuan susulan — uangnya sudah keluar/masuk laci sebelumnya
+                <span className="block text-[11px] text-muted-foreground">
+                  Centang untuk belanja/pemasukan lama yang baru diinput sekarang, supaya tidak dihitung sebagai
+                  selisih kas pada buka/tutup shift POS.
+                </span>
+              </span>
+            </label>
           )}
 
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer pt-2">

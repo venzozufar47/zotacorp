@@ -130,16 +130,17 @@ export async function cashMovementInWindow(
   let credits = 0;
   let debits = 0;
   if (stmtIds.length > 0) {
-    const rows = await fetchAll<{ id: string; credit: number; debit: number; category: string | null }>((a, b) => {
+    const rows = await fetchAll<{ id: string; credit: number; debit: number; category: string | null; drawer_neutral: boolean }>((a, b) => {
       let q = admin
         .from("cashflow_transactions")
-        .select("id, credit, debit, category")
+        .select("id, credit, debit, category, drawer_neutral")
         .in("statement_id", stmtIds)
         .lte("created_at", toIso);
       if (fromIso) q = q.gt("created_at", fromIso);
       return q.order("id").range(a, b);
     });
-    const candidates = rows.filter((r) => r.category !== POS_QRIS_CATEGORY);
+    // Entri susulan (drawer_neutral) tidak menggerakkan laci saat dicatat — lihat migrasi 215.
+    const candidates = rows.filter((r) => r.category !== POS_QRIS_CATEGORY && !r.drawer_neutral);
     // Pengeluaran bernota shift dicatat eksplisit di hitungan buka/tutup, jadi jangan dihitung dua kali.
     const shiftExpenseTx = new Set<string>();
     for (let i = 0; i < candidates.length; i += 200) {

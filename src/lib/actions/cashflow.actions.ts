@@ -428,6 +428,8 @@ export async function createManualTransaction(input: {
   runningBalance?: number | null;
   category?: string | null;
   branch?: string | null;
+  /** Entri susulan: uangnya sudah keluar/masuk laci sebelumnya, jangan hitung di kas seharusnya shift POS. */
+  drawerNeutral?: boolean;
 }): Promise<ActionResult<{ id: string }>> {
   if (!input.bankAccountId) return { ok: false, error: "bankAccountId wajib" };
   const gate = await requireAdminOrAssignee(input.bankAccountId);
@@ -569,6 +571,7 @@ export async function createManualTransaction(input: {
       category: input.category?.trim() || null,
       branch: resolvedBranch,
       sort_order: nextSortOrder,
+      drawer_neutral: input.drawerNeutral === true,
     })
     .select("id")
     .single();

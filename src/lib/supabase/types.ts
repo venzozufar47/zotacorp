@@ -2741,6 +2741,7 @@ export type Database = {
           assigned_to_user_id: string | null
           attachment_path: string | null
           attachment_purged_at: string | null
+          drawer_neutral: boolean
           branch: string | null
           category: string | null
           created_at: string
@@ -2765,6 +2766,7 @@ export type Database = {
           assigned_to_user_id?: string | null
           attachment_path?: string | null
           attachment_purged_at?: string | null
+          drawer_neutral?: boolean
           branch?: string | null
           category?: string | null
           created_at?: string
@@ -2789,6 +2791,7 @@ export type Database = {
           assigned_to_user_id?: string | null
           attachment_path?: string | null
           attachment_purged_at?: string | null
+          drawer_neutral?: boolean
           branch?: string | null
           category?: string | null
           created_at?: string
