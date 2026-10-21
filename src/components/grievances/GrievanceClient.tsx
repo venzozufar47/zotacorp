@@ -239,6 +239,7 @@ export function GrievanceClient({
   isAdmin,
   trustedContacts,
   trustedNames = [],
+  myLeaderIds = [],
 }: {
   myReports: GrievanceView[];
   inbox: GrievanceView[];
@@ -247,6 +248,8 @@ export function GrievanceClient({
   trustedContacts: { id: string; name: string }[];
   /** Nama pihak tepercaya alternatif yang sudah ditentukan (ditampilkan ke pelapor). */
   trustedNames?: string[];
+  /** Kepala tim pelapor: bila dialah yang dilaporkan, opsi "Kepala tim" tidak ditawarkan. */
+  myLeaderIds?: string[];
 }) {
   const router = useRouter();
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -259,6 +262,12 @@ export function GrievanceClient({
   const [desiredOutcome, setDesiredOutcome] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const reportedIsMyLeader = !!reportedAbout && myLeaderIds.includes(reportedAbout);
+  const recipientOptions = RECIPIENT_OPTIONS.filter((o) => !(reportedIsMyLeader && o.value === "kepala_tim"));
+  // Menyesuaikan pilihan secara turunan: kalau kepala tim yang dilaporkan, tujuan bergeser ke pihak tepercaya.
+  const effectiveRecipient: GrievanceRecipient =
+    reportedIsMyLeader && recipient === "kepala_tim" ? "pihak_tepercaya" : recipient;
+
   async function submit() {
     if (!description.trim()) {
       toast.error("Ceritakan kejadiannya dulu");
@@ -267,7 +276,7 @@ export function GrievanceClient({
     setSaving(true);
     try {
       const res = await submitGrievance({
-        recipient,
+        recipient: effectiveRecipient,
         isAnonymous,
         reportedAboutUserId: reportedAbout || null,
         isSeriousViolation: isSerious,
@@ -316,10 +325,10 @@ export function GrievanceClient({
           <CardTitle>Buat laporan</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div>
+          <div className="space-y-1.5">
             <Label>Kirim ke</Label>
-            <div role="radiogroup" aria-label="Kirim ke" className="mt-1 grid gap-2">
-              {RECIPIENT_OPTIONS.map((o) => {
+            <div role="radiogroup" aria-label="Kirim ke" className="grid gap-2">
+              {recipientOptions.map((o) => {
                 const hint =
                   o.value === "pihak_tepercaya"
                     ? trustedNames.length > 0
@@ -331,11 +340,11 @@ export function GrievanceClient({
                   key={o.value}
                   type="button"
                   role="radio"
-                  aria-checked={recipient === o.value}
+                  aria-checked={effectiveRecipient === o.value}
                   onClick={() => setRecipient(o.value)}
                   className={
                     "rounded-xl border-2 px-3 py-2 text-left text-sm transition " +
-                    (recipient === o.value
+                    (effectiveRecipient === o.value
                       ? "border-foreground bg-primary/10"
                       : "border-border bg-card hover:border-foreground/50")
                   }
@@ -351,7 +360,7 @@ export function GrievanceClient({
             <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} />
             Kirim tanpa nama
           </label>
-          <div>
+          <div className="space-y-1.5">
             <Label>Pihak yang dilaporkan (opsional)</Label>
             <Select value={reportedAbout} onValueChange={(v) => setReportedAbout(v ?? "")}>
               <SelectTrigger className="w-full">
@@ -369,7 +378,7 @@ export function GrievanceClient({
               <button
                 type="button"
                 onClick={() => setReportedAbout("")}
-                className="mt-1 text-xs font-medium text-primary hover:underline"
+                className="text-xs font-medium text-primary hover:underline"
               >
                 Hapus nama (kirim tanpa menyebut nama)
               </button>
@@ -387,15 +396,15 @@ export function GrievanceClient({
             <Info size={13} /> {showViolations ? "Sembunyikan" : "Apa saja yang termasuk pelanggaran berat?"}
           </button>
           {showViolations && <SeriousViolationsList />}
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="desc">Apa yang terjadi</Label>
             <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="witnesses">Saksi (opsional)</Label>
             <Input id="witnesses" value={witnesses} onChange={(e) => setWitnesses(e.target.value)} />
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="outcome">Yang kamu harapkan (opsional)</Label>
             <Input id="outcome" value={desiredOutcome} onChange={(e) => setDesiredOutcome(e.target.value)} />
           </div>

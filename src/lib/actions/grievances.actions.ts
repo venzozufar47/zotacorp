@@ -312,6 +312,13 @@ export async function listEmployeesForGrievance(): Promise<{ id: string; name: s
   return (data ?? []).map((p) => ({ id: p.id, name: p.full_name }));
 }
 
+/** ID kepala tim pelapor sendiri — dipakai formulir untuk menyembunyikan opsi "Kepala tim" bila yang dilaporkan adalah kepala timnya. */
+export async function listMyLeaderIds(): Promise<string[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  return leadersOf(user.id);
+}
+
 /** Nama pihak tepercaya alternatif — boleh dilihat semua karyawan supaya pelapor tahu siapa penerimanya. */
 export async function listTrustedContactNames(): Promise<string[]> {
   const user = await getCurrentUser();

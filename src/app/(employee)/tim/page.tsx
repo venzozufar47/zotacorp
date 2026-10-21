@@ -23,6 +23,7 @@ import {
   listEmployeesForGrievance,
   listGrievanceInbox,
   listMyFiledGrievances,
+  listMyLeaderIds,
   listTrustedContactNames,
 } from "@/lib/actions/grievances.actions";
 import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home";
@@ -48,11 +49,12 @@ export default async function TeamPage({
 
   // Karyawan biasa: tab Tim hanya berisi Pengaduan (laporan ke kepala tim, pihak tepercaya, atau Owner).
   if (!leader) {
-    const [myReports, inbox, employees, trustedNames] = await Promise.all([
+    const [myReports, inbox, employees, trustedNames, myLeaderIds] = await Promise.all([
       listMyFiledGrievances(),
       listGrievanceInbox(),
       listEmployeesForGrievance(),
       listTrustedContactNames(),
+      listMyLeaderIds(),
     ]);
     return (
       <div className="space-y-5">
@@ -64,6 +66,7 @@ export default async function TeamPage({
           isAdmin={false}
           trustedContacts={[]}
           trustedNames={trustedNames}
+          myLeaderIds={myLeaderIds}
         />
       </div>
     );
@@ -72,7 +75,7 @@ export default async function TeamPage({
   const { bagian } = await searchParams;
   const section = SECTIONS.find((k) => k === bagian) ?? null;
 
-  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches, grievanceInbox, myReports, grievanceEmployees, trustedNames] = await Promise.all([
+  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches, grievanceInbox, myReports, grievanceEmployees, trustedNames, myLeaderIds] = await Promise.all([
     getMyTeamTasks(),
     getMyTeamCoachingNotes(),
     getLeaveApprovalQueue(),
@@ -85,6 +88,7 @@ export default async function TeamPage({
     listMyFiledGrievances().catch(() => []),
     listEmployeesForGrievance().catch(() => []),
     listTrustedContactNames().catch(() => []),
+    listMyLeaderIds().catch(() => []),
   ]);
   const todayYmd = jakartaDateString(new Date(serverNowMs()));
 
@@ -152,6 +156,7 @@ export default async function TeamPage({
               isAdmin={false}
               trustedContacts={[]}
               trustedNames={trustedNames}
+              myLeaderIds={myLeaderIds}
             />
           )}
         </>
