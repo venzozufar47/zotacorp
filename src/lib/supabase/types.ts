@@ -7346,6 +7346,7 @@ export type Database = {
           bank_account_id: string
           cashier_id: string
           close_cash_counted: number | null
+          close_cash_withdrawn: number
           close_cash_diff: number | null
           close_cash_expected: number | null
           close_notes: string | null
@@ -7370,6 +7371,7 @@ export type Database = {
           bank_account_id: string
           cashier_id: string
           close_cash_counted?: number | null
+          close_cash_withdrawn?: number
           close_cash_diff?: number | null
           close_cash_expected?: number | null
           close_notes?: string | null
@@ -7394,6 +7396,7 @@ export type Database = {
           bank_account_id?: string
           cashier_id?: string
           close_cash_counted?: number | null
+          close_cash_withdrawn?: number
           close_cash_diff?: number | null
           close_cash_expected?: number | null
           close_notes?: string | null

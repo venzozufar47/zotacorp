@@ -51,18 +51,25 @@ export function netCash(m: CashMovement): number {
 }
 
 /**
- * Kas seharusnya saat BUKA shift: hitungan kas penutup shift sebelumnya + gerakan kas di luar shift
- * − pengeluaran bernota yang dicatat saat buka. null = tidak ada pembanding (shift pertama, atau shift
+ * Kas seharusnya saat BUKA shift: hitungan kas penutup shift sebelumnya − uang yang diambil/disetor setelah
+ * hitungan itu + gerakan kas di luar shift − pengeluaran bernota yang dicatat saat buka. null = tidak ada pembanding (shift pertama, atau shift
  * sebelumnya ditutup paksa sehingga tidak punya hitungan).
  */
 export function expectedOpeningCash(
   prevCounted: number | null,
+  prevWithdrawn: number,
   netBetween: number,
   openExpensesTotal: number
 ): number | null {
   if (prevCounted === null) return null;
-  return prevCounted + netBetween - openExpensesTotal;
+  return prevCounted - prevWithdrawn + netBetween - openExpensesTotal;
 }
+
+/**
+ * Modal laci standar yang disisakan saat tutup shift; selebihnya (pemasukan hari itu) diambil/disetor.
+ * Hanya nilai awal isian "uang diambil" — kasir boleh mengubahnya.
+ */
+export const DEFAULT_DRAWER_FLOAT = 300_000;
 
 /** Kas seharusnya saat TUTUP shift: hitungan buka + gerakan kas selama shift − pengeluaran bernota saat tutup. */
 export function expectedClosingCash(

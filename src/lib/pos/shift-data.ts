@@ -31,6 +31,8 @@ export interface LastClosedShift {
   closedAt: string;
   /** null bila ditutup paksa (tanpa hitungan). */
   closeCashCounted: number | null;
+  /** Uang yang diambil/disetor dari laci setelah hitungan tutup. */
+  closeCashWithdrawn: number;
 }
 
 /** Ambil semua baris (lewati batas 1000 baris PostgREST) untuk query yang diurutkan stabil. */
@@ -95,7 +97,7 @@ export async function findOpenShift(admin: Admin, bankAccountId: string): Promis
 export async function lastClosedShift(admin: Admin, bankAccountId: string): Promise<LastClosedShift | null> {
   const { data } = await admin
     .from("pos_shifts")
-    .select("id, closed_at, close_cash_counted")
+    .select("id, closed_at, close_cash_counted, close_cash_withdrawn")
     .eq("bank_account_id", bankAccountId)
     .eq("status", "closed")
     .not("closed_at", "is", null)
@@ -107,6 +109,7 @@ export async function lastClosedShift(admin: Admin, bankAccountId: string): Prom
     id: data.id,
     closedAt: data.closed_at,
     closeCashCounted: data.close_cash_counted === null ? null : Number(data.close_cash_counted),
+    closeCashWithdrawn: Number(data.close_cash_withdrawn ?? 0),
   };
 }
 

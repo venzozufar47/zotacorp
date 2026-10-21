@@ -125,16 +125,24 @@ export async function getOpeningBriefing(
 export async function getShiftCashExpectation(input: {
   bankAccountId: string;
   phase: "open" | "close";
-}): Promise<ActionResult<{ base: number | null; since: string | null }>> {
+}): Promise<
+  ActionResult<{ base: number | null; carry: { counted: number; withdrawn: number } | null }>
+> {
   const access = await requireShiftAccess(input.bankAccountId);
   if (!access.ok) return { ok: false, error: access.error };
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
   if (input.phase === "open") {
     const prev = await lastClosedShift(admin, input.bankAccountId);
-    if (!prev || prev.closeCashCounted === null) return { ok: true, data: { base: null, since: null } };
+    if (!prev || prev.closeCashCounted === null) return { ok: true, data: { base: null, carry: null } };
     const net = netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso));
-    return { ok: true, data: { base: prev.closeCashCounted + net, since: prev.closedAt } };
+    return {
+      ok: true,
+      data: {
+        base: prev.closeCashCounted - prev.closeCashWithdrawn + net,
+        carry: { counted: prev.closeCashCounted, withdrawn: prev.closeCashWithdrawn },
+      },
+    };
   }
   const shift = await findOpenShift(admin, input.bankAccountId);
   if (!shift) return { ok: false, error: "Tidak ada shift yang terbuka." };
@@ -145,7 +153,7 @@ export async function getShiftCashExpectation(input: {
     .maybeSingle();
   if (!row) return { ok: false, error: "Tidak ada shift yang terbuka." };
   const net = netCash(await cashMovementInWindow(admin, input.bankAccountId, row.opened_at, nowIso));
-  return { ok: true, data: { base: Number(row.open_cash_counted) + net, since: row.opened_at } };
+  return { ok: true, data: { base: Number(row.open_cash_counted) + net, carry: null } };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -470,6 +478,7 @@ export async function openShift(input: {
     prev && prevCounted !== null
       ? expectedOpeningCash(
           prevCounted,
+          prev.closeCashWithdrawn,
           netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso)),
           sumExpenses(exp.clean)
         )
@@ -533,6 +542,8 @@ export async function closeShift(input: {
   pin: string;
   opnameId: string;
   cashCounted: number;
+  /** Uang yang diambil/disetor dari laci setelah dihitung (0 = semua tetap di laci). */
+  cashWithdrawn?: number;
   expenses: ShiftExpenseInput[];
   notes?: string;
 }): Promise<ActionResult<{ diff: number | null; expected: number }>> {
@@ -542,6 +553,10 @@ export async function closeShift(input: {
 
   const counted = Math.round(Number(input.cashCounted));
   if (!Number.isFinite(counted) || counted < 0) return { ok: false, error: "Hitungan kas tidak valid" };
+  const withdrawn = Math.round(Number(input.cashWithdrawn ?? 0));
+  if (!Number.isFinite(withdrawn) || withdrawn < 0 || withdrawn > counted) {
+    return { ok: false, error: "Uang yang diambil tidak boleh lebih dari uang di laci" };
+  }
   const exp = validateExpenses(input.bankAccountId, input.expenses);
   if (!exp.ok) return { ok: false, error: exp.error };
 
@@ -586,6 +601,7 @@ export async function closeShift(input: {
       closed_by_user: access.userId,
       close_opname_id: input.opnameId,
       close_cash_counted: counted,
+      close_cash_withdrawn: withdrawn,
       close_cash_expected: expected,
       close_notes: input.notes?.trim() || null,
     })

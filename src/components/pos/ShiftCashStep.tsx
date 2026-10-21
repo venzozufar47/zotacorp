@@ -10,7 +10,7 @@ import {
   type ShiftExpenseInput,
 } from "@/lib/actions/pos-shift.actions";
 import { compressImageStrict } from "@/lib/images/compress-image";
-import { CASH_DIFF_ALERT, NOTA_CATEGORIES, type NotaCategory } from "@/lib/pos/shift-math";
+import { CASH_DIFF_ALERT, DEFAULT_DRAWER_FLOAT, NOTA_CATEGORIES, type NotaCategory } from "@/lib/pos/shift-math";
 
 const CATEGORY_LABEL: Record<NotaCategory, string> = {
   "Cost of Goods Sold": "Bahan / belanja produksi",
@@ -38,7 +38,12 @@ interface Props {
   busy: boolean;
   /** Pesan galat dari server untuk dicoba ulang (opname sudah tersimpan, jadi hanya langkah ini diulang). */
   error: string | null;
-  onSubmit: (v: { cashCounted: number; expenses: ShiftExpenseInput[]; notes: string }) => void;
+  onSubmit: (v: {
+    cashCounted: number;
+    cashWithdrawn: number;
+    expenses: ShiftExpenseInput[];
+    notes: string;
+  }) => void;
 }
 
 /**
@@ -58,6 +63,9 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [base, setBase] = useState<number | null>(null);
+  const [carry, setCarry] = useState<{ counted: number; withdrawn: number } | null>(null);
+  // null = belum diubah kasir → mengikuti usulan (hitungan − modal laci standar).
+  const [withdrawnInput, setWithdrawnInput] = useState<string | null>(null);
   const [expectedState, setExpectedState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
@@ -67,6 +75,7 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
         if (!alive) return;
         if (res.ok && res.data) {
           setBase(res.data.base);
+          setCarry(res.data.carry);
           setExpectedState("ready");
         } else setExpectedState("error");
       })
@@ -149,6 +158,13 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
   // keluar dari laci, jadi hitungan fisik adalah SESUDAH nota).
   const expected = base === null ? null : base - total;
   const liveDiff = expected !== null && countedNum !== null ? countedNum - expected : null;
+  // Tutup shift: pemasukan hari itu biasanya dibawa/disetor, laci disisakan modal standar untuk shift berikutnya.
+  const suggestedWithdrawn = Math.max(0, (countedNum ?? 0) - DEFAULT_DRAWER_FLOAT);
+  const withdrawnNum = Math.min(
+    countedNum ?? 0,
+    withdrawnInput === null ? suggestedWithdrawn : parseInt(withdrawnInput || "0", 10)
+  );
+  const remaining = (countedNum ?? 0) - withdrawnNum;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
@@ -176,6 +192,13 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
               <span className="text-muted-foreground">Kas seharusnya di laci</span>
               <span className="font-semibold tabular-nums text-foreground">{rp(expected)}</span>
             </div>
+            {carry && (
+              <p className="text-[11px] text-muted-foreground">
+                Hitungan tutup shift terakhir {rp(carry.counted)}
+                {carry.withdrawn > 0 && <>, dikurangi uang yang diambil {rp(carry.withdrawn)}</>}, ditambah
+                penjualan/pemasukan tunai sejak itu.
+              </p>
+            )}
             {total > 0 && (
               <p className="text-[11px] text-muted-foreground">
                 Sudah dikurangi pengeluaran bernota {rp(total)} yang kamu input di bawah.
@@ -223,6 +246,30 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
           <span className="mt-1 block text-xs text-muted-foreground">{rp(countedNum)}</span>
         )}
       </label>
+
+      {phase === "close" && countedNum !== null && (
+        <section className="space-y-2 rounded-xl border border-border bg-card p-3">
+          <h2 className="text-sm font-semibold text-foreground">Uang diambil dari laci</h2>
+          <p className="text-xs text-muted-foreground">
+            Pemasukan yang dibawa pulang atau disetor setelah dihitung. Sisanya tetap di laci sebagai modal shift
+            berikutnya (besok pagi dihitung ulang dari angka ini). Isi 0 kalau tidak ada yang diambil.
+          </p>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={withdrawnInput === null ? String(suggestedWithdrawn) : withdrawnInput}
+            onChange={(e) => setWithdrawnInput(digits(e.target.value))}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold tabular-nums"
+          />
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Sisa di laci (modal shift berikutnya)</span>
+            <span className="font-semibold tabular-nums text-foreground">{rp(remaining)}</span>
+          </div>
+          {(withdrawnInput !== null ? parseInt(withdrawnInput || "0", 10) : 0) > countedNum && (
+            <p className="text-xs font-medium text-destructive">Tidak boleh lebih dari uang di laci.</p>
+          )}
+        </section>
+      )}
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">
@@ -349,6 +396,7 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
         onClick={() =>
           onSubmit({
             cashCounted: countedNum ?? 0,
+            cashWithdrawn: phase === "close" ? withdrawnNum : 0,
             expenses: expenses.map((e) => ({
               amount: e.amount,
               category: e.category,

@@ -62,7 +62,7 @@ export function ManualTransactionDialog({
   const [category, setCategory] = useState("");
   const [branch, setBranch] = useState("");
   const [addAnother, setAddAnother] = useState(false);
-  const [drawerNeutral, setDrawerNeutral] = useState(false);
+  const [drawerNeutral, setDrawerNeutral] = useState(true);
 
   // Per-rekening profile — cash hides sumber/detail + branch picker,
   // and inherits branch from the rekening's default.
@@ -83,7 +83,7 @@ export function ManualTransactionDialog({
       setNotes("");
       setAmount("");
       setRunningBalance("");
-      setDrawerNeutral(false);
+      setDrawerNeutral(true);
     } else {
       setDate(today);
       setTime("");
@@ -96,7 +96,7 @@ export function ManualTransactionDialog({
       setCategory("");
       setBranch("");
       setAddAnother(false);
-      setDrawerNeutral(false);
+      setDrawerNeutral(true);
     }
   }
 
@@ -394,10 +394,10 @@ export function ManualTransactionDialog({
                 className="mt-0.5 rounded border-border"
               />
               <span>
-                Pembukuan susulan — uangnya sudah keluar/masuk laci sebelumnya
+                Pembukuan saja — tidak mengubah hitungan uang di laci POS
                 <span className="block text-[11px] text-muted-foreground">
-                  Centang untuk belanja/pemasukan lama yang baru diinput sekarang, supaya tidak dihitung sebagai
-                  selisih kas pada buka/tutup shift POS.
+                  Biarkan tercentang untuk belanja yang dibayar dari uang yang sudah dibawa/disetor (default).
+                  Hilangkan centang hanya jika uang benar-benar diambil dari laci saat itu juga.
                 </span>
               </span>
             </label>

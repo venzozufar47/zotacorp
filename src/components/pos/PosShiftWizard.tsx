@@ -109,7 +109,12 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
     setStep("opname");
   }
 
-  async function submitCash(v: { cashCounted: number; expenses: ShiftExpenseInput[]; notes: string }) {
+  async function submitCash(v: {
+    cashCounted: number;
+    cashWithdrawn: number;
+    expenses: ShiftExpenseInput[];
+    notes: string;
+  }) {
     if (!cashier || !opnameId) return;
     setSaving(true);
     setSaveError(null);
@@ -128,6 +133,7 @@ export function PosShiftWizard({ mode, bankAccountId, accountName, basePath, shi
           pin,
           opnameId,
           cashCounted: v.cashCounted,
+          cashWithdrawn: v.cashWithdrawn,
           expenses: v.expenses,
           notes: v.notes,
         });

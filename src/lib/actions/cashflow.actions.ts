@@ -469,14 +469,15 @@ export async function createManualTransaction(input: {
   // per-cabang. Rekening bank Haengbocake (default_branch null) tetap
   // null → dialokasikan lewat Pusat allocator seperti biasa.
   let resolvedBranch = input.branch?.trim() || null;
-  if (!resolvedBranch) {
-    const { data: acct } = await supabase
-      .from("bank_accounts")
-      .select("default_branch")
-      .eq("id", input.bankAccountId)
-      .maybeSingle();
-    resolvedBranch = acct?.default_branch?.trim() || null;
-  }
+  const { data: acct } = await supabase
+    .from("bank_accounts")
+    .select("default_branch, bank")
+    .eq("id", input.bankAccountId)
+    .maybeSingle();
+  if (!resolvedBranch) resolvedBranch = acct?.default_branch?.trim() || null;
+  // Entri manual di rekening kas = pembukuan (belanja dari uang yang sudah dibawa/disetor), bukan gerakan laci
+  // pada saat diinput. Gerakan laci dihitung dari penjualan POS, nota shift, dan "uang diambil" saat tutup shift.
+  const drawerNeutral = input.drawerNeutral ?? acct?.bank === "cash";
 
   // Find-or-create the monthly statement bucket. Status stays whatever
   // it was (upload-confirmed, or draft if freshly created by this call).
@@ -571,7 +572,7 @@ export async function createManualTransaction(input: {
       category: input.category?.trim() || null,
       branch: resolvedBranch,
       sort_order: nextSortOrder,
-      drawer_neutral: input.drawerNeutral === true,
+      drawer_neutral: drawerNeutral,
     })
     .select("id")
     .single();
