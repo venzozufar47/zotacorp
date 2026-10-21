@@ -13,8 +13,8 @@ export const EMPLOYEE_HOME_FEATURES = {
   survei: false,
   /** Banner "N SOP belum kamu akui" → /pengakuan-sop */
   pengakuanSop: false,
-  /** Kanal pengaduan HR → /pengaduan */
-  pengaduan: false,
+  /** DIRILIS. Kanal pengaduan HR: kartu di beranda + tab Tim untuk karyawan biasa → /tim?bagian=pengaduan */
+  pengaduan: true,
   /** Persetujuan ke Owner → /persetujuan */
   persetujuan: false,
   /** Bonus tim → /bonus */
