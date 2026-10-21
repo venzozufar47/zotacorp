@@ -262,61 +262,77 @@ export function AdminMobileNav({
                   {g.items.map((item) => {
                     const { href, icon: Icon, label, badge, color, children } =
                       item;
-                    const active = href === activeHref;
+                    // Induk (punya sub-menu) hanya penanda grup: tidak pernah aktif sendiri; yang menyala sub-menunya.
+                    const isGroup = !!children && children.length > 0;
+                    const active = !isGroup && href === activeHref;
                     const expanded =
                       manual[href] ?? isBranchActive(item, activeHref);
+                    const inBranch = isGroup && isBranchActive(item, activeHref);
+
+                    const rowClass = cn(
+                      "flex flex-1 min-w-0 items-center gap-3 px-3 py-2.5 my-0.5 rounded-full text-sm transition-colors",
+                      active
+                        ? "bg-foreground text-background font-bold"
+                        : inBranch
+                          ? "text-foreground font-semibold hover:bg-muted"
+                          : "text-foreground hover:bg-muted"
+                    );
+                    const rowContent = (
+                      <>
+                        <span
+                          className={cn(
+                            "flex items-center justify-center size-8 shrink-0 rounded-full border-2 border-foreground",
+                            active || inBranch
+                              ? (color ?? "bg-primary") + " text-foreground"
+                              : "bg-card text-muted-foreground"
+                          )}
+                        >
+                          <Icon size={16} strokeWidth={2.5} />
+                        </span>
+                        <span className="flex-1 truncate">{label}</span>
+                        {badge != null && badge > 0 && (
+                          <span className="shrink-0 min-w-[22px] px-2 rounded-full bg-destructive text-[10.5px] font-bold text-white text-center">
+                            {badge}
+                          </span>
+                        )}
+                        {isGroup && (
+                          <ChevronRight
+                            size={15}
+                            strokeWidth={2.5}
+                            className={cn(
+                              "shrink-0 text-muted-foreground transition-transform duration-200",
+                              expanded && "rotate-90"
+                            )}
+                          />
+                        )}
+                      </>
+                    );
 
                     return (
                       <div key={href}>
                         <div className="flex items-center gap-1">
-                          <Link prefetch={false}
-                            href={href}
-                            role="menuitem"
-                            aria-current={active ? "page" : undefined}
-                            className={cn(
-                              "flex flex-1 min-w-0 items-center gap-3 px-3 py-2.5 my-0.5 rounded-full text-sm transition-colors",
-                              active
-                                ? "bg-foreground text-background font-bold"
-                                : "text-foreground hover:bg-muted"
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "flex items-center justify-center size-8 shrink-0 rounded-full border-2 border-foreground",
-                                active
-                                  ? (color ?? "bg-primary") + " text-foreground"
-                                  : "bg-card text-muted-foreground"
-                              )}
-                            >
-                              <Icon size={16} strokeWidth={2.5} />
-                            </span>
-                            <span className="flex-1 truncate">{label}</span>
-                            {badge != null && badge > 0 && (
-                              <span className="shrink-0 min-w-[22px] px-2 rounded-full bg-destructive text-[10.5px] font-bold text-white text-center">
-                                {badge}
-                              </span>
-                            )}
-                          </Link>
-
-                          {children && children.length > 0 && (
+                          {isGroup ? (
                             <button
                               type="button"
+                              role="menuitem"
+                              aria-expanded={expanded}
                               onClick={() =>
                                 setManual((m) => ({ ...m, [href]: !expanded }))
                               }
-                              aria-expanded={expanded}
-                              aria-label={`${expanded ? "Tutup" : "Buka"} sub-menu ${label}`}
-                              className="grid place-items-center size-9 shrink-0 rounded-full border-2 border-foreground bg-card text-muted-foreground transition"
+                              className={cn(rowClass, "text-left")}
                             >
-                              <ChevronRight
-                                size={15}
-                                strokeWidth={2.5}
-                                className={cn(
-                                  "transition-transform duration-200",
-                                  expanded && "rotate-90"
-                                )}
-                              />
+                              {rowContent}
                             </button>
+                          ) : (
+                            <Link
+                              prefetch={false}
+                              href={href}
+                              role="menuitem"
+                              aria-current={active ? "page" : undefined}
+                              className={rowClass}
+                            >
+                              {rowContent}
+                            </Link>
                           )}
                         </div>
 

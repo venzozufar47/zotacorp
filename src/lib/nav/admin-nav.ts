@@ -53,8 +53,13 @@ export interface AdminNavItem {
   icon: LucideIcon;
   label: string;
   badge?: number;
-  /** Sub-pages revealed when the parent row is expanded. */
+  /**
+   * Sub-pages. Item dengan sub-menu hanyalah INDUK (penanda grup): tidak pernah aktif sendiri, klik membuka
+   * grup dan membawa ke sub-menu pertama. Halaman `href` induk sendiri otomatis jadi sub-menu pertama.
+   */
   children?: AdminNavChild[];
+  /** Nama sub-menu pertama (halaman `href` induk). Bawaan: label induk. */
+  homeLabel?: string;
   /** `bg-*` token used as the active accent on mobile tiles. */
   color?: string;
   /** Scopes allowed to see this item. Defaults to `["full"]`. */
@@ -105,7 +110,7 @@ export function buildAdminNav({
   isAdminZota = false,
   t,
 }: BuildAdminNavArgs): AdminNavGroup[] {
-  const allGroups: AdminNavGroup[] = [
+  const baseGroups: AdminNavGroup[] = [
     {
       label: "",
       items: [
@@ -132,6 +137,7 @@ export function buildAdminNav({
           label: t.nav.attendance,
           badge: pendingCount || undefined,
           color: "bg-primary",
+          homeLabel: "Rekap Kehadiran",
           children: [{ href: "/admin/stock-gate", label: "Gate Absen Pulang" }],
         },
         {
@@ -156,8 +162,9 @@ export function buildAdminNav({
         {
           href: "/admin/scorecard",
           icon: Trophy,
-          label: "Scorecard Cabang",
+          label: "Kinerja Cabang",
           color: "bg-tertiary",
+          homeLabel: "Scorecard Cabang",
           children: [{ href: "/admin/service-level", label: "Service Level" }],
         },
       ],
@@ -170,6 +177,7 @@ export function buildAdminNav({
           icon: Users,
           label: t.nav.users,
           color: "bg-pop-pink",
+          homeLabel: "Daftar Karyawan",
           children: [
             { href: "/admin/struktur", label: "Struktur Organisasi" },
             { href: "/admin/employment-contracts", label: "Kontrak Kerja" },
@@ -180,16 +188,18 @@ export function buildAdminNav({
         {
           href: "/admin/payslips/variables",
           icon: Receipt,
-          label: t.nav.payslips,
+          label: "Penggajian",
           badge: disputesCount || undefined,
           color: "bg-tertiary",
+          homeLabel: "Slip Gaji",
           children: [{ href: "/admin/bonus", label: "Kalkulator Bonus" }],
         },
         {
           href: "/admin/evaluasi-360",
           icon: Award,
-          label: "Evaluasi 360°",
+          label: "Penilaian",
           color: "bg-pop-pink",
+          homeLabel: "Evaluasi 360°",
           children: [
             { href: "/admin/disc", label: "Tes DISC" },
             { href: "/admin/survei", label: "Survei Bulanan" },
@@ -217,6 +227,7 @@ export function buildAdminNav({
           icon: Wallet,
           label: t.nav.finance,
           color: "bg-pop-emerald",
+          homeLabel: "Rekening & Cashflow",
           children: [
             { href: "/admin/finance/pnl", label: "Profit & Loss" },
             { href: "/admin/finance/assignments", label: "Assignment Queue" },
@@ -234,6 +245,7 @@ export function buildAdminNav({
           icon: Calculator,
           label: "HPP / Costing",
           color: "bg-pop-emerald",
+          homeLabel: "Kalkulator HPP",
           children: [
             { href: "/admin/costing/bahan", label: "Master Bahan" },
             { href: "/admin/costing/dashboard", label: "Dashboard Margin" },
@@ -249,6 +261,7 @@ export function buildAdminNav({
           icon: TrendingUp,
           label: "Investor",
           color: "bg-quaternary",
+          homeLabel: "Orang & Kontrak",
           children: [
             { href: "/admin/investors?tab=distribusi", label: "Distribusi Bulanan" },
             { href: "/admin/investors/mom", label: "Notulen Rapat" },
@@ -265,6 +278,7 @@ export function buildAdminNav({
           icon: Cake,
           label: "Pesanan Cake",
           color: "bg-pop-pink",
+          homeLabel: "Antrean Pesanan",
           children: [
             { href: "/admin/cake-orders/options", label: "Opsi Form" },
             { href: "/admin/cake-orders/access", label: "Akses Karyawan" },
@@ -282,6 +296,7 @@ export function buildAdminNav({
           label: "Yeobo Booth",
           color: "bg-pop-emerald",
           scopes: ["full", "yeobo-booth"],
+          homeLabel: "Hub Booth",
           // Subnav sengaja ringkas: hanya halaman yang TIDAK punya tombol di hub
           // (/admin/yeobo-booth). Kalender, Semua Booking, Laporan, Freelance,
           // Reminder, dan Akses Admin dibuka dari tombol-tombol di halaman hub.
@@ -306,6 +321,7 @@ export function buildAdminNav({
           icon: Megaphone,
           label: "Sosmed & Ads",
           color: "bg-pop-pink",
+          homeLabel: "Sosmed & KPI",
           children: [
             { href: "/admin/social/akun", label: "Akun Sosmed" },
             { href: "/admin/ads", label: "Meta Ads" },
@@ -325,8 +341,9 @@ export function buildAdminNav({
         {
           href: "/admin/sim-cards",
           icon: Smartphone,
-          label: "Kartu SIM & Langganan",
+          label: "SIM & Langganan",
           color: "bg-quaternary",
+          homeLabel: "Kartu SIM",
           children: [{ href: "/admin/subscriptions", label: "Subscription" }],
         },
         {
@@ -334,6 +351,7 @@ export function buildAdminNav({
           icon: Settings,
           label: t.nav.settings,
           color: "bg-card",
+          homeLabel: "Umum",
           children: [
             { href: "/admin/accounts", label: "Akun & Password" },
             { href: "/admin/backups", label: "Backups" },
@@ -342,6 +360,17 @@ export function buildAdminNav({
       ],
     },
   ];
+
+  // Induk dengan sub-menu hanya penanda grup: halamannya sendiri dijadikan sub-menu pertama, sehingga
+  // mengklik induk membuka grup dan langsung membawa ke sana.
+  const allGroups: AdminNavGroup[] = baseGroups.map((g) => ({
+    ...g,
+    items: g.items.map((it) =>
+      it.children && it.children.length > 0
+        ? { ...it, children: [{ href: it.href, label: it.homeLabel ?? it.label }, ...it.children] }
+        : it
+    ),
+  }));
 
   // Scope filtering is per-item (not per-group) so a restricted admin
   // can be granted any subset without the taxonomy having to mirror it.

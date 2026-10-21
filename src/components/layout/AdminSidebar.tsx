@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LogOut, ChevronRight, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -53,6 +53,7 @@ export function AdminSidebar({
   isAdminZota?: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { t } = useTranslation();
 
   // Menu akun di footer: tutup saat klik di luar / Escape / pindah halaman.
@@ -148,8 +149,46 @@ export function AdminSidebar({
             )}
             {g.items.map((item) => {
               const { href, icon: Icon, label, badge, children } = item;
-              const active = href === activeHref;
+              // Induk (punya sub-menu) hanya penanda grup: tidak pernah aktif sendiri; yang menyala sub-menunya.
+              const isGroup = !!children && children.length > 0;
+              const active = !isGroup && href === activeHref;
               const open = manual[href] ?? isBranchActive(item, activeHref);
+              const inBranch = isGroup && isBranchActive(item, activeHref);
+
+              const rowContent = (
+                <>
+                  <Icon size={16} strokeWidth={1.8} className="shrink-0" />
+                  <span className="flex-1 truncate">{label}</span>
+                  {badge != null && (
+                    <span
+                      className={cn(
+                        "text-[10.5px] font-semibold px-2 rounded-full min-w-[22px] text-center",
+                        active ? "bg-white/20 text-white" : "bg-destructive text-white"
+                      )}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                  {isGroup && (
+                    <ChevronRight
+                      size={14}
+                      strokeWidth={2}
+                      className={cn(
+                        "shrink-0 text-muted-foreground transition-transform duration-200",
+                        open && "rotate-90"
+                      )}
+                    />
+                  )}
+                </>
+              );
+              const rowClass = cn(
+                "flex flex-1 min-w-0 items-center gap-2.5 px-3 py-2 text-[13px] font-medium tracking-[-0.005em] transition",
+                active
+                  ? "text-white"
+                  : inBranch
+                    ? "text-foreground"
+                    : "text-foreground/70 hover:text-foreground"
+              );
 
               return (
                 <div key={href}>
@@ -167,56 +206,28 @@ export function AdminSidebar({
                         : undefined
                     }
                   >
-                    <Link prefetch={false}
-                      href={href}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex flex-1 min-w-0 items-center gap-2.5 px-3 py-2 text-[13px] font-medium tracking-[-0.005em] transition",
-                        active
-                          ? "text-white"
-                          : "text-foreground/70 hover:text-foreground"
-                      )}
-                    >
-                      <Icon size={16} strokeWidth={1.8} className="shrink-0" />
-                      <span className="flex-1 truncate">{label}</span>
-                      {badge != null && (
-                        <span
-                          className={cn(
-                            "text-[10.5px] font-semibold px-2 rounded-full min-w-[22px] text-center",
-                            active
-                              ? "bg-white/20 text-white"
-                              : "bg-destructive text-white"
-                          )}
-                        >
-                          {badge}
-                        </span>
-                      )}
-                    </Link>
-
-                    {children && children.length > 0 && (
+                    {isGroup ? (
                       <button
                         type="button"
-                        onClick={() =>
-                          setManual((m) => ({ ...m, [href]: !open }))
-                        }
                         aria-expanded={open}
-                        aria-label={`${open ? "Tutup" : "Buka"} sub-menu ${label}`}
-                        className={cn(
-                          "grid place-items-center size-7 mr-1 rounded-md shrink-0 transition",
-                          active
-                            ? "text-white/80 hover:bg-white/20"
-                            : "text-muted-foreground hover:bg-border/60 hover:text-foreground"
-                        )}
+                        onClick={() => {
+                          // Tertutup → buka dan langsung ke sub-menu pertama; terbuka → cukup tutup.
+                          setManual((m) => ({ ...m, [href]: !open }));
+                          if (!open) router.push(children[0].href);
+                        }}
+                        className={cn(rowClass, "text-left")}
                       >
-                        <ChevronRight
-                          size={14}
-                          strokeWidth={2}
-                          className={cn(
-                            "transition-transform duration-200",
-                            open && "rotate-90"
-                          )}
-                        />
+                        {rowContent}
                       </button>
+                    ) : (
+                      <Link
+                        prefetch={false}
+                        href={href}
+                        aria-current={active ? "page" : undefined}
+                        className={rowClass}
+                      >
+                        {rowContent}
+                      </Link>
                     )}
                   </div>
 
