@@ -22,7 +22,7 @@ export const SERIOUS_VIOLATIONS: { title: string; examples: string }[] = [
   },
   {
     title: "Narkoba dan alkohol",
-    examples: "Memakai atau mengedarkan narkoba, atau mabuk saat bekerja.",
+    examples: "Membawa, memakai, atau mengedarkan narkoba/alkohol.",
   },
   {
     title: "Merusak aset atau nama baik perusahaan",

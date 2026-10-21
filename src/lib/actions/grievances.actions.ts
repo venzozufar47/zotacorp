@@ -312,6 +312,15 @@ export async function listEmployeesForGrievance(): Promise<{ id: string; name: s
   return (data ?? []).map((p) => ({ id: p.id, name: p.full_name }));
 }
 
+/** Nama pihak tepercaya alternatif — boleh dilihat semua karyawan supaya pelapor tahu siapa penerimanya. */
+export async function listTrustedContactNames(): Promise<string[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const ids = await trustedContactIds();
+  const names = await namesFor(ids);
+  return ids.map((id) => names.get(id)).filter((n): n is string => !!n);
+}
+
 export async function listTrustedContacts(): Promise<{ id: string; name: string }[]> {
   const gate = await requireAdmin();
   if (!gate.ok) return [];

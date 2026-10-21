@@ -23,6 +23,7 @@ import {
   listEmployeesForGrievance,
   listGrievanceInbox,
   listMyFiledGrievances,
+  listTrustedContactNames,
 } from "@/lib/actions/grievances.actions";
 import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home";
 import { GrievanceClient } from "@/components/grievances/GrievanceClient";
@@ -47,10 +48,11 @@ export default async function TeamPage({
 
   // Karyawan biasa: tab Tim hanya berisi Pengaduan (laporan ke kepala tim, pihak tepercaya, atau Owner).
   if (!leader) {
-    const [myReports, inbox, employees] = await Promise.all([
+    const [myReports, inbox, employees, trustedNames] = await Promise.all([
       listMyFiledGrievances(),
       listGrievanceInbox(),
       listEmployeesForGrievance(),
+      listTrustedContactNames(),
     ]);
     return (
       <div className="space-y-5">
@@ -61,6 +63,7 @@ export default async function TeamPage({
           employees={employees}
           isAdmin={false}
           trustedContacts={[]}
+          trustedNames={trustedNames}
         />
       </div>
     );
@@ -69,7 +72,7 @@ export default async function TeamPage({
   const { bagian } = await searchParams;
   const section = SECTIONS.find((k) => k === bagian) ?? null;
 
-  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches, grievanceInbox, myReports, grievanceEmployees] = await Promise.all([
+  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches, grievanceInbox, myReports, grievanceEmployees, trustedNames] = await Promise.all([
     getMyTeamTasks(),
     getMyTeamCoachingNotes(),
     getLeaveApprovalQueue(),
@@ -81,6 +84,7 @@ export default async function TeamPage({
     listGrievanceInbox().catch(() => []),
     listMyFiledGrievances().catch(() => []),
     listEmployeesForGrievance().catch(() => []),
+    listTrustedContactNames().catch(() => []),
   ]);
   const todayYmd = jakartaDateString(new Date(serverNowMs()));
 
@@ -147,6 +151,7 @@ export default async function TeamPage({
               employees={grievanceEmployees}
               isAdmin={false}
               trustedContacts={[]}
+              trustedNames={trustedNames}
             />
           )}
         </>

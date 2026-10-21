@@ -238,12 +238,15 @@ export function GrievanceClient({
   employees,
   isAdmin,
   trustedContacts,
+  trustedNames = [],
 }: {
   myReports: GrievanceView[];
   inbox: GrievanceView[];
   employees: { id: string; name: string }[];
   isAdmin: boolean;
   trustedContacts: { id: string; name: string }[];
+  /** Nama pihak tepercaya alternatif yang sudah ditentukan (ditampilkan ke pelapor). */
+  trustedNames?: string[];
 }) {
   const router = useRouter();
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -316,7 +319,14 @@ export function GrievanceClient({
           <div>
             <Label>Kirim ke</Label>
             <div role="radiogroup" aria-label="Kirim ke" className="mt-1 grid gap-2">
-              {RECIPIENT_OPTIONS.map((o) => (
+              {RECIPIENT_OPTIONS.map((o) => {
+                const hint =
+                  o.value === "pihak_tepercaya"
+                    ? trustedNames.length > 0
+                      ? `Ditangani ${trustedNames.join(", ")}. Bila kamu tidak nyaman ke kepala tim atau Owner.`
+                      : o.hint
+                    : o.hint;
+                return (
                 <button
                   key={o.value}
                   type="button"
@@ -331,9 +341,10 @@ export function GrievanceClient({
                   }
                 >
                   <span className="block font-semibold">{o.label}</span>
-                  <span className="block text-xs text-muted-foreground">{o.hint}</span>
+                  <span className="block text-xs text-muted-foreground">{hint}</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
@@ -354,6 +365,15 @@ export function GrievanceClient({
                 ))}
               </SelectContent>
             </Select>
+            {reportedAbout && (
+              <button
+                type="button"
+                onClick={() => setReportedAbout("")}
+                className="mt-1 text-xs font-medium text-primary hover:underline"
+              >
+                Hapus nama (kirim tanpa menyebut nama)
+              </button>
+            )}
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={isSerious} onChange={(e) => setIsSerious(e.target.checked)} />
