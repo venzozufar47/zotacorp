@@ -80,11 +80,14 @@ export function ChecklistManager({
   initial,
   employees = [],
   assignments = [],
+  onEditSchedule,
 }: {
   initial: CleaningChecklist[];
   employees?: CleaningEmployee[];
   /** Penugasan per orang — untuk ringkasan "siapa, kapan" di tiap checklist. */
   assignments?: CleaningAssignmentRow[];
+  /** Buka tab Penugasan, disaring ke checklist ini — tempat hari & jam diubah. */
+  onEditSchedule?: (checklistId: string) => void;
 }) {
   const { run, pending, startTransition, router } = useRunAction();
   const [name, setName] = useState("");
@@ -200,6 +203,7 @@ export function ChecklistManager({
                   checklist={cl}
                   employees={employees}
                   assigned={assignments.filter((a) => a.checklist_id === cl.id && a.is_active)}
+                  onEditSchedule={onEditSchedule}
                   open={!!open[cl.id]}
                   onToggleOpen={() => setOpen((o) => ({ ...o, [cl.id]: !o[cl.id] }))}
                   pending={pending}
@@ -217,6 +221,7 @@ function ChecklistCard({
   checklist: cl,
   employees,
   assigned,
+  onEditSchedule,
   open,
   onToggleOpen,
   pending,
@@ -225,6 +230,7 @@ function ChecklistCard({
   checklist: CleaningChecklist;
   employees: CleaningEmployee[];
   assigned: CleaningAssignmentRow[];
+  onEditSchedule?: (checklistId: string) => void;
   open: boolean;
   onToggleOpen: () => void;
   pending: boolean;
@@ -363,6 +369,16 @@ function ChecklistCard({
               {summary && <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{summary}</span>}
             </span>
           </button>
+          {onEditSchedule && (
+            <button
+              type="button"
+              title="Hari & jam dikerjakan ada di tab Penugasan"
+              onClick={() => onEditSchedule(cl.id)}
+              className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11.5px] font-semibold text-foreground/80 hover:bg-muted hover:text-foreground"
+            >
+              {assigned.length > 0 ? "Ubah jadwal" : "Atur penugasan"}
+            </button>
+          )}
           <button
             type="button"
             title="Edit nama & deskripsi"

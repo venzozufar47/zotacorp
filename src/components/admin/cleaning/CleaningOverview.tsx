@@ -325,6 +325,8 @@ export function CleaningOverview({
   );
   const [setupOpen, setSetupOpen] = useState(!!initialSetupOpen);
   const [setupTab, setSetupTab] = useState<"checklist" | "duty" | "assignment">("checklist");
+  // Saat datang dari "Ubah jadwal" di tab Checklist, tab Penugasan disaring ke checklist itu.
+  const [assignFocus, setAssignFocus] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [gallery, setGallery] = useState<GalleryFilter | null>(
     initialGalleryOpen ? {} : null
@@ -611,7 +613,10 @@ export function CleaningOverview({
                       type="button"
                       role="tab"
                       aria-selected={setupTab === t.key}
-                      onClick={() => setSetupTab(t.key)}
+                      onClick={() => {
+                        setAssignFocus(null);
+                        setSetupTab(t.key);
+                      }}
                       className={
                         "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition " +
                         (setupTab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
@@ -623,7 +628,15 @@ export function CleaningOverview({
                 </div>
                 <p className="mb-4 text-[12px] text-muted-foreground">{cur.hint}</p>
                 {setupTab === "checklist" && (
-                  <ChecklistManager initial={checklists} employees={employees} assignments={assignments} />
+                  <ChecklistManager
+                    initial={checklists}
+                    employees={employees}
+                    assignments={assignments}
+                    onEditSchedule={(id) => {
+                      setAssignFocus(id);
+                      setSetupTab("assignment");
+                    }}
+                  />
                 )}
                 {setupTab === "duty" && (
                   <BranchDutyManager
@@ -636,10 +649,13 @@ export function CleaningOverview({
                 )}
                 {setupTab === "assignment" && (
                   <AssignmentManager
+                    key={assignFocus ?? "all"}
                     initial={assignments}
                     checklists={checklists}
                     employees={employees}
                     holidays={holidays}
+                    focusChecklistId={assignFocus}
+                    onClearFocus={() => setAssignFocus(null)}
                   />
                 )}
               </>

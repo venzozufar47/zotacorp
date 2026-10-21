@@ -378,16 +378,21 @@ export function AssignmentManager({
   checklists,
   employees,
   holidays,
+  focusChecklistId = null,
+  onClearFocus,
 }: {
   initial: CleaningAssignmentRow[];
   checklists: CleaningChecklist[];
   employees: CleaningEmployee[];
   holidays: HolidayRow[];
+  /** Tampilkan hanya penugasan checklist ini (datang dari tombol "Ubah jadwal" di tab Checklist). */
+  focusChecklistId?: string | null;
+  onClearFocus?: () => void;
 }) {
   const { run, pending, startTransition, router } = useRunAction();
   const holidayMap = new Map(holidays.map((h) => [h.date, h.name]));
   const [assignMode, setAssignMode] = useState<"single" | "rotation">("single");
-  const [checklistId, setChecklistId] = useState("");
+  const [checklistId, setChecklistId] = useState(focusChecklistId ?? "");
   const [userId, setUserId] = useState("");
   const [members, setMembers] = useState<string[]>([]);
   const [rotationMode, setRotationMode] = useState<RotationMode>("daily");
@@ -477,7 +482,9 @@ export function AssignmentManager({
     | { type: "group"; groupId: string; rows: CleaningAssignmentRow[] };
   const entries: Entry[] = [];
   const seenGroups = new Set<string>();
-  for (const a of initial) {
+  const shown = focusChecklistId ? initial.filter((a) => a.checklist_id === focusChecklistId) : initial;
+  const focusName = focusChecklistId ? checklists.find((c) => c.id === focusChecklistId)?.name ?? null : null;
+  for (const a of shown) {
     if (!a.rotation_group_id) {
       entries.push({ type: "single", row: a });
     } else if (!seenGroups.has(a.rotation_group_id)) {
@@ -485,13 +492,70 @@ export function AssignmentManager({
       entries.push({
         type: "group",
         groupId: a.rotation_group_id,
-        rows: initial.filter((x) => x.rotation_group_id === a.rotation_group_id),
+        rows: shown.filter((x) => x.rotation_group_id === a.rotation_group_id),
       });
     }
   }
 
+  const listBlock = (
+    <>
+      {focusChecklistId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+          <span>
+            Menampilkan penugasan untuk <b>{focusName ?? "checklist ini"}</b>. Buka satu baris lalu ubah hari dan jamnya.
+          </span>
+          {onClearFocus && (
+            <button type="button" onClick={onClearFocus} className="text-xs font-semibold text-primary hover:underline">
+              Tampilkan semua
+            </button>
+          )}
+        </div>
+      )}
+
+      {entries.length === 0 && (
+        <p className="text-sm text-muted-foreground italic px-1">
+          {focusChecklistId ? "Checklist ini belum ditugaskan — isi form di bawah." : "Belum ada assignment."}
+        </p>
+      )}
+
+      <div className="space-y-2">
+        {entries.map((entry) =>
+          entry.type === "single" ? (
+            <SingleAssignmentCard
+              key={entry.row.id}
+              a={entry.row}
+              pending={pending}
+              run={run}
+              editing={editing === entry.row.id}
+              onToggleEdit={() =>
+                setEditing((e) => (e === entry.row.id ? null : entry.row.id))
+              }
+            />
+          ) : (
+            <RotationCard
+              key={entry.groupId}
+              groupId={entry.groupId}
+              rows={entry.rows}
+              employees={employees}
+              holidays={holidayMap}
+              pending={pending}
+              run={run}
+              editing={editing === entry.groupId}
+              onToggleEdit={() =>
+                setEditing((e) => (e === entry.groupId ? null : entry.groupId))
+              }
+            />
+          )
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="space-y-4">
+      {/* Disaring ke satu checklist: daftarnya dulu (itu yang dicari), formulir baru di bawah. */}
+      {focusChecklistId && listBlock}
+
       {/* New assignment / rotation */}
       <section className="rounded-2xl border border-border bg-card p-4 space-y-3">
         <h2 className="font-display text-base font-semibold">Assign checklist ke karyawan</h2>
@@ -663,40 +727,7 @@ export function AssignmentManager({
         </div>
       </section>
 
-      {entries.length === 0 && (
-        <p className="text-sm text-muted-foreground italic px-1">Belum ada assignment.</p>
-      )}
-
-      <div className="space-y-2">
-        {entries.map((entry) =>
-          entry.type === "single" ? (
-            <SingleAssignmentCard
-              key={entry.row.id}
-              a={entry.row}
-              pending={pending}
-              run={run}
-              editing={editing === entry.row.id}
-              onToggleEdit={() =>
-                setEditing((e) => (e === entry.row.id ? null : entry.row.id))
-              }
-            />
-          ) : (
-            <RotationCard
-              key={entry.groupId}
-              groupId={entry.groupId}
-              rows={entry.rows}
-              employees={employees}
-              holidays={holidayMap}
-              pending={pending}
-              run={run}
-              editing={editing === entry.groupId}
-              onToggleEdit={() =>
-                setEditing((e) => (e === entry.groupId ? null : entry.groupId))
-              }
-            />
-          )
-        )}
-      </div>
+      {!focusChecklistId && listBlock}
     </div>
   );
 }
