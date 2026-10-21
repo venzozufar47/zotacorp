@@ -156,6 +156,9 @@ export interface GrievanceView {
   status: "submitted" | "confirmed" | "investigating" | "decided";
   decision: string | null;
   decidedAt: string | null;
+  /** Siapa yang mengonfirmasi / memutuskan — penting bila ada dua kepala tim. */
+  confirmedByName: string | null;
+  decidedByName: string | null;
   createdAt: string;
   isMine: boolean;
 }
@@ -181,6 +184,8 @@ function scrubAndHydrate(
       status: r.status,
       decision: r.decision,
       decidedAt: r.decided_at,
+      confirmedByName: r.confirmed_by ? names.get(r.confirmed_by) ?? null : null,
+      decidedByName: r.decided_by ? names.get(r.decided_by) ?? null : null,
       createdAt: r.created_at,
       isMine,
     };
@@ -197,7 +202,7 @@ export async function listMyFiledGrievances(): Promise<GrievanceView[]> {
     .eq("reporter_id", user.id)
     .order("created_at", { ascending: false });
   const rows = data ?? [];
-  const names = await namesFor(rows.flatMap((r: any) => [r.reporter_id, r.reported_about_user_id]));
+  const names = await namesFor(rows.flatMap((r: any) => [r.reporter_id, r.reported_about_user_id, r.confirmed_by, r.decided_by]));
   return scrubAndHydrate(rows, names, user.id);
 }
 
@@ -233,33 +238,99 @@ export async function listGrievanceInbox(): Promise<GrievanceView[]> {
         .from("hr_grievances")
         .select("*")
         .eq("tier", 2)
-        .in("reporter_id", memberIds)
-        .neq("reported_about_user_id", user.id);
+        .in("reporter_id", memberIds);
       filters.push(...(data ?? []));
     }
     if (isTrustedContact) {
       const { data } = await db().from("hr_grievances").select("*").eq("tier", 4);
       filters.push(...(data ?? []));
     }
+    // Penyaringan "bukan tentang dirinya" dilakukan di sini (bukan .neq di SQL): .neq membuang baris yang
+    // kolom pihak-dilaporkannya NULL, yaitu semua laporan tanpa menyebut nama.
     rows = filters
       .filter((r) => r.reported_about_user_id !== user.id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   }
 
-  const names = await namesFor(rows.flatMap((r: any) => [r.reporter_id, r.reported_about_user_id]));
+  const names = await namesFor(rows.flatMap((r: any) => [r.reporter_id, r.reported_about_user_id, r.confirmed_by, r.decided_by]));
   return scrubAndHydrate(rows, names, user.id);
+}
+
+/**
+ * Siapa yang berhak menangani satu laporan — SAMA dengan aturan antrean masuk (listGrievanceInbox), tapi
+ * ditegakkan di server: admin untuk semua tingkat; kepala tim hanya tingkat 2 dari anggotanya; pihak
+ * tepercaya hanya tingkat 4. Pelapor tidak boleh menangani laporannya sendiri, dan yang dilaporkan tidak
+ * boleh menanganinya.
+ */
+async function canHandleGrievance(
+  userId: string,
+  role: string | null | undefined,
+  row: { reporter_id: string; tier: number; reported_about_user_id: string | null }
+): Promise<boolean> {
+  if (row.reported_about_user_id === userId || row.reporter_id === userId) return false;
+  if (role === "admin") return true;
+  if (row.tier === 2) {
+    const { data } = await db()
+      .from("team_members")
+      .select("member_id")
+      .eq("leader_id", userId)
+      .eq("member_id", row.reporter_id)
+      .limit(1);
+    return (data ?? []).length > 0;
+  }
+  if (row.tier === 4) return (await trustedContactIds()).includes(userId);
+  return false;
+}
+
+type HandleRow = {
+  id: string;
+  reporter_id: string;
+  tier: number;
+  reported_about_user_id: string | null;
+  confirmed_by: string | null;
+  decided_by: string | null;
+};
+
+async function loadHandleRow(
+  id: string
+): Promise<{ ok: true; row: HandleRow } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const { data } = await db()
+    .from("hr_grievances")
+    .select("id, reporter_id, tier, reported_about_user_id, confirmed_by, decided_by")
+    .eq("id", id)
+    .maybeSingle();
+  const row = data as HandleRow | null;
+  if (!row) return { ok: false, error: "Laporan tidak ditemukan" };
+  if (!(await canHandleGrievance(user.id, await getCurrentRole(), row))) {
+    return { ok: false, error: "Kamu tidak berwenang menangani laporan ini" };
+  }
+  return { ok: true, row };
 }
 
 export async function confirmGrievance(id: string): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
-  const { error } = await db()
+  const loaded = await loadHandleRow(id);
+  if (!loaded.ok) return loaded;
+
+  const { data: updated, error } = await db()
     .from("hr_grievances")
     .update({ status: "confirmed", confirmed_by: user.id, confirmed_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("status", "submitted");
+    .eq("status", "submitted")
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if ((updated ?? []).length === 0) {
+    // Kalah cepat dari penangan lain (mis. kepala tim kedua): beri tahu siapa.
+    const { data: cur } = await db().from("hr_grievances").select("confirmed_by").eq("id", id).maybeSingle();
+    const by = cur?.confirmed_by ? (await namesFor([cur.confirmed_by])).get(cur.confirmed_by) : null;
+    return { ok: false, error: by ? `Sudah dikonfirmasi oleh ${by}.` : "Laporan ini sudah dikonfirmasi." };
+  }
   revalidatePath("/pengaduan");
+  revalidatePath("/tim");
+  revalidatePath("/admin/pengaduan");
   return { ok: true };
 }
 
@@ -268,15 +339,13 @@ export async function decideGrievance(input: { id: string; decision: string }): 
   if (!user) return { ok: false, error: "Not signed in" };
   if (!input.decision.trim()) return { ok: false, error: "Isi keputusannya" };
 
-  const { data: rowData } = await db()
-    .from("hr_grievances")
-    .select("id, reporter_id, is_anonymous")
-    .eq("id", input.id)
-    .maybeSingle();
-  const row = rowData as { id: string; reporter_id: string; is_anonymous: boolean } | null;
-  if (!row) return { ok: false, error: "Laporan tidak ditemukan" };
+  const loaded = await loadHandleRow(input.id);
+  if (!loaded.ok) return loaded;
+  const row = loaded.row;
 
-  const { error } = await db()
+  // Atomik: hanya satu keputusan yang boleh tersimpan. Penangan kedua tidak menimpa, tapi diberi tahu siapa
+  // yang sudah memutuskan.
+  const { data: updated, error } = await db()
     .from("hr_grievances")
     .update({
       status: "decided",
@@ -284,8 +353,15 @@ export async function decideGrievance(input: { id: string; decision: string }): 
       decided_by: user.id,
       decided_at: new Date().toISOString(),
     })
-    .eq("id", input.id);
+    .eq("id", input.id)
+    .neq("status", "decided")
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if ((updated ?? []).length === 0) {
+    const { data: cur } = await db().from("hr_grievances").select("decided_by").eq("id", input.id).maybeSingle();
+    const by = cur?.decided_by ? (await namesFor([cur.decided_by])).get(cur.decided_by) : null;
+    return { ok: false, error: by ? `Sudah diputuskan oleh ${by}.` : "Laporan ini sudah diputuskan." };
+  }
 
   await sendPushToUser(row.reporter_id, {
     title: "Keputusan pengaduanmu",
@@ -294,6 +370,8 @@ export async function decideGrievance(input: { id: string; decision: string }): 
   });
 
   revalidatePath("/pengaduan");
+  revalidatePath("/tim");
+  revalidatePath("/admin/pengaduan");
   return { ok: true };
 }
 

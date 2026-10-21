@@ -101,7 +101,10 @@ function InboxRow({ r, onChanged }: { r: GrievanceView; onChanged: () => void })
             </span>
           )}
         </span>
-        <span className="text-xs text-muted-foreground">{STATUS_LABEL[r.status]}</span>
+        <span className="text-xs text-muted-foreground">
+          {STATUS_LABEL[r.status]}
+          {r.status === "confirmed" && r.confirmedByName ? ` oleh ${r.confirmedByName}` : ""}
+        </span>
       </div>
       <p className="text-xs text-muted-foreground">
         {dateTimeLabel(r.createdAt)} · pelapor {r.isAnonymous ? "anonim" : r.reporterName ?? "—"}
@@ -116,7 +119,8 @@ function InboxRow({ r, onChanged }: { r: GrievanceView; onChanged: () => void })
       )}
       {r.status === "decided" ? (
         <p className="rounded-lg bg-muted/40 px-2.5 py-2 text-xs">
-          <span className="font-semibold">Keputusan:</span> {r.decision}
+          <span className="font-semibold">Keputusan{r.decidedByName ? ` (${r.decidedByName})` : ""}:</span>{" "}
+          {r.decision}
         </p>
       ) : (
         <div className="space-y-2">
@@ -146,7 +150,8 @@ function MyReportRow({ r }: { r: GrievanceView }) {
       <p>{r.description}</p>
       {r.decision && (
         <p className="rounded-lg bg-muted/40 px-2.5 py-2 text-xs">
-          <span className="font-semibold">Keputusan:</span> {r.decision}
+          <span className="font-semibold">Keputusan{r.decidedByName ? ` (${r.decidedByName})` : ""}:</span>{" "}
+          {r.decision}
         </p>
       )}
     </div>
