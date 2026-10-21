@@ -240,9 +240,6 @@ export async function computeMetricsAsOf(
       value: wastePct ?? 0,
       displayValue: wasteMeasured ? `${wastePct.toFixed(1)}%` : "Belum ada data",
       band: wasteMeasured ? wasteBand(wastePct) : "measuring",
-      note: wasteMeasured
-        ? `${weekStart} – ${weekEnd}`
-        : `Belum ada produksi tercatat ${period === "month" ? "bulan ini" : "dalam 7 hari terakhir"}`,
       ranges: wasteRanges(),
     },
     {
@@ -251,10 +248,6 @@ export async function computeMetricsAsOf(
       value: serviceLevel ?? 0,
       displayValue: serviceLevel !== null ? `${(serviceLevel * 100).toFixed(0)}%` : "Belum ada data",
       band: serviceLevelBand(serviceLevel),
-      note:
-        serviceLevel !== null
-          ? "Produk ready saat toko buka"
-          : `Belum ada hari yang terhitung ${period === "month" ? "bulan ini" : "dalam 7 hari terakhir"}`,
       ranges: serviceLevelRanges(),
     },
     {
