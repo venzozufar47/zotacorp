@@ -8,7 +8,6 @@ import {
   listMyFiledGrievances,
   listGrievanceInbox,
   listEmployeesForGrievance,
-  listTrustedContacts,
 } from "@/lib/actions/grievances.actions";
 import { GrievanceClient } from "@/components/grievances/GrievanceClient";
 
@@ -16,13 +15,13 @@ export default async function PengaduanPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const role = await getCurrentRole();
-  const isAdmin = role === "admin";
+  // Superadmin menangani pengaduan langsung di beranda admin, bukan di halaman terpisah.
+  if (role === "admin") redirect("/admin");
 
-  const [myReports, inbox, employees, trustedContacts] = await Promise.all([
+  const [myReports, inbox, employees] = await Promise.all([
     listMyFiledGrievances(),
     listGrievanceInbox(),
     listEmployeesForGrievance(),
-    isAdmin ? listTrustedContacts() : Promise.resolve([]),
   ]);
 
   return (
@@ -47,8 +46,8 @@ export default async function PengaduanPage() {
         myReports={myReports}
         inbox={inbox}
         employees={employees}
-        isAdmin={isAdmin}
-        trustedContacts={trustedContacts}
+        isAdmin={false}
+        trustedContacts={[]}
       />
     </div>
   );

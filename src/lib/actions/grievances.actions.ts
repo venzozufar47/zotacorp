@@ -13,8 +13,8 @@ import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
  *   2 = kepala tim pelapor (leader di `team_members`)
  *   3 = Owner — bila yang dilaporkan adalah pemimpin, kepala tim pelapor
  *       sendiri yang dilaporkan, atau pelapor tidak punya leader tercatat
- *   4 = pihak tepercaya alternatif — bila menyangkut Owner, atau dugaan
- *       pelecehan/kekerasan (boleh langsung ke sini)
+ *   4 = pihak tepercaya alternatif — bila menyangkut Owner, atau
+ *       pelanggaran berat (boleh langsung ke sini)
  *
  * Kerahasiaan ditegakkan DI SETIAP FUNGSI BACA, bukan cuma di UI: baris
  * `is_anonymous=true` tidak pernah membawa identitas pelapor ke penerima
@@ -79,7 +79,7 @@ async function recipientsFor(tier: number, reporterId: string, reportedAbout: st
 export interface SubmitGrievanceInput {
   isAnonymous: boolean;
   reportedAboutUserId?: string | null;
-  isHarassmentOrViolence: boolean;
+  isSeriousViolation: boolean;
   description: string;
   witnesses?: string | null;
   desiredOutcome?: string | null;
@@ -94,7 +94,7 @@ export async function submitGrievance(
 
   const reportedAbout = input.reportedAboutUserId || null;
   let tier = 2;
-  if (input.isHarassmentOrViolence) {
+  if (input.isSeriousViolation) {
     tier = 4;
   } else if (reportedAbout) {
     const { data: aboutProfile } = await createAdminClient()
@@ -120,7 +120,7 @@ export async function submitGrievance(
       reporter_id: user.id,
       is_anonymous: input.isAnonymous,
       reported_about_user_id: reportedAbout,
-      is_harassment_or_violence: input.isHarassmentOrViolence,
+      is_harassment_or_violence: input.isSeriousViolation,
       description: input.description.trim(),
       witnesses: input.witnesses?.trim() || null,
       desired_outcome: input.desiredOutcome?.trim() || null,
@@ -148,7 +148,7 @@ export interface GrievanceView {
   reporterName: string | null;
   isAnonymous: boolean;
   reportedAboutName: string | null;
-  isHarassmentOrViolence: boolean;
+  isSeriousViolation: boolean;
   description: string;
   witnesses: string | null;
   desiredOutcome: string | null;
@@ -173,7 +173,7 @@ function scrubAndHydrate(
       reporterName: revealReporter ? names.get(r.reporter_id) ?? null : null,
       isAnonymous: r.is_anonymous,
       reportedAboutName: r.reported_about_user_id ? names.get(r.reported_about_user_id) ?? null : null,
-      isHarassmentOrViolence: r.is_harassment_or_violence,
+      isSeriousViolation: r.is_harassment_or_violence,
       description: r.description,
       witnesses: r.witnesses,
       desiredOutcome: r.desired_outcome,

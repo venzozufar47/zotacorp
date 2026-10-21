@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ShieldQuestion } from "lucide-react";
+import { Info, ShieldQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ import {
   removeTrustedContact,
   type GrievanceView,
 } from "@/lib/actions/grievances.actions";
+import { SERIOUS_VIOLATIONS } from "@/lib/grievances/serious-violations";
 
 const STATUS_LABEL: Record<string, string> = {
   submitted: "Baru masuk",
@@ -25,6 +26,19 @@ const STATUS_LABEL: Record<string, string> = {
   investigating: "Diproses",
   decided: "Selesai",
 };
+
+function SeriousViolationsList() {
+  return (
+    <ul className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+      {SERIOUS_VIOLATIONS.map((v) => (
+        <li key={v.title}>
+          <p className="font-semibold text-foreground">{v.title}</p>
+          <p className="text-muted-foreground">{v.examples}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function dateTimeLabel(iso: string): string {
   return new Date(iso).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -64,11 +78,18 @@ function InboxRow({ r, onChanged }: { r: GrievanceView; onChanged: () => void })
     <div
       className={
         "rounded-xl border p-3 text-sm space-y-1.5 " +
-        (r.isHarassmentOrViolence ? "border-destructive/50 bg-destructive/5" : "border-border bg-card")
+        (r.isSeriousViolation ? "border-destructive/50 bg-destructive/5" : "border-border bg-card")
       }
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold">Tingkat {r.tier}</span>
+        <span className="font-semibold">
+          Tingkat {r.tier}
+          {r.isSeriousViolation && (
+            <span className="ml-2 rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-semibold text-destructive">
+              Pelanggaran berat
+            </span>
+          )}
+        </span>
         <span className="text-xs text-muted-foreground">{STATUS_LABEL[r.status]}</span>
       </div>
       <p className="text-xs text-muted-foreground">
@@ -216,7 +237,8 @@ export function GrievanceClient({
   const router = useRouter();
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [reportedAbout, setReportedAbout] = useState("");
-  const [isHarassment, setIsHarassment] = useState(false);
+  const [isSerious, setIsSerious] = useState(false);
+  const [showViolations, setShowViolations] = useState(false);
   const [description, setDescription] = useState("");
   const [witnesses, setWitnesses] = useState("");
   const [desiredOutcome, setDesiredOutcome] = useState("");
@@ -232,7 +254,7 @@ export function GrievanceClient({
       const res = await submitGrievance({
         isAnonymous,
         reportedAboutUserId: reportedAbout || null,
-        isHarassmentOrViolence: isHarassment,
+        isSeriousViolation: isSerious,
         description,
         witnesses: witnesses || null,
         desiredOutcome: desiredOutcome || null,
@@ -243,7 +265,8 @@ export function GrievanceClient({
       }
       toast.success("Laporan terkirim");
       setReportedAbout("");
-      setIsHarassment(false);
+      setIsSerious(false);
+      setShowViolations(false);
       setDescription("");
       setWitnesses("");
       setDesiredOutcome("");
@@ -297,14 +320,18 @@ export function GrievanceClient({
             </Select>
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={isHarassment}
-              onChange={(e) => setIsHarassment(e.target.checked)}
-            />
-            Dugaan pelecehan atau kekerasan
+            <input type="checkbox" checked={isSerious} onChange={(e) => setIsSerious(e.target.checked)} />
+            Pelanggaran berat
           </label>
-          {isHarassment && (
+          <button
+            type="button"
+            onClick={() => setShowViolations((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            <Info size={13} /> {showViolations ? "Sembunyikan" : "Apa saja yang termasuk pelanggaran berat?"}
+          </button>
+          {showViolations && <SeriousViolationsList />}
+          {isSerious && (
             <p className="rounded-lg bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
               Langsung ke tingkat 4 (pihak tepercaya alternatif / Owner).
             </p>
@@ -339,6 +366,38 @@ export function GrievanceClient({
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** Pengaduan untuk beranda admin (superadmin): antrean masuk + pihak tepercaya, tanpa halaman terpisah. */
+export function GrievanceAdminSection({
+  inbox,
+  employees,
+  trustedContacts,
+}: {
+  inbox: GrievanceView[];
+  employees: { id: string; name: string }[];
+  trustedContacts: { id: string; name: string }[];
+}) {
+  const router = useRouter();
+  return (
+    <div className="space-y-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldQuestion size={16} /> Pengaduan masuk ({inbox.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {inbox.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Tidak ada pengaduan masuk.</p>
+          ) : (
+            inbox.map((r) => <InboxRow key={r.id} r={r} onChanged={() => router.refresh()} />)
+          )}
+        </CardContent>
+      </Card>
+      <TrustedContactsAdmin contacts={trustedContacts} employees={employees} />
     </div>
   );
 }

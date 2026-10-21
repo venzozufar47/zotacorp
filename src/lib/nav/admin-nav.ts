@@ -23,7 +23,6 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
-  ShieldQuestion,
   Smartphone,
   Sparkles,
   Target,
@@ -173,12 +172,6 @@ export function buildAdminNav({
           icon: Inbox,
           label: "Daftar Tertahan",
           color: "bg-tertiary",
-        },
-        {
-          href: "/pengaduan",
-          icon: ShieldQuestion,
-          label: "Pengaduan",
-          color: "bg-destructive",
         },
         {
           href: "/admin/survei",
