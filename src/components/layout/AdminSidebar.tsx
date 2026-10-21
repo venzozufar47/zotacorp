@@ -97,9 +97,10 @@ export function AdminSidebar({
     [groups, pathname]
   );
 
-  // Expansion is derived from the active route, so the section you're in
-  // is always open. A manual toggle overrides that for the session.
-  const [manual, setManual] = useState<Record<string, boolean>>({});
+  // Akordeon: hanya SATU grup terbuka. Bawaannya grup yang sedang aktif (mengikuti halaman); klik induk
+  // mengganti grup yang terbuka. Pilihan manual hanya berlaku di halaman tempat ia dibuat — pindah halaman
+  // kembali ke grup halaman itu, jadi grup lain menutup otomatis.
+  const [picked, setPicked] = useState<{ path: string; href: string | null } | null>(null);
 
   const displayName =
     profile?.full_name?.trim() || profile?.email?.split("@")[0] || "Admin";
@@ -152,7 +153,8 @@ export function AdminSidebar({
               // Induk (punya sub-menu) hanya penanda grup: tidak pernah aktif sendiri; yang menyala sub-menunya.
               const isGroup = !!children && children.length > 0;
               const active = !isGroup && href === activeHref;
-              const open = manual[href] ?? isBranchActive(item, activeHref);
+              const open =
+                picked && picked.path === pathname ? picked.href === href : isBranchActive(item, activeHref);
               const inBranch = isGroup && isBranchActive(item, activeHref);
 
               const rowContent = (
@@ -212,7 +214,7 @@ export function AdminSidebar({
                         aria-expanded={open}
                         onClick={() => {
                           // Tertutup → buka dan langsung ke sub-menu pertama; terbuka → cukup tutup.
-                          setManual((m) => ({ ...m, [href]: !open }));
+                          setPicked({ path: pathname, href: open ? null : href });
                           if (!open) router.push(children[0].href);
                         }}
                         className={cn(rowClass, "text-left")}

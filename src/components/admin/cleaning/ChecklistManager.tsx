@@ -17,6 +17,7 @@ import {
   ImagePlus,
   Loader2,
   Copy,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,22 +41,68 @@ import {
   addItemPhoto,
   updateItemPhoto,
   deleteItemPhoto,
+  type CleaningAssignmentRow,
   type CleaningChecklist,
   type CleaningItem,
   type ItemPhoto,
 } from "@/lib/actions/cleaning.actions";
 
+const DAY_SHORT = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+
+/** Bitmask hari (bit 0 = Minggu) → "Setiap hari" / "Sen–Sab" / "Sen, Rab, Jum". */
+function daysLabel(mask: number): string {
+  const on = DAY_SHORT.map((_, i) => (mask & (1 << i)) !== 0);
+  if (on.every(Boolean)) return "Setiap hari";
+  const idx = on.flatMap((v, i) => (v ? [i] : []));
+  if (idx.length === 0) return "—";
+  const contiguous = idx.every((d, k) => k === 0 || d === idx[k - 1] + 1);
+  if (contiguous && idx.length > 2) return `${DAY_SHORT[idx[0]]}–${DAY_SHORT[idx[idx.length - 1]]}`;
+  return idx.map((d) => DAY_SHORT[d]).join(", ");
+}
+
+function windowLabel(a: CleaningAssignmentRow): string {
+  if (a.window_mode === "before" && a.window_end) return `sebelum ${a.window_end}`;
+  if (a.window_mode === "after" && a.window_start) return `setelah ${a.window_start}`;
+  if (a.window_mode === "between" && a.window_start && a.window_end) return `${a.window_start}–${a.window_end}`;
+  return "kapan saja";
+}
+
+/** Kelompok tampilan checklist: dari nama ("… Semarang", "… Pare", "Yeobo Solo — …"). */
+function groupOf(name: string): string {
+  const cake = name.match(/\b(Semarang|Pare)\b/i);
+  if (cake) return `Haengbocake ${cake[1][0].toUpperCase()}${cake[1].slice(1).toLowerCase()}`;
+  const yeobo = name.match(/^Yeobo\s+(\S+)/i);
+  if (yeobo) return `Yeobo ${yeobo[1]}`;
+  return "Lainnya";
+}
+
 export function ChecklistManager({
   initial,
   employees = [],
+  assignments = [],
 }: {
   initial: CleaningChecklist[];
   employees?: CleaningEmployee[];
+  /** Penugasan per orang — untuk ringkasan "siapa, kapan" di tiap checklist. */
+  assignments?: CleaningAssignmentRow[];
 }) {
   const { run, pending, startTransition, router } = useRunAction();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [query, setQuery] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
+
+  const q = query.trim().toLowerCase();
+  const visible = initial.filter((cl) => {
+    if (!q) return true;
+    const people = assignments.filter((a) => a.checklist_id === cl.id).map((a) => a.user_name);
+    return [cl.name, cl.owner_name ?? "", ...people].some((t) => t.toLowerCase().includes(q));
+  });
+  const groups = [...new Set(visible.map((cl) => groupOf(cl.name)))].sort((a, b) =>
+    a === "Lainnya" ? 1 : b === "Lainnya" ? -1 : a.localeCompare(b)
+  );
 
   function onCreate() {
     const n = name.trim();
@@ -73,13 +120,31 @@ export function ChecklistManager({
       setName("");
       setDesc("");
       setOpen((o) => ({ ...o, [res.id]: true }));
+      setShowCreate(false);
       router.refresh();
     });
   }
 
   return (
     <div className="space-y-4">
-      {/* New checklist */}
+      {/* Cari + checklist baru */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari checklist, pemilik, atau orang yang ditugaskan"
+            className="pl-8"
+          />
+        </div>
+        <Button type="button" variant={showCreate ? "outline" : "default"} onClick={() => setShowCreate((v) => !v)} className="gap-1.5">
+          <Plus size={14} />
+          {showCreate ? "Batal" : "Checklist baru"}
+        </Button>
+      </div>
+
+      {showCreate && (
       <section className="rounded-2xl border border-border bg-card p-4 space-y-2">
         <h2 className="font-display text-base font-semibold">Buat checklist baru</h2>
         <div className="flex flex-wrap items-end gap-2">
@@ -101,24 +166,49 @@ export function ChecklistManager({
           </Button>
         </div>
       </section>
+      )}
 
       {initial.length === 0 && (
         <p className="text-sm text-muted-foreground italic px-1">
-          Belum ada checklist. Buat satu di atas.
+          Belum ada checklist. Tekan &ldquo;Checklist baru&rdquo; di atas.
         </p>
       )}
+      {initial.length > 0 && visible.length === 0 && (
+        <p className="text-sm text-muted-foreground italic px-1">Tidak ada checklist yang cocok dengan &ldquo;{query}&rdquo;.</p>
+      )}
 
-      {initial.map((cl) => (
-        <ChecklistCard
-          key={cl.id}
-          checklist={cl}
-          employees={employees}
-          open={!!open[cl.id]}
-          onToggleOpen={() => setOpen((o) => ({ ...o, [cl.id]: !o[cl.id] }))}
-          pending={pending}
-          run={run}
-        />
-      ))}
+      {groups.map((g) => {
+        const list = visible.filter((cl) => groupOf(cl.name) === g);
+        // Saat mencari, semua kelompok terbuka supaya hasilnya langsung terlihat.
+        const collapsed = !q && !!closedGroups[g];
+        return (
+          <div key={g} className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setClosedGroups((c) => ({ ...c, [g]: !c[g] }))}
+              className="flex w-full items-center gap-1.5 px-1 pt-1 text-left font-display text-[12px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+              {g}
+              <span className="font-normal normal-case tracking-normal">· {list.length} checklist</span>
+            </button>
+            {!collapsed &&
+              list.map((cl) => (
+                <ChecklistCard
+                  key={cl.id}
+                  checklist={cl}
+                  employees={employees}
+                  assigned={assignments.filter((a) => a.checklist_id === cl.id && a.is_active)}
+                  open={!!open[cl.id]}
+                  onToggleOpen={() => setOpen((o) => ({ ...o, [cl.id]: !o[cl.id] }))}
+                  pending={pending}
+                  run={run}
+                />
+              ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -126,6 +216,7 @@ export function ChecklistManager({
 function ChecklistCard({
   checklist: cl,
   employees,
+  assigned,
   open,
   onToggleOpen,
   pending,
@@ -133,6 +224,7 @@ function ChecklistCard({
 }: {
   checklist: CleaningChecklist;
   employees: CleaningEmployee[];
+  assigned: CleaningAssignmentRow[];
   open: boolean;
   onToggleOpen: () => void;
   pending: boolean;
@@ -144,6 +236,21 @@ function ChecklistCard({
   const [itemTitle, setItemTitle] = useState("");
   const [itemNote, setItemNote] = useState("");
   const [itemPhoto, setItemPhoto] = useState(true);
+
+  // Ringkasan satu baris: siapa yang mengerjakan & kapan, pemilik SOP, dan gate AI token.
+  const gateMin = cl.items.map((i) => i.ai_gate_min).find((v) => v != null) ?? null;
+  const summary = [
+    assigned.length > 0
+      ? `${assigned
+          .slice(0, 2)
+          .map((a) => `${a.user_name} · ${daysLabel(a.weekdays)}, ${windowLabel(a)}`)
+          .join(" | ")}${assigned.length > 2 ? ` +${assigned.length - 2}` : ""}`
+      : null,
+    cl.owner_name ? `Pemilik ${cl.owner_name}` : null,
+    gateMin != null ? `AI token ≥ ${gateMin} kWh` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerName, setHeaderName] = useState(cl.name);
@@ -242,23 +349,19 @@ function ChecklistCard({
             onClick={onToggleOpen}
             className="flex items-center gap-2 flex-1 min-w-0 text-left"
           >
-            {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            <span className="font-display font-semibold text-sm truncate">
-              {cl.name}
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              {cl.items.length} item
-            </span>
-            {!cl.is_active && (
-              <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
-                nonaktif
+            {open ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="font-display font-semibold text-sm truncate">{cl.name}</span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">{cl.items.length} item</span>
+                {!cl.is_active && (
+                  <span className="shrink-0 text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
+                    nonaktif
+                  </span>
+                )}
               </span>
-            )}
-            {cl.owner_name && (
-              <span className="hidden sm:inline text-[11px] text-muted-foreground">
-                · pemilik: {cl.owner_name}
-              </span>
-            )}
+              {summary && <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{summary}</span>}
+            </span>
           </button>
           <button
             type="button"

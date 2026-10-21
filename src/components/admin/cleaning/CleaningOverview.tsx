@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   BookOpen,
-  ChevronRight,
   Images,
   Loader2,
   MessageSquarePlus,
@@ -325,6 +324,7 @@ export function CleaningOverview({
     report.branches[0]?.key ?? null
   );
   const [setupOpen, setSetupOpen] = useState(!!initialSetupOpen);
+  const [setupTab, setSetupTab] = useState<"checklist" | "duty" | "assignment">("checklist");
   const [guideOpen, setGuideOpen] = useState(false);
   const [gallery, setGallery] = useState<GalleryFilter | null>(
     initialGalleryOpen ? {} : null
@@ -595,34 +595,56 @@ export function CleaningOverview({
       {setupOpen && (
         <Drawer title="Pengaturan SOP" onClose={() => setSetupOpen(false)}>
           <SopGuideReminder onOpenGuide={() => setGuideOpen(true)} />
-          <p className="mb-4 text-[11.5px] leading-relaxed text-muted-foreground">
-            Sekali disusun, jarang dibuka lagi — itu sebabnya ia tidak lagi jadi
-            tab sejajar dengan pemantauan harian. Checklist menentukan titik &
-            slot fotonya, duty cabang menentukan siapa saja yang masuk pool, dan
-            assignment untuk penugasan per orang.
-          </p>
-          <div className="space-y-8">
-            <SetupSection title="Checklist & titik">
-              <ChecklistManager initial={checklists} employees={employees} />
-            </SetupSection>
-            <SetupSection title="Duty cabang">
-              <BranchDutyManager
-                initial={branchDuties}
-                checklists={checklists}
-                locations={locations}
-                employees={employees}
-                holidays={holidays}
-              />
-            </SetupSection>
-            <SetupSection title="Assignment per orang">
-              <AssignmentManager
-                initial={assignments}
-                checklists={checklists}
-                employees={employees}
-                holidays={holidays}
-              />
-            </SetupSection>
-          </div>
+          {(() => {
+            const tabs = [
+              { key: "checklist", label: "Checklist", count: checklists.length, hint: "Isi SOP: titik yang harus dikerjakan beserta foto yang diminta. Dikelompokkan per cabang." },
+              { key: "duty", label: "Duty cabang", count: branchDuties.length, hint: "Giliran bertugas per cabang: siapa saja yang masuk pool dan bagaimana rotasinya." },
+              { key: "assignment", label: "Penugasan", count: assignments.length, hint: "Menugaskan checklist ke orang tertentu: hari, jam batas, dan wajib selesai sebelum pulang." },
+            ] as const;
+            const cur = tabs.find((t) => t.key === setupTab) ?? tabs[0];
+            return (
+              <>
+                <div role="tablist" aria-label="Bagian Pengaturan SOP" className="mb-2 inline-flex rounded-xl border border-border bg-muted/40 p-1">
+                  {tabs.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={setupTab === t.key}
+                      onClick={() => setSetupTab(t.key)}
+                      className={
+                        "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition " +
+                        (setupTab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
+                      }
+                    >
+                      {t.label} <span className="font-normal text-muted-foreground">{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mb-4 text-[12px] text-muted-foreground">{cur.hint}</p>
+                {setupTab === "checklist" && (
+                  <ChecklistManager initial={checklists} employees={employees} assignments={assignments} />
+                )}
+                {setupTab === "duty" && (
+                  <BranchDutyManager
+                    initial={branchDuties}
+                    checklists={checklists}
+                    locations={locations}
+                    employees={employees}
+                    holidays={holidays}
+                  />
+                )}
+                {setupTab === "assignment" && (
+                  <AssignmentManager
+                    initial={assignments}
+                    checklists={checklists}
+                    employees={employees}
+                    holidays={holidays}
+                  />
+                )}
+              </>
+            );
+          })()}
         </Drawer>
       )}
 
@@ -847,24 +869,6 @@ function Kpi({
       </div>
       <div className="text-[10px] text-muted-foreground">{hint}</div>
     </div>
-  );
-}
-
-function SetupSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section>
-      <h3 className="mb-2 flex items-center gap-1.5 font-display text-[13px] font-bold">
-        <ChevronRight size={13} className="text-muted-foreground" />
-        {title}
-      </h3>
-      {children}
-    </section>
   );
 }
 

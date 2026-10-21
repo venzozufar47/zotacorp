@@ -55,7 +55,8 @@ export function AdminMobileNav({
   const pathname = usePathname();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [manual, setManual] = useState<Record<string, boolean>>({});
+  // Akordeon: satu grup terbuka; pilihan manual hanya berlaku di halaman tempat ia dibuat.
+  const [picked, setPicked] = useState<{ path: string; href: string | null } | null>(null);
 
   const groups = useMemo(
     () =>
@@ -266,7 +267,9 @@ export function AdminMobileNav({
                     const isGroup = !!children && children.length > 0;
                     const active = !isGroup && href === activeHref;
                     const expanded =
-                      manual[href] ?? isBranchActive(item, activeHref);
+                      picked && picked.path === pathname
+                        ? picked.href === href
+                        : isBranchActive(item, activeHref);
                     const inBranch = isGroup && isBranchActive(item, activeHref);
 
                     const rowClass = cn(
@@ -317,7 +320,7 @@ export function AdminMobileNav({
                               role="menuitem"
                               aria-expanded={expanded}
                               onClick={() =>
-                                setManual((m) => ({ ...m, [href]: !expanded }))
+                                setPicked({ path: pathname, href: expanded ? null : href })
                               }
                               className={cn(rowClass, "text-left")}
                             >
