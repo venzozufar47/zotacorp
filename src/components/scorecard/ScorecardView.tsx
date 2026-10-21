@@ -60,11 +60,6 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
         })}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Angka bulan berjalan (tanggal 1 sampai hari ini), dihitung otomatis dari POS, service level (kesiapan produk),
-        dan log keluhan. Angka kecil di bawah kartu = bulan lalu penuh, sebagai pembanding. Dibahas tiap rapat mingguan.
-      </p>
-
       <details className="group rounded-2xl border border-border bg-card px-4 py-3 text-sm">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-[13px] font-bold">
           Panduan warna
