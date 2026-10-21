@@ -133,7 +133,7 @@ export default async function AdminHomeRoute() {
         revenueViewerCandidates={revenueViewerCandidates}
         cleaningReviewQuickAccess={cleaningReviewQuickAccess}
       />
-      <div className="mt-5">
+      <div id="pengaduan" className="mt-5 scroll-mt-4">
         <GrievanceAdminSection
           inbox={grievanceInbox}
           employees={grievanceEmployees}
