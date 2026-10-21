@@ -190,6 +190,21 @@ export async function canFileComplaint(): Promise<boolean> {
 }
 
 /** Jumlah keluhan N hari terakhir untuk satu cabang — input Scorecard (PRD-2). */
+/** Jumlah keluhan pada rentang tanggal WIB [startDate, endDate] (inklusif), untuk perbandingan per bulan. */
+export async function getComplaintCountBetween(
+  branch: ComplaintBranch,
+  startDate: string,
+  endDate: string
+): Promise<number> {
+  const { count } = await db()
+    .from("customer_complaints")
+    .select("id", { count: "exact", head: true })
+    .eq("branch", branch)
+    .gte("occurred_at", `${startDate}T00:00:00+07:00`)
+    .lt("occurred_at", `${new Date(new Date(`${endDate}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10)}T00:00:00+07:00`);
+  return count ?? 0;
+}
+
 export async function getComplaintCount(branch: ComplaintBranch, days: number): Promise<number> {
   const since = jakartaDateMinusDays(jakartaDateString(new Date()), days);
   const { count } = await db()
