@@ -41,6 +41,7 @@ import {
   addItemPhoto,
   updateItemPhoto,
   deleteItemPhoto,
+  type BranchDutyRow,
   type CleaningAssignmentRow,
   type CleaningChecklist,
   type CleaningItem,
@@ -60,7 +61,7 @@ function daysLabel(mask: number): string {
   return idx.map((d) => DAY_SHORT[d]).join(", ");
 }
 
-function windowLabel(a: CleaningAssignmentRow): string {
+function windowLabel(a: { window_mode: string; window_start: string | null; window_end: string | null }): string {
   if (a.window_mode === "before" && a.window_end) return `sebelum ${a.window_end}`;
   if (a.window_mode === "after" && a.window_start) return `setelah ${a.window_start}`;
   if (a.window_mode === "between" && a.window_start && a.window_end) return `${a.window_start}–${a.window_end}`;
@@ -80,7 +81,9 @@ export function ChecklistManager({
   initial,
   employees = [],
   assignments = [],
+  branchDuties = [],
   onEditSchedule,
+  onEditDuty,
 }: {
   initial: CleaningChecklist[];
   employees?: CleaningEmployee[];
@@ -88,6 +91,10 @@ export function ChecklistManager({
   assignments?: CleaningAssignmentRow[];
   /** Buka tab Penugasan, disaring ke checklist ini — tempat hari & jam diubah. */
   onEditSchedule?: (checklistId: string) => void;
+  /** Duty cabang — checklist yang ditugaskan lewat giliran cabang (bukan per orang). */
+  branchDuties?: BranchDutyRow[];
+  /** Buka tab Duty cabang. */
+  onEditDuty?: () => void;
 }) {
   const { run, pending, startTransition, router } = useRunAction();
   const [name, setName] = useState("");
@@ -204,6 +211,8 @@ export function ChecklistManager({
                   employees={employees}
                   assigned={assignments.filter((a) => a.checklist_id === cl.id && a.is_active)}
                   onEditSchedule={onEditSchedule}
+                  duty={branchDuties.find((d) => d.is_active && d.slots.some((s) => s.checklist_id === cl.id)) ?? null}
+                  onEditDuty={onEditDuty}
                   open={!!open[cl.id]}
                   onToggleOpen={() => setOpen((o) => ({ ...o, [cl.id]: !o[cl.id] }))}
                   pending={pending}
@@ -221,7 +230,9 @@ function ChecklistCard({
   checklist: cl,
   employees,
   assigned,
+  duty,
   onEditSchedule,
+  onEditDuty,
   open,
   onToggleOpen,
   pending,
@@ -230,7 +241,9 @@ function ChecklistCard({
   checklist: CleaningChecklist;
   employees: CleaningEmployee[];
   assigned: CleaningAssignmentRow[];
+  duty: BranchDutyRow | null;
   onEditSchedule?: (checklistId: string) => void;
+  onEditDuty?: () => void;
   open: boolean;
   onToggleOpen: () => void;
   pending: boolean;
@@ -251,6 +264,9 @@ function ChecklistCard({
           .slice(0, 2)
           .map((a) => `${a.user_name} · ${daysLabel(a.weekdays)}, ${windowLabel(a)}`)
           .join(" | ")}${assigned.length > 2 ? ` +${assigned.length - 2}` : ""}`
+      : null,
+    duty
+      ? `Duty ${duty.location_name} · ${daysLabel(duty.weekdays)}, ${windowLabel(duty)} · giliran ${duty.pool.length} orang`
       : null,
     cl.owner_name ? `Pemilik ${cl.owner_name}` : null,
     gateMin != null ? `AI token ≥ ${gateMin} kWh` : null,
@@ -369,14 +385,21 @@ function ChecklistCard({
               {summary && <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{summary}</span>}
             </span>
           </button>
-          {onEditSchedule && (
+          {(onEditSchedule || onEditDuty) && (
             <button
               type="button"
-              title="Hari & jam dikerjakan ada di tab Penugasan"
-              onClick={() => onEditSchedule(cl.id)}
+              title={
+                assigned.length === 0 && duty
+                  ? "Hari & jam diatur di tab Duty cabang"
+                  : "Hari & jam dikerjakan ada di tab Penugasan"
+              }
+              onClick={() => {
+                if (assigned.length === 0 && duty) onEditDuty?.();
+                else onEditSchedule?.(cl.id);
+              }}
               className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11.5px] font-semibold text-foreground/80 hover:bg-muted hover:text-foreground"
             >
-              {assigned.length > 0 ? "Ubah jadwal" : "Atur penugasan"}
+              {assigned.length > 0 || duty ? "Ubah jadwal" : "Atur penugasan"}
             </button>
           )}
           <button

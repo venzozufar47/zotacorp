@@ -632,6 +632,11 @@ export function CleaningOverview({
                     initial={checklists}
                     employees={employees}
                     assignments={assignments}
+                    branchDuties={branchDuties}
+                    onEditDuty={() => {
+                      setAssignFocus(null);
+                      setSetupTab("duty");
+                    }}
                     onEditSchedule={(id) => {
                       setAssignFocus(id);
                       setSetupTab("assignment");
