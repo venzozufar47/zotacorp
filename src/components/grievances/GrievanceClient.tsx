@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   submitGrievance,
+  type GrievanceRecipient,
   confirmGrievance,
   decideGrievance,
   addTrustedContact,
@@ -27,6 +27,16 @@ const STATUS_LABEL: Record<string, string> = {
   investigating: "Diproses",
   decided: "Selesai",
 };
+
+const RECIPIENT_OPTIONS: { value: GrievanceRecipient; label: string; hint: string }[] = [
+  { value: "kepala_tim", label: "Kepala tim", hint: "Masalah di tim atau pekerjaan sehari-hari." },
+  {
+    value: "pihak_tepercaya",
+    label: "Pihak tepercaya alternatif",
+    hint: "Bila kamu tidak nyaman ke kepala tim atau Owner. Jatuh ke Owner kalau belum ada.",
+  },
+  { value: "owner", label: "Owner", hint: "Langsung ke Owner." },
+];
 
 function SeriousViolationsList() {
   return (
@@ -238,6 +248,7 @@ export function GrievanceClient({
   const router = useRouter();
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [reportedAbout, setReportedAbout] = useState("");
+  const [recipient, setRecipient] = useState<GrievanceRecipient>("kepala_tim");
   const [isSerious, setIsSerious] = useState(false);
   const [showViolations, setShowViolations] = useState(false);
   const [description, setDescription] = useState("");
@@ -253,6 +264,7 @@ export function GrievanceClient({
     setSaving(true);
     try {
       const res = await submitGrievance({
+        recipient,
         isAnonymous,
         reportedAboutUserId: reportedAbout || null,
         isSeriousViolation: isSerious,
@@ -301,6 +313,29 @@ export function GrievanceClient({
           <CardTitle>Buat laporan</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div>
+            <Label>Kirim ke</Label>
+            <div role="radiogroup" aria-label="Kirim ke" className="mt-1 grid gap-2">
+              {RECIPIENT_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={recipient === o.value}
+                  onClick={() => setRecipient(o.value)}
+                  className={
+                    "rounded-xl border-2 px-3 py-2 text-left text-sm transition " +
+                    (recipient === o.value
+                      ? "border-foreground bg-primary/10"
+                      : "border-border bg-card hover:border-foreground/50")
+                  }
+                >
+                  <span className="block font-semibold">{o.label}</span>
+                  <span className="block text-xs text-muted-foreground">{o.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} />
             Kirim tanpa nama
@@ -332,11 +367,6 @@ export function GrievanceClient({
             <Info size={13} /> {showViolations ? "Sembunyikan" : "Apa saja yang termasuk pelanggaran berat?"}
           </button>
           {showViolations && <SeriousViolationsList />}
-          {isSerious && (
-            <p className="rounded-lg bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
-              Langsung ke tingkat 4 (pihak tepercaya alternatif / Owner).
-            </p>
-          )}
           <div>
             <Label htmlFor="desc">Apa yang terjadi</Label>
             <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -399,29 +429,6 @@ export function GrievanceAdminSection({
         </CardContent>
       </Card>
       <TrustedContactsAdmin contacts={trustedContacts} employees={employees} />
-    </div>
-  );
-}
-
-/** Pengaduan untuk tab Tim (kepala tim): antrean laporan yang perlu ditanggapi + jalan ke formulir laporan sendiri. */
-export function GrievanceInboxSection({ inbox }: { inbox: GrievanceView[] }) {
-  const router = useRouter();
-  return (
-    <div className="space-y-3">
-      {inbox.length === 0 ? (
-        <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-          Tidak ada pengaduan masuk untukmu.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {inbox.map((r) => (
-            <InboxRow key={r.id} r={r} onChanged={() => router.refresh()} />
-          ))}
-        </div>
-      )}
-      <Link href="/pengaduan" className="inline-block text-xs font-medium text-primary hover:underline">
-        Buat pengaduan sendiri →
-      </Link>
     </div>
   );
 }

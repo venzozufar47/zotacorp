@@ -19,8 +19,13 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { TeamTasksView } from "@/components/team/TeamTasksView";
 import { TeamCoachingNotesList } from "@/components/team/TeamCoachingNotesList";
 import { WriteCoachingNoteCard } from "@/components/team/WriteCoachingNoteCard";
-import { listGrievanceInbox } from "@/lib/actions/grievances.actions";
-import { GrievanceInboxSection } from "@/components/grievances/GrievanceClient";
+import {
+  listEmployeesForGrievance,
+  listGrievanceInbox,
+  listMyFiledGrievances,
+} from "@/lib/actions/grievances.actions";
+import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home";
+import { GrievanceClient } from "@/components/grievances/GrievanceClient";
 import { TeamHub, TeamSectionHeader, type TeamSection } from "@/components/team/TeamHub";
 
 const SECTIONS: readonly TeamSection[] = ["izin", "briefing", "catatan", "tugas", "pengaduan"];
@@ -37,12 +42,34 @@ export default async function TeamPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (!(await isTeamLeader())) redirect("/dashboard");
+  const leader = await isTeamLeader();
+  if (!leader && !FEATURES.pengaduan) redirect("/dashboard");
+
+  // Karyawan biasa: tab Tim hanya berisi Pengaduan (laporan ke kepala tim, pihak tepercaya, atau Owner).
+  if (!leader) {
+    const [myReports, inbox, employees] = await Promise.all([
+      listMyFiledGrievances(),
+      listGrievanceInbox(),
+      listEmployeesForGrievance(),
+    ]);
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Pengaduan" subtitle="Identitasmu dijaga bila kamu pilih kirim tanpa nama. Tidak ada pembalasan bagi pelapor beritikad baik." />
+        <GrievanceClient
+          myReports={myReports}
+          inbox={inbox}
+          employees={employees}
+          isAdmin={false}
+          trustedContacts={[]}
+        />
+      </div>
+    );
+  }
 
   const { bagian } = await searchParams;
   const section = SECTIONS.find((k) => k === bagian) ?? null;
 
-  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches, grievanceInbox] = await Promise.all([
+  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches, grievanceInbox, myReports, grievanceEmployees] = await Promise.all([
     getMyTeamTasks(),
     getMyTeamCoachingNotes(),
     getLeaveApprovalQueue(),
@@ -52,6 +79,8 @@ export default async function TeamPage({
     listRecentHuddles(),
     getMyBriefingBranches(),
     listGrievanceInbox().catch(() => []),
+    listMyFiledGrievances().catch(() => []),
+    listEmployeesForGrievance().catch(() => []),
   ]);
   const todayYmd = jakartaDateString(new Date(serverNowMs()));
 
@@ -111,7 +140,15 @@ export default async function TeamPage({
             </>
           )}
           {section === "tugas" && <TeamTasksView members={members} />}
-          {section === "pengaduan" && <GrievanceInboxSection inbox={grievanceInbox} />}
+          {section === "pengaduan" && (
+            <GrievanceClient
+              myReports={myReports}
+              inbox={grievanceInbox}
+              employees={grievanceEmployees}
+              isAdmin={false}
+              trustedContacts={[]}
+            />
+          )}
         </>
       )}
     </div>

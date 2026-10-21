@@ -531,7 +531,7 @@ export default async function DashboardPage() {
 
       {FEATURES.pengaduan && (
       <Link
-        href="/pengaduan"
+        href="/tim?bagian=pengaduan"
         className="flex items-center gap-3 rounded-2xl border-2 border-foreground bg-card px-4 py-3 shadow-hard-sm hover:bg-muted transition"
       >
         <span className="grid place-items-center size-10 rounded-full border-2 border-foreground bg-accent shrink-0">

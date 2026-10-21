@@ -12,6 +12,7 @@ import { isSimPic } from "@/lib/sim-cards/access";
 import { isSopOwner } from "@/lib/cleaning/owner-access";
 import { isProcurementStaff } from "@/lib/procurement/access";
 import { hasPending360Evaluation } from "@/lib/evaluation-360/access";
+import { EMPLOYEE_HOME_FEATURES as FEATURES } from "@/lib/features/employee-home";
 import { isTeamLeader } from "@/lib/tasks/team-access";
 
 export default async function EmployeeLayout({
@@ -52,7 +53,7 @@ export default async function EmployeeLayout({
     hasPending360Evaluation(),
     isCakeFinanceAdmin(),
     isMetaAdsViewer(),
-    isTeamLeader(),
+    isTeamLeader().then((leader) => leader || FEATURES.pengaduan),
     isSopOwner(),
   ]);
   const hasFinance = assignedIds.length > 0;

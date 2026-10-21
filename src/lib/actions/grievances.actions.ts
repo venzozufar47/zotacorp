@@ -40,11 +40,6 @@ async function leadersOf(userId: string): Promise<string[]> {
   return [...new Set(ids)];
 }
 
-async function isLeader(userId: string): Promise<boolean> {
-  const { data } = await db().from("team_members").select("leader_id").eq("leader_id", userId).limit(1);
-  return (data ?? []).length > 0;
-}
-
 async function trustedContactIds(): Promise<string[]> {
   const { data } = await db().from("hr_trusted_contacts").select("user_id");
   return (data ?? []).map((r: { user_id: string }) => r.user_id);
@@ -76,7 +71,12 @@ async function recipientsFor(tier: number, reporterId: string, reportedAbout: st
   return (data ?? []).map((p) => p.id).filter((id) => id !== reportedAbout);
 }
 
+/** Penerima yang dipilih pelapor. */
+export type GrievanceRecipient = "kepala_tim" | "pihak_tepercaya" | "owner";
+
 export interface SubmitGrievanceInput {
+  /** Ke siapa laporan dikirim: kepala tim (tingkat 2), Owner (3), atau pihak tepercaya alternatif (4). */
+  recipient: GrievanceRecipient;
   isAnonymous: boolean;
   reportedAboutUserId?: string | null;
   isSeriousViolation: boolean;
@@ -93,22 +93,19 @@ export async function submitGrievance(
   if (!input.description.trim()) return { ok: false, error: "Ceritakan kejadiannya dulu" };
 
   const reportedAbout = input.reportedAboutUserId || null;
-  let tier = 2;
-  if (input.isSeriousViolation) {
-    tier = 4;
-  } else if (reportedAbout) {
+  // Pelapor yang memilih penerima; tanda "pelanggaran berat" hanya penanda, tidak mengubah tujuan.
+  let tier = input.recipient === "kepala_tim" ? 2 : input.recipient === "owner" ? 3 : 4;
+  if (reportedAbout) {
     const { data: aboutProfile } = await createAdminClient()
       .from("profiles")
       .select("role")
       .eq("id", reportedAbout)
       .maybeSingle();
-    if (aboutProfile?.role === "admin") {
-      tier = 4;
-    } else if (await isLeader(reportedAbout)) {
-      tier = 3;
-    }
+    // Laporan tentang Owner tidak boleh sampai ke Owner sendiri → pihak tepercaya.
+    if (tier === 3 && aboutProfile?.role === "admin") tier = 4;
   }
   if (tier === 2) {
+    // Tanpa kepala tim yang layak (belum punya, atau dialah yang dilaporkan) → Owner.
     const myLeaders = await leadersOf(user.id);
     const eligibleLeaders = myLeaders.filter((id) => id !== reportedAbout);
     if (eligibleLeaders.length === 0) tier = 3;
@@ -133,12 +130,12 @@ export async function submitGrievance(
   const recipients = await recipientsFor(tier, user.id, reportedAbout);
   const title = "Ada pengaduan baru";
   const body = `Tingkat ${tier} — perlu dikonfirmasi dalam 1 hari kerja.`;
-  // Tingkat 2 = kepala tim: antreannya ada di tab Tim.
-  const url = tier === 2 ? "/tim?bagian=pengaduan" : "/pengaduan";
+  // /pengaduan mengarahkan sesuai peran (admin → panel admin, lainnya → tab Tim).
+  const url = "/pengaduan";
   if (recipients.length > 0) {
     await Promise.all(recipients.map((r) => sendPushToUser(r, { title, body, url })));
   } else {
-    await sendPushToAdmins({ title, body, url: "/pengaduan" });
+    await sendPushToAdmins({ title, body, url });
   }
 
   revalidatePath("/pengaduan");
