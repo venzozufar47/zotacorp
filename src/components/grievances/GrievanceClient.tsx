@@ -248,7 +248,7 @@ export function GrievanceClient({
   trustedContacts: { id: string; name: string }[];
   /** Nama pihak tepercaya alternatif yang sudah ditentukan (ditampilkan ke pelapor). */
   trustedNames?: string[];
-  /** Kepala tim pelapor: bila dialah yang dilaporkan, opsi "Kepala tim" tidak ditawarkan. */
+  /** Kepala tim pelapor sendiri: tanpa kepala tim yang layak (belum punya, atau dialah yang dilaporkan), opsi "Kepala tim" disembunyikan. */
   myLeaderIds?: string[];
 }) {
   const router = useRouter();
@@ -262,11 +262,12 @@ export function GrievanceClient({
   const [desiredOutcome, setDesiredOutcome] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const reportedIsMyLeader = !!reportedAbout && myLeaderIds.includes(reportedAbout);
-  const recipientOptions = RECIPIENT_OPTIONS.filter((o) => !(reportedIsMyLeader && o.value === "kepala_tim"));
-  // Menyesuaikan pilihan secara turunan: kalau kepala tim yang dilaporkan, tujuan bergeser ke pihak tepercaya.
+  // Opsi "Kepala tim" hanya ada bila pelapor punya kepala tim yang layak: kepala tim tanpa atasan (atau yang
+  // atasannya sendiri dilaporkan) tidak ditawari opsi ini.
+  const hasEligibleLeader = myLeaderIds.some((id) => id !== reportedAbout);
+  const recipientOptions = RECIPIENT_OPTIONS.filter((o) => hasEligibleLeader || o.value !== "kepala_tim");
   const effectiveRecipient: GrievanceRecipient =
-    reportedIsMyLeader && recipient === "kepala_tim" ? "pihak_tepercaya" : recipient;
+    !hasEligibleLeader && recipient === "kepala_tim" ? "pihak_tepercaya" : recipient;
 
   async function submit() {
     if (!description.trim()) {
