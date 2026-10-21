@@ -24,12 +24,6 @@ import {
   listRevenueDashboardViewers,
   listEligibleForRevenueDashboard,
 } from "@/lib/actions/revenue-dashboard-viewers.actions";
-import {
-  listGrievanceInbox,
-  listEmployeesForGrievance,
-  listTrustedContacts,
-} from "@/lib/actions/grievances.actions";
-import { GrievanceAdminSection } from "@/components/grievances/GrievanceClient";
 import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 
@@ -61,9 +55,6 @@ export default async function AdminHomeRoute() {
     revenueViewers,
     revenueViewerCandidates,
     cleaningReviewQuickAccess,
-    grievanceInbox,
-    grievanceEmployees,
-    trustedContacts,
   ] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
@@ -83,9 +74,6 @@ export default async function AdminHomeRoute() {
     listRevenueDashboardViewers(),
     listEligibleForRevenueDashboard(),
     getCleaningReviewQuickAccess().catch(() => ({ freshUnreviewedCount: 0 })),
-    listGrievanceInbox().catch(() => []),
-    listEmployeesForGrievance().catch(() => []),
-    listTrustedContacts().catch(() => []),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -133,13 +121,6 @@ export default async function AdminHomeRoute() {
         revenueViewerCandidates={revenueViewerCandidates}
         cleaningReviewQuickAccess={cleaningReviewQuickAccess}
       />
-      <div id="pengaduan" className="mt-5 scroll-mt-4">
-        <GrievanceAdminSection
-          inbox={grievanceInbox}
-          employees={grievanceEmployees}
-          trustedContacts={trustedContacts}
-        />
-      </div>
       <div className="mt-5">
         <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />
       </div>

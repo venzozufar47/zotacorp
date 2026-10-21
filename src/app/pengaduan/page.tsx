@@ -15,8 +15,8 @@ export default async function PengaduanPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const role = await getCurrentRole();
-  // Superadmin menangani pengaduan langsung di beranda admin, bukan di halaman terpisah.
-  if (role === "admin") redirect("/admin");
+  // Superadmin memakai halaman pengaduan di panel admin.
+  if (role === "admin") redirect("/admin/pengaduan");
 
   const [myReports, inbox, employees] = await Promise.all([
     listMyFiledGrievances(),

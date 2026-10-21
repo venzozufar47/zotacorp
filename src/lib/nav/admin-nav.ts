@@ -175,8 +175,7 @@ export function buildAdminNav({
           color: "bg-tertiary",
         },
         {
-          // Bukan halaman sendiri: melompat ke bagian Pengaduan di Beranda admin.
-          href: "/admin#pengaduan",
+          href: "/admin/pengaduan",
           icon: ShieldQuestion,
           label: "Pengaduan",
           color: "bg-destructive",
