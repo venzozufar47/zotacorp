@@ -133,13 +133,16 @@ export async function submitGrievance(
   const recipients = await recipientsFor(tier, user.id, reportedAbout);
   const title = "Ada pengaduan baru";
   const body = `Tingkat ${tier} — perlu dikonfirmasi dalam 1 hari kerja.`;
+  // Tingkat 2 = kepala tim: antreannya ada di tab Tim.
+  const url = tier === 2 ? "/tim?bagian=pengaduan" : "/pengaduan";
   if (recipients.length > 0) {
-    await Promise.all(recipients.map((r) => sendPushToUser(r, { title, body, url: "/pengaduan" })));
+    await Promise.all(recipients.map((r) => sendPushToUser(r, { title, body, url })));
   } else {
     await sendPushToAdmins({ title, body, url: "/pengaduan" });
   }
 
   revalidatePath("/pengaduan");
+  revalidatePath("/tim");
   return { ok: true, data: { id: (inserted as { id: string }).id, tier } };
 }
 

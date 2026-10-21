@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, ChevronRight, ClipboardList, MessageSquarePlus, Zap } from "lucide-react";
+import { ArrowLeft, CalendarClock, ChevronRight, ClipboardList, MessageSquarePlus, ShieldQuestion, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type TeamSection = "izin" | "briefing" | "catatan" | "tugas";
+export type TeamSection = "izin" | "briefing" | "catatan" | "tugas" | "pengaduan";
 
 export const TEAM_SECTIONS: Record<
   TeamSection,
@@ -28,12 +28,17 @@ export const TEAM_SECTIONS: Record<
     description: "Pantau checklist tugas anggota, progres, dan foto buktinya.",
     icon: ClipboardList,
   },
+  pengaduan: {
+    title: "Pengaduan",
+    description: "Laporan pengaduan dari anggota timmu yang perlu kamu konfirmasi dan putuskan.",
+    icon: ShieldQuestion,
+  },
 };
 
-const ORDER: TeamSection[] = ["izin", "briefing", "catatan", "tugas"];
+const ORDER: TeamSection[] = ["izin", "briefing", "catatan", "tugas", "pengaduan"];
 
 /**
- * Pilihan awal halaman Tim: empat bagian dalam bentuk kartu besar, masing-masing
+ * Pilihan awal halaman Tim: lima bagian dalam bentuk kartu besar, masing-masing
  * dengan satu angka yang menandakan ada yang perlu perhatian (mis. izin yang
  * menunggu). Memilih satu membuka bagiannya lewat `?bagian=` — alamatnya bisa
  * dibagikan/di-bookmark dan tombol kembali browser berfungsi.

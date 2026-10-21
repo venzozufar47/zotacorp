@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -398,6 +399,29 @@ export function GrievanceAdminSection({
         </CardContent>
       </Card>
       <TrustedContactsAdmin contacts={trustedContacts} employees={employees} />
+    </div>
+  );
+}
+
+/** Pengaduan untuk tab Tim (kepala tim): antrean laporan yang perlu ditanggapi + jalan ke formulir laporan sendiri. */
+export function GrievanceInboxSection({ inbox }: { inbox: GrievanceView[] }) {
+  const router = useRouter();
+  return (
+    <div className="space-y-3">
+      {inbox.length === 0 ? (
+        <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          Tidak ada pengaduan masuk untukmu.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {inbox.map((r) => (
+            <InboxRow key={r.id} r={r} onChanged={() => router.refresh()} />
+          ))}
+        </div>
+      )}
+      <Link href="/pengaduan" className="inline-block text-xs font-medium text-primary hover:underline">
+        Buat pengaduan sendiri →
+      </Link>
     </div>
   );
 }

@@ -19,13 +19,15 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { TeamTasksView } from "@/components/team/TeamTasksView";
 import { TeamCoachingNotesList } from "@/components/team/TeamCoachingNotesList";
 import { WriteCoachingNoteCard } from "@/components/team/WriteCoachingNoteCard";
+import { listGrievanceInbox } from "@/lib/actions/grievances.actions";
+import { GrievanceInboxSection } from "@/components/grievances/GrievanceClient";
 import { TeamHub, TeamSectionHeader, type TeamSection } from "@/components/team/TeamHub";
 
-const SECTIONS: readonly TeamSection[] = ["izin", "briefing", "catatan", "tugas"];
+const SECTIONS: readonly TeamSection[] = ["izin", "briefing", "catatan", "tugas", "pengaduan"];
 
 /**
- * Team leader — pilihan awal empat bagian (Perizinan, Briefing kilat, Catatan
- * pembinaan, Penugasan), lalu isi bagian yang dipilih lewat `?bagian=`. Karyawan yang
+ * Team leader — pilihan awal lima bagian (Perizinan, Briefing kilat, Catatan
+ * pembinaan, Penugasan, Pengaduan), lalu isi bagian yang dipilih lewat `?bagian=`. Karyawan yang
  * bukan leader dialihkan ke beranda.
  */
 export default async function TeamPage({
@@ -40,7 +42,7 @@ export default async function TeamPage({
   const { bagian } = await searchParams;
   const section = SECTIONS.find((k) => k === bagian) ?? null;
 
-  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches] = await Promise.all([
+  const [members, notes, leaveQueue, leaveDecisions, colleagues, inputMembers, briefings, myBranches, grievanceInbox] = await Promise.all([
     getMyTeamTasks(),
     getMyTeamCoachingNotes(),
     getLeaveApprovalQueue(),
@@ -49,6 +51,7 @@ export default async function TeamPage({
     listInputableMembers(),
     listRecentHuddles(),
     getMyBriefingBranches(),
+    listGrievanceInbox().catch(() => []),
   ]);
   const todayYmd = jakartaDateString(new Date(serverNowMs()));
 
@@ -79,6 +82,11 @@ export default async function TeamPage({
               label: "belum dibaca anggota",
             },
             tugas: { value: runningTasks, label: "tugas berjalan" },
+            pengaduan: {
+              value: grievanceInbox.filter((g) => g.status === "submitted").length,
+              label: "belum dikonfirmasi",
+              urgent: true,
+            },
           }}
         />
       ) : (
@@ -103,6 +111,7 @@ export default async function TeamPage({
             </>
           )}
           {section === "tugas" && <TeamTasksView members={members} />}
+          {section === "pengaduan" && <GrievanceInboxSection inbox={grievanceInbox} />}
         </>
       )}
     </div>
