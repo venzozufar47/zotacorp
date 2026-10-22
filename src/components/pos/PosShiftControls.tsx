@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, LogOut, Power, ShieldAlert } from "lucide-react";
+import Link from "next/link";
+import { Loader2, LogOut, Power, Receipt, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -87,6 +88,15 @@ export function PosShiftControls({
         {cashier?.name}
         {openedAtLabel ? <span className="hidden md:inline"> · {openedAtLabel}</span> : null}
       </span>
+      {/* Pengeluaran uang laci: dicatat di Pengadaan & Pengeluaran (sumber uang: laci kasir). */}
+      <Link
+        href={`/pengadaan?tab=catat&bu=${encodeURIComponent(`Haengbocake ${accountName.includes("Semarang") ? "Semarang" : "Pare"}`)}`}
+        prefetch={false}
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-semibold text-foreground hover:bg-muted"
+      >
+        <Receipt size={13} />
+        <span className="hidden sm:inline">Pengeluaran</span>
+      </Link>
       <button
         type="button"
         onClick={() => setClosing(true)}

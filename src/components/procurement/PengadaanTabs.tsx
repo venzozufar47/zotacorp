@@ -14,15 +14,19 @@ export function PengadaanTabs({
   active,
   brands,
   activeBrand,
+  limited = false,
 }: {
   active: PengadaanTab;
   brands: string[];
   activeBrand: string | null;
+  /** Akun kasir (bukan petugas pengadaan): hanya form catat, tanpa tab lain. */
+  limited?: boolean;
 }) {
   const href = (tab: PengadaanTab, bu: string | null) =>
     `/pengadaan?tab=${tab}${bu ? `&bu=${encodeURIComponent(bu)}` : ""}`;
   return (
     <div className="space-y-2.5">
+      {!limited && (
       <nav aria-label="Bagian Pengadaan" className="inline-flex rounded-xl border border-border bg-muted/40 p-1">
         {TABS.map((t) => (
           <Link
@@ -39,6 +43,7 @@ export function PengadaanTabs({
           </Link>
         ))}
       </nav>
+      )}
       {brands.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
           {brands.map((b) => (

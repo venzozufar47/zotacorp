@@ -112,6 +112,12 @@ export async function CashBranchPage({
       atCurrentMonth={atCurrentMonth}
       requireExpenseProof={def.requireExpenseProof}
       readOnly={def.readOnly === true}
+      // Pengeluaran kas Haengbocake dicatat lewat Pengadaan & Pengeluaran (foto nota wajib, sumber uang jelas).
+      expenseHref={
+        def.businessUnit === "Haengbocake"
+          ? `/pengadaan?tab=catat&bu=${encodeURIComponent(`Haengbocake ${def.branch}`)}`
+          : undefined
+      }
     />
   );
 }

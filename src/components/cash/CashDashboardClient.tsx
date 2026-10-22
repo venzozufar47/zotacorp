@@ -70,6 +70,7 @@ export function CashDashboardClient({
   atCurrentMonth,
   requireExpenseProof,
   readOnly = false,
+  expenseHref,
 }: {
   accountId: string;
   businessUnit: string;
@@ -91,6 +92,8 @@ export function CashDashboardClient({
    * supaya UI tidak menawarkan aksi yang pasti ditolak.
    */
   readOnly?: boolean;
+  /** Bila ada, tombol Pengeluaran membuka halaman ini (Pengadaan & Pengeluaran) alih-alih form di sini. */
+  expenseHref?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -349,13 +352,22 @@ export function CashDashboardClient({
             >
               <Plus size={20} strokeWidth={2.6} /> Pemasukan
             </button>
-            <button
-              type="button"
-              onClick={() => openNew("expense")}
-              className="press-feedback inline-flex h-16 items-center justify-center gap-2 rounded-2xl bg-destructive text-base font-bold text-white shadow-sm hover:opacity-90 transition"
-            >
-              <Minus size={20} strokeWidth={2.6} /> Pengeluaran
-            </button>
+            {expenseHref ? (
+              <a
+                href={expenseHref}
+                className="press-feedback inline-flex h-16 items-center justify-center gap-2 rounded-2xl bg-destructive text-base font-bold text-white shadow-sm hover:opacity-90 transition"
+              >
+                <Minus size={20} strokeWidth={2.6} /> Pengeluaran
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openNew("expense")}
+                className="press-feedback inline-flex h-16 items-center justify-center gap-2 rounded-2xl bg-destructive text-base font-bold text-white shadow-sm hover:opacity-90 transition"
+              >
+                <Minus size={20} strokeWidth={2.6} /> Pengeluaran
+              </button>
+            )}
           </section>
         )}
 

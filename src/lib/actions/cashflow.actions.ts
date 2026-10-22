@@ -471,7 +471,7 @@ export async function createManualTransaction(input: {
   let resolvedBranch = input.branch?.trim() || null;
   const { data: acct } = await supabase
     .from("bank_accounts")
-    .select("default_branch, manual_entry_drawer_neutral")
+    .select("default_branch, manual_entry_drawer_neutral, bank, business_unit")
     .eq("id", input.bankAccountId)
     .maybeSingle();
   if (!resolvedBranch) resolvedBranch = acct?.default_branch?.trim() || null;
@@ -479,6 +479,15 @@ export async function createManualTransaction(input: {
   // malam hari dari uang yang sudah dibawa pulang (pembukuan → netral); di Semarang kasir mencatat pengeluaran
   // dari uang laci saat itu juga (→ ikut hitungan laci). Lihat bank_accounts.manual_entry_drawer_neutral.
   const drawerNeutral = input.drawerNeutral ?? acct?.manual_entry_drawer_neutral === true;
+
+  // Pengeluaran kas Haengbocake kini dicatat lewat Pengadaan & Pengeluaran (foto nota wajib, kategori terpandu,
+  // sumber uang eksplisit). Input manual debit hanya tersisa untuk admin (koreksi, setor, gaji, dll.).
+  if (input.debit > 0 && acct?.bank === "cash" && acct?.business_unit === "Haengbocake" && (await getCurrentRole()) !== "admin") {
+    return {
+      ok: false,
+      error: "Pengeluaran sekarang dicatat lewat menu Pengadaan & Pengeluaran (foto nota wajib, pilih sumber uang).",
+    };
+  }
 
   // Find-or-create the monthly statement bucket. Status stays whatever
   // it was (upload-confirmed, or draft if freshly created by this call).

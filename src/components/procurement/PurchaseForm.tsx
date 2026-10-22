@@ -9,6 +9,7 @@ import {
   ChevronRight,
   HelpCircle,
   Loader2,
+  Landmark,
   PackagePlus,
   Plus,
   ReceiptText,
@@ -37,6 +38,7 @@ import {
   discardPurchaseReceipt,
   proposeMaterial,
   uploadPurchaseReceipt,
+  type MoneySource,
   type PurchaseFormData,
   type PurchaseLineInput,
   type PurchaseMaterialOption,
@@ -82,12 +84,20 @@ export function PurchaseForm({
   const [editDate, setEditDate] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [composer, setComposer] = useState<"bahan" | "lain" | null>(null);
+  const { access } = data;
+  // Sumber uang: bila hanya satu yang tersedia dipilih otomatis; bila dua, WAJIB dipilih (tanpa bawaan) —
+  // salah sumber membuat kas laci tidak cocok.
+  const [source, setSource] = useState<MoneySource | null>(
+    access.pengadaan && !access.laci ? "pengadaan" : !access.pengadaan && access.laci ? "laci" : null
+  );
   const [saving, startSaving] = useTransition();
-  const [done, setDone] = useState<{ total: number; lines: number; flagged: number } | null>(null);
+  const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const total = lines.reduce((s, l) => s + l.total, 0);
-  const missing = !receiptPath
+  const missing = !source
+    ? "Pilih sumber uang dulu"
+    : !receiptPath
     ? "Ambil foto nota dulu"
     : lines.length === 0
       ? "Tambahkan minimal satu baris"
@@ -121,7 +131,7 @@ export function PurchaseForm({
   }
 
   function save() {
-    if (missing || !receiptPath) return;
+    if (missing || !receiptPath || !source) return;
     const payload: PurchaseLineInput[] = lines.map((l) =>
       l.kind === "bahan"
         ? { kind: "bahan", materialId: l.material.id, qty: l.qty, unit: l.unit, total: l.total }
@@ -130,6 +140,7 @@ export function PurchaseForm({
     startSaving(async () => {
       const res = await createPurchase({
         businessUnit,
+        moneySource: source,
         receiptPath,
         purchaseDate: date,
         vendor: vendor.trim() || null,
@@ -140,7 +151,7 @@ export function PurchaseForm({
         return;
       }
       if (receiptPreview) URL.revokeObjectURL(receiptPreview);
-      setDone({ total: res.data.total, lines: lines.length, flagged: res.data.flagged });
+      setDone({ total: res.data.total, lines: lines.length, flagged: res.data.flagged, source });
       setLines([]);
       setReceiptPath(null);
       setReceiptPreview(null);
@@ -157,7 +168,8 @@ export function PurchaseForm({
         <div>
           <h2 className="font-display text-lg font-bold">Nota tersimpan</h2>
           <p className="text-sm text-muted-foreground">
-            {formatRp(done.total)} · {done.lines} baris — sudah masuk buku kas dan (untuk bahan) stok.
+            {formatRp(done.total)} · {done.lines} baris — sudah masuk buku kas
+            {done.source === "laci" ? " dan mengurangi kas laci shift ini." : " dan (untuk bahan) stok."}
           </p>
         </div>
         {done.flagged > 0 && (
@@ -179,8 +191,55 @@ export function PurchaseForm({
     );
   }
 
+  if (!source) {
+    return (
+      <div className="mx-auto max-w-xl space-y-3">
+        <h2 className="font-display text-sm font-bold">Uang belanjanya dari mana?</h2>
+        <SourceCard
+          icon={<Wallet size={20} />}
+          title="Uang pengadaan"
+          desc="Uang yang kamu bawa untuk belanja. Tidak mengubah kas laci kasir."
+          disabled={!access.pengadaan}
+          disabledReason="Hanya untuk petugas pengadaan"
+          onClick={() => setSource("pengadaan")}
+        />
+        <SourceCard
+          icon={<Landmark size={20} />}
+          title="Uang laci kasir"
+          desc={
+            access.shiftCashier
+              ? `Dibayar dari laci shift ${access.shiftCashier}. Mengurangi kas laci — ikut dihitung saat tutup shift.`
+              : "Dibayar dari laci kasir. Mengurangi kas laci saat shift berjalan."
+          }
+          disabled={!access.laci}
+          disabledReason={access.laciReason ?? undefined}
+          onClick={() => setSource("laci")}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Salah memilih membuat kas laci tidak cocok. Ragu? Tanyakan: apakah uangnya diambil dari laci kasir?
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-xl space-y-4 pb-28">
+      {(access.pengadaan && access.laci) && (
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
+          <span>
+            Sumber uang: <b>{source === "laci" ? "Uang laci kasir" : "Uang pengadaan"}</b>
+          </span>
+          <button
+            type="button"
+            disabled={lines.length > 0}
+            onClick={() => setSource(null)}
+            className="font-semibold text-primary hover:underline disabled:opacity-40"
+            title={lines.length > 0 ? "Kosongkan baris dulu untuk mengganti sumber" : undefined}
+          >
+            Ganti
+          </button>
+        </div>
+      )}
       {/* 1. Foto nota */}
       <section className="space-y-2">
         <StepTitle n={1} title="Foto nota" done={!!receiptPath} />
@@ -345,7 +404,8 @@ export function PurchaseForm({
         )}
 
         {composer === null && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className={cn("grid gap-2", access.lainOnly ? "grid-cols-1" : "grid-cols-2")}>
+            {!access.lainOnly && (
             <button
               type="button"
               onClick={() => setComposer("bahan")}
@@ -354,6 +414,7 @@ export function PurchaseForm({
               <PackagePlus size={20} /> Bahan baku
               <span className="text-[11px] font-normal text-muted-foreground">tepung, telur, kemasan…</span>
             </button>
+            )}
             <button
               type="button"
               onClick={() => setComposer("lain")}
@@ -381,6 +442,38 @@ export function PurchaseForm({
         </div>
       </div>
     </div>
+  );
+}
+
+function SourceCard({
+  icon,
+  title,
+  desc,
+  disabled,
+  disabledReason,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  disabled: boolean;
+  disabledReason?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-start gap-3 rounded-2xl border-2 border-foreground bg-card p-4 text-left shadow-hard-sm transition enabled:hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-border disabled:opacity-55 disabled:shadow-none"
+    >
+      <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-muted">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-display text-sm font-bold">{title}</span>
+        <span className="block text-xs text-muted-foreground">{disabled && disabledReason ? disabledReason : desc}</span>
+      </span>
+      <ChevronRight size={16} className="mt-2 shrink-0 text-muted-foreground" />
+    </button>
   );
 }
 

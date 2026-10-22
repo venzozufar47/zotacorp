@@ -12,6 +12,7 @@ import {
 } from "@/lib/procurement/access";
 import { listProcurementBoard, listGoodsIn } from "@/lib/actions/procurement.actions";
 import {
+  getMyDrawerExpenseBrands,
   getPurchaseFormData,
   getPurchaseSummary,
   listPurchases,
@@ -39,14 +40,18 @@ export default async function PengadaanPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (!(await canOpenProcurement())) redirect("/dashboard");
   if (await canManageProcurement()) redirect("/admin/costing/pengadaan/nota");
+  const staffBrands = (await canOpenProcurement()) ? await myProcurementBusinessUnits() : [];
+  // Akun kasir (asisten POS) yang bukan petugas pengadaan: hanya boleh mencatat pengeluaran uang laci.
+  const drawerBrands = await getMyDrawerExpenseBrands();
+  const brands = [...new Set([...staffBrands, ...drawerBrands])].sort();
+  if (brands.length === 0) redirect("/dashboard");
 
   const { bu, tab: tabParam } = await searchParams;
-  const tab: PengadaanTab = TAB_KEYS.find((k) => k === tabParam) ?? "catat";
-  const brands = await myProcurementBusinessUnits();
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
   const activeBrand = pickActiveBrand(brands, bu, lastOpened) ?? null;
+  const limited = !!activeBrand && !staffBrands.includes(activeBrand);
+  const tab: PengadaanTab = limited ? "catat" : (TAB_KEYS.find((k) => k === tabParam) ?? "catat");
 
   const today = jakartaDateString(new Date());
   const monthStart = `${today.slice(0, 7)}-01`;
@@ -77,7 +82,7 @@ export default async function PengadaanPage({
         </p>
       ) : (
         <>
-          <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} />
+          <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} />
           {tab === "catat" && <CatatTab brand={activeBrand} />}
           {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}

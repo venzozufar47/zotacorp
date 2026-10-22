@@ -14,7 +14,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "./_supabase-admin";
-import { requireAdmin, requireProcurementForBu, type ActionResult } from "./_gates";
+import {
+  requireAdmin,
+  requireAdminOrPosAssignee,
+  requireProcurementForBu,
+  type ActionResult,
+} from "./_gates";
+import { getCurrentUser } from "@/lib/supabase/cached";
+import { findOpenShift } from "@/lib/pos/shift-data";
 import { posAccountFilterForCostingBrand } from "@/lib/costing/brands";
 import { num } from "@/lib/costing/rows";
 import { fetchUnitsMap } from "@/lib/costing/rows";
@@ -63,6 +70,79 @@ async function resolveCashAccount(
   return data ? { id: data.id, branch: data.default_branch ?? f.branch ?? null } : null;
 }
 
+export type MoneySource = "pengadaan" | "laci";
+
+/** Akses seseorang ke form nota di satu cabang. */
+interface PurchaseAuth {
+  userId: string;
+  isAdmin: boolean;
+  /** Petugas pengadaan cabang ini (atau admin): boleh uang pengadaan + bahan baku. */
+  isStaff: boolean;
+  acct: { id: string; branch: string | null };
+  /** Shift yang sedang terbuka di cabang ini (null = tidak ada). */
+  shift: { id: string; cashierName: string } | null;
+}
+
+/**
+ * Siapa boleh apa:
+ *  - uang PENGADAAN : hanya petugas pengadaan cabang itu (atau admin);
+ *  - uang LACI      : harus ada shift terbuka; boleh petugas pengadaan ATAU asisten POS cabang itu
+ *                     (akun kasir) — pengeluaran laci mengurangi kas laci, jadi hanya saat shift berjalan.
+ */
+async function authorizePurchaseAccess(
+  businessUnit: string
+): Promise<{ ok: true; auth: PurchaseAuth } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const admin = createAdminClient();
+  const acct = await resolveCashAccount(admin, businessUnit);
+  if (!acct) return { ok: false, error: "Rekening kas cabang ini tidak ditemukan" };
+  const staff = await requireProcurementForBu(businessUnit);
+  let isStaff = staff.ok;
+  const isAdmin = staff.ok && staff.isAdmin;
+  if (!isStaff) {
+    const pos = await requireAdminOrPosAssignee(acct.id);
+    if (!pos.ok) return { ok: false, error: "Forbidden" };
+    isStaff = false;
+  }
+  const shift = await findOpenShift(admin, acct.id);
+  return {
+    ok: true,
+    auth: {
+      userId: user.id,
+      isAdmin,
+      isStaff,
+      acct,
+      shift: shift ? { id: shift.id, cashierName: shift.cashierName } : null,
+    },
+  };
+}
+
+/** Cabang Haengbocake (brand costing) tempat akun ini asisten POS — boleh mencatat pengeluaran uang laci. */
+export async function getMyDrawerExpenseBrands(): Promise<string[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const admin = createAdminClient();
+  const { data: asg } = await admin
+    .from("bank_account_assignees")
+    .select("bank_account_id, scope")
+    .eq("user_id", user.id)
+    .in("scope", ["full", "pos_only"]);
+  const ids = [...new Set((asg ?? []).map((a) => a.bank_account_id))];
+  if (ids.length === 0) return [];
+  const { data: accts } = await admin
+    .from("bank_accounts")
+    .select("default_branch")
+    .in("id", ids)
+    .eq("business_unit", "Haengbocake")
+    .eq("bank", "cash");
+  const brands = (accts ?? [])
+    .map((a) => a.default_branch)
+    .filter((b): b is string => b === "Pare" || b === "Semarang")
+    .map((b) => `Haengbocake ${b}`);
+  return [...new Set(brands)];
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  Data untuk form
 // ─────────────────────────────────────────────────────────────────────
@@ -88,12 +168,44 @@ export interface PurchaseFormData {
   vendors: string[];
   /** Satuan pakai yang boleh dipilih saat mengajukan bahan baru. */
   usageUnits: { code: string; label: string }[];
+  /** Sumber uang yang boleh dipakai pengguna ini di cabang ini. */
+  access: {
+    pengadaan: boolean;
+    laci: boolean;
+    /** Alasan "uang laci" belum bisa dipakai (mis. tidak ada shift terbuka). */
+    laciReason: string | null;
+    /** Kasir shift yang sedang berjalan (untuk keterangan). */
+    shiftCashier: string | null;
+    /** Petugas non-pengadaan: hanya pengeluaran lain (tanpa bahan baku). */
+    lainOnly: boolean;
+  };
 }
 
 export async function getPurchaseFormData(businessUnit: string): Promise<ActionResult<PurchaseFormData>> {
-  const gate = await requireProcurementForBu(businessUnit);
-  if (!gate.ok) return { ok: false, error: gate.error };
+  const access = await authorizePurchaseAccess(businessUnit);
+  if (!access.ok) return { ok: false, error: access.error };
+  const { auth } = access;
   const admin = createAdminClient();
+  const accessInfo: PurchaseFormData["access"] = {
+    pengadaan: auth.isStaff,
+    laci: auth.shift != null,
+    laciReason: auth.shift ? null : "Tidak ada shift yang terbuka di cabang ini",
+    shiftCashier: auth.shift?.cashierName ?? null,
+    lainOnly: !auth.isStaff,
+  };
+  // Petugas non-pengadaan (akun kasir): tanpa master bahan / harga acuan — hanya pengeluaran laci.
+  if (!auth.isStaff) {
+    return {
+      ok: true,
+      data: {
+        businessUnit,
+        materials: [],
+        vendors: [],
+        usageUnits: [],
+        access: accessInfo,
+      },
+    };
+  }
   const [{ data: mats }, units, { data: vend }] = await Promise.all([
     admin
       .from("costing_materials" as never)
@@ -142,6 +254,7 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
         { code: "ml", label: "ml" },
         { code: "pcs", label: "pcs" },
       ],
+      access: accessInfo,
     },
   };
 }
@@ -156,13 +269,13 @@ export async function uploadPurchaseReceipt(formData: FormData): Promise<ActionR
   const file = formData.get("file");
   if (typeof businessUnit !== "string" || !businessUnit) return { ok: false, error: "Unit bisnis wajib" };
   if (!(file instanceof File)) return { ok: false, error: "File wajib" };
-  const gate = await requireProcurementForBu(businessUnit);
-  if (!gate.ok) return { ok: false, error: gate.error };
+  const access = await authorizePurchaseAccess(businessUnit);
+  if (!access.ok) return { ok: false, error: access.error };
+  const gate = { userId: access.auth.userId };
   if (!RECEIPT_TYPES.includes(file.type)) return { ok: false, error: "Foto harus JPG, PNG, atau WEBP" };
   if (file.size > RECEIPT_MAX) return { ok: false, error: "Foto maksimal 5 MB" };
   const admin = createAdminClient();
-  const acct = await resolveCashAccount(admin, businessUnit);
-  if (!acct) return { ok: false, error: "Rekening kas cabang ini tidak ditemukan" };
+  const acct = access.auth.acct;
   const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
   const path = `${acct.id}/purchase-tmp/${gate.userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await admin.storage.from(TMP_BUCKET).upload(path, Buffer.from(await file.arrayBuffer()), {
@@ -173,8 +286,9 @@ export async function uploadPurchaseReceipt(formData: FormData): Promise<ActionR
 }
 
 export async function discardPurchaseReceipt(input: { businessUnit: string; path: string }): Promise<ActionResult> {
-  const gate = await requireProcurementForBu(input.businessUnit);
-  if (!gate.ok) return { ok: false, error: gate.error };
+  const access = await authorizePurchaseAccess(input.businessUnit);
+  if (!access.ok) return { ok: false, error: access.error };
+  const gate = { userId: access.auth.userId };
   if (!input.path.includes(`/purchase-tmp/${gate.userId}-`)) return { ok: false, error: "Berkas bukan milikmu" };
   await createAdminClient().storage.from(TMP_BUCKET).remove([input.path]);
   return { ok: true };
@@ -244,6 +358,8 @@ export type PurchaseLineInput =
 
 export interface CreatePurchaseInput {
   businessUnit: string;
+  /** Wajib dipilih eksplisit: dari mana uangnya. */
+  moneySource: MoneySource;
   receiptPath: string;
   purchaseDate?: string;
   vendor?: string | null;
@@ -261,14 +377,25 @@ interface Created {
 export async function createPurchase(
   input: CreatePurchaseInput
 ): Promise<ActionResult<{ id: string; total: number; flagged: number }>> {
-  const gate = await requireProcurementForBu(input.businessUnit);
-  if (!gate.ok) return { ok: false, error: gate.error };
+  if (input.moneySource !== "pengadaan" && input.moneySource !== "laci")
+    return { ok: false, error: "Pilih sumber uangnya dulu" };
+  const access = await authorizePurchaseAccess(input.businessUnit);
+  if (!access.ok) return { ok: false, error: access.error };
+  const { auth } = access;
+  const gate = { userId: auth.userId };
+  if (input.moneySource === "pengadaan" && !auth.isStaff) return { ok: false, error: "Forbidden" };
+  if (input.moneySource === "laci" && !auth.shift)
+    return {
+      ok: false,
+      error: "Tidak ada shift yang terbuka — uang laci hanya dicatat saat shift berjalan",
+    };
+  if (!auth.isStaff && input.lines.some((l) => l.kind === "bahan"))
+    return { ok: false, error: "Bahan baku dicatat oleh petugas pengadaan" };
   if (!Array.isArray(input.lines) || input.lines.length === 0) return { ok: false, error: "Isi minimal satu baris" };
   if (input.lines.length > MAX_LINES) return { ok: false, error: `Maksimal ${MAX_LINES} baris per nota` };
 
   const admin = createAdminClient();
-  const acct = await resolveCashAccount(admin, input.businessUnit);
-  if (!acct) return { ok: false, error: "Rekening kas cabang ini tidak ditemukan" };
+  const acct = auth.acct;
   if (!input.receiptPath?.startsWith(`${acct.id}/purchase-tmp/${gate.userId}-`)) {
     return { ok: false, error: "Foto nota wajib — ambil foto notanya dulu" };
   }
@@ -413,6 +540,7 @@ export async function createPurchase(
     total: grandTotal,
     receipt_path: mainPath,
     notes: input.notes?.trim() || null,
+    money_source: input.moneySource,
     created_by: gate.userId,
   } as never);
   if (hErr) {
@@ -476,15 +604,18 @@ export async function createPurchase(
         transaction_date: date,
         transaction_time: jakartaHHMM(now),
         description: `${c.description}${vendorLabel}`,
-        notes: `Nota pengadaan · dicatat ${actor} — nota terlampir`,
+        notes:
+          input.moneySource === "laci"
+            ? `Pengeluaran uang laci · dicatat ${actor}${auth.shift ? ` · kasir shift ${auth.shift.cashierName}` : ""} — nota terlampir`
+            : `Nota pengadaan · dicatat ${actor} — nota terlampir`,
         debit: c.total,
         credit: 0,
         running_balance: null,
         category: c.category,
         branch: acct.branch,
         sort_order: txSort++,
-        // Uang dibawa tim pengadaan, bukan uang laci kasir.
-        drawer_neutral: true,
+        // Uang pengadaan dibawa tim pengadaan (tidak menyentuh laci); uang laci mengurangi kas laci shift ini.
+        drawer_neutral: input.moneySource === "pengadaan",
       })
       .select("id")
       .single();
@@ -660,6 +791,7 @@ export interface PurchaseView {
   createdAt: string;
   receiptUrl: string | null;
   canDelete: boolean;
+  moneySource: MoneySource;
   lines: PurchaseLineView[];
 }
 
@@ -684,7 +816,7 @@ export async function listPurchases(
   const admin = createAdminClient();
   let q = admin
     .from("procurement_purchases" as never)
-    .select("id, business_unit, purchase_date, purchase_time, vendor, total, notes, receipt_path, created_by, created_at")
+    .select("id, business_unit, purchase_date, purchase_time, vendor, total, notes, receipt_path, created_by, created_at, money_source")
     .order("purchase_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(Math.min(opts.limit ?? 40, 200));
@@ -771,6 +903,7 @@ export async function listPurchases(
         createdAt: h.created_at as string,
         receiptUrl: urls.get(h.receipt_path as string) ?? null,
         canDelete: isAdmin || (createdBy === userId && sameDay),
+        moneySource: (h.money_source as MoneySource) === "laci" ? "laci" : "pengadaan",
         lines: byPurchase.get(h.id as string) ?? [],
       };
     }),
@@ -852,8 +985,9 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
     .maybeSingle();
   const h = head as Record<string, unknown> | null;
   if (!h) return { ok: false, error: "Nota tidak ditemukan" };
-  const gate = await requireProcurementForBu(h.business_unit as string);
-  if (!gate.ok) return { ok: false, error: gate.error };
+  const access = await authorizePurchaseAccess(h.business_unit as string);
+  if (!access.ok) return { ok: false, error: access.error };
+  const gate = { userId: access.auth.userId, isAdmin: access.auth.isAdmin };
   if (!gate.isAdmin) {
     if (h.created_by !== gate.userId) return { ok: false, error: "Hanya pencatatnya yang bisa menghapus" };
     if (jakartaDateString(new Date(h.created_at as string)) !== jakartaDateString(new Date()))
