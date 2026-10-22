@@ -126,15 +126,27 @@ export async function getShiftCashExpectation(input: {
   bankAccountId: string;
   phase: "open" | "close";
 }): Promise<
-  ActionResult<{ base: number | null; carry: { counted: number; withdrawn: number } | null }>
+  ActionResult<{
+    base: number | null;
+    carry: { counted: number; withdrawn: number } | null;
+    /** Modal laci standar cabang ini (dasar usulan "uang diambil"). */
+    drawerFloat: number;
+  }>
 > {
   const access = await requireShiftAccess(input.bankAccountId);
   if (!access.ok) return { ok: false, error: access.error };
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
+  const { data: acctRow } = await admin
+    .from("bank_accounts")
+    .select("drawer_float")
+    .eq("id", input.bankAccountId)
+    .maybeSingle();
+  const drawerFloat = Number(acctRow?.drawer_float ?? 300_000);
   if (input.phase === "open") {
     const prev = await lastClosedShift(admin, input.bankAccountId);
-    if (!prev || prev.closeCashCounted === null) return { ok: true, data: { base: null, carry: null } };
+    if (!prev || prev.closeCashCounted === null)
+      return { ok: true, data: { base: null, carry: null, drawerFloat } };
     let net: number;
     try {
       net = netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso));
@@ -146,6 +158,7 @@ export async function getShiftCashExpectation(input: {
       data: {
         base: prev.closeCashCounted - prev.closeCashWithdrawn + net,
         carry: { counted: prev.closeCashCounted, withdrawn: prev.closeCashWithdrawn },
+        drawerFloat,
       },
     };
   }
@@ -163,7 +176,7 @@ export async function getShiftCashExpectation(input: {
   } catch {
     return { ok: false, error: "Gagal menghitung kas seharusnya" };
   }
-  return { ok: true, data: { base: Number(row.open_cash_counted) + net, carry: null } };
+  return { ok: true, data: { base: Number(row.open_cash_counted) + net, carry: null, drawerFloat } };
 }
 
 // ─────────────────────────────────────────────────────────────────────

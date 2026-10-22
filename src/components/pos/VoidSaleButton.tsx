@@ -152,14 +152,15 @@ export function VoidSaleButton({
               <p className="text-[11.5px] text-muted-foreground leading-relaxed">
                 Catatan kas dan stok akan kembali seperti transaksi ini tidak
                 pernah ada. Barisnya tetap tersimpan dan ditandai dibatalkan.
+                {sale.paymentMethod !== "qris" && " Uang tunai yang dikembalikan ke pembeli sudah otomatis terhitung — jangan mencatat refund lagi."}
               </p>
 
               {sale.paymentMethod === "qris" && (
                 <p className="text-[11.5px] leading-relaxed rounded-lg bg-pop-amber/20 border border-pop-amber/50 px-2.5 py-2">
-                  Ini pembayaran QRIS — uangnya sudah benar-benar masuk ke
-                  rekening. Membatalkan hanya menghapus catatannya di sini;
-                  pengembalian ke pembeli tetap harus dilakukan manual dan
-                  dicatat sendiri.
+                  Ini pembayaran QRIS — uangnya masuk ke rekening, bukan laci. Membatalkan
+                  TIDAK mengubah uang di laci. Pengembalian ke pembeli dilakukan lewat
+                  QRIS/transfer. Jangan dicatat sebagai pengeluaran tunai atau "Sales
+                  Refund" — itu akan membuat kas laci terhitung kurang.
                 </p>
               )}
 

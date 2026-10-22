@@ -64,6 +64,8 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [base, setBase] = useState<number | null>(null);
   const [carry, setCarry] = useState<{ counted: number; withdrawn: number } | null>(null);
+  // Modal laci standar per cabang (Pare 300rb, Semarang 500rb) — dibaca dari server.
+  const [drawerFloat, setDrawerFloat] = useState(DEFAULT_DRAWER_FLOAT);
   // null = kasir belum memilih. TIDAK ada isian otomatis: angka yang tidak benar-benar diambil dari laci akan
   // tercatat sebagai pengambilan dan merusak pembanding kas shift berikutnya.
   const [withdrawnInput, setWithdrawnInput] = useState<string | null>(null);
@@ -77,6 +79,7 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
         if (res.ok && res.data) {
           setBase(res.data.base);
           setCarry(res.data.carry);
+          setDrawerFloat(res.data.drawerFloat);
           setExpectedState("ready");
         } else setExpectedState("error");
       })
@@ -160,7 +163,7 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
   const expected = base === null ? null : base - total;
   const liveDiff = expected !== null && countedNum !== null ? countedNum - expected : null;
   // Tutup shift: pemasukan hari itu biasanya dibawa/disetor, laci disisakan modal standar untuk shift berikutnya.
-  const suggestedWithdrawn = Math.max(0, (countedNum ?? 0) - DEFAULT_DRAWER_FLOAT);
+  const suggestedWithdrawn = Math.max(0, (countedNum ?? 0) - drawerFloat);
   const withdrawnNum = Math.min(countedNum ?? 0, withdrawnInput === null ? 0 : parseInt(withdrawnInput || "0", 10));
   const withdrawnChosen = withdrawnInput !== null && withdrawnInput !== "";
   const remaining = (countedNum ?? 0) - withdrawnNum;
@@ -276,7 +279,7 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
                 onClick={() => setWithdrawnInput(String(suggestedWithdrawn))}
                 className="rounded-full border border-border px-3 py-1 text-xs font-semibold hover:bg-muted"
               >
-                Sisakan {rp(DEFAULT_DRAWER_FLOAT)} (ambil {rp(suggestedWithdrawn)})
+                Sisakan {rp(drawerFloat)} (ambil {rp(suggestedWithdrawn)})
               </button>
             )}
           </div>
