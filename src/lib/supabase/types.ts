@@ -3154,6 +3154,7 @@ export type Database = {
           id: string
           is_active: boolean
           last_reviewed_at: string | null
+          location_id: string | null
           name: string
           owner_id: string | null
           review_every_days: number | null
@@ -3165,6 +3166,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_reviewed_at?: string | null
+          location_id?: string | null
           name: string
           owner_id?: string | null
           review_every_days?: number | null
@@ -3176,6 +3178,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_reviewed_at?: string | null
+          location_id?: string | null
           name?: string
           owner_id?: string | null
           review_every_days?: number | null
@@ -3187,6 +3190,13 @@ export type Database = {
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cleaning_checklists_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_locations"
             referencedColumns: ["id"]
           },
           {

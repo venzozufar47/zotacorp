@@ -46,6 +46,7 @@ type ChecklistShape = {
   id: string;
   name: string;
   is_active: boolean;
+  location_id?: string | null;
   items?: Array<{
     id: string;
     title: string;
@@ -138,7 +139,7 @@ export async function getCleaningRangeReport(input: {
     supabase
       .from("cleaning_assignments")
       .select(
-        "id, user_id, weekdays, skip_holidays, window_mode, window_end, starts_on, trial_until, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id))), profile:profiles!inner(is_active)"
+        "id, user_id, weekdays, skip_holidays, window_mode, window_end, starts_on, trial_until, rotation_group_id, rotation_anchor, rotation_mode, rotation_order, rotation_member_count, checklist:cleaning_checklists!inner(id, name, is_active, location_id, items:cleaning_checklist_items(id, title, requires_photo, sort_order, photos:cleaning_item_photos(id))), profile:profiles!inner(is_active)"
       )
       .eq("is_active", true)
       .not("user_id", "is", null),
@@ -209,6 +210,7 @@ export async function getCleaningRangeReport(input: {
       dutySlot: null,
       checklistId: checklist.id,
       checklistName: checklist.name,
+      checklistLocationId: checklist.location_id ?? null,
       weekdays: a.weekdays,
       skipHolidays: a.skip_holidays,
       rotationGroupId: a.rotation_group_id,

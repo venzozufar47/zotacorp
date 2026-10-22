@@ -73,6 +73,8 @@ export interface RangeAssignmentInput {
   dutySlot: number | null;
   checklistId: string;
   checklistName: string;
+  /** Cabang SOP (`cleaning_checklists.location_id`) — mengalahkan tebakan lewat unit bisnis orangnya. */
+  checklistLocationId?: string | null;
   weekdays: number;
   skipHolidays: boolean;
   rotationGroupId: string | null;
@@ -347,6 +349,7 @@ function branchKeyOf(
   locationNames: BuildRangeReportInput["locationNames"]
 ): string {
   if (a.locationId) return `loc:${a.locationId}`;
+  if (a.checklistLocationId) return `loc:${a.checklistLocationId}`;
   const unit = a.userId ? userUnits.get(a.userId) ?? null : null;
   if (!unit) return "unit:—";
   return locationKeyOfUnit(unit, locationNames) ?? `unit:${unit}`;
