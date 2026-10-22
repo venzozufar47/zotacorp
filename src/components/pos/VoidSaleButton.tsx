@@ -159,8 +159,8 @@ export function VoidSaleButton({
                 <p className="text-[11.5px] leading-relaxed rounded-lg bg-pop-amber/20 border border-pop-amber/50 px-2.5 py-2">
                   Ini pembayaran QRIS — uangnya masuk ke rekening, bukan laci. Membatalkan
                   TIDAK mengubah uang di laci. Pengembalian ke pembeli dilakukan lewat
-                  QRIS/transfer. Jangan dicatat sebagai pengeluaran tunai atau "Sales
-                  Refund" — itu akan membuat kas laci terhitung kurang.
+                  QRIS/transfer. Jangan dicatat sebagai pengeluaran tunai atau &ldquo;Sales
+                  Refund&rdquo; — itu akan membuat kas laci terhitung kurang.
                 </p>
               )}
 
