@@ -148,6 +148,7 @@ function Shell({
   total,
   onClose,
   onSkip,
+  hideFooterLink,
   children,
 }: {
   item: ResolverItem;
@@ -155,6 +156,8 @@ function Shell({
   total: number;
   onClose: () => void;
   onSkip: () => void;
+  /** Jenis yang tombol utamanya sudah "Buka lengkap": jangan tampilkan tautan kedua. */
+  hideFooterLink?: boolean;
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = useState(false);
@@ -211,7 +214,7 @@ function Shell({
         </div>
         {children}
         <div className="flex items-center justify-between gap-2 border-t border-border pt-2.5">
-          {item.href ? (
+          {item.href && !hideFooterLink ? (
             <Link
               href={item.href}
               className="inline-flex items-center gap-1 text-[12px] font-semibold text-muted-foreground hover:text-foreground"
@@ -272,7 +275,9 @@ function NotifResolver({
       onResolved();
     });
 
-  const text = item.detail ?? item.desc;
+  // Awalan jenis ("Kendala/masukan SOP — ") sudah tampil di judul popup: jangan diulang.
+  const text = (item.detail ?? item.desc).replace("Kendala/masukan SOP — ", "");
+  const linkOnly = !(["subscription", "sop_review", "sop_issue", "sim_card", "ticket", "dispute", "selfie_override"] as string[]).includes(item.kind);
   let content: React.ReactNode;
 
   switch (item.kind) {
@@ -555,7 +560,7 @@ function NotifResolver({
   }
 
   return (
-    <Shell item={item} position={position} total={total} onClose={onClose} onSkip={onSkip}>
+    <Shell item={item} position={position} total={total} onClose={onClose} onSkip={onSkip} hideFooterLink={linkOnly}>
       {content}
     </Shell>
   );
