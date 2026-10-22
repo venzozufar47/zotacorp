@@ -62,7 +62,6 @@ export function ManualTransactionDialog({
   const [category, setCategory] = useState("");
   const [branch, setBranch] = useState("");
   const [addAnother, setAddAnother] = useState(false);
-  const [drawerNeutral, setDrawerNeutral] = useState(true);
 
   // Per-rekening profile — cash hides sumber/detail + branch picker,
   // and inherits branch from the rekening's default.
@@ -83,7 +82,6 @@ export function ManualTransactionDialog({
       setNotes("");
       setAmount("");
       setRunningBalance("");
-      setDrawerNeutral(true);
     } else {
       setDate(today);
       setTime("");
@@ -96,7 +94,6 @@ export function ManualTransactionDialog({
       setCategory("");
       setBranch("");
       setAddAnother(false);
-      setDrawerNeutral(true);
     }
   }
 
@@ -144,7 +141,6 @@ export function ManualTransactionDialog({
         runningBalance: rb,
         category: category || null,
         branch: effectiveBranch || null,
-        drawerNeutral: isCash && drawerNeutral,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -383,24 +379,6 @@ export function ManualTransactionDialog({
               Cabang <strong className="text-foreground">{account.defaultBranch}</strong>{" "}
               otomatis di-tag (ikut rekening ini).
             </p>
-          )}
-
-          {isCash && (
-            <label className="flex items-start gap-2 text-sm text-foreground cursor-pointer">
-              <input
-                type="checkbox"
-                checked={drawerNeutral}
-                onChange={(e) => setDrawerNeutral(e.target.checked)}
-                className="mt-0.5 rounded border-border"
-              />
-              <span>
-                Pembukuan saja — tidak mengubah hitungan uang di laci POS
-                <span className="block text-[11px] text-muted-foreground">
-                  Biarkan tercentang untuk belanja yang dibayar dari uang yang sudah dibawa/disetor (default).
-                  Hilangkan centang hanya jika uang benar-benar diambil dari laci saat itu juga.
-                </span>
-              </span>
-            </label>
           )}
 
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer pt-2">

@@ -471,13 +471,14 @@ export async function createManualTransaction(input: {
   let resolvedBranch = input.branch?.trim() || null;
   const { data: acct } = await supabase
     .from("bank_accounts")
-    .select("default_branch, bank")
+    .select("default_branch, manual_entry_drawer_neutral")
     .eq("id", input.bankAccountId)
     .maybeSingle();
   if (!resolvedBranch) resolvedBranch = acct?.default_branch?.trim() || null;
-  // Entri manual di rekening kas = pembukuan (belanja dari uang yang sudah dibawa/disetor), bukan gerakan laci
-  // pada saat diinput. Gerakan laci dihitung dari penjualan POS, nota shift, dan "uang diambil" saat tutup shift.
-  const drawerNeutral = input.drawerNeutral ?? acct?.bank === "cash";
+  // Apakah entri ini menggerakkan laci POS? Bergantung pada rekeningnya: di Pare koordinator mencatat belanja
+  // malam hari dari uang yang sudah dibawa pulang (pembukuan → netral); di Semarang kasir mencatat pengeluaran
+  // dari uang laci saat itu juga (→ ikut hitungan laci). Lihat bank_accounts.manual_entry_drawer_neutral.
+  const drawerNeutral = input.drawerNeutral ?? acct?.manual_entry_drawer_neutral === true;
 
   // Find-or-create the monthly statement bucket. Status stays whatever
   // it was (upload-confirmed, or draft if freshly created by this call).

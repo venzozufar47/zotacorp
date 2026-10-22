@@ -64,7 +64,8 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [base, setBase] = useState<number | null>(null);
   const [carry, setCarry] = useState<{ counted: number; withdrawn: number } | null>(null);
-  // null = belum diubah kasir → mengikuti usulan (hitungan − modal laci standar).
+  // null = kasir belum memilih. TIDAK ada isian otomatis: angka yang tidak benar-benar diambil dari laci akan
+  // tercatat sebagai pengambilan dan merusak pembanding kas shift berikutnya.
   const [withdrawnInput, setWithdrawnInput] = useState<string | null>(null);
   const [expectedState, setExpectedState] = useState<"loading" | "ready" | "error">("loading");
 
@@ -160,10 +161,8 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
   const liveDiff = expected !== null && countedNum !== null ? countedNum - expected : null;
   // Tutup shift: pemasukan hari itu biasanya dibawa/disetor, laci disisakan modal standar untuk shift berikutnya.
   const suggestedWithdrawn = Math.max(0, (countedNum ?? 0) - DEFAULT_DRAWER_FLOAT);
-  const withdrawnNum = Math.min(
-    countedNum ?? 0,
-    withdrawnInput === null ? suggestedWithdrawn : parseInt(withdrawnInput || "0", 10)
-  );
+  const withdrawnNum = Math.min(countedNum ?? 0, withdrawnInput === null ? 0 : parseInt(withdrawnInput || "0", 10));
+  const withdrawnChosen = withdrawnInput !== null && withdrawnInput !== "";
   const remaining = (countedNum ?? 0) - withdrawnNum;
 
   return (
@@ -224,7 +223,8 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
               </p>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Angka ini perkiraan saat ini; selisih resmi dihitung sistem saat disimpan.
+              Angka ini perkiraan saat ini; selisih resmi dihitung sistem saat disimpan. Tulis uang fisik apa adanya
+              — jangan mengubah hitungan agar cocok. Selisih tidak menghalangi tutup shift dan akan ditelusuri.
             </p>
           </div>
         )}
@@ -251,16 +251,35 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
         <section className="space-y-2 rounded-xl border border-border bg-card p-3">
           <h2 className="text-sm font-semibold text-foreground">Uang diambil dari laci</h2>
           <p className="text-xs text-muted-foreground">
-            Pemasukan yang dibawa pulang atau disetor setelah dihitung. Sisanya tetap di laci sebagai modal shift
-            berikutnya (besok pagi dihitung ulang dari angka ini). Isi 0 kalau tidak ada yang diambil.
+            Isi hanya uang yang BENAR-BENAR kamu ambil dari laci setelah dihitung (dibawa pulang atau disetor). Sisanya
+            tetap di laci sebagai modal shift berikutnya.
           </p>
           <input
             type="text"
             inputMode="numeric"
-            value={withdrawnInput === null ? String(suggestedWithdrawn) : withdrawnInput}
+            value={withdrawnInput ?? ""}
             onChange={(e) => setWithdrawnInput(digits(e.target.value))}
+            placeholder="Isi jumlah yang kamu ambil"
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold tabular-nums"
           />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setWithdrawnInput("0")}
+              className="rounded-full border border-border px-3 py-1 text-xs font-semibold hover:bg-muted"
+            >
+              Tidak ada yang diambil
+            </button>
+            {suggestedWithdrawn > 0 && (
+              <button
+                type="button"
+                onClick={() => setWithdrawnInput(String(suggestedWithdrawn))}
+                className="rounded-full border border-border px-3 py-1 text-xs font-semibold hover:bg-muted"
+              >
+                Sisakan {rp(DEFAULT_DRAWER_FLOAT)} (ambil {rp(suggestedWithdrawn)})
+              </button>
+            )}
+          </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Sisa di laci (modal shift berikutnya)</span>
             <span className="font-semibold tabular-nums text-foreground">{rp(remaining)}</span>
@@ -392,7 +411,7 @@ export function ShiftCashStep({ bankAccountId, phase, title, submitLabel, busy, 
 
       <button
         type="button"
-        disabled={busy || uploading || adding || countedNum === null}
+        disabled={busy || uploading || adding || countedNum === null || (phase === "close" && !withdrawnChosen)}
         onClick={() =>
           onSubmit({
             cashCounted: countedNum ?? 0,

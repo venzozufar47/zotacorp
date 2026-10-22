@@ -1009,6 +1009,7 @@ export type Database = {
           service_level_open_hour: number
           service_level_target: number
           shift_mode_enabled: boolean
+          manual_entry_drawer_neutral: boolean
           source_sheet: string | null
           source_url: string | null
           token_kwh_critical_threshold: number | null
@@ -1039,6 +1040,7 @@ export type Database = {
           service_level_open_hour?: number
           service_level_target?: number
           shift_mode_enabled?: boolean
+          manual_entry_drawer_neutral?: boolean
           source_sheet?: string | null
           source_url?: string | null
           token_kwh_critical_threshold?: number | null
@@ -1069,6 +1071,7 @@ export type Database = {
           service_level_open_hour?: number
           service_level_target?: number
           shift_mode_enabled?: boolean
+          manual_entry_drawer_neutral?: boolean
           source_sheet?: string | null
           source_url?: string | null
           token_kwh_critical_threshold?: number | null
