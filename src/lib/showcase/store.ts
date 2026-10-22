@@ -1,5 +1,5 @@
 /**
- * Mode Showcase — saklar global "sembunyikan semua angka" untuk presentasi.
+ * Mode Showcase — saklar global "sembunyikan angka keuangan" untuk presentasi.
  *
  * State disimpan di localStorage supaya bertahan saat reload / pindah tab
  * (kalau tidak, angka sempat muncul lagi di tengah presentasi). Modul ini

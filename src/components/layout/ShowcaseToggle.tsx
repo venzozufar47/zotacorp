@@ -6,7 +6,7 @@ import { setShowcase } from "@/lib/showcase/store";
 import { useShowcase } from "@/components/shared/ShowcaseMode";
 
 /**
- * Tombol topbar untuk Mode Showcase (sembunyikan semua angka). Logikanya
+ * Tombol topbar untuk Mode Showcase (sembunyikan angka keuangan). Logikanya
  * ada di `ShowcaseMode` (root layout) — tombol ini hanya mengubah saklar.
  */
 export function ShowcaseToggle() {
@@ -16,7 +16,7 @@ export function ShowcaseToggle() {
       type="button"
       onClick={() => setShowcase(!on)}
       aria-pressed={on}
-      title={on ? "Mode Showcase aktif — klik untuk menampilkan angka" : "Mode Showcase — sembunyikan semua angka"}
+      title={on ? "Mode Showcase aktif — klik untuk menampilkan angka" : "Mode Showcase — sembunyikan angka keuangan"}
       className={cn(
         "inline-flex items-center gap-1.5 h-9 px-3 rounded-[11px] border text-[12px] font-semibold shadow-sm transition",
         on
