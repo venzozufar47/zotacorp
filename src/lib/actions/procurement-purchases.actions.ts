@@ -991,7 +991,7 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
   if (!gate.isAdmin) {
     if (h.created_by !== gate.userId) return { ok: false, error: "Hanya pencatatnya yang bisa menghapus" };
     if (jakartaDateString(new Date(h.created_at as string)) !== jakartaDateString(new Date()))
-      return { ok: false, error: "Hanya bisa dihapus di hari yang sama — minta admin untuk koreksi" };
+      return { ok: false, error: "Hanya bisa dihapus di hari yang sama — minta owner untuk koreksi" };
   }
 
   const { data: lineRows } = await admin

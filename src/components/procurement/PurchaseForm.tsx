@@ -174,7 +174,7 @@ export function PurchaseForm({
         </div>
         {done.flagged > 0 && (
           <p className="rounded-xl bg-warning/15 px-3 py-2 text-xs text-foreground">
-            {done.flagged} harga bahan jauh dari biasanya — admin akan meninjau. Harga acuan belum diubah.
+            {done.flagged} harga bahan jauh dari biasanya — owner akan meninjau. Harga acuan belum diubah.
           </p>
         )}
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
@@ -702,7 +702,7 @@ function BahanComposer({
                       <AlertTriangle size={13} className="mt-0.5 shrink-0 text-destructive" />
                       Harga {calc.dev > 0 ? "lebih mahal" : "lebih murah"} {Math.round(Math.abs(calc.dev) * 100)}% dari biasanya (
                       {Math.round(PRICE_REVIEW_THRESHOLD * 100)}% batas wajar). Periksa nominal &amp; satuan. Tetap bisa
-                      disimpan — admin akan meninjau.
+                      disimpan — owner akan meninjau.
                     </span>
                   ) : Math.abs(calc.dev) >= 0.05 ? (
                     <>
@@ -795,7 +795,7 @@ function ProposeMaterial({
         toast.error(res.ok ? "Gagal" : res.error);
         return;
       }
-      toast.success(res.data.existed ? "Bahan itu sudah ada — dipilih" : "Bahan diajukan — admin akan meninjau");
+      toast.success(res.data.existed ? "Bahan itu sudah ada — dipilih" : "Bahan diajukan — owner akan meninjau");
       onCreated({
         id: res.data.id,
         name: name.trim(),
@@ -819,7 +819,7 @@ function ProposeMaterial({
         </button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Langsung bisa dipakai di nota ini. Admin akan merapikan nama &amp; satuannya sebelum dipakai di resep.
+        Langsung bisa dipakai di nota ini. Owner akan merapikan nama &amp; satuannya sebelum dipakai di resep.
       </p>
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama bahan (mis. Tepung Segitiga Biru)" maxLength={80} />
       <div className="grid grid-cols-2 gap-2">
