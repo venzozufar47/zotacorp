@@ -97,6 +97,8 @@ export function PurchaseForm({
   const [saving, startSaving] = useTransition();
   const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // Kunci idempotensi: klik ganda / kirim ulang setelah timeout tidak membuat nota kembar. Diganti setelah sukses.
+  const clientIdRef = useRef<string>(crypto.randomUUID());
 
   const total = lines.reduce((s, l) => s + l.total, 0);
   const missing = !source
@@ -144,6 +146,7 @@ export function PurchaseForm({
     startSaving(async () => {
       const res = await createPurchase({
         businessUnit,
+        clientId: clientIdRef.current,
         moneySource: source,
         receiptPath,
         purchaseDate: date,
@@ -155,6 +158,7 @@ export function PurchaseForm({
         return;
       }
       if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+      clientIdRef.current = crypto.randomUUID();
       setDone({ total: res.data.total, lines: lines.length, flagged: res.data.flagged, source });
       setLines([]);
       setReceiptPath(null);
@@ -270,7 +274,7 @@ export function PurchaseForm({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading || saving}
               className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
             >
               {uploading ? "Mengunggah…" : "Ganti"}
@@ -280,7 +284,7 @@ export function PurchaseForm({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || saving}
             className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-foreground/40 bg-card px-4 py-7 text-muted-foreground transition hover:bg-muted/50 disabled:opacity-60"
           >
             {uploading ? <Loader2 size={26} className="animate-spin" /> : <Camera size={26} />}

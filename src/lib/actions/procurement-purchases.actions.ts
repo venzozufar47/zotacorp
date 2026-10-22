@@ -80,7 +80,7 @@ interface PurchaseAuth {
   isStaff: boolean;
   acct: { id: string; branch: string | null };
   /** Shift yang sedang terbuka di cabang ini (null = tidak ada). */
-  shift: { id: string; cashierName: string } | null;
+  shift: { id: string; cashierName: string; openedAt: string } | null;
 }
 
 /**
@@ -113,7 +113,7 @@ async function authorizePurchaseAccess(
       isAdmin,
       isStaff,
       acct,
-      shift: shift ? { id: shift.id, cashierName: shift.cashierName } : null,
+      shift: shift ? { id: shift.id, cashierName: shift.cashierName, openedAt: shift.openedAt } : null,
     },
   };
 }
@@ -289,7 +289,8 @@ export async function discardPurchaseReceipt(input: { businessUnit: string; path
   const access = await authorizePurchaseAccess(input.businessUnit);
   if (!access.ok) return { ok: false, error: access.error };
   const gate = { userId: access.auth.userId };
-  if (!input.path.includes(`/purchase-tmp/${gate.userId}-`)) return { ok: false, error: "Berkas bukan milikmu" };
+  if (input.path.includes("..") || !input.path.startsWith(`${access.auth.acct.id}/purchase-tmp/${gate.userId}-`))
+    return { ok: false, error: "Berkas bukan milikmu" };
   await createAdminClient().storage.from(TMP_BUCKET).remove([input.path]);
   return { ok: true };
 }
@@ -323,7 +324,8 @@ export async function proposeMaterial(input: {
     .from("costing_materials" as never)
     .select("id")
     .eq("business_unit", input.businessUnit)
-    .ilike("name", name)
+    // % dan _ pada nama bukan wildcard: di-escape supaya "tepung_" tidak cocok dengan "tepung terigu".
+    .ilike("name", name.replace(/[\\%_]/g, (c) => `\\${c}`))
     .maybeSingle();
   if (dup) return { ok: true, data: { id: (dup as { id: string }).id, existed: true } };
 
@@ -358,6 +360,8 @@ export type PurchaseLineInput =
 
 export interface CreatePurchaseInput {
   businessUnit: string;
+  /** Kunci idempotensi dari klien (UUID): kirim ulang karena timeout/klik ganda tidak membuat nota kembar. */
+  clientId?: string;
   /** Wajib dipilih eksplisit: dari mana uangnya. */
   moneySource: MoneySource;
   receiptPath: string;
@@ -396,7 +400,11 @@ export async function createPurchase(
 
   const admin = createAdminClient();
   const acct = auth.acct;
-  if (!input.receiptPath?.startsWith(`${acct.id}/purchase-tmp/${gate.userId}-`)) {
+  if (
+    !input.receiptPath ||
+    input.receiptPath.includes("..") ||
+    !input.receiptPath.startsWith(`${acct.id}/purchase-tmp/${gate.userId}-`)
+  ) {
     return { ok: false, error: "Foto nota wajib — ambil foto notanya dulu" };
   }
 
@@ -506,7 +514,19 @@ export async function createPurchase(
   // ── Tulis ──
   const created: Created = { txIds: [], txFiles: [], receiptIds: [], filePaths: [] };
   const priceUndo: { materialId: string; before: number; after: number; priceUpdatedAt: string }[] = [];
-  const purchaseId = crypto.randomUUID();
+  const clientId = input.clientId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.clientId) ? input.clientId : null;
+  if (clientId) {
+    const { data: existing } = await admin
+      .from("procurement_purchases" as never)
+      .select("id, total, created_by")
+      .eq("id", clientId)
+      .maybeSingle();
+    const ex = existing as { id: string; total: number | string; created_by: string | null } | null;
+    // Sudah tersimpan (percobaan sebelumnya berhasil): jawab sukses, jangan menulis ulang.
+    if (ex && ex.created_by === gate.userId) return { ok: true, data: { id: ex.id, total: num(ex.total), flagged: 0 } };
+    if (ex) return { ok: false, error: "Nota dengan kode ini sudah ada" };
+  }
+  const purchaseId = clientId ?? crypto.randomUUID();
   const rollback = async () => {
     for (const u of priceUndo.reverse()) {
       await admin
@@ -591,6 +611,15 @@ export async function createPurchase(
     .maybeSingle();
   let txSort = (maxRow?.sort_order ?? -1) + 1;
 
+  // Shift bisa ditutup sejak form dibuka: uang laci hanya sah selama shift yang sama masih berjalan.
+  if (input.moneySource === "laci") {
+    const nowShift = await findOpenShift(admin, acct.id);
+    if (!nowShift || nowShift.id !== auth.shift?.id) {
+      await rollback();
+      return { ok: false, error: "Shift sudah ditutup — uang laci tidak bisa dicatat lagi. Pakai uang pengadaan atau minta owner." };
+    }
+  }
+
   const { data: me } = await admin.from("profiles").select("full_name, nickname").eq("id", gate.userId).maybeSingle();
   const actor = me?.nickname || me?.full_name || "petugas pengadaan";
   const vendorLabel = input.vendor?.trim() ? ` · ${input.vendor.trim()}` : "";
@@ -635,7 +664,11 @@ export async function createPurchase(
       return { ok: false, error: up.error.message };
     }
     created.txFiles.push(txFile);
-    await admin.from("cashflow_transactions").update({ attachment_path: txFile }).eq("id", tx.id);
+    const { error: attErr } = await admin.from("cashflow_transactions").update({ attachment_path: txFile }).eq("id", tx.id);
+    if (attErr) {
+      await rollback();
+      return { ok: false, error: attErr.message };
+    }
 
     let receiptId: string | null = null;
     let refBefore: number | null = null;
@@ -728,10 +761,14 @@ export async function createPurchase(
       return { ok: false, error: lineErr?.message ?? "Gagal menyimpan baris nota" };
     }
     if (receiptId) {
-      await admin
+      const { error: linkErr } = await admin
         .from("costing_material_receipts" as never)
         .update({ purchase_line_id: (line as { id: string }).id } as never)
         .eq("id", receiptId);
+      if (linkErr) {
+        await rollback();
+        return { ok: false, error: linkErr.message };
+      }
     }
   }
 
@@ -984,7 +1021,7 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
   const admin = createAdminClient();
   const { data: head } = await admin
     .from("procurement_purchases" as never)
-    .select("id, business_unit, created_by, created_at, receipt_path")
+    .select("id, business_unit, created_by, created_at, receipt_path, money_source")
     .eq("id", id)
     .maybeSingle();
   const h = head as Record<string, unknown> | null;
@@ -996,6 +1033,12 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
     if (h.created_by !== gate.userId) return { ok: false, error: "Hanya pencatatnya yang bisa menghapus" };
     if (jakartaDateString(new Date(h.created_at as string)) !== jakartaDateString(new Date()))
       return { ok: false, error: "Hanya bisa dihapus di hari yang sama — minta owner untuk koreksi" };
+    // Nota uang laci mengubah hitungan kas shift: hanya bisa dihapus selama shift yang sama masih berjalan.
+    if (h.money_source === "laci") {
+      const sh = access.auth.shift;
+      if (!sh || new Date(h.created_at as string).getTime() < new Date(sh.openedAt).getTime())
+        return { ok: false, error: "Nota uang laci hanya bisa dihapus selama shift-nya masih berjalan — minta owner untuk koreksi" };
+    }
   }
 
   const { data: lineRows } = await admin
@@ -1005,7 +1048,21 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
     .order("sort_order", { ascending: false });
   const lines = (lineRows ?? []) as Record<string, unknown>[];
 
-  // Kembalikan harga acuan (urutan terbalik) bila belum bergeser lagi.
+  const txIds = lines.map((l) => l.cashflow_transaction_id as string | null).filter((v): v is string => !!v);
+  const files: string[] = [h.receipt_path as string];
+  if (txIds.length) {
+    const { data: txs } = await admin.from("cashflow_transactions").select("attachment_path").in("id", txIds);
+    for (const t of txs ?? []) if (t.attachment_path) files.push(t.attachment_path);
+  }
+  // Barang masuk ikut terhapus lewat ON DELETE CASCADE dari baris nota; ledger dihapus eksplisit.
+  if (txIds.length) {
+    const { error } = await admin.from("cashflow_transactions").delete().in("id", txIds);
+    if (error) return { ok: false, error: error.message };
+  }
+  const { error } = await admin.from("procurement_purchases" as never).delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  // Kembalikan harga acuan (urutan terbalik) bila belum bergeser lagi — SETELAH penghapusan berhasil, supaya
+  // kegagalan hapus tidak meninggalkan harga yang sudah dikembalikan sementara nota masih ada.
   for (const l of lines) {
     if (!l.material_id || l.ref_price_before == null || l.ref_price_after == null) continue;
     if (round2(num(l.ref_price_before)) === round2(num(l.ref_price_after))) continue;
@@ -1029,19 +1086,6 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
     }
   }
 
-  const txIds = lines.map((l) => l.cashflow_transaction_id as string | null).filter((v): v is string => !!v);
-  const files: string[] = [h.receipt_path as string];
-  if (txIds.length) {
-    const { data: txs } = await admin.from("cashflow_transactions").select("attachment_path").in("id", txIds);
-    for (const t of txs ?? []) if (t.attachment_path) files.push(t.attachment_path);
-  }
-  // Barang masuk ikut terhapus lewat ON DELETE CASCADE dari baris nota; ledger dihapus eksplisit.
-  if (txIds.length) {
-    const { error } = await admin.from("cashflow_transactions").delete().in("id", txIds);
-    if (error) return { ok: false, error: error.message };
-  }
-  const { error } = await admin.from("procurement_purchases" as never).delete().eq("id", id);
-  if (error) return { ok: false, error: error.message };
   await admin.storage.from(RECEIPT_BUCKET).remove(files);
   revalidateAll();
   return { ok: true };
@@ -1120,6 +1164,7 @@ export async function acceptFlaggedPrice(lineId: string): Promise<ActionResult> 
     .maybeSingle();
   const l = line as Record<string, unknown> | null;
   if (!l || l.price_flag !== "tinjau" || !l.material_id) return { ok: false, error: "Baris tidak perlu ditinjau" };
+  if (!(num(l.qty_purchase_units) > 0)) return { ok: false, error: "Jumlah baris tidak valid" };
   const paidPerPurchase = round2(num(l.total) / num(l.qty_purchase_units));
   const { data: mat } = await admin
     .from("costing_materials" as never)
