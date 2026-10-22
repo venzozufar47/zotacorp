@@ -135,7 +135,12 @@ export async function getShiftCashExpectation(input: {
   if (input.phase === "open") {
     const prev = await lastClosedShift(admin, input.bankAccountId);
     if (!prev || prev.closeCashCounted === null) return { ok: true, data: { base: null, carry: null } };
-    const net = netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso));
+    let net: number;
+    try {
+      net = netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso));
+    } catch {
+      return { ok: false, error: "Gagal menghitung kas seharusnya" };
+    }
     return {
       ok: true,
       data: {
@@ -152,7 +157,12 @@ export async function getShiftCashExpectation(input: {
     .eq("id", shift.id)
     .maybeSingle();
   if (!row) return { ok: false, error: "Tidak ada shift yang terbuka." };
-  const net = netCash(await cashMovementInWindow(admin, input.bankAccountId, row.opened_at, nowIso));
+  let net: number;
+  try {
+    net = netCash(await cashMovementInWindow(admin, input.bankAccountId, row.opened_at, nowIso));
+  } catch {
+    return { ok: false, error: "Gagal menghitung kas seharusnya" };
+  }
   return { ok: true, data: { base: Number(row.open_cash_counted) + net, carry: null } };
 }
 
@@ -474,15 +484,19 @@ export async function openShift(input: {
   const prev = await lastClosedShift(admin, input.bankAccountId);
   // Pembanding kas awal hanya ada bila shift sebelumnya punya hitungan (bukan shift pertama / tutup paksa).
   const prevCounted = prev?.closeCashCounted ?? null;
-  const expected =
-    prev && prevCounted !== null
-      ? expectedOpeningCash(
-          prevCounted,
-          prev.closeCashWithdrawn,
-          netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso)),
-          sumExpenses(exp.clean)
-        )
-      : null;
+  let expected: number | null = null;
+  if (prev && prevCounted !== null) {
+    try {
+      expected = expectedOpeningCash(
+        prevCounted,
+        prev.closeCashWithdrawn,
+        netCash(await cashMovementInWindow(admin, input.bankAccountId, prev.closedAt, nowIso)),
+        sumExpenses(exp.clean)
+      );
+    } catch {
+      return { ok: false, error: "Gagal menghitung kas seharusnya — coba lagi sebentar lagi." };
+    }
+  }
   // Laporan = yang dilihat kasir sebelum opname, jadi berhenti di saat opname dibuat.
   const report = await buildIncidentalReport(admin, input.bankAccountId, prev?.closedAt ?? null, opname.createdAt);
 
@@ -579,8 +593,13 @@ export async function closeShift(input: {
   if (!opname.ok) return { ok: false, error: opname.error };
 
   const nowIso = new Date().toISOString();
-  const movement = await cashMovementInWindow(admin, input.bankAccountId, shift.opened_at, nowIso);
-  const expected = expectedClosingCash(Number(shift.open_cash_counted), netCash(movement), sumExpenses(exp.clean));
+  let expected: number;
+  try {
+    const movement = await cashMovementInWindow(admin, input.bankAccountId, shift.opened_at, nowIso);
+    expected = expectedClosingCash(Number(shift.open_cash_counted), netCash(movement), sumExpenses(exp.clean));
+  } catch {
+    return { ok: false, error: "Gagal menghitung kas seharusnya — coba lagi sebentar lagi." };
+  }
 
   const rec = await recordExpenses(admin, {
     shiftId: shift.id,

@@ -655,6 +655,21 @@ export async function updateCashflowTransactions(
     if (archived) return { ok: false, error: archived };
   }
 
+  // Non-admin tidak boleh mengubah nominal/kategori/tanggal/cabang baris buatan sistem.
+  if ((await getCurrentRole()) !== "admin") {
+    const linked = await systemLinkedTxIds(ids);
+    const touches = updates.some(
+      (u) =>
+        linked.has(u.id) &&
+        (u.debit !== undefined ||
+          u.credit !== undefined ||
+          u.category !== undefined ||
+          u.transactionDate !== undefined ||
+          u.branch !== undefined)
+    );
+    if (touches) return { ok: false, error: SYSTEM_ROW_MSG };
+  }
+
   let updatedCount = 0;
   for (const u of updates) {
     if (!u.id) continue;
@@ -725,6 +740,34 @@ export async function updateCashflowTransactions(
  * atas rekening pemilik tx — RLS (`cashflow_transactions_admin_or_assignee_write`
  * FOR ALL) juga menegakkan hal yang sama.
  */
+/**
+ * Baris buku kas yang dibuat otomatis oleh sistem: penjualan POS, pengeluaran nota shift, nota Pengadaan.
+ * Mengubah/menghapusnya lewat editor kas menggeser kas seharusnya tanpa jejak (hapus baris penjualan = membatalkan
+ * penjualan TANPA PIN/alasan). Non-admin harus memakai jalurnya sendiri: Void di POS, atau hapus nota di Pengadaan.
+ */
+async function systemLinkedTxIds(ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (ids.length === 0) return out;
+  const admin = createAdminClient();
+  const sources = [
+    "pos_sales",
+    "pos_shift_expenses",
+    "procurement_purchase_lines",
+  ] as const;
+  for (const table of sources) {
+    const { data } = await admin
+      .from(table as never)
+      .select("cashflow_transaction_id")
+      .in("cashflow_transaction_id", ids);
+    for (const r of (data ?? []) as { cashflow_transaction_id: string | null }[])
+      if (r.cashflow_transaction_id) out.add(r.cashflow_transaction_id);
+  }
+  return out;
+}
+
+const SYSTEM_ROW_MSG =
+  "Baris ini dibuat otomatis (penjualan POS, nota shift, atau nota Pengadaan). Untuk membatalkan penjualan pakai Void di POS; untuk nota, hapus lewat Pengadaan & Pengeluaran. Koreksi lain: hubungi owner.";
+
 export async function deleteCashflowTransaction(id: string): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Not signed in" };
@@ -748,6 +791,9 @@ export async function deleteCashflowTransaction(id: string): Promise<ActionResul
 
   const archived = await cashArchivedError(supabase, stmt.bank_account_id);
   if (archived) return { ok: false, error: archived };
+
+  if ((await getCurrentRole()) !== "admin" && (await systemLinkedTxIds([id])).has(id))
+    return { ok: false, error: SYSTEM_ROW_MSG };
 
   const { error } = await supabase
     .from("cashflow_transactions")

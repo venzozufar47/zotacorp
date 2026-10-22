@@ -43,7 +43,9 @@ async function fetchAll<T>(
   const SIZE = 1000;
   for (let from = 0; ; from += SIZE) {
     const { data, error } = await page(from, from + SIZE - 1);
-    if (error || !data || data.length === 0) break;
+    // Galat BUKAN akhir data: potongan sebagian membuat kas seharusnya salah tanpa tanda apa pun.
+    if (error) throw new Error("Gagal membaca data kas");
+    if (!data || data.length === 0) break;
     out.push(...data);
     if (data.length < SIZE) break;
   }
@@ -124,10 +126,11 @@ export async function cashMovementInWindow(
   fromIso: string | null,
   toIso: string
 ): Promise<CashMovement> {
-  const { data: stmts } = await admin
+  const { data: stmts, error: stmtErr } = await admin
     .from("cashflow_statements")
     .select("id")
     .eq("bank_account_id", bankAccountId);
+  if (stmtErr) throw new Error("Gagal membaca data kas");
   const stmtIds = (stmts ?? []).map((st) => st.id);
 
   let credits = 0;
@@ -147,10 +150,11 @@ export async function cashMovementInWindow(
     // Pengeluaran bernota shift dicatat eksplisit di hitungan buka/tutup, jadi jangan dihitung dua kali.
     const shiftExpenseTx = new Set<string>();
     for (let i = 0; i < candidates.length; i += 200) {
-      const { data } = await admin
+      const { data, error: expErr } = await admin
         .from("pos_shift_expenses")
         .select("cashflow_transaction_id")
         .in("cashflow_transaction_id", candidates.slice(i, i + 200).map((r) => r.id));
+      if (expErr) throw new Error("Gagal membaca data kas");
       for (const e of data ?? []) if (e.cashflow_transaction_id) shiftExpenseTx.add(e.cashflow_transaction_id);
     }
     for (const r of candidates) {
