@@ -240,6 +240,33 @@ function Shell({
   );
 }
 
+/** Foto selfie absen (bucket privat → URL bertanda tangan dari /api/attendance/selfie). */
+function SelfiePhoto({ logId }: { logId: string }) {
+  const [state, setState] = useState<{ url: string } | { error: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/attendance/selfie?logId=${encodeURIComponent(logId)}`)
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setState(res.ok && body.url ? { url: body.url } : { error: res.status === 404 ? "Foto sudah tidak tersedia." : "Foto gagal dimuat." });
+      })
+      .catch(() => !cancelled && setState({ error: "Foto gagal dimuat." }));
+    return () => {
+      cancelled = true;
+    };
+  }, [logId]);
+
+  if (!state) return <div className="h-56 animate-pulse rounded-xl bg-muted" />;
+  if ("error" in state) {
+    return <p className="rounded-xl bg-muted px-3 py-6 text-center text-xs text-muted-foreground">{state.error}</p>;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- URL bertanda tangan sementara, bukan aset statis
+    <img src={state.url} alt="Selfie absen" className="max-h-72 w-full rounded-xl border border-border object-contain bg-muted" />
+  );
+}
+
 function Body({ children }: { children: React.ReactNode }) {
   return <div className="space-y-2.5 text-[13px] leading-relaxed">{children}</div>;
 }
@@ -520,9 +547,10 @@ function NotifResolver({
         <>
           <Body>
             <p>{text}</p>
+            <SelfiePhoto logId={item.rowId} />
             <p className="text-muted-foreground">
-              Karyawan tetap absen walau foto ditolak AI. Lihat fotonya lewat <b>Buka lengkap</b>, lalu tandai
-              ditinjau bila sudah dicek.
+              Karyawan tetap absen walau foto ditolak AI. Periksa fotonya di atas, lalu tandai ditinjau bila
+              sudah dicek.
             </p>
           </Body>
           <button
