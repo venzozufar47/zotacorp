@@ -100,7 +100,7 @@ export function MaterialOpnameForm({
         `Opname tersimpan — ${res.data?.diffItems ?? 0} bahan selisih`
       );
       setConfirmOpen(false);
-      router.push(`/pengadaan?bu=${encodeURIComponent(businessUnit)}`);
+      router.push(`/pengadaan?tab=stok&bu=${encodeURIComponent(businessUnit)}`);
       router.refresh();
     });
   }

@@ -41,7 +41,7 @@ export default async function OpnameBahanPage({
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Link
-          href={`/pengadaan?bu=${encodeURIComponent(activeBrand)}`}
+          href={`/pengadaan?tab=stok&bu=${encodeURIComponent(activeBrand)}`}
           className="rounded-full p-2 hover:bg-muted text-muted-foreground"
           aria-label="Kembali"
         >

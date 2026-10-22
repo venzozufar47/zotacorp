@@ -10,75 +10,118 @@ import {
   canManageProcurement,
   myProcurementBusinessUnits,
 } from "@/lib/procurement/access";
+import { listProcurementBoard, listGoodsIn } from "@/lib/actions/procurement.actions";
 import {
-  listProcurementBoard,
-  listGoodsIn,
-} from "@/lib/actions/procurement.actions";
+  getPurchaseFormData,
+  getPurchaseSummary,
+  listPurchases,
+} from "@/lib/actions/procurement-purchases.actions";
 import { pickActiveBrand, COSTING_BRAND_COOKIE } from "@/lib/costing/brands";
+import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ProcurementBoard } from "@/components/procurement/ProcurementBoard";
+import { PengadaanTabs, type PengadaanTab } from "@/components/procurement/PengadaanTabs";
+import { PengadaanCatat } from "@/components/procurement/PengadaanCatat";
+import { PurchaseHistory, PurchaseSummaryCard } from "@/components/procurement/PurchaseHistory";
+
+const TAB_KEYS: readonly PengadaanTab[] = ["catat", "riwayat", "stok"];
 
 /**
- * Papan pantau stok bahan baku untuk staf pengadaan.
+ * Pengadaan & Pengeluaran untuk petugas cabang: catat nota belanja (bahan baku + pengeluaran lain), lihat
+ * riwayat & total bulan ini, dan papan pantau stok bahan.
  *
- * Daftar brand HANYA dari penugasan (`myProcurementBusinessUnits`) —
- * `?bu=` yang tak ada di situ diabaikan, bukan dihormati, supaya staf
- * tidak bisa mengintip brand lain lewat URL.
+ * Daftar brand HANYA dari penugasan (`myProcurementBusinessUnits`) — `?bu=` yang tak ada di situ diabaikan,
+ * bukan dihormati, supaya petugas tidak bisa mengintip cabang lain lewat URL.
  */
 export default async function PengadaanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bu?: string }>;
+  searchParams: Promise<{ bu?: string; tab?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   if (!(await canOpenProcurement())) redirect("/dashboard");
-  if (await canManageProcurement()) redirect("/admin/costing/pengadaan");
+  if (await canManageProcurement()) redirect("/admin/costing/pengadaan/nota");
 
-  const { bu } = await searchParams;
+  const { bu, tab: tabParam } = await searchParams;
+  const tab: PengadaanTab = TAB_KEYS.find((k) => k === tabParam) ?? "catat";
   const brands = await myProcurementBusinessUnits();
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
-  const activeBrand = pickActiveBrand(brands, bu, lastOpened);
+  const activeBrand = pickActiveBrand(brands, bu, lastOpened) ?? null;
 
-  const [boardRes, goodsRes] = await Promise.all([
-    activeBrand ? listProcurementBoard(activeBrand) : Promise.resolve(null),
-    activeBrand ? listGoodsIn(activeBrand, 20) : Promise.resolve(null),
-  ]);
-  const rows = boardRes && boardRes.ok ? boardRes.data ?? [] : [];
-  const goodsIn = goodsRes && goodsRes.ok ? goodsRes.data ?? [] : [];
+  const today = jakartaDateString(new Date());
+  const monthStart = `${today.slice(0, 7)}-01`;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Link
           href="/dashboard"
-          className="rounded-full p-2 hover:bg-muted text-muted-foreground"
+          className="rounded-full p-2 text-muted-foreground hover:bg-muted"
           aria-label="Kembali"
         >
           <ArrowLeft size={18} strokeWidth={2.5} />
         </Link>
         <div>
-          <h1 className="font-display text-xl font-extrabold tracking-tight leading-none">
-            Pengadaan<span className="text-primary">.</span>
+          <h1 className="font-display text-xl font-extrabold leading-none tracking-tight">
+            Pengadaan &amp; Pengeluaran<span className="text-primary">.</span>
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Pantau stok bahan baku, hitung titik pesan &amp; jumlah beli, catat
-            barang masuk.
+          <p className="mt-1 text-xs text-muted-foreground">
+            Catat belanja dengan foto nota, pantau pengeluaran, dan jaga stok bahan baku.
           </p>
         </div>
       </div>
 
-      {brands.length === 0 ? (
+      {brands.length === 0 || !activeBrand ? (
         <p className="text-sm text-muted-foreground">
-          Kamu belum ditugaskan ke unit bisnis mana pun. Hubungi admin.
+          Kamu belum ditugaskan ke cabang mana pun. Hubungi admin.
         </p>
       ) : (
-        <ProcurementBoard
-          brands={brands}
-          activeBrand={activeBrand ?? null}
-          rows={rows}
-          goodsIn={goodsIn}
-        />
+        <>
+          <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} />
+          {tab === "catat" && <CatatTab brand={activeBrand} />}
+          {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
+          {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
+        </>
       )}
     </div>
+  );
+}
+
+async function CatatTab({ brand }: { brand: string }) {
+  const res = await getPurchaseFormData(brand);
+  if (!res.ok || !res.data)
+    return <p className="text-sm text-destructive">{res.ok ? "Gagal memuat form" : res.error}</p>;
+  return <PengadaanCatat data={res.data} />;
+}
+
+async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: string; monthStart: string }) {
+  const [listRes, sumRes] = await Promise.all([
+    listPurchases(brand, { limit: 60 }),
+    getPurchaseSummary(brand, monthStart, today),
+  ]);
+  const purchases = listRes.ok ? (listRes.data ?? []) : [];
+  const monthLabel = new Date(monthStart + "T00:00:00Z").toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return (
+    <div className="mx-auto max-w-xl space-y-4">
+      {sumRes.ok && sumRes.data && <PurchaseSummaryCard summary={sumRes.data} title={`Pengeluaran ${monthLabel}`} />}
+      <PurchaseHistory purchases={purchases} today={today} />
+    </div>
+  );
+}
+
+async function StokTab({ brand, brands }: { brand: string; brands: string[] }) {
+  const [boardRes, goodsRes] = await Promise.all([listProcurementBoard(brand), listGoodsIn(brand, 20)]);
+  return (
+    <ProcurementBoard
+      brands={brands}
+      activeBrand={brand}
+      basePath="/pengadaan?tab=stok"
+      rows={boardRes.ok ? (boardRes.data ?? []) : []}
+      goodsIn={goodsRes.ok ? (goodsRes.data ?? []) : []}
+    />
   );
 }

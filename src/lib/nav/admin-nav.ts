@@ -250,6 +250,7 @@ export function buildAdminNav({
             { href: "/admin/costing/bahan", label: "Master Bahan" },
             { href: "/admin/costing/dashboard", label: "Dashboard Margin" },
             { href: "/admin/costing/pengadaan", label: "Pengadaan" },
+            { href: "/admin/costing/pengadaan/nota", label: "Nota Belanja" },
           ],
         },
         // "Dividen" DIHAPUS dari sini: konsolnya melebur jadi tab

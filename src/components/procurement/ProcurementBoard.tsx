@@ -75,7 +75,7 @@ export function ProcurementBoard({
 
   function selectBrand(bu: string) {
     rememberBrand(bu);
-    router.push(`${basePath}?bu=${encodeURIComponent(bu)}`);
+    router.push(`${basePath}${basePath.includes("?") ? "&" : "?"}bu=${encodeURIComponent(bu)}`);
   }
 
   const counts = useMemo(() => {
