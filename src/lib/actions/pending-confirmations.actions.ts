@@ -5,7 +5,7 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { getPendingRegistrations } from "@/lib/actions/pending-registrations.actions";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { SELFIE_OVERRIDE_INBOX_DAYS } from "@/lib/attendance/selfie-gate-db";
-import { isSimOverdue, simStatus } from "@/lib/sim-cards/types";
+import { isSimOverdue, simStatus, simStatusSummary } from "@/lib/sim-cards/types";
 import { reviewDue } from "@/lib/cleaning/governance";
 import {
   RENEWAL_REMINDER_DAYS,
@@ -247,6 +247,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     id: string;
     created_by: string;
     escalated_at: string | null;
+    title?: string | null;
   };
   const ticketRows = (ticketsRes.data ?? []) as unknown as TicketRow[];
   const ticketCreatorIds = Array.from(new Set(ticketRows.map((t) => t.created_by)));
@@ -272,6 +273,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       userAvatarUrl: p?.avatar_url ?? null,
       userAvatarSeed: p?.avatar_seed ?? null,
       date: (t.escalated_at ?? new Date().toISOString()).slice(0, 10),
+      detail: t.title ?? undefined,
     };
   });
 
@@ -318,6 +320,10 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       userAvatarUrl: p?.avatar_url ?? null,
       userAvatarSeed: p?.avatar_seed ?? null,
       date: s.grace_until ?? s.active_until ?? today,
+      detail: `Nomor ${s.phone_number} — ${simStatusSummary(
+        { activeUntil: s.active_until, graceUntil: s.grace_until },
+        today
+      )}`,
     };
   });
 

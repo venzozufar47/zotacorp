@@ -113,9 +113,9 @@ export function notifDesc(p: PendingConfirmationItem): string {
     case "selfie_override":
       return p.detail ?? "Karyawan tetap absen walau foto ditolak AI";
     case "sim_card":
-      return "Nomor SIM lewat tenggat — perlu isi pulsa";
+      return p.detail ?? "Nomor SIM lewat tenggat — perlu isi pulsa";
     case "ticket":
-      return "Tiket studio perlu ditangani";
+      return p.detail ? `Eskalasi tiket: ${p.detail}` : "Tiket studio perlu ditangani";
     case "registration":
       return "Menunggu ACC akun";
     case "late_proof":

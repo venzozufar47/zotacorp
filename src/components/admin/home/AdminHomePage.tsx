@@ -31,6 +31,11 @@ import {
   type NotifTone,
 } from "@/components/admin/notifications/kinds";
 import { EmployeeDrawer, type DrawerSubject } from "./EmployeeDrawer";
+import {
+  fromPending,
+  useNotifResolver,
+  type ResolverItem,
+} from "@/components/admin/notifications/NotifResolver";
 import { createCoachingNote } from "@/lib/actions/cleaning-review.actions";
 import type {
   AdminHomeToday,
@@ -67,6 +72,8 @@ interface InboxItem {
   isRegistration?: boolean;
   /** Bila diisi, klik baris navigasi ke href ini (bukan buka drawer). */
   href?: string;
+  /** Bentuk seragam untuk popup penyelesaian. */
+  resolver: ResolverItem;
 }
 
 export function AdminHomePage({
@@ -123,7 +130,14 @@ export function AdminHomePage({
     timeZone: "Asia/Jakarta",
   });
 
-  const inboxAll = buildInbox(pendingConfirmations, disputes, userDirectory);
+  const inboxBuilt = buildInbox(pendingConfirmations, disputes, userDirectory);
+  // Popup penyelesaian: klik baris → selesaikan di tempat, lalu maju ke item berikutnya.
+  const resolver = useNotifResolver(
+    inboxBuilt.map((i) => i.resolver),
+    setDrawer
+  );
+  // Item yang baru diselesaikan langsung hilang tanpa menunggu refresh server.
+  const inboxAll = inboxBuilt.filter((i) => !resolver.done.has(i.id));
   // Jumlah per jenis → chip filter. Filter yang jenisnya sudah habis (mis.
   // semua langganan diperpanjang lalu halaman di-refresh) otomatis kembali
   // ke "Semua" supaya Inbox tidak tampak kosong padahal masih ada isinya.
@@ -401,23 +415,7 @@ export function AdminHomePage({
                   <InboxRow
                     key={it.id}
                     item={it}
-                    onSubject={() => {
-                      if (it.href) {
-                        router.push(it.href);
-                        return;
-                      }
-                      // Drawer = profil karyawan; notifikasi tanpa karyawan
-                      // tidak punya drawer (selalu punya href, ini pengaman).
-                      if (!it.hasPerson) return;
-                      setDrawer({
-                        userId: it.userId,
-                        fullName: it.userName,
-                        avatarUrl: it.userAvatarUrl,
-                        avatarSeed: it.userAvatarSeed,
-                        caption: it.desc,
-                        pendingRegistration: it.isRegistration,
-                      });
-                    }}
+                    onSubject={() => resolver.open(it.resolver)}
                   />
                 ))}
                 {inboxFiltered.length > INBOX_VISIBLE && (
@@ -554,6 +552,7 @@ export function AdminHomePage({
       </div>
 
       <EmployeeDrawer subject={drawer} onClose={() => setDrawer(null)} />
+      {resolver.node}
     </div>
   );
 }
@@ -952,7 +951,10 @@ function buildInbox(
 ): InboxItem[] {
   const out: InboxItem[] = [];
   for (const p of pending) {
+    const desc = notifDesc(p);
+    const ago = notifAgo(p);
     out.push({
+      resolver: fromPending(p, desc, ago),
       id: `pending-${p.kind}-${p.rowId}`,
       kind: p.kind,
       tone: notifTone(p),
@@ -961,8 +963,8 @@ function buildInbox(
       userName: p.employeeName,
       userAvatarUrl: p.userAvatarUrl,
       userAvatarSeed: p.userAvatarSeed,
-      desc: notifDesc(p),
-      ago: notifAgo(p),
+      desc,
+      ago,
       isRegistration: p.kind === "registration",
       href: notifHref(p),
     });
@@ -970,6 +972,18 @@ function buildInbox(
   for (const d of disputes) {
     const subject = directory[d.userId];
     out.push({
+      resolver: {
+        id: `dispute-${d.id}`,
+        kind: "dispute",
+        rowId: d.id,
+        title: subject?.full_name ?? "(unknown)",
+        hasPerson: true,
+        avatarUrl: subject?.avatar_url ?? null,
+        avatarSeed: subject?.avatar_seed ?? null,
+        desc: d.message.slice(0, 80),
+        detail: d.message,
+        ago: agoLabel(d.createdAt),
+      },
       id: `dispute-${d.id}`,
       kind: "dispute",
       tone: "bad",

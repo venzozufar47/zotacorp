@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
+import { EmployeeDrawer, type DrawerSubject } from "@/components/admin/home/EmployeeDrawer";
+import {
+  fromPending,
+  useNotifResolver,
+} from "@/components/admin/notifications/NotifResolver";
 import {
   NOTIF_KINDS,
   NotifLeading,
   TONE_CLASSES,
   notifAgo,
   notifDesc,
-  notifHref,
   notifTone,
   sortByUrgency,
   type NotifKind,
@@ -32,8 +35,8 @@ function formatDate(iso: string): string {
 }
 
 export function PendingConfirmationsBell({ items, variant = "compact" }: Props) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [drawer, setDrawer] = useState<DrawerSubject | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,7 +55,16 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
     };
   }, [open]);
 
-  const sorted = useMemo(() => sortByUrgency(items), [items]);
+  const sortedAll = useMemo(() => sortByUrgency(items), [items]);
+  const resolver = useNotifResolver(
+    useMemo(() => sortedAll.map((p) => fromPending(p, notifDesc(p), notifAgo(p))), [sortedAll]),
+    setDrawer
+  );
+  // Item yang baru diselesaikan di popup langsung hilang dari lonceng.
+  const sorted = useMemo(
+    () => sortedAll.filter((p) => !resolver.done.has(`pending-${p.kind}-${p.rowId}`)),
+    [sortedAll, resolver.done]
+  );
   // Ringkasan jumlah per jenis (urutan = kemunculan pada daftar terurut).
   const summary = useMemo(() => {
     const counts = new Map<NotifKind, number>();
@@ -60,28 +72,12 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
     return [...counts.entries()];
   }, [sorted]);
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && !resolver.node && !drawer) return null;
 
-  function jumpTo(it: PendingConfirmationItem) {
+  /** Klik item → selesaikan di popup (atau drawer karyawan untuk late proof / lembur / pendaftar). */
+  function openItem(it: PendingConfirmationItem) {
     setOpen(false);
-    if (it.kind === "registration") {
-      // Pendaftar baru → kelola & aktifkan di halaman Users.
-      router.push("/admin/users");
-      return;
-    }
-    const href = notifHref(it);
-    if (href) {
-      router.push(href);
-      return;
-    }
-    // Pin the recap table to the right month + scroll target so the
-    // existing in-page flash highlight kicks in.
-    const [y, m] = it.date.split("-").map(Number);
-    const params = new URLSearchParams();
-    params.set("month", String(m));
-    params.set("year", String(y));
-    params.set("focus", it.rowId);
-    router.push(`/admin/attendance?${params.toString()}#att-row-${it.rowId}`);
+    resolver.open(fromPending(it, notifDesc(it), notifAgo(it)));
   }
 
   const trigger =
@@ -90,12 +86,12 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full border-2 border-amber-400 bg-amber-50 text-amber-900 text-xs font-bold uppercase tracking-wider hover:bg-amber-100"
-        aria-label={`${items.length} konfirmasi pending`}
+        aria-label={`${sorted.length} konfirmasi pending`}
         aria-expanded={open}
       >
         <Bell size={12} />
         <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-600 text-white text-[10px] tabular-nums">
-          {items.length}
+          {sorted.length}
         </span>
       </button>
     ) : (
@@ -112,7 +108,7 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
           Konfirmasi
         </span>
         <span className="inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-amber-600 text-white text-[10px] font-bold tabular-nums">
-          {items.length}
+          {sorted.length}
         </span>
       </button>
     );
@@ -120,6 +116,8 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
   return (
     <div ref={rootRef} className="relative">
       {trigger}
+      {resolver.node}
+      <EmployeeDrawer subject={drawer} onClose={() => setDrawer(null)} />
       {open && (
         <div
           role="menu"
@@ -132,7 +130,7 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
         >
           <div className="px-2 pt-1 pb-2 space-y-1.5">
             <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-              {items.length} butuh konfirmasi
+              {sorted.length} butuh konfirmasi
             </p>
             {summary.length > 1 && (
               <div className="flex flex-wrap gap-1">
@@ -159,7 +157,7 @@ export function PendingConfirmationsBell({ items, variant = "compact" }: Props) 
                 <li key={`${it.rowId}-${it.kind}`}>
                   <button
                     type="button"
-                    onClick={() => jumpTo(it)}
+                    onClick={() => openItem(it)}
                     className="w-full text-left p-2 rounded-md hover:bg-amber-50 flex items-center gap-2.5 min-h-12"
                   >
                     <NotifLeading
