@@ -291,6 +291,7 @@ export function CleaningOverview({
   sopDocuments,
   initialGalleryOpen,
   initialSetupOpen,
+  initialFindingId,
 }: {
   report: CleaningRangeReportWithNames;
   view: CleaningViewKey;
@@ -314,6 +315,8 @@ export function CleaningOverview({
   sopDocuments?: SopDocumentAdminView[];
   /** Buka drawer "Pengaturan SOP" saat halaman dimuat (`?setup=1`, dari pengingat tinjau ulang). */
   initialSetupOpen?: boolean;
+  /** Buka langsung temuan ini di tab Kepatuhan (`?finding=issue:<id>`, dari Inbox/lonceng). */
+  initialFindingId?: string;
   /** Buka drawer "Telusur foto" langsung saat halaman dimuat — dipakai
    *  quick-access "Review foto kebersihan" di Beranda admin (`?gallery=1`). */
   initialGalleryOpen?: boolean;
@@ -347,7 +350,14 @@ export function CleaningOverview({
     () =>
       issues
         .filter((i): i is ItemIssueRow & { item_id: string } => !!i.item_id)
-        .map((i) => ({ id: i.id, itemId: i.item_id, date: i.date, reason: i.reason })),
+        .map((i) => ({
+          id: i.id,
+          itemId: i.item_id,
+          date: i.date,
+          reason: i.reason,
+          reporterId: i.user_id,
+          reporterName: i.user_name,
+        })),
     [issues]
   );
   const shownEmployees = report.employees.filter(
@@ -426,7 +436,7 @@ export function CleaningOverview({
           revisions={revisions}
           onOpenSetup={() => setSetupOpen(true)}
         >
-          <SopPages view={view} sidakTab={sidakTab} checklists={checklists} onOpenSetup={() => setSetupOpen(true)} />
+          <SopPages view={view} sidakTab={sidakTab} initialFindingId={initialFindingId} checklists={checklists} onOpenSetup={() => setSetupOpen(true)} />
         </SopProvider>
       ) : (
       <section className="space-y-2">
@@ -727,11 +737,13 @@ export function CleaningOverview({
 function SopPages({
   view,
   sidakTab,
+  initialFindingId,
   checklists,
   onOpenSetup,
 }: {
   view: CleaningViewKey;
   sidakTab?: "acak";
+  initialFindingId?: string;
   checklists: CleaningChecklist[];
   onOpenSetup: () => void;
 }) {
@@ -740,6 +752,7 @@ function SopPages({
   if (view === "sidak") return <SopSidak initialTab={sidakTab} onBack={() => go("ringkasan")} />;
   return (
     <SopKepatuhan
+      initialFindingId={initialFindingId}
       onOpenSidak={() => go("sidak")}
       footer={<SopGovernanceZone checklists={checklists} onOpenSetup={onOpenSetup} />}
     />

@@ -50,7 +50,7 @@ function ymdMinus(ymd: string, n: number): string {
 export default async function AdminCleaningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; tab?: string; gallery?: string; setup?: string }>;
+  searchParams: Promise<{ view?: string; tab?: string; gallery?: string; setup?: string; finding?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -70,6 +70,7 @@ export default async function AdminCleaningPage({
   const sidakTab = sp.tab === "acak" ? ("acak" as const) : undefined;
   const initialGalleryOpen = sp.gallery === "1";
   const initialSetupOpen = sp.setup === "1";
+  const initialFindingId = sp.finding && /^[a-z]+:[w-]+$/i.test(sp.finding) ? sp.finding : undefined;
 
   const today = jakartaDateString(new Date());
   const from = ymdMinus(today, REPORT_DAYS - 1);
@@ -145,6 +146,7 @@ export default async function AdminCleaningPage({
           sidakTab={sidakTab}
           sopDocuments={sopDocuments}
           initialSetupOpen={initialSetupOpen}
+          initialFindingId={initialFindingId}
           initialGalleryOpen={initialGalleryOpen}
         />
       )}

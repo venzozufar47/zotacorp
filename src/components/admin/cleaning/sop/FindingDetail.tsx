@@ -59,14 +59,6 @@ export function Runut({ f, trace }: { f: Finding; trace: Trace }) {
           </div>
         </div>
       )}
-      {f.kind === "issue" && f.reason && (
-        <div className="flex gap-2.5 rounded-xl bg-muted px-3 py-2.5 text-[12.5px] leading-[1.45]">
-          <div>
-            <b className="mb-px block font-display text-[13px]">Kata karyawan</b>
-            {f.reason}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -91,7 +83,8 @@ export function FindingDetail({ f, onBack }: { f: Finding; onBack?: () => void }
   const rows = groups.find((g) => g.date === date)?.rows ?? NO_ROWS;
   const hasPhoto = rows.some((r) => !!r.url);
   const allOk = rows.length > 0 && rows.every((r) => r.review_status === "ok");
-  const canJudge = hasPhoto && f.kind !== "miss";
+  // Masukan karyawan bukan penilaian foto: tak ada Oke / Minta ulang.
+  const canJudge = hasPhoto && f.kind !== "miss" && f.kind !== "issue";
   const showOk = canJudge && !allOk;
   const showRedo = canJudge && f.kind !== "redo";
   const contact = f.userId ?? (f.assigneeIds.length === 1 ? f.assigneeIds[0] : null) ?? trace?.who[0]?.userId ?? null;
@@ -141,6 +134,19 @@ export function FindingDetail({ f, onBack }: { f: Finding; onBack?: () => void }
           </p>
         </div>
       </div>
+
+      {f.kind === "issue" && f.reason && (
+        <div className="mx-[14px] mt-[11px] rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-[13px] leading-[1.5]">
+          <b className="mb-0.5 block font-display text-[12px] uppercase tracking-wide text-amber-700 dark:text-amber-400">
+            Masukan dari {f.reporterName ? firstName(f.reporterName) : "karyawan"}
+          </b>
+          {f.reason}
+          <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+            Tindak lanjut: <b>Perbaiki SOP</b> bila masukannya benar (masukan ikut tertutup), <b>Balas</b> bila perlu penjelasan,
+            atau <b>Tutup</b> bila tidak perlu tindakan.
+          </p>
+        </div>
+      )}
 
       <div className="mt-[11px]">
         {photos.loading ? (
@@ -198,7 +204,7 @@ export function FindingDetail({ f, onBack }: { f: Finding; onBack?: () => void }
         )}
         {contact && (
           <button type="button" onClick={() => sop.askNote({ ...f, userId: contact })} className={`${BTN} !h-9`}>
-            Catat ke {contactName}
+            {f.kind === "issue" ? `Balas ke ${contactName}` : `Catat ke ${contactName}`}
             <Kbd>C</Kbd>
           </button>
         )}
@@ -208,7 +214,7 @@ export function FindingDetail({ f, onBack }: { f: Finding; onBack?: () => void }
         </button>
         {!f.manual && (
           <button type="button" onClick={() => sop.markChecked(f)} className={`${BTN} !h-9`}>
-            {f.kind === "issue" ? "Tutup kendala" : "Sudah dicek"}
+            {f.kind === "issue" ? "Tutup masukan" : "Sudah dicek"}
             <Kbd>D</Kbd>
           </button>
         )}

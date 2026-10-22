@@ -31,8 +31,11 @@ const LEGEND_ORDER: readonly SegKey[] = ["ok", "miss", "abs", "redo", "late"];
 export function SopKepatuhan({
   onOpenSidak,
   footer,
+  initialFindingId,
 }: {
   onOpenSidak: () => void;
+  /** Temuan yang langsung dibuka (tautan dari Inbox/lonceng). */
+  initialFindingId?: string;
   /** Blok tambahan di bawah (mis. SOP yang perlu ditinjau ulang). */
   footer?: React.ReactNode;
 }) {
@@ -40,8 +43,8 @@ export function SopKepatuhan({
   const { report } = sop;
   const [cause, setCause] = useState<SegKey | null>(null);
   const [bid, setBid] = useState<string | null>(null);
-  const [selId, setSelId] = useState<string | null>(null);
-  const [listTab, setListTab] = useState<"temuan" | "titik">("titik");
+  const [selId, setSelId] = useState<string | null>(initialFindingId ?? null);
+  const [listTab, setListTab] = useState<"temuan" | "titik">(initialFindingId ? "temuan" : "titik");
 
   const n = report.days.length;
   const win = report.scoreDays;

@@ -142,7 +142,8 @@ export function notifHref(p: PendingConfirmationItem): string | undefined {
     case "sop_review":
       return "/admin/cleaning?setup=1";
     case "sop_issue":
-      return "/admin/cleaning";
+      // Langsung ke masukan itu di tab Kepatuhan, bukan ke halaman SOP umum.
+      return `/admin/cleaning?finding=issue:${p.rowId}`;
     case "sim_card":
       return "/admin/sim-cards";
     case "ticket":

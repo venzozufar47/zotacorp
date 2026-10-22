@@ -237,6 +237,8 @@ export interface Finding {
   /** Isi tambahan: alasan kendala, dst. */
   reason?: string;
   issueId?: string;
+  /** Nama pengirim masukan (jenis issue). */
+  reporterName?: string | null;
   rushed?: { userId: string; date: string; checklistId: string; photos: number; minutes: number; secPerPhoto: number };
   /** Hari kerja berturut-turut terlewat (jenis miss). */
   miss?: number;
@@ -252,6 +254,9 @@ export interface FindingIssueInput {
   itemId: string;
   date: string;
   reason: string;
+  /** Pengirim masukan — tujuan balasan. */
+  reporterId?: string | null;
+  reporterName?: string | null;
 }
 
 /** Hari kalender dari `ymd` ke `to` (≥0). */
@@ -337,7 +342,9 @@ export function buildFindings(
       checklistId: p.checklistId,
       ackKey: `issue:${i.id}`,
       ymd: i.date,
-      userId: null,
+      // Pengirim masukan = orang yang pantas dihubungi (balasan), bukan pelaksana titiknya.
+      userId: i.reporterId ?? null,
+      reporterName: i.reporterName ?? null,
       assigneeIds: p.assigneeIds,
       reason: i.reason,
       issueId: i.id,

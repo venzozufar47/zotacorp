@@ -112,6 +112,12 @@ export function SopProvider({
   const persistAck = useCallback(
     async (f: Finding) => {
       hideLocal(f);
+      // Masukan karyawan yang sudah ditindak (mis. SOP diperbaiki) ikut ditutup — kalau tidak,
+      // ia hilang dari daftar ini tapi tetap menumpuk di Inbox dan lonceng.
+      if (f.kind === "issue" && f.issueId) {
+        const closed = await resolveItemIssue({ id: f.issueId });
+        if (!closed.ok) toast.error(`Masukan belum tertutup: ${closed.error}`);
+      }
       const res = await ackFinding({ itemId: f.itemId, ackKey: f.ackKey });
       if (!res.ok) toast.error(`Tindakan tersimpan, tapi penanda temuan gagal: ${res.error}`);
     },
