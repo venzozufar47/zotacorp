@@ -40,8 +40,13 @@ export default async function PengadaanPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (await canManageProcurement()) redirect("/admin/costing/pengadaan/nota");
-  const staffBrands = (await canOpenProcurement()) ? await myProcurementBusinessUnits() : [];
+  // Admin bebas ke cabang mana pun (untuk mencoba form atau mencatat nota susulan); petugas hanya cabangnya.
+  const isAdmin = await canManageProcurement();
+  const staffBrands = isAdmin
+    ? ["Haengbocake Pare", "Haengbocake Semarang"]
+    : (await canOpenProcurement())
+      ? await myProcurementBusinessUnits()
+      : [];
   // Akun kasir (asisten POS) yang bukan petugas pengadaan: hanya boleh mencatat pengeluaran uang laci.
   const drawerBrands = await getMyDrawerExpenseBrands();
   const brands = [...new Set([...staffBrands, ...drawerBrands])].sort();

@@ -83,7 +83,7 @@ export function PurchaseHistory({
   if (purchases.length === 0) {
     return (
       <p className="rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-        Belum ada nota. Catat belanja pertamamu di tab &ldquo;Catat belanja&rdquo;.
+        {admin ? "Belum ada nota pada rentang ini." : <>Belum ada nota. Catat belanja pertamamu di tab &ldquo;Catat belanja&rdquo;.</>}
       </p>
     );
   }

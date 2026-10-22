@@ -82,8 +82,14 @@ export default async function AdminPurchasesPage({
           </Link>
         )}
         <Link
+          href={`/pengadaan?tab=catat${brand ? `&bu=${encodeURIComponent(brand)}` : ""}`}
+          className="ml-auto rounded-full border-2 border-foreground bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
+        >
+          + Catat nota
+        </Link>
+        <Link
           href="/admin/costing/pengadaan"
-          className="ml-auto rounded-full border-2 border-foreground bg-card px-3 py-1 text-xs font-semibold hover:bg-muted"
+          className=" rounded-full border-2 border-foreground bg-card px-3 py-1 text-xs font-semibold hover:bg-muted"
         >
           Papan stok
         </Link>

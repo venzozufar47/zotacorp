@@ -477,6 +477,16 @@ function SourceCard({
   );
 }
 
+/** Harga acuan yang mudah dibaca: per satuan beli, plus per satuan pakai (menolong data master yang satuan belinya ambigu). */
+function refPriceLabel(m: PurchaseMaterialOption): string {
+  const perUsage = m.contentPerPurchase > 0 ? m.purchasePrice / m.contentPerPurchase : 0;
+  const perBuy =
+    m.purchaseUnit.toLowerCase() === m.usageUnit.toLowerCase()
+      ? `${formatRp(m.purchasePrice)} per ${nf(m.contentPerPurchase, 0)} ${m.usageUnit}`
+      : `${formatRp(m.purchasePrice)} / ${m.purchaseUnit}`;
+  return `${perBuy} · ≈ Rp ${nf(perUsage, 2)}/${m.usageUnit}`;
+}
+
 function StepTitle({ n, title, done }: { n: number; title: string; done: boolean }) {
   return (
     <h2 className="flex items-center gap-2 font-display text-sm font-bold">
@@ -597,8 +607,7 @@ function BahanComposer({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{m.name}</span>
                     <span className="block text-[11px] text-muted-foreground">
-                      {formatRp(m.purchasePrice)} / {m.purchaseUnit}
-                      {m.contentPerPurchase !== 1 ? ` · isi ${nf(m.contentPerPurchase)} ${m.usageUnit}` : ""}
+                      Harga acuan {refPriceLabel(m)}
                     </span>
                   </span>
                   {m.pending && (
@@ -626,7 +635,7 @@ function BahanComposer({
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{picked.name}</p>
               <p className="text-[11px] text-muted-foreground">
-                Biasanya {formatRp(picked.purchasePrice)} / {picked.purchaseUnit}
+                Harga acuan {refPriceLabel(picked)}
               </p>
             </div>
             <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-primary hover:underline">
