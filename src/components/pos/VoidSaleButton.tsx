@@ -39,9 +39,12 @@ export function VoidSaleButton({
   const [pinOpen, setPinOpen] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Hanya untuk QRIS: uang dikembalikan TUNAI dari laci (mengurangi kas laci).
+  const [cashRefund, setCashRefund] = useState(false);
 
   function openDialog() {
     setReason("");
+    setCashRefund(false);
     setOpen(true);
   }
 
@@ -78,6 +81,7 @@ export function VoidSaleButton({
         saleId: sale.id,
         reason: reason.trim(),
         pin,
+        cashRefund: sale.paymentMethod === "qris" && cashRefund,
       });
       if (!res.ok) {
         // PIN salah tetap di modal PIN; kegagalan lain jadi toast.
@@ -158,10 +162,24 @@ export function VoidSaleButton({
               {sale.paymentMethod === "qris" && (
                 <p className="text-[11.5px] leading-relaxed rounded-lg bg-pop-amber/20 border border-pop-amber/50 px-2.5 py-2">
                   Ini pembayaran QRIS — uangnya masuk ke rekening, bukan laci. Membatalkan
-                  TIDAK mengubah uang di laci. Pengembalian ke pembeli dilakukan lewat
-                  QRIS/transfer. Jangan dicatat sebagai pengeluaran tunai atau &ldquo;Sales
-                  Refund&rdquo; — itu akan membuat kas laci terhitung kurang.
+                  sendiri tidak mengubah uang di laci. Kalau pembeli kamu kembalikan
+                  uangnya TUNAI dari laci, centang di bawah supaya kas laci ikut berkurang.
                 </p>
+              )}
+              {sale.paymentMethod === "qris" && (
+                <label className="flex items-start gap-2 rounded-lg border border-border px-2.5 py-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={cashRefund}
+                    onChange={(e) => setCashRefund(e.target.checked)}
+                    disabled={pending}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <b>Uang dikembalikan tunai dari laci</b> ({formatRp(sale.total)}) — kas laci berkurang dan
+                    dicatat sebagai Sales Refund.
+                  </span>
+                </label>
               )}
 
               <label className="block">

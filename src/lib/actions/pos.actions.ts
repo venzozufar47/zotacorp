@@ -1904,6 +1904,12 @@ export async function voidPosSale(input: {
   reason: string;
   /** PIN salah satu authorizer `sale_void`. */
   pin?: string;
+  /**
+   * Penjualan QRIS yang dibatalkan, lalu uangnya dikembalikan ke pembeli TUNAI dari laci. Void QRIS sendiri tidak
+   * menyentuh laci (uangnya masuk rekening); opsi ini mencatat uang tunai yang keluar dari laci sebagai
+   * "Sales Refund" supaya kas seharusnya ikut berkurang. Penjualan tunai tidak perlu: kas-nya sudah dikoreksi.
+   */
+  cashRefund?: boolean;
 }): Promise<ActionResult<{ saleId: string }>> {
   const reason = input.reason?.trim() ?? "";
   if (!input.saleId) return { ok: false, error: "saleId wajib" };
@@ -1914,7 +1920,7 @@ export async function voidPosSale(input: {
   const { data: sale } = await supabase
     .from("pos_sales")
     .select(
-      "id, bank_account_id, sale_date, created_at, voided_at, customer_name, cashflow_transaction_id, payment_status, payment_method, settled_at"
+      "id, bank_account_id, sale_date, created_at, voided_at, customer_name, cashflow_transaction_id, payment_status, payment_method, settled_at, total"
     )
     .eq("id", input.saleId)
     .maybeSingle();
@@ -2039,6 +2045,65 @@ export async function voidPosSale(input: {
     gate.userId,
     `Auto: stok kembali — void transaksi${cust ? ` ${cust}` : ""}`
   );
+
+  // Refund TUNAI atas penjualan QRIS: uang keluar dari laci → catat sebagai pengeluaran laci (kas seharusnya turun).
+  if (input.cashRefund && sale.payment_method === "qris") {
+    const now = new Date();
+    const today = jakartaDateString(now);
+    const [yy, mm] = today.split("-").map(Number);
+    const { data: acct } = await adminDb
+      .from("bank_accounts")
+      .select("default_branch")
+      .eq("id", sale.bank_account_id)
+      .maybeSingle();
+    const { data: stmt } = await adminDb
+      .from("cashflow_statements")
+      .select("id")
+      .eq("bank_account_id", sale.bank_account_id)
+      .eq("period_year", yy)
+      .eq("period_month", mm)
+      .maybeSingle();
+    let statementId = stmt?.id ?? null;
+    if (!statementId) {
+      const { data: ns } = await adminDb
+        .from("cashflow_statements")
+        .insert({
+          bank_account_id: sale.bank_account_id,
+          period_month: mm,
+          period_year: yy,
+          opening_balance: 0,
+          closing_balance: 0,
+          status: "draft",
+          created_by: gate.userId,
+        })
+        .select("id")
+        .single();
+      statementId = ns?.id ?? null;
+    }
+    if (statementId) {
+      const { data: maxRow } = await adminDb
+        .from("cashflow_transactions")
+        .select("sort_order")
+        .eq("statement_id", statementId)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      await adminDb.from("cashflow_transactions").insert({
+        statement_id: statementId,
+        transaction_date: today,
+        transaction_time: jakartaHHMM(now),
+        description: `Refund tunai (void QRIS${cust ? ` ${cust}` : ""}): ${reason}`,
+        notes: "Dari Void QRIS — uang dikembalikan tunai dari laci kasir",
+        debit: Number(sale.total),
+        credit: 0,
+        running_balance: null,
+        category: "Sales Refund",
+        branch: acct?.default_branch ?? null,
+        sort_order: (maxRow?.sort_order ?? -1) + 1,
+        drawer_neutral: false,
+      });
+    }
+  }
 
   revalidatePath("/pos", "layout");
   revalidatePath("/admin/finance", "layout");
