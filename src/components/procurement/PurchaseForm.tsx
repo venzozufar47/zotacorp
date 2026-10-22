@@ -65,9 +65,12 @@ type DraftLine =
 
 export function PurchaseForm({
   data,
+  initialMaterialId,
   onSaved,
 }: {
   data: PurchaseFormData;
+  /** Bahan yang sudah terpilih (dari tombol "Catat belanja" di papan stok). */
+  initialMaterialId?: string;
   /** Dipanggil setelah nota tersimpan, untuk pindah ke Riwayat bila diminta. */
   onSaved?: () => void;
 }) {
@@ -83,7 +86,8 @@ export function PurchaseForm({
   const [date, setDate] = useState(today);
   const [editDate, setEditDate] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [composer, setComposer] = useState<"bahan" | "lain" | null>(null);
+  const preselected = initialMaterialId ? data.materials.find((m) => m.id === initialMaterialId) ?? null : null;
+  const [composer, setComposer] = useState<"bahan" | "lain" | null>(preselected ? "bahan" : null);
   const { access } = data;
   // Sumber uang: bila hanya satu yang tersedia dipilih otomatis; bila dua, WAJIB dipilih (tanpa bawaan) —
   // salah sumber membuat kas laci tidak cocok.
@@ -382,6 +386,7 @@ export function PurchaseForm({
 
         {composer === "bahan" && (
           <BahanComposer
+            initialPicked={preselected}
             businessUnit={businessUnit}
             materials={materials}
             usageUnits={data.usageUnits}
@@ -506,6 +511,7 @@ function StepTitle({ n, title, done }: { n: number; title: string; done: boolean
 /* ───────────────────────── Bahan baku ───────────────────────── */
 
 function BahanComposer({
+  initialPicked = null,
   businessUnit,
   materials,
   usageUnits,
@@ -513,6 +519,7 @@ function BahanComposer({
   onAdd,
   onCancel,
 }: {
+  initialPicked?: PurchaseMaterialOption | null;
   businessUnit: string;
   materials: PurchaseMaterialOption[];
   usageUnits: { code: string; label: string }[];
@@ -521,9 +528,9 @@ function BahanComposer({
   onCancel: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const [picked, setPicked] = useState<PurchaseMaterialOption | null>(null);
+  const [picked, setPicked] = useState<PurchaseMaterialOption | null>(initialPicked);
   const [qty, setQty] = useState("");
-  const [unit, setUnit] = useState("");
+  const [unit, setUnit] = useState(initialPicked?.unitChoices[0] ?? initialPicked?.purchaseUnit ?? "");
   const [total, setTotal] = useState("");
   const [proposing, setProposing] = useState(false);
 

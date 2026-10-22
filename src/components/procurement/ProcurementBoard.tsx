@@ -329,16 +329,24 @@ export function ProcurementBoard({
                         title="Buka link pembelian"
                         className="inline-flex items-center gap-1 h-8 rounded-lg border border-border px-2 text-[11px] font-semibold text-muted-foreground hover:border-foreground hover:text-foreground"
                       >
-                        <ExternalLink size={13} /> Beli
+                        <ExternalLink size={13} /> Link beli
                       </a>
                     )}
+                    {/* Satu jalur untuk pembelian: nota berfoto (buku kas + stok + harga). */}
+                    <a
+                      href={`/pengadaan?tab=catat&bu=${encodeURIComponent(activeBrand ?? "")}&bahan=${r.material.id}`}
+                      title="Catat pembelian bahan ini lewat nota berfoto"
+                      className="inline-flex items-center gap-1 h-8 rounded-lg border-2 border-foreground bg-primary px-2 text-[11px] font-bold"
+                    >
+                      <PackagePlus size={13} /> Catat belanja
+                    </a>
                     <button
                       type="button"
                       onClick={() => setGoodsInFor(r)}
-                      title="Catat barang masuk"
-                      className="inline-flex items-center gap-1 h-8 rounded-lg border-2 border-foreground bg-primary px-2 text-[11px] font-bold"
+                      title="Barang masuk tanpa pembelian (pemberian / dari cabang lain) — tidak tercatat di keuangan"
+                      className="inline-flex items-center h-8 rounded-lg px-1.5 text-[10.5px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
-                      <PackagePlus size={13} /> Masuk
+                      tanpa nota
                     </button>
                   </div>
                 </div>

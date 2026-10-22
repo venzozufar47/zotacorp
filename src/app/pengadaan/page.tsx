@@ -36,7 +36,7 @@ const TAB_KEYS: readonly PengadaanTab[] = ["catat", "riwayat", "stok"];
 export default async function PengadaanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bu?: string; tab?: string }>;
+  searchParams: Promise<{ bu?: string; tab?: string; bahan?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -52,7 +52,7 @@ export default async function PengadaanPage({
   const brands = [...new Set([...staffBrands, ...drawerBrands])].sort();
   if (brands.length === 0) redirect("/dashboard");
 
-  const { bu, tab: tabParam } = await searchParams;
+  const { bu, tab: tabParam, bahan } = await searchParams;
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
   const activeBrand = pickActiveBrand(brands, bu, lastOpened) ?? null;
   const limited = !!activeBrand && !staffBrands.includes(activeBrand);
@@ -88,7 +88,7 @@ export default async function PengadaanPage({
       ) : (
         <>
           <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} />
-          {tab === "catat" && <CatatTab brand={activeBrand} />}
+          {tab === "catat" && <CatatTab brand={activeBrand} initialMaterialId={bahan} />}
           {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
         </>
@@ -97,11 +97,11 @@ export default async function PengadaanPage({
   );
 }
 
-async function CatatTab({ brand }: { brand: string }) {
+async function CatatTab({ brand, initialMaterialId }: { brand: string; initialMaterialId?: string }) {
   const res = await getPurchaseFormData(brand);
   if (!res.ok || !res.data)
     return <p className="text-sm text-destructive">{res.ok ? "Gagal memuat form" : res.error}</p>;
-  return <PengadaanCatat data={res.data} />;
+  return <PengadaanCatat data={res.data} initialMaterialId={initialMaterialId} />;
 }
 
 async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: string; monthStart: string }) {

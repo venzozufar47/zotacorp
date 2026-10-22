@@ -77,7 +77,9 @@ export function GoodsInDialog({
         <div>
           <h2 className="font-semibold text-foreground">{row.material.name}</h2>
           <p className="text-xs text-muted-foreground">
-            Catat barang yang SUDAH diterima. Stok langsung bertambah.
+            <b>Barang masuk tanpa nota</b> — hanya untuk barang yang tidak dibeli (pemberian, kiriman dari cabang
+            lain). Stok bertambah, tetapi <b>tidak tercatat di keuangan</b>. Untuk pembelian, pakai &ldquo;Catat
+            belanja&rdquo; supaya ada foto nota dan masuk buku kas.
           </p>
         </div>
 
