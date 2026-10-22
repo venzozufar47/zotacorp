@@ -217,7 +217,11 @@ export function PurchaseForm({
           }
           disabled={!access.laci}
           disabledReason={access.laciReason ?? undefined}
-          onClick={() => setSource("laci")}
+          onClick={() => {
+            setSource("laci");
+            setDate(today); // uang laci selalu hari ini
+            setEditDate(false);
+          }}
         />
         <p className="text-[11px] text-muted-foreground">
           Salah memilih membuat kas laci tidak cocok. Ragu? Tanyakan: apakah uangnya diambil dari laci kasir?
@@ -297,7 +301,9 @@ export function PurchaseForm({
               maxLength={80}
             />
           </label>
-          {editDate ? (
+          {source === "laci" ? (
+            <span className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Hari ini</span>
+          ) : editDate ? (
             <input
               type="date"
               value={date}

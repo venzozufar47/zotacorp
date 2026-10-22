@@ -405,6 +405,10 @@ export async function createPurchase(
   const date = input.purchaseDate || today;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "Tanggal tidak valid" };
   if (date > today) return { ok: false, error: "Tanggal nota tidak boleh di masa depan" };
+  // Uang laci selalu "hari ini": kas laci dihitung dari saat dicatat (shift berjalan). Nota susulan dengan tanggal
+  // kemarin akan terhitung di hitungan shift hari ini dan memunculkan selisih palsu.
+  if (input.moneySource === "laci" && date !== today)
+    return { ok: false, error: "Pengeluaran uang laci hanya bisa dicatat untuk hari ini" };
   const oldest = jakartaDateString(new Date(now.getTime() - MAX_BACKDATE_DAYS * 86_400_000));
   if (date < oldest) return { ok: false, error: `Nota susulan maksimal ${MAX_BACKDATE_DAYS} hari ke belakang` };
 
