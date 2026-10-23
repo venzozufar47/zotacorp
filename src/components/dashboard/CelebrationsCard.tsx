@@ -1,6 +1,7 @@
 import type { CelebrationsFeed } from "@/lib/actions/celebrations.actions";
 import { getDictionary } from "@/lib/i18n/server";
 import { ActiveCelebrationCard } from "./ActiveCelebrationCard";
+import { CelebrationRecapCard } from "./CelebrationRecapCard";
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
@@ -22,7 +23,7 @@ export async function CelebrationsCard({ feed, viewerId }: Props) {
 
   // Tidak ada perayaan hari ini maupun 7 hari ke depan → sembunyikan
   // seluruh seksi, jangan tampilkan kartu kosong.
-  if (!hasToday && !hasUpcoming) return null;
+  if (!hasToday && !hasUpcoming && !feed.recap) return null;
 
   const locale = lang === "id" ? idLocale : undefined;
 
@@ -53,6 +54,8 @@ export async function CelebrationsCard({ feed, viewerId }: Props) {
             ))}
           </div>
         )}
+
+        {feed.recap && <CelebrationRecapCard recap={feed.recap} />}
 
         {hasUpcoming && (
           <div className="space-y-2.5">

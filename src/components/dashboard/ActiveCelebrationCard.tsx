@@ -190,7 +190,7 @@ export async function ActiveCelebrationCard({ celebrant, viewerId }: Props) {
   );
 }
 
-function MessageBubble({ message, muted }: { message: CelebrationMessage; muted?: boolean }) {
+export function MessageBubble({ message, muted }: { message: CelebrationMessage; muted?: boolean }) {
   return (
     <div className="flex items-start gap-2.5">
       <EmployeeAvatar

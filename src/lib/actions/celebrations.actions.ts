@@ -16,6 +16,7 @@ import {
   type CelebrationRow,
   getCelebrantsInWindow,
   getSelfCelebrationToday,
+  getSelfRecentBirthday,
   isWithinActiveWindow,
   pickDisplayName,
   zonedDateString,
@@ -49,6 +50,8 @@ export type CelebrationsFeed = {
   today: CelebrantWithMessages[];
   upcoming: Celebrant[];
   mySelfCelebration: Celebrant | null;
+  /** Ulang tahun viewer yang baru lewat (≤7 hari) beserta ucapan yang diterima; hanya untuk dirinya sendiri. */
+  recap: CelebrantWithMessages | null;
 };
 
 /**
@@ -61,7 +64,7 @@ export type CelebrationsFeed = {
 export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
   const user = await getCurrentUser();
   if (!user) {
-    return { today: [], upcoming: [], mySelfCelebration: null };
+    return { today: [], upcoming: [], mySelfCelebration: null, recap: null };
   }
 
   const supabase = await createClient();
@@ -124,14 +127,30 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     ? [selfToday, ...todayCoworkers]
     : todayCoworkers;
 
-  // Load messages for today's celebrants in one query.
-  let today: CelebrantWithMessages[] = todayCelebrants.map((c) => ({
+  // Rekap: ulang tahun viewer yang sudah lewat 1–7 hari. Ucapan dimuat bersama celebrant hari ini.
+  const selfRecap =
+    profileSelf && !selfToday
+      ? getSelfRecentBirthday({
+          id: profileSelf.id,
+          fullName: profileSelf.full_name ?? "",
+          nickname: profileSelf.nickname ?? null,
+          avatarUrl: profileSelf.avatar_url ?? null,
+          avatarSeed: profileSelf.avatar_seed ?? null,
+          dateOfBirth: profileSelf.date_of_birth ?? null,
+          today: now,
+          tz,
+        })
+      : null;
+  const toLoad = selfRecap ? [...todayCelebrants, selfRecap] : todayCelebrants;
+
+  // Load messages for today's celebrants (and the recap) in one query.
+  let loaded: CelebrantWithMessages[] = toLoad.map((c) => ({
     ...c,
     messages: [],
   }));
 
-  if (todayCelebrants.length > 0) {
-    const celebrantIds = todayCelebrants.map((c) => c.id);
+  if (toLoad.length > 0) {
+    const celebrantIds = toLoad.map((c) => c.id);
     const { data: msgs } = await supabase
       .from("celebration_messages")
       .select("id, celebrant_id, author_id, event_type, event_year, kind, parent_id, body, created_at")
@@ -168,7 +187,7 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
         ])
     );
 
-    today = todayCelebrants.map((c) => ({
+    loaded = toLoad.map((c) => ({
       ...c,
       messages: (msgs ?? [])
         .filter(
@@ -197,7 +216,10 @@ export async function getCelebrationsFeed(): Promise<CelebrationsFeed> {
     }));
   }
 
-  return { today, upcoming, mySelfCelebration: selfToday };
+  const recap = selfRecap ? (loaded.find((c) => c.id === selfRecap.id && c.kind === "birthday" && c.eventYear === selfRecap.eventYear) ?? null) : null;
+  const today = recap ? loaded.filter((c) => c !== recap) : loaded;
+
+  return { today, upcoming, mySelfCelebration: selfToday, recap };
 }
 
 /**

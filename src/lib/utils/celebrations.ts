@@ -281,6 +281,48 @@ export function getSelfCelebrationToday(args: {
   return null;
 }
 
+/** Berapa hari setelah hari-H rekap ucapan masih ditampilkan di beranda perayanya. */
+export const RECAP_DAYS = 7;
+
+/**
+ * Ulang tahun viewer yang BARU LEWAT (1..RECAP_DAYS hari lalu, bukan hari-H sendiri). Dipakai untuk rekap
+ * ucapan di beranda: pada hari-H yang tampil adalah kartu perayaan biasa, sesudahnya ucapan tidak langsung hilang.
+ * Tahun kejadian bisa tahun lalu (mis. ultah 2 Jan dilihat 5 Jan → tetap tahun ini; 30 Des dilihat 3 Jan → tahun lalu).
+ */
+export function getSelfRecentBirthday(args: {
+  id: string;
+  fullName: string;
+  nickname?: string | null;
+  avatarUrl?: string | null;
+  avatarSeed?: string | null;
+  dateOfBirth: string | null;
+  today: Date;
+  tz: string;
+}): Celebrant | null {
+  const { dateOfBirth, today, tz } = args;
+  if (!dateOfBirth) return null;
+  const [, bm, bd] = dateOfBirth.split("-").map(Number);
+  const mmdd = `${String(bm).padStart(2, "0")}-${String(bd).padStart(2, "0")}`;
+  const todayIso = zonedDateString(today, tz);
+  const { y } = zonedParts(today, tz);
+  for (const yr of [y, y - 1]) {
+    const iso = resolveBirthdayThisYear(mmdd, yr);
+    const ago = dayDiff(todayIso, iso);
+    if (ago >= 1 && ago <= RECAP_DAYS) {
+      return {
+        id: args.id,
+        fullName: pickDisplayName(args.fullName, args.nickname),
+        avatarUrl: args.avatarUrl ?? null,
+        avatarSeed: args.avatarSeed ?? null,
+        kind: "birthday",
+        occursOn: iso,
+        eventYear: yr,
+      };
+    }
+  }
+  return null;
+}
+
 /**
  * Whether a given celebration is in its posting window (±1 day around
  * the event). Keeps the feed active while greetings feel timely and

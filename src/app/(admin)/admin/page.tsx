@@ -65,6 +65,7 @@ export default async function AdminHomeRoute() {
       today: [],
       upcoming: [],
       mySelfCelebration: null,
+      recap: null,
     })),
     getCleaningMisses(),
     getAdminOpsMetrics(),
