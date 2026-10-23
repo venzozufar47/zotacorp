@@ -444,7 +444,7 @@ export function PurchaseForm({
       </section>
 
       {/* Bilah simpan */}
-      <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-6px_16px_-10px_rgba(0,0,0,0.25)] backdrop-blur md:bottom-auto md:shadow-none md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
+      <div className="fixed inset-x-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-6px_16px_-10px_rgba(0,0,0,0.25)] backdrop-blur md:bottom-auto md:shadow-none md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
         <div className="mx-auto flex max-w-xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-muted-foreground">

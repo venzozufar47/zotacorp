@@ -3,8 +3,11 @@
 /**
  * Daftar bahan baku dikelola petugas pengadaan sendiri (tambah bahan, ubah detail, nonaktifkan) — sepengetahuan
  * owner, tanpa owner harus mengerjakan hal teknis. Pengamannya:
- *  - HARGA ACUAN tidak bisa diedit di sini: harga hanya bergerak lewat nota belanja (rata-rata tertimbang) atau
- *    owner (Master Bahan). Petugas tak bisa menggeser HPP/margin dengan mengetik angka.
+ *  - HARGA ACUAN tidak diedit bebas di sini: harga bergerak lewat nota belanja (rata-rata tertimbang) atau owner
+ *    (Master Bahan). Satu-satunya pengecualian: isi per kemasan / satuan beli berubah → harga baru wajib diisi
+ *    (harga lama tak lagi berlaku), dicatat + owner diberi tahu.
+ *  - SATUAN PAKAI terkunci begitu dipakai resep / barang masuk / opname (angka lama tersimpan dalam satuan itu).
+ *    Barang masuk menyimpan snapshot isi per kemasan, jadi stok masa lalu tak ikut berubah saat isi diubah.
  *  - Setiap perubahan dicatat (siapa, kapan, dari → ke) di `costing_material_changes`.
  *  - Perubahan yang memengaruhi HPP/stok (isi per kemasan, satuan pakai, nonaktif) mengirim notifikasi ke owner.
  *  - Owner cukup menekan "Sudah dilihat" atau "Urungkan" di halaman admin Nota Belanja.
@@ -46,6 +49,8 @@ export interface MaterialDetail {
   pending: boolean;
   /** Jumlah resep yang memakai bahan ini (bahan terpakai resep tak bisa dinonaktifkan petugas). */
   recipeCount: number;
+  /** Satuan pakai terkunci: sudah dipakai resep, barang masuk, atau opname (mengubahnya membuat angka lama salah arti). */
+  usageUnitLocked: boolean;
 }
 
 export async function listMaterialDetails(businessUnit: string): Promise<ActionResult<MaterialDetail[]>> {
@@ -61,7 +66,9 @@ export async function listMaterialDetails(businessUnit: string): Promise<ActionR
     .order("name");
   if (error) return { ok: false, error: error.message };
   const rows = (data ?? []) as Record<string, unknown>[];
-  const counts = await recipeCounts(admin, rows.map((r) => r.id as string));
+  const ids = rows.map((r) => r.id as string);
+  const counts = await recipeCounts(admin, ids);
+  const withHistory = await materialsWithStockHistory(admin, ids);
   return {
     ok: true,
     data: rows.map((r) => ({
@@ -76,6 +83,7 @@ export async function listMaterialDetails(businessUnit: string): Promise<ActionR
       isActive: r.is_active === true,
       pending: r.review_status === "pending",
       recipeCount: counts.get(r.id as string) ?? 0,
+      usageUnitLocked: (counts.get(r.id as string) ?? 0) > 0 || withHistory.has(r.id as string),
     })),
   };
 }
@@ -92,6 +100,19 @@ async function recipeCounts(admin: Admin, ids: string[]): Promise<Map<string, nu
   return out;
 }
 
+/** Bahan yang sudah punya barang masuk atau opname: angkanya tersimpan dalam satuan pakai yang berlaku saat itu. */
+async function materialsWithStockHistory(admin: Admin, ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    for (const table of ["costing_material_receipts", "costing_material_opname_items"]) {
+      const { data } = await admin.from(table as never).select("material_id").in("material_id", chunk);
+      for (const r of (data ?? []) as { material_id: string }[]) out.add(r.material_id);
+    }
+  }
+  return out;
+}
+
 export interface SaveMaterialInput {
   businessUnit: string;
   /** Kosong = bahan baru. */
@@ -102,7 +123,10 @@ export interface SaveMaterialInput {
   contentPerPurchase: number;
   usageUnit: string;
   shopeeUrl?: string | null;
-  /** Hanya untuk bahan BARU (harga acuan awal). Bahan yang sudah ada: harga diubah lewat nota belanja. */
+  /**
+   * Bahan BARU: harga acuan awal. Bahan yang ada: harga diubah lewat nota belanja, KECUALI isi per kemasan atau
+   * satuan beli berubah — harga per satuan beli lama tak lagi berlaku, jadi harga baru wajib diisi.
+   */
   purchasePrice?: number;
 }
 
@@ -112,6 +136,7 @@ const FIELD_LABEL: Record<string, string> = {
   purchase_unit: "satuan beli",
   content_per_purchase: "isi per kemasan",
   usage_unit: "satuan pakai",
+  purchase_price: "harga per satuan beli",
   shopee_url: "link beli",
 };
 
@@ -130,6 +155,23 @@ async function notifyOwner(admin: Admin, userId: string, businessUnit: string, n
   } catch {
     // Notifikasi gagal tak boleh membatalkan perubahan yang sudah tercatat.
   }
+}
+
+/** Riwayat harga + isi saat ini (repricing produk terdampak bergantung padanya). */
+async function logPriceHistory(admin: Admin, materialId: string, userId: string) {
+  const { data } = await admin
+    .from("costing_materials" as never)
+    .select("purchase_price, content_per_purchase")
+    .eq("id", materialId)
+    .maybeSingle();
+  const m = data as { purchase_price: unknown; content_per_purchase: unknown } | null;
+  if (!m) return;
+  await admin.from("costing_material_price_history" as never).insert({
+    material_id: materialId,
+    purchase_price: num(m.purchase_price),
+    content_per_purchase: num(m.content_per_purchase),
+    created_by: userId,
+  } as never);
 }
 
 export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResult<{ id: string }>> {
@@ -202,7 +244,7 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
   if (!gate.ok) return { ok: false, error: gate.error };
   const { data: curRow } = await admin
     .from("costing_materials" as never)
-    .select("id, business_unit, name, category, purchase_unit, content_per_purchase, usage_unit, shopee_url, is_active")
+    .select("id, business_unit, name, category, purchase_unit, content_per_purchase, usage_unit, shopee_url, is_active, purchase_price")
     .eq("id", input.id)
     .maybeSingle();
   const cur = curRow as Record<string, unknown> | null;
@@ -210,6 +252,25 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
   // Satuan pakai boleh tetap seperti semula (data lama), tapi satuan baru harus gram/ml/pcs.
   if (usageUnit !== String(cur.usage_unit).toLowerCase() && !BASE_USAGE_UNITS.includes(usageUnit))
     return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };
+  // Satuan pakai dipakai semua resep (satuan resep kosong = ikut satuan pakai bahan), stok barang masuk, dan opname:
+  // mengubahnya diam-diam membuat gram jadi ml. Setelah dipakai, hanya owner yang boleh.
+  if (usageUnit !== String(cur.usage_unit).toLowerCase()) {
+    const used = (await recipeCounts(admin, [input.id])).get(input.id) ?? 0;
+    const hist = (await materialsWithStockHistory(admin, [input.id])).has(input.id);
+    if (used > 0 || hist)
+      return {
+        ok: false,
+        error: "Satuan pakai sudah dipakai di resep/stok sehingga tidak bisa diubah di sini. Minta owner.",
+      };
+  }
+  const packChanged =
+    num(cur.content_per_purchase) !== input.contentPerPurchase ||
+    String(cur.purchase_unit).trim().toLowerCase() !== purchaseUnit.toLowerCase();
+  if (packChanged && !(input.purchasePrice && input.purchasePrice > 0))
+    return {
+      ok: false,
+      error: "Isi/satuan beli berubah — isi harga baru per satuan beli (harga lama sudah tidak sesuai).",
+    };
 
   if (name.toLowerCase() !== String(cur.name).toLowerCase()) {
     const { data: dup } = await admin
@@ -230,20 +291,28 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
     usage_unit: usageUnit,
     shopee_url: link,
   };
+  if (packChanged) next.purchase_price = Math.round((input.purchasePrice as number) * 100) / 100;
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const k of Object.keys(next)) {
-    const before = k === "content_per_purchase" ? num(cur[k]) : (cur[k] ?? null);
+    const before = k === "content_per_purchase" || k === "purchase_price" ? num(cur[k]) : (cur[k] ?? null);
     const after = next[k] ?? null;
     if (before !== after) changes[k] = { from: before, to: after };
   }
   if (Object.keys(changes).length === 0) return { ok: true, data: { id: input.id } };
 
-  const sensitive = "content_per_purchase" in changes || "usage_unit" in changes;
+  const sensitive = "content_per_purchase" in changes || "usage_unit" in changes || "purchase_price" in changes;
   const { error } = await admin
     .from("costing_materials" as never)
-    .update({ ...next, updated_at: new Date().toISOString() } as never)
+    .update({
+      ...next,
+      updated_at: new Date().toISOString(),
+      ...("purchase_price" in changes || "content_per_purchase" in changes
+        ? { price_updated_at: new Date().toISOString() }
+        : {}),
+    } as never)
     .eq("id", input.id);
   if (error) return { ok: false, error: error.message };
+  if ("purchase_price" in changes || "content_per_purchase" in changes) await logPriceHistory(admin, input.id, gate.userId);
 
   await admin.from("costing_material_changes" as never).insert({
     material_id: input.id,
@@ -420,7 +489,7 @@ export async function revertMaterialChange(id: string): Promise<ActionResult> {
   const mat = matRow as Record<string, unknown> | null;
   if (!mat) return { ok: false, error: "Bahannya sudah dihapus" };
   for (const [k, v] of Object.entries(ch)) {
-    const nowVal = k === "content_per_purchase" ? num(mat[k]) : (mat[k] ?? null);
+    const nowVal = k === "content_per_purchase" || k === "purchase_price" ? num(mat[k]) : (mat[k] ?? null);
     if (nowVal !== (v.to ?? null))
       return { ok: false, error: "Sudah diubah lagi setelah itu — tidak bisa diurungkan otomatis. Ubah manual di Master Bahan." };
   }
@@ -428,9 +497,14 @@ export async function revertMaterialChange(id: string): Promise<ActionResult> {
   for (const [k, v] of Object.entries(ch)) restore[k] = v.from ?? null;
   const { error } = await admin
     .from("costing_materials" as never)
-    .update({ ...restore, updated_at: new Date().toISOString() } as never)
+    .update({
+      ...restore,
+      updated_at: new Date().toISOString(),
+      ...("purchase_price" in ch || "content_per_purchase" in ch ? { price_updated_at: new Date().toISOString() } : {}),
+    } as never)
     .eq("id", c.material_id as string);
   if (error) return { ok: false, error: error.message };
+  if ("purchase_price" in ch || "content_per_purchase" in ch) await logPriceHistory(admin, c.material_id as string, gate.userId);
   await admin
     .from("costing_material_changes" as never)
     .update({

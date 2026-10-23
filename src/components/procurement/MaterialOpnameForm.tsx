@@ -197,7 +197,7 @@ export function MaterialOpnameForm({
         </div>
       ))}
 
-      <div className="sticky bottom-0 rounded-2xl border-2 border-foreground bg-card p-3 shadow-hard space-y-2">
+      <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-20 md:bottom-0 rounded-2xl border-2 border-foreground bg-card p-3 shadow-hard space-y-2">
         <input
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

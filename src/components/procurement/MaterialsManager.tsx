@@ -49,6 +49,13 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
   const inactiveCount = materials.filter((m) => !m.isActive).length;
   const editing = !!draft?.id;
   const current = draft?.id ? materials.find((m) => m.id === draft.id) : undefined;
+  // Isi per kemasan / satuan beli berubah → harga lama per satuan beli tak berlaku lagi: harga baru wajib.
+  const packChanged =
+    !!draft && !!current &&
+    (Number(draft.content.replace(",", ".")) !== current.contentPerPurchase ||
+      draft.purchaseUnit.trim().toLowerCase() !== current.purchaseUnit.trim().toLowerCase());
+  const newContent = draft ? Number(draft.content.replace(",", ".")) : 0;
+  const newPrice = draft ? Number(draft.price.replace(/D/g, "")) : 0;
 
   function open(m?: MaterialDetail) {
     setDraft(
@@ -61,7 +68,8 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
             content: String(m.contentPerPurchase),
             usageUnit: m.usageUnit,
             shopeeUrl: m.shopeeUrl ?? "",
-            price: String(m.purchasePrice),
+            // Harga hanya diminta lagi bila isi/satuan beli diubah; kosongkan supaya petugas mengetik harga yang baru.
+            price: "",
           }
         : { ...EMPTY }
     );
@@ -81,7 +89,7 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
         contentPerPurchase: content,
         usageUnit: draft.usageUnit,
         shopeeUrl: draft.shopeeUrl,
-        purchasePrice: draft.id ? undefined : price,
+        purchasePrice: draft.id && !packChanged ? undefined : price,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -200,9 +208,10 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
                     <button
                       key={u}
                       type="button"
+                      disabled={!!current?.usageUnitLocked}
                       onClick={() => setDraft((d) => (d ? { ...d, usageUnit: u } : d))}
                       className={cn(
-                        "flex-1 rounded-xl border-2 py-2.5 text-sm font-semibold",
+                        "flex-1 rounded-xl border-2 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60",
                         draft.usageUnit === u ? "border-foreground bg-primary text-primary-foreground" : "border-border bg-card"
                       )}
                     >
@@ -210,16 +219,31 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
                     </button>
                   ))}
                 </div>
-                {editing && current && draft.usageUnit !== current.usageUnit && !USAGE_UNITS.includes(current.usageUnit as never) && (
-                  <p className="mt-1 text-[11.5px] text-muted-foreground">Satuan lama: {current.usageUnit}</p>
+                {editing && current && !USAGE_UNITS.includes(current.usageUnit as never) && (
+                  <p className="mt-1 text-[11.5px] text-muted-foreground">Satuan sekarang: {current.usageUnit}</p>
+                )}
+                {current?.usageUnitLocked && (
+                  <p className="mt-1 text-[11.5px] text-muted-foreground">
+                    Terkunci — sudah dipakai di resep/stok. Hubungi owner bila perlu diganti.
+                  </p>
                 )}
               </Field>
-              {editing ? (
+              {editing && !packChanged && (
                 <p className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                   Harga acuan sekarang <b>{formatRp(current?.purchasePrice ?? 0)}</b> / {current?.purchaseUnit}. Berubah otomatis dari nota belanja —
                   tidak diedit di sini.
                 </p>
-              ) : (
+              )}
+              {editing && packChanged && (
+                <Field label={`Harga baru per ${draft.purchaseUnit.trim() || "satuan beli"} (Rp)`}>
+                  <input value={draft.price} onChange={set("price")} inputMode="numeric" placeholder="wajib diisi" className={inputCls} />
+                  <p className="mt-1 text-[11.5px] text-muted-foreground">
+                    Isi atau satuan beli berubah, jadi harga lama ({formatRp(current?.purchasePrice ?? 0)} / {current?.purchaseUnit}) tidak lagi sesuai.
+                    {newPrice > 0 && newContent > 0 && ` Jadinya ${formatRp(newPrice / newContent)} per ${draft.usageUnit}.`}
+                  </p>
+                </Field>
+              )}
+              {!editing && (
                 <Field label="Harga beli awal (Rp per satuan beli)">
                   <input value={draft.price} onChange={set("price")} inputMode="numeric" placeholder="48000" className={inputCls} />
                 </Field>
