@@ -3,10 +3,10 @@ import { cn } from "@/lib/utils";
 
 export type PengadaanTab = "catat" | "riwayat" | "stok";
 
-const TABS: { key: PengadaanTab; label: string }[] = [
-  { key: "catat", label: "Catat belanja" },
-  { key: "riwayat", label: "Riwayat" },
-  { key: "stok", label: "Stok bahan" },
+const TABS: { key: PengadaanTab; label: string; short: string }[] = [
+  { key: "catat", label: "Catat belanja", short: "Catat" },
+  { key: "riwayat", label: "Riwayat", short: "Riwayat" },
+  { key: "stok", label: "Stok bahan", short: "Stok" },
 ];
 
 /** Tab halaman Pengadaan & Pengeluaran + pemilih cabang (bila petugas memegang lebih dari satu). */
@@ -27,7 +27,7 @@ export function PengadaanTabs({
   return (
     <div className="space-y-2.5">
       {!limited && (
-      <nav aria-label="Bagian Pengadaan" className="inline-flex rounded-xl border border-border bg-muted/40 p-1">
+      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-4 gap-1 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
         {TABS.map((t) => (
           <Link
             key={t.key}
@@ -35,18 +35,19 @@ export function PengadaanTabs({
             aria-current={active === t.key ? "page" : undefined}
             prefetch={false}
             className={cn(
-              "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition",
+              "whitespace-nowrap rounded-lg px-2 py-2 text-center text-[13px] font-semibold transition md:px-3.5 md:py-1.5 md:text-sm",
               active === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             )}
           >
-            {t.label}
+            <span className="md:hidden">{t.short}</span>
+            <span className="hidden md:inline">{t.label}</span>
           </Link>
         ))}
         {/* Opname bahan punya halaman sendiri — tautan di sini supaya mudah ditemukan. */}
         <Link
           href={`/pengadaan/opname${activeBrand ? `?bu=${encodeURIComponent(activeBrand)}` : ""}`}
           prefetch={false}
-          className="rounded-lg px-3.5 py-1.5 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
+          className="whitespace-nowrap rounded-lg px-2 py-2 text-center text-[13px] font-semibold text-muted-foreground transition hover:text-foreground md:px-3.5 md:py-1.5 md:text-sm"
         >
           Opname
         </Link>

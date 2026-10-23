@@ -148,8 +148,8 @@ export function ProcurementBoard({
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Toolbar — disembunyikan di halaman petugas: pemilih cabang & tab Opname sudah ada di bilah tab. */}
+      <div className={`flex flex-wrap items-center gap-2 ${basePath.startsWith("/pengadaan") ? "hidden" : ""}`}>
         <select
           value={activeBrand ?? ""}
           onChange={(e) => selectBrand(e.target.value)}

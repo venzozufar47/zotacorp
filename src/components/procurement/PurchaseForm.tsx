@@ -236,7 +236,7 @@ export function PurchaseForm({
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-4 pb-28">
+    <div className="mx-auto max-w-xl space-y-4 pb-48 md:pb-28">
       {(access.pengadaan && access.laci) && (
         <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
           <span>
@@ -444,7 +444,7 @@ export function PurchaseForm({
       </section>
 
       {/* Bilah simpan */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
+      <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-40 border-t border-border bg-card/95 px-4 py-3 shadow-[0_-6px_16px_-10px_rgba(0,0,0,0.25)] backdrop-blur md:bottom-auto md:shadow-none md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
         <div className="mx-auto flex max-w-xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-muted-foreground">
@@ -594,7 +594,7 @@ function BahanComposer({
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border-2 border-foreground bg-card p-3.5">
+    <div className="space-y-3 fixed inset-0 z-[60] overflow-y-auto bg-background p-4 pb-10 md:static md:z-auto md:overflow-visible md:rounded-2xl md:border-2 md:border-foreground md:bg-card md:p-3.5 md:pb-3.5">
       <div className="flex items-center justify-between">
         <h3 className="font-display text-sm font-bold">Tambah bahan baku</h3>
         <button type="button" onClick={onCancel} aria-label="Tutup" className="text-muted-foreground hover:text-foreground">
@@ -614,7 +614,7 @@ function BahanComposer({
               className="pl-8"
             />
           </div>
-          <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-xl border border-border">
+          <ul className="max-h-[55vh] divide-y divide-border overflow-y-auto rounded-xl border border-border md:max-h-64">
             {results.map((m) => (
               <li key={m.id}>
                 <button
@@ -829,7 +829,7 @@ function ProposeMaterial({
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border-2 border-foreground bg-card p-3.5">
+    <div className="space-y-3 fixed inset-0 z-[60] overflow-y-auto bg-background p-4 pb-10 md:static md:z-auto md:overflow-visible md:rounded-2xl md:border-2 md:border-foreground md:bg-card md:p-3.5 md:pb-3.5">
       <div className="flex items-center justify-between">
         <h3 className="font-display text-sm font-bold">Ajukan bahan baru</h3>
         <button type="button" onClick={onCancel} aria-label="Tutup" className="text-muted-foreground hover:text-foreground">
@@ -915,7 +915,7 @@ function LainComposer({ onAdd, onCancel }: { onAdd: (line: DraftLine) => void; o
   const ok = description.trim().length >= 2 && num(total) > 0 && !!category;
 
   return (
-    <div className="space-y-3 rounded-2xl border-2 border-foreground bg-card p-3.5">
+    <div className="space-y-3 fixed inset-0 z-[60] overflow-y-auto bg-background p-4 pb-10 md:static md:z-auto md:overflow-visible md:rounded-2xl md:border-2 md:border-foreground md:bg-card md:p-3.5 md:pb-3.5">
       <div className="flex items-center justify-between">
         <h3 className="font-display text-sm font-bold">Tambah pengeluaran lain</h3>
         <button type="button" onClick={onCancel} aria-label="Tutup" className="text-muted-foreground hover:text-foreground">
