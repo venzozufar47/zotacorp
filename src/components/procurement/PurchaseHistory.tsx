@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRp } from "@/lib/cashflow/format";
-import { expenseCategory } from "@/lib/procurement/categories";
+import { categoryLabelFull } from "@/lib/procurement/categories";
 import {
   acceptFlaggedPrice,
   deletePurchase,
@@ -55,7 +55,7 @@ export function PurchaseSummaryCard({ summary, title }: { summary: PurchaseSumma
           {summary.byCategory.slice(0, 5).map((c) => (
             <li key={c.category} className="text-xs">
               <div className="flex justify-between gap-2">
-                <span className="truncate">{expenseCategory(c.category)?.label ?? c.category}</span>
+                <span className="truncate">{categoryLabelFull(c.category)}</span>
                 <span className="tabular-nums text-muted-foreground">{formatRp(c.total)}</span>
               </div>
               <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -163,7 +163,7 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
                   <div className="min-w-0">
                     <p className="truncate font-medium">{l.materialName ?? l.description}</p>
                     <p className="text-[11.5px] text-muted-foreground">
-                      {expenseCategory(l.category)?.label ?? l.category}
+                      {categoryLabelFull(l.category)}
                       {l.qtyLabel ? ` · ${l.qtyLabel}` : ""}
                       {l.unitPriceUsage != null && l.usageUnit ? ` · Rp ${nf(l.unitPriceUsage)}/${l.usageUnit}` : ""}
                       {l.deviation != null && Math.abs(l.deviation) >= 0.05

@@ -74,6 +74,12 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   },
 ];
 
+/** "Bahan baku & kemasan (Cost of Goods Sold)" — label sehari-hari + nama kategori laporan keuangan (P&L). */
+export function categoryLabelFull(value: string): string {
+  const c = EXPENSE_CATEGORIES.find((x) => x.value === value);
+  return c ? `${c.label} (${c.value})` : value;
+}
+
 export const EXPENSE_CATEGORY_VALUES = EXPENSE_CATEGORIES.map((c) => c.value);
 
 export function expenseCategory(value: string): ExpenseCategory | undefined {

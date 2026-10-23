@@ -27,6 +27,7 @@ import { jakartaDateString } from "@/lib/utils/jakarta";
 import { parseDecimalId } from "@/components/admin/costing/fields";
 import {
   EXPENSE_CATEGORIES,
+  categoryLabelFull,
   expenseCategory,
   searchCategories,
   suggestFromWizard,
@@ -374,7 +375,7 @@ export function PurchaseForm({
                   ) : (
                     <>
                       <p className="truncate text-sm font-semibold">{l.description}</p>
-                      <p className="text-xs text-muted-foreground">{expenseCategory(l.category)?.label ?? l.category}</p>
+                      <p className="text-xs text-muted-foreground">{categoryLabelFull(l.category)}</p>
                     </>
                   )}
                 </div>
@@ -971,7 +972,7 @@ function LainComposer({ onAdd, onCancel }: { onAdd: (line: DraftLine) => void; o
                     onClick={() => setCategory(c.value)}
                     className="rounded-full border border-primary/50 bg-primary/10 px-3 py-1 text-xs font-semibold text-foreground hover:bg-primary/20"
                   >
-                    {c.label}
+                    {c.label} <span className="font-normal text-muted-foreground">({c.value})</span>
                   </button>
                 ))}
               </div>
@@ -980,7 +981,9 @@ function LainComposer({ onAdd, onCancel }: { onAdd: (line: DraftLine) => void; o
             {picked && (
               <div className="rounded-xl border border-success/50 bg-success/10 px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">{picked.label}</p>
+                  <p className="text-sm font-semibold">
+                    {picked.label} <span className="font-normal text-muted-foreground">({picked.value})</span>
+                  </p>
                   <button type="button" onClick={() => setCategory(null)} className="text-xs font-semibold text-primary hover:underline">
                     Ganti
                   </button>
@@ -1007,7 +1010,9 @@ function LainComposer({ onAdd, onCancel }: { onAdd: (line: DraftLine) => void; o
                           onClick={() => setCategory(c.value)}
                           className="w-full px-3 py-2 text-left hover:bg-muted"
                         >
-                          <span className="block text-sm font-semibold">{c.label}</span>
+                          <span className="block text-sm font-semibold">
+                            {c.label} <span className="font-normal text-muted-foreground">({c.value})</span>
+                          </span>
                           <span className="block text-[11px] text-muted-foreground">{c.examples}</span>
                         </button>
                       </li>
