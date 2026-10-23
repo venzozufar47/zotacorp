@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export type PengadaanTab = "catat" | "riwayat" | "stok";
+export type PengadaanTab = "catat" | "riwayat" | "stok" | "bahan";
 
 const TABS: { key: PengadaanTab; label: string; short: string }[] = [
   { key: "catat", label: "Catat belanja", short: "Catat" },
   { key: "riwayat", label: "Riwayat", short: "Riwayat" },
   { key: "stok", label: "Stok bahan", short: "Stok" },
+  { key: "bahan", label: "Daftar bahan", short: "Bahan" },
 ];
 
 /** Tab halaman Pengadaan & Pengeluaran + pemilih cabang (bila petugas memegang lebih dari satu). */
@@ -27,7 +28,7 @@ export function PengadaanTabs({
   return (
     <div className="space-y-2.5">
       {!limited && (
-      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-4 gap-1 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
+      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-5 gap-1 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
         {TABS.map((t) => (
           <Link
             key={t.key}

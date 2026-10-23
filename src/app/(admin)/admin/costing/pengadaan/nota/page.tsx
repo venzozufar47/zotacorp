@@ -8,6 +8,8 @@ import {
   listPendingMaterials,
   listPurchases,
 } from "@/lib/actions/procurement-purchases.actions";
+import { listMaterialChanges } from "@/lib/actions/procurement-materials.actions";
+import { MaterialChangesFeed } from "@/components/procurement/MaterialChangesFeed";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -45,10 +47,11 @@ export default async function AdminPurchasesPage({
   const next = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)).toISOString().slice(0, 7);
   const href = (mm: string, b: string | null) => `/admin/costing/pengadaan/nota?m=${mm}${b ? `&bu=${encodeURIComponent(b)}` : ""}`;
 
-  const [listRes, sumRes, pendRes] = await Promise.all([
+  const [listRes, sumRes, pendRes, changesRes] = await Promise.all([
     listPurchases(brand, { from, to, limit: 200 }),
     getPurchaseSummary(brand, from, to),
     listPendingMaterials(),
+    listMaterialChanges({ limit: 15 }),
   ]);
 
   return (
@@ -95,6 +98,7 @@ export default async function AdminPurchasesPage({
         </Link>
       </div>
 
+      {changesRes.ok && changesRes.data && <MaterialChangesFeed rows={changesRes.data} />}
       {pendRes.ok && pendRes.data && <PendingMaterials rows={pendRes.data} />}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">

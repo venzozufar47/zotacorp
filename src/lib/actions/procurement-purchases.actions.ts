@@ -346,6 +346,20 @@ export async function proposeMaterial(input: {
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "Gagal mengajukan bahan" };
+  await admin.from("costing_material_changes" as never).insert({
+    material_id: (data as { id: string }).id,
+    business_unit: input.businessUnit,
+    material_name: name,
+    action: "create",
+    changes: {
+      purchase_unit: { from: null, to: purchaseUnit },
+      content_per_purchase: { from: null, to: input.contentPerPurchase },
+      usage_unit: { from: null, to: usageUnit },
+      purchase_price: { from: null, to: input.purchasePrice },
+    },
+    sensitive: false,
+    changed_by: gate.userId,
+  } as never);
   revalidateAll();
   return { ok: true, data: { id: (data as { id: string }).id, existed: false } };
 }

@@ -17,6 +17,8 @@ import {
   getPurchaseSummary,
   listPurchases,
 } from "@/lib/actions/procurement-purchases.actions";
+import { listMaterialDetails } from "@/lib/actions/procurement-materials.actions";
+import { MaterialsManager } from "@/components/procurement/MaterialsManager";
 import { pickActiveBrand, COSTING_BRAND_COOKIE } from "@/lib/costing/brands";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ProcurementBoard } from "@/components/procurement/ProcurementBoard";
@@ -24,7 +26,7 @@ import { PengadaanTabs, type PengadaanTab } from "@/components/procurement/Penga
 import { PengadaanCatat } from "@/components/procurement/PengadaanCatat";
 import { PurchaseHistory, PurchaseSummaryCard } from "@/components/procurement/PurchaseHistory";
 
-const TAB_KEYS: readonly PengadaanTab[] = ["catat", "riwayat", "stok"];
+const TAB_KEYS: readonly PengadaanTab[] = ["catat", "riwayat", "stok", "bahan"];
 
 /**
  * Pengadaan & Pengeluaran untuk petugas cabang: catat nota belanja (bahan baku + pengeluaran lain), lihat
@@ -91,6 +93,7 @@ export default async function PengadaanPage({
           {tab === "catat" && <CatatTab brand={activeBrand} initialMaterialId={bahan} />}
           {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
+          {tab === "bahan" && <BahanTab brand={activeBrand} />}
         </>
       )}
     </div>
@@ -121,6 +124,12 @@ async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: 
       <PurchaseHistory purchases={purchases} today={today} />
     </div>
   );
+}
+
+async function BahanTab({ brand }: { brand: string }) {
+  const res = await listMaterialDetails(brand);
+  if (!res.ok) return <p className="text-sm text-destructive">{res.error}</p>;
+  return <MaterialsManager businessUnit={brand} materials={res.data ?? []} />;
 }
 
 async function StokTab({ brand, brands }: { brand: string; brands: string[] }) {
