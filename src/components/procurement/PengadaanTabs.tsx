@@ -42,6 +42,14 @@ export function PengadaanTabs({
             {t.label}
           </Link>
         ))}
+        {/* Opname bahan punya halaman sendiri — tautan di sini supaya mudah ditemukan. */}
+        <Link
+          href={`/pengadaan/opname${activeBrand ? `?bu=${encodeURIComponent(activeBrand)}` : ""}`}
+          prefetch={false}
+          className="rounded-lg px-3.5 py-1.5 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
+        >
+          Opname
+        </Link>
       </nav>
       )}
       {brands.length > 1 && (
