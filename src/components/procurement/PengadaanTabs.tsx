@@ -28,7 +28,7 @@ export function PengadaanTabs({
   return (
     <div className="space-y-2.5">
       {!limited && (
-      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-5 gap-1 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
+      <nav aria-label="Bagian Pengadaan" className="grid w-full grid-cols-5 gap-0.5 rounded-xl border border-border bg-muted/40 p-1 md:inline-grid md:w-auto">
         {TABS.map((t) => (
           <Link
             key={t.key}
@@ -36,7 +36,7 @@ export function PengadaanTabs({
             aria-current={active === t.key ? "page" : undefined}
             prefetch={false}
             className={cn(
-              "whitespace-nowrap rounded-lg px-2 py-2 text-center text-[13px] font-semibold transition md:px-3.5 md:py-1.5 md:text-sm",
+              "whitespace-nowrap rounded-lg px-0.5 py-2 text-center text-[12.5px] font-semibold transition md:px-3.5 md:py-1.5 md:text-sm",
               active === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -48,7 +48,7 @@ export function PengadaanTabs({
         <Link
           href={`/pengadaan/opname${activeBrand ? `?bu=${encodeURIComponent(activeBrand)}` : ""}`}
           prefetch={false}
-          className="whitespace-nowrap rounded-lg px-2 py-2 text-center text-[13px] font-semibold text-muted-foreground transition hover:text-foreground md:px-3.5 md:py-1.5 md:text-sm"
+          className="whitespace-nowrap rounded-lg px-0.5 py-2 text-center text-[12.5px] font-semibold text-muted-foreground transition hover:text-foreground md:px-3.5 md:py-1.5 md:text-sm"
         >
           Opname
         </Link>
