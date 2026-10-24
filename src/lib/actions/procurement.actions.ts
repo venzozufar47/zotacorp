@@ -28,6 +28,8 @@ import {
 } from "@/lib/procurement/rows";
 import { myProcurementBusinessUnits } from "@/lib/procurement/access";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
+import { isVarianceReason, varianceCheck } from "@/lib/procurement/cycle-count";
+import { sendPushToAdmins } from "@/lib/push/web-push";
 
 function revalidateProcurement() {
   revalidatePath("/pengadaan", "layout");
@@ -332,8 +334,10 @@ export async function submitMaterialOpname(input: {
   businessUnit: string;
   items: { materialId: string; physicalQty: number }[];
   notes?: string | null;
+  /** Alasan selisih per bahan; WAJIB untuk bahan yang selisihnya melewati toleransi kategorinya. */
+  reasons?: Record<string, string>;
 }): Promise<
-  ActionResult<{ opnameId: string; totalDiffQty: number; diffItems: number }>
+  ActionResult<{ opnameId: string; totalDiffQty: number; diffItems: number; outOfTolerance: number }>
 > {
   const gate = await requireProcurementForBu(input.businessUnit);
   if (!gate.ok) return { ok: false, error: gate.error };
@@ -353,6 +357,27 @@ export async function submitMaterialOpname(input: {
   for (const it of input.items) {
     if (!byId.has(it.materialId))
       return { ok: false, error: "Ada bahan di luar brand ini" };
+  }
+
+  // Selisih di atas toleransi kategori wajib beralasan. Bahan tanpa baseline (hitungan pertama) tak punya
+  // pembanding, jadi tidak dinilai.
+  const outOfTol: { name: string; value: number; reason: string }[] = [];
+  const reasonOf = new Map<string, string>();
+  for (const it of input.items) {
+    const r = byId.get(it.materialId)!;
+    if (r.metrics.onHandRaw == null) continue;
+    const vc = varianceCheck({
+      category: r.material.category,
+      expected: r.metrics.onHandRaw,
+      physical: it.physicalQty,
+      unitCost: r.metrics.unitCost,
+    });
+    if (!vc.outOfTolerance) continue;
+    const reason = input.reasons?.[it.materialId] ?? "";
+    if (!isVarianceReason(reason))
+      return { ok: false, error: `Pilih alasan selisih untuk ${r.material.name} (di atas toleransi ${Math.round(vc.tolerance * 100)}%)` };
+    reasonOf.set(it.materialId, reason);
+    outOfTol.push({ name: r.material.name, value: vc.value, reason });
   }
 
   const now = new Date();
@@ -388,6 +413,7 @@ export async function submitMaterialOpname(input: {
       unit_cost_snapshot: r.metrics.unitCost,
       physical_qty: it.physicalQty,
       expected_qty: expected,
+      variance_reason: reasonOf.get(it.materialId) ?? null,
     };
   });
 
@@ -403,7 +429,22 @@ export async function submitMaterialOpname(input: {
     return { ok: false, error: iErr.message };
   }
   revalidateProcurement();
-  return { ok: true, data: { opnameId, totalDiffQty, diffItems } };
+  if (outOfTol.length > 0) {
+    const total = outOfTol.reduce((s, x) => s + Math.abs(x.value), 0);
+    try {
+      await sendPushToAdmins({
+        title: "Selisih opname di atas toleransi",
+        body: `${input.businessUnit.replace("Haengbocake ", "")} · ${outOfTol.length} bahan, ±Rp ${Math.round(total).toLocaleString("id-ID")}: ${outOfTol
+          .slice(0, 3)
+          .map((x) => x.name)
+          .join(", ")}${outOfTol.length > 3 ? "…" : ""}`.slice(0, 160),
+        url: "/admin/costing/pengadaan",
+      });
+    } catch {
+      // Notifikasi gagal tak boleh membatalkan opname yang sudah tersimpan.
+    }
+  }
+  return { ok: true, data: { opnameId, totalDiffQty, diffItems, outOfTolerance: outOfTol.length } };
 }
 
 export async function listMaterialOpnames(

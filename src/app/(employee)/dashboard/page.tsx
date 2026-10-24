@@ -37,6 +37,7 @@ import { DashboardHero } from "@/components/dashboard/DashboardHero";
 import { FloorTodayCard } from "@/components/dashboard/FloorTodayCard";
 import { SelfCelebrationHero } from "@/components/dashboard/SelfCelebrationHero";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
+import { OpnameDashboardCard } from "@/components/procurement/OpnameDashboardCard";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { getDictionary } from "@/lib/i18n/server";
@@ -280,6 +281,11 @@ export default async function DashboardPage() {
       )}
 
       <ProfileCompletionCard missingSections={missingSections} />
+
+      {/* Pengingat opname harian — hanya muncul untuk petugas pengadaan cabang yang memakai ritme harian. */}
+      <Suspense fallback={null}>
+        <OpnameDashboardCard />
+      </Suspense>
 
       {/* Tugas dari admin (sekali-jalan, wajib foto + verifikasi). Memblokir
           sign out selama belum dikirim/ditunda, jadi ditaruh tinggi. Komponen

@@ -14,6 +14,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { num } from "@/lib/costing/rows";
+import { loadTheoreticalUsage, type TheoreticalUsage } from "./usage";
 import {
   computeProcurement,
   resolveParams,
@@ -48,6 +49,11 @@ export interface ProcurementRow {
   metrics: ProcurementMetrics;
   /** ISO opname terakhir yang memuat bahan ini. */
   lastOpnameAt: string | null;
+  /**
+   * Pemakaian harian otomatis (produksi POS × resep, rata-rata 30 hari, satuan pakai). Dipakai sebagai pemakaian
+   * harian estimasi saat parameter manualnya belum diisi. null = tak ada data produksi untuk bahan ini.
+   */
+  autoDailyUsage: number | null;
 }
 
 export function mapParams(
@@ -127,10 +133,10 @@ export async function fetchProcurementSettings(
 export async function loadBrandProcurement(
   supabase: DB,
   opts: { businessUnit: string; atIso?: string; includeUntracked?: boolean }
-): Promise<{ rows: ProcurementRow[]; settings: ProcurementSettingsLite }> {
+): Promise<{ rows: ProcurementRow[]; settings: ProcurementSettingsLite; usage: TheoreticalUsage }> {
   const atIso = opts.atIso ?? new Date().toISOString();
 
-  const [{ data: matRows }, settings, { data: opnameRows }] = await Promise.all(
+  const [{ data: matRows }, settings, { data: opnameRows }, usage] = await Promise.all(
     [
       supabase
         .from("costing_materials" as never)
@@ -147,12 +153,16 @@ export async function loadBrandProcurement(
         .eq("business_unit", opts.businessUnit)
         .order("created_at", { ascending: false })
         .limit(OPNAME_SCAN_LIMIT),
+      // Gagal membaca produksi tak boleh merusak papan stok: jatuh ke pemakaian manual saja.
+      loadTheoreticalUsage(supabase, opts.businessUnit).catch(
+        (): TheoreticalUsage => ({ days: 30, byMaterial: new Map() })
+      ),
     ]
   );
 
   const materials = (matRows ?? []) as Record<string, unknown>[];
   const ids = materials.map((m) => m.id as string);
-  if (ids.length === 0) return { rows: [], settings };
+  if (ids.length === 0) return { rows: [], settings, usage };
 
   const opnames = (opnameRows ?? []) as Record<string, unknown>[];
   const opnameAt = new Map<string, string>();
@@ -232,7 +242,12 @@ export async function loadBrandProcurement(
       content_per_purchase: num(m.content_per_purchase),
     };
     const b = baseline.get(id) ?? null;
-    const metrics = computeProcurement(lite, resolveParams(params, settings), {
+    const u = usage.byMaterial.get(id);
+    const autoDailyUsage = u && usage.days > 0 && u.qty > 0 ? u.qty / usage.days : null;
+    // Pemakaian manual menang; kalau belum diisi (0) pakai pemakaian teoretis supaya estimasi ikut berkurang.
+    const effectiveParams =
+      params.avgDailyUsage > 0 || autoDailyUsage == null ? params : { ...params, avgDailyUsage: autoDailyUsage };
+    const metrics = computeProcurement(lite, resolveParams(effectiveParams, settings), {
       baselineQty: b ? b.qty : null,
       baselineAtIso: b ? b.atIso : null,
       receiptsSinceQty: receiptsByMaterial.get(id) ?? 0,
@@ -248,9 +263,10 @@ export async function loadBrandProcurement(
       params,
       metrics,
       lastOpnameAt: b ? b.atIso : null,
+      autoDailyUsage,
     });
   }
-  return { rows, settings };
+  return { rows, settings, usage };
 }
 
 /** Urutan papan pantau: yang paling mendesak di atas. */

@@ -21,6 +21,8 @@ import { listMaterialDetails } from "@/lib/actions/procurement-materials.actions
 import { getCashPosition } from "@/lib/actions/procurement-wallet.actions";
 import { CashPositionCard } from "@/components/procurement/CashPositionCard";
 import { MaterialsManager } from "@/components/procurement/MaterialsManager";
+import { OpnameBanner } from "@/components/procurement/OpnameBanner";
+import { getTodayCountPlan } from "@/lib/actions/procurement-count.actions";
 import { pickActiveBrand, COSTING_BRAND_COOKIE } from "@/lib/costing/brands";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { ProcurementBoard } from "@/components/procurement/ProcurementBoard";
@@ -94,6 +96,7 @@ export default async function PengadaanPage({
         </p>
       ) : (
         <>
+          {!limited && <OpnameReminder brand={activeBrand} />}
           <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} />
           {!limited && tab !== "bahan" && <PositionBar brand={activeBrand} />}
           {tab === "catat" && <CatatTab brand={activeBrand} initialMaterialId={bahan} />}
@@ -130,6 +133,13 @@ async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: 
       <PurchaseHistory purchases={purchases} today={today} />
     </div>
   );
+}
+
+/** Pengingat opname harian (hanya cabang yang sudah memakai ritme harian). */
+async function OpnameReminder({ brand }: { brand: string }) {
+  const res = await getTodayCountPlan(brand);
+  if (!res.ok || !res.data) return null;
+  return <OpnameBanner plan={res.data} brand={brand} />;
 }
 
 /** Saldo uang pengadaan & saldo laci cabang aktif — dilihat petugas sebelum mencatat belanja. */

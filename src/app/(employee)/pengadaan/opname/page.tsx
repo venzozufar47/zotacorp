@@ -10,7 +10,8 @@ import {
   myProcurementBusinessUnits,
 } from "@/lib/procurement/access";
 import { startMaterialOpname } from "@/lib/actions/procurement.actions";
-import { MaterialOpnameForm } from "@/components/procurement/MaterialOpnameForm";
+import { getTodayCountPlan } from "@/lib/actions/procurement-count.actions";
+import { MaterialOpnameForm, type CountMeta } from "@/components/procurement/MaterialOpnameForm";
 
 /**
  * Opname bahan baku. `?bu=` selalu divalidasi ulang terhadap penugasan —
@@ -19,13 +20,13 @@ import { MaterialOpnameForm } from "@/components/procurement/MaterialOpnameForm"
 export default async function OpnameBahanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bu?: string }>;
+  searchParams: Promise<{ bu?: string; semua?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   if (!(await canOpenProcurement())) redirect("/dashboard");
 
-  const { bu } = await searchParams;
+  const { bu, semua } = await searchParams;
   // Admin boleh brand apa pun; staf hanya yang ditugaskan. Jangan
   // menyimpulkan "admin" dari daftar penugasan kosong — admin yang
   // kebetulan juga ditugaskan akan salah dinilai.
@@ -34,9 +35,16 @@ export default async function OpnameBahanPage({
   const activeBrand = bu && (isAdmin || brands.includes(bu)) ? bu : brands[0];
   if (!activeBrand) redirect(isAdmin ? "/admin/costing/pengadaan" : "/pengadaan");
 
-  const res = await startMaterialOpname(activeBrand);
-  const rows = res.ok ? res.data ?? [] : [];
-
+  // Cabang dengan ritme harian: tampilkan daftar "Opname hari ini"; ?semua=1 membuka semua bahan.
+  const planRes = semua ? null : await getTodayCountPlan(activeBrand);
+  const plan = planRes && planRes.ok && planRes.data?.enabled ? planRes.data : null;
+  const res = plan ? null : await startMaterialOpname(activeBrand);
+  const rows = plan ? plan.items.map((i) => i.row) : res && res.ok ? res.data ?? [] : [];
+  const meta: Record<string, CountMeta> | undefined = plan
+    ? Object.fromEntries(plan.items.map((i) => [i.row.material.id, { cls: i.cls, reasons: i.reasons, done: i.done }]))
+    : undefined;
+  const allHref = `/pengadaan/opname?bu=${encodeURIComponent(activeBrand)}&semua=1`;
+  const todayHref = `/pengadaan/opname?bu=${encodeURIComponent(activeBrand)}`;
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -52,17 +60,39 @@ export default async function OpnameBahanPage({
             Opname bahan<span className="text-primary">.</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {activeBrand} — hitung fisik jadi patokan stok berikutnya.
+            {activeBrand} — {plan ? `hari ini ${plan.total} bahan · ±${plan.minutesLeft} menit lagi` : "hitung fisik jadi patokan stok berikutnya."}
           </p>
         </div>
       </div>
 
+      {plan && (
+        <p className="text-xs text-muted-foreground">
+          Daftar disusun sistem agar semua bahan terhitung tanpa menghitung semuanya tiap hari.{" "}
+          <Link href={allHref} className="font-semibold text-primary hover:underline">
+            Pilih sendiri dari semua bahan →
+          </Link>
+        </p>
+      )}
+      {semua && activeBrand && (
+        <p className="text-xs text-muted-foreground">
+          <Link href={todayHref} className="font-semibold text-primary hover:underline">
+            ← Kembali ke daftar hari ini
+          </Link>
+        </p>
+      )}
+
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {res.ok ? "Belum ada bahan untuk brand ini." : res.error}
+          {plan
+            ? "Tidak ada bahan yang perlu dihitung hari ini."
+            : res && !res.ok
+              ? res.error
+              : planRes && !planRes.ok
+                ? planRes.error
+                : "Belum ada bahan untuk brand ini."}
         </p>
       ) : (
-        <MaterialOpnameForm businessUnit={activeBrand} rows={rows} />
+        <MaterialOpnameForm businessUnit={activeBrand} rows={rows} meta={meta} />
       )}
     </div>
   );
