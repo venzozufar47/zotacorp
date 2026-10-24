@@ -50,6 +50,14 @@ import { fmtPercent, fmtRpPrecise } from "./format";
 import { NumField, TextField, formatNum, parseDecimalId } from "./fields";
 import { Sparkline } from "./Sparkline";
 
+/** "2026-10-24" → "24 Okt 2026" (tanggal murni, tanpa geser zona waktu). */
+function formatSnapshotDate(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 /** Ambil hanya key-key yang ada di `patch` dari `src` — untuk rollback
  *  per-field tanpa menyentuh field lain. */
 function pickKeys<T extends object>(src: T, patch: Partial<T>): Partial<T> {
@@ -295,6 +303,10 @@ export function RecipeBuilder({
     });
   }
 
+  const lastSnapshot = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+  const snapshotDelta =
+    lastSnapshot && !breakdown.error ? breakdown.hppUnit - lastSnapshot.hpp_unit : null;
+
   return (
     <div className="space-y-5">
       <div>
@@ -324,7 +336,7 @@ export function RecipeBuilder({
       </div>
 
       {/* Tren HPP (snapshot) */}
-      <div className="flex items-center gap-3 flex-wrap rounded-xl border border-border bg-card/60 px-3 py-2">
+      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap rounded-xl border border-border bg-card/60 px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Tren HPP
         </span>
@@ -350,6 +362,27 @@ export function RecipeBuilder({
         >
           Ambil snapshot
         </button>
+        {lastSnapshot && (
+          <p className="basis-full text-[12px] text-muted-foreground tabular-nums">
+            <span className="font-semibold text-foreground">Snapshot terakhir</span>{" "}
+            {formatSnapshotDate(lastSnapshot.snapshot_date)} · HPP/unit {formatRp(lastSnapshot.hpp_unit)}
+            {lastSnapshot.final_price != null ? ` · harga jual ${formatRp(lastSnapshot.final_price)}` : ""}
+            {lastSnapshot.margin_percent != null ? ` · margin ${fmtPercent(lastSnapshot.margin_percent)}` : ""}
+            {snapshotDelta != null && (
+              <>
+                {" · "}
+                {Math.abs(snapshotDelta) < 0.5 ? (
+                  "HPP sekarang sama"
+                ) : (
+                  <span className={snapshotDelta > 0 ? "text-destructive" : "text-success"}>
+                    HPP sekarang {snapshotDelta > 0 ? "naik" : "turun"} {formatRp(Math.abs(snapshotDelta))} (
+                    {formatRp(breakdown.hppUnit)})
+                  </span>
+                )}
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-5">
