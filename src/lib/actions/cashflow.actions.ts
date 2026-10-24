@@ -65,6 +65,8 @@ async function requireAdminOrAssignee(
     .select("bank_account_id")
     .eq("bank_account_id", bankAccountId)
     .eq("user_id", user.id)
+    // Hanya scope 'full' (sama dengan helper RLS is_admin_or_assignee): pos_only tak boleh menyentuh buku kas.
+    .eq("scope", "full")
     .maybeSingle();
   if (!assignment) return { ok: false, error: "Forbidden" };
   return { ok: true, userId: user.id };
