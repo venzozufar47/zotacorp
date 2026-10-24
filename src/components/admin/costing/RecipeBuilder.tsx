@@ -444,7 +444,7 @@ export function RecipeBuilder({
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 w-24">
+              <label className="flex flex-col gap-1 w-28">
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Qty
                 </span>
@@ -827,7 +827,7 @@ function SortableRecipeRow({
       <div className="mt-1 flex items-center flex-wrap gap-2 pl-6">
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           Qty
-          <InlineNum value={item.qty} onCommit={onQty} width="w-16" />
+          <InlineNum value={item.qty} onCommit={onQty} width="w-28" />
         </label>
         {/* Picker satuan: default satuan pakai bahan; unit lain se-dimensi
             di-konversi. Disable kalau tak ada opsi konversi. */}
@@ -1013,7 +1013,7 @@ function InlineNum({
           if (parsed != null && parsed >= 0 && parsed !== value)
             onCommit(parsed);
         }}
-        className="h-8 w-full rounded-lg border border-border bg-background pl-2 pr-8 text-sm tabular-nums text-right"
+        className={`h-8 w-full rounded-lg border border-border bg-background pl-2 text-sm tabular-nums text-right ${suffix ? "pr-8" : "pr-2"}`}
       />
       {suffix && (
         <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">

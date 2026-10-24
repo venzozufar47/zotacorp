@@ -34,6 +34,8 @@ import { MaterialMatrix } from "./MaterialMatrix";
 
 const STALE_DAYS = 60;
 const STALE_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
+/** Nilai semu pilihan "kategori baru" di dropdown kategori kartu bahan. */
+const NEW_CATEGORY = "__new__";
 /** Kunci semu untuk bahan yang belum diberi kategori. */
 const NO_CATEGORY = "__none__";
 
@@ -375,17 +377,24 @@ function MaterialRow({
     >
       <div className="p-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 items-end">
         <TextField label="Nama" value={m.name} onCommit={(v) => v && onField({ name: v })} />
-        <TextField
+        <UnitSelect
           label="Kategori"
           value={m.category ?? ""}
-          list={`cats-${m.id}`}
-          onCommit={(v) => onField({ category: v || null })}
+          placeholder="Tanpa kategori"
+          options={[
+            ...(m.category ? [{ value: "", label: "Tanpa kategori" }] : []),
+            ...categories.map((c) => ({ value: c, label: c })),
+            { value: NEW_CATEGORY, label: "+ Kategori baru…" },
+          ]}
+          onChange={(v) => {
+            if (v === NEW_CATEGORY) {
+              const name = window.prompt("Nama kategori baru (pilih dari daftar bila sudah ada):")?.trim();
+              if (name) onField({ category: name });
+              return;
+            }
+            if ((v || null) !== (m.category ?? null)) onField({ category: v || null });
+          }}
         />
-        <datalist id={`cats-${m.id}`}>
-          {categories.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
         <UnitSelect
           label="Satuan beli"
           value={m.purchase_unit}

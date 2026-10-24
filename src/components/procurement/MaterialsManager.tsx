@@ -28,6 +28,9 @@ interface Draft {
   price: string;
 }
 
+/** Nilai semu pilihan "kategori baru" di dropdown kategori. */
+const NEW_CATEGORY = "__new__";
+
 const EMPTY: Draft = { name: "", category: "", purchaseUnit: "", content: "", usageUnit: "gram", shopeeUrl: "", price: "" };
 
 const inputCls =
@@ -39,6 +42,8 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
   const [q, setQ] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** true = mengetik nama kategori baru (bukan memilih dari daftar). */
+  const [newCategory, setNewCategory] = useState(false);
   const [pending, start] = useTransition();
 
   const categories = useMemo(
@@ -61,6 +66,7 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
   const newPrice = draft ? parseMoneyId(draft.price) : 0;
 
   function open(m?: MaterialDetail) {
+    setNewCategory(false);
     setDraft(
       m
         ? {
@@ -190,12 +196,40 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
                 <input value={draft.name} onChange={set("name")} className={inputCls} maxLength={80} />
               </Field>
               <Field label="Kategori (opsional)">
-                <input value={draft.category} onChange={set("category")} list="mat-cats" className={inputCls} maxLength={40} />
-                <datalist id="mat-cats">
+                <select
+                  value={newCategory ? NEW_CATEGORY : draft.category}
+                  onChange={(e) => {
+                    if (e.target.value === NEW_CATEGORY) {
+                      setNewCategory(true);
+                      setDraft((d) => (d ? { ...d, category: "" } : d));
+                    } else {
+                      setNewCategory(false);
+                      setDraft((d) => (d ? { ...d, category: e.target.value } : d));
+                    }
+                  }}
+                  className={inputCls}
+                >
+                  <option value="">Tanpa kategori</option>
+                  {draft.category && !categories.includes(draft.category) && !newCategory && (
+                    <option value={draft.category}>{draft.category}</option>
+                  )}
                   {categories.map((c) => (
-                    <option key={c} value={c} />
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
-                </datalist>
+                  <option value={NEW_CATEGORY}>+ Kategori baru…</option>
+                </select>
+                {newCategory && (
+                  <input
+                    value={draft.category}
+                    onChange={set("category")}
+                    placeholder="Nama kategori baru"
+                    autoFocus
+                    className={`${inputCls} mt-2`}
+                    maxLength={40}
+                  />
+                )}
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Satuan beli">
