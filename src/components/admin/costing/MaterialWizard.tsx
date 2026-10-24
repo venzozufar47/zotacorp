@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { formatNum, parseDecimalId } from "./fields";
 import { parseMoneyId } from "@/lib/utils/parse-number";
+import { NumberHint } from "@/components/shared/NumberHint";
 import { PURCHASE_UNITS, USAGE_UNITS, unitOptions } from "@/lib/costing/unit-options";
 import { impactProducts, materialLite, recipeUnitChoices, unitsMap } from "./costing-data";
 
@@ -363,10 +364,12 @@ export function MaterialWizard({
                     </select>
                   </Field>
                   <Field label="Harga beli (Rp)">
-                    <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9.,]/g, ""))} inputMode="decimal" placeholder="275000" className={cn(inputCls, "tabular-nums")} />
+                    <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9.,]/g, ""))} inputMode="decimal" placeholder="275.000" className={cn(inputCls, "tabular-nums")} />
+                    <NumberHint value={price} />
                   </Field>
                   <Field label="Isi per satuan beli">
-                    <input value={content} onChange={(e) => setContent(e.target.value)} inputMode="decimal" placeholder="25000" className={cn(inputCls, "tabular-nums")} />
+                    <input value={content} onChange={(e) => setContent(e.target.value)} inputMode="decimal" placeholder="25.000" className={cn(inputCls, "tabular-nums")} />
+                    <NumberHint value={content} />
                   </Field>
                   <Field label="Satuan pakai (di resep)">
                     <select value={usageUnit} onChange={(e) => setUsageUnit(e.target.value)} className={inputCls}>
@@ -380,6 +383,7 @@ export function MaterialWizard({
                   </Field>
                   <Field label="Susut / waste (%)">
                     <input value={shrink} onChange={(e) => setShrink(e.target.value)} inputMode="decimal" className={cn(inputCls, "tabular-nums")} />
+                    <NumberHint value={shrink} />
                   </Field>
                 </div>
                 <div className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-sm">

@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { PURCHASE_UNITS } from "@/lib/costing/unit-options";
 import { parseMoneyId } from "@/lib/utils/parse-number";
+import { NumberHint } from "@/components/shared/NumberHint";
 import { formatRp } from "@/lib/cashflow/format";
 import { compressImageStrict } from "@/lib/images/compress-image";
 import { jakartaDateString } from "@/lib/utils/jakarta";
@@ -505,6 +506,7 @@ function MoneyInput({
   return (
     <div className="space-y-0.5">
       <Input inputMode="decimal" value={value} onChange={(e) => onChange(moneyText(e.target.value))} placeholder={placeholder} className={className} />
+      <NumberHint value={value} />
       {n > 0 && (
         <p className="text-right text-[11px] tabular-nums text-muted-foreground">
           = Rp {n.toLocaleString("id-ID", { maximumFractionDigits: 2 })}
@@ -742,6 +744,7 @@ function BahanComposer({
                 ))}
               </div>
             </div>
+            <NumberHint value={qty} />
           </div>
 
           <div className="space-y-1">
@@ -917,12 +920,13 @@ function ProposeMaterial({
         <span className="text-xs font-medium text-muted-foreground">
           Isi tiap {purchaseUnit.trim() || "satuan beli"} (dalam satuan pakai)
         </span>
+        <NumberHint value={content} />
         <div className="flex gap-2">
           <Input
             inputMode="decimal"
             value={content}
             onChange={(e) => setContent(e.target.value.replace(/[^0-9.,]/g, ""))}
-            placeholder="mis. 25000"
+            placeholder="mis. 25.000"
             className="flex-1 text-right tabular-nums"
           />
           <div className="flex gap-1.5">

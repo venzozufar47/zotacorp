@@ -300,7 +300,7 @@ export function MaterialOpnameForm({
         )}
         <p>
           Isi jumlah <b className="text-foreground">fisik</b> hasil hitung (pilih satuan di sebelah kolom). &ldquo;Estimasi&rdquo; adalah tebakan sistem sejak
-          hitungan terakhir. Persen di kanan = selisih terhadap estimasi; hijau = wajar (dalam toleransi kategori), merah = perlu alasan.
+          hitungan terakhir. Tulis desimal dengan KOMA (2,5), titik hanya untuk ribuan (1.250). Persen di kanan = selisih terhadap estimasi; hijau = wajar (dalam toleransi kategori), merah = perlu alasan.
           {!todayMode && " Bahan yang dikosongkan tidak ikut diopname."}
         </p>
       </div>

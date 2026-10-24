@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseMoneyId } from "@/lib/utils/parse-number";
+import { parseDecimalId, parseMoneyId } from "@/lib/utils/parse-number";
+import { NumberHint } from "@/components/shared/NumberHint";
 import { PURCHASE_UNITS, unitOptions } from "@/lib/costing/unit-options";
 import { formatRp } from "@/lib/cashflow/format";
 import {
@@ -54,9 +55,9 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
   // Isi per kemasan / satuan beli berubah → harga lama per satuan beli tak berlaku lagi: harga baru wajib.
   const packChanged =
     !!draft && !!current &&
-    (Number(draft.content.replace(",", ".")) !== current.contentPerPurchase ||
+    ((parseDecimalId(draft.content) ?? NaN) !== current.contentPerPurchase ||
       draft.purchaseUnit.trim().toLowerCase() !== current.purchaseUnit.trim().toLowerCase());
-  const newContent = draft ? Number(draft.content.replace(",", ".")) : 0;
+  const newContent = draft ? (parseDecimalId(draft.content) ?? 0) : 0;
   const newPrice = draft ? parseMoneyId(draft.price) : 0;
 
   function open(m?: MaterialDetail) {
@@ -79,7 +80,7 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
 
   function submit() {
     if (!draft) return;
-    const content = Number(draft.content.replace(",", "."));
+    const content = parseDecimalId(draft.content) ?? NaN;
     const price = parseMoneyId(draft.price);
     start(async () => {
       const res = await saveMaterial({
@@ -208,7 +209,8 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
                   </select>
                 </Field>
                 <Field label="Isi per satuan beli">
-                  <input value={draft.content} onChange={set("content")} inputMode="decimal" placeholder="25000" className={inputCls} />
+                  <input value={draft.content} onChange={set("content")} inputMode="decimal" placeholder="25.000" className={inputCls} />
+                  <NumberHint value={draft.content} />
                 </Field>
               </div>
               <Field label="Satuan pakai (di resep)">
@@ -246,6 +248,7 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
               {editing && packChanged && (
                 <Field label={`Harga baru per ${draft.purchaseUnit.trim() || "satuan beli"} (Rp)`}>
                   <input value={draft.price} onChange={set("price")} inputMode="decimal" placeholder="wajib diisi" className={inputCls} />
+                  <NumberHint value={draft.price} />
                   <p className="mt-1 text-[11.5px] text-muted-foreground">
                     Isi atau satuan beli berubah, jadi harga lama ({formatRp(current?.purchasePrice ?? 0)} / {current?.purchaseUnit}) tidak lagi sesuai.
                     {newPrice > 0 && newContent > 0 && ` Jadinya ${formatRp(newPrice / newContent)} per ${draft.usageUnit}.`}
@@ -254,7 +257,8 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
               )}
               {!editing && (
                 <Field label="Harga beli awal (Rp per satuan beli)">
-                  <input value={draft.price} onChange={set("price")} inputMode="decimal" placeholder="48000" className={inputCls} />
+                  <input value={draft.price} onChange={set("price")} inputMode="decimal" placeholder="48.000" className={inputCls} />
+                  <NumberHint value={draft.price} />
                 </Field>
               )}
               <Field label="Link beli (opsional)">
