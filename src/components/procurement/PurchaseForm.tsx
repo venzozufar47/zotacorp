@@ -823,7 +823,7 @@ function BahanComposer({
 
 /** Konversi satuan lain (mis. kg ↔ gram) memakai pilihan satuan yang sudah dihitung server. */
 function convertViaChoices(q: number, unit: string, m: PurchaseMaterialOption): number | null {
-  const factor: Record<string, number> = { kg: 1000, gram: 1, liter: 1000, ml: 1, pcs: 1, lusin: 12, kodi: 20 };
+  const factor: Record<string, number> = { kg: 1000, gram: 1, liter: 1000, ml: 1, pcs: 1, lusin: 12, kodi: 20, meter: 1, cm: 0.01 };
   const from = factor[unit];
   const to = factor[m.usageUnit.toLowerCase()];
   if (!from || !to) return null;

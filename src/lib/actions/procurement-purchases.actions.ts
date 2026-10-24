@@ -325,7 +325,7 @@ export async function proposeMaterial(input: {
   const usageUnit = input.usageUnit.trim().toLowerCase();
   if (name.length < 2 || name.length > 80) return { ok: false, error: "Nama bahan 2–80 huruf" };
   if (!purchaseUnit || purchaseUnit.length > 20) return { ok: false, error: "Satuan beli wajib (mis. sak, dus, pack)" };
-  if (!["gram", "ml", "pcs"].includes(usageUnit)) return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };
+  if (!["gram", "ml", "pcs", "meter"].includes(usageUnit)) return { ok: false, error: "Satuan pakai harus gram, ml, pcs, atau meter" };
   if (!isPurchaseUnit(purchaseUnit)) return { ok: false, error: "Pilih satuan beli dari daftar" };
   if (!(input.contentPerPurchase > 0)) return { ok: false, error: "Isi per satuan beli harus > 0" };
   if (!(input.purchasePrice > 0)) return { ok: false, error: "Harga beli harus > 0" };

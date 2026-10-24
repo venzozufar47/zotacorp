@@ -67,7 +67,7 @@ export interface CostingRecipeItem {
 export interface CostingUnit {
   code: string;
   label: string;
-  dimension: "mass" | "volume" | "count";
+  dimension: "mass" | "volume" | "count" | "length";
   to_base: number;
 }
 
@@ -132,7 +132,7 @@ export async function listUnits(): Promise<ActionResult<CostingUnit[]>> {
     data: ((data ?? []) as Record<string, unknown>[]).map((r) => ({
       code: r.code as string,
       label: r.label as string,
-      dimension: r.dimension as "mass" | "volume" | "count",
+      dimension: r.dimension as "mass" | "volume" | "count" | "length",
       to_base: num(r.to_base),
     })),
   };
@@ -186,7 +186,7 @@ export async function createMaterial(
     return { ok: false, error: "Harga beli tidak valid" };
   // Satuan baku (dropdown): ejaan bebas merusak konversi & laporan.
   if (!isUsageUnit(input.usage_unit))
-    return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };
+    return { ok: false, error: "Satuan pakai harus gram, ml, pcs, atau meter" };
   if (!isPurchaseUnit(input.purchase_unit))
     return { ok: false, error: "Pilih satuan beli dari daftar" };
   const shrink = input.shrink_factor ?? 0;
@@ -265,7 +265,7 @@ export async function updateMaterial(input: {
   if (input.usage_unit !== undefined) {
     const uu = input.usage_unit.trim();
     if (uu !== prev.usage_unit && !isUsageUnit(uu))
-      return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };
+      return { ok: false, error: "Satuan pakai harus gram, ml, pcs, atau meter" };
     patch.usage_unit = uu === prev.usage_unit ? uu : uu.toLowerCase();
   }
   if (input.shrink_factor !== undefined) {
