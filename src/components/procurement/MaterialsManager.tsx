@@ -15,7 +15,7 @@ import {
   type MaterialDetail,
 } from "@/lib/actions/procurement-materials.actions";
 
-const USAGE_UNITS = ["gram", "ml", "pcs", "meter"] as const;
+const USAGE_UNITS = ["gram", "ml", "pcs", "meter", "pack"] as const;
 
 interface Draft {
   id?: string;

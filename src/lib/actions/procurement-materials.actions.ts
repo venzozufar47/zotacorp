@@ -24,7 +24,7 @@ import { isPurchaseUnit } from "@/lib/costing/unit-options";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
-const BASE_USAGE_UNITS = ["gram", "ml", "pcs", "meter"];
+const BASE_USAGE_UNITS = ["gram", "ml", "pcs", "meter", "pack"];
 const NOTE_PATH = "/admin/costing/pengadaan/nota";
 
 function revalidateAll() {
@@ -196,7 +196,7 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
   if (!input.id) {
     const gate = await requireProcurementForBu(input.businessUnit);
     if (!gate.ok) return { ok: false, error: gate.error };
-    if (!BASE_USAGE_UNITS.includes(usageUnit)) return { ok: false, error: "Satuan pakai harus gram, ml, pcs, atau meter" };
+    if (!BASE_USAGE_UNITS.includes(usageUnit)) return { ok: false, error: "Satuan pakai harus gram, ml, pcs, meter, atau pack" };
     if (!purchaseUnitStandard) return { ok: false, error: "Pilih satuan beli dari daftar" };
     if (!(input.purchasePrice && input.purchasePrice > 0)) return { ok: false, error: "Harga beli awal harus lebih dari 0" };
     const { data: dup } = await admin
@@ -255,9 +255,9 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
   if (!cur) return { ok: false, error: "Bahan tidak ditemukan" };
   if (!purchaseUnitStandard && purchaseUnit.toLowerCase() !== String(cur.purchase_unit).toLowerCase())
     return { ok: false, error: "Pilih satuan beli dari daftar" };
-  // Satuan pakai boleh tetap seperti semula (data lama), tapi satuan baru harus gram/ml/pcs/meter.
+  // Satuan pakai boleh tetap seperti semula (data lama), tapi satuan baru harus gram/ml/pcs/meter/pack.
   if (usageUnit !== String(cur.usage_unit).toLowerCase() && !BASE_USAGE_UNITS.includes(usageUnit))
-    return { ok: false, error: "Satuan pakai harus gram, ml, pcs, atau meter" };
+    return { ok: false, error: "Satuan pakai harus gram, ml, pcs, meter, atau pack" };
   // Satuan pakai dipakai semua resep (satuan resep kosong = ikut satuan pakai bahan), stok barang masuk, dan opname:
   // mengubahnya diam-diam membuat gram jadi ml. Setelah dipakai, hanya owner yang boleh.
   if (usageUnit !== String(cur.usage_unit).toLowerCase()) {

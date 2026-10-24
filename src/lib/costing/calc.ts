@@ -42,7 +42,7 @@ export interface RecipeItemLite {
 
 /** Definisi satuan untuk konversi (subset costing_units). */
 export interface UnitDef {
-  dimension: "mass" | "volume" | "count" | "length";
+  dimension: "mass" | "volume" | "count" | "length" | "pack";
   to_base: number;
 }
 

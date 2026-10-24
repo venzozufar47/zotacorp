@@ -169,7 +169,7 @@ export function MaterialWizard({
     if (s >= 1 && !name.trim()) return "Nama bahan wajib diisi";
     if (s >= 2) {
       if (!purchaseUnit.trim()) return "Satuan beli wajib diisi (mis. sak, dus)";
-      if (!usageUnit.trim()) return "Satuan pakai wajib diisi (mis. gram, ml, pcs, meter)";
+      if (!usageUnit.trim()) return "Satuan pakai wajib diisi (mis. gram, ml, pcs, meter, pack)";
       if (contentNum == null || !(contentNum > 0)) return "Isi per satuan beli harus lebih dari 0";
       if (!Number.isFinite(priceNum) || priceNum < 0) return "Harga beli tidak valid";
     }

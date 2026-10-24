@@ -108,7 +108,7 @@ export async function fetchUnitsMap(supabase: DB): Promise<Map<string, UnitDef>>
   const m = new Map<string, UnitDef>();
   for (const r of (data ?? []) as Record<string, unknown>[])
     m.set(r.code as string, {
-      dimension: r.dimension as "mass" | "volume" | "count" | "length",
+      dimension: r.dimension as "mass" | "volume" | "count" | "length" | "pack",
       to_base: num(r.to_base),
     });
   return m;
