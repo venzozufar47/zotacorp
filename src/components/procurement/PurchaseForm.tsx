@@ -237,6 +237,11 @@ export function PurchaseForm({
 
   return (
     <div className="mx-auto max-w-xl space-y-4 pb-48 md:pb-28">
+      {access.pengadaan && !access.laci && (
+        <div className="rounded-xl bg-muted/60 px-3 py-2 text-xs">
+          Sumber uang: <b>Uang pengadaan</b>. Uang laci kasir belum tersedia ({access.laciReason ?? "tidak ada shift terbuka"}).
+        </div>
+      )}
       {(access.pengadaan && access.laci) && (
         <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
           <span>
