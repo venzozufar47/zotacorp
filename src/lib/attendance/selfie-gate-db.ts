@@ -37,9 +37,11 @@ export async function loadSelfieRules(client: Admin, userId: string): Promise<Se
   if (!unit) return null;
   const [{ data: rule }, { data: userRule }] = await Promise.all([
     db.from("attendance_selfie_rules").select("enabled, filters").eq("business_unit", unit).maybeSingle(),
-    db.from("attendance_selfie_user_rules").select("head_cover").eq("user_id", userId).maybeSingle(),
+    db.from("attendance_selfie_user_rules").select("head_cover, ai_exempt").eq("user_id", userId).maybeSingle(),
   ]);
   if (!rule?.enabled) return null;
+  // Dibebaskan dari AI per karyawan: sama dengan unit tanpa filter (tanpa panduan kamera, tanpa pemeriksaan).
+  if (userRule?.ai_exempt === true) return null;
   const f = (rule.filters ?? {}) as Partial<SelfieFilters>;
   return {
     filters: {
