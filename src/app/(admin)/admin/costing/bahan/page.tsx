@@ -9,7 +9,7 @@ import {
   pickActiveBrand,
   COSTING_BRAND_COOKIE,
 } from "@/lib/costing/brands";
-import { listMaterials } from "@/lib/actions/costing.actions";
+import { listMaterials, listProductsWithHpp, listUnits } from "@/lib/actions/costing.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { MaterialsManager } from "@/components/admin/costing/MaterialsManager";
 
@@ -29,8 +29,14 @@ export default async function AdminCostingMaterialsPage({
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
   const activeBrand = pickActiveBrand(brands, bu, lastOpened);
 
-  const res = activeBrand ? await listMaterials(activeBrand) : null;
+  const [res, prodRes, unitRes] = await Promise.all([
+    activeBrand ? listMaterials(activeBrand) : null,
+    activeBrand ? listProductsWithHpp(activeBrand) : null,
+    listUnits(),
+  ]);
   const rows = res && res.ok ? res.data ?? [] : [];
+  const products = prodRes && prodRes.ok ? prodRes.data ?? [] : [];
+  const costingUnits = unitRes.ok ? unitRes.data ?? [] : [];
 
   return (
     <div className="animate-fade-up">
@@ -42,6 +48,8 @@ export default async function AdminCostingMaterialsPage({
         brands={brands}
         activeBrand={activeBrand ?? null}
         rows={rows}
+        products={products}
+        units={costingUnits}
       />
     </div>
   );

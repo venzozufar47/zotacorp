@@ -16,18 +16,20 @@ import {
 } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
-  createMaterial,
   updateMaterial,
   deleteMaterial,
   listProductsUsingMaterial,
   listMaterialPriceHistory,
   type CostingMaterial,
   type CostingProductWithHpp,
+  type CostingUnit,
   type MaterialPriceHistoryRow,
 } from "@/lib/actions/costing.actions";
 import { rememberBrand } from "@/lib/costing/brands";
 import { fmtPercent, fmtRpPrecise } from "./format";
-import { NumField, TextField, parseDecimalId } from "./fields";
+import { NumField, TextField } from "./fields";
+import { MaterialWizard } from "./MaterialWizard";
+import { MaterialMatrix } from "./MaterialMatrix";
 
 const STALE_DAYS = 60;
 const STALE_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
@@ -38,10 +40,14 @@ export function MaterialsManager({
   brands,
   activeBrand,
   rows,
+  products,
+  units,
 }: {
   brands: string[];
   activeBrand: string | null;
   rows: CostingMaterial[];
+  products: CostingProductWithHpp[];
+  units: CostingUnit[];
 }) {
   const { run, pending, startTransition, router } = useRunAction();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -49,14 +55,10 @@ export function MaterialsManager({
   const [catFilter, setCatFilter] = useState("");
   const [query, setQuery] = useState("");
 
-  // Form tambah bahan.
-  const [nName, setNName] = useState("");
-  const [nCategory, setNCategory] = useState("");
-  const [nPurchaseUnit, setNPurchaseUnit] = useState("");
-  const [nPrice, setNPrice] = useState("");
-  const [nContent, setNContent] = useState("");
-  const [nUsageUnit, setNUsageUnit] = useState("");
-  const [nShopee, setNShopee] = useState("");
+  /** Tampilan: daftar (satu kartu per bahan) atau peta bahan × produk. */
+  const [view, setView] = useState<"daftar" | "peta">("daftar");
+  /** Panel bertahap: null = tertutup; material null = bahan baru. */
+  const [wizard, setWizard] = useState<{ material: CostingMaterial | null } | null>(null);
 
   // Kategori unik (untuk filter + datalist form), urut alfabetis.
   const categories = useMemo(() => {
@@ -105,48 +107,6 @@ export function MaterialsManager({
     router.push(`/admin/costing/bahan?bu=${encodeURIComponent(bu)}`);
   }
 
-  function addMaterial() {
-    if (!activeBrand) {
-      toast.error("Pilih brand dulu");
-      return;
-    }
-    if (!nName.trim()) {
-      toast.error("Nama bahan wajib diisi");
-      return;
-    }
-    const price = Number(nPrice.replace(/[^\d]/g, ""));
-    const content = parseDecimalId(nContent);
-    if (content == null || !(content > 0)) {
-      toast.error("Isi per satuan beli harus > 0");
-      return;
-    }
-    startTransition(async () => {
-      const res = await createMaterial({
-        business_unit: activeBrand,
-        name: nName.trim(),
-        category: nCategory.trim() || null,
-        purchase_unit: nPurchaseUnit.trim() || "unit",
-        purchase_price: price,
-        content_per_purchase: content,
-        usage_unit: nUsageUnit.trim() || "unit",
-        shopee_url: nShopee.trim() || null,
-      });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      setNName("");
-      setNCategory("");
-      setNPurchaseUnit("");
-      setNPrice("");
-      setNContent("");
-      setNUsageUnit("");
-      setNShopee("");
-      toast.success("Bahan ditambahkan");
-      router.refresh();
-    });
-  }
-
   if (brands.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -181,112 +141,57 @@ export function MaterialsManager({
         </select>
       </div>
 
-      {/* Tambah bahan */}
-      <div className="rounded-2xl border-2 border-foreground bg-card p-3 shadow-hard-sm">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 items-end">
-          <label className="flex flex-col gap-1 col-span-2 sm:col-span-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Nama
-            </span>
-            <input
-              value={nName}
-              onChange={(e) => setNName(e.target.value)}
-              placeholder="Tepung terigu"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Kategori
-            </span>
-            <input
-              value={nCategory}
-              onChange={(e) => setNCategory(e.target.value)}
-              list="costing-categories"
-              placeholder="Tepung & Pati"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm [&::-webkit-calendar-picker-indicator]:hidden"
-            />
-            {/* Saran dari kategori yang sudah ada → mengurangi typo yang
-                memecah kategori jadi dua. */}
-            <datalist id="costing-categories">
-              {categories.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Satuan beli
-            </span>
-            <input
-              value={nPurchaseUnit}
-              onChange={(e) => setNPurchaseUnit(e.target.value)}
-              placeholder="sak"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Harga beli
-            </span>
-            <input
-              value={nPrice}
-              onChange={(e) => setNPrice(e.target.value)}
-              inputMode="numeric"
-              placeholder="300000"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm tabular-nums"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Isi (satuan pakai)
-            </span>
-            <input
-              value={nContent}
-              onChange={(e) => setNContent(e.target.value)}
-              inputMode="decimal"
-              placeholder="25000"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm tabular-nums"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Satuan pakai
-            </span>
-            <input
-              value={nUsageUnit}
-              onChange={(e) => setNUsageUnit(e.target.value)}
-              placeholder="gram"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1 col-span-2 sm:col-span-3 lg:col-span-6">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Link Shopee (opsional)
-            </span>
-            <input
-              value={nShopee}
-              onChange={(e) => setNShopee(e.target.value)}
-              inputMode="url"
-              placeholder="https://shopee.co.id/…"
-              className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
-            />
-          </label>
+      {/* Tampilan + tambah bahan */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-xl border-2 border-foreground bg-card p-0.5">
+          {(["daftar", "peta"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`h-8 rounded-lg px-3 text-sm font-semibold transition ${
+                view === v ? "bg-primary text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {v === "daftar" ? "Daftar" : "Peta bahan × produk"}
+            </button>
+          ))}
         </div>
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={addMaterial}
-            disabled={pending}
-            className="inline-flex items-center gap-1.5 h-9 rounded-xl border-2 border-foreground bg-primary px-3 text-sm font-bold disabled:opacity-60"
-          >
-            <Plus size={15} /> Tambah bahan
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setWizard({ material: null })}
+          disabled={!activeBrand}
+          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-foreground bg-primary px-3 text-sm font-bold disabled:opacity-60"
+        >
+          <Plus size={15} /> Bahan baru
+        </button>
       </div>
 
+      {view === "peta" && activeBrand && (
+        <MaterialMatrix
+          materials={rows}
+          products={products}
+          units={units}
+          categories={categories}
+          onOpenMaterial={(m) => setWizard({ material: m })}
+          onNewMaterial={() => setWizard({ material: null })}
+        />
+      )}
+      {wizard && activeBrand && (
+        <MaterialWizard
+          key={wizard.material?.id ?? "new"}
+          brand={activeBrand}
+          material={wizard.material}
+          materials={rows}
+          products={products}
+          units={units}
+          categories={categories}
+          onClose={() => setWizard(null)}
+        />
+      )}
+
       {/* Cari + filter kategori */}
-      {rows.length > 0 && (
+      {view === "daftar" && rows.length > 0 && (
         <div className="relative">
           <Search
             size={14}
@@ -310,7 +215,7 @@ export function MaterialsManager({
           )}
         </div>
       )}
-      {rows.length > 0 && !query && (categories.length > 0 || hasUncategorized) && (
+      {view === "daftar" && rows.length > 0 && !query && (categories.length > 0 || hasUncategorized) && (
         <div className="flex flex-wrap items-center gap-1.5">
           <FilterChip
             label={`Semua (${rows.length})`}
@@ -340,7 +245,7 @@ export function MaterialsManager({
       )}
 
       {/* Daftar bahan — dikelompokkan per kategori */}
-      {rows.length === 0 ? (
+      {view !== "daftar" ? null : rows.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
           Belum ada bahan untuk {activeBrand}.
         </div>
@@ -365,6 +270,7 @@ export function MaterialsManager({
                   categories={categories}
                   expanded={expanded === m.id}
                   onToggle={() => setExpanded((e) => (e === m.id ? null : m.id))}
+                  onWizard={() => setWizard({ material: m })}
                   onField={(patch) =>
                     run(() => updateMaterial({ id: m.id, ...patch }))
                   }
@@ -426,6 +332,7 @@ function MaterialRow({
   categories,
   expanded,
   onToggle,
+  onWizard,
   onField,
   onDelete,
 }: {
@@ -434,6 +341,7 @@ function MaterialRow({
   pending: boolean;
   expanded: boolean;
   onToggle: () => void;
+  onWizard: () => void;
   onField: (patch: Partial<CostingMaterial>) => void;
   onDelete: () => void;
 }) {
@@ -545,6 +453,13 @@ function MaterialRow({
           className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground"
         >
           <History size={13} /> {expanded ? "Tutup" : "Dampak & riwayat"}
+        </button>
+        <button
+          type="button"
+          onClick={onWizard}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
+        >
+          Simulasi & tautan produk
         </button>
         <button
           type="button"
