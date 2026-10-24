@@ -21,6 +21,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { cn } from "@/lib/utils";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { formatNum, parseDecimalId } from "./fields";
+import { parseMoneyId } from "@/lib/utils/parse-number";
 import { PURCHASE_UNITS, USAGE_UNITS, unitOptions } from "@/lib/costing/unit-options";
 import { impactProducts, materialLite, recipeUnitChoices, unitsMap } from "./costing-data";
 
@@ -119,7 +120,7 @@ export function MaterialWizard({
   const lites = useMemo(() => materials.filter((m) => m.is_active || m.id === materialId).map(materialLite), [materials, materialId]);
 
   // Kotak yang tak diketik ulang memakai nilai tersimpan apa adanya (kotak hanya menampilkan versi dibulatkan).
-  const priceNum = material && price === initialPrice ? material.purchase_price : Number(price.replace(/[^\d]/g, ""));
+  const priceNum = material && price === initialPrice ? material.purchase_price : parseMoneyId(price);
   const contentNum = material && content === initialContent ? material.content_per_purchase : parseDecimalId(content);
   const shrinkNum = material && shrink === initialShrink ? material.shrink_factor : Math.max(0, parseDecimalId(shrink) ?? 0) / 100;
   const perUnit = contentNum != null ? unitCostPreview(priceNum, contentNum) : null;
@@ -362,7 +363,7 @@ export function MaterialWizard({
                     </select>
                   </Field>
                   <Field label="Harga beli (Rp)">
-                    <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="numeric" placeholder="275000" className={cn(inputCls, "tabular-nums")} />
+                    <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9.,]/g, ""))} inputMode="decimal" placeholder="275000" className={cn(inputCls, "tabular-nums")} />
                   </Field>
                   <Field label="Isi per satuan beli">
                     <input value={content} onChange={(e) => setContent(e.target.value)} inputMode="decimal" placeholder="25000" className={cn(inputCls, "tabular-nums")} />

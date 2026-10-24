@@ -1,17 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { parseDecimalId, parseMoneyId } from "@/lib/utils/parse-number";
 
-/** Parse angka gaya id-ID: titik = pemisah ribuan (dibuang), koma =
- *  desimal. "25.000" → 25000, "1.234,5" → 1234.5, "12,5" → 12.5.
- *  Konsisten dengan tampilan id-ID di seluruh app; mencegah bug 1000×
- *  saat user mengetik isi ber-titik ribuan. NaN → null. */
-export function parseDecimalId(s: string): number | null {
-  const cleaned = s.replace(/\./g, "").replace(",", ".").trim();
-  if (cleaned === "") return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
+// Parser angka bersama: lihat src/lib/utils/parse-number.ts (titik ribuan, koma desimal, DAN "1.5" dari keyboard Inggris).
+export { parseDecimalId };
 
 /** Angka utuh (tanpa pembulatan paksa) locale id-ID, tanpa grouping —
  *  supaya isi input bisa diedit ulang tanpa titik ribuan mengganggu. */
@@ -55,9 +48,7 @@ export function NumField({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           if (draft == null) return;
-          const parsed = money
-            ? Number(draft.replace(/[^\d]/g, ""))
-            : parseDecimalId(draft);
+          const parsed = money ? parseMoneyId(draft) : parseDecimalId(draft);
           setDraft(null);
           if (
             parsed != null &&

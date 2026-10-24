@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { PURCHASE_UNITS } from "@/lib/costing/unit-options";
+import { parseMoneyId } from "@/lib/utils/parse-number";
 import { formatRp } from "@/lib/cashflow/format";
 import { compressImageStrict } from "@/lib/images/compress-image";
 import { jakartaDateString } from "@/lib/utils/jakarta";
@@ -46,8 +47,9 @@ import {
   type PurchaseMaterialOption,
 } from "@/lib/actions/procurement-purchases.actions";
 
-const digits = (v: string) => v.replace(/[^0-9]/g, "");
-const num = (v: string) => Number(digits(v)) || 0;
+/** Ketikan nominal: hanya angka, titik, koma ("45.500", "45.500,00", "45500.00" semuanya Rp 45.500). */
+const moneyText = (v: string) => v.replace(/[^0-9.,]/g, "");
+const num = (v: string) => parseMoneyId(v);
 const nf = (n: number, max = 2) => n.toLocaleString("id-ID", { maximumFractionDigits: max });
 
 /** Satu baris di draf nota (belum disimpan). */
@@ -484,6 +486,34 @@ export function PurchaseForm({
   );
 }
 
+/**
+ * Input nominal: menyimpan TEKS yang diketik (bukan hanya digit) dan menampilkan hasil bacaannya di bawahnya, jadi
+ * "45.500,00" atau "45500.00" dari struk tidak berubah jadi 4.550.000 dan salah ketik langsung terlihat.
+ */
+function MoneyInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const n = parseMoneyId(value);
+  return (
+    <div className="space-y-0.5">
+      <Input inputMode="decimal" value={value} onChange={(e) => onChange(moneyText(e.target.value))} placeholder={placeholder} className={className} />
+      {n > 0 && (
+        <p className="text-right text-[11px] tabular-nums text-muted-foreground">
+          = Rp {n.toLocaleString("id-ID", { maximumFractionDigits: 2 })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SourceCard({
   icon,
   title,
@@ -716,10 +746,9 @@ function BahanComposer({
 
           <div className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Total harga (sesuai nota)</span>
-            <Input
-              inputMode="numeric"
-              value={total ? num(total).toLocaleString("id-ID") : ""}
-              onChange={(e) => setTotal(digits(e.target.value))}
+            <MoneyInput
+              value={total}
+              onChange={setTotal}
               placeholder="Rp 0"
               className="text-right text-base font-semibold tabular-nums"
             />
@@ -881,13 +910,7 @@ function ProposeMaterial({
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">Harga per satuan beli</span>
-          <Input
-            inputMode="numeric"
-            value={price ? num(price).toLocaleString("id-ID") : ""}
-            onChange={(e) => setPrice(digits(e.target.value))}
-            placeholder="Rp 0"
-            className="text-right tabular-nums"
-          />
+          <MoneyInput value={price} onChange={setPrice} placeholder="Rp 0" className="text-right tabular-nums" />
         </label>
       </div>
       <div className="space-y-1">
@@ -964,13 +987,7 @@ function LainComposer({ onAdd, onCancel }: { onAdd: (line: DraftLine) => void; o
         placeholder="Beli apa? (mis. ongkir pak joko, galon isi ulang)"
         maxLength={120}
       />
-      <Input
-        inputMode="numeric"
-        value={total ? num(total).toLocaleString("id-ID") : ""}
-        onChange={(e) => setTotal(digits(e.target.value))}
-        placeholder="Nominal (Rp)"
-        className="text-right text-base font-semibold tabular-nums"
-      />
+      <MoneyInput value={total} onChange={setTotal} placeholder="Nominal (Rp)" className="text-right text-base font-semibold tabular-nums" />
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
