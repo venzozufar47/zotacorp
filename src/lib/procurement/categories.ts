@@ -5,6 +5,8 @@
  * Modul murni (aman untuk client).
  */
 
+import { categoryGuide } from "@/lib/cashflow/cash-branches";
+
 export interface ExpenseCategory {
   /** Nilai yang disimpan di buku kas (kategori laporan keuangan). */
   value: string;
@@ -17,9 +19,9 @@ export interface ExpenseCategory {
 }
 
 /**
- * Kategori yang wajar untuk belanja pengadaan, ditambah "Dividend" untuk uang yang diambil pemilik (keperluan
- * pribadi). Nilainya SAMA dengan kategori Dividend di buku kas, jadi P&L dan Keuangan membacanya tanpa pemetaan.
- * Gaji, setor kas, dst. tetap TIDAK ada di sini.
+ * Kategori pengeluaran tunai cabang. Urutan: biaya operasional, lalu refund customer, gaji, dan terakhir "Dividend"
+ * (uang yang diambil pemilik untuk keperluan pribadi). Semua nilai SAMA dengan kategori di buku kas Haengbocake,
+ * jadi P&L dan Keuangan membacanya tanpa pemetaan. Setor kas (Wealth Transfer), dst. tetap TIDAK ada di sini.
  */
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   {
@@ -77,10 +79,22 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
     keywords: ["sewa", "kontrak tempat", "rent"],
   },
   {
+    value: "Sales Refund",
+    label: "Refund customer",
+    // Penjelasan kategori sama dengan tab Finance (CATEGORY_GUIDE_HAENGBOCAKE); tambahan: isi siapa & kenapa.
+    examples: `${categoryGuide("Haengbocake", "Sales Refund")} Isi keterangan siapa dan kenapa.`,
+    keywords: ["refund", "kembalikan", "kembali", "retur", "batal", "customer", "pembeli", "pelanggan", "komplain"],
+  },
+  {
+    value: "Salaries & Wages",
+    label: "Salary",
+    examples: categoryGuide("Haengbocake", "Salaries & Wages"),
+    keywords: ["gaji", "salary", "upah", "honor", "lembur", "bonus", "thr", "karyawan", "harian", "lepas"],
+  },
+  {
     value: "Dividend",
-    label: "Diambil owner (dividen)",
-    examples:
-      "Uang yang diambil owner untuk keperluan pribadi. Bukan biaya operasional: tidak mengurangi laba cabang, tercatat sebagai Dividen di laporan keuangan.",
+    label: "Dividen",
+    examples: `${categoryGuide("Haengbocake", "Dividend")} Dipakai bila uang diambil owner untuk keperluan pribadi.`,
     keywords: ["dividen", "deviden", "dividend", "owner", "pribadi", "bagi hasil", "ambil", "diambil owner", "pemilik"],
   },
 ];
