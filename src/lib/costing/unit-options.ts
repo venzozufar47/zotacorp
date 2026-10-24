@@ -2,14 +2,14 @@
  * Satuan baku bahan. Dipakai UI (dropdown) DAN server (validasi), supaya satuan tak bisa diketik bebas:
  * ejaan beragam ("kotak"/"box", "pack 10", "sak 5kg") membuat konversi dan laporan tak konsisten.
  *
- * - Satuan PAKAI (di resep, stok, opname) hanya satuan dasar: gram, ml, pcs, meter, pack. Satuan lain (kg, liter, lusin…)
+ * - Satuan PAKAI (di resep, stok, opname) hanya satuan dasar: gram, ml, pcs, meter. Satuan lain (kg, liter, lusin…)
  *   boleh dipakai sebagai satuan takaran di resep karena dikonversi lewat costing_units.
  * - Satuan BELI hanyalah label kemasan; ukurannya ada di "isi per satuan beli", bukan di nama satuan.
  *
  * Nilai lama yang tak ada di daftar tetap boleh dipertahankan (data lama), tetapi tidak bisa dipilih untuk bahan lain.
  */
 
-export const USAGE_UNITS = ["gram", "ml", "pcs", "meter", "pack"] as const;
+export const USAGE_UNITS = ["gram", "ml", "pcs", "meter"] as const;
 
 export const PURCHASE_UNITS = [
   "pcs",
