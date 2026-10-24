@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PURCHASE_UNITS, unitOptions } from "@/lib/costing/unit-options";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   saveMaterial,
@@ -196,7 +197,14 @@ export function MaterialsManager({ businessUnit, materials }: { businessUnit: st
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Satuan beli">
-                  <input value={draft.purchaseUnit} onChange={set("purchaseUnit")} placeholder="sak, dus, pack" className={inputCls} maxLength={20} />
+                  <select value={draft.purchaseUnit} onChange={set("purchaseUnit")} className={inputCls}>
+                    {!draft.purchaseUnit && <option value="">Pilih…</option>}
+                    {unitOptions(PURCHASE_UNITS, current?.purchaseUnit).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Isi per satuan beli">
                   <input value={draft.content} onChange={set("content")} inputMode="decimal" placeholder="25000" className={inputCls} />

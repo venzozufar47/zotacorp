@@ -139,3 +139,42 @@ export function TextField({
     </label>
   );
 }
+
+/** Dropdown satuan baku (lihat `@/lib/costing/unit-options`). `onChange` dipanggil langsung saat dipilih. */
+export function UnitSelect({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder = "Pilih…",
+  className,
+}: {
+  label?: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const select = (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={className ?? "h-9 w-full rounded-lg border border-border bg-background px-1.5 text-sm"}
+    >
+      {!value && <option value="">{placeholder}</option>}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+  if (!label) return select;
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      {select}
+    </label>
+  );
+}

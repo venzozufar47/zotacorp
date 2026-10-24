@@ -20,6 +20,7 @@ import { requireAdmin, requireProcurementForBu, requireProcurementForMaterial, t
 import { normalizeLink, LINK_ERROR } from "@/lib/costing/link";
 import { num } from "@/lib/costing/rows";
 import { sendPushToAdmins } from "@/lib/push/web-push";
+import { isPurchaseUnit } from "@/lib/costing/unit-options";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -181,6 +182,8 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
   const category = input.category?.trim() || null;
   if (name.length < 2 || name.length > 80) return { ok: false, error: "Nama bahan 2–80 huruf" };
   if (!purchaseUnit || purchaseUnit.length > 20) return { ok: false, error: "Satuan beli wajib (mis. sak, dus, pack)" };
+  // Satuan beli baku (dropdown), kecuali bila tidak diubah dari nilai lama bahan ini (dicek di cabang ubah).
+  const purchaseUnitStandard = isPurchaseUnit(purchaseUnit);
   if (!(input.contentPerPurchase > 0) || input.contentPerPurchase > 10_000_000)
     return { ok: false, error: "Isi per satuan beli harus lebih dari 0" };
   if (category && category.length > 40) return { ok: false, error: "Kategori maksimal 40 huruf" };
@@ -194,6 +197,7 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
     const gate = await requireProcurementForBu(input.businessUnit);
     if (!gate.ok) return { ok: false, error: gate.error };
     if (!BASE_USAGE_UNITS.includes(usageUnit)) return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };
+    if (!purchaseUnitStandard) return { ok: false, error: "Pilih satuan beli dari daftar" };
     if (!(input.purchasePrice && input.purchasePrice > 0)) return { ok: false, error: "Harga beli awal harus lebih dari 0" };
     const { data: dup } = await admin
       .from("costing_materials" as never)
@@ -249,6 +253,8 @@ export async function saveMaterial(input: SaveMaterialInput): Promise<ActionResu
     .maybeSingle();
   const cur = curRow as Record<string, unknown> | null;
   if (!cur) return { ok: false, error: "Bahan tidak ditemukan" };
+  if (!purchaseUnitStandard && purchaseUnit.toLowerCase() !== String(cur.purchase_unit).toLowerCase())
+    return { ok: false, error: "Pilih satuan beli dari daftar" };
   // Satuan pakai boleh tetap seperti semula (data lama), tapi satuan baru harus gram/ml/pcs.
   if (usageUnit !== String(cur.usage_unit).toLowerCase() && !BASE_USAGE_UNITS.includes(usageUnit))
     return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };

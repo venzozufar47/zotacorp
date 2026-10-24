@@ -5,6 +5,7 @@ import { createAdminClient as adminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { runHppSnapshotCapture } from "@/lib/costing/snapshot";
 import { normalizeLink, LINK_ERROR } from "@/lib/costing/link";
+import { isPurchaseUnit, isUsageUnit } from "@/lib/costing/unit-options";
 import {
   posAccountFilterForCostingBrand,
   costingBrandForPosAccount,
@@ -183,6 +184,11 @@ export async function createMaterial(
     return { ok: false, error: "Isi per satuan beli harus > 0" };
   if (!Number.isFinite(input.purchase_price) || input.purchase_price < 0)
     return { ok: false, error: "Harga beli tidak valid" };
+  // Satuan baku (dropdown): ejaan bebas merusak konversi & laporan.
+  if (!isUsageUnit(input.usage_unit))
+    return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };
+  if (!isPurchaseUnit(input.purchase_unit))
+    return { ok: false, error: "Pilih satuan beli dari daftar" };
   const shrink = input.shrink_factor ?? 0;
   if (!Number.isFinite(shrink) || shrink < 0)
     return { ok: false, error: "Faktor susut tidak valid" };
@@ -195,10 +201,10 @@ export async function createMaterial(
       business_unit: input.business_unit,
       name: input.name.trim(),
       category: input.category?.trim() || null,
-      purchase_unit: input.purchase_unit.trim() || "unit",
+      purchase_unit: input.purchase_unit.trim().toLowerCase(),
       purchase_price: Math.round(input.purchase_price * 100) / 100,
       content_per_purchase: input.content_per_purchase,
-      usage_unit: input.usage_unit.trim() || "unit",
+      usage_unit: input.usage_unit.trim().toLowerCase(),
       shrink_factor: shrink,
       shopee_url: link,
       created_by: gate.userId,
@@ -229,12 +235,17 @@ export async function updateMaterial(input: {
   // Baca kondisi lama untuk (a) validasi dan (b) deteksi perubahan harga.
   const { data: prevRow, error: prevErr } = await supabase
     .from("costing_materials" as never)
-    .select("purchase_price, content_per_purchase")
+    .select("purchase_price, content_per_purchase, purchase_unit, usage_unit")
     .eq("id", input.id)
     .maybeSingle();
   if (prevErr) return { ok: false, error: prevErr.message };
   if (!prevRow) return { ok: false, error: "Bahan tidak ditemukan" };
-  const prev = prevRow as { purchase_price: unknown; content_per_purchase: unknown };
+  const prev = prevRow as {
+    purchase_price: unknown;
+    content_per_purchase: unknown;
+    purchase_unit: string;
+    usage_unit: string;
+  };
   const prevPrice = num(prev.purchase_price);
   const prevContent = num(prev.content_per_purchase);
 
@@ -244,10 +255,19 @@ export async function updateMaterial(input: {
     patch.name = input.name.trim();
   }
   if (input.category !== undefined) patch.category = input.category?.trim() || null;
-  if (input.purchase_unit !== undefined)
-    patch.purchase_unit = input.purchase_unit.trim() || "unit";
-  if (input.usage_unit !== undefined)
-    patch.usage_unit = input.usage_unit.trim() || "unit";
+  // Satuan baku: boleh dibiarkan seperti semula (data lama), tetapi mengubahnya harus ke satuan dari daftar.
+  if (input.purchase_unit !== undefined) {
+    const pu = input.purchase_unit.trim();
+    if (pu !== prev.purchase_unit && !isPurchaseUnit(pu))
+      return { ok: false, error: "Pilih satuan beli dari daftar" };
+    patch.purchase_unit = pu === prev.purchase_unit ? pu : pu.toLowerCase();
+  }
+  if (input.usage_unit !== undefined) {
+    const uu = input.usage_unit.trim();
+    if (uu !== prev.usage_unit && !isUsageUnit(uu))
+      return { ok: false, error: "Satuan pakai harus gram, ml, atau pcs" };
+    patch.usage_unit = uu === prev.usage_unit ? uu : uu.toLowerCase();
+  }
   if (input.shrink_factor !== undefined) {
     if (!Number.isFinite(input.shrink_factor) || input.shrink_factor < 0)
       return { ok: false, error: "Faktor susut tidak valid" };

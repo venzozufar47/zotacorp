@@ -27,7 +27,8 @@ import {
 } from "@/lib/actions/costing.actions";
 import { rememberBrand } from "@/lib/costing/brands";
 import { fmtPercent, fmtRpPrecise } from "./format";
-import { NumField, TextField } from "./fields";
+import { NumField, TextField, UnitSelect } from "./fields";
+import { PURCHASE_UNITS, USAGE_UNITS, unitOptions } from "@/lib/costing/unit-options";
 import { MaterialWizard } from "./MaterialWizard";
 import { MaterialMatrix } from "./MaterialMatrix";
 
@@ -368,10 +369,11 @@ function MaterialRow({
             <option key={c} value={c} />
           ))}
         </datalist>
-        <TextField
+        <UnitSelect
           label="Satuan beli"
           value={m.purchase_unit}
-          onCommit={(v) => onField({ purchase_unit: v })}
+          options={unitOptions(PURCHASE_UNITS, m.purchase_unit)}
+          onChange={(v) => v !== m.purchase_unit && onField({ purchase_unit: v })}
         />
         <NumField
           label="Harga beli"
@@ -386,10 +388,16 @@ function MaterialRow({
           min={0.0001}
           onCommit={(v) => v > 0 && onField({ content_per_purchase: v })}
         />
-        <TextField
+        <UnitSelect
           label="Satuan pakai"
           value={m.usage_unit}
-          onCommit={(v) => onField({ usage_unit: v })}
+          options={unitOptions(USAGE_UNITS, m.usage_unit)}
+          onChange={(v) => {
+            if (v === m.usage_unit) return;
+            // Semua takaran resep memakai satuan pakai bahan: mengubahnya mengubah arti takaran yang sudah ada.
+            if (!confirm(`Ubah satuan pakai "${m.name}" dari ${m.usage_unit} ke ${v}? Takaran di resep yang memakai bahan ini ikut berubah arti. Lanjutkan?`)) return;
+            onField({ usage_unit: v });
+          }}
         />
         <NumField
           label="Susut"

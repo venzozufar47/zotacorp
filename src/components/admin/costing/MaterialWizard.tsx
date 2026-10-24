@@ -21,6 +21,7 @@ import { formatRp } from "@/lib/cashflow/format";
 import { cn } from "@/lib/utils";
 import { fmtPercent, fmtRpPrecise } from "./format";
 import { formatNum, parseDecimalId } from "./fields";
+import { PURCHASE_UNITS, USAGE_UNITS, unitOptions } from "@/lib/costing/unit-options";
 import { impactProducts, materialLite, recipeUnitChoices, unitsMap } from "./costing-data";
 
 /** Nilai semu pilihan "kategori baru" di dropdown kategori. */
@@ -346,7 +347,14 @@ export function MaterialWizard({
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Satuan beli">
-                    <input value={purchaseUnit} onChange={(e) => setPurchaseUnit(e.target.value)} placeholder="sak" className={inputCls} />
+                    <select value={purchaseUnit} onChange={(e) => setPurchaseUnit(e.target.value)} className={inputCls}>
+                      {!purchaseUnit && <option value="">Pilih…</option>}
+                      {unitOptions(PURCHASE_UNITS, material?.purchase_unit).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
                   <Field label="Harga beli (Rp)">
                     <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="numeric" placeholder="275000" className={cn(inputCls, "tabular-nums")} />
@@ -355,12 +363,14 @@ export function MaterialWizard({
                     <input value={content} onChange={(e) => setContent(e.target.value)} inputMode="decimal" placeholder="25000" className={cn(inputCls, "tabular-nums")} />
                   </Field>
                   <Field label="Satuan pakai (di resep)">
-                    <input value={usageUnit} onChange={(e) => setUsageUnit(e.target.value)} list="wiz-units" placeholder="gram" className={inputCls} />
-                    <datalist id="wiz-units">
-                      {units.map((u) => (
-                        <option key={u.code} value={u.code} />
+                    <select value={usageUnit} onChange={(e) => setUsageUnit(e.target.value)} className={inputCls}>
+                      {!usageUnit && <option value="">Pilih…</option>}
+                      {unitOptions(USAGE_UNITS, material?.usage_unit).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
                       ))}
-                    </datalist>
+                    </select>
                   </Field>
                   <Field label="Susut / waste (%)">
                     <input value={shrink} onChange={(e) => setShrink(e.target.value)} inputMode="decimal" className={cn(inputCls, "tabular-nums")} />
