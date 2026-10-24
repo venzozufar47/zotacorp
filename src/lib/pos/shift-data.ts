@@ -185,6 +185,52 @@ export async function cashMovementInWindow(
   return { credits, debits, lateRefunds };
 }
 
+export interface DrawerCashNow {
+  /** open = shift berjalan (saldo hidup); closed = dari hitungan tutup terakhir; unknown = tak ada pembanding. */
+  state: "open" | "closed" | "unknown";
+  /** Isi laci menurut sistem sekarang; null bila unknown. */
+  balance: number | null;
+  /** Kasir shift berjalan (state open). */
+  cashierName: string | null;
+  /** Sejak kapan saldo ini dihitung (buka shift / tutup shift terakhir). */
+  sinceIso: string | null;
+}
+
+/**
+ * Isi laci kasir SEKARANG: shift berjalan → hitungan buka + gerakan kas sejak buka; tidak ada shift → hitungan tutup
+ * terakhir − uang diambil + gerakan kas sesudahnya. Rumus yang sama dengan `getShiftCashExpectation`.
+ */
+export async function currentDrawerCash(admin: Admin, bankAccountId: string): Promise<DrawerCashNow> {
+  const nowIso = new Date().toISOString();
+  const open = await findOpenShift(admin, bankAccountId);
+  if (open) {
+    const { data: row } = await admin
+      .from("pos_shifts")
+      .select("opened_at, open_cash_counted")
+      .eq("id", open.id)
+      .maybeSingle();
+    if (row) {
+      const net = netCash(await cashMovementInWindow(admin, bankAccountId, row.opened_at, nowIso));
+      return {
+        state: "open",
+        balance: Number(row.open_cash_counted) + net,
+        cashierName: open.cashierName,
+        sinceIso: row.opened_at,
+      };
+    }
+  }
+  const prev = await lastClosedShift(admin, bankAccountId);
+  if (!prev || prev.closeCashCounted === null)
+    return { state: "unknown", balance: null, cashierName: null, sinceIso: prev?.closedAt ?? null };
+  const net = netCash(await cashMovementInWindow(admin, bankAccountId, prev.closedAt, nowIso));
+  return {
+    state: "closed",
+    balance: prev.closeCashCounted - prev.closeCashWithdrawn + net,
+    cashierName: null,
+    sinceIso: prev.closedAt,
+  };
+}
+
 /**
  * Laporan transaksi di luar shift sejak `fromIso` (tutup shift terakhir). Tanpa `fromIso` (belum pernah ada
  * shift) tidak ada yang bisa dilaporkan: kembalikan laporan kosong.

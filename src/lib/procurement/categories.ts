@@ -16,7 +16,11 @@ export interface ExpenseCategory {
   keywords: string[];
 }
 
-/** Hanya kategori yang wajar untuk belanja pengadaan; gaji, dividen, setor kas, dst. TIDAK ada di sini. */
+/**
+ * Kategori yang wajar untuk belanja pengadaan, ditambah "Dividend" untuk uang yang diambil pemilik (keperluan
+ * pribadi). Nilainya SAMA dengan kategori Dividend di buku kas, jadi P&L dan Keuangan membacanya tanpa pemetaan.
+ * Gaji, setor kas, dst. tetap TIDAK ada di sini.
+ */
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   {
     value: "Cost of Goods Sold",
@@ -71,6 +75,13 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
     label: "Sewa",
     examples: "Sewa tempat, sewa alat.",
     keywords: ["sewa", "kontrak tempat", "rent"],
+  },
+  {
+    value: "Dividend",
+    label: "Diambil owner (dividen)",
+    examples:
+      "Uang yang diambil owner untuk keperluan pribadi. Bukan biaya operasional: tidak mengurangi laba cabang, tercatat sebagai Dividen di laporan keuangan.",
+    keywords: ["dividen", "deviden", "dividend", "owner", "pribadi", "bagi hasil", "ambil", "diambil owner", "pemilik"],
   },
 ];
 

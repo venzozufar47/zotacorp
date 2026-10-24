@@ -18,6 +18,8 @@ import {
   listPurchases,
 } from "@/lib/actions/procurement-purchases.actions";
 import { listMaterialDetails } from "@/lib/actions/procurement-materials.actions";
+import { getCashPosition } from "@/lib/actions/procurement-wallet.actions";
+import { CashPositionCard } from "@/components/procurement/CashPositionCard";
 import { MaterialsManager } from "@/components/procurement/MaterialsManager";
 import { pickActiveBrand, COSTING_BRAND_COOKIE } from "@/lib/costing/brands";
 import { jakartaDateString } from "@/lib/utils/jakarta";
@@ -90,6 +92,7 @@ export default async function PengadaanPage({
       ) : (
         <>
           <PengadaanTabs active={tab} brands={brands} activeBrand={activeBrand} limited={limited} />
+          {!limited && tab !== "bahan" && <PositionBar brand={activeBrand} />}
           {tab === "catat" && <CatatTab brand={activeBrand} initialMaterialId={bahan} />}
           {tab === "riwayat" && <RiwayatTab brand={activeBrand} today={today} monthStart={monthStart} />}
           {tab === "stok" && <StokTab brand={activeBrand} brands={brands} />}
@@ -122,6 +125,17 @@ async function RiwayatTab({ brand, today, monthStart }: { brand: string; today: 
     <div className="mx-auto max-w-xl space-y-4">
       {sumRes.ok && sumRes.data && <PurchaseSummaryCard summary={sumRes.data} title={`Pengeluaran ${monthLabel}`} />}
       <PurchaseHistory purchases={purchases} today={today} />
+    </div>
+  );
+}
+
+/** Saldo uang pengadaan & saldo laci cabang aktif — dilihat petugas sebelum mencatat belanja. */
+async function PositionBar({ brand }: { brand: string }) {
+  const res = await getCashPosition(brand);
+  if (!res.ok || !res.data) return null;
+  return (
+    <div className="mx-auto max-w-xl">
+      <CashPositionCard positions={[res.data]} />
     </div>
   );
 }

@@ -36,6 +36,7 @@ import {
   weightedAveragePurchasePrice,
 } from "@/lib/procurement/purchase-math";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
+import { sendPushToAdmins } from "@/lib/push/web-push";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -810,6 +811,19 @@ export async function createPurchase(
   }
 
   await admin.storage.from(TMP_BUCKET).remove([input.receiptPath]);
+  // Uang yang diambil owner (Dividend) dicatat petugas: owner langsung diberi tahu supaya bisa mencocokkan.
+  const dividend = calcs.filter((c) => c.category === "Dividend").reduce((sum, c) => sum + c.total, 0);
+  if (dividend > 0) {
+    try {
+      await sendPushToAdmins({
+        title: "Uang diambil owner dicatat",
+        body: `${input.businessUnit.replace("Haengbocake ", "")} · Rp ${dividend.toLocaleString("id-ID")} dicatat sebagai Dividend`,
+        url: "/admin/costing/pengadaan/nota",
+      });
+    } catch {
+      // Notifikasi gagal tak boleh membatalkan nota yang sudah tersimpan.
+    }
+  }
   revalidateAll();
   return { ok: true, data: { id: purchaseId, total: grandTotal, flagged } };
 }
