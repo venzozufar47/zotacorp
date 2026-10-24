@@ -11,6 +11,7 @@ import {
   Inbox,
   MapPin,
   Megaphone,
+  Percent,
   Receipt,
   Settings,
   ShieldAlert,
@@ -284,6 +285,12 @@ export function buildAdminNav({
             { href: "/admin/cake-orders/options", label: "Opsi Form" },
             { href: "/admin/cake-orders/access", label: "Akses Karyawan" },
           ],
+        },
+        {
+          href: "/admin/pos/diskon",
+          icon: Percent,
+          label: "Diskon POS",
+          color: "bg-pop-amber",
         },
         {
           href: "/riset-produk",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { PosNavLink } from "./PosNavLink";
@@ -36,7 +36,8 @@ import {
 import { useRouter } from "next/navigation";
 import { attachPosQrisReceipt } from "@/lib/actions/pos-receipt.actions";
 import { formatRp } from "@/lib/cashflow/format";
-import { applyDiscount, type RoundingMode } from "@/lib/pos/discount";
+import { describeDiscount, jakartaNowParts, pickBestCampaign, type JakartaNow, type PickedCampaign } from "@/lib/pos/discount";
+import type { PosDiscountCampaign } from "@/lib/actions/pos-discount.actions";
 import { QRIS_RECEIPT_AT_CHECKOUT } from "@/lib/pos/flags";
 import {
   QrisVerificationPicker,
@@ -67,13 +68,8 @@ import {
 import { ReceiptSuccessDialog } from "./ReceiptSuccessDialog";
 import { StrukSettingsDialog } from "./StrukSettingsDialog";
 
-interface ActiveDiscountProp {
-  id: string;
-  percentOff: number;
-  roundingUnit: number;
-  roundingMode: RoundingMode;
-  note: string | null;
-}
+/** Dipakai sebagai bawaan agar identitas array tidak berganti tiap render. */
+const NO_CAMPAIGNS: PosDiscountCampaign[] = [];
 
 interface Props {
   bankAccountId: string;
@@ -102,9 +98,9 @@ interface Props {
   /** On-hand stok per SKU keyed by `cartKey(productId, variantId|null)`.
    *  null = produk tidak tracked / stok belum di-fetch (bypass gating). */
   stockByKey: Record<string, number> | null;
-  /** Campaign diskon yang berlaku untuk rekening + hari ini (null = none).
-   *  Server-resolved supaya UI tinggal render. */
-  activeDiscount?: ActiveDiscountProp | null;
+  /** Kampanye diskon aktif yang tanggalnya mencakup hari ini untuk rekening ini. Layar menyaring "berlaku sekarang"
+   *  (jam & hari) dengan jam perangkat; server tetap menentukan hasil akhir saat bayar. */
+  campaigns?: PosDiscountCampaign[];
 }
 
 interface CustomLine {
@@ -209,7 +205,7 @@ export function POSClient({
   products,
   isAdmin,
   stockByKey,
-  activeDiscount = null,
+  campaigns = NO_CAMPAIGNS,
 }: Props) {
   // Catalog cart: Record<cartKey, qty>.
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -220,6 +216,16 @@ export function POSClient({
   const [discountByKey, setDiscountByKey] = useState<Record<string, number>>({});
   // Baris cart yang sedang diatur diskonnya; null = dialog tertutup.
   const [discountFor, setDiscountFor] = useState<string | null>(null);
+  // Kampanye bermode "kasir memilih" yang sedang diterapkan kasir.
+  const [chosenCampaignId, setChosenCampaignId] = useState<string | null>(null);
+  // Jam berjalan (tiap 30 dtk) supaya kampanye berjam (happy hour) mulai/berhenti sendiri tanpa muat ulang.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (campaigns.length === 0) return;
+    const t = setInterval(() => setClock(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [campaigns.length]);
+  const liveNow = useMemo(() => jakartaNowParts(new Date(clock)), [clock]);
   const [customItems, setCustomItems] = useState<CustomLine[]>([]);
   // QRIS: kasir memilih "ada verifikasi bunyi BukuPay" (tanpa foto) atau "tidak ada bunyi" (foto bukti
   // wajib) — state-nya di-reset setiap kali konfirmasi dibuka/ditutup.
@@ -585,6 +591,7 @@ export function POSClient({
     setCart({});
     setCustomItems([]);
     setDiscountByKey({});
+    setChosenCampaignId(null);
   }
 
   function submit(method: PaymentMethod | "pending") {
@@ -643,6 +650,7 @@ export function POSClient({
         itemFulfillmentOverrides,
         qrisVerification:
           method === "qris" ? qrisVerification ?? undefined : undefined,
+        campaignId: chosenCampaignId,
       });
       if (!res.ok) {
         toast.error(res.error ?? "Gagal menyimpan penjualan");
@@ -742,16 +750,14 @@ export function POSClient({
     });
   }
 
-  // Diskon hari ini — math di-share dengan server via applyDiscount,
-  // jadi angka di cart selalu == angka tersimpan di pos_sales.total.
-  // Dihitung sebelum early-return supaya rules-of-hooks tidak komplain.
-  const { finalTotal, discountAmount } = useMemo(
-    () =>
-      activeDiscount
-        ? applyDiscount(total, activeDiscount)
-        : { finalTotal: total, discountAmount: 0 },
-    [total, activeDiscount]
+  // Kampanye terbaik untuk pembeli — pemilihan & math di-share dengan server (pickBestCampaign/applyDiscount),
+  // jadi angka di cart == angka tersimpan di pos_sales.total. Dihitung sebelum early-return (rules-of-hooks).
+  const picked = useMemo(
+    () => pickBestCampaign(campaigns, total, liveNow, chosenCampaignId),
+    [campaigns, total, liveNow, chosenCampaignId]
   );
+  const finalTotal = picked ? picked.finalTotal : total;
+  const discountAmount = picked ? picked.discountAmount : 0;
   const grossTotal = total;
 
   const showEmptyState = products.length === 0 && customItems.length === 0;
@@ -1016,7 +1022,7 @@ export function POSClient({
 
       <div className="border-t border-border bg-card px-4 py-3 space-y-3">
         <div className="space-y-1 tabular-nums">
-          {activeDiscount && discountAmount > 0 && (
+          {picked && discountAmount > 0 && (
             <>
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>Subtotal</span>
@@ -1024,10 +1030,12 @@ export function POSClient({
               </div>
               <div className="flex items-center justify-between text-sm text-success">
                 <span>
-                  Diskon {Math.round(activeDiscount.percentOff)}%
-                  <span className="ml-1 text-[11px] opacity-70">
-                    (bulat ke {formatRp(activeDiscount.roundingUnit)} ke bawah)
-                  </span>
+                  {picked.campaign.name} · {describeDiscount(picked.campaign)}
+                  {picked.campaign.kind === "percent" && (
+                    <span className="ml-1 text-[11px] opacity-70">
+                      (bulat ke {formatRp(picked.campaign.roundingUnit)} ke bawah)
+                    </span>
+                  )}
                 </span>
                 <span>−{formatRp(discountAmount)}</span>
               </div>
@@ -1035,13 +1043,13 @@ export function POSClient({
           )}
           <div
             className={`flex items-center justify-between ${
-              activeDiscount && discountAmount > 0
+              picked && discountAmount > 0
                 ? "pt-1 border-t border-border"
                 : ""
             }`}
           >
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-              {activeDiscount && discountAmount > 0 ? "Total bayar" : "Total"}
+              {picked && discountAmount > 0 ? "Total bayar" : "Total"}
             </span>
             <span className="text-lg font-bold text-foreground">
               {formatRp(finalTotal)}
@@ -1256,7 +1264,7 @@ export function POSClient({
             )}
           </div>
         )}
-        <DiscountBanner activeDiscount={activeDiscount} />
+        <DiscountBanner campaigns={campaigns} now={liveNow} picked={picked} chosenId={chosenCampaignId} onChoose={setChosenCampaignId} />
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur p-3 border-b border-border">
           <div className="relative">
             <Search
@@ -1692,35 +1700,79 @@ export function POSClient({
 }
 
 /**
- * Banner thin di atas grid produk. Kalau ada campaign aktif untuk
- * hari ini → notice hijau. Kalau tidak ada dan caller admin →
- * tombol untuk aktivasi preset 10%/floor/Rp 1.000 yang juga
- * meng-update transaksi yang sudah masuk hari ini.
+ * Banner tipis di atas grid produk: kampanye yang BERLAKU SEKARANG. Kampanye otomatis tampil sebagai pemberitahuan
+ * hijau (yang sedang dipakai ditandai); kampanye "kasir memilih" tampil sebagai chip yang diketuk untuk dipakai atau
+ * dilepas. Hanya kampanye yang jam & harinya cocok sekarang yang muncul — happy hour hilang sendiri saat habis.
  */
 function DiscountBanner({
-  activeDiscount,
+  campaigns,
+  now,
+  picked,
+  chosenId,
+  onChoose,
 }: {
-  activeDiscount: ActiveDiscountProp | null;
+  campaigns: PosDiscountCampaign[];
+  now: JakartaNow;
+  picked: PickedCampaign<PosDiscountCampaign> | null;
+  chosenId: string | null;
+  onChoose: (id: string | null) => void;
 }) {
-  // Keadaan kosong ("Belum ada diskon aktif" + tombol "Aktifkan 10% hari
-  // ini") DIHAPUS atas permintaan: strip itu hanya ada untuk menampung
-  // tombolnya, jadi menyisakan teksnya saja cuma memakan ruang di layar
-  // kasir. Diskon tetap bisa diatur admin lewat panel diskon; yang hilang
-  // hanya pintasan satu-klik dari layar kasir.
-  if (!activeDiscount) return null;
+  const live = campaigns.filter((c) => {
+    if (!c.isActive || now.date < c.startDate || now.date > c.endDate) return false;
+    if (c.weekdays && !c.weekdays.includes(now.weekday)) return false;
+    if (c.startTime && c.endTime && (now.time < c.startTime || now.time >= c.endTime)) return false;
+    return true;
+  });
+  if (live.length === 0) return null;
+  const auto = live.filter((c) => c.mode === "otomatis");
+  const manual = live.filter((c) => c.mode === "kasir");
+  const rule = (c: PosDiscountCampaign) =>
+    [
+      c.minPurchase > 0 ? `min. belanja ${formatRp(c.minPurchase)}` : null,
+      c.startTime && c.endTime ? `${c.startTime}–${c.endTime}` : null,
+      c.note,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   return (
-    <div className="px-3 pt-3">
-      <div className="rounded-xl border-2 border-success/40 bg-success/10 px-3 py-2 text-xs text-foreground flex items-center gap-2">
-        <Sparkles size={14} className="text-success shrink-0" />
-        <span>
-          <strong className="font-semibold">
-            Diskon {Math.round(activeDiscount.percentOff)}% aktif
-          </strong>{" "}
-          — pembulatan ke bawah Rp{" "}
-          {activeDiscount.roundingUnit.toLocaleString("id-ID")}
-          {activeDiscount.note ? ` · ${activeDiscount.note}` : ""}
-        </span>
-      </div>
+    <div className="space-y-1.5 px-3 pt-3">
+      {auto.map((c) => (
+        <div
+          key={c.id}
+          className="flex items-center gap-2 rounded-xl border-2 border-success/40 bg-success/10 px-3 py-2 text-xs text-foreground"
+        >
+          <Sparkles size={14} className="shrink-0 text-success" />
+          <span>
+            <strong className="font-semibold">
+              {c.name} · {describeDiscount(c)}
+            </strong>
+            {rule(c) ? <> — {rule(c)}</> : null}
+            {picked?.campaign.id === c.id && <span className="ml-1 font-semibold text-success">· dipakai</span>}
+          </span>
+        </div>
+      ))}
+      {manual.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs">
+          <span className="font-semibold text-muted-foreground">Promo (pilih):</span>
+          {manual.map((c) => {
+            const on = chosenId === c.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onChoose(on ? null : c.id)}
+                title={rule(c) || undefined}
+                className={`rounded-full border-2 px-2.5 py-1 font-semibold transition ${
+                  on ? "border-foreground bg-primary text-primary-foreground" : "border-border text-foreground hover:border-foreground"
+                }`}
+              >
+                {c.name} · {describeDiscount(c)}
+                {on && picked?.campaign.id !== c.id ? " (belum memenuhi syarat)" : ""}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

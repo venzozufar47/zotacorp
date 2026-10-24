@@ -12,7 +12,7 @@ import {
   getPosDailyRevenueSummary,
 } from "@/lib/actions/pos.actions";
 import { listStockOnHand } from "@/lib/actions/pos-stock.actions";
-import { getActiveDiscount } from "@/lib/actions/pos-discount.actions";
+import { listCampaignsForPos } from "@/lib/actions/pos-discount.actions";
 import { getServiceLevelSummary } from "@/lib/actions/pos-service-level.actions";
 import { getPosReceiptConfig } from "@/lib/actions/pos-receipt-config.actions";
 import { defaultReceiptContent } from "@/lib/pos/receipt-settings";
@@ -61,7 +61,7 @@ export default async function PosPage({
     products,
     role,
     onHand,
-    activeDiscount,
+    campaigns,
     profile,
     receiptConfig,
     serviceLevelRes,
@@ -70,7 +70,7 @@ export default async function PosPage({
       listActivePosProducts(account.id),
       getCurrentRole(),
       listStockOnHand(account.id).catch(() => []),
-      getActiveDiscount(account.id),
+      listCampaignsForPos(account.id).catch(() => []),
       getCurrentProfile(),
       getPosReceiptConfig(account.id).catch(() => null),
       // Baca SNAPSHOT saja — menghitung live ~3 detik berapa pun lebar
@@ -116,17 +116,7 @@ export default async function PosPage({
       products={products}
       isAdmin={role === "admin"}
       stockByKey={stockByKey}
-      activeDiscount={
-        activeDiscount
-          ? {
-              id: activeDiscount.id,
-              percentOff: activeDiscount.percentOff,
-              roundingUnit: activeDiscount.roundingUnit,
-              roundingMode: activeDiscount.roundingMode,
-              note: activeDiscount.note,
-            }
-          : null
-      }
+      campaigns={campaigns}
     />
   );
 }

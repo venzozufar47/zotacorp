@@ -14,8 +14,8 @@ import { POS_CASH_CATEGORY, POS_QRIS_CATEGORY } from "@/lib/cashflow/categories"
 import { computeLatestBalance } from "@/lib/cashflow/balance";
 import type { ChronoRow } from "@/lib/cashflow/chronological";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
-import { getActiveDiscount } from "./pos-discount.actions";
-import { applyDiscount } from "@/lib/pos/discount";
+import { resolveSaleDiscount } from "./pos-discount.actions";
+import { describeDiscount } from "@/lib/pos/discount";
 import { isSugarLevel, type SugarLevel } from "@/lib/pos/sugar-levels";
 import { restoreStockIfAbsorbedByOpname } from "@/lib/pos/stock-restore";
 import { verifyOperationPin } from "@/lib/pos/authorizers";
@@ -658,6 +658,8 @@ export async function createPosSale(input: {
   /** Khusus QRIS: "audio" = sudah ada verifikasi bunyi BukuPay (tanpa foto bukti), "photo" = tidak ada
    *  bunyi → kasir melampirkan foto. Dicatat di pos_sales.qris_verification. */
   qrisVerification?: "audio" | "photo";
+  /** Kampanye bermode "kasir memilih" yang dipilih kasir; diabaikan bila tak berlaku. Server tetap yang menentukan. */
+  campaignId?: string | null;
 }): Promise<
   ActionResult<{ saleId: string; total: number; branch: string | null }>
 > {
@@ -903,16 +905,12 @@ export async function createPosSale(input: {
   //     Kalau ada, hitung final post-diskon — `total` di-overwrite ke
   //     final supaya semua downstream (pos_sales.total, cashflow.credit,
   //     description) konsisten.
-  const campaign = await getActiveDiscount(input.bankAccountId, saleDate);
+  const resolved = await resolveSaleDiscount(input.bankAccountId, grossTotal, input.campaignId ?? null, now);
+  const campaign = resolved?.campaign ?? null;
   let discountAmount = 0;
-  if (campaign) {
-    const r = applyDiscount(grossTotal, {
-      percentOff: campaign.percentOff,
-      roundingUnit: campaign.roundingUnit,
-      roundingMode: campaign.roundingMode,
-    });
-    total = r.finalTotal;
-    discountAmount = r.discountAmount;
+  if (resolved) {
+    total = resolved.finalTotal;
+    discountAmount = resolved.discountAmount;
   }
   // period_year/period_month mengikuti zona Jakarta juga.
   const [periodYearStr, periodMonthStr] = saleDate.split("-");
@@ -1076,7 +1074,7 @@ export async function createPosSale(input: {
     })
     .join(", ");
   const discountTag = campaign && discountAmount > 0
-    ? ` (diskon ${Math.round(campaign.percentOff)}% −Rp ${discountAmount.toLocaleString("id-ID")})`
+    ? ` (diskon ${describeDiscount(campaign)} ${campaign.name} −Rp ${discountAmount.toLocaleString("id-ID")})`
     : "";
   const customerTag = input.customerName.trim()
     ? ` [${input.customerName.trim()}]`
