@@ -1,0 +1,1 @@
+update public.costing_materials set name = 'Kemasan Kantong Kertas', updated_at = now() where id = '1e45533a-4764-466c-b40f-2e4e5b26f271' and business_unit = 'Haengbocake Pare' and name = 'Kemasan Cookies';
