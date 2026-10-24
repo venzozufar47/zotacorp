@@ -58,7 +58,10 @@ export default async function PengadaanPage({
 
   const { bu, tab: tabParam, bahan } = await searchParams;
   const lastOpened = (await cookies()).get(COSTING_BRAND_COOKIE)?.value;
-  const activeBrand = pickActiveBrand(brands, bu, lastOpened) ?? null;
+  // Tanpa ?bu= eksplisit, cabang awal diutamakan di tempat akun ini PETUGAS pengadaan (bukan sekadar kasir),
+  // supaya "Uang pengadaan" tidak terkunci hanya karena Pare urut pertama abjad.
+  const defaultPool = bu && brands.includes(bu) ? brands : staffBrands.length > 0 ? staffBrands : brands;
+  const activeBrand = pickActiveBrand(defaultPool, bu, lastOpened) ?? null;
   const limited = !!activeBrand && !staffBrands.includes(activeBrand);
   const tab: PengadaanTab = limited ? "catat" : (TAB_KEYS.find((k) => k === tabParam) ?? "catat");
 
