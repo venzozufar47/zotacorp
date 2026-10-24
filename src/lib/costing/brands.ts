@@ -72,9 +72,12 @@ export const COSTING_BRAND_COOKIE = "zota_costing_bu";
 
 /**
  * Brand aktif: `?bu=` menang (link/bookmark eksplisit), lalu brand
- * terakhir dibuka, lalu brand pertama. Selalu divalidasi terhadap daftar
+ * terakhir dibuka, lalu brand bawaan (Haengbocake Pare — brand yang paling
+ * sering dikerjakan), lalu brand pertama. Selalu divalidasi terhadap daftar
  * brand yang ada — cookie basi (BU dihapus/di-rename) diabaikan.
  */
+export const DEFAULT_COSTING_BRAND = "Haengbocake Pare";
+
 export function pickActiveBrand(
   brands: string[],
   bu?: string | null,
@@ -82,7 +85,7 @@ export function pickActiveBrand(
 ): string | undefined {
   if (bu && brands.includes(bu)) return bu;
   if (lastOpened && brands.includes(lastOpened)) return lastOpened;
-  return brands[0];
+  return brands.includes(DEFAULT_COSTING_BRAND) ? DEFAULT_COSTING_BRAND : brands[0];
 }
 
 /** Simpan brand terakhir dibuka (client-side). No-op di server. */

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
@@ -66,6 +67,15 @@ export function MaterialWizard({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [step, setStep] = useState<Step>(1);
+
+  // Kunci scroll halaman di belakang popup.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
   const editing = material != null;
 
   const [name, setName] = useState(material?.name ?? "");
@@ -242,7 +252,9 @@ export function MaterialWizard({
   const setLink = (pid: string, patch: Partial<LinkState>) =>
     setLinks((cur) => ({ ...cur, [pid]: { ...(cur[pid] ?? { on: false, qty: "", unit: "" }), ...patch } }));
 
-  return (
+  // Portal ke body: pembungkus halaman memakai transform (animate-fade-up) yang menjadikan `fixed` relatif ke
+  // pembungkus itu, bukan ke layar — popup jadi setinggi halaman dan harus di-scroll jauh.
+  const modal = (
     <div className="fixed inset-0 z-[60] flex bg-black/40 md:items-center md:justify-center">
       <div className="flex h-full w-full flex-col bg-background md:h-[88vh] md:max-w-5xl md:rounded-2xl md:border-2 md:border-foreground">
         {/* Kepala + penanda langkah */}
@@ -442,6 +454,7 @@ export function MaterialWizard({
       </div>
     </div>
   );
+  return createPortal(modal, document.body);
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
