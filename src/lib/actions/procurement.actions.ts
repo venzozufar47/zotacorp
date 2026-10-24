@@ -359,7 +359,7 @@ export async function submitMaterialOpname(input: {
       return { ok: false, error: "Ada bahan di luar brand ini" };
   }
 
-  // Selisih di atas toleransi kategori wajib beralasan. Bahan tanpa baseline (hitungan pertama) tak punya
+  // Selisih di atas toleransi kategori: alasan dipilih di form (UI mewajibkan). Bahan tanpa baseline (hitungan pertama) tak punya
   // pembanding, jadi tidak dinilai.
   const outOfTol: { name: string; value: number; reason: string }[] = [];
   const reasonOf = new Map<string, string>();
@@ -373,10 +373,10 @@ export async function submitMaterialOpname(input: {
       unitCost: r.metrics.unitCost,
     });
     if (!vc.outOfTolerance) continue;
+    // Estimasi bergeser seiring waktu: halaman yang terbuka lama bisa melihat "wajar" sementara server menilai
+    // sedikit di atas toleransi. Jangan membuntukan petugas: tetap simpan, alasan kosong, owner tetap diberi tahu.
     const reason = input.reasons?.[it.materialId] ?? "";
-    if (!isVarianceReason(reason))
-      return { ok: false, error: `Pilih alasan selisih untuk ${r.material.name} (di atas toleransi ${Math.round(vc.tolerance * 100)}%)` };
-    reasonOf.set(it.materialId, reason);
+    if (isVarianceReason(reason)) reasonOf.set(it.materialId, reason);
     outOfTol.push({ name: r.material.name, value: vc.value, reason });
   }
 

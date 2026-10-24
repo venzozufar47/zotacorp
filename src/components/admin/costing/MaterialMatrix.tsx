@@ -118,6 +118,18 @@ export function MaterialMatrix({
     });
   }, [mats, query, cat, onlyUnused, usedCount]);
 
+  /** Jumlah produk pemakai tiap bahan yang BELUM tertaut ke POS. */
+  const unlinked = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const mat of mats) {
+      let k = 0;
+      for (const r of prods) if (!r.product.pos_product_id && effective(mat.id, r.product.id) !== undefined) k++;
+      if (k > 0) out.set(mat.id, k);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mats, prods, staged, cells]);
+
   const unusedTotal = useMemo(() => mats.filter((m) => (usedCount.get(m.id) ?? 0) === 0).length, [mats, usedCount]);
   const stagedCount = Object.keys(staged).length;
   const changedProducts = useMemo(
@@ -251,6 +263,11 @@ export function MaterialMatrix({
                     <div className={cn("mt-0.5 font-normal tabular-nums", changed ? "font-semibold text-warning" : "text-muted-foreground")}>
                       {a ? formatRp(a.hppUnit) : "—"}
                     </div>
+                    {!r.product.pos_product_id && (
+                      <div className="mt-0.5 text-[10px] font-semibold text-destructive" title="Produk ini belum ditautkan ke produk POS: pemakaian bahannya tidak ikut dihitung dari produksi POS">
+                        tanpa POS
+                      </div>
+                    )}
                   </th>
                 );
               })}
@@ -266,7 +283,8 @@ export function MaterialMatrix({
                       {m.name}
                     </button>
                     <span className={cn("text-[10.5px]", n === 0 ? "font-semibold text-destructive" : "text-muted-foreground")}>
-                      {n === 0 ? "belum dipakai" : `${n} produk`} · {fmtRpPrecise(m.content_per_purchase > 0 ? m.purchase_price / m.content_per_purchase : 0)}/{m.usage_unit}
+                      {n === 0 ? "belum dipakai" : `${n} produk`}
+                      {n > 0 && unlinked.get(m.id) ? ` (${unlinked.get(m.id)} tanpa POS)` : ""} · {fmtRpPrecise(m.content_per_purchase > 0 ? m.purchase_price / m.content_per_purchase : 0)}/{m.usage_unit}
                     </span>
                   </th>
                   {prods.map((r) => {
@@ -334,7 +352,7 @@ export function MaterialMatrix({
       </div>
       <p className="text-[11.5px] text-muted-foreground">
         Klik sel untuk mengisi takaran, kosongkan untuk melepas. Warna lebih pekat = porsi biaya bahan lebih besar di produk itu. Angka di kepala kolom
-        = HPP per unit.
+        = HPP per unit. &ldquo;tanpa POS&rdquo; = produk belum ditautkan ke produk POS (pemakaian bahannya tidak ikut terhitung dari produksi).
       </p>
 
       {stagedCount > 0 && (

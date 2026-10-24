@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { PURCHASE_UNITS } from "@/lib/costing/unit-options";
 import { formatRp } from "@/lib/cashflow/format";
 import { compressImageStrict } from "@/lib/images/compress-image";
 import { jakartaDateString } from "@/lib/utils/jakarta";
@@ -865,7 +866,18 @@ function ProposeMaterial({
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">Satuan beli</span>
-          <Input value={purchaseUnit} onChange={(e) => setPurchaseUnit(e.target.value)} placeholder="sak, dus, pack…" maxLength={20} />
+          <select
+            value={purchaseUnit}
+            onChange={(e) => setPurchaseUnit(e.target.value)}
+            className="h-10 w-full rounded-lg border border-border bg-background px-2 text-base md:text-sm"
+          >
+            <option value="">Pilih…</option>
+            {PURCHASE_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">Harga per satuan beli</span>

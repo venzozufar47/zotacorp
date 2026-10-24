@@ -58,6 +58,20 @@ export function MaterialsManager({
 
   /** Tampilan: daftar (satu kartu per bahan) atau peta bahan × produk. */
   const [view, setView] = useState<"daftar" | "peta">("daftar");
+  /** Produk pemakai tiap bahan + berapa yang belum tertaut ke POS. */
+  const usageByMaterial = useMemo(() => {
+    const out = new Map<string, { n: number; unlinked: number }>();
+    for (const r of products) {
+      if (!r.product.is_active) continue;
+      for (const it of r.items) {
+        const e = out.get(it.material_id) ?? { n: 0, unlinked: 0 };
+        e.n++;
+        if (!r.product.pos_product_id) e.unlinked++;
+        out.set(it.material_id, e);
+      }
+    }
+    return out;
+  }, [products]);
   /** Panel bertahap: null = tertutup; material null = bahan baru. */
   const [wizard, setWizard] = useState<{ material: CostingMaterial | null } | null>(null);
 
@@ -272,6 +286,7 @@ export function MaterialsManager({
                   expanded={expanded === m.id}
                   onToggle={() => setExpanded((e) => (e === m.id ? null : m.id))}
                   onWizard={() => setWizard({ material: m })}
+                  usage={usageByMaterial.get(m.id) ?? { n: 0, unlinked: 0 }}
                   onField={(patch) =>
                     run(() => updateMaterial({ id: m.id, ...patch }))
                   }
@@ -334,6 +349,7 @@ function MaterialRow({
   expanded,
   onToggle,
   onWizard,
+  usage,
   onField,
   onDelete,
 }: {
@@ -343,6 +359,7 @@ function MaterialRow({
   expanded: boolean;
   onToggle: () => void;
   onWizard: () => void;
+  usage: { n: number; unlinked: number };
   onField: (patch: Partial<CostingMaterial>) => void;
   onDelete: () => void;
 }) {
@@ -455,6 +472,12 @@ function MaterialRow({
             nonaktif
           </span>
         )}
+        <span className={`text-[11px] ${usage.n === 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+          {usage.n === 0 ? "belum dipakai produk mana pun" : `dipakai ${usage.n} produk`}
+          {usage.unlinked > 0 && (
+            <span className="font-semibold text-destructive"> · {usage.unlinked} belum tertaut POS</span>
+          )}
+        </span>
         <button
           type="button"
           onClick={onToggle}

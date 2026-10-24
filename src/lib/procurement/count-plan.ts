@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { num } from "@/lib/costing/rows";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import { loadBrandProcurement, type ProcurementRow } from "./rows";
+import { loadBrandProcurement, loadOpnameHistory, type ProcurementRow } from "./rows";
 import {
   CYCLE_COUNT_BRANDS,
   buildTodayPlan,
@@ -20,9 +20,6 @@ import {
 } from "./cycle-count";
 
 type DB = SupabaseClient<Database>;
-
-/** Berapa opname terakhir dipindai untuk riwayat hitung per bahan (harian ≈ 6 minggu). */
-const HISTORY_OPNAMES = 40;
 
 export interface CountPlanItem {
   row: ProcurementRow;
@@ -51,23 +48,14 @@ export async function computeCountPlan(supabase: DB, businessUnit: string, now =
   if (rows.length === 0) return { ...empty, enabled: true };
 
   const today = jakartaDateString(now);
-  const { data: opRows } = await supabase
-    .from("costing_material_opnames" as never)
-    .select("id, created_at, opname_date")
-    .eq("business_unit", businessUnit)
-    .order("created_at", { ascending: false })
-    .limit(HISTORY_OPNAMES);
-  const opnames = (opRows ?? []) as { id: string; created_at: string; opname_date: string }[];
+  const history = await loadOpnameHistory(supabase, businessUnit);
+  const opnames = history.opnames;
   const opById = new Map(opnames.map((o) => [o.id, o]));
 
   type Hit = { atMs: number; at: string; date: string; expected: number | null; physical: number; unitCost: number };
   const hits = new Map<string, Hit[]>();
-  if (opnames.length > 0) {
-    const { data: itemRows } = await supabase
-      .from("costing_material_opname_items" as never)
-      .select("opname_id, material_id, physical_qty, expected_qty, unit_cost_snapshot")
-      .in("opname_id", opnames.map((o) => o.id));
-    for (const it of (itemRows ?? []) as Record<string, unknown>[]) {
+  {
+    for (const it of history.items) {
       const op = opById.get(it.opname_id as string);
       if (!op) continue;
       const arr = hits.get(it.material_id as string) ?? [];

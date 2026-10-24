@@ -27,11 +27,51 @@ import {
 
 type DB = SupabaseClient<Database>;
 
-/** Berapa opname terakhir yang dipindai untuk mencari baseline tiap bahan.
- *  Dibatasi supaya pembacaan tidak tumbuh tanpa batas; 24 ≈ 6 bulan opname
- *  mingguan. Bahan yang tak pernah dihitung dalam rentang itu dianggap
- *  belum pernah opname (jujur: memang tak ada datanya). */
-const OPNAME_SCAN_LIMIT = 24;
+/** Jendela riwayat opname yang dipindai untuk mencari baseline tiap bahan. Berbasis WAKTU, bukan jumlah opname:
+ *  dengan opname parsial harian, "24 opname terakhir" hanya ≈ 3 minggu sehingga bahan kelas C/D (siklus 30–90
+ *  hari) kehilangan baseline-nya. Bahan yang tak dihitung dalam 180 hari dianggap belum pernah opname. */
+export const OPNAME_WINDOW_DAYS = 180;
+
+export interface OpnameHistory {
+  opnames: { id: string; created_at: string; opname_date: string }[];
+  items: Record<string, unknown>[];
+}
+
+/** Header opname + semua itemnya dalam jendela waktu. Item diambil per potongan id (URL pendek) dan berhalaman
+ *  (PostgREST memotong diam-diam di 1000 baris). */
+export async function loadOpnameHistory(
+  supabase: DB,
+  businessUnit: string,
+  days = OPNAME_WINDOW_DAYS
+): Promise<OpnameHistory> {
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { data: heads } = await supabase
+    .from("costing_material_opnames" as never)
+    .select("id, created_at, opname_date")
+    .eq("business_unit", businessUnit)
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  const opnames = (heads ?? []) as OpnameHistory["opnames"];
+  const items: Record<string, unknown>[] = [];
+  const CHUNK = 40;
+  const PAGE = 1000;
+  for (let i = 0; i < opnames.length; i += CHUNK) {
+    const ids = opnames.slice(i, i + CHUNK).map((o) => o.id);
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabase
+        .from("costing_material_opname_items" as never)
+        .select("opname_id, material_id, physical_qty, expected_qty, unit_cost_snapshot")
+        .in("opname_id", ids)
+        .order("id")
+        .range(from, from + PAGE - 1);
+      const rows = (data ?? []) as Record<string, unknown>[];
+      items.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+  }
+  return { opnames, items };
+}
 
 export interface ProcurementRow {
   material: ProcurementMaterialLite & {
@@ -136,7 +176,7 @@ export async function loadBrandProcurement(
 ): Promise<{ rows: ProcurementRow[]; settings: ProcurementSettingsLite; usage: TheoreticalUsage }> {
   const atIso = opts.atIso ?? new Date().toISOString();
 
-  const [{ data: matRows }, settings, { data: opnameRows }, usage] = await Promise.all(
+  const [{ data: matRows }, settings, history, usage] = await Promise.all(
     [
       supabase
         .from("costing_materials" as never)
@@ -147,12 +187,7 @@ export async function loadBrandProcurement(
         .eq("is_active", true)
         .order("name"),
       fetchProcurementSettings(supabase),
-      supabase
-        .from("costing_material_opnames" as never)
-        .select("id, created_at")
-        .eq("business_unit", opts.businessUnit)
-        .order("created_at", { ascending: false })
-        .limit(OPNAME_SCAN_LIMIT),
+      loadOpnameHistory(supabase, opts.businessUnit),
       // Gagal membaca produksi tak boleh merusak papan stok: jatuh ke pemakaian manual saja.
       loadTheoreticalUsage(supabase, opts.businessUnit).catch(
         (): TheoreticalUsage => ({ days: 30, byMaterial: new Map() })
@@ -164,9 +199,9 @@ export async function loadBrandProcurement(
   const ids = materials.map((m) => m.id as string);
   if (ids.length === 0) return { rows: [], settings, usage };
 
-  const opnames = (opnameRows ?? []) as Record<string, unknown>[];
+  const opnames = history.opnames;
   const opnameAt = new Map<string, string>();
-  for (const o of opnames) opnameAt.set(o.id as string, o.created_at as string);
+  for (const o of opnames) opnameAt.set(o.id, o.created_at);
 
   // Baseline per bahan = item opname terbaru yang memuatnya.
   // Bandingkan sebagai WAKTU, bukan string: presisi pecahan detik dari
@@ -174,13 +209,10 @@ export async function loadBrandProcurement(
   // rapuh untuk angka yang menentukan stok.
   const baseline = new Map<string, { qty: number; atIso: string; atMs: number }>();
   if (opnames.length > 0) {
-    const { data: itemRows } = await supabase
-      .from("costing_material_opname_items" as never)
-      .select("opname_id, material_id, physical_qty")
-      .in("opname_id", Array.from(opnameAt.keys()))
-      .in("material_id", ids);
-    for (const it of (itemRows ?? []) as Record<string, unknown>[]) {
+    const wanted = new Set(ids);
+    for (const it of history.items) {
       const mid = it.material_id as string;
+      if (!wanted.has(mid)) continue;
       const at = opnameAt.get(it.opname_id as string);
       if (!at) continue;
       const atMs = Date.parse(at);
@@ -202,12 +234,21 @@ export async function loadBrandProcurement(
         oldestMs = b.atMs;
         oldestIso = b.atIso;
       }
-    const { data: recRows } = await supabase
-      .from("costing_material_receipts" as never)
-      .select("material_id, qty_usage_units, created_at")
-      .eq("business_unit", opts.businessUnit)
-      .gt("created_at", oldestIso!);
-    for (const r of (recRows ?? []) as Record<string, unknown>[]) {
+    // Berhalaman: dengan jendela 180 hari barang masuk bisa melewati 1000 baris (PostgREST memotong diam-diam).
+    const recRows: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data } = await supabase
+        .from("costing_material_receipts" as never)
+        .select("material_id, qty_usage_units, created_at")
+        .eq("business_unit", opts.businessUnit)
+        .gt("created_at", oldestIso!)
+        .order("created_at")
+        .range(from, from + 999);
+      const page = (data ?? []) as Record<string, unknown>[];
+      recRows.push(...page);
+      if (page.length < 1000) break;
+    }
+    for (const r of recRows) {
       const mid = r.material_id as string;
       const b = baseline.get(mid);
       if (!b) continue; // belum pernah opname → barang masuk diabaikan

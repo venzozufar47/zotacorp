@@ -33,13 +33,14 @@ export async function runOpnameReminders(stage: 1 | 2): Promise<OpnameReminderSu
     if (staffIds.length === 0) continue;
     const { data: logs } = await admin
       .from("attendance_logs")
-      .select("user_id")
+      .select("user_id, checked_out_at")
       .eq("date", today)
       .in("user_id", staffIds)
-      .not("checked_in_at", "is", null)
-      .is("checked_out_at", null);
-    const present = [...new Set((logs ?? []).map((l) => l.user_id))];
-    if (present.length === 0) continue; // tak ada petugas yang sedang bekerja: tak ada yang diingatkan
+      .not("checked_in_at", "is", null);
+    // Petugas yang bekerja hari ini (sudah absen masuk). Hari libur → tak ada baris → tak ada yang diganggu.
+    if ((logs ?? []).length === 0) continue;
+    // Yang diingatkan hanya yang masih bekerja (belum absen pulang).
+    const present = [...new Set((logs ?? []).filter((l) => l.checked_out_at == null).map((l) => l.user_id))];
 
     summary.pending++;
     const short = brand.replace("Haengbocake ", "");

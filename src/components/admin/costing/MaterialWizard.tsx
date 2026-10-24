@@ -87,10 +87,13 @@ export function MaterialWizard({
   /** true = mengetik nama kategori baru (bukan memilih dari daftar). */
   const [newCategory, setNewCategory] = useState(false);
   const [purchaseUnit, setPurchaseUnit] = useState(material?.purchase_unit ?? "");
-  const [price, setPrice] = useState(material ? String(Math.round(material.purchase_price)) : "");
-  const [content, setContent] = useState(material ? formatNum(material.content_per_purchase, true) : "");
+  const initialPrice = material ? String(Math.round(material.purchase_price)) : "";
+  const initialContent = material ? formatNum(material.content_per_purchase, true) : "";
+  const initialShrink = material ? formatNum(material.shrink_factor * 100, true) : "0";
+  const [price, setPrice] = useState(initialPrice);
+  const [content, setContent] = useState(initialContent);
   const [usageUnit, setUsageUnit] = useState(material?.usage_unit ?? "");
-  const [shrink, setShrink] = useState(material ? formatNum(material.shrink_factor * 100, true) : "0");
+  const [shrink, setShrink] = useState(initialShrink);
   const [shopee, setShopee] = useState(material?.shopee_url ?? "");
 
   /** Baris resep bahan ini yang sudah ada (per produk). */
@@ -115,9 +118,10 @@ export function MaterialWizard({
   const materialId = material?.id ?? "__new__";
   const lites = useMemo(() => materials.filter((m) => m.is_active || m.id === materialId).map(materialLite), [materials, materialId]);
 
-  const priceNum = Number(price.replace(/[^\d]/g, ""));
-  const contentNum = parseDecimalId(content);
-  const shrinkNum = Math.max(0, parseDecimalId(shrink) ?? 0) / 100;
+  // Kotak yang tak diketik ulang memakai nilai tersimpan apa adanya (kotak hanya menampilkan versi dibulatkan).
+  const priceNum = material && price === initialPrice ? material.purchase_price : Number(price.replace(/[^\d]/g, ""));
+  const contentNum = material && content === initialContent ? material.content_per_purchase : parseDecimalId(content);
+  const shrinkNum = material && shrink === initialShrink ? material.shrink_factor : Math.max(0, parseDecimalId(shrink) ?? 0) / 100;
   const perUnit = contentNum != null ? unitCostPreview(priceNum, contentNum) : null;
 
   const linkDrafts: LinkDraft[] = useMemo(
@@ -228,10 +232,11 @@ export function MaterialWizard({
     if (name.trim() !== m.name) patch.name = name.trim();
     if ((category.trim() || null) !== m.category) patch.category = category.trim() || null;
     if (purchaseUnit.trim() !== m.purchase_unit) patch.purchase_unit = purchaseUnit.trim();
-    if (priceNum !== m.purchase_price) patch.purchase_price = priceNum;
-    if (contentNum !== m.content_per_purchase) patch.content_per_purchase = contentNum as number;
+    // Hanya yang diketik ulang: nilai tersimpan bisa berdesimal (rata-rata tertimbang), sedangkan kotak menampilkan bilangan bulat.
+    if (price !== initialPrice && priceNum !== m.purchase_price) patch.purchase_price = priceNum;
+    if (content !== initialContent && contentNum !== m.content_per_purchase) patch.content_per_purchase = contentNum as number;
     if (usageUnit.trim() !== m.usage_unit) patch.usage_unit = usageUnit.trim();
-    if (Math.abs(shrinkNum - m.shrink_factor) > 1e-9) patch.shrink_factor = shrinkNum;
+    if (shrink !== initialShrink && Math.abs(shrinkNum - m.shrink_factor) > 1e-9) patch.shrink_factor = shrinkNum;
     if ((shopee.trim() || null) !== m.shopee_url) patch.shopee_url = shopee.trim() || null;
     if (Object.keys(patch).length > 1) {
       const r = await updateMaterial(patch);
@@ -425,6 +430,9 @@ export function MaterialWizard({
                         <label className="flex min-w-[9rem] flex-1 cursor-pointer items-center gap-2 text-sm">
                           <input type="checkbox" checked={on} onChange={(e) => setLink(r.product.id, { on: e.target.checked })} />
                           <span className={cn("truncate", on && "font-semibold")}>{r.product.name}</span>
+                          {!r.product.pos_product_id && (
+                            <span className="shrink-0 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">tanpa POS</span>
+                          )}
                         </label>
                         {on && (
                           <>
