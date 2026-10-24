@@ -200,7 +200,7 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
   };
   if (auth.isStaff) {
     const pos = await getCashPosition(businessUnit);
-    if (pos.ok && pos.data) accessInfo.walletBalance = pos.data.procurementBalance;
+    if (pos.ok && pos.data) accessInfo.walletBalance = pos.data.procurementBalance ?? null;
   }
   // Petugas non-pengadaan (akun kasir): tanpa master bahan / harga acuan — hanya pengeluaran laci.
   if (!auth.isStaff) {

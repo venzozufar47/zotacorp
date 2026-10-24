@@ -208,7 +208,7 @@ export function PurchaseForm({
           icon={<Wallet size={20} />}
           title="Uang pengadaan"
           desc={`Uang yang kamu bawa untuk belanja. Tidak mengubah kas laci kasir.${
-            access.walletBalance !== null ? ` Saldo ${formatRp(access.walletBalance)}.` : ""
+            access.walletBalance != null ? ` Saldo ${formatRp(access.walletBalance)}.` : ""
           }`}
           disabled={!access.pengadaan}
           disabledReason="Hanya untuk petugas pengadaan"
@@ -243,13 +243,13 @@ export function PurchaseForm({
         <div
           className={cn(
             "rounded-xl px-3 py-2 text-xs leading-snug",
-            access.walletBalance !== null && access.walletBalance <= 0 ? "bg-destructive/10 text-destructive" : "bg-muted/60"
+            access.walletBalance != null && access.walletBalance <= 0 ? "bg-destructive/10 text-destructive" : "bg-muted/60"
           )}
         >
           Sumber uang: <b>Uang pengadaan</b>
-          {access.walletBalance !== null && <> (saldo <b>{formatRp(access.walletBalance)}</b>)</>}. Uang laci kasir belum tersedia (
+          {access.walletBalance != null && <> (saldo <b>{formatRp(access.walletBalance)}</b>)</>}. Uang laci kasir belum tersedia (
           {(access.laciReason ?? "tidak ada shift terbuka").toLowerCase()}).
-          {access.walletBalance !== null && access.walletBalance <= 0 && (
+          {access.walletBalance != null && access.walletBalance <= 0 && (
             <> Tidak ada uang yang bisa dipakai sekarang: minta kasir membuka shift, atau catat setelah uang diambil dari laci.</>
           )}
         </div>
@@ -468,7 +468,7 @@ export function PurchaseForm({
               {lines.length} baris{missing ? ` · ${missing}` : ""}
             </p>
             <p className="font-display text-lg font-extrabold tabular-nums leading-tight">{formatRp(total)}</p>
-            {source === "pengadaan" && access.walletBalance !== null && total > access.walletBalance && (
+            {source === "pengadaan" && access.walletBalance != null && total > access.walletBalance && (
               <p className="text-[11px] font-semibold text-destructive">
                 Melebihi saldo uang pengadaan ({formatRp(access.walletBalance)}): saldo jadi −{formatRp(total - access.walletBalance)}
               </p>
