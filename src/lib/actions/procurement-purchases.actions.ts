@@ -37,6 +37,7 @@ import {
 } from "@/lib/procurement/purchase-math";
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { sendPushToAdmins } from "@/lib/push/web-push";
+import { getCashPosition } from "./procurement-wallet.actions";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -179,6 +180,8 @@ export interface PurchaseFormData {
     shiftCashier: string | null;
     /** Petugas non-pengadaan: hanya pengeluaran lain (tanpa bahan baku). */
     lainOnly: boolean;
+    /** Saldo uang pengadaan cabang ini (saldo buku − isi laci); null = tak diketahui / bukan petugas. */
+    walletBalance: number | null;
   };
 }
 
@@ -193,7 +196,12 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
     laciReason: auth.shift ? null : "Tidak ada shift yang terbuka di cabang ini",
     shiftCashier: auth.shift?.cashierName ?? null,
     lainOnly: !auth.isStaff,
+    walletBalance: null,
   };
+  if (auth.isStaff) {
+    const pos = await getCashPosition(businessUnit);
+    if (pos.ok && pos.data) accessInfo.walletBalance = pos.data.procurementBalance;
+  }
   // Petugas non-pengadaan (akun kasir): tanpa master bahan / harga acuan — hanya pengeluaran laci.
   if (!auth.isStaff) {
     return {

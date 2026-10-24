@@ -207,7 +207,9 @@ export function PurchaseForm({
         <SourceCard
           icon={<Wallet size={20} />}
           title="Uang pengadaan"
-          desc="Uang yang kamu bawa untuk belanja. Tidak mengubah kas laci kasir."
+          desc={`Uang yang kamu bawa untuk belanja. Tidak mengubah kas laci kasir.${
+            access.walletBalance !== null ? ` Saldo ${formatRp(access.walletBalance)}.` : ""
+          }`}
           disabled={!access.pengadaan}
           disabledReason="Hanya untuk petugas pengadaan"
           onClick={() => setSource("pengadaan")}
@@ -238,8 +240,18 @@ export function PurchaseForm({
   return (
     <div className="mx-auto max-w-xl space-y-4 pb-48 md:pb-28">
       {access.pengadaan && !access.laci && (
-        <div className="rounded-xl bg-muted/60 px-3 py-2 text-xs">
-          Sumber uang: <b>Uang pengadaan</b>. Uang laci kasir belum tersedia ({access.laciReason ?? "tidak ada shift terbuka"}).
+        <div
+          className={cn(
+            "rounded-xl px-3 py-2 text-xs leading-snug",
+            access.walletBalance !== null && access.walletBalance <= 0 ? "bg-destructive/10 text-destructive" : "bg-muted/60"
+          )}
+        >
+          Sumber uang: <b>Uang pengadaan</b>
+          {access.walletBalance !== null && <> (saldo <b>{formatRp(access.walletBalance)}</b>)</>}. Uang laci kasir belum tersedia (
+          {(access.laciReason ?? "tidak ada shift terbuka").toLowerCase()}).
+          {access.walletBalance !== null && access.walletBalance <= 0 && (
+            <> Tidak ada uang yang bisa dipakai sekarang: minta kasir membuka shift, atau catat setelah uang diambil dari laci.</>
+          )}
         </div>
       )}
       {(access.pengadaan && access.laci) && (
@@ -456,6 +468,11 @@ export function PurchaseForm({
               {lines.length} baris{missing ? ` · ${missing}` : ""}
             </p>
             <p className="font-display text-lg font-extrabold tabular-nums leading-tight">{formatRp(total)}</p>
+            {source === "pengadaan" && access.walletBalance !== null && total > access.walletBalance && (
+              <p className="text-[11px] font-semibold text-destructive">
+                Melebihi saldo uang pengadaan ({formatRp(access.walletBalance)}): saldo jadi −{formatRp(total - access.walletBalance)}
+              </p>
+            )}
           </div>
           <Button type="button" onClick={save} disabled={!!missing || saving} loading={saving} className="px-6">
             <ReceiptText size={15} className="mr-1.5" /> Simpan nota
