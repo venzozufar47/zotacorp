@@ -23,6 +23,9 @@ import { fmtPercent, fmtRpPrecise } from "./format";
 import { formatNum, parseDecimalId } from "./fields";
 import { impactProducts, materialLite, recipeUnitChoices, unitsMap } from "./costing-data";
 
+/** Nilai semu pilihan "kategori baru" di dropdown kategori. */
+const NEW_CATEGORY = "__new__";
+
 type Step = 1 | 2 | 3;
 const STEPS: { n: Step; label: string }[] = [
   { n: 1, label: "Bahan" },
@@ -80,6 +83,8 @@ export function MaterialWizard({
 
   const [name, setName] = useState(material?.name ?? "");
   const [category, setCategory] = useState(material?.category ?? "");
+  /** true = mengetik nama kategori baru (bukan memilih dari daftar). */
+  const [newCategory, setNewCategory] = useState(false);
   const [purchaseUnit, setPurchaseUnit] = useState(material?.purchase_unit ?? "");
   const [price, setPrice] = useState(material ? String(Math.round(material.purchase_price)) : "");
   const [content, setContent] = useState(material ? formatNum(material.content_per_purchase, true) : "");
@@ -298,12 +303,38 @@ export function MaterialWizard({
                   <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tepung terigu" className={inputCls} maxLength={80} />
                 </Field>
                 <Field label="Kategori (opsional)">
-                  <input value={category} onChange={(e) => setCategory(e.target.value)} list="wiz-cats" placeholder="Tepung & Pati" className={inputCls} />
-                  <datalist id="wiz-cats">
+                  <select
+                    value={newCategory ? NEW_CATEGORY : category}
+                    onChange={(e) => {
+                      if (e.target.value === NEW_CATEGORY) {
+                        setNewCategory(true);
+                        setCategory("");
+                      } else {
+                        setNewCategory(false);
+                        setCategory(e.target.value);
+                      }
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">Tanpa kategori</option>
+                    {/* Kategori bahan ini tetap tampil walau tak ada di daftar (data lama). */}
+                    {category && !categories.includes(category) && !newCategory && <option value={category}>{category}</option>}
                     {categories.map((c) => (
-                      <option key={c} value={c} />
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
-                  </datalist>
+                    <option value={NEW_CATEGORY}>+ Kategori baru…</option>
+                  </select>
+                  {newCategory && (
+                    <input
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      placeholder="Nama kategori baru, mis. Tepung & Pati"
+                      autoFocus
+                      className={cn(inputCls, "mt-2")}
+                    />
+                  )}
                 </Field>
                 <Field label="Link beli (opsional)">
                   <input value={shopee} onChange={(e) => setShopee(e.target.value)} inputMode="url" placeholder="https://shopee.co.id/…" className={inputCls} />
