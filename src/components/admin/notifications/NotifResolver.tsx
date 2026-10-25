@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowRight, ExternalLink, Loader2, SkipForward, X } from "lucide-react";
-import type { PendingConfirmationItem } from "@/lib/actions/pending-confirmations.actions";
+import type { PendingConfirmationItem, SubscriptionDetail } from "@/lib/actions/pending-confirmations.actions";
+import { CYCLE_LABEL } from "@/lib/subscriptions/types";
 import { renewSubscription } from "@/lib/actions/subscriptions.actions";
 import { markChecklistReviewed, resolveItemIssue } from "@/lib/actions/cleaning-governance.actions";
 import { recordSimTopup } from "@/lib/actions/sim-cards.actions";
@@ -39,6 +40,8 @@ export interface ResolverItem {
   shortLabel?: string;
   /** Tautan "Buka lengkap" untuk kasus yang butuh halaman penuh. */
   href?: string;
+  /** Khusus langganan: nominal, siklus, tanggal, alokasi, catatan. */
+  subscription?: SubscriptionDetail;
   /** Bila ada, jenis ini diselesaikan lewat drawer karyawan (late proof, lembur, pendaftar). */
   drawer?: DrawerSubject;
 }
@@ -67,6 +70,7 @@ export function fromPending(p: PendingConfirmationItem, desc: string, ago: strin
     avatarSeed: p.userAvatarSeed,
     desc,
     detail: p.detail,
+    subscription: p.subscription,
     ago,
     shortLabel: p.shortLabel,
     href: notifHref(p),
@@ -243,27 +247,88 @@ function Shell({
 /** Foto selfie absen (bucket privat → URL bertanda tangan dari /api/attendance/selfie). */
 function SelfiePhoto({ logId }: { logId: string }) {
   const [state, setState] = useState<{ url: string } | { error: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/attendance/selfie?logId=${encodeURIComponent(logId)}`)
+    const ctrl = new AbortController();
+    // Tanpa batas waktu, permintaan yang menggantung (mis. server dev sedang compile) membuat kotak abu-abu abadi.
+    const timer = setTimeout(() => ctrl.abort(), 20_000);
+    fetch(`/api/attendance/selfie?logId=${encodeURIComponent(logId)}`, { signal: ctrl.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (cancelled) return;
         setState(res.ok && body.url ? { url: body.url } : { error: res.status === 404 ? "Foto sudah tidak tersedia." : "Foto gagal dimuat." });
       })
-      .catch(() => !cancelled && setState({ error: "Foto gagal dimuat." }));
+      .catch(() => !cancelled && setState({ error: "Foto terlalu lama dimuat atau gagal." }))
+      .finally(() => clearTimeout(timer));
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      ctrl.abort();
     };
-  }, [logId]);
+  }, [logId, attempt]);
 
-  if (!state) return <div className="h-56 animate-pulse rounded-xl bg-muted" />;
+  const retry = () => {
+    setState(null);
+    setAttempt((n) => n + 1);
+  };
+
+  if (!state) return <div className="h-56 animate-pulse rounded-xl bg-muted" aria-label="Memuat foto" />;
   if ("error" in state) {
-    return <p className="rounded-xl bg-muted px-3 py-6 text-center text-xs text-muted-foreground">{state.error}</p>;
+    return (
+      <div className="rounded-xl bg-muted px-3 py-6 text-center text-xs text-muted-foreground">
+        <p>{state.error}</p>
+        <button type="button" onClick={retry} className="mt-2 rounded-full border border-border px-3 py-1 font-semibold text-foreground hover:bg-background">
+          Coba lagi
+        </button>
+      </div>
+    );
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- URL bertanda tangan sementara, bukan aset statis
-    <img src={state.url} alt="Selfie absen" className="max-h-72 w-full rounded-xl border border-border object-contain bg-muted" />
+    <img
+      src={state.url}
+      alt="Selfie absen"
+      onError={() => setState({ error: "Foto gagal ditampilkan." })}
+      className="max-h-72 w-full rounded-xl border border-border object-contain bg-muted"
+    />
+  );
+}
+
+const longDate = (ymd: string) =>
+  new Date(`${ymd}T00:00:00Z`).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const rupiah = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
+
+/** Rincian langganan yang perlu diperpanjang: tagihan, tanggal, alokasi, catatan. */
+function SubscriptionFacts({ s }: { s: SubscriptionDetail }) {
+  const rows: [string, React.ReactNode][] = [
+    ["Tagihan", `${rupiah(s.amountIdr)} · ${CYCLE_LABEL[s.billingCycle].toLowerCase()}`],
+    ["Jatuh tempo", longDate(s.renewalDate)],
+    ["Setelah diperpanjang", longDate(s.nextRenewalDate)],
+  ];
+  if (s.billingCycle !== "monthly") rows.splice(1, 0, ["Setara per bulan", rupiah(s.monthlyIdr)]);
+  if (s.allocations.length > 0) {
+    rows.push([
+      "Dibebankan ke",
+      <ul key="alloc" className="space-y-0.5">
+        {s.allocations.map((a) => (
+          <li key={a.label}>
+            {a.label} <span className="text-muted-foreground">· {rupiah(a.amountIdr)}</span>
+          </li>
+        ))}
+      </ul>,
+    ]);
+  }
+  if (s.notes) rows.push(["Catatan", s.notes]);
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl bg-muted/50 px-3 py-2.5 text-[12.5px]">
+      {rows.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="text-muted-foreground">{k}</dt>
+          <dd className="font-medium text-foreground">{v}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -313,8 +378,10 @@ function NotifResolver({
         <>
           <Body>
             <p>{text}</p>
+            {item.subscription && <SubscriptionFacts s={item.subscription} />}
             <p className="text-muted-foreground">
-              Tekan <b>Perpanjang</b> bila sudah dibayar — tanggal pembaruan maju satu siklus.
+              Tekan <b>Perpanjang</b> bila sudah dibayar — tanggal pembaruan maju satu siklus
+              {item.subscription ? ` (jadi ${longDate(item.subscription.nextRenewalDate)})` : ""}.
             </p>
           </Body>
           <button
@@ -547,7 +614,7 @@ function NotifResolver({
         <>
           <Body>
             <p>{text}</p>
-            <SelfiePhoto logId={item.rowId} />
+            <SelfiePhoto key={item.rowId} logId={item.rowId} />
             <p className="text-muted-foreground">
               Karyawan tetap absen walau foto ditolak AI. Periksa fotonya di atas, lalu tandai ditinjau bila
               sudah dicek.

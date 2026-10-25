@@ -12,6 +12,9 @@ import {
   addDays,
   daysBetween,
   renewalReminderText,
+  monthlyEquivalent,
+  nextRenewal,
+  type BillingCycle,
 } from "@/lib/subscriptions/types";
 
 export type PendingConfirmationItem = {
@@ -46,6 +49,21 @@ export type PendingConfirmationItem = {
   at?: string;
   /** Durasi, khusus overtime. */
   minutes?: number;
+  /** Khusus subscription: rincian untuk popup penyelesaian. */
+  subscription?: SubscriptionDetail;
+};
+
+export type SubscriptionDetail = {
+  amountIdr: number;
+  billingCycle: BillingCycle;
+  /** Setara per bulan (tahunan ÷ 12, dst). */
+  monthlyIdr: number;
+  /** Jatuh tempo saat ini (yyyy-mm-dd). */
+  renewalDate: string;
+  /** Jatuh tempo berikutnya bila "Perpanjang" ditekan. */
+  nextRenewalDate: string;
+  notes: string | null;
+  allocations: { label: string; amountIdr: number }[];
 };
 
 /**
@@ -121,7 +139,9 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     // lewat tapi belum diperpanjang (hilang sendiri begitu "Perpanjang" ditekan).
     supabase
       .from("subscriptions" as never)
-      .select("id, name, next_renewal_date")
+      .select(
+        "id, name, amount_idr, billing_cycle, next_renewal_date, notes, subscription_allocations(business_unit, branch, amount_idr)"
+      )
       .eq("is_active", true)
       .not("next_renewal_date", "is", null)
       .lte("next_renewal_date", addDays(todayYmd, RENEWAL_REMINDER_DAYS))
@@ -359,7 +379,15 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
 
   // Subscription mendekati/lewat tenggat pembaruan. Tidak terikat karyawan —
   // nama langganan dipakai sebagai judul; klik mengarah ke /admin/subscriptions.
-  type SubRow = { id: string; name: string; next_renewal_date: string };
+  type SubRow = {
+    id: string;
+    name: string;
+    amount_idr: number | string;
+    billing_cycle: BillingCycle;
+    next_renewal_date: string;
+    notes: string | null;
+    subscription_allocations: { business_unit: string; branch: string | null; amount_idr: number | string }[] | null;
+  };
   const subItems: PendingConfirmationItem[] = (
     (subRes.data ?? []) as unknown as SubRow[]
   ).map((s) => {
@@ -375,6 +403,18 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       date: s.next_renewal_date,
       detail: text.long,
       shortLabel: text.short,
+      subscription: {
+        amountIdr: Number(s.amount_idr),
+        billingCycle: s.billing_cycle,
+        monthlyIdr: monthlyEquivalent(Number(s.amount_idr), s.billing_cycle),
+        renewalDate: s.next_renewal_date,
+        nextRenewalDate: nextRenewal(s.next_renewal_date, s.billing_cycle, todayYmd),
+        notes: s.notes?.trim() || null,
+        allocations: (s.subscription_allocations ?? []).map((a) => ({
+          label: a.branch ? `${a.business_unit} · ${a.branch}` : a.business_unit,
+          amountIdr: Number(a.amount_idr),
+        })),
+      },
     };
   });
 
