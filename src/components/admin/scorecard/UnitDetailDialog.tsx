@@ -13,6 +13,7 @@ import {
   type UnitDetail,
 } from "@/lib/actions/unit-scorecard.actions";
 import type { HomeMetricCell, HomeUnitCard } from "@/lib/unit-scorecard/persist";
+import type { MetricChange } from "@/lib/unit-scorecard/changes";
 import {
   METRIC_STATUS_LABEL,
   STATUS_ICON,
@@ -152,12 +153,15 @@ export function UnitDetailDialog({
   unit,
   monthIso,
   monthLabel,
+  changes = [],
   onClose,
   onChanged,
 }: {
   unit: HomeUnitCard;
   monthIso: string;
   monthLabel: string;
+  /** Perubahan angka unit ini pada pembaruan otomatis terakhir. */
+  changes?: MetricChange[];
   onClose: () => void;
   onChanged: () => Promise<void> | void;
 }) {
@@ -236,9 +240,26 @@ export function UnitDetailDialog({
 
         {unit.notes && <p className="rounded-lg bg-muted px-3 py-2 text-[12px] text-muted-foreground">{unit.notes}</p>}
 
+        {changes.length > 0 && (
+          <div className="rounded-xl border border-warning/50 bg-warning/10 p-3 text-[12px]">
+            <div className="mb-1 font-bold text-warning">▲ Angka berubah di pembaruan otomatis terakhir</div>
+            <ul className="space-y-0.5">
+              {changes.map((c) => {
+                const m = unit.metrics.find((x) => x.code === c.code);
+                const unitKind = m?.valueUnit ?? "pct";
+                return (
+                  <li key={c.code} className="tabular-nums">
+                    {m?.label ?? c.code}: {formatMetricValue(c.oldValue, unitKind)} → <span className="font-semibold">{formatMetricValue(c.newValue, unitKind)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {mustFill && (
           <div role="alert" className="rounded-xl border-2 border-destructive bg-destructive/10 p-3 text-[12.5px] font-semibold text-destructive">
-            ■ Merah di dua periode tutup buku berurutan. Isi minimal satu keputusan (tindakan, penanggung jawab, tenggat) sebelum unit ini bisa ditandai ditinjau.
+            ■ Merah di dua bulan berurutan. Isi minimal satu keputusan (tindakan, penanggung jawab, tenggat) sebelum unit ini bisa ditandai ditinjau.
           </div>
         )}
 

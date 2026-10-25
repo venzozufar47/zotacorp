@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import type { MetricStatus, UnitStatus, TrendTone, Direction } from "./engine";
 import { trendTone, prevMonthIso } from "./engine";
+import type { MetricChange, SnapRow } from "./changes";
 import { loadConfig, type ComputeDeps, type PriorStatus, type ScConfig, type UnitMonthResult, type ScThreshold } from "./compute";
 
 type Sb = SupabaseClient<Database>;
@@ -39,9 +40,18 @@ export async function latestRunVersion(sb: Sb, periodId: string): Promise<number
 }
 
 /** Simpan hasil hitung sebagai versi baru (tidak menimpa versi lama). Mengembalikan nomor versi. */
-export async function persistRun(sb: Sb, periodId: string, userId: string, results: UnitMonthResult[], note: string | null): Promise<number> {
+export async function persistRun(
+  sb: Sb,
+  periodId: string,
+  userId: string | null,
+  results: UnitMonthResult[],
+  note: string | null,
+  extra: { warnings?: string[]; changes?: MetricChange[] } = {}
+): Promise<number> {
   const version = (await latestRunVersion(sb, periodId)) + 1;
-  const run = await sb.from("scorecard_runs" as never).insert({ period_id: periodId, version, computed_by: userId, note } as never);
+  const run = await sb
+    .from("scorecard_runs" as never)
+    .insert({ period_id: periodId, version, computed_by: userId, note, warnings: extra.warnings ?? [], changes: extra.changes ?? [] } as never);
   if (run.error) throw new Error(run.error.message);
   const snapshots = results.flatMap((r) =>
     r.metrics.map((m) => ({
@@ -64,19 +74,32 @@ export async function persistRun(sb: Sb, periodId: string, userId: string, resul
     yellow_metric_count: r.yellow_metric_count,
     confirmed_red: r.confirmed_red,
   }));
+  // Tanpa transaksi lintas-panggilan: bila penyimpanan terpotong, buang versi setengah jadi supaya beranda tidak
+  // membaca versi kosong sebagai versi terbaru.
+  const rollback = async () => {
+    await sb.from("scorecard_snapshots" as never).delete().eq("period_id", periodId).eq("version", version);
+    await sb.from("scorecard_unit_summaries" as never).delete().eq("period_id", periodId).eq("version", version);
+    await sb.from("scorecard_runs" as never).delete().eq("period_id", periodId).eq("version", version);
+  };
   const s1 = await sb.from("scorecard_snapshots" as never).insert(JSON.parse(JSON.stringify(snapshots)) as never);
-  if (s1.error) throw new Error(s1.error.message);
+  if (s1.error) {
+    await rollback();
+    throw new Error(s1.error.message);
+  }
   const s2 = await sb.from("scorecard_unit_summaries" as never).insert(summaries as never);
-  if (s2.error) throw new Error(s2.error.message);
+  if (s2.error) {
+    await rollback();
+    throw new Error(s2.error.message);
+  }
   return version;
 }
 
-/** Status bulan sebelumnya (versi terbaru, periode tutup buku) untuk eskalasi merah berurutan. */
+/** Status bulan sebelumnya (versi terbaru) untuk eskalasi merah berurutan. */
 export async function priorStatusesFor(sb: Sb, monthIso: string): Promise<Map<string, PriorStatus>> {
   const prev = prevMonthIso(monthIso);
   const out = new Map<string, PriorStatus>();
   const p = await getPeriod(sb, prev);
-  if (!p || p.status !== "closed") return out;
+  if (!p) return out;
   const version = await latestRunVersion(sb, p.id);
   if (version === 0) return out;
   const { data, error } = await sb.from("scorecard_unit_summaries" as never).select("unit_id, status").eq("period_id", p.id).eq("version", version);
@@ -85,21 +108,15 @@ export async function priorStatusesFor(sb: Sb, monthIso: string): Promise<Map<st
   return out;
 }
 
-// ───────────────────────────── Daftar cek sebelum tutup buku ─────────────────────────────
+// ───────────────────────────── Peringatan kelengkapan data ─────────────────────────────
 
-export interface CloseChecks {
-  /** Menghalangi penutupan. */
-  blockers: string[];
-  /** Perlu diketahui dan diakui owner sebelum menutup. */
-  warnings: string[];
-}
-
-export async function closeChecks(sb: Sb, deps: ComputeDeps | null, monthIso: string, todayWibIso: string): Promise<CloseChecks> {
-  const blockers: string[] = [];
+/**
+ * Hal-hal yang membuat angka bulan itu masih bisa berubah. Tidak menahan apa pun: dicatat bersama tiap versi hasil
+ * hitung dan ditampilkan di kartu sebagai peringatan.
+ */
+export async function dataChecks(sb: Sb, deps: ComputeDeps | null, monthIso: string): Promise<string[]> {
   const warnings: string[] = [];
   const monthEnd = new Date(Date.UTC(Number(monthIso.slice(0, 4)), Number(monthIso.slice(5, 7)), 0)).toISOString().slice(0, 10);
-  if (monthEnd >= todayWibIso) blockers.push(`${monthLabel(monthIso)} belum berakhir: periode hanya bisa ditutup setelah bulannya selesai.`);
-
   const y = Number(monthIso.slice(0, 4));
   const m = Number(monthIso.slice(5, 7));
   const st = await sb
@@ -136,9 +153,24 @@ export async function closeChecks(sb: Sb, deps: ComputeDeps | null, monthIso: st
       warnings.push(`Gaji Yeobo Space "All" belum dialokasikan penuh ke cabang (${ym.salaryAllocationStatus.unallocated} belum, ${ym.salaryAllocationStatus.partiallyAllocated} sebagian).`);
     }
   }
-  const prev = await getPeriod(sb, prevMonthIso(monthIso));
-  if (!prev || prev.status !== "closed") warnings.push(`${monthLabel(prevMonthIso(monthIso))} belum ditutup: penanda "merah terkonfirmasi" dan rata-rata payback bergantung padanya.`);
-  return { blockers, warnings };
+  return warnings;
+}
+
+/** Hasil hitung versi terbaru sebuah periode (untuk dibandingkan dengan hasil baru). */
+export async function latestSnapshots(sb: Sb, periodId: string): Promise<{ version: number; rows: SnapRow[] }> {
+  const version = await latestRunVersion(sb, periodId);
+  if (version === 0) return { version, rows: [] };
+  const { data, error } = await sb.from("scorecard_snapshots" as never).select("unit_id, metric_code, value, status").eq("period_id", periodId).eq("version", version);
+  if (error) throw new Error(error.message);
+  return {
+    version,
+    rows: ((data ?? []) as { unit_id: string; metric_code: string; value: unknown; status: string }[]).map((r) => ({
+      unit_id: r.unit_id,
+      metric_code: r.metric_code,
+      value: r.value == null ? null : Number(r.value),
+      status: r.status,
+    })),
+  };
 }
 
 // ───────────────────────────── Model baca untuk beranda ─────────────────────────────
@@ -185,11 +217,15 @@ export interface HomeData {
   computedAt: string | null;
   units: HomeUnitCard[];
   sparkMonths: string[];
+  /** Peringatan kelengkapan data untuk versi terbaru bulan terpilih. */
+  warnings: string[];
+  /** Perubahan angka versi terbaru dibanding versi sebelumnya, per unit. */
+  changes: MetricChange[];
 }
 
 interface HomeRpc {
   periods: { month: string }[];
-  selected: { id: string; month: string; version: number; computed_at: string | null } | null;
+  selected: { id: string; month: string; version: number; computed_at: string | null; warnings: string[]; changes: MetricChange[] } | null;
   summaries: { month: string; unit_id: string; status: UnitStatus; red: number; yellow: number; confirmed_red: boolean }[];
   snapshots: { month: string; unit_id: string; code: string; value: number | null; status: MetricStatus }[];
   open_actions: Record<string, number>;
@@ -262,6 +298,8 @@ export function buildHome(cfg: ScConfig, rpc: HomeRpc): HomeData {
     computedAt: rpc.selected?.computed_at ?? null,
     units,
     sparkMonths,
+    warnings: rpc.selected?.warnings ?? [],
+    changes: rpc.selected?.changes ?? [],
   };
 }
 

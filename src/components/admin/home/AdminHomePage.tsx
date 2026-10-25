@@ -46,6 +46,7 @@ import type { DisputeRow } from "@/lib/actions/payslip-disputes.actions";
 import type { Celebrant } from "@/lib/utils/celebrations";
 import type { AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import { BranchCardsGrid } from "./BranchCardsGrid";
+import type { HomeData as UnitScorecardData } from "@/lib/unit-scorecard/persist";
 import { StudioOpsSummary } from "./StudioOpsSummary";
 import { RevenueDashboardViewersManager } from "./RevenueDashboardViewersManager";
 import { formatRpCompact } from "@/lib/cashflow/format";
@@ -88,6 +89,7 @@ export function AdminHomePage({
   yeoboRevenue,
   yeoboUtilization,
   cashBalances,
+  unitScorecard,
   revenueViewers,
   revenueViewerCandidates,
   cleaningReviewQuickAccess,
@@ -110,6 +112,8 @@ export function AdminHomePage({
   /** Saldo kas fisik Haengbocake per cabang — admin-only, lihat
    *  getHaengbocakeCashBalances. [] = bukan admin atau gagal dimuat. */
   cashBalances: CashBalanceRow[];
+  /** Scorecard Unit Bisnis (superadmin), ditampilkan di dalam kartu per cabang. */
+  unitScorecard?: UnitScorecardData | null;
   /** Karyawan non-admin yang boleh lihat kartu Omzet di beranda mereka. */
   revenueViewers: RevenueDashboardViewerRow[];
   revenueViewerCandidates: { id: string; full_name: string | null; email: string | null }[];
@@ -258,6 +262,7 @@ export function AdminHomePage({
         yeobo={yeoboRevenue}
         yeoboUtilization={yeoboUtilization}
         cashBalances={cashBalances}
+        unitScorecard={unitScorecard}
       />
 
       <StudioOpsSummary

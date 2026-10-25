@@ -5,22 +5,19 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-  closePeriod,
-  getCloseChecks,
-  reopenPeriod,
+  refreshScorecardNow,
   saveManualRating,
   saveThreshold,
   saveUnitInvestment,
   updateUnitSettings,
-  type PeriodListItem,
+  type DataStatusItem,
   type ThresholdAdminData,
 } from "@/lib/actions/unit-scorecard.actions";
-import type { CloseChecks } from "@/lib/unit-scorecard/persist";
 import { formatRupiah } from "./format";
 
-type Tab = "tutup" | "ambang" | "unit" | "rating";
+type Tab = "status" | "ambang" | "unit" | "rating";
 const TABS: { id: Tab; label: string }[] = [
-  { id: "tutup", label: "Tutup buku" },
+  { id: "status", label: "Status data" },
   { id: "ambang", label: "Ambang" },
   { id: "unit", label: "Unit & modal" },
   { id: "rating", label: "Rating Google" },
@@ -30,145 +27,60 @@ const inputCls = "h-9 rounded-lg border-2 border-border bg-background px-2 text-
 const btnCls = "h-9 rounded-lg border-2 border-foreground bg-card px-3 text-[12.5px] font-bold disabled:opacity-60";
 const btnPrimary = "h-9 rounded-lg border-2 border-foreground bg-primary px-3 text-[12.5px] font-bold disabled:opacity-60";
 
-// ───────────────────────────── Tutup buku ─────────────────────────────
+// ───────────────────────────── Status data ─────────────────────────────
 
-function ClosePanel({ periods: initial, onChanged }: { periods: PeriodListItem[]; onChanged: () => void }) {
-  const [periods, setPeriods] = useState(initial);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [checks, setChecks] = useState<CloseChecks | null>(null);
-  const [ack, setAck] = useState(false);
-  const [reason, setReason] = useState("");
+function StatusPanel({ items, onChanged }: { items: DataStatusItem[]; onChanged: () => void }) {
   const [pending, start] = useTransition();
-  const current = periods.find((p) => p.month === selected) ?? null;
+  const [busy, setBusy] = useState<string | null>(null);
 
-  function pick(month: string) {
-    setSelected(month);
-    setChecks(null);
-    setAck(false);
-    setReason("");
+  function refresh(month: string, label: string) {
+    setBusy(month);
     start(async () => {
-      const r = await getCloseChecks(month);
-      if (!r.ok || !r.data) return void toast.error(r.ok ? "Gagal memeriksa" : r.error);
-      setChecks(r.data);
-    });
-  }
-
-  function mark(month: string, patch: Partial<PeriodListItem>) {
-    setPeriods((ps) => ps.map((p) => (p.month === month ? { ...p, ...patch } : p)));
-  }
-
-  function close() {
-    if (!current) return;
-    start(async () => {
-      const r = await closePeriod(current.month, ack);
-      if (!r.ok) {
-        if (r.needsAcknowledge) setChecks(r.needsAcknowledge);
-        return void toast.error(r.error);
-      }
-      toast.success(`${current.label} ditutup: scorecard versi ${r.data?.version} dihitung`);
-      mark(current.month, { status: "closed", version: r.data?.version ?? 1, closedAt: new Date().toISOString() });
-      onChanged();
-    });
-  }
-
-  function reopen() {
-    if (!current) return;
-    start(async () => {
-      const r = await reopenPeriod(current.month, reason);
+      const r = await refreshScorecardNow(month);
+      setBusy(null);
       if (!r.ok) return void toast.error(r.error);
-      toast.success(`${current.label} dibuka ulang. Tutup lagi untuk menghitung versi baru.`);
-      mark(current.month, { status: "open", reopenCount: current.reopenCount + 1 });
-      setReason("");
+      toast.success(r.data?.created ? `${label}: versi ${r.data.version} dibuat (${r.data.changes} angka berubah)` : `${label}: tidak ada angka yang berubah`);
       onChanged();
     });
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-      <ul className="max-h-[28rem] space-y-1 overflow-y-auto rounded-xl border-2 border-foreground bg-card p-2">
-        {periods.map((p) => (
-          <li key={p.month}>
-            <button
-              type="button"
-              onClick={() => pick(p.month)}
-              aria-current={selected === p.month}
-              className={cn("flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[13px]", selected === p.month ? "bg-primary font-bold" : "hover:bg-muted")}
-            >
-              <span>{p.label}</span>
-              <span className={cn("rounded-full px-2 py-0.5 text-[10.5px] font-bold", p.status === "closed" ? "bg-success/15 text-success" : "bg-muted text-muted-foreground")}>
-                {p.status === "closed" ? `Ditutup v${p.version}` : "Terbuka"}
+    <div className="space-y-3">
+      <p className="text-[12.5px] text-muted-foreground">
+        Scorecard dihitung ulang otomatis tiap malam (sekitar 02.30 WIB) untuk 3 bulan terakhir yang sudah berakhir, jadi transaksi yang terlambat dicatat ikut terhitung. Versi baru hanya dibuat bila ada angka yang berubah, dan versi lama tetap tersimpan. Tidak perlu menutup atau membuka buku.
+      </p>
+      <ul className="space-y-2">
+        {items.map((p) => (
+          <li key={p.month} className="rounded-xl border-2 border-foreground bg-card p-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <div className="min-w-[8rem] flex-1">
+                <div className="font-display text-[14px] font-extrabold">{p.label}</div>
+                <div className="text-[11.5px] text-muted-foreground">
+                  {p.version > 0
+                    ? `Versi ${p.version} · diperbarui ${p.computedAt ? new Date(p.computedAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—"}`
+                    : "Belum pernah dihitung"}
+                  {p.changeCount > 0 ? ` · ${p.changeCount} angka berubah di pembaruan terakhir` : ""}
+                </div>
+              </div>
+              <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-bold", p.warnings.length === 0 && p.version > 0 ? "border-success/40 bg-success/15 text-success" : p.version === 0 ? "border-border bg-muted text-muted-foreground" : "border-warning/40 bg-warning/15 text-warning")}>
+                {p.version === 0 ? "Belum ada" : p.warnings.length === 0 ? "● Data lengkap" : `▲ ${p.warnings.length} peringatan`}
               </span>
-            </button>
+              <button type="button" onClick={() => refresh(p.month, p.label)} disabled={pending} className={btnCls}>
+                {busy === p.month ? "Menghitung…" : "Hitung ulang sekarang"}
+              </button>
+            </div>
+            {p.warnings.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {p.warnings.map((w) => (
+                  <li key={w} className="rounded-lg border border-warning/50 bg-warning/10 px-3 py-1.5 text-[12px]">
+                    ▲ {w}
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ul>
-
-      <div className="space-y-3 rounded-xl border-2 border-foreground bg-card p-4">
-        {!current ? (
-          <p className="text-sm text-muted-foreground">
-            Pilih bulan. Tutup buku berarti pemasukan dan pengeluaran bulan itu sudah tercatat semua. Scorecard keuangan hanya dihitung dari bulan yang sudah ditutup; laporan keuangan di luar scorecard tetap bisa berubah kapan saja.
-          </p>
-        ) : (
-          <>
-            <h3 className="font-display text-lg font-extrabold">{current.label}</h3>
-            {current.status === "closed" ? (
-              <>
-                <p className="text-sm">
-                  Sudah ditutup{current.closedAt ? ` pada ${new Date(current.closedAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}` : ""}. Scorecard versi {current.version}
-                  {current.reopenCount > 0 ? ` (dibuka ulang ${current.reopenCount}×)` : ""}.
-                </p>
-                <p className="text-[12px] text-muted-foreground">
-                  Ada pemasukan/pengeluaran yang tertinggal? Buka ulang dengan alasan, rapikan pencatatannya, lalu tutup lagi: hasilnya disimpan sebagai versi baru dan versi lama tetap bisa dibuka.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan buka ulang (wajib)" aria-label="Alasan buka ulang" className={cn(inputCls, "min-w-[16rem] flex-1")} />
-                  <button type="button" onClick={reopen} disabled={pending || reason.trim().length < 5} className={btnCls}>
-                    Buka ulang
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {!checks ? (
-                  <div className="h-16 animate-pulse rounded-lg bg-muted" />
-                ) : (
-                  <>
-                    {checks.blockers.length > 0 && (
-                      <ul className="space-y-1" role="alert">
-                        {checks.blockers.map((b) => (
-                          <li key={b} className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-[12.5px] font-semibold text-destructive">
-                            ■ {b}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {checks.warnings.length > 0 && (
-                      <div className="space-y-1">
-                        <div className="text-[12px] font-bold">Periksa dulu sebelum menutup:</div>
-                        <ul className="space-y-1">
-                          {checks.warnings.map((w) => (
-                            <li key={w} className="rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-[12.5px]">
-                              ▲ {w}
-                            </li>
-                          ))}
-                        </ul>
-                        <label className="mt-2 flex items-start gap-2 text-[12.5px]">
-                          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
-                          Saya sudah membaca peringatan di atas dan tetap ingin menutup buku bulan ini.
-                        </label>
-                      </div>
-                    )}
-                    {checks.blockers.length === 0 && checks.warnings.length === 0 && <p className="rounded-lg bg-success/10 px-3 py-2 text-[12.5px] font-semibold text-success">● Semua pengecekan lolos.</p>}
-                  </>
-                )}
-                <button type="button" onClick={close} disabled={pending || !checks || checks.blockers.length > 0 || (checks.warnings.length > 0 && !ack)} className={btnPrimary}>
-                  {pending ? "Menghitung…" : "Tutup buku & hitung scorecard"}
-                </button>
-              </>
-            )}
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -360,12 +272,11 @@ function UnitForm({
 
 // ───────────────────────────── Rating Google ─────────────────────────────
 
-function RatingPanel({ data, months }: { data: ThresholdAdminData; months: PeriodListItem[] }) {
+function RatingPanel({ data, months }: { data: ThresholdAdminData; months: DataStatusItem[] }) {
   const studios = data.units.filter((u) => u.unitType === "cabang_studio");
   const [month, setMonth] = useState(months[0]?.month ?? "");
   const [values, setValues] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
-  const closed = months.find((m) => m.month === month)?.status === "closed";
 
   function save(unitId: string) {
     const v = Number((values[unitId] ?? "").replace(",", "."));
@@ -378,25 +289,23 @@ function RatingPanel({ data, months }: { data: ThresholdAdminData; months: Perio
 
   return (
     <div className="space-y-3">
-      <p className="text-[12.5px] text-muted-foreground">Rata-rata rating Google bulan itu, diisi manual sebelum tutup buku (skala 1,0–5,0).</p>
+      <p className="text-[12.5px] text-muted-foreground">Rata-rata rating Google bulan itu, diisi manual (skala 1,0–5,0). Masuk ke scorecard pada hitung ulang malam berikutnya, atau langsung lewat tombol Hitung ulang sekarang.</p>
       <label className="flex items-center gap-2 text-[12.5px] font-semibold">
         Bulan
         <select value={month} onChange={(e) => setMonth(e.target.value)} className={inputCls}>
           {months.map((m) => (
             <option key={m.month} value={m.month}>
               {m.label}
-              {m.status === "closed" ? " (ditutup)" : ""}
             </option>
           ))}
         </select>
       </label>
-      {closed && <p className="text-[12px] text-warning">▲ Bulan ini sudah ditutup. Buka ulang dulu (dengan alasan) untuk mengubah rating.</p>}
       <ul className="space-y-2">
         {studios.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
             <span className="min-w-[12rem] flex-1 text-[13px] font-bold">{u.name}</span>
             <input value={values[u.id] ?? ""} onChange={(e) => setValues((s) => ({ ...s, [u.id]: e.target.value }))} placeholder="mis. 4,8" inputMode="decimal" aria-label={`Rating ${u.name}`} className={cn(inputCls, "w-24")} />
-            <button type="button" onClick={() => save(u.id)} disabled={pending || closed} className={btnCls}>
+            <button type="button" onClick={() => save(u.id)} disabled={pending} className={btnCls}>
               Simpan
             </button>
           </li>
@@ -408,10 +317,10 @@ function RatingPanel({ data, months }: { data: ThresholdAdminData; months: Perio
 
 // ───────────────────────────── Halaman ─────────────────────────────
 
-export function ScorecardAdmin({ periods, admin }: { periods: PeriodListItem[]; admin: ThresholdAdminData }) {
+export function ScorecardAdmin({ periods, admin }: { periods: DataStatusItem[]; admin: ThresholdAdminData }) {
   const router = useRouter();
   const onChanged = () => router.refresh();
-  const [tab, setTab] = useState<Tab>("tutup");
+  const [tab, setTab] = useState<Tab>("status");
   return (
     <div className="space-y-4">
       <div role="tablist" aria-label="Pengaturan scorecard" className="flex flex-wrap gap-1.5">
@@ -428,7 +337,7 @@ export function ScorecardAdmin({ periods, admin }: { periods: PeriodListItem[]; 
           </button>
         ))}
       </div>
-      {tab === "tutup" && <ClosePanel periods={periods} onChanged={onChanged} />}
+      {tab === "status" && <StatusPanel items={periods} onChanged={onChanged} />}
       {tab === "ambang" && <ThresholdPanel data={admin} onChanged={onChanged} />}
       {tab === "unit" && <UnitPanel data={admin} onChanged={onChanged} />}
       {tab === "rating" && <RatingPanel data={admin} months={periods} />}

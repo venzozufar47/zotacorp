@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Wallet as WalletIcon,
@@ -8,6 +8,7 @@ import {
   Camera,
   TrendingUp,
   CheckCircle2,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRp } from "@/lib/cashflow/format";
@@ -16,6 +17,10 @@ import { wasteTone } from "@/lib/pos/waste";
 import type { AdminHomeToday, AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
 import type { YeoboRevenue, YeoboUtilization } from "@/lib/actions/admin-home-yeobo.actions";
 import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
+import { getScorecardHome } from "@/lib/actions/unit-scorecard.actions";
+import type { HomeData, HomeUnitCard } from "@/lib/unit-scorecard/persist";
+import { ScorecardBlock } from "@/components/admin/scorecard/ScorecardBits";
+import { UnitDetailDialog } from "@/components/admin/scorecard/UnitDetailDialog";
 
 /**
  * Satu kartu PER CABANG (Pare, Semarang, Jebres, Tembalang, Tlogosari) —
@@ -219,13 +224,37 @@ export function BranchCardsGrid({
   yeobo,
   yeoboUtilization,
   cashBalances,
+  unitScorecard,
 }: {
   today: AdminHomeToday;
   ops: AdminOpsMetrics;
   yeobo: YeoboRevenue | null;
   yeoboUtilization: YeoboUtilization | null;
   cashBalances: CashBalanceRow[];
+  /** Scorecard Unit Bisnis (superadmin): ditampilkan sebagai bagian di tiap kartu cabang. */
+  unitScorecard?: HomeData | null;
 }) {
+  const [sc, setSc] = useState<HomeData | null>(unitScorecard ?? null);
+  const [openUnit, setOpenUnit] = useState<HomeUnitCard | null>(null);
+  const [scPending, startSc] = useTransition();
+  const scUnit = (code: string) => sc?.units.find((u) => u.code === code);
+  const scBlock = (code: string) => {
+    const u = scUnit(code);
+    return u && sc?.selectedLabel ? <ScorecardBlock unit={u} monthLabel={sc.selectedLabel} changes={sc.changes} onOpen={() => setOpenUnit(u)} /> : null;
+  };
+  const changeScMonth = (month: string) =>
+    startSc(async () => {
+      const r = await getScorecardHome(month);
+      if (r.ok && r.data) setSc(r.data);
+    });
+  const refreshSc = async () => {
+    if (!sc?.selectedMonth) return;
+    const r = await getScorecardHome(sc.selectedMonth);
+    if (r.ok && r.data) {
+      setSc(r.data);
+      setOpenUnit((cur) => (cur ? r.data!.units.find((u) => u.unitId === cur.unitId) ?? null : null));
+    }
+  };
   const cmp = today.monthCompare;
   const [mode, setMode] = useState<"runrate" | "actual">("runrate");
   const { day, daysInMonth } = jakartaMonthProgress();
@@ -259,6 +288,35 @@ export function BranchCardsGrid({
         <div className="font-display text-[15px] font-semibold tracking-[-0.015em] text-foreground lg:text-base">
           Per cabang
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+        {sc && sc.periods.length > 0 && (
+          <label className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Scorecard
+            <select
+              value={sc.selectedMonth ?? ""}
+              onChange={(e) => changeScMonth(e.target.value)}
+              disabled={scPending}
+              aria-label="Periode scorecard"
+              className="h-7 rounded-full border border-border bg-card px-2 text-[11px] font-semibold normal-case tracking-normal text-foreground"
+            >
+              {sc.periods.map((p) => (
+                <option key={p.month} value={p.month}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {sc && (
+          <Link
+            href="/admin/scorecard-unit"
+            title="Pengaturan scorecard: status data, ambang, unit & modal, rating Google"
+            aria-label="Pengaturan scorecard"
+            className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground hover:bg-muted/50"
+          >
+            <Settings2 size={13} />
+          </Link>
+        )}
         <button
           type="button"
           onClick={toggleMode}
@@ -281,6 +339,7 @@ export function BranchCardsGrid({
           {projected ? <TrendingUp size={12} /> : <CheckCircle2 size={12} />}
           {projected ? "Proyeksi" : "Aktual"}
         </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -337,6 +396,7 @@ export function BranchCardsGrid({
           {cashByBranch.has("Pare") && (
             <StatLine label="Saldo kas" value={formatRp(cashByBranch.get("Pare")!)} />
           )}
+          {scBlock("haengbocake_pare")}
         </BranchCard>
 
         {/* SEMARANG */}
@@ -392,6 +452,7 @@ export function BranchCardsGrid({
           {cashByBranch.has("Semarang") && (
             <StatLine label="Saldo kas" value={formatRp(cashByBranch.get("Semarang")!)} />
           )}
+          {scBlock("haengbocake_semarang")}
         </BranchCard>
 
         {/* YEOBO SPACE — satu kartu per cabang, data-driven (3 cabang). */}
@@ -434,15 +495,45 @@ export function BranchCardsGrid({
                   />
                 </>
               )}
+              {scBlock(`yeobo_${b.id}`)}
             </BranchCard>
           );
         })}
       </div>
 
+      {sc?.selectedLabel && (
+        <div className="text-[10.5px] leading-snug text-muted-foreground">
+          Scorecard {sc.selectedLabel}: dihitung otomatis tiap malam
+          {sc.computedAt ? ` · diperbarui ${new Date(sc.computedAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
+          {sc.version > 1 ? ` · versi ${sc.version}` : ""}. Nilai tepat di batas masuk status yang lebih baik.
+          {sc.warnings.length > 0 && (
+            <details className="mt-1">
+              <summary className="cursor-pointer font-semibold text-warning">▲ {sc.warnings.length} hal membuat angka bulan ini masih bisa berubah</summary>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {sc.warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+
       <p className="text-[10.5px] leading-snug text-muted-foreground">
         Omzet Yeobo Space net setelah fee Mayar 2,2% (booking + tambahan) — sebanding
         dengan angka bank/P&L. Juga terlihat di beranda karyawan delegasi.
       </p>
+
+      {openUnit && sc?.selectedMonth && (
+        <UnitDetailDialog
+          unit={openUnit}
+          monthIso={sc.selectedMonth}
+          monthLabel={sc.selectedLabel ?? ""}
+          changes={sc.changes.filter((c) => c.unit_id === openUnit.unitId)}
+          onClose={() => setOpenUnit(null)}
+          onChanged={refreshSc}
+        />
+      )}
     </div>
   );
 }

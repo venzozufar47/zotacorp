@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
@@ -27,7 +26,7 @@ import {
 } from "@/lib/actions/revenue-dashboard-viewers.actions";
 import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
-import { UnitScorecardSection, UnitScorecardSkeleton } from "@/components/admin/scorecard/UnitScorecardSection";
+import { getScorecardHome } from "@/lib/actions/unit-scorecard.actions";
 
 /**
  * Admin Home / Today — the new landing surface for admins.
@@ -57,6 +56,7 @@ export default async function AdminHomeRoute() {
     revenueViewers,
     revenueViewerCandidates,
     cleaningReviewQuickAccess,
+    unitScorecard,
   ] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
@@ -77,6 +77,7 @@ export default async function AdminHomeRoute() {
     listRevenueDashboardViewers(),
     listEligibleForRevenueDashboard(),
     getCleaningReviewQuickAccess().catch(() => ({ freshUnreviewedCount: 0 })),
+    getScorecardHome(null).catch(() => null),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -108,9 +109,6 @@ export default async function AdminHomeRoute() {
 
   return (
     <>
-      <Suspense fallback={<UnitScorecardSkeleton />}>
-        <UnitScorecardSection />
-      </Suspense>
       <AdminHomePage
         greetingName={greetingName}
         today={today}
@@ -126,6 +124,7 @@ export default async function AdminHomeRoute() {
         revenueViewers={revenueViewers}
         revenueViewerCandidates={revenueViewerCandidates}
         cleaningReviewQuickAccess={cleaningReviewQuickAccess}
+        unitScorecard={unitScorecard?.ok ? unitScorecard.data ?? null : null}
       />
       <div className="mt-5">
         <CelebrationsCard feed={celebrationsFeed} viewerId={user.id} />

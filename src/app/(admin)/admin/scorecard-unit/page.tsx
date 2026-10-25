@@ -2,12 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { getThresholdAdmin, listPeriods } from "@/lib/actions/unit-scorecard.actions";
+import { getThresholdAdmin, listDataStatus } from "@/lib/actions/unit-scorecard.actions";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ScorecardAdmin } from "@/components/admin/scorecard/ScorecardAdmin";
 
 /**
- * Scorecard Unit Bisnis, pengaturan superadmin: tutup/buka ulang buku per bulan, ambang berversi (wajib alasan),
+ * Scorecard Unit Bisnis, pengaturan superadmin: status hitung otomatis per bulan, ambang berversi (wajib alasan),
  * tanggal buka & ramp-up unit, modal awal, dan input rating Google.
  */
 export default async function AdminScorecardPage() {
@@ -15,13 +15,13 @@ export default async function AdminScorecardPage() {
   if (!user) redirect("/");
   if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
 
-  const [periods, admin] = await Promise.all([listPeriods(), getThresholdAdmin()]);
+  const [periods, admin] = await Promise.all([listDataStatus(), getThresholdAdmin()]);
 
   return (
     <div className="space-y-5 animate-fade-up">
       <PageHeader
         title="Scorecard Unit Bisnis"
-        subtitle="Tutup buku bulanan, ambang hijau/kuning/merah, tanggal buka unit, modal awal, dan rating Google."
+        subtitle="Status hitung otomatis, ambang hijau/kuning/merah, tanggal buka unit, modal awal, dan rating Google."
       />
       {!periods.ok || !admin.ok ? (
         <p className="text-sm text-destructive">{!periods.ok ? periods.error : !admin.ok ? admin.error : ""}</p>

@@ -5,29 +5,11 @@ import { yeoboAdminClient } from "@/lib/supabase/yeobo-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { createAdminClient } from "./_supabase-admin";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import {
-  buildDeps,
-  computeMonths,
-  loadConfig,
-  type ScConfig,
-  type UnitMonthResult,
-} from "@/lib/unit-scorecard/compute";
-import {
-  closeChecks,
-  getOrCreatePeriod,
-  getPeriod,
-  latestRunVersion,
-  monthLabel,
-  persistRun,
-  priorStatusesFor,
-  readHome,
-  type CloseChecks,
-  type HomeData,
-} from "@/lib/unit-scorecard/persist";
-import type { MetricStatus } from "@/lib/unit-scorecard/engine";
+import { loadConfig, type ScConfig } from "@/lib/unit-scorecard/compute";
+import { getPeriod, latestRunVersion, monthLabel, readHome, type HomeData } from "@/lib/unit-scorecard/persist";
+import { recentEndedMonths, refreshScorecard } from "@/lib/unit-scorecard/refresh";
 
 const CONFIG_TAG = "unit-scorecard-config";
-const PREVIEW_TAG = "unit-scorecard-preview";
 const expireNow = { expire: 0 } as const;
 
 const getCachedConfig = unstable_cache(async (): Promise<ScConfig> => loadConfig(createAdminClient()), ["unit-scorecard-config-v1"], {
@@ -49,60 +31,6 @@ export async function getScorecardHome(monthIso?: string | null): Promise<Action
   try {
     const cfg = await getCachedConfig();
     return { ok: true, data: await readHome(createAdminClient(), cfg, monthIso ?? null) };
-  } catch (e) {
-    return fail(errMsg(e));
-  }
-}
-
-export interface PreviewCell {
-  code: string;
-  label: string;
-  value: number | null;
-  status: MetricStatus;
-}
-export interface PreviewUnit {
-  unitId: string;
-  name: string;
-  cells: PreviewCell[];
-}
-export interface PreviewData {
-  monthLabel: string;
-  monthIso: string;
-  units: PreviewUnit[];
-}
-
-const computePreview = unstable_cache(
-  async (monthIso: string): Promise<PreviewData> => {
-    const sb = createAdminClient();
-    const deps = await buildDeps(sb, yeoboAdminClient(), [monthIso]);
-    // Pratinjau hanya metrik operasional dan tidak menulis snapshot.
-    const results = await computeMonths(deps, [monthIso], { onlyOperational: true });
-    return {
-      monthIso,
-      monthLabel: monthLabel(monthIso),
-      units: results.map((r) => ({
-        unitId: r.unit_id,
-        name: deps.config.units.find((u) => u.id === r.unit_id)?.name ?? r.unit_code,
-        cells: r.metrics.map((m) => ({
-          code: m.metric_code,
-          label: deps.config.definitions.find((d) => d.code === m.metric_code)?.label ?? m.metric_code,
-          value: m.value,
-          status: m.status,
-        })),
-      })),
-    };
-  },
-  ["unit-scorecard-preview-v1"],
-  { tags: [PREVIEW_TAG], revalidate: 900 }
-);
-
-/** Pratinjau bulan berjalan (S1, S2, B5, B6), cache 15 menit. Wajib berlabel "belum tutup buku" di UI. */
-export async function getScorecardPreview(): Promise<ActionResult<PreviewData>> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return fail(gate.error);
-  try {
-    const today = jakartaDateString(new Date());
-    return { ok: true, data: await computePreview(`${today.slice(0, 7)}-01`) };
   } catch (e) {
     return fail(errMsg(e));
   }
@@ -189,48 +117,46 @@ export async function getUnitDetail(unitId: string, monthIso: string): Promise<A
   }
 }
 
-// ───────────────────────────── Tutup buku ─────────────────────────────
+// ───────────────────────────── Status data (otomatis) ─────────────────────────────
 
-export interface PeriodListItem {
+export interface DataStatusItem {
   month: string;
   label: string;
-  status: "open" | "closed";
   version: number;
-  closedAt: string | null;
-  reopenCount: number;
+  computedAt: string | null;
+  warnings: string[];
+  changeCount: number;
 }
 
-/** Bulan yang bisa ditutup: dari Jan 2026 sampai bulan berjalan, dengan status tutup buku masing-masing. */
-export async function listPeriods(): Promise<ActionResult<PeriodListItem[]>> {
+/** Bulan dari Jan 2026 sampai bulan terakhir yang sudah berakhir, dengan status hasil hitung otomatis masing-masing. */
+export async function listDataStatus(): Promise<ActionResult<DataStatusItem[]>> {
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
   try {
     const sb = createAdminClient();
-    const [{ data, error }, runs] = await Promise.all([
-      sb.from("accounting_periods" as never).select("id, month, status, closed_at, reopen_count"),
-      sb.from("scorecard_runs" as never).select("period_id, version"),
+    const [{ data: periods, error }, runs] = await Promise.all([
+      sb.from("accounting_periods" as never).select("id, month"),
+      sb.from("scorecard_runs" as never).select("period_id, version, computed_at, warnings, changes"),
     ]);
     if (error) throw new Error(error.message);
-    const byMonth = new Map(((data ?? []) as { id: string; month: string; status: "open" | "closed"; closed_at: string | null; reopen_count: number }[]).map((p) => [p.month, p]));
-    const maxVer = new Map<string, number>();
-    for (const r of (runs.data ?? []) as { period_id: string; version: number }[]) maxVer.set(r.period_id, Math.max(maxVer.get(r.period_id) ?? 0, r.version));
+    if (runs.error) throw new Error(runs.error.message);
+    const monthOf = new Map(((periods ?? []) as { id: string; month: string }[]).map((p) => [p.id, p.month]));
+    const latest = new Map<string, { version: number; computedAt: string; warnings: string[]; changeCount: number }>();
+    for (const r of (runs.data ?? []) as { period_id: string; version: number; computed_at: string; warnings: string[]; changes: unknown[] }[]) {
+      const month = monthOf.get(r.period_id);
+      if (!month) continue;
+      const cur = latest.get(month);
+      if (!cur || r.version > cur.version) latest.set(month, { version: r.version, computedAt: r.computed_at, warnings: r.warnings ?? [], changeCount: (r.changes ?? []).length });
+    }
     const today = jakartaDateString(new Date());
-    const out: PeriodListItem[] = [];
+    const lastEnded = recentEndedMonths(today, 1)[0];
+    const out: DataStatusItem[] = [];
     let y = 2026;
     let m = 1;
-    const endY = Number(today.slice(0, 4));
-    const endM = Number(today.slice(5, 7));
-    while (y < endY || (y === endY && m <= endM)) {
+    while (`${y}-${String(m).padStart(2, "0")}-01` <= lastEnded) {
       const iso = `${y}-${String(m).padStart(2, "0")}-01`;
-      const p = byMonth.get(iso);
-      out.push({
-        month: iso,
-        label: monthLabel(iso),
-        status: p?.status ?? "open",
-        version: p ? maxVer.get(p.id) ?? 0 : 0,
-        closedAt: p?.closed_at ?? null,
-        reopenCount: p?.reopen_count ?? 0,
-      });
+      const l = latest.get(iso);
+      out.push({ month: iso, label: monthLabel(iso), version: l?.version ?? 0, computedAt: l?.computedAt ?? null, warnings: l?.warnings ?? [], changeCount: l?.changeCount ?? 0 });
       m += 1;
       if (m > 12) {
         m = 1;
@@ -243,75 +169,16 @@ export async function listPeriods(): Promise<ActionResult<PeriodListItem[]>> {
   }
 }
 
-export async function getCloseChecks(monthIso: string): Promise<ActionResult<CloseChecks>> {
+/** Hitung ulang sekarang (tanpa menunggu cron malam). Versi baru hanya dibuat bila ada angka yang berubah. */
+export async function refreshScorecardNow(monthIso: string): Promise<ActionResult<{ created: boolean; version: number; changes: number; warnings: number }>> {
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
   if (!isMonthIso(monthIso)) return fail("Bulan tidak valid");
+  if (monthIso >= `${jakartaDateString(new Date()).slice(0, 7)}-01`) return fail("Bulan berjalan belum berakhir: angka keuangannya belum dihitung.");
   try {
-    const sb = createAdminClient();
-    const deps = await buildDeps(sb, yeoboAdminClient(), [monthIso]);
-    return { ok: true, data: await closeChecks(sb, deps, monthIso, jakartaDateString(new Date())) };
-  } catch (e) {
-    return fail(errMsg(e));
-  }
-}
-
-export type CloseResult =
-  | { ok: true; data: { version: number; units: number } }
-  | { ok: false; error: string; needsAcknowledge?: CloseChecks };
-
-/**
- * Tutup buku sebuah bulan: periksa daftar cek, hitung scorecard seluruh unit, simpan sebagai versi baru, tandai closed.
- * Peringatan harus diakui (`acknowledge`); penghalang (bulan belum berakhir) tidak bisa dilewati.
- */
-export async function closePeriod(monthIso: string, acknowledge: boolean): Promise<CloseResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return fail(gate.error);
-  if (!isMonthIso(monthIso)) return fail("Bulan tidak valid");
-  try {
-    const sb = createAdminClient();
-    const deps = await buildDeps(sb, yeoboAdminClient(), [monthIso]);
-    const checks = await closeChecks(sb, deps, monthIso, jakartaDateString(new Date()));
-    if (checks.blockers.length > 0) return { ok: false, error: checks.blockers.join(" "), needsAcknowledge: checks };
-    if (checks.warnings.length > 0 && !acknowledge) return { ok: false, error: "Ada peringatan yang perlu diakui sebelum menutup buku.", needsAcknowledge: checks };
-
-    const period = await getOrCreatePeriod(sb, monthIso);
-    const prior = await priorStatusesFor(sb, monthIso);
-    const results: UnitMonthResult[] = await computeMonths(deps, [monthIso], { prior });
-    const version = await persistRun(sb, period.id, gate.userId, results, null);
-    const upd = await sb
-      .from("accounting_periods" as never)
-      .update({ status: "closed", closed_at: new Date().toISOString(), closed_by: gate.userId } as never)
-      .eq("id", period.id);
-    if (upd.error) throw new Error(upd.error.message);
-    await sb.from("accounting_period_events" as never).insert({ period_id: period.id, action: "close", warnings: checks.warnings, actor_id: gate.userId } as never);
+    const [r] = await refreshScorecard(createAdminClient(), yeoboAdminClient(), [monthIso], gate.userId, "Manual (hitung ulang sekarang)");
     revalidateTag(CONFIG_TAG, expireNow);
-    revalidateTag(PREVIEW_TAG, expireNow);
-    return { ok: true, data: { version, units: results.length } };
-  } catch (e) {
-    return fail(errMsg(e));
-  }
-}
-
-/** Buka ulang periode (hanya superadmin, alasan tercatat). Menutup lagi menghasilkan versi snapshot baru. */
-export async function reopenPeriod(monthIso: string, reason: string): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return fail(gate.error);
-  if (!isMonthIso(monthIso)) return fail("Bulan tidak valid");
-  const why = reason.trim();
-  if (why.length < 5) return fail("Alasan buka ulang wajib diisi (minimal 5 karakter).");
-  try {
-    const sb = createAdminClient();
-    const period = await getPeriod(sb, monthIso);
-    if (!period || period.status !== "closed") return fail("Periode ini belum ditutup.");
-    const upd = await sb
-      .from("accounting_periods" as never)
-      .update({ status: "open", reopen_count: period.reopen_count + 1, last_reopened_at: new Date().toISOString(), last_reopen_reason: why } as never)
-      .eq("id", period.id);
-    if (upd.error) throw new Error(upd.error.message);
-    await sb.from("accounting_period_events" as never).insert({ period_id: period.id, action: "reopen", reason: why, actor_id: gate.userId } as never);
-    revalidateTag(CONFIG_TAG, expireNow);
-    return { ok: true };
+    return { ok: true, data: { created: r.created, version: r.version, changes: r.changes, warnings: r.warnings } };
   } catch (e) {
     return fail(errMsg(e));
   }
@@ -326,8 +193,6 @@ export async function saveManualRating(unitId: string, monthIso: string, value: 
   if (!Number.isFinite(value) || value < 1 || value > 5) return fail("Rating Google harus antara 1,0 dan 5,0.");
   try {
     const sb = createAdminClient();
-    const period = await getPeriod(sb, monthIso);
-    if (period?.status === "closed") return fail("Periode sudah ditutup. Buka ulang dulu (dengan alasan) untuk mengubah input.");
     const { error } = await sb
       .from("scorecard_manual_inputs" as never)
       .upsert({ unit_id: unitId, month: monthIso, metric_code: "S6", value: Math.round(value * 10) / 10, entered_by: gate.userId, entered_at: new Date().toISOString() } as never, { onConflict: "unit_id,month,metric_code" });
@@ -424,7 +289,6 @@ export async function saveThreshold(input: { metricCode: string; green: number; 
     } as never);
     if (error) throw new Error(error.message);
     revalidateTag(CONFIG_TAG, expireNow);
-    revalidateTag(PREVIEW_TAG, expireNow);
     return { ok: true };
   } catch (e) {
     return fail(errMsg(e));
@@ -452,7 +316,6 @@ export async function updateUnitSettings(
     const { error } = await createAdminClient().from("scorecard_units" as never).update(row as never).eq("id", unitId);
     if (error) throw new Error(error.message);
     revalidateTag(CONFIG_TAG, expireNow);
-    revalidateTag(PREVIEW_TAG, expireNow);
     return { ok: true };
   } catch (e) {
     return fail(errMsg(e));
@@ -536,7 +399,7 @@ export async function markUnitReviewed(unitId: string, monthIso: string): Promis
   try {
     const sb = createAdminClient();
     const period = await getPeriod(sb, monthIso);
-    if (!period || period.status !== "closed") return fail("Periode belum ditutup.");
+    if (!period) return fail("Belum ada hasil hitung untuk bulan ini.");
     const version = await latestRunVersion(sb, period.id);
     const sum = await sb.from("scorecard_unit_summaries" as never).select("confirmed_red").eq("period_id", period.id).eq("unit_id", unitId).eq("version", version).maybeSingle();
     if (sum.error) throw new Error(sum.error.message);
