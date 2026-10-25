@@ -19,7 +19,7 @@ import type { YeoboRevenue, YeoboUtilization } from "@/lib/actions/admin-home-ye
 import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
 import { getScorecardHome } from "@/lib/actions/unit-scorecard.actions";
 import type { HomeData, HomeUnitCard } from "@/lib/unit-scorecard/persist";
-import { ScorecardBlock, StatusBadge } from "@/components/admin/scorecard/ScorecardBits";
+import { ScorecardPanel, StatusBadge } from "@/components/admin/scorecard/ScorecardBits";
 import { formatMetricValue } from "@/components/admin/scorecard/format";
 import { UnitDetailDialog } from "@/components/admin/scorecard/UnitDetailDialog";
 
@@ -543,20 +543,27 @@ export function BranchCardsGrid({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3 md:gap-7">
+          {/* 1. SCORECARD — inti panel, dengan grafik tren tiap metrik. */}
+          {selectedUnit && sc?.selectedLabel ? (
+            <div>
+              <div className="mb-2 flex flex-wrap items-baseline gap-2">
+                <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Scorecard · {sc.selectedLabel}</h4>
+                <span className="text-[11px] text-muted-foreground">tren {sc.sparkMonths.length} periode terakhir</span>
+              </div>
+              <ScorecardPanel unit={selectedUnit} months={sc.sparkMonths} changes={sc.changes} />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border px-4 py-5 text-[12px] text-muted-foreground">Scorecard belum tersedia untuk cabang ini.</div>
+          )}
+
+          {/* 2. Penjualan dan operasional mengikuti. */}
+          <div className="mt-5 grid grid-cols-1 gap-6 border-t border-border/60 pt-4 md:grid-cols-2 md:gap-8">
             <div>
               <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Penjualan</div>
               <div className="divide-y divide-border/50">{selected.sales}</div>
             </div>
             <div>
               <div className="divide-y divide-border/50">{selected.opsNode}</div>
-            </div>
-            <div>
-              {selectedUnit && sc?.selectedLabel ? (
-                <ScorecardBlock unit={selectedUnit} monthLabel={sc.selectedLabel} changes={sc.changes} onOpen={() => setOpenUnit(selectedUnit)} minimal />
-              ) : (
-                <div className="text-[12px] text-muted-foreground">Scorecard belum tersedia untuk cabang ini.</div>
-              )}
             </div>
           </div>
         </section>
