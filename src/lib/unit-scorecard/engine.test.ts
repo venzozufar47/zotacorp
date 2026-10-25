@@ -12,6 +12,7 @@ import {
   roundValue,
   prevMonthIso,
   nextMonthIso,
+  type MetricStatus,
 } from "./engine.ts";
 
 const B1 = { green: 35, red: 42 };
@@ -43,7 +44,7 @@ test("pembulatan 1 desimal", () => {
   assert.equal(roundValue(35.05), 35.1);
 });
 
-const m = (code: string, status: any, isFourWall = false) => ({ code, status, isFourWall });
+const m = (code: string, status: MetricStatus, isFourWall = false) => ({ code, status, isFourWall });
 
 test("status unit: four-wall merah → merah", () => {
   assert.equal(unitStatus([m("B1", "green"), m("B4", "red", true)], { rampUp: false }).status, "red");

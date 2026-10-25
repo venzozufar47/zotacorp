@@ -23,7 +23,7 @@ import { classifyCategories, rentLooksMissing, usesPosRegime, type CategoryRow, 
 
 type Sb = SupabaseClient<Database>;
 /** Client schema `yeobo` (untyped), lihat src/lib/supabase/yeobo-admin.ts. */
-type YeoboSb = SupabaseClient;
+type YeoboSb = SupabaseClient<any, any, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 // ───────────────────────────── Tipe konfigurasi & hasil ─────────────────────────────
 
@@ -44,6 +44,7 @@ export interface ScUnit {
   peak_weekday_end_min: number;
   peak_weekend_all_day: boolean;
   sort_order: number;
+  notes: string | null;
 }
 
 export interface ScDefinition {
