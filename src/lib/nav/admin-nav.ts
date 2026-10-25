@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Coins,
   FlaskConical,
+  Gauge,
   Home as HomeIcon,
   Inbox,
   MapPin,
@@ -290,6 +291,12 @@ export function buildAdminNav({
           href: "/admin/pos/diskon",
           icon: Percent,
           label: "Diskon POS",
+          color: "bg-pop-amber",
+        },
+        {
+          href: "/admin/scorecard-unit",
+          icon: Gauge,
+          label: "Scorecard Unit",
           color: "bg-pop-amber",
         },
         {

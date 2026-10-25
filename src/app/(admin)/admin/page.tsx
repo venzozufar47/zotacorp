@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole, getCurrentProfile } from "@/lib/supabase/cached";
 import { createClient } from "@/lib/supabase/server";
@@ -26,6 +27,7 @@ import {
 } from "@/lib/actions/revenue-dashboard-viewers.actions";
 import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
+import { UnitScorecardSection, UnitScorecardSkeleton } from "@/components/admin/scorecard/UnitScorecardSection";
 
 /**
  * Admin Home / Today — the new landing surface for admins.
@@ -106,6 +108,9 @@ export default async function AdminHomeRoute() {
 
   return (
     <>
+      <Suspense fallback={<UnitScorecardSkeleton />}>
+        <UnitScorecardSection />
+      </Suspense>
       <AdminHomePage
         greetingName={greetingName}
         today={today}
