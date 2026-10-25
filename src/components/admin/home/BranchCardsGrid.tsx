@@ -480,16 +480,22 @@ export function BranchCardsGrid({
               role="tab"
               type="button"
               aria-selected={on}
+              title={on ? `${b.name} sedang ditampilkan` : `Tampilkan rincian ${b.name}`}
               onClick={() => setSelectedKey(b.key)}
               className={cn(
-                "rounded-xl border border-border/70 border-t-4 bg-card p-3 text-left transition hover:bg-muted/30",
+                "relative rounded-xl border border-t-4 p-3 text-left transition duration-200 outline-offset-2",
+                "shadow-[0_1px_2px_rgba(8,49,46,0.04),0_4px_16px_rgba(8,49,46,0.05)]",
                 TOP_BORDER[u?.status ?? ""] ?? "border-t-muted-foreground/40",
-                on && "ring-2 ring-foreground"
+                on
+                  ? "-translate-y-0.5 border-[var(--teal-600)] bg-accent outline outline-2 outline-[var(--teal-600)] shadow-[0_6px_20px_rgba(8,49,46,0.16)] after:absolute after:left-1/2 after:top-full after:-translate-x-1/2 after:border-x-[9px] after:border-t-[9px] after:border-x-transparent after:border-t-[var(--teal-600)] after:content-['']"
+                  : "border-border/70 bg-card opacity-75 hover:bg-muted/40 hover:opacity-100"
               )}
-              style={{ boxShadow: "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)" }}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="font-display text-[14px] font-bold text-foreground">{b.name}</span>
+                <span className="inline-flex items-center gap-1.5 font-display text-[14px] font-bold text-foreground">
+                  {on && <span aria-hidden className="size-2 rounded-full bg-[var(--teal-600)]" />}
+                  {b.name}
+                </span>
                 {u && <StatusBadge status={u.status} />}
               </div>
               <div className="mt-2 font-display text-[18px] font-extrabold tracking-[-0.02em] tabular-nums text-foreground">Rp {formatRpCompact(b.revenue)}</div>
@@ -504,11 +510,12 @@ export function BranchCardsGrid({
       {/* Rincian satu cabang */}
       {selected && (
         <section
+          key={selected.key}
           aria-label={`Rincian ${selected.name}`}
-          className="rounded-2xl border border-border/70 bg-card px-5 py-4"
-          style={{ boxShadow: "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)" }}
+          className="mt-3 animate-fade-up rounded-2xl border-2 border-[var(--teal-600)] bg-card px-5 py-4 shadow-[0_6px_20px_rgba(8,49,46,0.10)]"
         >
           <div className="mb-3 flex flex-wrap items-center gap-2.5">
+            <span className="rounded-full bg-[var(--teal-600)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-white">Cabang aktif</span>
             <h3 className="font-display text-lg font-extrabold text-foreground">{selected.name}</h3>
             {selectedUnit && <StatusBadge status={selectedUnit.status} />}
             {selectedUnit && sc?.selectedLabel && (
