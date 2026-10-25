@@ -42,11 +42,14 @@ export function ScorecardBlock({
   monthLabel,
   changes,
   onOpen,
+  minimal = false,
 }: {
   unit: HomeUnitCard;
   monthLabel: string;
   changes: MetricChange[];
   onOpen: () => void;
+  /** Dipakai di rincian cabang: peringatan merah dan tombol Rincian sudah ada di header rincian. */
+  minimal?: boolean;
 }) {
   const keys = KEY_CODES[unit.unitType].map((c) => unit.metrics.find((m) => m.code === c)).filter((m): m is HomeMetricCell => !!m);
   const changed = changes.filter((c) => c.unit_id === unit.unitId).length;
@@ -54,14 +57,14 @@ export function ScorecardBlock({
     <div className="py-2">
       <div className="flex items-center justify-between gap-2 pt-0.5 pb-1">
         <span className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">Scorecard · {monthLabel.replace(/^(\S{3})\S*/, "$1")}</span>
-        <StatusBadge status={unit.status} />
+        {!minimal && <StatusBadge status={unit.status} />}
       </div>
-      {unit.status === "rampup" && unit.rampUpUntil && (
+      {unit.status === "rampup" && unit.rampUpUntil && !minimal && (
         <div className="pb-1 text-[10.5px] text-muted-foreground">
           Ramp-up s.d. {new Date(`${unit.rampUpUntil}T00:00:00Z`).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}
         </div>
       )}
-      {unit.confirmedRed && (
+      {unit.confirmedRed && !minimal && (
         <div className="mb-1 rounded-md border border-destructive/50 bg-destructive/10 px-1.5 py-1 text-[10.5px] font-semibold text-destructive">
           ■ Merah 2 periode berurutan{unit.actionsInPeriod === 0 ? " — keputusan wajib diisi" : unit.reviewed ? " — sudah ditinjau" : ""}
         </div>
@@ -77,9 +80,11 @@ export function ScorecardBlock({
           {changed > 0 && unit.openActions > 0 ? " · " : null}
           {unit.openActions > 0 ? `${unit.openActions} tindakan` : null}
         </span>
-        <button type="button" onClick={onOpen} className="rounded-full border border-border px-2 py-0.5 text-[10.5px] font-semibold text-foreground hover:bg-muted">
-          Rincian
-        </button>
+        {!minimal && (
+          <button type="button" onClick={onOpen} className="rounded-full border border-border px-2 py-0.5 text-[10.5px] font-semibold text-foreground hover:bg-muted">
+            Rincian
+          </button>
+        )}
       </div>
     </div>
   );

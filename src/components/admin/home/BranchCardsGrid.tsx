@@ -11,7 +11,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatRp } from "@/lib/cashflow/format";
+import { formatRp, formatRpCompact } from "@/lib/cashflow/format";
 import { serviceLevelTone } from "@/lib/pos/service-level";
 import { wasteTone } from "@/lib/pos/waste";
 import type { AdminHomeToday, AdminOpsMetrics } from "@/lib/actions/admin-home.actions";
@@ -19,7 +19,8 @@ import type { YeoboRevenue, YeoboUtilization } from "@/lib/actions/admin-home-ye
 import type { CashBalanceRow } from "@/lib/actions/admin-home-cash.actions";
 import { getScorecardHome } from "@/lib/actions/unit-scorecard.actions";
 import type { HomeData, HomeUnitCard } from "@/lib/unit-scorecard/persist";
-import { ScorecardBlock } from "@/components/admin/scorecard/ScorecardBits";
+import { ScorecardBlock, StatusBadge } from "@/components/admin/scorecard/ScorecardBits";
+import { formatMetricValue } from "@/components/admin/scorecard/format";
 import { UnitDetailDialog } from "@/components/admin/scorecard/UnitDetailDialog";
 
 /**
@@ -194,22 +195,6 @@ function StatLine({
   );
 }
 
-function BranchCard({ name, children }: { name: string; children: React.ReactNode }) {
-  return (
-    <div
-      className="flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card"
-      style={{
-        boxShadow: "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)",
-      }}
-    >
-      <div className="border-b border-border/60 px-4 pt-3.5 pb-2">
-        <div className="font-display text-[14px] font-bold text-foreground">{name}</div>
-      </div>
-      <div className="flex-1 divide-y divide-border/50 px-4 py-1">{children}</div>
-    </div>
-  );
-}
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="pt-2.5 pb-0.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70 first:pt-1.5">
@@ -231,30 +216,9 @@ export function BranchCardsGrid({
   yeobo: YeoboRevenue | null;
   yeoboUtilization: YeoboUtilization | null;
   cashBalances: CashBalanceRow[];
-  /** Scorecard Unit Bisnis (superadmin): ditampilkan sebagai bagian di tiap kartu cabang. */
+  /** Scorecard Unit Bisnis (superadmin): kolom ketiga di rincian cabang. */
   unitScorecard?: HomeData | null;
 }) {
-  const [sc, setSc] = useState<HomeData | null>(unitScorecard ?? null);
-  const [openUnit, setOpenUnit] = useState<HomeUnitCard | null>(null);
-  const [scPending, startSc] = useTransition();
-  const scUnit = (code: string) => sc?.units.find((u) => u.code === code);
-  const scBlock = (code: string) => {
-    const u = scUnit(code);
-    return u && sc?.selectedLabel ? <ScorecardBlock unit={u} monthLabel={sc.selectedLabel} changes={sc.changes} onOpen={() => setOpenUnit(u)} /> : null;
-  };
-  const changeScMonth = (month: string) =>
-    startSc(async () => {
-      const r = await getScorecardHome(month);
-      if (r.ok && r.data) setSc(r.data);
-    });
-  const refreshSc = async () => {
-    if (!sc?.selectedMonth) return;
-    const r = await getScorecardHome(sc.selectedMonth);
-    if (r.ok && r.data) {
-      setSc(r.data);
-      setOpenUnit((cur) => (cur ? r.data!.units.find((u) => u.unitId === cur.unitId) ?? null : null));
-    }
-  };
   const cmp = today.monthCompare;
   const [mode, setMode] = useState<"runrate" | "actual">("runrate");
   const { day, daysInMonth } = jakartaMonthProgress();
@@ -275,231 +239,323 @@ export function BranchCardsGrid({
       ? monthDeltaProjected(displayMonth(monthActual), prevFull, prevFullLabel)
       : monthDelta(monthActual - todayActual, prevPartial, prevPartialLabel);
 
+  const [sc, setSc] = useState<HomeData | null>(unitScorecard ?? null);
+  const [openUnit, setOpenUnit] = useState<HomeUnitCard | null>(null);
+  const [scPending, startSc] = useTransition();
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const scUnit = (code: string) => sc?.units.find((u) => u.code === code);
+  const changeScMonth = (month: string) =>
+    startSc(async () => {
+      const r = await getScorecardHome(month);
+      if (r.ok && r.data) setSc(r.data);
+    });
+  const refreshSc = async () => {
+    if (!sc?.selectedMonth) return;
+    const r = await getScorecardHome(sc.selectedMonth);
+    if (r.ok && r.data) {
+      setSc(r.data);
+      setOpenUnit((cur) => (cur ? r.data!.units.find((u) => u.unitId === cur.unitId) ?? null : null));
+    }
+  };
+
   const slByLabel = new Map(ops.outlets.map((o) => [o.label, o]));
   const cashByBranch = new Map(cashBalances.map((c) => [c.branch, c.balance]));
   const utilById = new Map((yeoboUtilization?.branches ?? []).map((b) => [b.id, b]));
 
-  const pareSl = slByLabel.get("Pare");
-  const smgSl = slByLabel.get("Semarang");
+  /** Temuan yang membuat sebuah cabang layak dilihat dulu: scorecard merah, operasional merah, omzet turun tajam. */
+  const flagsFor = (
+    unitCode: string,
+    extra: {
+      serviceLevel?: { v: number | null; tone: string };
+      expired?: { v: number | null; tone: string };
+      deltaPct?: number | null;
+    }
+  ): string[] => {
+    const f: string[] = [];
+    const u = scUnit(unitCode);
+    if (u?.confirmedRed) f.push("Merah 2 periode berurutan");
+    if (u && u.status !== "rampup") {
+      for (const m of u.metrics) if (m.status === "red") f.push(`${m.label} ${formatMetricValue(m.value, m.valueUnit)}`);
+    }
+    if (extra.serviceLevel && extra.serviceLevel.tone === "destructive") f.push(`Service level ${pct(extra.serviceLevel.v)}`);
+    if (extra.expired && extra.expired.tone === "destructive") f.push(`Ditarik expired ${pct(extra.expired.v)}`);
+    if (extra.deltaPct != null && extra.deltaPct <= -25) {
+      f.push(`Omzet ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(extra.deltaPct)}% vs bulan lalu`);
+    }
+    return f;
+  };
+
+  interface CockpitBranch {
+    key: string;
+    name: string;
+    unitCode: string;
+    revenue: number;
+    flags: string[];
+    sales: React.ReactNode;
+    opsNode: React.ReactNode;
+  }
+  const branches: CockpitBranch[] = [];
+
+  for (const b of [
+    { key: "pare", name: "Pare", unitCode: "haengbocake_pare", href: "/pospare", sl: slByLabel.get("Pare"), p: "Pare" as const },
+    { key: "semarang", name: "Semarang", unitCode: "haengbocake_semarang", href: "/possemarang", sl: slByLabel.get("Semarang"), p: "Smg" as const },
+  ]) {
+    const pos =
+      b.p === "Pare"
+        ? { today: today.posHbcPareToday, month: today.posHbcPareMonth, count: today.posHbcPareMonthCount, cmp: cmp?.posHbcPare, prevFull: today.prevMonthFull.posHbcPare }
+        : { today: today.posHbcSmgToday, month: today.posHbcSmgMonth, count: today.posHbcSmgMonthCount, cmp: cmp?.posHbcSmg, prevFull: today.prevMonthFull.posHbcSmg };
+    const cake =
+      b.p === "Pare"
+        ? { today: today.cakeHbcPareToday, month: today.cakeHbcPareMonth, count: today.cakeHbcPareMonthCount, cmp: cmp?.cakeHbcPare, prevFull: today.prevMonthFull.cakeHbcPare }
+        : { today: today.cakeHbcSmgToday, month: today.cakeHbcSmgMonth, count: today.cakeHbcSmgMonthCount, cmp: cmp?.cakeHbcSmg, prevFull: today.prevMonthFull.cakeHbcSmg };
+    const posDelta = deltaFor(pos.month, pos.today, pos.cmp, cmp?.prevLabel, pos.prevFull, today.prevMonthFull.label);
+    const cakeDelta = deltaFor(cake.month, cake.today, cake.cmp, cmp?.prevLabel, cake.prevFull, today.prevMonthFull.label);
+    const totalMonth = pos.month + cake.month;
+    const totalPrev = pos.prevFull + cake.prevFull;
+    const sl = b.sl;
+    branches.push({
+      key: b.key,
+      name: b.name,
+      unitCode: b.unitCode,
+      revenue: displayMonth(totalMonth),
+      flags: flagsFor(b.unitCode, {
+        serviceLevel: sl ? { v: sl.serviceLevel, tone: serviceLevelTone(sl.serviceLevel, sl.serviceLevelTarget) } : undefined,
+        expired: sl ? { v: sl.expiredRate, tone: wasteTone(sl.expiredRate) } : undefined,
+        deltaPct: totalPrev > 0 ? ((displayMonth(totalMonth) - totalPrev) / totalPrev) * 100 : null,
+      }),
+      sales: (
+        <>
+          <RevenueLine
+            icon={<WalletIcon size={12} />}
+            label="POS"
+            href={b.href}
+            day={pos.today}
+            month={displayMonth(pos.month)}
+            projected={projected}
+            delta={posDelta}
+            aovMonth={aov(pos.month, pos.count)}
+          />
+          <RevenueLine
+            icon={<CakeSlice size={12} />}
+            label="Cake"
+            day={cake.today}
+            month={displayMonth(cake.month)}
+            projected={projected}
+            delta={cakeDelta}
+            aovMonth={aov(cake.month, cake.count)}
+          />
+        </>
+      ),
+      opsNode: (
+        <>
+          <SectionLabel>Operasional · 30 hari</SectionLabel>
+          {sl && (
+            <>
+              <StatLine label="Service level" value={pct(sl.serviceLevel)} tone={serviceLevelTone(sl.serviceLevel, sl.serviceLevelTarget)} />
+              <StatLine label="Ditarik expired" value={pct(sl.expiredRate)} tone={wasteTone(sl.expiredRate)} />
+            </>
+          )}
+          {cashByBranch.has(b.name) && <StatLine label="Saldo kas" value={formatRp(cashByBranch.get(b.name)!)} />}
+        </>
+      ),
+    });
+  }
+
+  for (const yb of yeobo?.branches ?? []) {
+    const util = utilById.get(yb.id);
+    const delta = deltaFor(yb.month, yb.today, yb.prevSameRange, yeobo?.prevLabel, yb.prevMonthFull, yeobo?.prevMonthFullLabel ?? "");
+    branches.push({
+      key: yb.id,
+      name: yb.label,
+      unitCode: `yeobo_${yb.id}`,
+      revenue: displayMonth(yb.month),
+      flags: flagsFor(`yeobo_${yb.id}`, {
+        deltaPct: yb.prevMonthFull > 0 ? ((displayMonth(yb.month) - yb.prevMonthFull) / yb.prevMonthFull) * 100 : null,
+      }),
+      sales: (
+        <RevenueLine
+          icon={<Camera size={12} />}
+          label="Booking"
+          day={yb.today}
+          month={displayMonth(yb.month)}
+          projected={projected}
+          delta={delta}
+          aovMonth={aov(yb.month, yb.monthCount)}
+        />
+      ),
+      opsNode: util ? (
+        <>
+          <SectionLabel>Utilisasi slot</SectionLabel>
+          <StatLine label={yeoboUtilization?.curMonthLabel ?? "Bulan ini"} value={util.curMonthToDatePct != null ? `${util.curMonthToDatePct.toFixed(1)}%` : "—"} />
+          <StatLine label={yeoboUtilization?.prevMonthLabel ?? "Bulan lalu"} value={util.prevMonthPct != null ? `${util.prevMonthPct.toFixed(1)}%` : "—"} />
+        </>
+      ) : null,
+    });
+  }
+
+  // Cabang paling bermasalah di depan: merah → kuning → abu-abu → hijau; seri → lebih banyak temuan.
+  const rank = (code: string) => {
+    const s = scUnit(code)?.status;
+    return s === "red" ? 0 : s === "yellow" ? 1 : s === "green" ? 3 : 2;
+  };
+  const ordered = [...branches].sort((a, b) => rank(a.unitCode) - rank(b.unitCode) || b.flags.length - a.flags.length);
+  const selected = ordered.find((b) => b.key === selectedKey) ?? ordered[0] ?? null;
+  const selectedUnit = selected ? scUnit(selected.unitCode) : undefined;
+
+  const TOP_BORDER: Record<string, string> = {
+    red: "border-t-destructive",
+    yellow: "border-t-warning",
+    green: "border-t-success",
+  };
 
   return (
     <div className="space-y-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-display text-[15px] font-semibold tracking-[-0.015em] text-foreground lg:text-base">
-          Per cabang
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="font-display text-[15px] font-semibold tracking-[-0.015em] text-foreground lg:text-base">Pilih cabang</div>
+          <div className="text-[11px] text-muted-foreground">Cabang yang paling perlu perhatian di depan · klik untuk rincian lengkap</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-        {sc && sc.periods.length > 0 && (
-          <label className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Scorecard
-            <select
-              value={sc.selectedMonth ?? ""}
-              onChange={(e) => changeScMonth(e.target.value)}
-              disabled={scPending}
-              aria-label="Periode scorecard"
-              className="h-7 rounded-full border border-border bg-card px-2 text-[11px] font-semibold normal-case tracking-normal text-foreground"
-            >
-              {sc.periods.map((p) => (
-                <option key={p.month} value={p.month}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {sc && (
-          <Link
-            href="/admin/scorecard-unit"
-            title="Pengaturan scorecard: status data, ambang, unit & modal, rating Google"
-            aria-label="Pengaturan scorecard"
-            className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground hover:bg-muted/50"
-          >
-            <Settings2 size={13} />
-          </Link>
-        )}
-        <button
-          type="button"
-          onClick={toggleMode}
-          disabled={!canProject}
-          title={
-            !canProject
-              ? "Proyeksi belum tersedia di tanggal 1."
-              : projected
-                ? "Menampilkan proyeksi akhir bulan. Klik untuk lihat angka aktual."
-                : "Menampilkan angka aktual bulan berjalan. Klik untuk lihat proyeksi."
-          }
-          className={cn(
-            "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] transition",
-            !canProject && "cursor-not-allowed opacity-60",
-            projected
-              ? "border border-dashed border-muted-foreground/50 text-muted-foreground hover:bg-muted/50"
-              : "bg-[var(--teal-600)] text-white hover:opacity-90"
+          {sc && sc.periods.length > 0 && (
+            <label className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Scorecard
+              <select
+                value={sc.selectedMonth ?? ""}
+                onChange={(e) => changeScMonth(e.target.value)}
+                disabled={scPending}
+                aria-label="Periode scorecard"
+                className="h-7 rounded-full border border-border bg-card px-2 text-[11px] font-semibold normal-case tracking-normal text-foreground"
+              >
+                {sc.periods.map((p) => (
+                  <option key={p.month} value={p.month}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
-        >
-          {projected ? <TrendingUp size={12} /> : <CheckCircle2 size={12} />}
-          {projected ? "Proyeksi" : "Aktual"}
-        </button>
+          {sc && (
+            <Link
+              href="/admin/scorecard-unit"
+              title="Pengaturan scorecard: status data, ambang, unit & modal, rating Google"
+              aria-label="Pengaturan scorecard"
+              className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground hover:bg-muted/50"
+            >
+              <Settings2 size={13} />
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={toggleMode}
+            disabled={!canProject}
+            title={
+              !canProject
+                ? "Proyeksi belum tersedia di tanggal 1."
+                : projected
+                  ? "Menampilkan proyeksi akhir bulan. Klik untuk lihat angka aktual."
+                  : "Menampilkan angka aktual bulan berjalan. Klik untuk lihat proyeksi."
+            }
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] transition",
+              !canProject && "cursor-not-allowed opacity-60",
+              projected
+                ? "border border-dashed border-muted-foreground/50 text-muted-foreground hover:bg-muted/50"
+                : "bg-[var(--teal-600)] text-white hover:opacity-90"
+            )}
+          >
+            {projected ? <TrendingUp size={12} /> : <CheckCircle2 size={12} />}
+            {projected ? "Proyeksi" : "Aktual"}
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {/* PARE */}
-        <BranchCard name="Pare">
-          <RevenueLine
-            icon={<WalletIcon size={12} />}
-            label="POS"
-            href="/pospare"
-            day={today.posHbcPareToday}
-            month={displayMonth(today.posHbcPareMonth)}
-            projected={projected}
-            delta={deltaFor(
-              today.posHbcPareMonth,
-              today.posHbcPareToday,
-              cmp?.posHbcPare,
-              cmp?.prevLabel,
-              today.prevMonthFull.posHbcPare,
-              today.prevMonthFull.label
-            )}
-            aovMonth={aov(today.posHbcPareMonth, today.posHbcPareMonthCount)}
-          />
-          <RevenueLine
-            icon={<CakeSlice size={12} />}
-            label="Cake"
-            day={today.cakeHbcPareToday}
-            month={displayMonth(today.cakeHbcPareMonth)}
-            projected={projected}
-            delta={deltaFor(
-              today.cakeHbcPareMonth,
-              today.cakeHbcPareToday,
-              cmp?.cakeHbcPare,
-              cmp?.prevLabel,
-              today.prevMonthFull.cakeHbcPare,
-              today.prevMonthFull.label
-            )}
-            aovMonth={aov(today.cakeHbcPareMonth, today.cakeHbcPareMonthCount)}
-          />
-          <SectionLabel>Operasional · 30 hari</SectionLabel>
-          {pareSl && (
-            <>
-              <StatLine
-                label="Service level"
-                value={pct(pareSl.serviceLevel)}
-                tone={serviceLevelTone(pareSl.serviceLevel, pareSl.serviceLevelTarget)}
-              />
-              <StatLine
-                label="Ditarik expired"
-                value={pct(pareSl.expiredRate)}
-                tone={wasteTone(pareSl.expiredRate)}
-              />
-            </>
-          )}
-          {cashByBranch.has("Pare") && (
-            <StatLine label="Saldo kas" value={formatRp(cashByBranch.get("Pare")!)} />
-          )}
-          {scBlock("haengbocake_pare")}
-        </BranchCard>
-
-        {/* SEMARANG */}
-        <BranchCard name="Semarang">
-          <RevenueLine
-            icon={<WalletIcon size={12} />}
-            label="POS"
-            href="/possemarang"
-            day={today.posHbcSmgToday}
-            month={displayMonth(today.posHbcSmgMonth)}
-            projected={projected}
-            delta={deltaFor(
-              today.posHbcSmgMonth,
-              today.posHbcSmgToday,
-              cmp?.posHbcSmg,
-              cmp?.prevLabel,
-              today.prevMonthFull.posHbcSmg,
-              today.prevMonthFull.label
-            )}
-            aovMonth={aov(today.posHbcSmgMonth, today.posHbcSmgMonthCount)}
-          />
-          <RevenueLine
-            icon={<CakeSlice size={12} />}
-            label="Cake"
-            day={today.cakeHbcSmgToday}
-            month={displayMonth(today.cakeHbcSmgMonth)}
-            projected={projected}
-            delta={deltaFor(
-              today.cakeHbcSmgMonth,
-              today.cakeHbcSmgToday,
-              cmp?.cakeHbcSmg,
-              cmp?.prevLabel,
-              today.prevMonthFull.cakeHbcSmg,
-              today.prevMonthFull.label
-            )}
-            aovMonth={aov(today.cakeHbcSmgMonth, today.cakeHbcSmgMonthCount)}
-          />
-          <SectionLabel>Operasional · 30 hari</SectionLabel>
-          {smgSl && (
-            <>
-              <StatLine
-                label="Service level"
-                value={pct(smgSl.serviceLevel)}
-                tone={serviceLevelTone(smgSl.serviceLevel, smgSl.serviceLevelTarget)}
-              />
-              <StatLine
-                label="Ditarik expired"
-                value={pct(smgSl.expiredRate)}
-                tone={wasteTone(smgSl.expiredRate)}
-              />
-            </>
-          )}
-          {cashByBranch.has("Semarang") && (
-            <StatLine label="Saldo kas" value={formatRp(cashByBranch.get("Semarang")!)} />
-          )}
-          {scBlock("haengbocake_semarang")}
-        </BranchCard>
-
-        {/* YEOBO SPACE — satu kartu per cabang, data-driven (3 cabang). */}
-        {yeobo?.branches.map((b) => {
-          const util = utilById.get(b.id);
+      {/* Pemilih cabang */}
+      <div role="tablist" aria-label="Cabang" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+        {ordered.map((b) => {
+          const u = scUnit(b.unitCode);
+          const on = selected?.key === b.key;
           return (
-            <BranchCard key={b.id} name={b.label}>
-              <RevenueLine
-                icon={<Camera size={12} />}
-                label="Booking"
-                day={b.today}
-                month={displayMonth(b.month)}
-                projected={projected}
-                delta={deltaFor(
-                  b.month,
-                  b.today,
-                  b.prevSameRange,
-                  yeobo.prevLabel,
-                  b.prevMonthFull,
-                  yeobo.prevMonthFullLabel
-                )}
-                aovMonth={aov(b.month, b.monthCount)}
-              />
-              {util && (
-                <>
-                  <SectionLabel>Utilisasi slot</SectionLabel>
-                  <StatLine
-                    label={yeoboUtilization?.curMonthLabel ?? "Bulan ini"}
-                    value={
-                      util.curMonthToDatePct != null
-                        ? `${util.curMonthToDatePct.toFixed(1)}%`
-                        : "—"
-                    }
-                  />
-                  <StatLine
-                    label={yeoboUtilization?.prevMonthLabel ?? "Bulan lalu"}
-                    value={
-                      util.prevMonthPct != null ? `${util.prevMonthPct.toFixed(1)}%` : "—"
-                    }
-                  />
-                </>
+            <button
+              key={b.key}
+              role="tab"
+              type="button"
+              aria-selected={on}
+              onClick={() => setSelectedKey(b.key)}
+              className={cn(
+                "rounded-xl border border-border/70 border-t-4 bg-card p-3 text-left transition hover:bg-muted/30",
+                TOP_BORDER[u?.status ?? ""] ?? "border-t-muted-foreground/40",
+                on && "ring-2 ring-foreground"
               )}
-              {scBlock(`yeobo_${b.id}`)}
-            </BranchCard>
+              style={{ boxShadow: "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)" }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-display text-[14px] font-bold text-foreground">{b.name}</span>
+                {u && <StatusBadge status={u.status} />}
+              </div>
+              <div className="mt-2 font-display text-[18px] font-extrabold tracking-[-0.02em] tabular-nums text-foreground">Rp {formatRpCompact(b.revenue)}</div>
+              <div className={cn("mt-0.5 text-[11.5px]", b.flags.length > 0 ? "font-semibold text-destructive" : "text-muted-foreground")}>
+                {b.flags.length > 0 ? `${b.flags.length} temuan · ${b.flags[0]}` : "Tidak ada temuan"}
+              </div>
+            </button>
           );
         })}
       </div>
+
+      {/* Rincian satu cabang */}
+      {selected && (
+        <section
+          aria-label={`Rincian ${selected.name}`}
+          className="rounded-2xl border border-border/70 bg-card px-5 py-4"
+          style={{ boxShadow: "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)" }}
+        >
+          <div className="mb-3 flex flex-wrap items-center gap-2.5">
+            <h3 className="font-display text-lg font-extrabold text-foreground">{selected.name}</h3>
+            {selectedUnit && <StatusBadge status={selectedUnit.status} />}
+            {selectedUnit && sc?.selectedLabel && (
+              <span className="text-[12px] text-muted-foreground">
+                Scorecard {sc.selectedLabel}
+                {selectedUnit.status === "rampup" && selectedUnit.rampUpUntil
+                  ? ` · ramp-up s.d. ${new Date(`${selectedUnit.rampUpUntil}T00:00:00Z`).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}`
+                  : ""}
+              </span>
+            )}
+            {selectedUnit && (
+              <button type="button" onClick={() => setOpenUnit(selectedUnit)} className="ml-auto rounded-full border border-border px-3 py-1 text-[12px] font-semibold text-foreground hover:bg-muted">
+                Rincian
+              </button>
+            )}
+          </div>
+
+          {selectedUnit?.confirmedRed && (
+            <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-destructive/10 px-3 py-2 text-[13px] font-semibold text-destructive">
+              <span className="flex-1">
+                ■ Merah 2 periode berurutan
+                {selectedUnit.actionsInPeriod === 0 ? " — keputusan wajib diisi" : selectedUnit.reviewed ? " — sudah ditinjau" : ""}
+              </span>
+              <button type="button" onClick={() => setOpenUnit(selectedUnit)} className="rounded-full bg-[var(--teal-600)] px-3 py-1 text-[12px] font-semibold text-white hover:opacity-90">
+                Isi keputusan
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3 md:gap-7">
+            <div>
+              <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Penjualan</div>
+              <div className="divide-y divide-border/50">{selected.sales}</div>
+            </div>
+            <div>
+              <div className="divide-y divide-border/50">{selected.opsNode}</div>
+            </div>
+            <div>
+              {selectedUnit && sc?.selectedLabel ? (
+                <ScorecardBlock unit={selectedUnit} monthLabel={sc.selectedLabel} changes={sc.changes} onOpen={() => setOpenUnit(selectedUnit)} minimal />
+              ) : (
+                <div className="text-[12px] text-muted-foreground">Scorecard belum tersedia untuk cabang ini.</div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {sc?.selectedLabel && (
         <div className="text-[10.5px] leading-snug text-muted-foreground">

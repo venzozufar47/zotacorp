@@ -149,6 +149,13 @@ export function AdminHomePage({
   for (const it of inboxAll) kindCounts.set(it.kind, (kindCounts.get(it.kind) ?? 0) + 1);
   const activeKind: NotifKind | "all" =
     kindFilter !== "all" && kindCounts.has(kindFilter) ? kindFilter : "all";
+  const kindCards = [...kindCounts.entries()]
+    .map(([kind, count]) => {
+      const items = inboxAll.filter((i) => i.kind === kind);
+      const tone = items.reduce<NotifTone>((best, i) => (TONE_RANK[i.tone] < TONE_RANK[best] ? i.tone : best), items[0].tone);
+      return { kind, count, first: items[0], tone };
+    })
+    .sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
   const inboxFiltered =
     activeKind === "all" ? inboxAll : inboxAll.filter((i) => i.kind === activeKind);
   const inbox = inboxExpanded ? inboxFiltered : inboxFiltered.slice(0, INBOX_VISIBLE);
@@ -357,8 +364,61 @@ export function AdminHomePage({
         );
       })()}
 
-      {/* MAIN GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
+      {/* ANTREAN LINTAS CABANG — kartu per jenis (klik = filter daftar di bawahnya) + daftar Inbox. */}
+      <section aria-labelledby="antrean-title" className="space-y-2.5">
+        <div className="flex flex-wrap items-baseline gap-2.5">
+          <h2 id="antrean-title" className="font-display text-[15px] font-semibold tracking-[-0.015em] text-foreground lg:text-base">
+            Antrean lintas cabang
+          </h2>
+          <span className="text-[11px] text-muted-foreground">
+            {totalPending === 0 ? "Tidak ada yang menunggu" : `${totalPending} menunggu · per jenis`}
+          </span>
+        </div>
+        {kindCards.length > 0 && (
+          <div role="group" aria-label="Filter antrean per jenis" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+            {kindCards.map(({ kind, count, first, tone }) => {
+              const KindIcon = NOTIF_KINDS[kind].Icon;
+              const on = activeKind === kind;
+              return (
+                <div
+                  key={kind}
+                  className={cn(
+                    "flex flex-col rounded-xl border border-border/70 bg-card p-3 transition",
+                    on && "ring-2 ring-foreground"
+                  )}
+                  style={{ boxShadow: "0 1px 2px rgba(8, 49, 46, 0.04), 0 4px 16px rgba(8, 49, 46, 0.05)" }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKindFilter(on ? "all" : kind);
+                      setInboxExpanded(false);
+                    }}
+                    aria-pressed={on}
+                    className="flex items-center gap-2 text-left"
+                  >
+                    <span className={cn("grid size-[26px] shrink-0 place-items-center rounded-full", TONE_CLASSES[tone].soft)}>
+                      <KindIcon size={13} strokeWidth={2.3} />
+                    </span>
+                    <span className="flex-1 truncate text-[13px] font-bold text-foreground">{NOTIF_KINDS[kind].label}</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-foreground">{count}</span>
+                  </button>
+                  <div className="mt-2 line-clamp-2 min-h-[2.4em] text-[11.5px] leading-snug text-muted-foreground">
+                    <b className="font-semibold text-foreground">{first.userName}</b>
+                    {first.desc ? ` — ${first.desc}` : ""}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => resolver.open(first.resolver)}
+                    className="mt-2 self-start rounded-full border border-border px-2.5 py-1 text-[11.5px] font-semibold text-foreground hover:bg-muted"
+                  >
+                    Selesaikan yang pertama
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {/* INBOX */}
         <Card>
           <CardHead
@@ -371,39 +431,6 @@ export function AdminHomePage({
                   : `${inboxFiltered.length} ${NOTIF_KINDS[activeKind].label} · ${totalPending} waiting in total`
             }
           />
-          {/* Filter per jenis — hanya jenis yang sedang ada, dan hanya bila
-              ada ≥ 2 jenis (satu jenis saja = filter tak berguna). Bisa digeser
-              ke samping di layar sempit. */}
-          {kindCounts.size > 1 && (
-            <div
-              role="group"
-              aria-label="Filter notifikasi"
-              className="px-4 pb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              <InboxFilterChip
-                active={activeKind === "all"}
-                onClick={() => {
-                  setKindFilter("all");
-                  setInboxExpanded(false);
-                }}
-                label="Semua"
-                count={inboxAll.length}
-              />
-              {[...kindCounts.entries()].map(([kind, n]) => (
-                <InboxFilterChip
-                  key={kind}
-                  active={activeKind === kind}
-                  onClick={() => {
-                    setKindFilter(kind);
-                    setInboxExpanded(false);
-                  }}
-                  label={NOTIF_KINDS[kind].label}
-                  count={n}
-                  Icon={NOTIF_KINDS[kind].Icon}
-                />
-              ))}
-            </div>
-          )}
           <div className="px-2 pb-2">
             {inbox.length === 0 ? (
               <div className="px-4 py-8 text-center text-muted-foreground text-[13px]">
@@ -439,9 +466,10 @@ export function AdminHomePage({
             )}
           </div>
         </Card>
+      </section>
 
-        {/* RIGHT COLUMN */}
-        <div className="flex flex-col gap-5">
+      {/* FLOOR + COMING UP */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
           {/* FLOOR VIEW */}
           <Card>
             <CardHead
@@ -553,7 +581,6 @@ export function AdminHomePage({
               )}
             </ul>
           </Card>
-        </div>
       </div>
 
       <EmployeeDrawer subject={drawer} onClose={() => setDrawer(null)} />
@@ -668,38 +695,6 @@ function InboxRow({
         size={13}
         className="shrink-0 text-muted-foreground/70 group-hover/sub:text-foreground transition"
       />
-    </button>
-  );
-}
-
-function InboxFilterChip({
-  active,
-  onClick,
-  label,
-  count,
-  Icon,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  Icon?: (typeof NOTIF_KINDS)[NotifKind]["Icon"];
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "shrink-0 h-8 inline-flex items-center gap-1.5 px-3 rounded-full border text-[11.5px] font-medium transition",
-        active
-          ? "bg-foreground text-background border-foreground"
-          : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-      )}
-    >
-      {Icon && <Icon size={12} strokeWidth={2.3} />}
-      {label}
-      <span className="tabular-nums opacity-80">{count}</span>
     </button>
   );
 }
