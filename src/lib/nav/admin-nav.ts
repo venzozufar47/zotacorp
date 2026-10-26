@@ -338,6 +338,7 @@ export function buildAdminNav({
           color: "bg-pop-pink",
           homeLabel: "Sosmed & KPI",
           children: [
+            { href: "/admin/social/scorecard", label: "Scorecard Sosmed" },
             { href: "/admin/social/akun", label: "Akun Sosmed" },
             { href: "/admin/ads", label: "Meta Ads" },
           ],
