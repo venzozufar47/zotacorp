@@ -1,15 +1,22 @@
 /**
- * Domain types Ticketing System (Yeobo Space Studio).
+ * Domain types Ticketing System (Yeobo Space dan Haengbocake).
  *
  * Hand-maintained (tidak ikut generated `supabase/types.ts`) — query pakai
  * `.from("tickets" as never)`, pola employment-contracts.
  *
- * Alur status:
- *   open → in_progress → resolved                (Kepala Studio)
- *   open | in_progress → escalated               (Kepala Studio → owner)
- *   escalated → owner_handling                   (owner ACC)
- *   escalated → in_progress                       (owner Tolak + owner_note)
- *   owner_handling → resolved                     (owner)
+ * Dua arah:
+ *   up   : karyawan melapor; tiket mendarat di Tingkat 1 rantai cabangnya dan naik satu tingkat tiap eskalasi,
+ *          sampai owner (handler_level = OWNER_LEVEL).
+ *   down : owner menugaskan ke satu karyawan (assignee_id) atau ke seluruh cabang (assignee_id kosong, siapa pun di
+ *          cabang itu bisa mengambil). Penerima mengerjakan + bukti foto; pembuat (owner) yang mengonfirmasi.
+ *
+ * Alur status (sama untuk kedua arah; "penanggung jawab" = anggota tingkat handler_level, atau penerima untuk 'down'):
+ *   open → in_progress → resolved                (penanggung jawab)
+ *   open | in_progress → escalated               (penanggung jawab → tingkat di atasnya; penerima 'down' → owner)
+ *   escalated → owner_handling                   (tingkat atas ACC → ditangani di tingkat itu)
+ *   escalated → in_progress                       (tingkat atas Tolak + catatan → kembali ke tingkat bawah / penerima)
+ *   owner_handling → resolved                     (tingkat yang menangani)
+ *   resolved → confirmed (pembuat) | in_progress  (pembuat menolak "belum beres")
  *   (open | in_progress) → cancelled              (pembuat / admin)
  */
 
@@ -21,11 +28,11 @@ export type TicketStatus =
   | "resolved"
   | "cancelled";
 
-export type TicketBranch = "Tlogosari" | "Tembalang" | "Jebres";
+/** Nama cabang (mis. "Tlogosari", "Pare"); daftar sah ada di tabel ticket_branches. */
+export type TicketBranch = string;
+export type TicketDirection = "up" | "down";
 export type TicketCategory = "kebutuhan_barang" | "barang_rusak" | "lainnya";
 export type TicketPriority = "normal" | "urgent";
-
-export const TICKET_BRANCHES: TicketBranch[] = ["Tlogosari", "Tembalang", "Jebres"];
 
 export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
   kebutuhan_barang: "Kebutuhan barang",
@@ -36,8 +43,8 @@ export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
 export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   open: "Baru",
   in_progress: "Dikerjakan",
-  escalated: "Eskalasi ke owner",
-  owner_handling: "Ditangani owner",
+  escalated: "Menunggu keputusan atasan",
+  owner_handling: "Ditangani atasan",
   resolved: "Selesai",
   cancelled: "Dibatalkan",
 };
@@ -67,6 +74,18 @@ export interface Ticket {
   createdByAvatarSeed?: string | null;
   businessUnit: string;
   branch: TicketBranch;
+  /** ticket_branches.id */
+  branchId: string;
+  /** Label tampilan cabang, mis. "Yeobo Space · Tlogosari". */
+  branchLabel?: string;
+  direction: TicketDirection;
+  /** Penerima tiket 'down' (kosong = ditujukan ke seluruh cabang, belum diambil). */
+  assigneeId: string | null;
+  assigneeName?: string | null;
+  /** Tingkat yang sedang memegang tiket 'up' (OWNER_LEVEL = owner). */
+  handlerLevel: number;
+  /** Tingkat asal eskalasi (untuk mengembalikan bila ditolak); 0 = penerima tiket 'down'. */
+  escalatedFromLevel: number | null;
   category: TicketCategory;
   priority: TicketPriority;
   title: string;
@@ -101,6 +120,14 @@ export function needsFilerConfirmation(
   return t.status === "resolved" && !t.confirmedAt;
 }
 
+/** Label status yang peka tingkat: "Menunggu keputusan Owner", "Ditangani Tingkat 2", dst. */
+export function ticketStatusLabel(t: Pick<Ticket, "status" | "handlerLevel">): string {
+  const lvl = t.handlerLevel >= 99 ? "Owner" : `Tingkat ${t.handlerLevel}`;
+  if (t.status === "escalated") return `Menunggu keputusan ${lvl}`;
+  if (t.status === "owner_handling") return `Ditangani ${lvl}`;
+  return TICKET_STATUS_LABELS[t.status];
+}
+
 /** Peran penampil terhadap sistem tiket. */
 export type TicketViewerRole = "owner" | "head" | "filer";
 
@@ -116,6 +143,7 @@ export type TicketViewerRole = "owner" | "head" | "filer";
 export interface TicketQueueSummary {
   id: string;
   branch: TicketBranch;
+  direction: TicketDirection;
   category: TicketCategory;
   priority: TicketPriority;
   title: string;
@@ -140,7 +168,7 @@ export function isTicketOpen(status: TicketStatus): boolean {
   return OPEN_TICKET_STATUSES.includes(status);
 }
 
-/** Antrian yang jadi tanggung jawab Kepala Studio (belum di tangan owner). */
+/** Tiket yang masih dikerjakan penanggung jawab tingkatnya (belum diteruskan ke atas). */
 export function isStudioQueueStatus(status: TicketStatus): boolean {
   return status === "open" || status === "in_progress";
 }

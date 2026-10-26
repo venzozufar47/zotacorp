@@ -119,6 +119,8 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
       .from("tickets" as never)
       .select("id, created_by, escalated_at, title")
       .in("status", ["escalated", "owner_handling"])
+      // Hanya yang sudah sampai tingkat owner; eskalasi ke tingkat menengah ditangani tingkat itu di halaman Tiket.
+      .gte("handler_level", 99)
       .order("escalated_at", { ascending: true })
       .limit(100),
     supabase
@@ -260,7 +262,7 @@ export async function getPendingConfirmations(): Promise<PendingConfirmationItem
     date: r.createdAt.slice(0, 10),
   }));
 
-  // Tiket studio yang perlu ditangani owner (eskalasi / owner_handling).
+  // Tiket yang perlu ditangani owner (eskalasi / owner_handling di tingkat owner).
   // `tickets` punya banyak FK ke profiles, jadi tak bisa embed — lookup
   // nama/avatar pembuat terpisah.
   type TicketRow = {

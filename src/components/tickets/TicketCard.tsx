@@ -24,6 +24,7 @@ import {
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { cn } from "@/lib/utils";
 import { TicketPhotos } from "./TicketPhotos";
+import { levelLabel } from "@/lib/tickets/chain-logic";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import {
   startTicket,
@@ -35,7 +36,7 @@ import {
 } from "@/lib/actions/tickets.actions";
 import {
   TICKET_CATEGORY_LABELS,
-  TICKET_STATUS_LABELS,
+  ticketStatusLabel,
   ticketResolutionMs,
   formatDuration,
   agoLabel,
@@ -45,7 +46,14 @@ import {
   type TicketViewerRole,
 } from "@/lib/tickets/types";
 
-type Context = "mine" | "queue" | "escalation" | "monitor";
+/**
+ * mine       : tiket yang saya buat (batalkan / konfirmasi selesai)
+ * assigned   : tiket 'turun' untuk saya (kerjakan; bila tidak sanggup kembalikan ke owner)
+ * queue      : tiket yang sedang saya pegang sebagai penanggung jawab tingkat
+ * escalation : eskalasi yang menunggu keputusan saya (ACC / tolak), atau yang sudah saya ACC (selesaikan)
+ * monitor    : tiket di cabang saya yang dipegang tingkat lain (hanya pantau)
+ */
+type Context = "mine" | "assigned" | "queue" | "escalation" | "monitor";
 
 interface NotePrompt {
   title: string;
@@ -187,14 +195,23 @@ export function TicketCard({
             STATUS_TONE[ticket.status]
           )}
         >
-          {TICKET_STATUS_LABELS[ticket.status]}
+          {ticketStatusLabel(ticket)}
         </span>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground">
-        <span className="font-semibold text-foreground">{ticket.branch}</span>
+        <span className="font-semibold text-foreground">{ticket.branchLabel ?? ticket.branch}</span>
+        {ticket.direction === "down" && (
+          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">Dari owner</span>
+        )}
         <span>·</span>
         <span>{TICKET_CATEGORY_LABELS[ticket.category]}</span>
+        {ticket.direction === "down" && (
+          <>
+            <span>·</span>
+            <span>Untuk: {ticket.assigneeName ?? "seluruh cabang (belum diambil)"}</span>
+          </>
+        )}
         {context !== "mine" && ticket.createdByName && (
           <>
             <span>·</span>
@@ -228,7 +245,7 @@ export function TicketCard({
       {ticket.ownerNote && (
         <NoteLine
           tone={ticket.ownerDecision === "rejected" ? "warn" : "info"}
-          label={ticket.ownerDecision === "rejected" ? "Ditolak owner" : "Catatan owner"}
+          label={ticket.ownerDecision === "rejected" ? "Ditolak atasan" : "Catatan atasan"}
           text={ticket.ownerNote}
         />
       )}
@@ -272,10 +289,10 @@ export function TicketCard({
         }
         onEscalate={() =>
           setPrompt({
-            title: "Eskalasi ke owner",
+            title: ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi ke atasan",
             required: true,
             run: (n) => escalateTicket(ticket.id, n),
-            successMsg: "Tiket dieskalasi ke owner",
+            successMsg: ticket.direction === "down" ? "Tiket dikembalikan ke owner" : "Tiket dieskalasi ke atasan",
           })
         }
         onCancel={() =>
@@ -286,7 +303,7 @@ export function TicketCard({
             title: "ACC eskalasi (ambil alih)",
             required: false,
             run: (n) => ownerDecideTicket(ticket.id, "accept", n || undefined),
-            successMsg: "Eskalasi diterima — jadi tanggung jawab owner",
+            successMsg: "Eskalasi diterima — jadi tanggung jawabmu",
           })
         }
         onReject={() =>
@@ -294,7 +311,7 @@ export function TicketCard({
             title: "Tolak eskalasi (kembalikan)",
             required: true,
             run: (n) => ownerDecideTicket(ticket.id, "reject", n),
-            successMsg: "Eskalasi ditolak — dikembalikan ke Kepala Studio",
+            successMsg: "Eskalasi ditolak — dikembalikan ke tingkat bawah",
           })
         }
         onConfirm={() =>
@@ -454,6 +471,7 @@ function ActionBar({
 }) {
   const s = ticket.status;
   const btns: React.ReactNode[] = [];
+  const here = levelLabel(ticket.handlerLevel);
 
   if (context === "mine") {
     if (s === "open" || s === "in_progress")
@@ -474,13 +492,27 @@ function ActionBar({
         </Button>
       );
     }
+    // Tiket yang saya buat tapi dipegang orang lain: beri tahu posisinya.
+    if (s === "escalated" || s === "owner_handling")
+      btns.push(
+        <span key="where" className="text-[11px] text-muted-foreground italic">
+          {s === "escalated" ? `Menunggu keputusan ${here}…` : `Ditangani ${here}`}
+        </span>
+      );
+    if ((s === "open" || s === "in_progress") && ticket.direction === "up" && viewerRole === "filer")
+      btns.push(
+        <span key="where2" className="text-[11px] text-muted-foreground italic">
+          Ada di {here}
+        </span>
+      );
   }
 
-  if (context === "queue") {
+  // Aksi penanggung jawab: tiket yang sedang saya pegang ("queue") atau tugas 'turun' untuk saya ("assigned").
+  if (context === "queue" || context === "assigned") {
     if (s === "open")
       btns.push(
         <Button key="start" size="xs" disabled={pending} onClick={onStart}>
-          <Play size={13} /> Mulai
+          <Play size={13} /> {context === "assigned" && !ticket.assigneeId ? "Ambil" : "Mulai"}
         </Button>
       );
     if (s === "open" || s === "in_progress") {
@@ -491,42 +523,60 @@ function ActionBar({
       );
       btns.push(
         <Button key="esc" variant="outline" size="xs" disabled={pending} onClick={onEscalate}>
-          <ArrowUpCircle size={13} /> Eskalasi
+          <ArrowUpCircle size={13} /> {ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi"}
         </Button>
       );
     }
     if (s === "escalated")
       btns.push(
         <span key="waiting" className="text-[11px] text-muted-foreground italic">
-          Menunggu keputusan owner…
+          Menunggu keputusan {here}…
         </span>
       );
     if (s === "owner_handling")
       btns.push(
         <span key="owner" className="text-[11px] text-muted-foreground italic">
-          Ditangani owner
+          Ditangani {here}
+        </span>
+      );
+    if (s === "resolved" && ticket.direction === "down")
+      btns.push(
+        <span key="resolved-down" className="text-[11px] text-muted-foreground italic">
+          Menunggu konfirmasi owner
         </span>
       );
   }
 
-  // Read-only untuk owner — memantau antrian Kepala Studio, bukan
-  // menjalankannya. Aksi owner ada di section "Perlu keputusan owner".
+  // Read-only: memantau tiket yang dipegang tingkat lain di cabang saya.
   if (context === "monitor") {
     if (s === "open")
       btns.push(
         <span key="m-open" className="text-[11px] text-muted-foreground italic">
-          Menunggu Kepala Studio memulai…
+          Menunggu {here} memulai…
         </span>
       );
     if (s === "in_progress")
       btns.push(
         <span key="m-prog" className="text-[11px] text-muted-foreground italic">
-          Sedang dikerjakan Kepala Studio…
+          Sedang dikerjakan {here}…
+        </span>
+      );
+    if (s === "escalated")
+      btns.push(
+        <span key="m-esc" className="text-[11px] text-muted-foreground italic">
+          Menunggu keputusan {here}…
+        </span>
+      );
+    if (s === "owner_handling")
+      btns.push(
+        <span key="m-own" className="text-[11px] text-muted-foreground italic">
+          Ditangani {here}
         </span>
       );
   }
 
-  if (context === "escalation" && viewerRole === "owner") {
+  // Keputusan atas eskalasi untuk tingkat yang menerimanya (owner maupun tingkat menengah).
+  if (context === "escalation") {
     if (s === "escalated") {
       btns.push(
         <Button key="acc" variant="emerald" size="xs" disabled={pending} onClick={onAccept}>

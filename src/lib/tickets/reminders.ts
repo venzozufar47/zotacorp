@@ -1,48 +1,45 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- tabel tiket baru belum ada di types.ts yang di-generate */
 /**
- * Reminder harian tiket studio untuk Kepala Studio (Yeobo Space).
+ * Reminder harian tiket untuk penanggung jawab (hierarki per cabang).
  *
- * Dipicu cron `/api/cron/studio-head-ticket-reminders` sekali sehari
- * 11.00 WIB. Menghitung tiket studio yang masih AKTIF (menunggu tindakan
- * Kepala Studio) lalu mengirim WA pengingat ke tiap Kepala Studio.
- *
- * Catatan model: `studio_heads` belum punya kolom kepemilikan/cabang per
- * kepala, jadi semua Kepala Studio berbagi satu antrian. Jumlah aktif =
- * total tiket open + in_progress (status yang menunggu tindakan kepala;
- * escalated/owner_handling sudah di tangan owner). Bila 0 → tidak kirim.
+ * Dipicu cron `/api/cron/studio-head-ticket-reminders` dua kali sehari (11.00 dan 18.00 WIB). Tiap anggota rantai
+ * diingatkan HANYA soal tiket yang sedang menunggu tingkatnya di cabang yang dia pegang (open / in_progress; tiket
+ * yang sudah dieskalasi ada di tangan tingkat di atasnya). Penerima tiket "turun" dari owner diingatkan soal tiket
+ * yang ditugaskan kepadanya (atau ke seluruh cabangnya dan belum diambil). Tidak ada tiket → tidak kirim.
  */
 
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { sendPushToUser } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
-import {
-  TICKET_CATEGORY_LABELS,
-  type TicketCategory,
-} from "@/lib/tickets/types";
+import { TICKET_CATEGORY_LABELS, type TicketCategory } from "@/lib/tickets/types";
 
-/** Status yang dianggap "aktif" & menunggu tindakan Kepala Studio. */
+/** Status yang dianggap "aktif" & menunggu tindakan penanggung jawab. */
 const ACTIVE_STATUSES = ["open", "in_progress"] as const;
 
 interface ActiveTicketRow {
   title: string;
   branch: string;
+  branch_id: string;
+  direction: string;
+  assignee_id: string | null;
+  handler_level: number;
   category: string;
   priority: string;
   created_at: string;
 }
 
-/** Susun daftar tiket aktif jadi teks untuk WA (urgent di atas). */
+/** Susun daftar tiket aktif jadi teks (urgent di atas, lalu terlama dulu). */
 function buildTicketList(rows: ActiveTicketRow[]): string {
   const sorted = [...rows].sort((a, b) => {
     const ua = a.priority === "urgent" ? 1 : 0;
     const ub = b.priority === "urgent" ? 1 : 0;
-    if (ua !== ub) return ub - ua; // urgent dulu
-    return a.created_at < b.created_at ? -1 : 1; // lalu terlama dulu
+    if (ua !== ub) return ub - ua;
+    return a.created_at < b.created_at ? -1 : 1;
   });
   return sorted
     .map((t, i) => {
       const flag = t.priority === "urgent" ? "🔴 " : "";
-      const cat =
-        TICKET_CATEGORY_LABELS[t.category as TicketCategory] ?? t.category;
+      const cat = TICKET_CATEGORY_LABELS[t.category as TicketCategory] ?? t.category;
       return `${i + 1}. ${flag}${t.title} (${t.branch} · ${cat})`;
     })
     .join("\n");
@@ -56,61 +53,75 @@ export interface StudioReminderSummary {
 }
 
 export async function runStudioHeadTicketReminders(): Promise<StudioReminderSummary> {
-  // `tickets` types di-maintain manual → cast longgar (pola tickets.actions).
+  // `tickets` types di-maintain manual → cast longgar.
   const admin = createAdminClient() as any;
 
-  // 1. Ambil tiket aktif + detailnya.
   const { data: ticketRows, error: tErr } = await admin
     .from("tickets")
-    .select("title, branch, category, priority, created_at")
+    .select("title, branch, branch_id, direction, assignee_id, handler_level, category, priority, created_at")
     .in("status", ACTIVE_STATUSES as unknown as string[]);
   if (tErr) throw new Error(tErr.message);
   const rows = (ticketRows ?? []) as ActiveTicketRow[];
-  const activeCount = rows.length;
+  if (rows.length === 0) return { activeCount: 0, heads: 0, sent: 0, skipped: "no active tickets" };
 
-  if (activeCount === 0) {
-    return { activeCount: 0, heads: 0, sent: 0, skipped: "no active tickets" };
+  // Siapa yang diingatkan tentang tiket apa.
+  const perUser = new Map<string, ActiveTicketRow[]>();
+  const push = (uid: string, t: ActiveTicketRow) => perUser.set(uid, [...(perUser.get(uid) ?? []), t]);
+
+  // 1. Tiket "naik": anggota tingkat yang memegangnya (anggota rantai per cabang), atau semua admin untuk level owner.
+  const { data: members } = await admin.from("ticket_chain_members").select("branch_id, user_id, level");
+  const { data: admins } = await admin.from("profiles").select("id").eq("role", "admin");
+  const adminIds = ((admins ?? []) as any[]).map((a) => a.id as string);
+  for (const t of rows) {
+    if (t.direction !== "up") continue;
+    if (Number(t.handler_level) >= 99) {
+      for (const id of adminIds) push(id, t);
+      continue;
+    }
+    for (const m of (members ?? []) as any[]) {
+      if (m.branch_id === t.branch_id && Number(m.level) === Number(t.handler_level)) push(m.user_id as string, t);
+    }
   }
-  // Legend hanya bila ada tiket urgent — supaya arti 🔴 jelas bagi kepala studio.
-  const hasUrgent = rows.some((r) => r.priority === "urgent");
-  const list = hasUrgent
-    ? `${buildTicketList(rows)}\n\n🔴 = mendesak, mohon didahulukan.`
-    : buildTicketList(rows);
 
-  // 2. Ambil Kepala Studio + nomor WA.
-  const { data: heads } = await admin.from("studio_heads").select("user_id");
-  const ids = ((heads ?? []) as any[]).map((h) => h.user_id as string);
-  if (ids.length === 0) {
-    return { activeCount, heads: 0, sent: 0, skipped: "no studio heads" };
+  // 2. Tiket "turun": penerima, atau seluruh karyawan cabang bila belum diambil.
+  const downTickets = rows.filter((t) => t.direction === "down");
+  if (downTickets.length > 0) {
+    const branchIds = Array.from(new Set(downTickets.map((t) => t.branch_id)));
+    const { data: branches } = await admin.from("ticket_branches").select("id, location_id").in("id", branchIds);
+    const locByBranch = new Map(((branches ?? []) as any[]).map((b) => [b.id as string, b.location_id as string | null]));
+    const locIds = Array.from(new Set(Array.from(locByBranch.values()).filter(Boolean) as string[]));
+    const { data: emps } = locIds.length ? await admin.from("employee_locations").select("employee_id, location_id").in("location_id", locIds) : { data: [] };
+    for (const t of downTickets) {
+      if (t.assignee_id) {
+        push(t.assignee_id, t);
+        continue;
+      }
+      const loc = locByBranch.get(t.branch_id);
+      for (const e of (emps ?? []) as any[]) if (e.location_id === loc) push(e.employee_id as string, t);
+    }
   }
-  const { data: profs } = await admin
-    .from("profiles")
-    .select("id, full_name, nickname")
-    .in("id", ids);
 
-  // 3. Kirim pengingat push per kepala. sendPushToUser no-op diam-diam
-  // kalau kepala itu belum aktifkan notifikasi (tidak melempar), jadi
-  // `sent` di sini menghitung PERCOBAAN kirim, bukan konfirmasi terkirim.
+  const ids = Array.from(perUser.keys());
+  if (ids.length === 0) return { activeCount: rows.length, heads: 0, sent: 0, skipped: "no recipients" };
+  const { data: profs } = await admin.from("profiles").select("id, full_name, nickname").in("id", ids);
+
+  // sendPushToUser no-op diam-diam kalau penerima belum aktifkan notifikasi (tidak melempar), jadi `sent` menghitung
+  // PERCOBAAN kirim, bukan konfirmasi terkirim.
   let sent = 0;
   for (const p of (profs ?? []) as any[]) {
+    const mine = perUser.get(p.id) ?? [];
+    if (mine.length === 0) continue;
     try {
-      const name: string =
-        (p.nickname?.trim() as string) || p.full_name || "Kepala Studio";
-      const body = await renderWaTemplate("ticket_active_reminder", {
-        name,
-        count: activeCount,
-        list,
-      });
-      await sendPushToUser(p.id, {
-        title: "Tiket studio menunggu",
-        body,
-        url: "/tickets",
-      });
+      const name: string = (p.nickname?.trim() as string) || p.full_name || "Tim";
+      const hasUrgent = mine.some((r) => r.priority === "urgent");
+      const list = hasUrgent ? `${buildTicketList(mine)}\n\n🔴 = mendesak, mohon didahulukan.` : buildTicketList(mine);
+      const body = await renderWaTemplate("ticket_active_reminder", { name, count: mine.length, list });
+      await sendPushToUser(p.id, { title: "Tiket menunggu", body, url: "/tickets" });
       sent++;
     } catch (err) {
       console.error("[tickets] push send failed", err);
     }
   }
 
-  return { activeCount, heads: ids.length, sent };
+  return { activeCount: rows.length, heads: ids.length, sent };
 }

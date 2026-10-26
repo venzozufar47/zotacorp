@@ -5,10 +5,12 @@ import { getCurrentUser } from "@/lib/supabase/cached";
 import { getMyTicketRole } from "@/lib/tickets/access";
 import {
   getMyTickets,
+  getAssignedToMe,
   getStudioQueue,
-  getEscalatedForOwner,
   getStudioHeadKpi,
   getBranchQueue,
+  getMyChainLevels,
+  getTicketFormOptions,
 } from "@/lib/actions/tickets.actions";
 import { TicketingSystem } from "@/components/tickets/TicketingSystem";
 import { RealtimeRefresher } from "@/components/shared/RealtimeRefresher";
@@ -18,12 +20,14 @@ export default async function TicketsPage() {
   if (!user || !role) redirect("/dashboard");
 
   const isManager = role === "head" || role === "owner";
-  const [myTickets, studioQueue, escalated, branchQueue, kpi] = await Promise.all([
+  const [myTickets, assignedToMe, studioQueue, branchQueue, kpi, myLevels, formOptions] = await Promise.all([
     getMyTickets(),
+    getAssignedToMe(),
     isManager ? getStudioQueue() : Promise.resolve([]),
-    role === "owner" ? getEscalatedForOwner() : Promise.resolve([]),
     role === "filer" ? getBranchQueue() : Promise.resolve([]),
     isManager ? getStudioHeadKpi() : Promise.resolve(null),
+    getMyChainLevels(),
+    getTicketFormOptions(),
   ]);
 
   return (
@@ -33,10 +37,12 @@ export default async function TicketsPage() {
         viewerRole={role}
         uid={user.id}
         myTickets={myTickets}
+        assignedToMe={assignedToMe}
         studioQueue={studioQueue}
-        escalated={escalated}
         branchQueue={branchQueue}
         kpi={kpi}
+        myLevels={myLevels}
+        formOptions={formOptions}
         backHref="/dashboard"
       />
     </>
