@@ -93,6 +93,7 @@ export async function getSelfieAiStatus(): Promise<SelfieAiStatus | { error: str
       no_mask: r.filters?.no_mask === true,
       apron: r.filters?.apron === true,
       lanyard: r.filters?.lanyard === true,
+      uniform: r.filters?.uniform === true,
     }),
     employees: countByUnit.get(r.business_unit) ?? 0,
   }));

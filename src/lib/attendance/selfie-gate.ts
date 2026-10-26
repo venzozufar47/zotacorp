@@ -16,7 +16,11 @@ export type SelfieIssue =
   | "mask"
   | "no_apron"
   | "no_lanyard"
-  | "no_head_cover";
+  | "no_head_cover"
+  | "wrong_hijab_color"
+  | "dark_clothing";
+
+export type UniformHijabColor = "blue" | "brown" | "pink";
 
 export interface SelfieFilters {
   indoor: boolean;
@@ -24,12 +28,21 @@ export interface SelfieFilters {
   no_mask: boolean;
   apron: boolean;
   lanyard: boolean;
+  /** Ketentuan seragam Tim Perempuan Haengbocake (kerudung per hari + larangan nuansa gelap). */
+  uniform: boolean;
 }
 
 export interface SelfieRuleSet {
   filters: SelfieFilters;
   /** Wajib penutup kepala (aturan per orang, mis. rambut panjang tanpa hijab). */
   headCover: boolean;
+  /**
+   * Warna kerudung wajib untuk HARI INI, dari `uniformRequiredHijabColor`.
+   * null = tidak ada ketentuan hari ini (mis. Minggu) — `filters.uniform`
+   * sudah dibikin false oleh `loadSelfieRules` dalam kasus itu, field ini
+   * cuma dibawa serta biar satu sumber kebenaran.
+   */
+  requiredHijabColor: UniformHijabColor | null;
 }
 
 /** Apa yang diamati AI. Field yang filternya mati tidak diminta, jadi bernilai undefined. */
@@ -41,6 +54,8 @@ export interface SelfieObservation {
   apron?: boolean;
   lanyard?: boolean;
   cover?: boolean;
+  hijabColor?: UniformHijabColor | "other" | "none";
+  darkClothing?: boolean;
 }
 
 export type SelfieJudgement =
@@ -50,6 +65,38 @@ export type SelfieJudgement =
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
 const TIMEOUT_MS = 10_000;
+
+/** Label Indonesia untuk pesan & panduan kamera. */
+const HIJAB_COLOR_LABEL: Record<UniformHijabColor, string> = {
+  blue: "biru",
+  brown: "coklat",
+  pink: "pink",
+};
+
+/**
+ * Ketentuan Seragam Tim Perempuan Haengbocake (Semarang & Pare): warna
+ * kerudung wajib per hari. Senin–Selasa biru, Rabu–Kamis coklat,
+ * Jumat–Sabtu pink. Minggu tidak ada ketentuan (toko tutup) → null.
+ *
+ * Daftar nuansa baju yang disarankan per hari (putih/cream/kuning/dll)
+ * SENGAJA tidak ditegakkan ketat di sini — dokumennya sendiri memakai
+ * "dll" di tiap hari, jadi daftarnya bukan daftar lengkap. Satu-satunya
+ * aturan baju yang keras & jelas adalah larangan nuansa hitam/gelap
+ * (lihat `darkClothing` di `issuesFromObservation`), berlaku semua hari
+ * yang ada ketentuan kerudungnya.
+ *
+ * Pure & testable lewat parameter tanggal eksplisit (bukan baca jam
+ * sistem) — pemanggil (selfie-gate-db.ts) yang menyuplai tanggal WIB.
+ */
+export function uniformRequiredHijabColor(jakartaDateYmd: string): UniformHijabColor | null {
+  // "YYYY-MM-DD" + T00:00:00Z: aman dari pergeseran zona waktu karena
+  // string sudah tanggal kalender WIB — cuma perlu day-of-week-nya.
+  const day = new Date(`${jakartaDateYmd}T00:00:00Z`).getUTCDay(); // 0=Minggu..6=Sabtu
+  if (day === 1 || day === 2) return "blue"; // Senin, Selasa
+  if (day === 3 || day === 4) return "brown"; // Rabu, Kamis
+  if (day === 5 || day === 6) return "pink"; // Jumat, Sabtu
+  return null; // Minggu
+}
 
 const ISSUE_MESSAGE: Record<SelfieIssue, string> = {
   outdoor: "Latar belakang terlihat di luar ruangan. Absen dari dalam ruangan, ya.",
@@ -63,6 +110,9 @@ const ISSUE_MESSAGE: Record<SelfieIssue, string> = {
   no_apron: "Apron belum terlihat. Pakai apron, dan pastikan tali atau bagian atasnya terlihat di bahu atau dada.",
   no_lanyard: "Lanyard belum terlihat. Kalungkan lanyard, dan pastikan tali atau kartunya terlihat di dada.",
   no_head_cover: "Penutup kepala (kupluk atau topi yang menutupi rambut) belum terlihat.",
+  // Fallback generik — messageFromIssues mengganti ini dengan warna hari ini bila ctx tersedia.
+  wrong_hijab_color: "Warna kerudung belum sesuai ketentuan seragam hari ini.",
+  dark_clothing: "Baju terlihat bernuansa hitam/gelap. Ketentuan seragam melarang nuansa gelap.",
 };
 
 /** Urutan tampil pesan: yang paling mudah diperbaiki karyawan lebih dulu. */
@@ -77,6 +127,8 @@ const ISSUE_ORDER: SelfieIssue[] = [
   "no_apron",
   "no_lanyard",
   "no_head_cover",
+  "wrong_hijab_color",
+  "dark_clothing",
 ];
 
 /** Murni: amatan AI + aturan → daftar masalah. Hanya filter yang menyala yang dihitung. */
@@ -99,12 +151,27 @@ export function issuesFromObservation(obs: SelfieObservation, rules: SelfieRuleS
   if (f.apron && obs.apron !== true) found.add("no_apron");
   if (f.lanyard && obs.lanyard !== true) found.add("no_lanyard");
   if (rules.headCover && obs.cover !== true) found.add("no_head_cover");
+  if (f.uniform && rules.requiredHijabColor) {
+    if (obs.hijabColor !== rules.requiredHijabColor) found.add("wrong_hijab_color");
+    if (obs.darkClothing === true) found.add("dark_clothing");
+  }
   return ISSUE_ORDER.filter((i) => found.has(i));
 }
 
-/** Murni: satu baris per masalah, dipisah "\n". */
-export function messageFromIssues(issues: SelfieIssue[]): string {
-  return issues.map((i) => ISSUE_MESSAGE[i]).join("\n");
+/**
+ * Murni: satu baris per masalah, dipisah "\n". `requiredHijabColor`
+ * (opsional) menyebut warna yang benar untuk hari ini di pesan
+ * "wrong_hijab_color" — tanpanya, pesan jatuh ke kalimat generik.
+ */
+export function messageFromIssues(issues: SelfieIssue[], requiredHijabColor?: UniformHijabColor | null): string {
+  return issues
+    .map((i) => {
+      if (i === "wrong_hijab_color" && requiredHijabColor) {
+        return `Hari ini pakai kerudung warna ${HIJAB_COLOR_LABEL[requiredHijabColor]}, sesuai ketentuan seragam.`;
+      }
+      return ISSUE_MESSAGE[i];
+    })
+    .join("\n");
 }
 
 /**
@@ -133,6 +200,12 @@ export function buildPrompt(rules: SelfieRuleSet): string {
     lines.push("lanyard: true if the person's own lanyard strap or ID card is visible on the neck/chest or held up (not on a poster or standee).");
   }
   if (rules.headCover) lines.push("cover: true if a beanie/cap/head covering is over the hair.");
+  if (f.uniform) {
+    lines.push(
+      "hijabColor: dominant color of the hijab/headscarf — blue (any blue shade), brown, pink, other (any other color), none (no hijab visible).",
+      "darkClothing: true if the visible top/clothing is black or a very dark/dim shade (navy-black, dark grey, charcoal); false for white/cream/pastel/bright/medium colors.",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -148,6 +221,10 @@ function buildSchema(rules: SelfieRuleSet) {
   if (f.apron) properties.apron = { type: "BOOLEAN" };
   if (f.lanyard) properties.lanyard = { type: "BOOLEAN" };
   if (rules.headCover) properties.cover = { type: "BOOLEAN" };
+  if (f.uniform) {
+    properties.hijabColor = { type: "STRING", enum: ["blue", "brown", "pink", "other", "none"] };
+    properties.darkClothing = { type: "BOOLEAN" };
+  }
   return { type: "OBJECT", properties, required: Object.keys(properties) };
 }
 
@@ -161,6 +238,9 @@ export function guideHint(rules: SelfieRuleSet): string {
   if (f.indoor) parts.push("di dalam ruangan, tanpa helm");
   if (f.no_mask) parts.push("tanpa masker");
   if (rules.headCover) parts.push("pakai penutup kepala");
+  if (f.uniform && rules.requiredHijabColor) {
+    parts.push(`kerudung ${HIJAB_COLOR_LABEL[rules.requiredHijabColor]}, baju tidak hitam/gelap`);
+  }
   if (parts.length === 0) return "";
   const text = parts.join(", ");
   return text[0].toUpperCase() + text.slice(1);
@@ -174,6 +254,7 @@ export function describeFilters(f: SelfieFilters): string[] {
   if (f.no_mask) out.push("Tanpa masker");
   if (f.apron) out.push("Apron");
   if (f.lanyard) out.push("Lanyard");
+  if (f.uniform) out.push("Seragam (kerudung per hari + larangan nuansa gelap)");
   return out;
 }
 
@@ -185,7 +266,7 @@ export function selfieModelName(): string {
 /** Ada yang perlu diperiksa? (aturan dengan semua filter mati tidak memanggil AI.) */
 export function hasActiveFilters(rules: SelfieRuleSet): boolean {
   const f = rules.filters;
-  return f.indoor || f.face_full || f.no_mask || f.apron || f.lanyard || rules.headCover;
+  return f.indoor || f.face_full || f.no_mask || f.apron || f.lanyard || f.uniform || rules.headCover;
 }
 
 interface GeminiBody {
@@ -230,7 +311,7 @@ export async function judgeSelfie(bytes: ArrayBuffer, mime: string, rules: Selfi
     if (!text) return { status: "error", error: "Jawaban AI kosong" };
     const issues = issuesFromObservation(JSON.parse(text) as SelfieObservation, rules);
     if (issues.length === 0) return { status: "ok" };
-    return { status: "reject", issues, message: messageFromIssues(issues) };
+    return { status: "reject", issues, message: messageFromIssues(issues, rules.requiredHijabColor) };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : "AI gagal" };
   } finally {

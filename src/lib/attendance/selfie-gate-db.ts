@@ -5,6 +5,7 @@
 import type { createAdminClient } from "@/lib/actions/_supabase-admin";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import type { SelfieFilters, SelfieRuleSet } from "@/lib/attendance/selfie-gate";
+import { uniformRequiredHijabColor } from "@/lib/attendance/selfie-gate";
 
 /** Maks. foto yang diperiksa AI per karyawan per hari; lewat itu foto diterima tanpa AI (cegah biaya melonjak). */
 export const SELFIE_AI_DAILY_CAP = 6;
@@ -32,7 +33,11 @@ export function jakartaDayStartIso(now = new Date()): string {
 /** Aturan selfie untuk karyawan ini, atau null bila unit bisnisnya tidak dikenai filter. */
 export async function loadSelfieRules(client: Admin, userId: string): Promise<SelfieRuleSet | null> {
   const db = looseDb(client);
-  const { data: profile } = await client.from("profiles").select("business_unit").eq("id", userId).maybeSingle();
+  const { data: profile } = await client
+    .from("profiles")
+    .select("business_unit, gender")
+    .eq("id", userId)
+    .maybeSingle();
   const unit = profile?.business_unit;
   if (!unit) return null;
   const [{ data: rule }, { data: userRule }] = await Promise.all([
@@ -43,6 +48,10 @@ export async function loadSelfieRules(client: Admin, userId: string): Promise<Se
   // Dibebaskan dari AI per karyawan: sama dengan unit tanpa filter (tanpa panduan kamera, tanpa pemeriksaan).
   if (userRule?.ai_exempt === true) return null;
   const f = (rule.filters ?? {}) as Partial<SelfieFilters>;
+  // Ketentuan Seragam Tim Perempuan Haengbocake: khusus profil Female,
+  // dan hanya hari yang punya ketentuan (Senin-Sabtu; null = Minggu).
+  const requiredHijabColor = uniformRequiredHijabColor(jakartaDateString(new Date()));
+  const uniformActive = f.uniform === true && profile?.gender === "Female" && requiredHijabColor !== null;
   return {
     filters: {
       indoor: f.indoor === true,
@@ -50,8 +59,10 @@ export async function loadSelfieRules(client: Admin, userId: string): Promise<Se
       no_mask: f.no_mask === true,
       apron: f.apron === true,
       lanyard: f.lanyard === true,
+      uniform: uniformActive,
     },
     headCover: userRule?.head_cover === true,
+    requiredHijabColor: uniformActive ? requiredHijabColor : null,
   };
 }
 
