@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, ChevronDown, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRp } from "@/lib/cashflow/format";
 import { categoryLabelFull } from "@/lib/procurement/categories";
@@ -11,6 +11,7 @@ import {
   acceptFlaggedPrice,
   deletePurchase,
   dismissFlaggedPrice,
+  updatePurchaseMoneySource,
   type PurchaseSummary,
   type PurchaseView,
 } from "@/lib/actions/procurement-purchases.actions";
@@ -216,20 +217,38 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
             ) : (
               <span className="text-xs text-muted-foreground">Foto tidak tersedia</span>
             )}
-            {p.canDelete && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => {
-                  if (confirm("Hapus nota ini beserta catatan kas dan stok masuknya? Tidak bisa dibatalkan.")) {
-                    run(() => deletePurchase(p.id), "Nota dihapus");
-                  }
-                }}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-destructive disabled:opacity-50"
-              >
-                <Trash2 size={12} /> Hapus
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {p.canChangeSource && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    const target = p.moneySource === "laci" ? "pengadaan" : "laci";
+                    const label = target === "laci" ? "uang laci kasir" : "uang pengadaan";
+                    if (confirm(`Ubah sumber uang nota ini jadi ${label}? Kas laci ikut terkoreksi.`)) {
+                      run(() => updatePurchaseMoneySource({ id: p.id, newSource: target }), "Sumber uang diubah");
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-primary disabled:opacity-50"
+                >
+                  <ArrowLeftRight size={12} /> Ubah sumber
+                </button>
+              )}
+              {p.canDelete && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    if (confirm("Hapus nota ini beserta catatan kas dan stok masuknya? Tidak bisa dibatalkan.")) {
+                      run(() => deletePurchase(p.id), "Nota dihapus");
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-destructive disabled:opacity-50"
+                >
+                  <Trash2 size={12} /> Hapus
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

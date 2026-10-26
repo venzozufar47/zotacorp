@@ -224,7 +224,9 @@ export function PurchaseForm({
           desc={
             access.shiftCashier
               ? `Dibayar dari laci shift ${access.shiftCashier}. Mengurangi kas laci — ikut dihitung saat tutup shift.`
-              : "Dibayar dari laci kasir. Mengurangi kas laci saat shift berjalan."
+              : access.drawerState === "closed"
+                ? "Dibayar dari laci kasir. Tidak ada shift berjalan sekarang, tapi tetap mengurangi isi laci sejak tutup shift terakhir."
+                : "Dibayar dari laci kasir. Mengurangi kas laci."
           }
           disabled={!access.laci}
           disabledReason={access.laciReason ?? undefined}

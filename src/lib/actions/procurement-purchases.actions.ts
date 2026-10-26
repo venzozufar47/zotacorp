@@ -21,7 +21,7 @@ import {
   type ActionResult,
 } from "./_gates";
 import { getCurrentUser } from "@/lib/supabase/cached";
-import { findOpenShift } from "@/lib/pos/shift-data";
+import { findOpenShift, currentDrawerCash, type DrawerCashNow } from "@/lib/pos/shift-data";
 import { posAccountFilterForCostingBrand } from "@/lib/costing/brands";
 import { num } from "@/lib/costing/rows";
 import { fetchUnitsMap } from "@/lib/costing/rows";
@@ -84,13 +84,24 @@ interface PurchaseAuth {
   acct: { id: string; branch: string | null };
   /** Shift yang sedang terbuka di cabang ini (null = tidak ada). */
   shift: { id: string; cashierName: string; openedAt: string } | null;
+  /**
+   * Isi laci kasir SEKARANG — "open" (shift berjalan) ATAU "closed" (dari hitungan tutup shift
+   * terakhir + gerakan kas sesudahnya, lihat `currentDrawerCash`). Keduanya bisa dihitung, jadi
+   * uang laci boleh dipakai di keduanya — cuma "unknown" (belum pernah ada hitungan tutup shift
+   * sama sekali di cabang ini) yang tidak bisa.
+   */
+  drawer: DrawerCashNow;
 }
 
 /**
  * Siapa boleh apa:
  *  - uang PENGADAAN : hanya petugas pengadaan cabang itu (atau admin);
- *  - uang LACI      : harus ada shift terbuka; boleh petugas pengadaan ATAU asisten POS cabang itu
- *                     (akun kasir) — pengeluaran laci mengurangi kas laci, jadi hanya saat shift berjalan.
+ *  - uang LACI      : boleh petugas pengadaan ATAU asisten POS cabang itu (akun kasir), selama isi
+ *                     laci cabang ini bisa dihitung (shift berjalan ATAU dari hitungan tutup shift
+ *                     terakhir) — tidak harus shift sedang terbuka. Lihat `currentDrawerCash`:
+ *                     tanpa shift terbuka pun, gerakan kas sejak tutup shift terakhir tetap masuk
+ *                     hitungan, jadi mewajibkan shift terbuka di sini cuma memaksa orang salah
+ *                     pilih "uang pengadaan" padahal uangnya memang diambil dari laci.
  */
 async function authorizePurchaseAccess(
   businessUnit: string
@@ -108,7 +119,7 @@ async function authorizePurchaseAccess(
     if (!pos.ok) return { ok: false, error: "Forbidden" };
     isStaff = false;
   }
-  const shift = await findOpenShift(admin, acct.id);
+  const [shift, drawer] = await Promise.all([findOpenShift(admin, acct.id), currentDrawerCash(admin, acct.id)]);
   return {
     ok: true,
     auth: {
@@ -117,6 +128,7 @@ async function authorizePurchaseAccess(
       isStaff,
       acct,
       shift: shift ? { id: shift.id, cashierName: shift.cashierName, openedAt: shift.openedAt } : null,
+      drawer,
     },
   };
 }
@@ -175,10 +187,12 @@ export interface PurchaseFormData {
   access: {
     pengadaan: boolean;
     laci: boolean;
-    /** Alasan "uang laci" belum bisa dipakai (mis. tidak ada shift terbuka). */
+    /** Alasan "uang laci" belum bisa dipakai (mis. isi laci belum pernah dihitung). */
     laciReason: string | null;
-    /** Kasir shift yang sedang berjalan (untuk keterangan). */
+    /** Kasir shift yang sedang berjalan (untuk keterangan); null juga saat laci dipakai dari hitungan tutup shift terakhir. */
     shiftCashier: string | null;
+    /** "open" = shift berjalan, "closed" = dari hitungan tutup shift terakhir, "unknown" = belum pernah ada hitungan. */
+    drawerState: "open" | "closed" | "unknown";
     /** Petugas non-pengadaan: hanya pengeluaran lain (tanpa bahan baku). */
     lainOnly: boolean;
     /** Saldo uang pengadaan cabang ini (saldo buku − isi laci); null = tak diketahui / bukan petugas. */
@@ -193,9 +207,10 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
   const admin = createAdminClient();
   const accessInfo: PurchaseFormData["access"] = {
     pengadaan: auth.isStaff,
-    laci: auth.shift != null,
-    laciReason: auth.shift ? null : "Tidak ada shift yang terbuka di cabang ini",
+    laci: auth.drawer.state !== "unknown",
+    laciReason: auth.drawer.state === "unknown" ? "Isi laci cabang ini belum pernah dihitung" : null,
     shiftCashier: auth.shift?.cashierName ?? null,
+    drawerState: auth.drawer.state,
     lainOnly: !auth.isStaff,
     walletBalance: null,
   };
@@ -413,10 +428,10 @@ export async function createPurchase(
   const { auth } = access;
   const gate = { userId: auth.userId };
   if (input.moneySource === "pengadaan" && !auth.isStaff) return { ok: false, error: "Forbidden" };
-  if (input.moneySource === "laci" && !auth.shift)
+  if (input.moneySource === "laci" && auth.drawer.state === "unknown")
     return {
       ok: false,
-      error: "Tidak ada shift yang terbuka — uang laci hanya dicatat saat shift berjalan",
+      error: "Isi laci cabang ini belum bisa dihitung — pakai uang pengadaan dulu",
     };
   if (!auth.isStaff && input.lines.some((l) => l.kind === "bahan"))
     return { ok: false, error: "Bahan baku dicatat oleh petugas pengadaan" };
@@ -636,12 +651,14 @@ export async function createPurchase(
     .maybeSingle();
   let txSort = (maxRow?.sort_order ?? -1) + 1;
 
-  // Shift bisa ditutup sejak form dibuka: uang laci hanya sah selama shift yang sama masih berjalan.
+  // Isi laci bisa berubah status sejak form dibuka (mis. shift baru dibuka lalu langsung ditutup
+  // tanpa hitungan tutup): cek ulang, bukan dipin ke shift yang sama — laci tetap sah dipakai baik
+  // shift sedang berjalan maupun dari hitungan tutup shift terakhir (lihat `authorizePurchaseAccess`).
   if (input.moneySource === "laci") {
-    const nowShift = await findOpenShift(admin, acct.id);
-    if (!nowShift || nowShift.id !== auth.shift?.id) {
+    const nowDrawer = await currentDrawerCash(admin, acct.id);
+    if (nowDrawer.state === "unknown") {
       await rollback();
-      return { ok: false, error: "Shift sudah ditutup — uang laci tidak bisa dicatat lagi. Pakai uang pengadaan atau minta owner." };
+      return { ok: false, error: "Isi laci cabang ini tidak bisa dihitung lagi — pakai uang pengadaan atau minta owner." };
     }
   }
 
@@ -870,6 +887,8 @@ export interface PurchaseView {
   createdAt: string;
   receiptUrl: string | null;
   canDelete: boolean;
+  /** Sama aturan dengan canDelete: admin kapan saja, pencatatnya sendiri hanya di hari yang sama. */
+  canChangeSource: boolean;
   moneySource: MoneySource;
   lines: PurchaseLineView[];
 }
@@ -982,6 +1001,7 @@ export async function listPurchases(
         createdAt: h.created_at as string,
         receiptUrl: urls.get(h.receipt_path as string) ?? null,
         canDelete: isAdmin || (createdBy === userId && sameDay),
+        canChangeSource: isAdmin || (createdBy === userId && sameDay),
         moneySource: (h.money_source as MoneySource) === "laci" ? "laci" : "pengadaan",
         lines: byPurchase.get(h.id as string) ?? [],
       };
@@ -1125,6 +1145,73 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
   }
 
   await admin.storage.from(RECEIPT_BUCKET).remove(files);
+  revalidateAll();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Ubah sumber uang nota yang sudah terlanjur disimpan
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Pindahkan sumber uang nota yang sudah tersimpan (mis. salah pilih "uang pengadaan" padahal uangnya
+ * diambil dari laci — lihat komplain Tasya, Okt 2026). Membalik `drawer_neutral` di SEMUA baris buku
+ * kas nota ini supaya kas laci ikut terkoreksi, bukan cuma label `money_source`-nya.
+ *
+ * Aturan sama dengan `deletePurchase`: admin kapan saja, pencatatnya sendiri hanya di hari yang sama.
+ * Pindah KE "laci" tambahan syaratnya: nota harus bertanggal hari ini (sama seperti pencatatan laci
+ * baru) dan isi laci cabang ini harus bisa dihitung sekarang — kalau tidak, baris lama yang dipindah
+ * ke laci akan ikut mempengaruhi jendela kas (`cashMovementInWindow`, dikunci dari `created_at`, bukan
+ * `purchase_date`) tanpa ada hitungan tutup shift yang jadi acuan.
+ */
+export async function updatePurchaseMoneySource(input: { id: string; newSource: MoneySource }): Promise<ActionResult> {
+  if (input.newSource !== "pengadaan" && input.newSource !== "laci") return { ok: false, error: "Sumber uang tidak dikenal" };
+  const admin = createAdminClient();
+  const { data: head } = await admin
+    .from("procurement_purchases" as never)
+    .select("id, business_unit, created_by, created_at, purchase_date, money_source")
+    .eq("id", input.id)
+    .maybeSingle();
+  const h = head as Record<string, unknown> | null;
+  if (!h) return { ok: false, error: "Nota tidak ditemukan" };
+  if (h.money_source === input.newSource) return { ok: true };
+
+  const access = await authorizePurchaseAccess(h.business_unit as string);
+  if (!access.ok) return { ok: false, error: access.error };
+  const { auth } = access;
+  if (!auth.isAdmin) {
+    if (h.created_by !== auth.userId) return { ok: false, error: "Hanya pencatatnya yang bisa mengubah sumber uang" };
+    if (jakartaDateString(new Date(h.created_at as string)) !== jakartaDateString(new Date()))
+      return { ok: false, error: "Hanya bisa diubah di hari yang sama — minta owner untuk koreksi" };
+  }
+  if (input.newSource === "laci") {
+    if ((h.purchase_date as string) !== jakartaDateString(new Date()))
+      return { ok: false, error: "Hanya nota bertanggal hari ini yang bisa dipindah ke uang laci" };
+    if (auth.drawer.state === "unknown")
+      return { ok: false, error: "Isi laci cabang ini belum bisa dihitung — tidak bisa dipindah ke uang laci" };
+  }
+
+  const { data: lineRows } = await admin
+    .from("procurement_purchase_lines" as never)
+    .select("cashflow_transaction_id")
+    .eq("purchase_id", input.id);
+  const txIds = ((lineRows ?? []) as Record<string, unknown>[])
+    .map((l) => l.cashflow_transaction_id as string | null)
+    .filter((v): v is string => !!v);
+  if (txIds.length === 0) return { ok: false, error: "Baris buku kas nota ini tidak ditemukan" };
+
+  const { error: txErr } = await admin
+    .from("cashflow_transactions")
+    .update({ drawer_neutral: input.newSource === "pengadaan" })
+    .in("id", txIds);
+  if (txErr) return { ok: false, error: txErr.message };
+
+  const { error } = await admin
+    .from("procurement_purchases" as never)
+    .update({ money_source: input.newSource } as never)
+    .eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+
   revalidateAll();
   return { ok: true };
 }
