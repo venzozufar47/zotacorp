@@ -328,7 +328,10 @@ export async function computeMetricsAsOf(
       value: omzetPct ?? 0,
       displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : omzetTooEarly ? "Belum ada hari kerja" : "Target belum diatur",
       band: omzetTooEarly ? "measuring" : omzetBand(omzetPct),
-      note: opts ? `POS ${rupiah(mtd.total)}${part(mtd.total, posPace, opts.posTarget)} + Custom Cake ${rupiah(cakeMtd)}${part(cakeMtd, cakePace, opts.cakeTarget)}` : undefined,
+      note: opts
+        ? `POS ${rupiah(mtd.total)}${part(mtd.total, posPace, opts.posTarget)} + Custom Cake ${rupiah(cakeMtd)}${part(cakeMtd, cakePace, opts.cakeTarget)}` +
+          (targetPace ? `. Target sampai hari ini ${rupiah(targetPace)} (${workedDays} dari ${monthWorkDays} hari kerja)` : "")
+        : undefined,
       ranges: omzetRanges(),
     },
     {
