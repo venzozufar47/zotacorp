@@ -17,6 +17,32 @@ const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "S
 /** "2026-10-03" → "03 Okt 2026" */
 const snapshotDateLabel = (ymd: string) => `${ymd.slice(8, 10)} ${MONTHS_SHORT[Number(ymd.slice(5, 7)) - 1]} ${ymd.slice(0, 4)}`;
 
+type Row = Dashboard["rows"][number];
+type SortKey =
+  | "margin_asc" | "margin_desc" | "hpp_desc" | "hpp_asc" | "price_desc" | "price_asc"
+  | "rise_desc" | "snap_desc" | "snap_asc" | "name_asc" | "name_desc";
+
+/** Nilai kosong (null) selalu di akhir, kecuali margin terendah: margin tak valid justru perlu dilihat pertama. */
+const num = (a: number | null, b: number | null, dir: 1 | -1, nullFirst = false) => {
+  if (a == null && b == null) return 0;
+  if (a == null) return nullFirst ? -1 : 1;
+  if (b == null) return nullFirst ? 1 : -1;
+  return (a - b) * dir;
+};
+const SORTS: { key: SortKey; label: string; title: string; cmp: (a: Row, b: Row) => number }[] = [
+  { key: "margin_asc", label: "Margin terendah", title: "margin terendah", cmp: (a, b) => num(a.breakdown.marginPercent, b.breakdown.marginPercent, 1, true) },
+  { key: "margin_desc", label: "Margin tertinggi", title: "margin tertinggi", cmp: (a, b) => num(a.breakdown.marginPercent, b.breakdown.marginPercent, -1) },
+  { key: "hpp_desc", label: "HPP tertinggi", title: "HPP tertinggi", cmp: (a, b) => num(a.breakdown.hppUnit, b.breakdown.hppUnit, -1) },
+  { key: "hpp_asc", label: "HPP terendah", title: "HPP terendah", cmp: (a, b) => num(a.breakdown.hppUnit, b.breakdown.hppUnit, 1) },
+  { key: "price_desc", label: "Harga jual tertinggi", title: "harga jual tertinggi", cmp: (a, b) => num(a.breakdown.finalPrice ?? null, b.breakdown.finalPrice ?? null, -1) },
+  { key: "price_asc", label: "Harga jual terendah", title: "harga jual terendah", cmp: (a, b) => num(a.breakdown.finalPrice ?? null, b.breakdown.finalPrice ?? null, 1) },
+  { key: "rise_desc", label: "Kenaikan HPP terbesar", title: "kenaikan HPP terbesar", cmp: (a, b) => num(a.hppRosePct, b.hppRosePct, -1) },
+  { key: "snap_desc", label: "Snapshot terbaru", title: "snapshot terbaru", cmp: (a, b) => (a.lastSnapshotDate && b.lastSnapshotDate ? b.lastSnapshotDate.localeCompare(a.lastSnapshotDate) : a.lastSnapshotDate ? -1 : b.lastSnapshotDate ? 1 : 0) },
+  { key: "snap_asc", label: "Snapshot terlama", title: "snapshot terlama", cmp: (a, b) => (a.lastSnapshotDate && b.lastSnapshotDate ? a.lastSnapshotDate.localeCompare(b.lastSnapshotDate) : a.lastSnapshotDate ? 1 : b.lastSnapshotDate ? -1 : 0) },
+  { key: "name_asc", label: "Nama A–Z", title: "nama A–Z", cmp: (a, b) => a.product.name.localeCompare(b.product.name, "id", { sensitivity: "base" }) },
+  { key: "name_desc", label: "Nama Z–A", title: "nama Z–A", cmp: (a, b) => b.product.name.localeCompare(a.product.name, "id", { sensitivity: "base" }) },
+];
+
 export function CostingDashboard({
   brands,
   activeBrand,
@@ -29,6 +55,7 @@ export function CostingDashboard({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("margin_asc");
 
   function selectBrand(bu: string) {
     rememberBrand(bu);
@@ -61,7 +88,10 @@ export function CostingDashboard({
 
   // Pencarian hanya menyaring tampilan daftar; KPI di atas tetap dihitung dari semua produk.
   const q = query.trim().toLowerCase();
-  const shownRows = q ? data.rows.filter((r) => r.product.name.toLowerCase().includes(q)) : data.rows;
+  const sort = SORTS.find((x) => x.key === sortKey) ?? SORTS[0];
+  const shownRows = (q ? data.rows.filter((r) => r.product.name.toLowerCase().includes(q)) : [...data.rows]).sort(
+    (a, b) => sort.cmp(a, b) || a.product.name.localeCompare(b.product.name, "id", { sensitivity: "base" })
+  );
 
   // Bar RankList relatif thd margin tertinggi absolut (utk lebar bar).
   const maxMargin = Math.max(
@@ -128,8 +158,22 @@ export function CostingDashboard({
       {/* RankList margin terendah */}
       <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 border-b-2 border-foreground">
-          <span className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">Produk urut margin terendah</span>
-          <label className="relative ml-auto block w-full sm:w-64">
+          <span className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">Produk urut {sort.title}</span>
+          <label className="ml-auto flex items-center gap-2 text-[12px] font-semibold text-muted-foreground">
+            Urutkan
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="h-9 rounded-xl border-2 border-border bg-background px-2 text-base font-medium text-foreground sm:text-sm"
+            >
+              {SORTS.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="relative block w-full sm:w-64">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="search"
