@@ -13,6 +13,10 @@ import {
 import { rememberBrand } from "@/lib/costing/brands";
 import { fmtPercent } from "./format";
 
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+/** "2026-10-03" → "03 Okt 2026" */
+const snapshotDateLabel = (ymd: string) => `${ymd.slice(8, 10)} ${MONTHS_SHORT[Number(ymd.slice(5, 7)) - 1]} ${ymd.slice(0, 4)}`;
+
 export function CostingDashboard({
   brands,
   activeBrand,
@@ -155,8 +159,11 @@ export function CostingDashboard({
                     href={`/admin/costing/${r.product.id}`}
                     className="relative flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40"
                   >
-                    <span className="flex-1 min-w-0 truncate font-medium text-[13px]">
-                      {r.product.name}
+                    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                      <span className="truncate font-medium text-[13px]">{r.product.name}</span>
+                      <span className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
+                        {r.lastSnapshotDate ? snapshotDateLabel(r.lastSnapshotDate) : "belum ada snapshot"}
+                      </span>
                     </span>
                     {r.hppRosePct != null && r.hppRosePct > 0.05 && (
                       <span className="text-[10.5px] font-semibold text-destructive inline-flex items-center gap-0.5">

@@ -852,6 +852,8 @@ export interface CostingDashboardRow {
   breakdown: HppBreakdown;
   /** Kenaikan HPP vs snapshot terakhir (fraksi). null bila belum ada. */
   hppRosePct: number | null;
+  /** Tanggal snapshot HPP terakhir produk ("YYYY-MM-DD"); null bila belum pernah di-snapshot. */
+  lastSnapshotDate: string | null;
 }
 export interface CostingDashboard {
   rows: CostingDashboardRow[];
@@ -886,9 +888,13 @@ export async function getCostingDashboard(
   const list = listRes.data ?? [];
 
   const latestByProduct = new Map<string, number>();
+  const latestDateByProduct = new Map<string, string>();
   for (const r of (snapRows ?? []) as Record<string, unknown>[]) {
     const pid = r.product_id as string;
-    if (!latestByProduct.has(pid)) latestByProduct.set(pid, num(r.hpp_unit));
+    if (!latestByProduct.has(pid)) {
+      latestByProduct.set(pid, num(r.hpp_unit));
+      latestDateByProduct.set(pid, String(r.snapshot_date).slice(0, 10));
+    }
   }
 
   const rows: CostingDashboardRow[] = list.map((r) => {
@@ -896,7 +902,7 @@ export async function getCostingDashboard(
     const cur = r.breakdown.hppUnit;
     const hppRosePct =
       last != null && last > 0 ? (cur - last) / last : null;
-    return { product: r.product, breakdown: r.breakdown, hppRosePct };
+    return { product: r.product, breakdown: r.breakdown, hppRosePct, lastSnapshotDate: latestDateByProduct.get(r.product.id) ?? null };
   });
   // Urut margin terendah dulu (null/invalid dianggap paling bawah).
   rows.sort((a, b) => {
