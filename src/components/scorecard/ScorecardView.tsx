@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScorecardRangesInfo } from "./ScorecardRangesInfo";
 import type { BranchScorecard, ScorecardBand } from "@/lib/actions/scorecard.actions";
 
 const BAND_META: Record<ScorecardBand, { label: string; dot: string; text: string }> = {
@@ -31,10 +32,13 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
         {scorecard.metrics.map((m) => {
           const meta = BAND_META[m.band];
           return (
-            <Card key={m.key}>
+            <Card key={m.key} className="relative overflow-visible">
               <CardHeader>
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  {m.label}
+                <CardTitle className="flex items-start justify-between gap-1 text-xs font-semibold text-muted-foreground">
+                  <span>{m.label}</span>
+                  <span className="-mr-1.5 -mt-1">
+                    <ScorecardRangesInfo label={m.label} ranges={m.ranges} note={m.rangesNote} />
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1">
@@ -45,18 +49,6 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
                   <span className={`size-2 rounded-full ${meta.dot}`} /> {meta.label}
                 </span>
                 {m.note && <p className="text-[10.5px] text-muted-foreground">{m.note}</p>}
-                <div className="space-y-1 border-t border-border/60 pt-1.5">
-                  {m.ranges ? (
-                    m.ranges.map((r) => (
-                      <p key={r.band} className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
-                        <span className={`size-2 shrink-0 rounded-full ${BAND_META[r.band].dot}`} />
-                        {r.text}
-                      </p>
-                    ))
-                  ) : (
-                    <p className="text-[10.5px] text-muted-foreground">{m.rangesNote}</p>
-                  )}
-                </div>
               </CardContent>
             </Card>
           );
