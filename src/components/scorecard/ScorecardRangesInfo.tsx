@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Info } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Info } from "lucide-react";
 import type { ScorecardBand } from "@/lib/actions/scorecard.actions";
 
 const DOT: Record<ScorecardBand, string> = {
@@ -20,10 +21,13 @@ export function ScorecardRangesInfo({
   label,
   ranges,
   note,
+  settings,
 }: {
   label: string;
   ranges?: { band: ScorecardBand; text: string }[];
   note?: string;
+  /** Pintasan ke halaman tempat target ini diatur (hanya diberikan di halaman owner). */
+  settings?: { href: string; label: string };
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
@@ -42,7 +46,7 @@ export function ScorecardRangesInfo({
     };
   }, [open]);
 
-  if (!ranges?.length && !note) return null;
+  if (!ranges?.length && !note && !settings) return null;
 
   return (
     <span
@@ -73,6 +77,11 @@ export function ScorecardRangesInfo({
             ))
           ) : (
             <span className="block text-muted-foreground">{note}</span>
+          )}
+          {settings && (
+            <Link href={settings.href} className="mt-1 flex items-center gap-1 border-t border-border pt-1.5 font-semibold text-primary hover:underline">
+              {settings.label} <ArrowUpRight size={12} />
+            </Link>
           )}
         </span>
       )}

@@ -1,7 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScorecardRangesInfo } from "./ScorecardRangesInfo";
-import type { BranchScorecard, ScorecardBand } from "@/lib/actions/scorecard.actions";
+import type { BranchScorecard, ScorecardBand, ScorecardMetric } from "@/lib/actions/scorecard.actions";
 
 const BAND_META: Record<ScorecardBand, { label: string; dot: string; text: string }> = {
   green: { label: "Hijau", dot: "bg-success", text: "text-success" },
@@ -11,7 +11,14 @@ const BAND_META: Record<ScorecardBand, { label: string; dot: string; text: strin
   unset: { label: "Belum diatur", dot: "bg-muted-foreground", text: "text-muted-foreground" },
 };
 
-export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
+export function ScorecardView({
+  scorecard,
+  settingsLinks,
+}: {
+  scorecard: BranchScorecard;
+  /** Pintasan "atur target" per metrik ke halaman pengaturan aslinya (hanya halaman owner yang mengirim). */
+  settingsLinks?: Partial<Record<ScorecardMetric["key"], { href: string; label: string }>>;
+}) {
   return (
     <div className="space-y-4">
       {scorecard.twoWeeksRedLabels.length > 0 && (
@@ -37,7 +44,7 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
                 <CardTitle className="flex items-start justify-between gap-1 text-xs font-semibold text-muted-foreground">
                   <span>{m.label}</span>
                   <span className="-mr-1.5 -mt-1">
-                    <ScorecardRangesInfo label={m.label} ranges={m.ranges} note={m.rangesNote} />
+                    <ScorecardRangesInfo label={m.label} ranges={m.ranges} note={m.rangesNote} settings={settingsLinks?.[m.key]} />
                   </span>
                 </CardTitle>
               </CardHeader>
