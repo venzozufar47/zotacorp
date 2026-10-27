@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { saveBranchOmzetTargets } from "@/lib/actions/scorecard-target.actions";
+import type { OmzetMonth } from "@/lib/actions/scorecard.actions";
 
+const rp = (n: number) => `Rp${Math.round(n).toLocaleString("id-ID")}`;
 const fmt = (n: number | null) => (n == null ? "" : n.toLocaleString("id-ID"));
 const parse = (text: string) => {
   const d = text.replace(/\D/g, "");
@@ -35,7 +37,16 @@ function MoneyField({ label, value, onChange }: { label: string; value: string; 
 }
 
 /** Target omzet bulanan satu cabang, POS dan Custom Cake terpisah. Hanya halaman owner. */
-export function OmzetTargetEditor({ branch, initial }: { branch: "Pare" | "Semarang"; initial: { pos: number | null; cake: number | null } }) {
+export function OmzetTargetEditor({
+  branch,
+  initial,
+  history,
+}: {
+  branch: "Pare" | "Semarang";
+  initial: { pos: number | null; cake: number | null };
+  /** Omzet 3 bulan penuh terakhir sebagai acuan menetapkan target. */
+  history: OmzetMonth[];
+}) {
   const router = useRouter();
   const [pos, setPos] = useState(fmt(initial.pos));
   const [cake, setCake] = useState(fmt(initial.cake));
@@ -67,6 +78,33 @@ export function OmzetTargetEditor({ branch, initial }: { branch: "Pare" | "Semar
   return (
     <div id={`target-omzet-${branch}`} className="scroll-mt-24 space-y-3 rounded-2xl border border-border bg-card p-3.5">
       <p className="text-[12.5px] font-semibold">Target omzet bulanan</p>
+      {history.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[26rem] text-[11.5px]">
+            <caption className="sr-only">Omzet 3 bulan terakhir</caption>
+            <thead className="bg-muted/50 text-left text-muted-foreground">
+              <tr>
+                <th className="px-2.5 py-1.5 font-semibold">Bulan</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold">POS</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold">Custom Cake</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold">Total</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold">Per hari kerja</th>
+              </tr>
+            </thead>
+            <tbody className="tabular-nums">
+              {history.map((h) => (
+                <tr key={h.month} className="border-t border-border">
+                  <td className="px-2.5 py-1.5 font-medium">{h.label}</td>
+                  <td className="px-2.5 py-1.5 text-right">{rp(h.pos)}</td>
+                  <td className="px-2.5 py-1.5 text-right">{rp(h.cake)}</td>
+                  <td className="px-2.5 py-1.5 text-right font-semibold">{rp(h.pos + h.cake)}</td>
+                  <td className="px-2.5 py-1.5 text-right text-muted-foreground">{rp((h.pos + h.cake) / h.workingDays)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row">
         <MoneyField label="POS" value={pos} onChange={setPos} />
         <MoneyField label="Custom Cake" value={cake} onChange={setCake} />

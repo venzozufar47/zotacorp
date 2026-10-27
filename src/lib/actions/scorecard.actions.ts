@@ -330,6 +330,55 @@ export async function computeMetricsAsOf(
   ];
 }
 
+export interface OmzetMonth {
+  /** "YYYY-MM-01" */
+  month: string;
+  label: string;
+  pos: number;
+  cake: number;
+  workingDays: number;
+}
+
+const MONTH_NAMES_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+/**
+ * Omzet POS dan Custom Cake tiga bulan penuh terakhir (tidak termasuk bulan berjalan), terlama dulu — acuan saat
+ * owner menetapkan target. Hanya owner. Gagal hitung satu bulan → bulan itu dilewati, bukan menggagalkan halaman.
+ */
+export async function getOmzetHistory(branch: ScorecardBranch): Promise<OmzetMonth[]> {
+  if ((await getCurrentRole()) !== "admin") return [];
+  const account = await findPosAccount(branch);
+  if (!account) return [];
+  const today = jakartaDateString(new Date());
+  const thisMonth = monthStartOf(today);
+  const months: string[] = [];
+  for (let i = 3; i >= 1; i--) {
+    const d = new Date(`${thisMonth}T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() - i);
+    months.push(d.toISOString().slice(0, 10));
+  }
+  const rows = await Promise.all(
+    months.map(async (m): Promise<OmzetMonth | null> => {
+      const next = new Date(`${m}T00:00:00Z`);
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      const last = addDays(next.toISOString().slice(0, 10), -1);
+      try {
+        const [pos, cake] = await Promise.all([sumPaidPosTotal(account.id, m, last), sumCakeRevenue(branch, m, last)]);
+        return {
+          month: m,
+          label: `${MONTH_NAMES_ID[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`,
+          pos: pos.total,
+          cake,
+          workingDays: workingDaysInMonth(m),
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+  return rows.filter((r): r is OmzetMonth => r !== null);
+}
+
 export async function getBranchScorecard(branch: ScorecardBranch): Promise<BranchScorecard | null> {
   const user = await getCurrentUser();
   if (!user) return null;

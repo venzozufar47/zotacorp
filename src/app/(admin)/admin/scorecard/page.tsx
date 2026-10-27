@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getCurrentRole } from "@/lib/supabase/cached";
-import { getBranchScorecard } from "@/lib/actions/scorecard.actions";
+import { getBranchScorecard, getOmzetHistory } from "@/lib/actions/scorecard.actions";
 import { ScorecardView } from "@/components/scorecard/ScorecardView";
 import { OmzetTargetEditor } from "@/components/scorecard/OmzetTargetEditor";
 
@@ -19,7 +19,10 @@ const SETTINGS_LINKS = {
  */
 export default async function AdminScorecardPage() {
   if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
-  const cards = await Promise.all(BRANCHES.map((b) => getBranchScorecard(b)));
+  const [cards, history] = await Promise.all([
+    Promise.all(BRANCHES.map((b) => getBranchScorecard(b))),
+    Promise.all(BRANCHES.map((b) => getOmzetHistory(b))),
+  ]);
 
   return (
     <div className="space-y-6 p-4">
@@ -35,7 +38,7 @@ export default async function AdminScorecardPage() {
             <h2 className="font-display text-base font-bold">Cabang {b}</h2>
             {cards[i] ? (
               <>
-                <OmzetTargetEditor branch={b} initial={cards[i]!.omzetTarget} />
+                <OmzetTargetEditor branch={b} initial={cards[i]!.omzetTarget} history={history[i]} />
                 <ScorecardView
                   scorecard={cards[i]!}
                   settingsLinks={{ ...SETTINGS_LINKS, omzet: { href: `#target-omzet-${b}`, label: "Atur target omzet" } }}
