@@ -12,7 +12,7 @@ import { createAdminClient } from "./_supabase-admin";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import { canUseSocialReports } from "@/lib/social/access";
+import { allowedSocialBrandIds, canUseSocialReports, editorBrandIds } from "@/lib/social/access";
 import { isRealDate, mondayOf, type ReportRow } from "@/lib/social/scorecard";
 
 /** Senin dari minggu yang SUDAH selesai paling akhir: laporan diisi tiap hari Senin untuk minggu lalu. */
@@ -108,12 +108,16 @@ export async function getSocialReportPage(weekStart?: string | null): Promise<Ac
   const week = requested > latestWeekStart ? latestWeekStart : requested;
 
   const db = createAdminClient();
-  const [brands, { data: rows, error }] = await Promise.all([
+  const allowed = await allowedSocialBrandIds();
+  const [allBrands, { data: rows, error }] = await Promise.all([
     listSocialBrands(),
     db.from("social_weekly_reports" as never).select("*").order("week_start", { ascending: false }).limit(1500),
   ]);
   if (error) return fail(error.message);
-  const raw = (rows ?? []) as any[];
+  // Pengisi hanya melihat brand miliknya: brand lain dan riwayatnya tidak ikut terkirim ke klien.
+  const brands = allowed ? allBrands.filter((b) => allowed.includes(b.id)) : allBrands;
+  const visibleAccounts = new Set(brands.flatMap((b) => b.accounts.map((a) => a.id)));
+  const raw = ((rows ?? []) as any[]).filter((r) => visibleAccounts.has(r.account_id));
   const enteredIds = [...new Set(raw.map((r) => r.entered_by as string | null).filter((x): x is string => !!x))];
   const names = new Map<string, string>();
   if (enteredIds.length) {
@@ -166,8 +170,10 @@ export async function saveWeeklyReport(input: WeeklyReportInput): Promise<Action
   if (notes && notes.length > 500) return fail("Catatan maksimal 500 karakter");
 
   const db = createAdminClient();
-  const { data: acct } = await db.from("social_accounts" as never).select("id").eq("id", input.accountId).eq("is_active", true).maybeSingle();
+  const { data: acct } = await db.from("social_accounts" as never).select("id, brand_id").eq("id", input.accountId).eq("is_active", true).maybeSingle();
   if (!acct) return fail("Akun tidak ditemukan");
+  const allowed = await allowedSocialBrandIds();
+  if (allowed && !allowed.includes((acct as any).brand_id)) return fail("Anda tidak ditugaskan mengisi akun ini");
   const { error } = await db.from("social_weekly_reports" as never).upsert(
     {
       account_id: input.accountId,
@@ -208,39 +214,68 @@ export async function deleteWeeklyReport(id: string): Promise<ActionResult> {
 // ── Pengisi laporan (admin) ─────────────────────────────────────────────────
 
 export interface ReportEditorsData {
-  editors: { userId: string; name: string }[];
+  editors: { userId: string; name: string; brandIds: string[] }[];
   candidates: { id: string; name: string }[];
+  brands: { id: string; label: string }[];
 }
 
 export async function getReportEditors(): Promise<ActionResult<ReportEditorsData>> {
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
   const db = createAdminClient();
-  const [{ data: eds }, { data: profs }] = await Promise.all([
-    db.from("social_report_editors" as never).select("user_id"),
+  const [{ data: eds }, { data: profs }, brands] = await Promise.all([
+    db.from("social_report_editors" as never).select("user_id, brand_ids"),
     db.from("profiles").select("id, full_name, nickname").eq("role", "employee").eq("is_active", true).is("resigned_at", null),
+    listSocialBrands(),
   ]);
   const people = ((profs ?? []) as any[])
     .map((p) => ({ id: p.id as string, name: (p.nickname?.trim() || p.full_name || "Karyawan") as string }))
     .sort((a, b) => a.name.localeCompare(b.name, "id", { sensitivity: "base" }));
   const nameOf = new Map(people.map((p) => [p.id, p.name]));
-  const editorIds = new Set(((eds ?? []) as any[]).map((e) => e.user_id as string));
+  const editorRows = (eds ?? []) as { user_id: string; brand_ids: string[] | null }[];
+  const editorIds = new Set(editorRows.map((e) => e.user_id));
   return {
     ok: true,
     data: {
-      editors: [...editorIds].map((id) => ({ userId: id, name: nameOf.get(id) ?? "(nonaktif)" })).sort((a, b) => a.name.localeCompare(b.name, "id", { sensitivity: "base" })),
+      editors: editorRows
+        .map((e) => ({ userId: e.user_id, name: nameOf.get(e.user_id) ?? "(nonaktif)", brandIds: e.brand_ids ?? [] }))
+        .sort((a, b) => a.name.localeCompare(b.name, "id", { sensitivity: "base" })),
       candidates: people.filter((p) => !editorIds.has(p.id)),
+      brands: brands.map((b) => ({ id: b.id, label: b.label })),
     },
   };
 }
 
-export async function addReportEditor(userId: string): Promise<ActionResult> {
+/** Brand harus ada dan minimal satu — pengisi tanpa brand tidak punya apa pun untuk diisi. */
+async function validBrandIds(db: ReturnType<typeof createAdminClient>, brandIds: string[]): Promise<string[] | null> {
+  const ids = [...new Set(brandIds)];
+  if (ids.length === 0) return null;
+  const { data } = await db.from("social_brands" as never).select("id").in("id", ids);
+  return ((data ?? []) as any[]).length === ids.length ? ids : null;
+}
+
+export async function addReportEditor(userId: string, brandIds: string[]): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return fail(gate.error);
   const db = createAdminClient();
+  const ids = await validBrandIds(db, brandIds);
+  if (!ids) return fail("Pilih minimal satu brand");
   const { data: p } = await db.from("profiles").select("id").eq("id", userId).eq("role", "employee").eq("is_active", true).maybeSingle();
   if (!p) return fail("Karyawan tidak ditemukan");
-  const { error } = await db.from("social_report_editors" as never).upsert({ user_id: userId, added_by: gate.userId } as never, { onConflict: "user_id" });
+  const { error } = await db.from("social_report_editors" as never).upsert({ user_id: userId, added_by: gate.userId, brand_ids: ids } as never, { onConflict: "user_id" });
+  if (error) return fail(error.message);
+  revalidatePath("/admin/social");
+  revalidatePath("/sosmed");
+  return { ok: true };
+}
+
+export async function setReportEditorBrands(userId: string, brandIds: string[]): Promise<ActionResult> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return fail(gate.error);
+  const db = createAdminClient();
+  const ids = await validBrandIds(db, brandIds);
+  if (!ids) return fail("Pilih minimal satu brand");
+  const { error } = await db.from("social_report_editors" as never).update({ brand_ids: ids } as never).eq("user_id", userId);
   if (error) return fail(error.message);
   revalidatePath("/admin/social");
   revalidatePath("/sosmed");
@@ -274,15 +309,15 @@ export async function getSocialReportReminder(): Promise<SocialReportReminder | 
   const user = await getCurrentUser();
   if (!user) return null;
   const db = createAdminClient();
-  const { data: ed } = await db.from("social_report_editors" as never).select("user_id").eq("user_id", user.id).maybeSingle();
-  if (!ed) return null;
+  const mine = await editorBrandIds();
+  if (mine.length === 0) return null;
   const week = previousWeekStart(jakartaDateString(new Date()));
   const [brands, { data: rows }] = await Promise.all([
     listSocialBrands(),
     db.from("social_weekly_reports" as never).select("account_id").eq("week_start", week),
   ]);
   const done = new Set(((rows ?? []) as any[]).map((r) => r.account_id as string));
-  const accounts = brands.flatMap((b) => b.accounts);
+  const accounts = brands.filter((b) => mine.includes(b.id)).flatMap((b) => b.accounts);
   const missing = accounts.filter((a) => !done.has(a.id)).map((a) => ({ handle: a.handle, platform: a.platform }));
   if (missing.length === 0) return null;
   return { weekStart: week, missing, total: accounts.length };
