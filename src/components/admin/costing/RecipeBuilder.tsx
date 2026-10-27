@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, GripVertical } from "lucide-react";
 import {
@@ -88,6 +89,29 @@ export function RecipeBuilder({
   const [product, setProduct] = useState(initialProduct);
   const [items, setItems] = useState(initialItems);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  // State lokal bersifat optimistic, jadi tidak otomatis mengikuti server. Kalau data server berubah dari tempat lain
+  // (peta Bahan × Produk, tab lain), ikutkan ke state lokal — tapi tidak saat penyimpanan sendiri sedang berjalan.
+  const [syncedItems, setSyncedItems] = useState(initialItems);
+  const [syncedProduct, setSyncedProduct] = useState(initialProduct);
+  if (!pending && initialItems !== syncedItems) {
+    setSyncedItems(initialItems);
+    setItems(initialItems);
+  }
+  if (!pending && initialProduct !== syncedProduct) {
+    setSyncedProduct(initialProduct);
+    setProduct(initialProduct);
+  }
+  // Kembali ke tab ini → ambil data terbaru, supaya resep yang diubah di tab/halaman lain tidak tampil basi.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [router]);
+
   const [addMaterialId, setAddMaterialId] = useState("");
   const [addQty, setAddQty] = useState("");
   const [snapshots, setSnapshots] = useState<CostingSnapshot[]>([]);
