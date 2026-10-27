@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { cn } from "@/lib/utils";
 import type { SocialReportPage } from "@/lib/actions/social-report.actions";
 
 /**
@@ -29,6 +30,13 @@ const compact = (n: number) => (Math.abs(n) >= 1_000_000 ? `${trim(n / 1_000_000
 const AXIS = { fontSize: 11, fill: "var(--color-muted-foreground)" };
 const WEEKS = 12;
 
+type Platform = "all" | "instagram" | "tiktok";
+const PLATFORMS: { id: Platform; label: string }[] = [
+  { id: "all", label: "Semua" },
+  { id: "instagram", label: "Instagram" },
+  { id: "tiktok", label: "TikTok" },
+];
+
 const C = {
   a: "var(--color-primary, #0e7490)",
   b: "var(--color-warning, #d97706)",
@@ -37,13 +45,14 @@ const C = {
 };
 
 export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
-  const [scope, setScope] = useState<string>(`brand:${page.brands[0]?.id ?? ""}`);
+  const [brandId, setBrandId] = useState<string>(page.brands[0]?.id ?? "");
+  const [platform, setPlatform] = useState<Platform>("all");
+  const brand = page.brands.find((b) => b.id === brandId) ?? page.brands[0];
+  // Platform yang tidak dimiliki brand terpilih dianggap "Semua".
+  const activePlatform: Platform = platform === "all" || brand?.accounts.some((a) => a.platform === platform) ? platform : "all";
 
   const data = useMemo(() => {
-    const [kind, id] = scope.split(":");
-    const accountIds = new Set(
-      page.brands.flatMap((b) => (kind === "brand" ? (b.id === id ? b.accounts : []) : b.accounts.filter((a) => a.id === id))).map((a) => a.id)
-    );
+    const accountIds = new Set((brand?.accounts ?? []).filter((a) => activePlatform === "all" || a.platform === activePlatform).map((a) => a.id));
     const byWeek = new Map<string, { accounts: number; views: number; viewers: number; interactions: number; followers: number; follows: number; unfollows: number; posts: number; reels: number; stories: number }>();
     for (const r of page.history) {
       if (!accountIds.has(r.accountId)) continue;
@@ -72,26 +81,35 @@ export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
         // Engagement rate = interaksi ÷ views (%), sama dengan definisi di scorecard; tanpa views → kosong, bukan 0%.
         engagement: v.views > 0 ? Math.round((v.interactions / v.views) * 10_000) / 100 : null,
       }));
-  }, [page, scope]);
+  }, [page, brand, activePlatform]);
 
   return (
     <div className="space-y-4">
-      <label className="flex flex-wrap items-center gap-2 text-[12.5px]">
-        <span className="font-semibold">Tampilkan</span>
-        <select value={scope} onChange={(e) => setScope(e.target.value)} className="h-9 rounded-lg border-2 border-border bg-background px-2.5 text-[13px]">
+      <div className="space-y-2">
+        <div role="group" aria-label="Pilih brand" className="flex flex-wrap gap-2">
           {page.brands.map((b) => (
-            <optgroup key={b.id} label={b.label}>
-              <option value={`brand:${b.id}`}>{b.label} — semua platform</option>
-              {b.accounts.map((a) => (
-                <option key={a.id} value={`account:${a.id}`}>
-                  {b.label} — {a.platform === "instagram" ? "Instagram" : "TikTok"}
-                </option>
-              ))}
-            </optgroup>
+            <Chip key={b.id} active={b.id === brand?.id} onClick={() => setBrandId(b.id)}>
+              {b.label}
+            </Chip>
           ))}
-        </select>
-        <span className="text-muted-foreground">{WEEKS} minggu terakhir yang sudah dilaporkan</span>
-      </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Pilih platform" className="flex flex-wrap gap-2">
+            {PLATFORMS.map((pl) => (
+              <Chip
+                key={pl.id}
+                small
+                active={activePlatform === pl.id}
+                disabled={pl.id !== "all" && !brand?.accounts.some((a) => a.platform === pl.id)}
+                onClick={() => setPlatform(pl.id)}
+              >
+                {pl.label}
+              </Chip>
+            ))}
+          </div>
+          <span className="text-[12px] text-muted-foreground">{WEEKS} minggu terakhir yang sudah dilaporkan</span>
+        </div>
+      </div>
 
       {data.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-border py-10 text-center text-[13px] text-muted-foreground">Belum ada laporan mingguan untuk pilihan ini.</p>
@@ -163,6 +181,24 @@ export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
         </div>
       )}
     </div>
+  );
+}
+
+function Chip({ active, small, disabled, onClick, children }: { active: boolean; small?: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center rounded-full border-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-40",
+        small ? "h-8 px-3.5 text-[12px]" : "h-10 px-4 text-[13px]",
+        active ? "border-foreground bg-primary text-primary-foreground" : "border-border bg-card hover:border-foreground/50"
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
