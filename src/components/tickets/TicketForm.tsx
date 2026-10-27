@@ -7,7 +7,6 @@ import { Plus, Loader2, ImagePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { VerifierPicker } from "@/components/verification/VerifierPicker";
 import { NO_VERIFIER, verifierIdsOf, verifierIncomplete, type VerifierValue } from "@/lib/verification/logic";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
@@ -22,8 +21,8 @@ const WHOLE_BRANCH = "__branch__";
  * Form buat tiket + upload foto (multi). Foto di-upload langsung ke bucket privat `ticket-attachments` dari browser
  * (RLS owner-folder), path `${uid}/${uuid}.jpg` — kumpulkan path lalu kirim ke server action.
  *
- * Karyawan: melapor ke atasan di cabangnya (tiket "naik"). Owner: bisa juga menugaskan ke satu karyawan atau seluruh
- * cabang (tiket "turun"; pembuat yang mengonfirmasi selesai).
+ * Karyawan: melapor ke atasan di cabangnya (tiket "naik"). Owner tidak punya atasan, jadi di halaman superadmin
+ * formnya hanya menugaskan ke satu karyawan atau seluruh cabang (tiket "turun"; pembuat yang mengonfirmasi selesai).
  */
 export function TicketForm({ uid, options, isOwner }: { uid: string; options: TicketFormOptions; isOwner: boolean }) {
   const router = useRouter();
@@ -32,7 +31,8 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [mode, setMode] = useState<Mode>("report");
+  // Owner hanya menugaskan ke bawah (kalau ada cabang tujuan); laporan ke atasan tak berlaku untuk owner.
+  const mode: Mode = isOwner && options.downTargets.length > 0 ? "assign" : "report";
   const [reportBranch, setReportBranch] = useState<string>(options.fileBranches[0]?.id ?? "");
   const [assignBranch, setAssignBranch] = useState<string>(options.downTargets[0]?.branch.id ?? "");
   const [assignee, setAssignee] = useState<string>(WHOLE_BRANCH);
@@ -50,7 +50,6 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
   const supers = !isOwner && mode === "report" ? options.mySuperiors[reportBranch] ?? [] : [];
 
   function reset() {
-    setMode("report");
     setCategory("kebutuhan_barang");
     setPriority("normal");
     setTitle("");
@@ -147,28 +146,6 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
         </DialogHeader>
 
         <div className="space-y-3">
-          {isOwner && (
-            <div role="tablist" aria-label="Jenis tiket" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-              {(
-                [
-                  ["report", "Lapor / catat masalah"],
-                  ["assign", "Tugaskan ke karyawan"],
-                ] as const
-              ).map(([m, label]) => (
-                <button
-                  key={m}
-                  role="tab"
-                  type="button"
-                  aria-selected={mode === m}
-                  onClick={() => setMode(m)}
-                  className={cn("h-8 rounded-lg text-[12.5px] font-semibold transition", mode === m ? "bg-card shadow-sm" : "text-muted-foreground")}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="grid grid-cols-2 gap-3">
             <Field label="Cabang">
               {mode === "report" ? (
