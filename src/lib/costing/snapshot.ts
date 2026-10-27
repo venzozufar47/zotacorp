@@ -60,7 +60,12 @@ export async function runHppSnapshotCapture(opts?: {
     if (snapshots.length === 0) return 0;
     const { error } = await supabase
       .from("costing_hpp_snapshot" as never)
-      .upsert(snapshots as never, { onConflict: "product_id,snapshot_date" });
+      // Snapshot manual (createdBy terisi) menimpa baris hari itu; cron (tanpa pembuat) tidak boleh menimpa snapshot
+      // manual yang sudah ada di tanggal yang sama, jadi baris yang sudah ada dibiarkan.
+      .upsert(snapshots as never, {
+        onConflict: "product_id,snapshot_date",
+        ignoreDuplicates: !opts?.createdBy,
+      });
     if (error) {
       console.error(`[costing-snapshot] upsert gagal brand "${bu}":`, error.message);
       return 0;
