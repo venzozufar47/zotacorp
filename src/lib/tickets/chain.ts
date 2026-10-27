@@ -101,11 +101,23 @@ export async function holderRecipients(level: number, handlerId: string | null):
   return handlerId ? [handlerId] : [];
 }
 
-/** Karyawan yang ditugaskan ke cabang (untuk "tiket ke bawah" ke seluruh cabang dan antrean rekan). */
+/**
+ * Orang di cabang itu (untuk "tiket ke bawah" ke seluruh cabang dan antrean rekan): yang ditugaskan ke lokasi kerja
+ * cabang, DITAMBAH siapa pun yang terdaftar di hierarki tiket cabang itu (bawahan maupun atasan). Atasan cabang seperti
+ * Tasya (Semarang) atau Nisa (Pare) sering tidak punya penugasan lokasi kerja, tapi jelas bagian dari cabangnya.
+ */
 export async function employeesOfBranch(branchId: string): Promise<string[]> {
   const admin = createAdminClient() as any;
   const { data: b } = await admin.from("ticket_branches").select("location_id").eq("id", branchId).maybeSingle();
-  if (!b?.location_id) return [];
-  const { data } = await admin.from("employee_locations").select("employee_id").eq("location_id", b.location_id);
-  return Array.from(new Set(((data ?? []) as any[]).map((r) => r.employee_id as string).filter(Boolean)));
+  const [located, links] = await Promise.all([
+    b?.location_id ? admin.from("employee_locations").select("employee_id").eq("location_id", b.location_id) : Promise.resolve({ data: [] }),
+    admin.from("ticket_superiors").select("user_id, superior_id").eq("branch_id", branchId),
+  ]);
+  const ids = new Set<string>();
+  for (const r of (located.data ?? []) as any[]) if (r.employee_id) ids.add(r.employee_id as string);
+  for (const r of (links.data ?? []) as any[]) {
+    if (r.user_id) ids.add(r.user_id as string);
+    if (r.superior_id) ids.add(r.superior_id as string);
+  }
+  return Array.from(ids);
 }
