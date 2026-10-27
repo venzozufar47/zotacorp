@@ -13,6 +13,7 @@ export type SelfieIssue =
   | "face_cropped"
   | "face_angled"
   | "face_blurry"
+  | "multiple_people"
   | "mask"
   | "no_apron"
   | "no_lanyard"
@@ -25,6 +26,8 @@ export type UniformHijabColor = "blue" | "brown" | "pink";
 export interface SelfieFilters {
   indoor: boolean;
   face_full: boolean;
+  /** Hanya satu orang di foto (selfie sendiri, bukan berdua/bersama rekan). */
+  single_person: boolean;
   no_mask: boolean;
   apron: boolean;
   lanyard: boolean;
@@ -50,6 +53,8 @@ export interface SelfieObservation {
   bg?: "indoor" | "outdoor" | "unclear";
   helmet?: boolean;
   face?: "full" | "cropped" | "angled" | "blurry";
+  /** Jumlah orang yang terlihat jelas di foto (termasuk yang di belakang/di samping). */
+  people?: number;
   mask?: "none" | "covering" | "shield";
   apron?: boolean;
   lanyard?: boolean;
@@ -106,6 +111,7 @@ const ISSUE_MESSAGE: Record<SelfieIssue, string> = {
     "Wajah belum terlihat penuh. Pastikan seluruh kepala, dari dahi atau tepi hijab sampai dagu, masuk bingkai.",
   face_angled: "Wajah belum menghadap kamera. Hadap lurus ke kamera dengan kedua mata terlihat jelas.",
   face_blurry: "Foto buram atau kurang terang. Pegang ponsel dengan stabil dan cari tempat yang lebih terang.",
+  multiple_people: "Ada lebih dari satu orang di foto. Absen harus selfie sendiri, ya.",
   mask: "Masker menutupi hidung atau mulut. Lepas masker saat foto absen.",
   no_apron: "Apron belum terlihat. Pakai apron, dan pastikan tali atau bagian atasnya terlihat di bahu atau dada.",
   no_lanyard: "Lanyard belum terlihat. Kalungkan lanyard, dan pastikan tali atau kartunya terlihat di dada.",
@@ -124,6 +130,7 @@ const ISSUE_ORDER: SelfieIssue[] = [
   "face_cropped",
   "face_angled",
   "face_blurry",
+  "multiple_people",
   "no_apron",
   "no_lanyard",
   "no_head_cover",
@@ -146,6 +153,8 @@ export function issuesFromObservation(obs: SelfieObservation, rules: SelfieRuleS
     else if (obs.face === "angled") found.add("face_angled");
     else if (obs.face === "blurry") found.add("face_blurry");
   }
+  // Lebih dari satu orang = ditolak. Jumlah tak teramati (undefined) tidak ditolak: AI hanya diminta bila filternya menyala.
+  if (f.single_person && typeof obs.people === "number" && obs.people > 1) found.add("multiple_people");
   // Face shield bening yang wajahnya tetap terlihat BOLEH; hanya penutup hidung/mulut yang ditolak.
   if (f.no_mask && obs.mask === "covering") found.add("mask");
   if (f.apron && obs.apron !== true) found.add("no_apron");
@@ -192,6 +201,11 @@ export function buildPrompt(rules: SelfieRuleSet): string {
       "face: full=whole head (forehead or hijab edge to chin) in frame, facing camera, both eyes clear; cropped=head cut off; angled=turned/tilted/looking down; blurry.",
     );
   }
+  if (f.single_person) {
+    lines.push(
+      "people: count of real people clearly visible in the photo, including anyone beside, behind or partly in frame (not posters, standees, drawings or reflections-only).",
+    );
+  }
   if (f.no_mask) {
     lines.push("mask: covering=mask or cloth over nose or mouth; shield=clear plastic face shield only; none. Glasses, caps, hijab are not masks.");
   }
@@ -217,6 +231,7 @@ function buildSchema(rules: SelfieRuleSet) {
     properties.helmet = { type: "BOOLEAN" };
   }
   if (f.face_full) properties.face = { type: "STRING", enum: ["full", "cropped", "angled", "blurry"] };
+  if (f.single_person) properties.people = { type: "INTEGER" };
   if (f.no_mask) properties.mask = { type: "STRING", enum: ["none", "covering", "shield"] };
   if (f.apron) properties.apron = { type: "BOOLEAN" };
   if (f.lanyard) properties.lanyard = { type: "BOOLEAN" };
@@ -233,6 +248,7 @@ export function guideHint(rules: SelfieRuleSet): string {
   const f = rules.filters;
   const parts: string[] = [];
   if (f.face_full) parts.push("seluruh wajah di dalam oval");
+  if (f.single_person) parts.push("selfie sendiri (satu orang)");
   if (f.apron) parts.push("bahu dan apron terlihat");
   if (f.lanyard) parts.push("lanyard terlihat di dada");
   if (f.indoor) parts.push("di dalam ruangan, tanpa helm");
@@ -250,6 +266,7 @@ export function guideHint(rules: SelfieRuleSet): string {
 export function describeFilters(f: SelfieFilters): string[] {
   const out: string[] = [];
   if (f.face_full) out.push("Wajah penuh");
+  if (f.single_person) out.push("Satu orang saja");
   if (f.indoor) out.push("Dalam ruangan, tanpa helm");
   if (f.no_mask) out.push("Tanpa masker");
   if (f.apron) out.push("Apron");
@@ -266,7 +283,7 @@ export function selfieModelName(): string {
 /** Ada yang perlu diperiksa? (aturan dengan semua filter mati tidak memanggil AI.) */
 export function hasActiveFilters(rules: SelfieRuleSet): boolean {
   const f = rules.filters;
-  return f.indoor || f.face_full || f.no_mask || f.apron || f.lanyard || f.uniform || rules.headCover;
+  return f.indoor || f.face_full || f.single_person || f.no_mask || f.apron || f.lanyard || f.uniform || rules.headCover;
 }
 
 interface GeminiBody {

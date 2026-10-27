@@ -56,6 +56,8 @@ export async function loadSelfieRules(client: Admin, userId: string): Promise<Se
     filters: {
       indoor: f.indoor === true,
       face_full: f.face_full === true,
+      // Aturan baru: selfie harus sendiri. Menyala di SEMUA unit yang filter selfienya aktif (kecuali dimatikan eksplisit).
+      single_person: f.single_person !== false,
       no_mask: f.no_mask === true,
       apron: f.apron === true,
       lanyard: f.lanyard === true,

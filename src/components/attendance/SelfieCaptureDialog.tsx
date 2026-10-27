@@ -11,7 +11,30 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { toast } from "sonner";
 import { encodeCanvas, MAX_EDGE_PHOTO } from "@/lib/images/compress-image";
+
+/**
+ * Frame hitam = kamera belum mengeluarkan gambar (baru menyala / diblokir aplikasi lain / izin setengah jalan).
+ * Cek murah di kanvas kecil 24x24: rata-rata terang sangat rendah DAN tidak ada piksel yang terang.
+ */
+function isBlackFrame(source: HTMLCanvasElement): boolean {
+  const probe = document.createElement("canvas");
+  probe.width = 24;
+  probe.height = 24;
+  const pctx = probe.getContext("2d", { willReadFrequently: true });
+  if (!pctx) return false;
+  pctx.drawImage(source, 0, 0, 24, 24);
+  const { data } = pctx.getImageData(0, 0, 24, 24);
+  let sum = 0;
+  let max = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    sum += luma;
+    if (luma > max) max = luma;
+  }
+  return sum / (data.length / 4) < 6 && max < 24;
+}
 
 interface Props {
   open: boolean;
@@ -143,6 +166,11 @@ export function SelfieCaptureDialog({
   async function takePhoto() {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
+    // Belum ada frame yang siap digambar → hasilnya hitam. Minta tunggu sebentar.
+    if (video.readyState < 2) {
+      toast.error("Kamera belum siap, tunggu sebentar lalu coba lagi.");
+      return;
+    }
 
     // Batasi sisi TERPANJANG, bukan lebar. Versi sebelumnya membatasi
     // `videoWidth` ke 800, dan karena kamera HP merekam potret (720×1280)
@@ -161,6 +189,11 @@ export function SelfieCaptureDialog({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, w, h);
+    if (isBlackFrame(canvas)) {
+      // Jangan simpan foto hitam; kamera tetap menyala supaya bisa langsung dicoba lagi.
+      toast.error("Foto hitam — kamera belum menangkap gambar. Pastikan lensa tidak tertutup lalu ambil lagi.");
+      return;
+    }
 
     // WebP q0.7, mundur ke JPEG kalau peramban tidak bisa meng-encode-nya.
     // Pemanggil WAJIB menurunkan ekstensi dan contentType dari `blob.type`,

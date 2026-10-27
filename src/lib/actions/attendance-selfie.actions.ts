@@ -90,6 +90,7 @@ export async function getSelfieAiStatus(): Promise<SelfieAiStatus | { error: str
     filters: describeFilters({
       indoor: r.filters?.indoor === true,
       face_full: r.filters?.face_full === true,
+      single_person: r.filters?.single_person !== false,
       no_mask: r.filters?.no_mask === true,
       apron: r.filters?.apron === true,
       lanyard: r.filters?.lanyard === true,
