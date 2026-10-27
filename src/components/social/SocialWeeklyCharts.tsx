@@ -110,7 +110,7 @@ export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
               </LineChart>
             </ResponsiveContainer>
           </Panel>
-          <Panel title="Performance — engagement rate">
+          <Panel title="Performance — engagement rate" note="Engagement rate = interaksi (like + komentar + share + simpan) ÷ views × 100%, per minggu.">
             <ResponsiveContainer width="100%" height={230}>
               <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
@@ -132,7 +132,7 @@ export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
               </LineChart>
             </ResponsiveContainer>
           </Panel>
-          <Panel title="Audience — follows, unfollows, net follows">
+          <Panel title="Audience — follows, unfollows, net follows" note="Net follows = follows − unfollows.">
             <ResponsiveContainer width="100%" height={230}>
               <BarChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
@@ -166,11 +166,12 @@ export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border-2 border-foreground bg-card p-3.5">
       <h4 className="mb-2 font-display text-[13px] font-bold">{title}</h4>
       {children}
+      {note && <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{note}</p>}
     </div>
   );
 }
