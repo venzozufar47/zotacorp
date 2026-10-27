@@ -7,11 +7,8 @@ import { getCurrentRole } from "@/lib/supabase/cached";
 import { listRecentHuddles, type MinutesBranch } from "@/lib/actions/team-minutes.actions";
 import { serverNowMs } from "@/lib/leave/constants";
 import { jakartaDateString } from "@/lib/utils/jakarta";
-import {
-  BriefingBody,
-  briefingDateLabel,
-  briefingTimeLabel,
-} from "@/components/team/TeamBriefingPanel";
+import { BriefingBody } from "@/components/team/TeamBriefingPanel";
+import { briefingDateLabel, briefingTimeLabel } from "@/lib/team/briefing-labels";
 import { cn } from "@/lib/utils";
 
 const BRANCHES: MinutesBranch[] = ["Pare", "Semarang"];

@@ -10,26 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { postHuddle, type HuddleView, type MinutesBranch } from "@/lib/actions/team-minutes.actions";
 import { cn } from "@/lib/utils";
+import { briefingDateLabel, briefingTimeLabel } from "@/lib/team/briefing-labels";
 
 const BRANCHES: MinutesBranch[] = ["Pare", "Semarang"];
-
-/** "2026-10-19" → "Sen, 19 Okt". Tanggal murni tanpa jam, jadi aman di SSR. */
-export function briefingDateLabel(ymd: string): string {
-  return new Date(`${ymd}T00:00:00`).toLocaleDateString("id-ID", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-}
-
-/** Jam dicatat, selalu WIB supaya sama di server dan di perangkat mana pun. */
-export function briefingTimeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Jakarta",
-  });
-}
 
 /** Isi satu briefing — dipakai riwayat leader dan tab superadmin. */
 export function BriefingBody({ b }: { b: HuddleView }) {
