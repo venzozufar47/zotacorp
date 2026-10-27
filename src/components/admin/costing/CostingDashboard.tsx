@@ -1,10 +1,10 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Camera, TrendingUp, AlertTriangle, Percent } from "lucide-react";
+import { ArrowLeft, Camera, TrendingUp, AlertTriangle, Percent, Search, X } from "lucide-react";
 import { formatRp } from "@/lib/cashflow/format";
 import {
   captureHppSnapshots,
@@ -28,6 +28,7 @@ export function CostingDashboard({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [query, setQuery] = useState("");
 
   function selectBrand(bu: string) {
     rememberBrand(bu);
@@ -57,6 +58,10 @@ export function CostingDashboard({
       </p>
     );
   }
+
+  // Pencarian hanya menyaring tampilan daftar; KPI di atas tetap dihitung dari semua produk.
+  const q = query.trim().toLowerCase();
+  const shownRows = q ? data.rows.filter((r) => r.product.name.toLowerCase().includes(q)) : data.rows;
 
   // Bar RankList relatif thd margin tertinggi absolut (utk lebar bar).
   const maxMargin = Math.max(
@@ -122,16 +127,41 @@ export function CostingDashboard({
 
       {/* RankList margin terendah */}
       <div className="rounded-2xl border-2 border-foreground bg-card shadow-hard-sm overflow-hidden">
-        <div className="px-4 py-2.5 border-b-2 border-foreground text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
-          Produk urut margin terendah
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 border-b-2 border-foreground">
+          <span className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">Produk urut margin terendah</span>
+          <label className="relative ml-auto block w-full sm:w-64">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cari produk…"
+              aria-label="Cari produk"
+              className="h-9 w-full rounded-xl border-2 border-border bg-background pl-8 pr-8 text-base sm:text-sm [&::-webkit-search-cancel-button]:hidden"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Hapus pencarian"
+                className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </label>
         </div>
         {data.rows.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             Belum ada produk.
           </div>
+        ) : shownRows.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            Tidak ada produk yang cocok dengan &ldquo;{query.trim()}&rdquo;.
+          </div>
         ) : (
           <ul>
-            {data.rows.map((r) => {
+            {shownRows.map((r) => {
               const mp = r.breakdown.marginPercent;
               const below =
                 mp != null &&
