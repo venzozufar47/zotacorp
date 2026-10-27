@@ -6,6 +6,7 @@ import { findPosAccount } from "./pos.actions";
 import { getComplaintCount, getComplaintCountBetween } from "./customer-complaints.actions";
 import { WITHDRAWAL_REASON_META, type WithdrawalReason } from "@/lib/pos/withdrawal-reasons";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { workingDaysBetween, workingDaysInMonth } from "@/lib/scorecard/working-days";
 import { resolveUserBranches } from "@/lib/branches/user-branches";
 import {
   SERVICE_LEVEL_GREEN_MIN,
@@ -60,8 +61,8 @@ export interface BranchScorecard {
   metrics: ScorecardMetric[];
   /** Nama metrik (ukuran mingguan, sesuai SOP) yang merah 2 minggu berturut-turut. */
   twoWeeksRedLabels: string[];
-  /** Target omzet bulanan (POS + Custom Cake); null = belum diatur. */
-  omzetTarget: number | null;
+  /** Target omzet bulanan POS dan Custom Cake (terpisah); null = belum diatur. */
+  omzetTarget: { pos: number | null; cake: number | null };
 }
 
 /** Sebelum tanggal ini, metrik keluhan dihitung hijau tanpa syarat (SOP
@@ -237,10 +238,11 @@ export async function computeMetricsAsOf(
    */
   period: "week" | "month" = "week",
   /**
-   * Tampilan scorecard: omzet = POS + Custom Cake dibanding target BULANAN (`null` = belum diatur), dengan
-   * target dihitung sebanding hari berjalan. Tanpa ini (Kalkulator Bonus) omzet tetap POS-saja vs target harian kasir.
+   * Tampilan scorecard: omzet = POS + Custom Cake dibanding target BULANAN masing-masing (`null` = belum diatur;
+   * komponen tanpa target tidak ikut dinilai), dengan target dihitung sebanding hari kerja berjalan (Senin–Sabtu).
+   * Tanpa ini (Kalkulator Bonus) omzet tetap POS-saja vs target harian kasir.
    */
-  opts?: { monthlyTarget: number | null }
+  opts?: { posTarget: number | null; cakeTarget: number | null }
 ): Promise<ScorecardMetric[]> {
   // Mingguan: 7 hari bergulir (bukan Senin–Minggu): tidak kosong tiap Senin, dan tidak ikut menghitung
   // hari sesudah `asOf` saat Kalkulator Bonus menghitung akhir bulan lampau.
@@ -266,16 +268,25 @@ export async function computeMetricsAsOf(
   ]);
 
   const wasteMeasured = wastePct !== null;
-  const daysInMonth = new Date(Date.UTC(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)), 0)).getUTCDate();
+  // Target bulanan dibagi per HARI KERJA (Senin–Sabtu; POS tidak aktif Minggu), bukan per hari kalender.
+  const workedDays = workingDaysBetween(monthStart, asOf);
+  const monthWorkDays = workingDaysInMonth(monthStart);
+  const posPace = opts?.posTarget ? (opts.posTarget * workedDays) / monthWorkDays : 0;
+  const cakePace = opts?.cakeTarget ? (opts.cakeTarget * workedDays) / monthWorkDays : 0;
   const targetPace = opts
-    ? opts.monthlyTarget
-      ? (opts.monthlyTarget * daysElapsed) / daysInMonth
+    ? opts.posTarget || opts.cakeTarget
+      ? posPace + cakePace
       : null
     : dailyTarget
       ? dailyTarget * daysElapsed
       : null;
-  const omzetActual = mtd.total + cakeMtd;
+  // Hanya komponen yang punya target ikut dihitung, supaya omzet yang tak bertarget tidak menggelembungkan persen.
+  const omzetActual = opts ? (opts.posTarget ? mtd.total : 0) + (opts.cakeTarget ? cakeMtd : 0) : mtd.total + cakeMtd;
   const omzetPct = targetPace && targetPace > 0 ? (omzetActual / targetPace) * 100 : null;
+  // Target ada tapi belum ada hari kerja berjalan (mis. tanggal 1 jatuh hari Minggu): belum bisa dinilai, bukan 0%.
+  const omzetTooEarly = !!(opts?.posTarget || opts?.cakeTarget) && workedDays === 0;
+  const part = (actual: number, pace: number, target: number | null | undefined) =>
+    target && pace > 0 ? ` (${Math.round((actual / pace) * 100)}% dari target)` : "";
   const complaintsPer1000 = txCount30 > 0 ? (complaintCount / txCount30) * 1000 : 0;
   const daysSinceEpoch =
     (new Date(asOf).getTime() - new Date(COMPLAINT_TRACKING_EPOCH).getTime()) / 86_400_000;
@@ -302,9 +313,9 @@ export async function computeMetricsAsOf(
       key: "omzet",
       label: "Omzet bulan berjalan vs target",
       value: omzetPct ?? 0,
-      displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : "Target belum diatur",
-      band: omzetBand(omzetPct),
-      note: opts ? `POS ${rupiah(mtd.total)} + Custom Cake ${rupiah(cakeMtd)}` : undefined,
+      displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : omzetTooEarly ? "Belum ada hari kerja" : "Target belum diatur",
+      band: omzetTooEarly ? "measuring" : omzetBand(omzetPct),
+      note: opts ? `POS ${rupiah(mtd.total)}${part(mtd.total, posPace, opts.posTarget)} + Custom Cake ${rupiah(cakeMtd)}${part(cakeMtd, cakePace, opts.cakeTarget)}` : undefined,
       ranges: omzetRanges(),
     },
     {
@@ -336,12 +347,15 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
   const dailyTarget = bankAccount?.daily_revenue_target ?? null;
   const { data: targetRow } = await admin
     .from("scorecard_branch_targets" as never)
-    .select("monthly_omzet_target")
+    .select("monthly_pos_target, monthly_cake_target")
     .eq("branch", branch)
     .maybeSingle();
-  const rawTarget = (targetRow as { monthly_omzet_target: string | number | null } | null)?.monthly_omzet_target;
-  const omzetTarget = rawTarget == null ? null : Number(rawTarget);
-  const opts = { monthlyTarget: omzetTarget };
+  const tr = targetRow as { monthly_pos_target: string | number | null; monthly_cake_target: string | number | null } | null;
+  const omzetTarget = {
+    pos: tr?.monthly_pos_target == null ? null : Number(tr.monthly_pos_target),
+    cake: tr?.monthly_cake_target == null ? null : Number(tr.monthly_cake_target),
+  };
+  const opts = { posTarget: omzetTarget.pos, cakeTarget: omzetTarget.cake };
 
   const today = jakartaDateString(new Date());
   const lastWeek = addDays(today, -7);
