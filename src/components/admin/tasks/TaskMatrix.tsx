@@ -187,12 +187,16 @@ export function TaskMatrix({
     [from, days]
   );
 
-  // Chip → kolom: tanggal mulai, atau kolom pertama bila mulai sebelum jendela.
+  // Chip → kolom: tanggal mulai, atau kolom pertama bila mulai sebelum jendela. Tugas yang MASIH dikerjakan tapi
+  // sudah lewat dari tanggal mulainya otomatis ditaruh di kolom HARI INI (tanpa mengubah tanggal mulai aslinya),
+  // supaya tidak perlu menggulir ke hari-hari kemarin; lencana "4h" pada chip tetap menunjukkan sudah berapa hari berjalan.
   const placed = useMemo(() => {
     const m = new Map<string, MatrixCopy[]>();
+    const todayVisible = dates.includes(today);
     for (const row of data?.rows ?? []) {
       for (const c of row.copies) {
-        const col = c.startDate < from ? from : c.startDate;
+        const overdueRunning = c.status === "open" && c.startDate < today;
+        const col = overdueRunning && todayVisible ? today : c.startDate < from ? from : c.startDate;
         const key = `${row.rowId}|${col}`;
         const list = m.get(key) ?? [];
         list.push(c);
@@ -200,7 +204,7 @@ export function TaskMatrix({
       }
     }
     return m;
-  }, [data, from]);
+  }, [data, from, dates, today]);
 
   const visibleRows = useMemo(
     () =>
@@ -1467,7 +1471,7 @@ function MatrixRowView({
                 key={c.taskId}
                 copy={c}
                 today={today}
-                beforeWindow={c.startDate < from}
+                beforeWindow={c.startDate < date}
                 dim={focusEmployeeId !== null && c.assigneeId !== focusEmployeeId}
                 onDragStart={() => onCopyDragStart(c)}
                 onDragEnd={onDragEnd}
