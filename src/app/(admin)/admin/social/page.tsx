@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { getReportEditors, getSocialReportPage } from "@/lib/actions/social-report.actions";
-import { getSocialScorecard } from "@/lib/actions/social-scorecard.actions";
+import { getSocialTargets } from "@/lib/actions/social-scorecard.actions";
 import { SocialKpiManager } from "@/components/social/SocialKpiManager";
 
 /**
@@ -17,7 +17,7 @@ export default async function SocialKpiPage({ searchParams }: { searchParams: Pr
   if ((await getCurrentRole()) !== "admin") redirect("/dashboard");
 
   const sp = await searchParams;
-  const [pageRes, scorecardRes, editorsRes] = await Promise.all([getSocialReportPage(sp.week ?? null), getSocialScorecard(null), getReportEditors()]);
+  const [pageRes, targetsRes, editorsRes] = await Promise.all([getSocialReportPage(sp.week ?? null), getSocialTargets(), getReportEditors()]);
   const tab = sp.tab === "bagan" || sp.tab === "target" || sp.tab === "pengisi" ? sp.tab : "input";
 
   return (
@@ -28,7 +28,7 @@ export default async function SocialKpiPage({ searchParams }: { searchParams: Pr
       ) : (
         <SocialKpiManager
           page={pageRes.data}
-          scorecard={scorecardRes.ok ? scorecardRes.data ?? null : null}
+          targets={targetsRes.ok ? targetsRes.data ?? null : null}
           editors={editorsRes.ok ? editorsRes.data ?? null : null}
           initialTab={tab}
         />

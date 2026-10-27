@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Megaphone } from "lucide-react";
 import type { SocialReportReminder } from "@/lib/actions/social-report.actions";
-import { weekLabel } from "./SocialReportForm";
+import { weekLabel } from "@/lib/social/week-label";
 
 /**
  * Pengingat di beranda pengisi laporan sosmed: tiap Senin laporan minggu lalu jatuh tempo, dan kartu ini tetap

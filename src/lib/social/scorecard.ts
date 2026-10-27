@@ -141,6 +141,13 @@ export function scoreMetric(actual: number | null, cfg: ConfigVersion | null, co
   };
 }
 
+/** "YYYY-MM-DD" yang benar-benar ada di kalender (menolak 2026-13-45, 2026-02-30, dst). */
+export function isRealDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
 /** Senin awal minggu (ISO) dari tanggal "YYYY-MM-DD". */
 export function mondayOf(dateIso: string): string {
   const d = new Date(`${dateIso}T00:00:00Z`);

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ClipboardList, LineChart as LineChartIcon, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReportEditorsData, SocialReportPage } from "@/lib/actions/social-report.actions";
-import type { SocialScorecardData } from "@/lib/actions/social-scorecard.actions";
+import type { SocialBrandCard } from "@/lib/actions/social-scorecard.actions";
 import { SocialCompletenessGrid, SocialReportForm } from "./SocialReportForm";
 import { SocialWeeklyChartsLazy } from "./SocialWeeklyChartsLazy";
 import { SocialTargetsEditor } from "./SocialTargetsEditor";
@@ -22,12 +22,12 @@ const TABS: { id: Tab; label: string; icon: typeof ClipboardList }[] = [
 /** Halaman Sosmed & KPI (owner): semua input di satu tempat — laporan mingguan, bagan, target scorecard, pengisi. */
 export function SocialKpiManager({
   page,
-  scorecard,
+  targets,
   editors,
   initialTab,
 }: {
   page: SocialReportPage;
-  scorecard: SocialScorecardData | null;
+  targets: { month: string; brands: SocialBrandCard[] } | null;
   editors: ReportEditorsData | null;
   initialTab: Tab;
 }) {
@@ -63,7 +63,7 @@ export function SocialKpiManager({
       )}
       {tab === "bagan" && <SocialWeeklyChartsLazy page={page} />}
       {tab === "target" &&
-        (scorecard ? <SocialTargetsEditor brands={scorecard.brands} month={scorecard.month} /> : <p className="text-sm text-destructive">Data scorecard tidak tersedia.</p>)}
+        (targets ? <SocialTargetsEditor brands={targets.brands} month={targets.month} /> : <p className="text-sm text-destructive">Data target tidak tersedia.</p>)}
       {tab === "pengisi" && (editors ? <SocialEditorsPanel data={editors} /> : <p className="text-sm text-destructive">Data tidak tersedia.</p>)}
     </div>
   );

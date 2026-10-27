@@ -13,7 +13,7 @@ import { requireAdmin, type ActionResult } from "./_gates";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { canUseSocialReports } from "@/lib/social/access";
-import { mondayOf, type ReportRow } from "@/lib/social/scorecard";
+import { isRealDate, mondayOf, type ReportRow } from "@/lib/social/scorecard";
 
 /** Senin dari minggu yang SUDAH selesai paling akhir: laporan diisi tiap hari Senin untuk minggu lalu. */
 function previousWeekStart(today: string): string {
@@ -25,7 +25,7 @@ function previousWeekStart(today: string): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
-const isDateIso = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+const isDateIso = isRealDate;
 const isCount = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0 && n < 100_000_000;
 
 export interface SocialAccountView {
@@ -156,6 +156,7 @@ export async function saveWeeklyReport(input: WeeklyReportInput): Promise<Action
   if (!user) return fail("Not signed in");
   if (!input.accountId) return fail("Akun wajib dipilih");
   if (!isDateIso(input.weekStart)) return fail("Tanggal minggu tidak valid");
+  if (input.viewers > input.views) return fail("Viewers tidak boleh lebih besar dari views — cek kembali angkanya.");
   const nums = [input.views, input.viewers, input.interactions, input.followers, input.follows, input.unfollows, input.posts, input.reels, input.stories];
   if (!nums.every(isCount)) return fail("Semua angka harus bilangan bulat ≥ 0");
   const week = mondayOf(input.weekStart);

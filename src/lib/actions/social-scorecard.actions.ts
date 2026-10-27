@@ -210,7 +210,16 @@ export async function getSocialScorecard(monthIso?: string | null): Promise<Acti
         }
         return yeoboMonthRevenue(yeoboPnl?.months.find((x) => x.year === year && x.month === mm));
       };
-      const revenues = await Promise.all(months.map((m) => revenueOf(m)));
+      // Omset berasal dari laporan keuangan/POS; kegagalannya tidak boleh mematikan tiga metrik lain.
+      const revFail: { msg: string | null } = { msg: null };
+      const revenues = await Promise.all(
+        months.map((m) =>
+          revenueOf(m).catch((e) => {
+            revFail.msg = errMsg(e);
+            return null;
+          })
+        )
+      );
 
       const valuesByMonth = months.map((m, i) => {
         const rs = reportsInMonth(brandReports, m);
@@ -231,7 +240,9 @@ export async function getSocialScorecard(monthIso?: string | null): Promise<Acti
         const scored = scoreMetric(cur[def.code], cfg, def.code);
         const inputs: Record<string, unknown> =
           def.code === "omset"
-            ? { sumber: spec?.kind === "yeobo" ? "Laporan laba-rugi Yeobo Space (semua cabang)" : usesPosRegime(month) ? `POS + custom cake (${spec && spec.kind === "haeng" ? spec.branch : "-"})` : "Laporan laba-rugi" }
+            ? revFail.msg
+              ? { catatan: `Omset belum bisa dihitung: ${revFail.msg}` }
+              : { sumber: spec?.kind === "yeobo" ? "Laporan laba-rugi Yeobo Space (semua cabang)" : usesPosRegime(month) ? `POS + custom cake (${spec && spec.kind === "haeng" ? spec.branch : "-"})` : "Laporan laba-rugi" }
             : { minggu_terisi: weeksReported, akun_terisi: `${accountsReporting}/${brandAccounts.length}` };
         return {
           ...scored,
@@ -268,6 +279,70 @@ export async function getSocialScorecard(monthIso?: string | null): Promise<Acti
       });
     }
     return { ok: true, data: { month, monthLabel: monthLabel(month), trendMonths: months, brands: out } };
+  } catch (e) {
+    return fail(errMsg(e));
+  }
+}
+
+/**
+ * Target & ambang yang berlaku bulan ini per brand — TANPA menghitung nilai (tidak menyentuh laporan keuangan/POS),
+ * untuk editor target di halaman Sosmed & KPI supaya halaman itu tetap ringan.
+ */
+export async function getSocialTargets(): Promise<ActionResult<{ month: string; brands: SocialBrandCard[] }>> {
+  const gate = await requireSocialAdmin();
+  if (!gate.ok) return fail(gate.error);
+  const month = `${jakartaDateString(new Date()).slice(0, 7)}-01`;
+  try {
+    const db = createAdminClient();
+    const [brandsRes, accountsRes, cfgRes] = await Promise.all([
+      db.from("social_brands" as never).select("id, code, label, sort_order").order("sort_order"),
+      db.from("social_accounts" as never).select("id, brand_id").eq("is_active", true),
+      db.from("social_scorecard_config" as never).select("*").order("effective_from", { ascending: false }).order("created_at", { ascending: false }),
+    ]);
+    for (const r of [brandsRes, accountsRes, cfgRes]) if (r.error) return fail(r.error.message);
+    const accounts = (accountsRes.data ?? []) as any[];
+    const cfgRows = (cfgRes.data ?? []) as unknown as ConfigRow[];
+    const brands: SocialBrandCard[] = ((brandsRes.data ?? []) as any[]).map((b) => {
+      const versions = cfgRows.filter((c) => c.brand_id === b.id).map(toVersion);
+      return {
+        brandId: b.id,
+        code: b.code,
+        label: b.label,
+        accountsReporting: 0,
+        accountCount: accounts.filter((a) => a.brand_id === b.id).length,
+        weeksReported: 0,
+        metrics: SOCIAL_METRICS.map((def) => {
+          const cfg = pickConfig(versions.filter((v) => v.metricCode === def.code), month);
+          return {
+            code: def.code,
+            actual: null,
+            target: cfg?.targetValue ?? null,
+            score: null,
+            status: "not_assessed" as const,
+            label: def.label,
+            kind: def.kind,
+            note: def.note,
+            greenBound: cfg?.greenBound ?? null,
+            redBound: cfg?.redBound ?? null,
+            spark: [],
+            inputs: {},
+          };
+        }),
+        history: cfgRows
+          .filter((c) => c.brand_id === b.id)
+          .slice(0, 40)
+          .map((c) => ({
+            metricCode: c.metric_code,
+            targetValue: c.target_value == null ? null : Number(c.target_value),
+            greenBound: Number(c.green_bound),
+            redBound: Number(c.red_bound),
+            effectiveFrom: c.effective_from,
+            reason: c.reason,
+            createdAt: c.created_at,
+          })),
+      };
+    });
+    return { ok: true, data: { month, brands } };
   } catch (e) {
     return fail(errMsg(e));
   }

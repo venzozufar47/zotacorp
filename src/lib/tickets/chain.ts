@@ -60,7 +60,12 @@ export async function branchesOfEmployee(userId: string): Promise<TicketBranchRo
 export async function superiorsOf(branchId: string, userId: string): Promise<string[]> {
   const admin = createAdminClient() as any;
   const { data } = await admin.from("ticket_superiors").select("superior_id").eq("branch_id", branchId).eq("user_id", userId);
-  return ((data ?? []) as any[]).map((r) => r.superior_id as string);
+  const ids = ((data ?? []) as any[]).map((r) => r.superior_id as string);
+  if (ids.length === 0) return ids;
+  // Atasan yang sudah nonaktif/resign tidak boleh jadi tujuan tiket (tiket akan menggantung tanpa penanggung jawab).
+  const { data: alive } = await admin.from("profiles").select("id").in("id", ids).eq("is_active", true).is("resigned_at", null);
+  const ok = new Set(((alive ?? []) as any[]).map((r) => r.id as string));
+  return ids.filter((id) => ok.has(id));
 }
 
 /** Bawahan langsung seseorang di sebuah cabang. */

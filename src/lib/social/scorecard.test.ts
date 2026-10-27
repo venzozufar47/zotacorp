@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   engagementOf,
   followersGrowthOf,
+  isRealDate,
   lastMonths,
   mondayOf,
   pickConfig,
@@ -95,4 +96,12 @@ test("helper tanggal", () => {
   assert.equal(mondayOf("2026-10-28"), "2026-10-26");
   assert.equal(mondayOf("2026-10-25"), "2026-10-19");
   assert.deepEqual(lastMonths("2026-02-01", 4), ["2025-11-01", "2025-12-01", "2026-01-01", "2026-02-01"]);
+});
+
+test("isRealDate menolak tanggal yang tidak ada di kalender", () => {
+  assert.equal(isRealDate("2026-10-26"), true);
+  assert.equal(isRealDate("2026-02-30"), false);
+  assert.equal(isRealDate("2026-13-01"), false);
+  assert.equal(isRealDate("2026-10-26x"), false);
+  assert.equal(isRealDate(""), false);
 });

@@ -42,10 +42,11 @@ export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
     const accountIds = new Set(
       page.brands.flatMap((b) => (kind === "brand" ? (b.id === id ? b.accounts : []) : b.accounts.filter((a) => a.id === id))).map((a) => a.id)
     );
-    const byWeek = new Map<string, { views: number; viewers: number; followers: number; follows: number; unfollows: number; posts: number; reels: number; stories: number }>();
+    const byWeek = new Map<string, { accounts: number; views: number; viewers: number; followers: number; follows: number; unfollows: number; posts: number; reels: number; stories: number }>();
     for (const r of page.history) {
       if (!accountIds.has(r.accountId)) continue;
-      const cur = byWeek.get(r.weekStart) ?? { views: 0, viewers: 0, followers: 0, follows: 0, unfollows: 0, posts: 0, reels: 0, stories: 0 };
+      const cur = byWeek.get(r.weekStart) ?? { accounts: 0, views: 0, viewers: 0, followers: 0, follows: 0, unfollows: 0, posts: 0, reels: 0, stories: 0 };
+      cur.accounts += 1;
       cur.views += r.views;
       cur.viewers += r.viewers;
       cur.followers += r.followers;
@@ -59,7 +60,13 @@ export function SocialWeeklyCharts({ page }: { page: SocialReportPage }) {
     return [...byWeek.entries()]
       .sort(([a], [b]) => (a < b ? -1 : 1))
       .slice(-WEEKS)
-      .map(([w, v]) => ({ week: shortDate(w), ...v, net: v.follows - v.unfollows }));
+      .map(([w, v]) => ({
+        week: shortDate(w),
+        ...v,
+        // Gabungan beberapa akun: minggu yang belum dilaporkan semua akun tidak boleh menampilkan followers yang "turun" palsu.
+        followers: v.accounts < accountIds.size ? null : v.followers,
+        net: v.follows - v.unfollows,
+      }));
   }, [page, scope]);
 
   return (
