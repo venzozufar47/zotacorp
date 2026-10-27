@@ -8,6 +8,7 @@ import { getMyCakeAccess, isCakeFinanceAdmin } from "@/lib/cake-orders/access";
 import { isYeoboBoothAdmin } from "@/lib/yeobo-booth/access";
 import { isMetaAdsViewer } from "@/lib/meta-ads/access";
 import { canFileTickets } from "@/lib/tickets/access";
+import { isSocialReportEditor } from "@/lib/social/access";
 import { isSimPic } from "@/lib/sim-cards/access";
 import { isSopOwner } from "@/lib/cleaning/owner-access";
 import { isProcurementStaff } from "@/lib/procurement/access";
@@ -32,6 +33,7 @@ export default async function EmployeeLayout({
     hasYeoboBooth,
     hasCash,
     hasTickets,
+    hasSosmed,
     hasSimCards,
     hasProcurement,
     has360Eval,
@@ -48,6 +50,7 @@ export default async function EmployeeLayout({
     isYeoboBoothAdmin(),
     hasAssignedCashDashboard(),
     canFileTickets(),
+    isSocialReportEditor(),
     isSimPic(),
     isProcurementStaff(),
     hasPending360Evaluation(),
@@ -79,6 +82,7 @@ export default async function EmployeeLayout({
         hasYeoboBooth={hasYeoboBooth}
         hasMetaAds={hasMetaAds}
         hasTickets={hasTickets}
+        hasSosmed={hasSosmed}
         hasSimCards={hasSimCards}
         hasSopOwner={hasSopOwner}
         hasProcurement={hasProcurement}
@@ -101,6 +105,7 @@ export default async function EmployeeLayout({
         hasYeoboBooth={hasYeoboBooth}
         hasMetaAds={hasMetaAds}
         hasTickets={hasTickets}
+        hasSosmed={hasSosmed}
         hasSimCards={hasSimCards}
         hasSopOwner={hasSopOwner}
         hasProcurement={hasProcurement}

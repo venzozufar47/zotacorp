@@ -1,118 +1,98 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SOCIAL_METRIC_BY_CODE,
-  aggregateWeekly,
-  achievementPct,
-  engagementRate,
+  engagementOf,
+  followersGrowthOf,
+  lastMonths,
   mondayOf,
-  monthRange,
   pickConfig,
+  reachOf,
+  reportsInMonth,
   scoreMetric,
   type ConfigVersion,
-  type WeeklyRow,
+  type ReportRow,
 } from "./scorecard.ts";
 
-const wk = (o: Partial<WeeklyRow>): WeeklyRow => ({
+const row = (over: Partial<ReportRow>): ReportRow => ({
+  accountId: "ig",
   weekStart: "2026-10-05",
-  postsScheduled: 0,
-  postsOnTime: 0,
-  backupStock: 0,
-  messagesReceived: 0,
-  messagesRepliedOnTime: 0,
-  commentsReceived: 0,
-  commentsRepliedOnTime: 0,
-  ...o,
+  views: 0,
+  viewers: 0,
+  interactions: 0,
+  followers: 1000,
+  follows: 0,
+  unfollows: 0,
+  posts: 0,
+  reels: 0,
+  stories: 0,
+  ...over,
 });
 
-const cfg = (o: Partial<ConfigVersion> = {}): ConfigVersion => ({
-  metricCode: "omset",
-  targetValue: 100,
+test("minggu masuk bulan menurut tanggal Senin-nya", () => {
+  const rows = [row({ weekStart: "2026-09-28" }), row({ weekStart: "2026-10-05" }), row({ weekStart: "2026-11-02" })];
+  assert.deepEqual(reportsInMonth(rows, "2026-10-01").map((r) => r.weekStart), ["2026-10-05"]);
+});
+
+test("reach = jumlah viewers; tanpa laporan → null", () => {
+  assert.equal(reachOf([]), null);
+  assert.equal(reachOf([row({ viewers: 1200 }), row({ viewers: 800, accountId: "tt" })]), 2000);
+});
+
+test("engagement = interaksi ÷ views; tanpa views → null", () => {
+  assert.equal(engagementOf([]), null);
+  assert.equal(engagementOf([row({ views: 0, interactions: 5 })]), null);
+  assert.equal(engagementOf([row({ views: 1000, interactions: 50 }), row({ views: 1000, interactions: 30 })]), 4);
+});
+
+test("pertumbuhan followers: awal = followers akhir minggu pertama dikurangi net follow minggu itu", () => {
+  // awal = 1050 - (60-10) = 1000, akhir = 1200 → +20%
+  const rows = [
+    row({ weekStart: "2026-10-05", followers: 1050, follows: 60, unfollows: 10 }),
+    row({ weekStart: "2026-10-12", followers: 1100 }),
+    row({ weekStart: "2026-10-19", followers: 1200 }),
+  ];
+  assert.equal(followersGrowthOf(rows), 20);
+});
+
+test("pertumbuhan followers menggabungkan akun; akun tanpa awal > 0 dilewati", () => {
+  const rows = [
+    row({ accountId: "ig", weekStart: "2026-10-05", followers: 1000 }),
+    row({ accountId: "ig", weekStart: "2026-10-12", followers: 1100 }),
+    row({ accountId: "tt", weekStart: "2026-10-05", followers: 500 }),
+    row({ accountId: "tt", weekStart: "2026-10-12", followers: 600 }),
+    row({ accountId: "baru", weekStart: "2026-10-05", followers: 0 }),
+  ];
+  // awal 1500, akhir 1700 → 13.33%
+  assert.equal(Math.round((followersGrowthOf(rows) as number) * 100) / 100, 13.33);
+  assert.equal(followersGrowthOf([]), null);
+});
+
+const cfg = (target: number | null): ConfigVersion => ({
+  metricCode: "reach",
+  targetValue: target,
   greenBound: 100,
   redBound: 70,
   effectiveFrom: "2026-01-01",
   createdAt: "2026-01-01T00:00:00Z",
-  ...o,
 });
 
-test("aggregateWeekly: persen dihitung dari jumlah, bukan rata-rata persen mingguan", () => {
-  const r = aggregateWeekly(
-    [
-      wk({ postsScheduled: 10, postsOnTime: 10, messagesReceived: 2, messagesRepliedOnTime: 2 }),
-      wk({ weekStart: "2026-10-12", postsScheduled: 2, postsOnTime: 0, commentsReceived: 8, commentsRepliedOnTime: 4 }),
-    ],
-    7
-  );
-  assert.equal(Math.round(r.kalender! * 10) / 10, 83.3); // 10/12, bukan (100%+0%)/2
-  assert.equal(r.balasan, 60); // (2+4)/(2+8)
+test("scoreMetric: target kosong = belum dinilai, data kosong = belum lengkap, lainnya berwarna", () => {
+  assert.equal(scoreMetric(500, cfg(null), "reach").status, "not_assessed");
+  assert.equal(scoreMetric(null, cfg(1000), "reach").status, "incomplete");
+  assert.equal(scoreMetric(1000, cfg(1000), "reach").status, "green");
+  assert.equal(scoreMetric(800, cfg(1000), "reach").status, "yellow");
+  assert.equal(scoreMetric(500, cfg(1000), "reach").status, "red");
 });
 
-test("aggregateWeekly: stok = persen minggu yang memenuhi minimum; minimum kosong → tidak dinilai", () => {
-  const rows = [wk({ backupStock: 7 }), wk({ backupStock: 6 }), wk({ backupStock: 10 }), wk({ backupStock: 0 })];
-  assert.equal(aggregateWeekly(rows, 7).stok, 50);
-  assert.equal(aggregateWeekly(rows, null).stok, null);
+test("pickConfig memilih versi terbaru yang sudah berlaku", () => {
+  const v = (effectiveFrom: string, createdAt: string, target: number): ConfigVersion => ({ ...cfg(target), effectiveFrom, createdAt });
+  const versions = [v("2026-01-01", "a", 1), v("2026-09-01", "b", 2), v("2026-11-01", "c", 3)];
+  assert.equal(pickConfig(versions, "2026-10-01")?.targetValue, 2);
+  assert.equal(pickConfig(versions, "2025-12-01"), null);
 });
 
-test("aggregateWeekly: tanpa penyebut → null, bukan 0", () => {
-  const r = aggregateWeekly([wk({})], 7);
-  assert.equal(r.kalender, null);
-  assert.equal(r.balasan, null);
-  assert.equal(aggregateWeekly([], 7).stok, null);
-});
-
-test("achievementPct: target kosong atau 0 → null", () => {
-  assert.equal(achievementPct(50, 100), 50);
-  assert.equal(achievementPct(50, null), null);
-  assert.equal(achievementPct(50, 0), null);
-  assert.equal(achievementPct(null, 100), null);
-});
-
-test("engagementRate: postingan tanpa reach diabaikan; semua tanpa reach → null", () => {
-  const posts = [
-    { likes: 10, comments: 5, shares: 3, saves: 2, reach: 1000 },
-    { likes: 99, comments: 99, shares: 99, saves: 99, reach: null },
-  ];
-  assert.equal(engagementRate(posts), 2);
-  assert.equal(engagementRate([posts[1]]), null);
-});
-
-test("pickConfig: versi terbaru yang sudah berlaku; versi masa depan diabaikan", () => {
-  const v = [
-    cfg({ targetValue: 1, effectiveFrom: "2026-01-01" }),
-    cfg({ targetValue: 2, effectiveFrom: "2026-09-01" }),
-    cfg({ targetValue: 3, effectiveFrom: "2026-11-01" }),
-  ];
-  assert.equal(pickConfig(v, "2026-10-01")!.targetValue, 2);
-  assert.equal(pickConfig(v, "2026-08-01")!.targetValue, 1);
-  assert.equal(pickConfig(v, "2025-12-01"), null);
-});
-
-test("scoreMetric hasil: pencapaian vs ambang hijau/kuning/merah", () => {
-  const def = SOCIAL_METRIC_BY_CODE.get("omset")!;
-  assert.equal(scoreMetric(def, 100, cfg()).status, "green");
-  assert.equal(scoreMetric(def, 70, cfg()).status, "yellow");
-  assert.equal(scoreMetric(def, 69, cfg()).status, "red");
-  assert.equal(scoreMetric(def, 150, cfg()).score, 150);
-});
-
-test("scoreMetric hasil: target kosong → not_assessed, data kosong → incomplete", () => {
-  const def = SOCIAL_METRIC_BY_CODE.get("reach")!;
-  assert.equal(scoreMetric(def, 10, cfg({ targetValue: null })).status, "not_assessed");
-  assert.equal(scoreMetric(def, null, cfg()).status, "incomplete");
-});
-
-test("scoreMetric proses: nilai persen dinilai langsung", () => {
-  const def = SOCIAL_METRIC_BY_CODE.get("p_kalender")!;
-  const c = cfg({ metricCode: "p_kalender", targetValue: null, greenBound: 90, redBound: 75 });
-  assert.equal(scoreMetric(def, 90, c).status, "green");
-  assert.equal(scoreMetric(def, 80, c).status, "yellow");
-  assert.equal(scoreMetric(def, 74, c).status, "red");
-  assert.equal(scoreMetric(def, null, c).status, "incomplete");
-});
-
-test("mondayOf & monthRange", () => {
-  assert.equal(mondayOf("2026-10-25"), "2026-10-19"); // Minggu
-  assert.equal(mondayOf("2026-10-19"), "2026-10-19"); // Senin
+test("helper tanggal", () => {
   assert.equal(mondayOf("2026-10-28"), "2026-10-26");
-  assert.deepEqual(monthRange("2026-12-01"), { from: "2026-12-01", toExcl: "2027-01-01" });
+  assert.equal(mondayOf("2026-10-25"), "2026-10-19");
+  assert.deepEqual(lastMonths("2026-02-01", 4), ["2025-11-01", "2025-12-01", "2026-01-01", "2026-02-01"]);
 });

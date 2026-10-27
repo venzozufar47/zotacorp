@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, ClipboardList, Target, Users } from "lucide-react";
+import { LayoutDashboard, Clock, Receipt, Wallet, Cake, Factory, Inbox, Camera, Coins, Ticket, Smartphone, PackageSearch, ClipboardCheck, ClipboardList, Target, Users, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 import { HamburgerMenu, type MenuViewer } from "./HamburgerMenu";
@@ -16,6 +16,7 @@ export function BottomNav({
   hasYeoboBooth = false,
   hasMetaAds = false,
   hasTickets = false,
+  hasSosmed = false,
   hasSimCards = false,
   hasSopOwner = false,
   hasProcurement = false,
@@ -33,6 +34,8 @@ export function BottomNav({
   /** Show the "Meta Ads" tab for users in the meta_ads_viewers allowlist. */
   hasMetaAds?: boolean;
   hasTickets?: boolean;
+  /** Menu "Sosmed" untuk pengisi laporan sosmed mingguan (social_report_editors). */
+  hasSosmed?: boolean;
   hasSimCards?: boolean;
   hasSopOwner?: boolean;
   /** Tab "Pengadaan" — array item di file ini TERPISAH dari Sidebar.tsx,
@@ -54,6 +57,9 @@ export function BottomNav({
     { href: "/payslips", icon: Receipt, label: t.nav.payslips, color: "bg-tertiary" },
     ...(hasTickets
       ? [{ href: "/tickets", icon: Ticket, label: "Tiket", color: "bg-tertiary" }]
+      : []),
+    ...(hasSosmed
+      ? [{ href: "/sosmed", icon: Megaphone, label: "Sosmed", color: "bg-pop-pink" }]
       : []),
     ...(hasTeam
       ? [{ href: "/tim", icon: Users, label: "Tim", color: "bg-quaternary" }]

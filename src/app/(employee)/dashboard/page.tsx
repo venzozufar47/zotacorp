@@ -46,6 +46,8 @@ import type { AttendanceBreakLog } from "@/lib/supabase/types";
 import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { getMyOpenTasks } from "@/lib/actions/assigned-tasks.actions";
 import { getMyPendingVerifications } from "@/lib/actions/verifications.actions";
+import { getSocialReportReminder } from "@/lib/actions/social-report.actions";
+import { SocialReportReminderCard } from "@/components/social/SocialReportReminderCard";
 import { VerificationInbox } from "@/components/verification/VerificationInbox";
 import { TaskAssignmentCard } from "@/components/dashboard/TaskAssignmentCard";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
@@ -158,6 +160,7 @@ export default async function DashboardPage() {
     payslipBasisRes,
     myTasks,
     pendingVerifications,
+    socialReminder,
     pendingLeaveApprovals,
     canFileComplaintFlag,
     answeredMonthlyPulse,
@@ -209,6 +212,7 @@ export default async function DashboardPage() {
       .maybeSingle(),
     getMyOpenTasks(),
     getMyPendingVerifications(),
+    getSocialReportReminder().catch(() => null),
     // Kartu fitur baru disembunyikan (lihat EMPLOYEE_HOME_FEATURES): query-nya dilewati selagi mati.
     FEATURES.izin ? getPendingLeaveApprovalCountForMe() : Promise.resolve(0),
     FEATURES.keluhan || FEATURES.risetProduk ? canFileComplaint() : Promise.resolve(false),
@@ -298,6 +302,9 @@ export default async function DashboardPage() {
 
       {/* Poin tugas / tiket yang menunjuk saya sebagai verifikator (verifikasi dua pihak). Hilang sendiri bila kosong. */}
       <VerificationInbox items={pendingVerifications} />
+
+      {/* Pengingat laporan sosmed mingguan (hanya pengisi terdaftar; hilang sendiri bila lengkap). */}
+      <SocialReportReminderCard reminder={socialReminder} />
 
       {/* Foto kebersihan yang perlu diperbaiki — di ATAS catatan pembinaan:
           ini yang mengunci sign-in/checkout (lihat hasPendingCleaningRedo),
