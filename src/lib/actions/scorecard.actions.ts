@@ -95,16 +95,29 @@ async function sumPaidPosTotal(
   endDate: string
 ): Promise<{ total: number; count: number }> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("pos_sales")
-    .select("total")
-    .eq("bank_account_id", bankAccountId)
-    .is("voided_at", null)
-    .eq("payment_status", "paid")
-    .gte("sale_date", startDate)
-    .lte("sale_date", endDate);
-  const rows = data ?? [];
-  return { total: rows.reduce((s, r) => s + r.total, 0), count: rows.length };
+  // PostgREST membatasi 1000 baris per permintaan — satu bulan POS Pare bisa 1.000–2.000 transaksi, jadi wajib
+  // dipaginasi (urut id supaya halaman tidak tumpang-tindih), kalau tidak omzet terpotong diam-diam.
+  const PAGE = 1000;
+  let total = 0;
+  let count = 0;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await admin
+      .from("pos_sales")
+      .select("total")
+      .eq("bank_account_id", bankAccountId)
+      .is("voided_at", null)
+      .eq("payment_status", "paid")
+      .gte("sale_date", startDate)
+      .lte("sale_date", endDate)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    for (const r of rows) total += r.total;
+    count += rows.length;
+    if (rows.length < PAGE) break;
+  }
+  return { total, count };
 }
 
 /**
