@@ -9,6 +9,7 @@ import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./Attac
 import { jakartaDateString } from "@/lib/utils/jakarta";
 import { VerifierPicker } from "@/components/verification/VerifierPicker";
 import { useVerifierPeople } from "@/components/verification/useVerifierPeople";
+import { NO_VERIFIER, verifierIdsOf, verifierIncomplete, verifierValueOf, type VerifierValue } from "@/lib/verification/logic";
 import { Field, inputCls } from "@/components/admin/registry/RegistryUi";
 
 interface DraftItem {
@@ -19,7 +20,7 @@ interface DraftItem {
   /** Sudah punya foto bukti di ronde berjalan. */
   hasPhoto: boolean;
   /** Verifikator poin ini (kosong = tanpa verifikasi). */
-  verifiers: string[];
+  verifiers: VerifierValue;
   /** Kunci stabil untuk React (id DB atau penanda lokal). */
   key: string;
 }
@@ -54,7 +55,7 @@ export function TaskEditForm({
       title: i.title,
       note: i.note,
       hasPhoto: i.done,
-      verifiers: i.verifiers.map((v) => v.id),
+      verifiers: verifierValueOf(i.verifiers.map((v) => v.id)),
       key: i.id,
     }))
   );
@@ -90,6 +91,11 @@ export function TaskEditForm({
     const cleaned = items
       .map((i) => ({ ...i, title: i.title.trim() }))
       .filter((i) => i.title.length > 0);
+    const bad = itemsLocked ? undefined : cleaned.find((i) => verifierIncomplete(i.verifiers));
+    if (bad) {
+      toast.error(`Item "${bad.title}": pilih verifikator, atau matikan verifikasi`);
+      return;
+    }
     startTransition(async () => {
       const res = await updateAssignedTask({
         taskId: detail.id,
@@ -99,7 +105,7 @@ export function TaskEditForm({
           id: i.id,
           title: i.title,
           note: i.note,
-          ...(itemsLocked ? {} : { verifierIds: i.verifiers }),
+          ...(itemsLocked ? {} : { verifierIds: verifierIdsOf(i.verifiers) }),
         })),
         applyToBatch,
         addAttachmentPaths: newPhotos.map((p) => p.path),
@@ -239,7 +245,7 @@ export function TaskEditForm({
                 people={verifierPeople}
                 value={it.verifiers}
                 excludeIds={detail.assigneeId ? [detail.assigneeId] : []}
-                onChange={(ids) => setItems((prev) => prev.map((v, i) => (i === idx ? { ...v, verifiers: ids } : v)))}
+                onChange={(next) => setItems((prev) => prev.map((v, i) => (i === idx ? { ...v, verifiers: next } : v)))}
               />
              )}
             </div>
@@ -251,7 +257,7 @@ export function TaskEditForm({
               onClick={() =>
                 setItems((prev) => [
                   ...prev,
-                  { title: "", note: null, hasPhoto: false, verifiers: [], key: `new-${crypto.randomUUID()}` },
+                  { title: "", note: null, hasPhoto: false, verifiers: NO_VERIFIER, key: `new-${crypto.randomUUID()}` },
                 ])
               }
             >

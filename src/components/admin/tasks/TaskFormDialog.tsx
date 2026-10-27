@@ -7,6 +7,7 @@ import { Loader2, Plus, X } from "lucide-react";
 import { createAssignedTask } from "@/lib/actions/assigned-tasks.actions";
 import { VerifierPicker } from "@/components/verification/VerifierPicker";
 import { useVerifierPeople } from "@/components/verification/useVerifierPeople";
+import { NO_VERIFIER, verifierIdsOf, verifierIncomplete, type VerifierValue } from "@/lib/verification/logic";
 import { Field, Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 import { TASK_REFERENCE_MAX, type TaskCategory } from "@/lib/tasks/types";
 import { jakartaDateString } from "@/lib/utils/jakarta";
@@ -36,8 +37,8 @@ export function TaskFormDialog({
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
-  const [items, setItems] = useState<{ key: string; value: string; verifiers: string[] }[]>([
-    { key: "item-0", value: "", verifiers: [] },
+  const [items, setItems] = useState<{ key: string; value: string; verifiers: VerifierValue }[]>([
+    { key: "item-0", value: "", verifiers: NO_VERIFIER },
   ]);
   const verifierPeople = useVerifierPeople();
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -71,7 +72,7 @@ export function TaskFormDialog({
   function addItem(focus = true) {
     if (items.length >= MAX_ITEMS) return;
     const key = `item-${nextKey.current++}`;
-    setItems((prev) => [...prev, { key, value: "", verifiers: [] }]);
+    setItems((prev) => [...prev, { key, value: "", verifiers: NO_VERIFIER }]);
     if (focus) {
       // Tunggu baris baru ter-render, lalu fokuskan.
       requestAnimationFrame(() => itemRefs.current.get(key)?.focus());
@@ -79,13 +80,18 @@ export function TaskFormDialog({
   }
 
   function submit() {
+    const bad = items.find((i) => i.value.trim() && verifierIncomplete(i.verifiers));
+    if (bad) {
+      toast.error(`Item "${bad.value.trim()}": pilih verifikator, atau matikan verifikasi`);
+      return;
+    }
     startTransition(async () => {
       const res = await createAssignedTask({
         title,
         description: description || null,
         items: items
           .filter((i) => i.value.trim())
-          .map((i) => ({ title: i.value.trim(), verifierIds: i.verifiers })),
+          .map((i) => ({ title: i.value.trim(), verifierIds: verifierIdsOf(i.verifiers) })),
         assigneeIds: [...picked],
         categoryId: categoryId || null,
         attachmentPaths: photos.map((p) => p.path),
@@ -224,8 +230,8 @@ export function TaskFormDialog({
                   people={verifierPeople}
                   value={it.verifiers}
                   excludeIds={[...picked]}
-                  onChange={(ids) =>
-                    setItems((prev) => prev.map((v) => (v.key === it.key ? { ...v, verifiers: ids } : v)))
+                  onChange={(next) =>
+                    setItems((prev) => prev.map((v) => (v.key === it.key ? { ...v, verifiers: next } : v)))
                   }
                 />
                </div>

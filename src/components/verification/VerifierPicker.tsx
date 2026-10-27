@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ShieldCheck, Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MIN_VERIFIERS, MAX_VERIFIERS } from "@/lib/verification/logic";
+import { MIN_VERIFIERS, MAX_VERIFIERS, type VerifierValue } from "@/lib/verification/logic";
 
 export interface VerifierOption {
   id: string;
@@ -23,30 +23,27 @@ export function VerifierPicker({
   compact = false,
 }: {
   people: VerifierOption[];
-  value: string[];
-  onChange: (ids: string[]) => void;
+  value: VerifierValue;
+  onChange: (v: VerifierValue) => void;
   excludeIds?: string[];
   compact?: boolean;
 }) {
-  const enabled = value.length > 0;
+  const enabled = value.on;
   const [open, setOpen] = useState(false);
   const options = people.filter((p) => !excludeIds.includes(p.id));
-  const names = value.map((id) => people.find((p) => p.id === id)?.name ?? "—");
+  // Pilihan lama yang kini terlarang (mis. penerima tugas diganti) tidak ikut dihitung.
+  const ids = value.ids.filter((id) => !excludeIds.includes(id));
+  const names = ids.map((id) => people.find((p) => p.id === id)?.name ?? "—");
 
   function toggleEnabled() {
-    if (enabled) {
-      onChange([]);
-      setOpen(false);
-    } else {
-      // Aktif = minimal satu baris terpilih supaya sakelar tidak langsung mati; daftar dibuka untuk melengkapi.
-      onChange(options.slice(0, 1).map((p) => p.id));
-      setOpen(true);
-    }
+    // Mengaktifkan TIDAK memilih siapa pun otomatis; pilihan terakhir diingat bila dimatikan lalu dinyalakan lagi.
+    onChange({ on: !enabled, ids });
+    setOpen(!enabled && ids.length === 0);
   }
 
   function toggle(id: string) {
-    if (value.includes(id)) onChange(value.filter((v) => v !== id));
-    else if (value.length < MAX_VERIFIERS) onChange([...value, id]);
+    if (ids.includes(id)) onChange({ on: true, ids: ids.filter((v) => v !== id) });
+    else if (ids.length < MAX_VERIFIERS) onChange({ on: true, ids: [...ids, id] });
   }
 
   return (
@@ -69,7 +66,7 @@ export function VerifierPicker({
           {open && (
             <ul className="max-h-48 overflow-auto rounded-lg border border-border divide-y divide-border">
               {options.map((p) => {
-                const on = value.includes(p.id);
+                const on = ids.includes(p.id);
                 return (
                   <li key={p.id}>
                     <button
@@ -88,12 +85,12 @@ export function VerifierPicker({
               })}
             </ul>
           )}
-          <p className={cn("text-xs", value.length < MIN_VERIFIERS ? "text-destructive" : "text-muted-foreground")}>
-            {value.length < MIN_VERIFIERS
+          <p className={cn("text-xs", ids.length < MIN_VERIFIERS ? "text-destructive" : "text-muted-foreground")}>
+            {ids.length < MIN_VERIFIERS
               ? "Pilih minimal satu verifikator."
-              : value.length === 1
+              : ids.length === 1
                 ? "Verifikator menandai terverifikasi di beranda mereka."
-                : `${value.length} verifikator — semuanya harus menandai terverifikasi di beranda mereka.`}
+                : `${ids.length} verifikator — semuanya harus menandai terverifikasi di beranda mereka.`}
           </p>
         </div>
       )}

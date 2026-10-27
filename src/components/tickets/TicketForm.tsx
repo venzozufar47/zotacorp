@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { VerifierPicker } from "@/components/verification/VerifierPicker";
+import { NO_VERIFIER, verifierIdsOf, verifierIncomplete, type VerifierValue } from "@/lib/verification/logic";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { createTicket, createDownTicket, type TicketFormOptions } from "@/lib/actions/tickets.actions";
 import { TICKET_CATEGORY_LABELS, type TicketCategory, type TicketPriority } from "@/lib/tickets/types";
@@ -41,7 +42,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [toUser, setToUser] = useState("");
-  const [verifiers, setVerifiers] = useState<string[]>([]);
+  const [verifier, setVerifier] = useState<VerifierValue>(NO_VERIFIER);
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
 
   const assignTarget = options.downTargets.find((t) => t.branch.id === assignBranch);
@@ -56,7 +57,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
     setDescription("");
     setAssignee(WHOLE_BRANCH);
     setToUser("");
-    setVerifiers([]);
+    setVerifier(NO_VERIFIER);
     setFiles([]);
   }
 
@@ -102,6 +103,10 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
       toast.error("Pilih atasan tujuan tiket");
       return;
     }
+    if (verifierIncomplete(verifier)) {
+      toast.error("Pilih verifikator, atau matikan verifikasi");
+      return;
+    }
     startTransition(async () => {
       let attachmentPaths: string[] = [];
       try {
@@ -110,7 +115,7 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
         toast.error("Gagal mengupload foto. Coba lagi.");
         return;
       }
-      const base = { category, priority, title: title.trim(), description: description.trim(), attachmentPaths, verifierIds: verifiers };
+      const base = { category, priority, title: title.trim(), description: description.trim(), attachmentPaths, verifierIds: verifierIdsOf(verifier) };
       const res =
         mode === "report"
           ? await createTicket({ ...base, branchId, toUserId: supers.length > 1 ? toUser : null })
@@ -262,8 +267,8 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
 
           <VerifierPicker
             people={options.verifierPeople}
-            value={verifiers}
-            onChange={setVerifiers}
+            value={verifier}
+            onChange={setVerifier}
             excludeIds={mode === "assign" && assignee !== WHOLE_BRANCH ? [assignee] : []}
           />
 

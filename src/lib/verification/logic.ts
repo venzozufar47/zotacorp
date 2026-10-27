@@ -8,6 +8,25 @@
 export const MIN_VERIFIERS = 1;
 export const MAX_VERIFIERS = 6;
 
+/**
+ * Keadaan pemilih verifikator di form: sakelar `on` terpisah dari daftar pilihan `ids`, supaya mengaktifkan tidak
+ * memilih siapa pun otomatis dan mematikan lalu menyalakan lagi mengembalikan pilihan terakhir.
+ */
+export interface VerifierValue {
+  on: boolean;
+  ids: string[];
+}
+
+export const NO_VERIFIER: VerifierValue = { on: false, ids: [] };
+
+export const verifierValueOf = (ids: readonly string[]): VerifierValue => ({ on: ids.length > 0, ids: [...ids] });
+
+/** Id yang benar-benar berlaku (kosong bila sakelar mati). */
+export const verifierIdsOf = (v: VerifierValue): string[] => (v.on ? v.ids : []);
+
+/** Sakelar menyala tapi belum ada yang dipilih — form tidak boleh dikirim. */
+export const verifierIncomplete = (v: VerifierValue): boolean => v.on && v.ids.length < MIN_VERIFIERS;
+
 export type VerificationStatus = "pending" | "verified" | "rejected" | "void";
 
 export interface VerificationRowLite {
