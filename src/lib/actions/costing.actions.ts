@@ -852,7 +852,7 @@ export interface CostingDashboardRow {
   breakdown: HppBreakdown;
   /** Kenaikan HPP vs snapshot terakhir (fraksi). null bila belum ada. */
   hppRosePct: number | null;
-  /** Tanggal snapshot HPP terakhir produk ("YYYY-MM-DD"); null bila belum pernah di-snapshot. */
+  /** Tanggal snapshot HPP MANUAL terakhir produk ("YYYY-MM-DD"); null bila belum pernah di-snapshot manual. */
   lastSnapshotDate: string | null;
 }
 export interface CostingDashboard {
@@ -880,7 +880,7 @@ export async function getCostingDashboard(
     listProductsWithHpp(businessUnit),
     supabase
       .from("costing_hpp_snapshot" as never)
-      .select("product_id, hpp_unit, snapshot_date")
+      .select("product_id, hpp_unit, snapshot_date, created_by")
       .eq("business_unit", businessUnit)
       .order("snapshot_date", { ascending: false }),
   ]);
@@ -891,10 +891,9 @@ export async function getCostingDashboard(
   const latestDateByProduct = new Map<string, string>();
   for (const r of (snapRows ?? []) as Record<string, unknown>[]) {
     const pid = r.product_id as string;
-    if (!latestByProduct.has(pid)) {
-      latestByProduct.set(pid, num(r.hpp_unit));
-      latestDateByProduct.set(pid, String(r.snapshot_date).slice(0, 10));
-    }
+    if (!latestByProduct.has(pid)) latestByProduct.set(pid, num(r.hpp_unit));
+    // Tanggal yang ditampilkan hanya snapshot MANUAL (created_by terisi); snapshot otomatis bulanan (cron, created_by null) tidak.
+    if (r.created_by && !latestDateByProduct.has(pid)) latestDateByProduct.set(pid, String(r.snapshot_date).slice(0, 10));
   }
 
   const rows: CostingDashboardRow[] = list.map((r) => {

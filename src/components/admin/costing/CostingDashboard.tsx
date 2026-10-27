@@ -162,7 +162,7 @@ export function CostingDashboard({
                     <span className="flex min-w-0 flex-1 items-baseline gap-2">
                       <span className="truncate font-medium text-[13px]">{r.product.name}</span>
                       <span className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
-                        {r.lastSnapshotDate ? snapshotDateLabel(r.lastSnapshotDate) : "belum ada snapshot"}
+                        {r.lastSnapshotDate ? snapshotDateLabel(r.lastSnapshotDate) : "belum ada snapshot manual"}
                       </span>
                     </span>
                     {r.hppRosePct != null && r.hppRosePct > 0.05 && (
