@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { VerifierPicker } from "@/components/verification/VerifierPicker";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { createTicket, createDownTicket, type TicketFormOptions } from "@/lib/actions/tickets.actions";
 import { TICKET_CATEGORY_LABELS, type TicketCategory, type TicketPriority } from "@/lib/tickets/types";
@@ -39,9 +40,13 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [toUser, setToUser] = useState("");
+  const [verifiers, setVerifiers] = useState<string[]>([]);
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
 
   const assignTarget = options.downTargets.find((t) => t.branch.id === assignBranch);
+  // Atasan tujuan tiket "naik": 0 = owner, 1 = otomatis, 2+ = pembuat memilih. Owner membuat untuk dirinya sendiri.
+  const supers = !isOwner && mode === "report" ? options.mySuperiors[reportBranch] ?? [] : [];
 
   function reset() {
     setMode("report");
@@ -50,6 +55,8 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
     setTitle("");
     setDescription("");
     setAssignee(WHOLE_BRANCH);
+    setToUser("");
+    setVerifiers([]);
     setFiles([]);
   }
 
@@ -91,6 +98,10 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
       toast.error("Pilih cabang dulu");
       return;
     }
+    if (supers.length > 1 && !toUser) {
+      toast.error("Pilih atasan tujuan tiket");
+      return;
+    }
     startTransition(async () => {
       let attachmentPaths: string[] = [];
       try {
@@ -99,10 +110,10 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
         toast.error("Gagal mengupload foto. Coba lagi.");
         return;
       }
-      const base = { category, priority, title: title.trim(), description: description.trim(), attachmentPaths };
+      const base = { category, priority, title: title.trim(), description: description.trim(), attachmentPaths, verifierIds: verifiers };
       const res =
         mode === "report"
-          ? await createTicket({ ...base, branchId })
+          ? await createTicket({ ...base, branchId, toUserId: supers.length > 1 ? toUser : null })
           : await createDownTicket({ ...base, branchId, assigneeId: assignee === WHOLE_BRANCH ? null : assignee });
       if (!res.ok) {
         // Server menolak → foto yang sudah terupload yatim.
@@ -187,6 +198,26 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
             </Field>
           </div>
 
+          {mode === "report" && !isOwner && (
+            <Field label="Kirim ke">
+              {supers.length > 1 ? (
+                <Select value={toUser} onChange={setToUser}>
+                  <option value="">Pilih atasan…</option>
+                  {supers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm">{supers.length === 1 ? supers[0].name : "Owner"}</p>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                {supers.length > 1 ? "Kamu punya lebih dari satu atasan — pilih siapa yang menerima tiket ini." : "Atasan langsungmu menerima tiket ini."}
+              </p>
+            </Field>
+          )}
+
           {mode === "assign" && (
             <Field label="Untuk siapa">
               <Select value={assignee} onChange={setAssignee}>
@@ -228,6 +259,13 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
               className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm resize-y"
             />
           </Field>
+
+          <VerifierPicker
+            people={options.verifierPeople}
+            value={verifiers}
+            onChange={setVerifiers}
+            excludeIds={mode === "assign" && assignee !== WHOLE_BRANCH ? [assignee] : []}
+          />
 
           <div className="space-y-2">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Foto (opsional, bisa lebih dari 1)</span>

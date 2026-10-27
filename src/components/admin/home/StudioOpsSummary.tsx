@@ -52,7 +52,7 @@ export function StudioOpsSummary({
                 href="/admin/tickets"
                 className="text-[13px] font-medium text-foreground underline-offset-2 hover:underline hover:text-primary"
               >
-                Kecepatan tiket Kepala Studio
+                Kecepatan tiket
               </Link>
               <span className="block text-[11px] text-muted-foreground">
                 {kpi.sampleCount === 0

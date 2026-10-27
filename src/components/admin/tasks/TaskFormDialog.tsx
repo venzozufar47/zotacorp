@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
 import { createAssignedTask } from "@/lib/actions/assigned-tasks.actions";
+import { VerifierPicker } from "@/components/verification/VerifierPicker";
+import { useVerifierPeople } from "@/components/verification/useVerifierPeople";
 import { Field, Shell, inputCls } from "@/components/admin/registry/RegistryUi";
 import { TASK_REFERENCE_MAX, type TaskCategory } from "@/lib/tasks/types";
 import { jakartaDateString } from "@/lib/utils/jakarta";
@@ -34,9 +36,10 @@ export function TaskFormDialog({
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
-  const [items, setItems] = useState<{ key: string; value: string }[]>([
-    { key: "item-0", value: "" },
+  const [items, setItems] = useState<{ key: string; value: string; verifiers: string[] }[]>([
+    { key: "item-0", value: "", verifiers: [] },
   ]);
+  const verifierPeople = useVerifierPeople();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const today = jakartaDateString(new Date());
@@ -68,7 +71,7 @@ export function TaskFormDialog({
   function addItem(focus = true) {
     if (items.length >= MAX_ITEMS) return;
     const key = `item-${nextKey.current++}`;
-    setItems((prev) => [...prev, { key, value: "" }]);
+    setItems((prev) => [...prev, { key, value: "", verifiers: [] }]);
     if (focus) {
       // Tunggu baris baru ter-render, lalu fokuskan.
       requestAnimationFrame(() => itemRefs.current.get(key)?.focus());
@@ -80,7 +83,9 @@ export function TaskFormDialog({
       const res = await createAssignedTask({
         title,
         description: description || null,
-        items: items.map((i) => i.value.trim()).filter(Boolean).map((t) => ({ title: t })),
+        items: items
+          .filter((i) => i.value.trim())
+          .map((i) => ({ title: i.value.trim(), verifierIds: i.verifiers })),
         assigneeIds: [...picked],
         categoryId: categoryId || null,
         attachmentPaths: photos.map((p) => p.path),
@@ -175,7 +180,8 @@ export function TaskFormDialog({
         <Field label="2. Checklist" hint="Tiap item wajib dikerjakan dengan satu foto bukti.">
           <ol className="space-y-2">
             {items.map((it, idx) => (
-              <li key={it.key} className="flex items-center gap-2">
+              <li key={it.key} className="space-y-1.5">
+               <div className="flex items-center gap-2">
                 <span className="grid place-items-center size-7 shrink-0 rounded-full bg-muted text-xs font-bold text-muted-foreground">
                   {idx + 1}
                 </span>
@@ -211,6 +217,18 @@ export function TaskFormDialog({
                     <X size={16} />
                   </button>
                 )}
+               </div>
+               <div className="ml-9">
+                <VerifierPicker
+                  compact
+                  people={verifierPeople}
+                  value={it.verifiers}
+                  excludeIds={[...picked]}
+                  onChange={(ids) =>
+                    setItems((prev) => prev.map((v) => (v.key === it.key ? { ...v, verifiers: ids } : v)))
+                  }
+                />
+               </div>
               </li>
             ))}
           </ol>

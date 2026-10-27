@@ -108,6 +108,15 @@ export interface Ticket {
   confirmedBy: string | null;
   /** Catatan "belum beres" saat pembuat menolak penyelesaian. */
   disputeNote: string | null;
+  /** Pemegang tiket 'naik' saat handlerLevel = 1 (orang tertentu); null bila owner / tiket 'turun'. */
+  handlerId: string | null;
+  handlerName?: string | null;
+  /** Orang yang mengeskalasi ke pemegang sekarang (tempat tiket kembali bila eskalasi ditolak). */
+  escalatedFromId: string | null;
+  /** Verifikator yang dipilih pembuat (>= 2, semua wajib). Kosong = tanpa verifikasi. */
+  verifierIds: string[];
+  /** Progres verifikasi putaran terakhir (diisi saat hydrate; kosong bila tidak ada). */
+  verification?: { verifierId: string; name: string; status: "pending" | "verified" | "rejected" }[];
   createdAt: string;
   updatedAt: string;
   attachments?: TicketAttachment[];
@@ -120,9 +129,9 @@ export function needsFilerConfirmation(
   return t.status === "resolved" && !t.confirmedAt;
 }
 
-/** Label status yang peka tingkat: "Menunggu keputusan Owner", "Ditangani Tingkat 2", dst. */
-export function ticketStatusLabel(t: Pick<Ticket, "status" | "handlerLevel">): string {
-  const lvl = t.handlerLevel >= 99 ? "Owner" : `Tingkat ${t.handlerLevel}`;
+/** Label status yang peka pemegang: "Menunggu keputusan Owner", "Ditangani Boles", dst. */
+export function ticketStatusLabel(t: Pick<Ticket, "status" | "handlerLevel" | "handlerName">): string {
+  const lvl = t.handlerLevel >= 99 ? "Owner" : t.handlerName?.trim() || "atasan";
   if (t.status === "escalated") return `Menunggu keputusan ${lvl}`;
   if (t.status === "owner_handling") return `Ditangani ${lvl}`;
   return TICKET_STATUS_LABELS[t.status];

@@ -1,34 +1,55 @@
 /**
- * Aturan murni rantai hierarki tiket (tanpa import, bisa diuji dan dipakai klien).
- * Tingkat = angka 1..8 di ticket_chain_members; OWNER_LEVEL (99) = owner/admin, selalu puncak.
+ * Aturan murni hierarki tiket per ORANG (tanpa import, bisa diuji dan dipakai klien).
+ *
+ * Tiap karyawan punya nol, satu, atau beberapa atasan langsung per cabang (ticket_superiors). Tiket "naik" ditujukan ke
+ * SATU atasan; yang punya dua atasan memilih. Tanpa atasan = langsung ke owner (admin), yang selalu puncak.
  */
 
-/** Tingkat "owner" (admin Zota): selalu paling atas, tidak disimpan di ticket_chain_members. */
+/** handler_level: tiket dipegang owner (admin). */
 export const OWNER_LEVEL = 99;
+/** handler_level: tiket dipegang satu orang tertentu (`handler_id`). */
+export const PERSON_LEVEL = 1;
 
-export interface ChainMember {
+export type Target = { kind: "owner" } | { kind: "person"; userId: string };
+
+export type TargetResult = { ok: true; target: Target } | { ok: false; error: string };
+
+/**
+ * Tentukan tujuan tiket dari daftar atasan. 0 atasan → owner; 1 → orang itu; 2+ → `chosen` wajib salah satunya.
+ * `chosen` yang bukan atasan selalu ditolak (kecuali tidak ada atasan sama sekali: diabaikan).
+ */
+export function resolveTarget(superiorIds: readonly string[], chosen?: string | null): TargetResult {
+  const supers = Array.from(new Set(superiorIds));
+  if (supers.length === 0) return { ok: true, target: { kind: "owner" } };
+  if (chosen && !supers.includes(chosen)) return { ok: false, error: "Tujuan tiket harus salah satu atasanmu." };
+  if (supers.length === 1) return { ok: true, target: { kind: "person", userId: supers[0] } };
+  if (!chosen) return { ok: false, error: "Pilih atasan tujuan tiket." };
+  return { ok: true, target: { kind: "person", userId: chosen } };
+}
+
+export interface Link {
   userId: string;
-  level: number;
+  superiorId: string;
 }
 
-/** Tingkat terendah yang punya anggota (tempat tiket baru mendarat); owner bila rantai kosong. */
-export function firstLevel(chain: ChainMember[]): number {
-  return chain.length > 0 ? Math.min(...chain.map((m) => m.level)) : OWNER_LEVEL;
+/** Apakah menjadikan `superiorId` atasan `userId` menimbulkan putaran (A atasan B, B atasan A, dst)? */
+export function wouldCreateCycle(links: readonly Link[], userId: string, superiorId: string): boolean {
+  if (userId === superiorId) return true;
+  // Naik dari superiorId lewat atasan-atasannya; bila bertemu userId berarti putaran.
+  const seen = new Set<string>();
+  const stack = [superiorId];
+  while (stack.length > 0) {
+    const cur = stack.pop() as string;
+    if (cur === userId) return true;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    for (const l of links) if (l.userId === cur) stack.push(l.superiorId);
+  }
+  return false;
 }
 
-/** Tingkat berikutnya di atas `level` yang punya anggota; owner bila sudah tidak ada. */
-export function nextLevelAbove(chain: ChainMember[], level: number): number {
-  const above = chain.filter((m) => m.level > level && m.level < OWNER_LEVEL).map((m) => m.level);
-  return above.length > 0 ? Math.min(...above) : OWNER_LEVEL;
-}
-
-/** Tingkat tepat di bawah `level` yang punya anggota (untuk mengembalikan eskalasi yang ditolak); null bila tidak ada. */
-export function levelBelow(chain: ChainMember[], level: number): number | null {
-  const below = chain.filter((m) => m.level < level).map((m) => m.level);
-  return below.length > 0 ? Math.max(...below) : null;
-}
-
-/** Label tampilan sebuah tingkat. */
-export function levelLabel(level: number): string {
-  return level >= OWNER_LEVEL ? "Owner" : `Tingkat ${level}`;
+/** Label tampilan pemegang tiket. */
+export function holderLabel(level: number, name?: string | null): string {
+  if (level >= OWNER_LEVEL) return "Owner";
+  return name?.trim() || "atasan";
 }

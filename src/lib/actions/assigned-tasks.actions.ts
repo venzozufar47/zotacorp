@@ -28,6 +28,15 @@ import {
   validateAttachmentPaths,
 } from "./_task-attachments";
 import { diffTaskItems } from "@/lib/tasks/edit-diff";
+import { MAX_VERIFIERS, dedupeVerifierIds } from "@/lib/verification/logic";
+import {
+  blockingReason,
+  createVerificationRows,
+  loadRound,
+  namesOf,
+  validateVerifiers,
+  voidPending,
+} from "@/lib/verification/server";
 import { sendPushToAdmins, sendPushToUser } from "@/lib/push/web-push";
 import {
   TASK_DEFER_REASON_MAX,
@@ -106,6 +115,8 @@ const createSchema = z.object({
       z.object({
         title: z.string().trim().min(1, "Judul item wajib diisi").max(200),
         note: z.string().trim().max(500).optional().nullable(),
+        /** Verifikator poin ini (>= 2, semua wajib). Kosong/tidak ada = tanpa verifikasi. */
+        verifierIds: z.array(z.string().uuid()).max(MAX_VERIFIERS).optional(),
       })
     )
     .min(1, "Minimal satu item checklist")
@@ -150,6 +161,12 @@ export async function createAssignedTask(
   const attErr = await validateAttachmentPaths(gate.userId, attachmentPaths);
   if (attErr) return { ok: false, error: attErr };
 
+  for (const it of items) {
+    if (!it.verifierIds || it.verifierIds.length === 0) continue;
+    const vErr = await validateVerifiers(it.verifierIds, assigneeIds);
+    if (vErr) return { ok: false, error: `Item "${it.title}": ${vErr}` };
+  }
+
   const db = createAdminClient() as any;
 
   const categoryId = parsed.data.categoryId ?? null;
@@ -186,6 +203,7 @@ export async function createAssignedTask(
         title: it.title,
         note: it.note || null,
         sort_order: idx,
+        verifier_ids: dedupeVerifierIds(it.verifierIds),
       }))
     );
     if (itemErr) {
@@ -245,6 +263,7 @@ export async function createAssignedTask(
       title: it.title,
       note: it.note || null,
       sort_order: idx,
+      verifier_ids: dedupeVerifierIds(it.verifierIds),
     }))
   );
   const { error: itemErr } = await db.from("assigned_task_items").insert(itemRows);
@@ -399,7 +418,7 @@ export async function getAssignedTaskDetail(
       buildAdminRows([task]),
       db
         .from("assigned_task_items")
-        .select("id, title, note, sort_order")
+        .select("id, title, note, sort_order, verifier_ids")
         .eq("task_id", taskId)
         .order("sort_order", { ascending: true }),
       db
@@ -441,6 +460,14 @@ export async function getAssignedTaskDetail(
   const attUrls = await signAttachments((attachmentRows ?? []).map((a: any) => a.photo_path));
   const byItem = new Map<string, any>((completions ?? []).map((c: any) => [c.item_id, c]));
 
+  // Verifikasi putaran berjalan + nama semua verifikator yang terlibat.
+  const verifRows = (await loadRound(db, "task", taskId, task.current_round)).filter((v) => v.status !== "void");
+  const allVerifierIds = [
+    ...new Set([...(items ?? []).flatMap((i: any) => (i.verifier_ids ?? []) as string[]), ...verifRows.map((v) => v.verifierId)]),
+  ];
+  const verifierNames = await namesOf(db, allVerifierIds);
+  const verifierName = new Map<string, string>(allVerifierIds.map((id, i) => [id, verifierNames[i]]));
+
   let batchOthers = 0;
   if (task.batch_id) {
     const { count } = await db
@@ -478,6 +505,15 @@ export async function getAssignedTaskDetail(
           done: !!c,
           photoUrl: c?.photo_path ? urls.get(c.photo_path) ?? null : null,
           photoPurged: !!c && !c.photo_path && !!c.photo_purged_at,
+          verifiers: ((i.verifier_ids ?? []) as string[]).map((vid) => ({
+            id: vid,
+            name: verifierName.get(vid) ?? "—",
+            status: (verifRows.find((v) => v.itemId === i.id && v.verifierId === vid)?.status ?? null) as
+              | "pending"
+              | "verified"
+              | "rejected"
+              | null,
+          })),
         };
       }),
       reviews: (reviews ?? []).map((r: any) => ({
@@ -501,6 +537,7 @@ const updateSchema = z.object({
         id: z.string().uuid().optional(),
         title: z.string().trim().min(1, "Judul item wajib diisi").max(200),
         note: z.string().trim().max(500).optional().nullable(),
+        verifierIds: z.array(z.string().uuid()).max(MAX_VERIFIERS).optional(),
       })
     )
     .min(1, "Minimal satu item checklist")
@@ -555,10 +592,15 @@ export async function updateAssignedTask(
 
   const { data: existing } = await db
     .from("assigned_task_items")
-    .select("id, title, note, sort_order")
+    .select("id, title, note, sort_order, verifier_ids")
     .eq("task_id", taskId)
     .order("sort_order", { ascending: true });
   const existingRows: any[] = existing ?? [];
+  for (const it of items) {
+    if (!it.verifierIds || it.verifierIds.length === 0) continue;
+    const vErr = await validateVerifiers(it.verifierIds, task.assignee_id ? [task.assignee_id] : []);
+    if (vErr) return { ok: false, error: `Item "${it.title}": ${vErr}` };
+  }
   const diff = diffTaskItems(existingRows, items);
   if (!diff.ok) return { ok: false, error: diff.error };
   const { added, removed, changed: itemsChanged } = diff;
@@ -582,6 +624,7 @@ export async function updateAssignedTask(
             title: it.title,
             note: it.note || null,
             sort_order: idx,
+            verifier_ids: dedupeVerifierIds(it.verifierIds),
           }))
       );
       if (insErr) return { ok: false, error: insErr.message };
@@ -593,7 +636,12 @@ export async function updateAssignedTask(
       .map(({ it, idx }) =>
         db
           .from("assigned_task_items")
-          .update({ title: it.title, note: it.note || null, sort_order: idx })
+          .update({
+            title: it.title,
+            note: it.note || null,
+            sort_order: idx,
+            ...(it.verifierIds !== undefined ? { verifier_ids: dedupeVerifierIds(it.verifierIds) } : {}),
+          })
           .eq("id", it.id)
           .eq("task_id", taskId)
       );
@@ -768,6 +816,11 @@ export async function reviewAssignedTask(
   if (task.status !== "submitted") {
     return { ok: false, error: "Tugas ini tidak sedang menunggu verifikasi." };
   }
+  // Poin yang butuh verifikasi dua pihak: admin baru boleh menyetujui setelah SEMUA verifikator setuju.
+  if (decision === "approve") {
+    const blocked = await blockingReason(db, "task", taskId, task.current_round);
+    if (blocked) return { ok: false, error: blocked };
+  }
 
   const now = new Date().toISOString();
   const patch =
@@ -794,6 +847,8 @@ export async function reviewAssignedTask(
   if (!updated || updated.length === 0) {
     return { ok: false, error: "Tugas ini sudah diproses." };
   }
+
+  if (decision === "reject") await voidPending(db, "task", taskId, task.current_round);
 
   if (feedbackPaths.length > 0) {
     await insertAttachments(db, [taskId], feedbackPaths, "feedback", task.current_round, gate.userId);
@@ -930,7 +985,7 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
   ] = await Promise.all([
     supabase
       .from("assigned_task_items")
-      .select("id, task_id, title, note, sort_order")
+      .select("id, task_id, title, note, sort_order, verifier_ids")
       .in("task_id", ids)
       .order("sort_order", { ascending: true }),
     supabase
@@ -971,6 +1026,9 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
     [...current, ...currentExtras].map((c: any) => c.photo_path).filter(Boolean)
   );
   const doneByItem = new Map<string, any>(current.map((c: any) => [c.item_id, c]));
+  const myVerifierIds: string[] = [...new Set<string>((items ?? []).flatMap((i: any) => (i.verifier_ids ?? []) as string[]))];
+  const myVerifierNames = await namesOf(createAdminClient() as any, myVerifierIds);
+  const myVerifierName = new Map<string, string>(myVerifierIds.map((id, i) => [id, myVerifierNames[i]]));
   const deferralByTask = new Map<string, string>(
     (deferrals ?? []).map((d: any) => [d.task_id, d.reason])
   );
@@ -992,6 +1050,7 @@ export async function getMyOpenTasks(): Promise<MyTask[]> {
           note: i.note,
           done: !!c,
           photoUrl: c?.photo_path ? urls.get(c.photo_path) ?? null : null,
+          verifierNames: ((i.verifier_ids ?? []) as string[]).map((vid) => myVerifierName.get(vid) ?? "—"),
         };
       }),
     deferredToday: deferralByTask.has(t.id),
@@ -1193,7 +1252,7 @@ export async function submitTask(taskId: string): Promise<ActionResult> {
   const { user, task, db } = own;
 
   const [{ data: items }, { data: completions }] = await Promise.all([
-    db.from("assigned_task_items").select("id").eq("task_id", task.id),
+    db.from("assigned_task_items").select("id, verifier_ids").eq("task_id", task.id),
     db
       .from("assigned_task_completions")
       .select("item_id, photo_path")
@@ -1217,6 +1276,23 @@ export async function submitTask(taskId: string): Promise<ActionResult> {
     .select("id");
   if (!updated || updated.length === 0) {
     return { ok: false, error: "Tugas sudah dikirim." };
+  }
+
+  // Poin yang butuh verifikasi dua pihak: minta tiap verifikator (selain pekerjanya) menandai di beranda mereka.
+  const entries = (items ?? [])
+    .map((i: any) => ({
+      itemId: i.id as string,
+      verifierIds: dedupeVerifierIds(i.verifier_ids).filter((v) => v !== user.id),
+    }))
+    .filter((e: { verifierIds: string[] }) => e.verifierIds.length > 0);
+  if (entries.length > 0) {
+    const made = await createVerificationRows(db, "task", task.id, task.current_round, entries);
+    if (made.error) console.error("[tasks] gagal membuat permintaan verifikasi:", made.error);
+    await Promise.all(
+      made.verifierIds.map((vid) =>
+        pushUser(vid, "Verifikasi menunggumu ✅", `${task.title} — buka beranda untuk memverifikasi.`)
+      )
+    );
   }
 
   const { data: me } = await db.from("profiles").select("full_name").eq("id", user.id).maybeSingle();

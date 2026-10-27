@@ -1,37 +1,40 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { OWNER_LEVEL, firstLevel, nextLevelAbove, levelBelow, levelLabel } from "./chain-logic.ts";
+import { resolveTarget, wouldCreateCycle, holderLabel, OWNER_LEVEL } from "./chain-logic.ts";
 
-const m = (level: number, userId = `u${level}`) => ({ userId, level });
-
-test("tiket baru mendarat di tingkat terendah yang berisi; rantai kosong → owner", () => {
-  assert.equal(firstLevel([m(1), m(2)]), 1);
-  assert.equal(firstLevel([m(2), m(3)]), 2);
-  assert.equal(firstLevel([]), OWNER_LEVEL);
+test("resolveTarget: tanpa atasan → owner", () => {
+  assert.deepEqual(resolveTarget([]), { ok: true, target: { kind: "owner" } });
 });
 
-test("eskalasi naik ke tingkat berikutnya yang berisi, melompati tingkat kosong, lalu owner", () => {
-  assert.equal(nextLevelAbove([m(1), m(2), m(3)], 1), 2);
-  assert.equal(nextLevelAbove([m(1), m(3)], 1), 3);
-  assert.equal(nextLevelAbove([m(1), m(2)], 2), OWNER_LEVEL);
-  assert.equal(nextLevelAbove([m(1)], 1), OWNER_LEVEL);
-  assert.equal(nextLevelAbove([], 0), OWNER_LEVEL);
+test("resolveTarget: satu atasan → otomatis", () => {
+  assert.deepEqual(resolveTarget(["boles"]), { ok: true, target: { kind: "person", userId: "boles" } });
+  assert.deepEqual(resolveTarget(["boles"], "boles"), { ok: true, target: { kind: "person", userId: "boles" } });
 });
 
-test("eskalasi ditolak → kembali ke tingkat berisi tepat di bawah", () => {
-  assert.equal(levelBelow([m(1), m(2), m(3)], 3), 2);
-  assert.equal(levelBelow([m(1), m(3)], 3), 1);
-  assert.equal(levelBelow([m(1)], 1), null);
-  assert.equal(levelBelow([m(1), m(2)], OWNER_LEVEL), 2);
+test("resolveTarget: dua atasan → wajib memilih salah satunya", () => {
+  assert.equal(resolveTarget(["a", "b"]).ok, false);
+  assert.deepEqual(resolveTarget(["a", "b"], "b"), { ok: true, target: { kind: "person", userId: "b" } });
+  assert.equal(resolveTarget(["a", "b"], "c").ok, false);
 });
 
-test("beberapa orang di satu tingkat tidak menggandakan tingkat", () => {
-  const chain = [m(1, "a"), m(1, "b"), m(2, "c")];
-  assert.equal(nextLevelAbove(chain, 1), 2);
-  assert.equal(firstLevel(chain), 1);
+test("resolveTarget: pilihan di luar atasan ditolak walau atasan tunggal", () => {
+  assert.equal(resolveTarget(["a"], "x").ok, false);
 });
 
-test("label tingkat", () => {
-  assert.equal(levelLabel(1), "Tingkat 1");
-  assert.equal(levelLabel(OWNER_LEVEL), "Owner");
+test("wouldCreateCycle", () => {
+  const links = [
+    { userId: "zahra", superiorId: "boles" },
+    { userId: "boles", superiorId: "bos" },
+  ];
+  assert.equal(wouldCreateCycle(links, "zahra", "zahra"), true);
+  assert.equal(wouldCreateCycle(links, "bos", "zahra"), true); // zahra → boles → bos → zahra
+  assert.equal(wouldCreateCycle(links, "boles", "zahra"), true);
+  assert.equal(wouldCreateCycle(links, "zahra", "bos"), false); // lompatan sah, bukan putaran
+  assert.equal(wouldCreateCycle(links, "chelsy", "boles"), false);
+});
+
+test("holderLabel", () => {
+  assert.equal(holderLabel(OWNER_LEVEL), "Owner");
+  assert.equal(holderLabel(1, "Boles"), "Boles");
+  assert.equal(holderLabel(1, null), "atasan");
 });

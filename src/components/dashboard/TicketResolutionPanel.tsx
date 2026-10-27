@@ -2,7 +2,7 @@ import { formatDuration, RECENT_RESOLUTION_TARGET_MS } from "@/lib/tickets/types
 import type { StudioHeadRecentResolutionKpi } from "@/lib/actions/tickets.actions";
 
 /**
- * Kartu "Kecepatan Tiket Studio" di dashboard karyawan, khusus Kepala Studio.
+ * Kartu "Kecepatan Tiket" di dashboard karyawan, khusus atasan (yang punya bawahan).
  *
  * Beda dari `getStudioHeadKpi()` (rata-rata lifetime, dipakai di /tickets):
  * ini rata-rata N tiket resolved TERAKHIR saja, supaya lebih mencerminkan
@@ -26,7 +26,7 @@ export function TicketResolutionPanel({
     <section>
       <div className="flex items-center gap-2 mb-2">
         <h2 className="font-display text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-          Kecepatan Tiket Studio
+          Kecepatan Tiket
         </h2>
         <span className="h-px flex-1 bg-gradient-to-r from-border to-transparent" />
       </div>

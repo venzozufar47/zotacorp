@@ -7,6 +7,8 @@ import { updateAssignedTask } from "@/lib/actions/assigned-tasks.actions";
 import { TASK_REFERENCE_MAX, type AdminTaskDetail } from "@/lib/tasks/types";
 import { AttachmentPicker, discardPickedPhotos, type PickedPhoto } from "./AttachmentPicker";
 import { jakartaDateString } from "@/lib/utils/jakarta";
+import { VerifierPicker } from "@/components/verification/VerifierPicker";
+import { useVerifierPeople } from "@/components/verification/useVerifierPeople";
 import { Field, inputCls } from "@/components/admin/registry/RegistryUi";
 
 interface DraftItem {
@@ -16,6 +18,8 @@ interface DraftItem {
   note: string | null;
   /** Sudah punya foto bukti di ronde berjalan. */
   hasPhoto: boolean;
+  /** Verifikator poin ini (kosong = tanpa verifikasi). */
+  verifiers: string[];
   /** Kunci stabil untuk React (id DB atau penanda lokal). */
   key: string;
 }
@@ -50,10 +54,12 @@ export function TaskEditForm({
       title: i.title,
       note: i.note,
       hasPhoto: i.done,
+      verifiers: i.verifiers.map((v) => v.id),
       key: i.id,
     }))
   );
   const [pending, startTransition] = useTransition();
+  const verifierPeople = useVerifierPeople();
   const existingRefs = detail.attachments.filter((a) => a.kind === "reference" && a.url);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [newPhotos, setNewPhotos] = useState<PickedPhoto[]>([]);
@@ -89,7 +95,12 @@ export function TaskEditForm({
         taskId: detail.id,
         title,
         description: description || null,
-        items: cleaned.map((i) => ({ id: i.id, title: i.title, note: i.note })),
+        items: cleaned.map((i) => ({
+          id: i.id,
+          title: i.title,
+          note: i.note,
+          ...(itemsLocked ? {} : { verifierIds: i.verifiers }),
+        })),
         applyToBatch,
         addAttachmentPaths: newPhotos.map((p) => p.path),
         removeAttachmentIds: [...removedIds],
@@ -171,7 +182,8 @@ export function TaskEditForm({
       >
         <div className="space-y-2">
           {items.map((it, idx) => (
-            <div key={it.key} className="flex items-center gap-1">
+            <div key={it.key} className="space-y-1.5">
+             <div className="flex items-center gap-1">
               <input
                 className={inputCls + " !mt-0 h-11"}
                 value={it.title}
@@ -220,6 +232,16 @@ export function TaskEditForm({
                   )}
                 </>
               )}
+             </div>
+             {!itemsLocked && (
+              <VerifierPicker
+                compact
+                people={verifierPeople}
+                value={it.verifiers}
+                excludeIds={detail.assigneeId ? [detail.assigneeId] : []}
+                onChange={(ids) => setItems((prev) => prev.map((v, i) => (i === idx ? { ...v, verifiers: ids } : v)))}
+              />
+             )}
             </div>
           ))}
           {!itemsLocked && items.length < 40 && (
@@ -229,7 +251,7 @@ export function TaskEditForm({
               onClick={() =>
                 setItems((prev) => [
                   ...prev,
-                  { title: "", note: null, hasPhoto: false, key: `new-${crypto.randomUUID()}` },
+                  { title: "", note: null, hasPhoto: false, verifiers: [], key: `new-${crypto.randomUUID()}` },
                 ])
               }
             >

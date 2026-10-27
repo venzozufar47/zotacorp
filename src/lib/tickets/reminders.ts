@@ -2,9 +2,9 @@
 /**
  * Reminder harian tiket untuk penanggung jawab (hierarki per cabang).
  *
- * Dipicu cron `/api/cron/studio-head-ticket-reminders` dua kali sehari (11.00 dan 18.00 WIB). Tiap anggota rantai
- * diingatkan HANYA soal tiket yang sedang menunggu tingkatnya di cabang yang dia pegang (open / in_progress; tiket
- * yang sudah dieskalasi ada di tangan tingkat di atasnya). Penerima tiket "turun" dari owner diingatkan soal tiket
+ * Dipicu cron `/api/cron/studio-head-ticket-reminders` dua kali sehari (11.00 dan 18.00 WIB). Tiap atasan diingatkan
+ * HANYA soal tiket yang ditujukan kepadanya (handler_id; open / in_progress — tiket yang sudah dieskalasi ada di
+ * tangan atasan berikutnya), dan owner soal tiket yang dipegang owner. Penerima tiket "turun" dari owner diingatkan soal tiket
  * yang ditugaskan kepadanya (atau ke seluruh cabangnya dan belum diambil). Tidak ada tiket → tidak kirim.
  */
 
@@ -22,6 +22,7 @@ interface ActiveTicketRow {
   branch_id: string;
   direction: string;
   assignee_id: string | null;
+  handler_id: string | null;
   handler_level: number;
   category: string;
   priority: string;
@@ -58,7 +59,7 @@ export async function runStudioHeadTicketReminders(): Promise<StudioReminderSumm
 
   const { data: ticketRows, error: tErr } = await admin
     .from("tickets")
-    .select("title, branch, branch_id, direction, assignee_id, handler_level, category, priority, created_at")
+    .select("title, branch, branch_id, direction, assignee_id, handler_id, handler_level, category, priority, created_at")
     .in("status", ACTIVE_STATUSES as unknown as string[]);
   if (tErr) throw new Error(tErr.message);
   const rows = (ticketRows ?? []) as ActiveTicketRow[];
@@ -68,8 +69,7 @@ export async function runStudioHeadTicketReminders(): Promise<StudioReminderSumm
   const perUser = new Map<string, ActiveTicketRow[]>();
   const push = (uid: string, t: ActiveTicketRow) => perUser.set(uid, [...(perUser.get(uid) ?? []), t]);
 
-  // 1. Tiket "naik": anggota tingkat yang memegangnya (anggota rantai per cabang), atau semua admin untuk level owner.
-  const { data: members } = await admin.from("ticket_chain_members").select("branch_id, user_id, level");
+  // 1. Tiket "naik": atasan yang dituju (handler_id), atau semua admin untuk level owner.
   const { data: admins } = await admin.from("profiles").select("id").eq("role", "admin");
   const adminIds = ((admins ?? []) as any[]).map((a) => a.id as string);
   for (const t of rows) {
@@ -78,9 +78,7 @@ export async function runStudioHeadTicketReminders(): Promise<StudioReminderSumm
       for (const id of adminIds) push(id, t);
       continue;
     }
-    for (const m of (members ?? []) as any[]) {
-      if (m.branch_id === t.branch_id && Number(m.level) === Number(t.handler_level)) push(m.user_id as string, t);
-    }
+    if (t.handler_id) push(t.handler_id, t);
   }
 
   // 2. Tiket "turun": penerima, atau seluruh karyawan cabang bila belum diambil.

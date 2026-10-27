@@ -1,38 +1,45 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Network, Plus, X } from "lucide-react";
+import { Network, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { removeChainMember, setChainMember, type HierarchyAdminData, type HierarchyBranch } from "@/lib/actions/tickets.actions";
-import { OWNER_LEVEL } from "@/lib/tickets/chain-logic";
+import { setSuperiors, type HierarchyAdminData, type HierarchyBranch } from "@/lib/actions/tickets.actions";
 
-const MAX_LEVEL = 8;
-
-/** Tombol "Atur hierarki" + dialog: rantai bertingkat per cabang (Tingkat 1..8, owner selalu puncak). */
+/** Tombol "Atur hierarki" + dialog: atasan langsung tiap orang per cabang (owner selalu puncak). */
 export function HierarchyManager({ data }: { data: HierarchyAdminData }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Perubahan dicatat dulu di sini (tampil seketika) lalu disimpan ke server di latar; halaman disegarkan saat dialog ditutup.
+  const [changed, setChanged] = useState(false);
+  function handleOpenChange(v: boolean) {
+    setOpen(v);
+    if (!v && changed) {
+      setChanged(false);
+      router.refresh();
+    }
+  }
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)} title="Atur siapa yang menangani tiket tiap cabang">
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} title="Atur atasan tiap orang untuk tiket">
         <Network size={15} /> Atur hierarki
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Hierarki tiket per cabang</DialogTitle>
             <DialogDescription>
-              Tiket dari karyawan masuk ke Tingkat 1 cabangnya. Bila tidak sanggup, tingkat itu mengeskalasi ke tingkat berikutnya, dan seterusnya sampai owner.
-              Satu tingkat boleh diisi lebih dari satu orang (siapa pun di tingkat itu bisa menangani).
+              Tiap orang punya atasan langsung. Tiketnya masuk ke SATU atasan itu; yang punya dua atasan memilih sendiri saat membuat tiket.
+              Bila atasan tidak sanggup, tiket naik ke atasan langsungnya, dan seterusnya sampai owner. Tanpa atasan, tiket langsung ke owner.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             {data.branches
               .filter((b) => b.branch.isActive)
               .map((b) => (
-                <BranchChain key={b.branch.id} item={b} eligible={data.eligible} />
+                <BranchPeople key={b.branch.id} item={b} eligible={data.eligible} onSaved={() => setChanged(true)} />
               ))}
           </div>
         </DialogContent>
@@ -41,81 +48,89 @@ export function HierarchyManager({ data }: { data: HierarchyAdminData }) {
   );
 }
 
-function BranchChain({ item, eligible }: { item: HierarchyBranch; eligible: HierarchyAdminData["eligible"] }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  // Tingkat kosong yang sengaja dibuka (belum ada anggotanya).
-  const [extraLevels, setExtraLevels] = useState<number[]>([]);
-  const usedLevels = Array.from(new Set(item.members.map((m) => m.level)));
-  const levels = Array.from(new Set([...usedLevels, ...extraLevels])).sort((a, b) => a - b);
-  const inChain = new Set(item.members.map((m) => m.userId));
-  const candidates = eligible.filter((e) => !inChain.has(e.id));
+function BranchPeople({
+  item,
+  eligible,
+  onSaved,
+}: {
+  item: HierarchyBranch;
+  eligible: HierarchyAdminData["eligible"];
+  onSaved: () => void;
+}) {
+  const nameOf = new Map(eligible.map((e) => [e.id, e.name]));
+  // Salinan lokal untuk pembaruan optimistis (UI berubah seketika, server menyusul).
+  const [people, setPeople] = useState(item.people);
+  const [busy, setBusy] = useState<Set<string>>(new Set());
 
-  function add(level: number, userId: string) {
-    if (!userId) return;
-    start(async () => {
-      const r = await setChainMember(item.branch.id, userId, level);
-      if (!r.ok) return void toast.error(r.error);
-      setExtraLevels((x) => x.filter((l) => l !== level));
-      router.refresh();
-    });
-  }
-  function remove(userId: string) {
-    start(async () => {
-      const r = await removeChainMember(item.branch.id, userId);
-      if (!r.ok) return void toast.error(r.error);
-      router.refresh();
-    });
-  }
-  function addLevel() {
-    const next = (levels.length ? Math.max(...levels) : 0) + 1;
-    if (next > MAX_LEVEL) return void toast.error(`Maksimal ${MAX_LEVEL} tingkat`);
-    setExtraLevels((x) => [...x, next]);
+  function save(userId: string, superiorIds: string[]) {
+    const before = people.find((p) => p.userId === userId)?.superiorIds ?? [];
+    setPeople((ps) => ps.map((p) => (p.userId === userId ? { ...p, superiorIds } : p)));
+    setBusy((b) => new Set(b).add(userId));
+    void setSuperiors(item.branch.id, userId, superiorIds)
+      .then((r) => {
+        if (!r.ok) {
+          setPeople((ps) => ps.map((p) => (p.userId === userId ? { ...p, superiorIds: before } : p)));
+          toast.error(r.error);
+        } else onSaved();
+      })
+      .catch(() => {
+        setPeople((ps) => ps.map((p) => (p.userId === userId ? { ...p, superiorIds: before } : p)));
+        toast.error("Gagal menyimpan. Coba lagi.");
+      })
+      .finally(() =>
+        setBusy((b) => {
+          const n = new Set(b);
+          n.delete(userId);
+          return n;
+        })
+      );
   }
 
   return (
     <section className="rounded-2xl border-2 border-foreground bg-card p-3.5">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h3 className="font-display text-[14px] font-bold">{item.branch.label}</h3>
-        <span className="text-[11px] text-muted-foreground">{item.employeeCount} karyawan ditugaskan</span>
+        <span className="text-[11px] text-muted-foreground">{people.length} orang</span>
       </div>
-
-      <ol className="space-y-2">
-        {levels.length === 0 && (
-          <li className="rounded-lg bg-warning/10 px-3 py-2 text-[12px] text-warning">
-            Belum ada tingkat. Tiket dari cabang ini langsung masuk ke owner. Tambahkan Tingkat 1 untuk memberi cabang ini penanggung jawab.
-          </li>
-        )}
-        {levels.map((lvl) => {
-          const members = item.members.filter((m) => m.level === lvl);
+      <ul className="space-y-1.5">
+        {people.map((p) => {
+          const candidates = eligible.filter((e) => e.id !== p.userId && !p.superiorIds.includes(e.id));
           return (
-            <li key={lvl} className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 px-3 py-2">
-              <span className="w-[70px] shrink-0 text-[12px] font-bold">Tingkat {lvl}</span>
+            <li key={p.userId} className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 px-3 py-2">
+              <span className="w-[110px] shrink-0 truncate text-[12.5px] font-bold" title={p.name}>
+                {p.name}
+              </span>
+              <span className="text-[11px] text-muted-foreground">atasan:</span>
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                {members.map((m) => (
-                  <span key={m.userId} className="inline-flex items-center gap-1 rounded-full border border-border bg-card py-0.5 pl-2.5 pr-1 text-[12px] font-medium">
-                    {m.name}
+                {p.superiorIds.map((sid) => (
+                  <span key={sid} className="inline-flex items-center gap-1 rounded-full border border-border bg-card py-0.5 pl-2.5 pr-1 text-[12px] font-medium">
+                    {nameOf.get(sid) ?? "—"}
                     <button
                       type="button"
-                      onClick={() => remove(m.userId)}
-                      disabled={pending}
-                      aria-label={`Keluarkan ${m.name}`}
+                      onClick={() =>
+                        save(
+                          p.userId,
+                          p.superiorIds.filter((x) => x !== sid)
+                        )
+                      }
+                      disabled={busy.has(p.userId)}
+                      aria-label={`Lepas ${nameOf.get(sid) ?? "atasan"} sebagai atasan ${p.name}`}
                       className="grid size-5 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
                       <X size={12} />
                     </button>
                   </span>
                 ))}
-                {members.length === 0 && <span className="text-[11.5px] italic text-muted-foreground">kosong, pilih orang →</span>}
+                {p.superiorIds.length === 0 && <span className="text-[11.5px] italic text-muted-foreground">Owner (langsung)</span>}
               </div>
               <select
                 value=""
-                disabled={pending}
-                onChange={(e) => add(lvl, e.target.value)}
-                aria-label={`Tambah orang ke Tingkat ${lvl}`}
+                disabled={busy.has(p.userId)}
+                onChange={(e) => e.target.value && save(p.userId, [...p.superiorIds, e.target.value])}
+                aria-label={`Tambah atasan untuk ${p.name}`}
                 className="h-8 max-w-[11rem] rounded-lg border-2 border-border bg-background px-2 text-[12px]"
               >
-                <option value="">+ Tambah orang</option>
+                <option value="">+ Atasan</option>
                 {candidates.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -126,15 +141,10 @@ function BranchChain({ item, eligible }: { item: HierarchyBranch; eligible: Hier
             </li>
           );
         })}
-        <li className="flex items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2">
-          <span className="w-[70px] shrink-0 text-[12px] font-bold">Owner</span>
-          <span className="text-[11.5px] text-muted-foreground">Selalu puncak (otomatis, level {OWNER_LEVEL}). Menerima eskalasi dari tingkat tertinggi.</span>
-        </li>
-      </ol>
-
-      <Button variant="ghost" size="xs" className="mt-2" onClick={addLevel} disabled={pending}>
-        <Plus size={13} /> Tambah tingkat
-      </Button>
+        {people.length === 0 && (
+          <li className="rounded-lg bg-warning/10 px-3 py-2 text-[12px] text-warning">Belum ada karyawan yang ditugaskan ke cabang ini.</li>
+        )}
+      </ul>
     </section>
   );
 }

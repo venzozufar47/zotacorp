@@ -30,6 +30,8 @@ export interface MyTaskItem {
   done: boolean;
   /** URL bertanda-tangan (30 menit) untuk thumbnail; null bila belum ada / sudah dipurge. */
   photoUrl: string | null;
+  /** Nama verifikator poin ini (kosong = tidak perlu verifikasi). */
+  verifierNames: string[];
 }
 
 export interface TaskPhotoRef {
@@ -94,6 +96,8 @@ export interface AdminTaskDetailItem {
   done: boolean;
   photoUrl: string | null;
   photoPurged: boolean;
+  /** Verifikator poin ini + status putaran berjalan (null = belum diminta, tugas belum dikirim). */
+  verifiers: { id: string; name: string; status: "pending" | "verified" | "rejected" | null }[];
 }
 
 export interface AdminTaskAttachment {

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Ticket as TicketIcon, Inbox, CheckCircle2, Archive, ChevronDown, Users, ClipboardCheck, Eye } from "lucide-react";
+import { Ticket as TicketIcon, Inbox, CheckCircle2, Archive, ChevronDown, Users, ClipboardCheck, Eye } from "lucide-react";
 import { TicketForm } from "./TicketForm";
 import { TicketCard } from "./TicketCard";
 import { BranchQueueCard } from "./BranchQueueCard";
@@ -32,9 +31,7 @@ export function TicketingSystem({
   studioQueue = [],
   branchQueue = [],
   kpi = null,
-  myLevels = {},
   formOptions,
-  backHref,
 }: {
   viewerRole: TicketViewerRole;
   uid: string;
@@ -45,10 +42,7 @@ export function TicketingSystem({
   studioQueue?: Ticket[];
   branchQueue?: TicketQueueSummary[];
   kpi?: StudioHeadKpi | null;
-  /** Tingkat saya per cabang (branchId → level). */
-  myLevels?: Record<string, number>;
   formOptions: TicketFormOptions;
-  backHref?: string;
 }) {
   const [showArchive, setShowArchive] = useState(false);
   const isOwner = viewerRole === "owner";
@@ -58,7 +52,7 @@ export function TicketingSystem({
   const heldByMe = (t: Ticket) => {
     if (t.direction === "down" && t.handlerLevel === 0) return false; // milik penerima
     if (t.handlerLevel >= OWNER_LEVEL) return isOwner;
-    return myLevels[t.branchId] === t.handlerLevel;
+    return t.handlerId === uid;
   };
 
   const open = studioQueue.filter((t) => isTicketOpen(t.status));
@@ -80,14 +74,6 @@ export function TicketingSystem({
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          {backHref && (
-            <Link href={backHref} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1">
-              <ArrowLeft size={13} /> Kembali
-            </Link>
-          )}
-          <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-            <TicketIcon size={22} /> Ticketing System
-          </h1>
           <p className="text-sm text-muted-foreground">
             {viewerRole === "filer"
               ? "Laporkan kebutuhan barang, kerusakan, atau masalah ke atasan di cabangmu. Tiket dari owner untukmu juga muncul di sini."
@@ -122,7 +108,7 @@ export function TicketingSystem({
           empty="Tidak ada eskalasi yang menunggu."
         >
           {toDecide.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="escalation" />
+            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="escalation" mySuperiors={formOptions.mySuperiors[t.branchId]} />
           ))}
         </Section>
       )}
@@ -140,7 +126,7 @@ export function TicketingSystem({
       {isManager && (
         <Section icon={<TicketIcon size={16} />} title="Perlu ditindak" count={toAct.length} empty="Antrian bersih — tidak ada tiket menunggu tindakanmu. 🎉">
           {toAct.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="queue" />
+            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="queue" mySuperiors={formOptions.mySuperiors[t.branchId]} />
           ))}
         </Section>
       )}

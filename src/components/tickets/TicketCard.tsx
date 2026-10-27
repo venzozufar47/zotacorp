@@ -24,7 +24,7 @@ import {
 import { EmployeeAvatar } from "@/components/shared/EmployeeAvatar";
 import { cn } from "@/lib/utils";
 import { TicketPhotos } from "./TicketPhotos";
-import { levelLabel } from "@/lib/tickets/chain-logic";
+import { holderLabel } from "@/lib/tickets/chain-logic";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import {
   startTicket,
@@ -60,9 +60,12 @@ interface NotePrompt {
   required: boolean;
   /** true = wajib lampirkan foto (bukti penyelesaian). */
   requirePhotos?: boolean;
+  /** Pilih satu tujuan (mis. atasan mana yang menerima eskalasi). */
+  choose?: { label: string; options: { id: string; name: string }[] };
   run: (
     note: string,
-    photoPaths: string[]
+    photoPaths: string[],
+    target: string
   ) => Promise<{ ok: boolean; error?: string }>;
   successMsg: string;
 }
@@ -71,15 +74,19 @@ export function TicketCard({
   ticket,
   viewerRole,
   context,
+  mySuperiors = [],
 }: {
   ticket: Ticket;
   viewerRole: TicketViewerRole;
   context: Context;
+  /** Atasan langsung saya di cabang tiket ini (tujuan eskalasi). */
+  mySuperiors?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [prompt, setPrompt] = useState<NotePrompt | null>(null);
   const [note, setNote] = useState("");
+  const [target, setTarget] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -91,6 +98,7 @@ export function TicketCard({
   function closePrompt() {
     setPrompt(null);
     setNote("");
+    setTarget("");
     setFiles([]);
   }
 
@@ -145,6 +153,10 @@ export function TicketCard({
       toast.error("Foto bukti wajib dilampirkan");
       return;
     }
+    if (prompt.choose && !target) {
+      toast.error(prompt.choose.label);
+      return;
+    }
     const p = prompt;
     startTransition(async () => {
       let paths: string[] = [];
@@ -158,7 +170,7 @@ export function TicketCard({
         }
         setUploading(false);
       }
-      const res = await p.run(note.trim(), paths);
+      const res = await p.run(note.trim(), paths, target);
       if (!res.ok) {
         // Server menolak (mis. status berubah) → foto yang sudah terupload yatim.
         if (paths.length)
@@ -261,6 +273,14 @@ export function TicketCard({
               <TicketPhotos attachments={resolutionPhotos} label="foto bukti selesai" />
             </span>
           )}
+          {ticket.verification && ticket.verification.length > 0 && (
+            <span className="block text-foreground/80">
+              🛡 Verifikasi:{" "}
+              {ticket.verification
+                .map((v) => `${v.name} ${v.status === "verified" ? "✓" : v.status === "rejected" ? "✗" : "(menunggu)"}`)
+                .join(", ")}
+            </span>
+          )}
           {ticket.confirmedAt ? (
             <span className="block text-success/80">✓✓ Dikonfirmasi pelapor</span>
           ) : (
@@ -291,7 +311,11 @@ export function TicketCard({
           setPrompt({
             title: ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi ke atasan",
             required: true,
-            run: (n) => escalateTicket(ticket.id, n),
+            choose:
+              ticket.direction !== "down" && mySuperiors.length > 1
+                ? { label: "Pilih atasan tujuan eskalasi", options: mySuperiors }
+                : undefined,
+            run: (n, _p, to) => escalateTicket(ticket.id, n, to || null),
             successMsg: ticket.direction === "down" ? "Tiket dikembalikan ke owner" : "Tiket dieskalasi ke atasan",
           })
         }
@@ -349,6 +373,23 @@ export function TicketCard({
             }
             className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm resize-y"
           />
+          {prompt?.choose && (
+            <label className="block space-y-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Kirim ke</span>
+              <select
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="h-10 w-full rounded-xl border-2 border-border bg-background px-3 text-sm"
+              >
+                <option value="">{prompt.choose.label}</option>
+                {prompt.choose.options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {prompt?.requirePhotos && (
             <div className="space-y-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -471,7 +512,7 @@ function ActionBar({
 }) {
   const s = ticket.status;
   const btns: React.ReactNode[] = [];
-  const here = levelLabel(ticket.handlerLevel);
+  const here = holderLabel(ticket.handlerLevel, ticket.handlerName);
 
   if (context === "mine") {
     if (s === "open" || s === "in_progress")

@@ -3,11 +3,12 @@
 /**
  * Server actions Ticketing System (Yeobo Space dan Haengbocake), dua arah dengan hierarki yang diatur owner.
  *
- *  - "up"   : karyawan melapor → Tingkat 1 rantai cabang → eskalasi naik satu tingkat tiap kali → owner.
+ *  - "up"   : karyawan melapor ke SATU atasan langsungnya (yang punya dua atasan memilih; tanpa atasan = owner) →
+ *             eskalasi naik ke atasan langsung pemegang → … → owner.
  *  - "down" : owner menugaskan ke satu karyawan / satu cabang → penerima mengerjakan + bukti foto → pembuat konfirmasi.
  *
- * Penanggung jawab sebuah tiket ditentukan `handler_level`: 1..8 = anggota tingkat itu di cabang tiket, 99 = owner
- * (admin), 0 = penerima tiket 'down'. Semua penulisan memakai service-role SETELAH izin diperiksa di sini (RLS tidak
+ * Penanggung jawab sebuah tiket ditentukan `handler_level`: 1 = orang tertentu (`handler_id`), 99 = owner (admin),
+ * 0 = penerima tiket 'down'. Semua penulisan memakai service-role SETELAH izin diperiksa di sini (RLS tidak
  * memberi pembuat/penerima hak UPDATE, jadi jalur lewat klien biasa dulu diam-diam tidak mengubah apa pun).
  * WA/push best-effort (tak melempar).
  */
@@ -19,6 +20,17 @@ import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
 import { requireAdmin, type ActionResult } from "./_gates";
 import { sendPushToUser, sendPushToAdmins } from "@/lib/push/web-push";
 import { renderWaTemplate } from "@/lib/whatsapp/templates";
+import { MAX_VERIFIERS, dedupeVerifierIds } from "@/lib/verification/logic";
+import {
+  blockingReason,
+  createVerificationRows,
+  listVerifierPeople,
+  loadRound,
+  namesOf,
+  validateVerifiers,
+  voidPending,
+  type VerifierPerson,
+} from "@/lib/verification/server";
 import {
   TICKET_CATEGORY_LABELS,
   RECENT_RESOLUTION_SAMPLE_SIZE,
@@ -29,17 +41,17 @@ import {
 } from "@/lib/tickets/types";
 import {
   OWNER_LEVEL,
+  PERSON_LEVEL,
   branchesOfEmployee,
-  chainMembershipsOf,
-  chainOf,
   employeesOfBranch,
-  firstLevel,
   getTicketBranch,
-  levelBelow,
+  holderRecipients,
+  linksOf,
   listTicketBranches,
-  memberLevel,
-  nextLevelAbove,
-  recipientsAtLevel,
+  managedBy,
+  resolveTarget,
+  superiorsOf,
+  wouldCreateCycle,
   type TicketBranchRow,
 } from "@/lib/tickets/chain";
 
@@ -74,6 +86,8 @@ function mapTicket(r: any): Ticket {
     direction: r.direction === "down" ? "down" : "up",
     assigneeId: r.assignee_id ?? null,
     handlerLevel: Number(r.handler_level ?? 1),
+    handlerId: r.handler_id ?? null,
+    escalatedFromId: r.escalated_from_id ?? null,
     escalatedFromLevel: r.escalated_from_level == null ? null : Number(r.escalated_from_level),
     category: r.category,
     priority: r.priority,
@@ -95,6 +109,7 @@ function mapTicket(r: any): Ticket {
     confirmedAt: r.confirmed_at ?? null,
     confirmedBy: r.confirmed_by ?? null,
     disputeNote: r.dispute_note ?? null,
+    verifierIds: (r.verifier_ids ?? []) as string[],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -105,14 +120,28 @@ async function hydrate(rows: any[]): Promise<Ticket[]> {
   const tickets = rows.map(mapTicket);
   if (tickets.length === 0) return tickets;
   const ids = tickets.map((t) => t.id);
-  const personIds = Array.from(new Set(tickets.flatMap((t) => [t.createdBy, t.assigneeId]).filter(Boolean) as string[]));
+  const personIds = Array.from(new Set(tickets.flatMap((t) => [t.createdBy, t.assigneeId, t.handlerId]).filter(Boolean) as string[]));
   // Service-role: RLS `profiles` memblokir non-admin membaca profil rekan lain.
   const admin = createAdminClient() as any;
-  const [{ data: atts }, { data: profs }, branches] = await Promise.all([
+  const needVerif = tickets.filter((t) => t.verifierIds.length > 0).map((t) => t.id);
+  const [{ data: atts }, { data: profs }, branches, { data: verifRows }] = await Promise.all([
     admin.from("ticket_attachments").select("*").in("ticket_id", ids),
     admin.from("profiles").select("id, full_name, nickname, avatar_url, avatar_seed").in("id", personIds),
     listTicketBranches(),
+    needVerif.length
+      ? admin.from("verifications").select("subject_id, round, verifier_id, status").eq("subject_type", "ticket").in("subject_id", needVerif)
+      : Promise.resolve({ data: [] }),
   ]);
+  const verifByTicket = new Map<string, { round: number; verifier_id: string; status: string }[]>();
+  for (const v of (verifRows ?? []) as any[]) {
+    if (v.status === "void") continue;
+    const arr = verifByTicket.get(v.subject_id) ?? [];
+    arr.push(v);
+    verifByTicket.set(v.subject_id, arr);
+  }
+  const verifierNameIds = Array.from(new Set(tickets.flatMap((t) => t.verifierIds)));
+  const verifierNames = await namesOf(admin, verifierNameIds);
+  const verifierName = new Map(verifierNameIds.map((id, i) => [id, verifierNames[i]]));
   const byTicket = new Map<string, TicketAttachment[]>();
   for (const a of (atts ?? []) as any[]) {
     const m = mapAttachment(a);
@@ -130,7 +159,19 @@ async function hydrate(rows: any[]): Promise<Ticket[]> {
     t.createdByAvatarUrl = p?.avatar_url ?? null;
     t.createdByAvatarSeed = p?.avatar_seed ?? null;
     t.assigneeName = t.assigneeId ? nameOf(profById.get(t.assigneeId)) : null;
+    t.handlerName = t.handlerId ? nameOf(profById.get(t.handlerId)) : null;
     t.branchLabel = branchById.get(t.branchId)?.label ?? t.branch;
+    const vr = verifByTicket.get(t.id) ?? [];
+    if (vr.length > 0) {
+      const latest = Math.max(...vr.map((v) => v.round));
+      t.verification = vr
+        .filter((v) => v.round === latest)
+        .map((v) => ({
+          verifierId: v.verifier_id,
+          name: verifierName.get(v.verifier_id) ?? "—",
+          status: v.status as "pending" | "verified" | "rejected",
+        }));
+    }
   }
   return tickets;
 }
@@ -147,15 +188,35 @@ async function getActor(): Promise<Actor | null> {
   return { userId: user.id, isAdmin: (await getCurrentRole()) === "admin" };
 }
 
-/** Manajer tiket = admin atau anggota rantai di cabang mana pun. */
-async function requireTicketManager(): Promise<
-  { ok: true; userId: string; isAdmin: boolean; branchIds: string[] } | { ok: false; error: string }
-> {
+interface ManagerGate {
+  ok: true;
+  userId: string;
+  isAdmin: boolean;
+  branchIds: string[];
+  /** cabang → id bawahan langsung saya di cabang itu. */
+  subordinates: Map<string, Set<string>>;
+}
+
+/** Manajer tiket = admin atau atasan (punya bawahan) di cabang mana pun. */
+async function requireTicketManager(): Promise<ManagerGate | { ok: false; error: string }> {
   const a = await getActor();
   if (!a) return { ok: false, error: "Not signed in" };
-  const memberships = await chainMembershipsOf(a.userId);
-  if (!a.isAdmin && memberships.length === 0) return { ok: false, error: "Forbidden" };
-  return { ok: true, userId: a.userId, isAdmin: a.isAdmin, branchIds: memberships.map((m) => m.branchId) };
+  const managed = await managedBy(a.userId);
+  if (!a.isAdmin && managed.length === 0) return { ok: false, error: "Forbidden" };
+  return {
+    ok: true,
+    userId: a.userId,
+    isAdmin: a.isAdmin,
+    branchIds: managed.map((m) => m.branchId),
+    subordinates: new Map(managed.map((m) => [m.branchId, new Set(m.subordinateIds)])),
+  };
+}
+
+/** Tiket yang boleh dilihat atasan: yang dia pegang, yang dia eskalasi, dan milik bawahan langsungnya. */
+function visibleToManager(gate: ManagerGate, row: any): boolean {
+  if (gate.isAdmin) return true;
+  if (row.handler_id === gate.userId || row.escalated_by === gate.userId) return true;
+  return gate.subordinates.get(row.branch_id)?.has(row.created_by) ?? false;
 }
 
 async function loadRow(admin: any, id: string): Promise<any | null> {
@@ -172,12 +233,12 @@ async function isHandler(row: any, actor: Actor): Promise<boolean> {
     if (row.assignee_id) return row.assignee_id === actor.userId;
     return (await employeesOfBranch(row.branch_id)).includes(actor.userId);
   }
-  return (await memberLevel(row.branch_id, actor.userId)) === level;
+  return row.handler_id === actor.userId;
 }
 
 async function canFileForBranch(actor: Actor, branchId: string): Promise<boolean> {
   if (actor.isAdmin) return true;
-  if ((await memberLevel(branchId, actor.userId)) != null) return true;
+  if ((await managedBy(actor.userId)).some((m) => m.branchId === branchId)) return true;
   return (await branchesOfEmployee(actor.userId)).some((b) => b.id === branchId);
 }
 
@@ -210,6 +271,10 @@ const createSchema = z.object({
   title: z.string().trim().min(3, "Judul minimal 3 karakter").max(160),
   description: z.string().trim().max(4000).optional().default(""),
   attachmentPaths: z.array(z.string()).max(10).optional().default([]),
+  /** Verifikator penyelesaian (>= 2, semua wajib). Kosong = tanpa verifikasi. */
+  verifierIds: z.array(z.string().uuid()).max(MAX_VERIFIERS).optional().default([]),
+  /** Atasan tujuan. Wajib bila pembuat punya lebih dari satu atasan; diabaikan bila tak punya atasan (→ owner). */
+  toUserId: z.string().uuid().nullable().optional(),
 });
 
 export async function createTicket(input: z.infer<typeof createSchema>): Promise<ActionResult<{ id: string }>> {
@@ -223,8 +288,22 @@ export async function createTicket(input: z.infer<typeof createSchema>): Promise
   if (!branch || !branch.isActive) return { ok: false, error: "Cabang tidak ditemukan" };
   if (!(await canFileForBranch(actor, d.branchId))) return { ok: false, error: "Forbidden — kamu bukan bagian dari cabang ini" };
 
-  const chain = await chainOf(d.branchId);
-  const level = firstLevel(chain);
+  if (d.verifierIds.length > 0) {
+    const vErr = await validateVerifiers(d.verifierIds);
+    if (vErr) return { ok: false, error: vErr };
+  }
+
+  // Tujuan: owner membuat untuk dirinya sendiri; yang lain ke atasan langsungnya (memilih bila punya dua).
+  let level = OWNER_LEVEL;
+  let handlerId: string | null = null;
+  if (!actor.isAdmin) {
+    const r = resolveTarget(await superiorsOf(d.branchId, actor.userId), d.toUserId);
+    if (!r.ok) return { ok: false, error: r.error };
+    if (r.target.kind === "person") {
+      level = PERSON_LEVEL;
+      handlerId = r.target.userId;
+    }
+  }
   const admin = createAdminClient() as any;
   const { data: ins, error } = await admin
     .from("tickets")
@@ -235,11 +314,13 @@ export async function createTicket(input: z.infer<typeof createSchema>): Promise
       branch_id: branch.id,
       direction: "up",
       handler_level: level,
+      handler_id: handlerId,
       category: d.category,
       priority: d.priority,
       title: d.title,
       description: d.description ?? "",
       status: "open",
+      verifier_ids: dedupeVerifierIds(d.verifierIds),
     })
     .select("id")
     .single();
@@ -258,9 +339,8 @@ export async function createTicket(input: z.infer<typeof createSchema>): Promise
     );
   }
 
-  // Push ke penanggung jawab tingkat pertama, rekan sesama cabang, & owner (best-effort).
-  const [handlers, peers] = await Promise.all([recipientsAtLevel(branch.id, level), employeesOfBranch(branch.id)]);
-  const notifyIds = Array.from(new Set([...handlers, ...peers])).filter((id) => id !== actor.userId);
+  // Push ke pemegang tiket (atasan yang dituju) & owner (best-effort).
+  const notifyIds = (await holderRecipients(level, handlerId)).filter((id) => id !== actor.userId);
   const pushMsg = await renderWaTemplate("ticket_new_alert", {
     branch: branch.label,
     category: TICKET_CATEGORY_LABELS[d.category],
@@ -284,6 +364,7 @@ const createDownSchema = z.object({
   title: z.string().trim().min(3, "Judul minimal 3 karakter").max(160),
   description: z.string().trim().max(4000).optional().default(""),
   attachmentPaths: z.array(z.string()).max(10).optional().default([]),
+  verifierIds: z.array(z.string().uuid()).max(MAX_VERIFIERS).optional().default([]),
 });
 
 export async function createDownTicket(input: z.infer<typeof createDownSchema>): Promise<ActionResult<{ id: string }>> {
@@ -298,6 +379,11 @@ export async function createDownTicket(input: z.infer<typeof createDownSchema>):
   const members = await employeesOfBranch(branch.id);
   if (d.assigneeId && !members.includes(d.assigneeId)) return { ok: false, error: "Penerima bukan karyawan cabang ini" };
   if (!d.assigneeId && members.length === 0) return { ok: false, error: "Cabang ini belum punya karyawan yang ditugaskan" };
+
+  if (d.verifierIds.length > 0) {
+    const vErr = await validateVerifiers(d.verifierIds, d.assigneeId ? [d.assigneeId] : []);
+    if (vErr) return { ok: false, error: vErr };
+  }
 
   const admin = createAdminClient() as any;
   const { data: ins, error } = await admin
@@ -315,6 +401,7 @@ export async function createDownTicket(input: z.infer<typeof createDownSchema>):
       title: d.title,
       description: d.description ?? "",
       status: "open",
+      verifier_ids: dedupeVerifierIds(d.verifierIds),
     })
     .select("id")
     .single();
@@ -431,6 +518,16 @@ export async function resolveTicket(ticketId: string, note: string | undefined, 
     return { ok: false, error: error.message };
   }
 
+  // Tiket yang butuh verifikasi dua pihak: tiap verifikator (selain penyelesainya) diminta menandai di beranda.
+  const verifiers = dedupeVerifierIds(row.verifier_ids).filter((v) => v !== actor.userId);
+  if (verifiers.length > 0) {
+    const prev = await loadRound(admin, "ticket", ticketId);
+    const round = prev.reduce((m, r) => Math.max(m, r.round), 0) + 1;
+    const made = await createVerificationRows(admin, "ticket", ticketId, round, [{ verifierIds: verifiers }]);
+    if (made.error) console.error("[tickets] gagal membuat permintaan verifikasi", made.error);
+    void firePush(made.verifierIds, { title: "Verifikasi menunggumu", body: `Tiket "${row.title}" selesai dikerjakan — buka beranda untuk memverifikasi.`, url: "/dashboard" });
+  }
+
   if (row.created_by && row.created_by !== actor.userId) {
     const msg = await renderWaTemplate("ticket_resolved_alert", {
       branch: row.branch,
@@ -443,7 +540,7 @@ export async function resolveTicket(ticketId: string, note: string | undefined, 
   return { ok: true };
 }
 
-export async function escalateTicket(ticketId: string, note: string): Promise<ActionResult> {
+export async function escalateTicket(ticketId: string, note: string, toUserId?: string | null): Promise<ActionResult> {
   const actor = await getActor();
   if (!actor) return { ok: false, error: "Not signed in" };
   if (!note?.trim()) return { ok: false, error: "Catatan eskalasi wajib diisi" };
@@ -455,14 +552,25 @@ export async function escalateTicket(ticketId: string, note: string): Promise<Ac
   const from = Number(row.handler_level);
   if (from >= OWNER_LEVEL) return { ok: false, error: "Tiket sudah di tingkat owner" };
 
-  // Tiket 'down': penerima mengembalikan ke owner. Tiket 'up': naik satu tingkat yang berisi.
-  const to = row.direction === "down" ? OWNER_LEVEL : nextLevelAbove(await chainOf(row.branch_id), from);
+  // Tiket 'down': penerima mengembalikan ke owner. Tiket 'up': naik ke atasan langsung pemegang (memilih bila dua).
+  let to = OWNER_LEVEL;
+  let toId: string | null = null;
+  if (row.direction !== "down") {
+    const r = resolveTarget(await superiorsOf(row.branch_id, actor.userId), toUserId);
+    if (!r.ok) return { ok: false, error: r.error };
+    if (r.target.kind === "person") {
+      to = PERSON_LEVEL;
+      toId = r.target.userId;
+    }
+  }
   const { error } = await admin
     .from("tickets")
     .update({
       status: "escalated",
       handler_level: to,
+      handler_id: toId,
       escalated_from_level: from,
+      escalated_from_id: row.direction === "down" ? null : actor.userId,
       escalated_at: new Date().toISOString(),
       escalated_by: actor.userId,
       escalation_note: note.trim(),
@@ -477,7 +585,7 @@ export async function escalateTicket(ticketId: string, note: string): Promise<Ac
       console.error("[tickets] push failed", err)
     );
   } else {
-    void firePush(await recipientsAtLevel(row.branch_id, to), { title: "Tiket dieskalasi ke kamu", body: msg, url: "/tickets" });
+    void firePush(await holderRecipients(to, toId), { title: "Tiket dieskalasi ke kamu", body: msg, url: "/tickets" });
   }
   revalidateTickets();
   return { ok: true };
@@ -497,6 +605,7 @@ export async function ownerDecideTicket(ticketId: string, decision: "accept" | "
   const nowIso = new Date().toISOString();
   let patch: Record<string, unknown>;
   let returnTo: number | null = null;
+  let returnId: string | null = null;
   if (decision === "accept") {
     patch = {
       status: "owner_handling",
@@ -506,14 +615,18 @@ export async function ownerDecideTicket(ticketId: string, decision: "accept" | "
       owner_note: note?.trim() || null,
     };
   } else {
-    // Kembali ke tingkat asal eskalasi (0 = penerima tiket 'down'; bila rantai berubah, tingkat berisi terdekat di bawah).
-    const from = row.escalated_from_level == null ? null : Number(row.escalated_from_level);
-    const chain = await chainOf(row.branch_id);
-    returnTo = from === 0 ? 0 : from != null && chain.some((m) => m.level === from) ? from : levelBelow(chain, Number(row.handler_level));
-    if (returnTo == null) return { ok: false, error: "Tidak ada tingkat di bawah untuk mengembalikan tiket ini" };
+    // Kembali ke orang yang mengeskalasi (0 = penerima tiket 'down').
+    const fromLevel = row.escalated_from_level == null ? null : Number(row.escalated_from_level);
+    if (fromLevel === 0) returnTo = 0;
+    else if (row.escalated_from_id) {
+      returnTo = PERSON_LEVEL;
+      returnId = row.escalated_from_id as string;
+    }
+    if (returnTo == null) return { ok: false, error: "Tidak ada pengaju eskalasi untuk mengembalikan tiket ini" };
     patch = {
       status: "in_progress",
       handler_level: returnTo,
+      handler_id: returnId,
       owner_decision: "rejected",
       owner_decided_at: nowIso,
       owner_decided_by: actor.userId,
@@ -525,7 +638,7 @@ export async function ownerDecideTicket(ticketId: string, decision: "accept" | "
 
   if (decision === "reject") {
     const msg = await renderWaTemplate("ticket_returned_alert", { title: row.title, note: note!.trim() });
-    const targets = returnTo === 0 ? (row.assignee_id ? [row.assignee_id as string] : []) : await recipientsAtLevel(row.branch_id, returnTo!);
+    const targets = returnTo === 0 ? (row.assignee_id ? [row.assignee_id as string] : []) : await holderRecipients(returnTo!, returnId);
     if (targets.length > 0) void firePush(targets, { title: "Eskalasi ditolak", body: msg, url: "/tickets" });
   }
   revalidateTickets();
@@ -545,7 +658,11 @@ export async function confirmTicketResolution(ticketId: string, decision: "confi
   if (row.created_by !== actor.userId) return { ok: false, error: "Forbidden" };
   if (row.status !== "resolved" || row.confirmed_at) return { ok: false, error: "Tiket tidak menunggu konfirmasi" };
 
+  const rounds = await loadRound(admin, "ticket", ticketId);
+  const latestRound = rounds.reduce((m, r) => Math.max(m, r.round), 0);
   if (decision === "confirm") {
+    const blocked = latestRound > 0 ? await blockingReason(admin, "ticket", ticketId, latestRound) : null;
+    if (blocked) return { ok: false, error: blocked };
     const { data, error } = await admin
       .from("tickets")
       .update({ confirmed_at: new Date().toISOString(), confirmed_by: actor.userId })
@@ -576,13 +693,14 @@ export async function confirmTicketResolution(ticketId: string, decision: "confi
     .select("id");
   if (error) return { ok: false, error: error.message };
   if (!reopened || reopened.length === 0) return { ok: false, error: "Tiket sudah berubah — muat ulang halaman" };
+  if (latestRound > 0) await voidPending(admin, "ticket", ticketId, latestRound);
   // Urutan sengaja: tiket dibuka dulu, BARU foto lama ditandai (kegagalan di sini tidak fatal).
   const { error: supErr } = await admin.from("ticket_attachments").update({ kind: "superseded" }).eq("ticket_id", ticketId).eq("kind", "resolution");
   if (supErr) console.error("[tickets] gagal menandai foto lama superseded", supErr.message);
 
   const lvl = Number(row.handler_level);
   const targets =
-    lvl === 0 ? (row.assignee_id ? [row.assignee_id as string] : await employeesOfBranch(row.branch_id)) : await recipientsAtLevel(row.branch_id, lvl);
+    lvl === 0 ? (row.assignee_id ? [row.assignee_id as string] : await employeesOfBranch(row.branch_id)) : await holderRecipients(lvl, row.handler_id ?? null);
   if (targets.length > 0) {
     const msg = await renderWaTemplate("ticket_reopened_alert", { title: row.title, note: note!.trim() });
     void firePush(targets, { title: "Tiket dibuka kembali", body: msg, url: "/tickets" });
@@ -662,18 +780,9 @@ export async function getStudioQueue(): Promise<Ticket[]> {
   if (!gate.ok) return [];
   const admin = createAdminClient() as any;
   let q = admin.from("tickets").select("*").order("created_at", { ascending: false }).limit(300);
-  if (!gate.isAdmin) q = q.in("branch_id", gate.branchIds);
+  if (!gate.isAdmin) q = q.or(`handler_id.eq.${gate.userId},escalated_by.eq.${gate.userId},branch_id.in.(${gate.branchIds.join(",")})`);
   const { data } = await q;
-  return hydrate((data ?? []) as any[]);
-}
-
-/** Tingkat saya per cabang (untuk UI membedakan "perlu saya tindak" dan "pemantauan"). */
-export async function getMyChainLevels(): Promise<Record<string, number>> {
-  const user = await getCurrentUser();
-  if (!user) return {};
-  const out: Record<string, number> = {};
-  for (const m of await chainMembershipsOf(user.id)) out[m.branchId] = m.level;
-  return out;
+  return hydrate(((data ?? []) as any[]).filter((r) => visibleToManager(gate, r)));
 }
 
 /** Tiket yang menunggu keputusan owner, atau yang sedang ditangani owner. */
@@ -700,13 +809,14 @@ export interface StudioHeadKpi {
   resolvedThisMonth: number;
 }
 
-async function kpiRows(gate: { isAdmin: boolean; branchIds: string[] }, cols: string): Promise<any[]> {
+async function kpiRows(gate: ManagerGate, cols: string): Promise<any[]> {
   const admin = createAdminClient() as any;
   // Hanya tiket "naik": KPI mengukur kecepatan rantai penanganan, bukan tugas dari owner.
-  let q = admin.from("tickets").select(cols).eq("direction", "up");
-  if (!gate.isAdmin) q = q.in("branch_id", gate.branchIds);
-  const { data } = await q;
-  return (data ?? []) as any[];
+  const { data } = await admin
+    .from("tickets")
+    .select(`${cols}, branch_id, created_by, handler_id, escalated_by`)
+    .eq("direction", "up");
+  return ((data ?? []) as any[]).filter((r) => visibleToManager(gate, r));
 }
 
 export async function getStudioHeadKpi(): Promise<StudioHeadKpi | null> {
@@ -798,11 +908,14 @@ export async function getStudioQueueCount(): Promise<number> {
   const gate = await requireTicketManager();
   if (!gate.ok) return 0;
   const admin = createAdminClient() as any;
-  const { data } = await admin.from("tickets").select("branch_id, handler_level").eq("direction", "up").in("status", ["open", "in_progress"]);
+  const { data } = await admin
+    .from("tickets")
+    .select("handler_id, handler_level")
+    .eq("direction", "up")
+    .in("status", ["open", "in_progress"]);
   const rows = (data ?? []) as any[];
   if (gate.isAdmin) return rows.filter((r) => Number(r.handler_level) >= OWNER_LEVEL).length;
-  const mine = new Map((await chainMembershipsOf(gate.userId)).map((m) => [m.branchId, m.level]));
-  return rows.filter((r) => mine.get(r.branch_id) === Number(r.handler_level)).length;
+  return rows.filter((r) => r.handler_id === gate.userId).length;
 }
 
 // ─── Foto (signed URL) ──────────────────────────────────────────────────────
@@ -812,11 +925,16 @@ export async function getTicketAttachmentSignedUrl(path: string): Promise<Action
   const admin = createAdminClient() as any;
   const { data: att } = await admin.from("ticket_attachments").select("ticket_id").eq("path", path).maybeSingle();
   if (!att) return { ok: false, error: "Lampiran tidak ditemukan" };
-  const { data: t } = await admin.from("tickets").select("created_by, assignee_id, branch_id, direction").eq("id", att.ticket_id).maybeSingle();
+  const { data: t } = await admin
+    .from("tickets")
+    .select("created_by, assignee_id, branch_id, direction, handler_id, escalated_by")
+    .eq("id", att.ticket_id)
+    .maybeSingle();
   if (!t) return { ok: false, error: "Lampiran tidak ditemukan" };
-  // Izin: admin, anggota rantai cabang tiket, pembuat, penerima, atau (tiket 'down' untuk seluruh cabang) karyawan cabang itu.
-  let allowed = actor.isAdmin || t.created_by === actor.userId || t.assignee_id === actor.userId;
-  if (!allowed) allowed = (await memberLevel(t.branch_id, actor.userId)) != null;
+  // Izin: admin, pembuat, penerima, pemegang/pengeskalasi, atasan langsung pembuat, atau (tiket 'down' untuk seluruh cabang) karyawan cabang itu.
+  let allowed =
+    actor.isAdmin || t.created_by === actor.userId || t.assignee_id === actor.userId || t.handler_id === actor.userId || t.escalated_by === actor.userId;
+  if (!allowed) allowed = (await superiorsOf(t.branch_id, t.created_by)).includes(actor.userId);
   if (!allowed && t.direction === "down" && !t.assignee_id) allowed = (await employeesOfBranch(t.branch_id)).includes(actor.userId);
   if (!allowed) return { ok: false, error: "Forbidden" };
   const { data, error } = await admin.storage.from("ticket-attachments").createSignedUrl(path, 600);
@@ -830,23 +948,43 @@ export interface TicketFormOptions {
   fileBranches: TicketBranchRow[];
   /** Admin saja: cabang beserta karyawannya, untuk tiket "turun". */
   downTargets: { branch: TicketBranchRow; employees: { id: string; name: string }[] }[];
+  /** Atasan langsung saya per cabang (id cabang → atasan). Kosong = tiket langsung ke owner; 2+ = saya memilih. */
+  mySuperiors: Record<string, { id: string; name: string }[]>;
+  /** Orang yang boleh dipilih sebagai verifikator penyelesaian tiket. */
+  verifierPeople: VerifierPerson[];
 }
 
 export async function getTicketFormOptions(): Promise<TicketFormOptions> {
   const actor = await getActor();
-  if (!actor) return { fileBranches: [], downTargets: [] };
+  if (!actor) return { fileBranches: [], downTargets: [], mySuperiors: {}, verifierPeople: [] };
+  const verifierPeople = await listVerifierPeople();
   let fileBranches: TicketBranchRow[];
   if (actor.isAdmin) fileBranches = await listTicketBranches({ onlyActive: true });
   else {
     const mine = new Map<string, TicketBranchRow>();
     for (const b of await branchesOfEmployee(actor.userId)) mine.set(b.id, b);
-    const memberships = await chainMembershipsOf(actor.userId);
-    if (memberships.length > 0) {
-      for (const b of await listTicketBranches({ onlyActive: true })) if (memberships.some((m) => m.branchId === b.id)) mine.set(b.id, b);
+    const managed = await managedBy(actor.userId);
+    if (managed.length > 0) {
+      for (const b of await listTicketBranches({ onlyActive: true })) if (managed.some((m) => m.branchId === b.id)) mine.set(b.id, b);
     }
     fileBranches = Array.from(mine.values());
   }
-  if (!actor.isAdmin) return { fileBranches, downTargets: [] };
+  if (!actor.isAdmin) {
+    const mySuperiors: TicketFormOptions["mySuperiors"] = {};
+    const db = createAdminClient() as any;
+    for (const b of fileBranches) {
+      const ids = await superiorsOf(b.id, actor.userId);
+      if (ids.length === 0) {
+        mySuperiors[b.id] = [];
+        continue;
+      }
+      const { data } = await db.from("profiles").select("id, full_name, nickname").in("id", ids);
+      mySuperiors[b.id] = ((data ?? []) as any[])
+        .map((p) => ({ id: p.id as string, name: (p.nickname?.trim() || p.full_name || "Atasan") as string }))
+        .sort((a, c) => a.name.localeCompare(c.name, "id", { sensitivity: "base" }));
+    }
+    return { fileBranches, downTargets: [], mySuperiors, verifierPeople };
+  }
 
   const admin = createAdminClient() as any;
   const downTargets: TicketFormOptions["downTargets"] = [];
@@ -864,23 +1002,23 @@ export async function getTicketFormOptions(): Promise<TicketFormOptions> {
         .sort((a, b) => a.name.localeCompare(b.name)),
     });
   }
-  return { fileBranches, downTargets };
+  return { fileBranches, downTargets, mySuperiors: {}, verifierPeople };
 }
 
 // ─── Hierarki (admin) ───────────────────────────────────────────────────────
-export interface HierarchyMember {
+export interface HierarchyPerson {
   userId: string;
   name: string;
-  level: number;
+  /** Atasan langsung orang ini di cabang tersebut (kosong = langsung ke owner). */
+  superiorIds: string[];
 }
 export interface HierarchyBranch {
   branch: TicketBranchRow;
-  members: HierarchyMember[];
-  /** Jumlah karyawan yang ditugaskan ke cabang (penerima tiket "turun"). */
-  employeeCount: number;
+  people: HierarchyPerson[];
 }
 export interface HierarchyAdminData {
   branches: HierarchyBranch[];
+  /** Semua karyawan aktif yang boleh dipilih sebagai atasan (urut abjad menurut nama tampil). */
   eligible: { id: string; name: string; businessUnit: string | null }[];
 }
 
@@ -889,82 +1027,83 @@ export async function getHierarchyAdmin(): Promise<HierarchyAdminData | null> {
   if (!gate.ok) return null;
   const admin = createAdminClient() as any;
   const branches = await listTicketBranches();
-  const { data: rows } = await admin.from("ticket_chain_members").select("branch_id, user_id, level");
   const { data: profs } = await admin
     .from("profiles")
     .select("id, full_name, nickname, business_unit")
     .eq("role", "employee")
     .eq("is_active", true)
-    .is("resigned_at", null)
-    .order("full_name");
-  const nameOf = new Map(((profs ?? []) as any[]).map((p) => [p.id as string, (p.nickname?.trim() || p.full_name || "Karyawan") as string]));
-  const out: HierarchyBranch[] = [];
-  for (const b of branches) {
-    const members = ((rows ?? []) as any[])
-      .filter((r) => r.branch_id === b.id)
-      .map((r) => ({ userId: r.user_id as string, name: nameOf.get(r.user_id) ?? "(nonaktif)", level: Number(r.level) }))
-      .sort((a, c) => a.level - c.level || a.name.localeCompare(c.name));
-    out.push({ branch: b, members, employeeCount: (await employeesOfBranch(b.id)).length });
-  }
-  return {
-    branches: out,
-    eligible: ((profs ?? []) as any[]).map((p) => ({
-      id: p.id,
+    .is("resigned_at", null);
+  const people = ((profs ?? []) as any[])
+    .map((p) => ({
+      id: p.id as string,
       name: (p.nickname?.trim() || p.full_name || "Karyawan") as string,
-      businessUnit: p.business_unit ?? null,
-    })),
-  };
+      businessUnit: (p.business_unit ?? null) as string | null,
+    }))
+    // Urut menurut nama yang TAMPIL (panggilan), bukan nama lengkap, supaya daftar terbaca alfabetis.
+    .sort((x, y) => x.name.localeCompare(y.name, "id", { sensitivity: "base" }));
+  const nameOf = new Map(people.map((p) => [p.id, p.name]));
+
+  const out: HierarchyBranch[] = await Promise.all(branches.map(async (b) => {
+    const [links, employees] = await Promise.all([linksOf(b.id), employeesOfBranch(b.id)]);
+    const inBranch = new Set(employees);
+    for (const l of links) {
+      inBranch.add(l.userId);
+      inBranch.add(l.superiorId);
+    }
+    const rows: HierarchyPerson[] = [];
+    for (const id of inBranch) {
+      const name = nameOf.get(id);
+      if (!name) continue; // nonaktif / bukan karyawan
+      rows.push({
+        userId: id,
+        name,
+        superiorIds: links.filter((l) => l.userId === id).map((l) => l.superiorId).filter((s) => nameOf.has(s)),
+      });
+    }
+    rows.sort((x, y) => x.name.localeCompare(y.name, "id", { sensitivity: "base" }));
+    return { branch: b, people: rows };
+  }));
+  return { branches: out, eligible: people };
 }
 
-/** Tempatkan seseorang di tingkat tertentu pada rantai sebuah cabang (memindahkan bila sudah ada). */
-export async function setChainMember(branchId: string, userId: string, level: number): Promise<ActionResult> {
+/** Tetapkan atasan langsung seseorang di sebuah cabang (kosong = langsung ke owner). Hanya selisihnya yang ditulis. */
+export async function setSuperiors(branchId: string, userId: string, superiorIds: string[]): Promise<ActionResult> {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
-  if (!z.string().uuid().safeParse(branchId).success || !z.string().uuid().safeParse(userId).success) return { ok: false, error: "Data tidak valid" };
-  if (!Number.isInteger(level) || level < 1 || level > 8) return { ok: false, error: "Tingkat harus 1 sampai 8" };
-  const admin = createAdminClient() as any;
-  // Memindahkan orang dari satu tingkat ke tingkat lain tidak boleh meninggalkan tiket aktif di tingkat lama tanpa penanggung jawab.
-  const current = await memberLevel(branchId, userId);
-  if (current != null && current !== level) {
-    const left = await guardLevelStillCovered(branchId, userId, current);
-    if (left) return { ok: false, error: left };
+  const uuid = z.string().uuid();
+  const ids = Array.from(new Set(superiorIds));
+  if (!uuid.safeParse(branchId).success || !uuid.safeParse(userId).success || ids.some((i) => !uuid.safeParse(i).success)) {
+    return { ok: false, error: "Data tidak valid" };
   }
-  const { error } = await admin
-    .from("ticket_chain_members")
-    .upsert({ branch_id: branchId, user_id: userId, level, assigned_by: gate.userId, assigned_at: new Date().toISOString() }, { onConflict: "branch_id,user_id" });
-  if (error) return { ok: false, error: error.message };
-  revalidateTickets();
-  return { ok: true };
-}
-
-/** Pesan galat bila mengeluarkan `userId` dari `level` meninggalkan tiket aktif tanpa penanggung jawab; null = aman. */
-async function guardLevelStillCovered(branchId: string, userId: string, level: number): Promise<string | null> {
-  const chain = (await chainOf(branchId)).filter((m) => m.userId !== userId);
-  if (chain.some((m) => m.level === level)) return null;
+  if (ids.length > 6) return { ok: false, error: "Maksimal 6 atasan" };
   const admin = createAdminClient() as any;
-  const { count } = await admin
-    .from("tickets")
-    .select("id", { count: "exact", head: true })
-    .eq("branch_id", branchId)
-    .eq("handler_level", level)
-    .in("status", ["open", "in_progress", "escalated", "owner_handling"]);
-  if ((count ?? 0) > 0) {
-    return `Masih ada ${count} tiket aktif di tingkat ini yang hanya ditangani orang tersebut. Tambahkan orang lain di tingkat yang sama atau selesaikan tiketnya dulu.`;
+  const [links, activeRes] = await Promise.all([
+    linksOf(branchId),
+    ids.length > 0
+      ? admin.from("profiles").select("id").in("id", ids).eq("role", "employee").eq("is_active", true)
+      : Promise.resolve({ data: [] }),
+  ]);
+  if (ids.length > 0 && ((activeRes.data ?? []) as any[]).length !== ids.length) return { ok: false, error: "Atasan harus karyawan aktif" };
+  const current = links.filter((l) => l.userId === userId).map((l) => l.superiorId);
+  const toAdd = ids.filter((i) => !current.includes(i));
+  const toRemove = current.filter((i) => !ids.includes(i));
+  // Cegah putaran (A atasan B, B atasan A): hanya perlu dicek untuk atasan yang BARU ditambahkan.
+  const others = links.filter((l) => l.userId !== userId || ids.includes(l.superiorId));
+  for (const sId of toAdd) {
+    if (wouldCreateCycle(others, userId, sId)) return { ok: false, error: "Pilihan itu membuat atasan saling berputar." };
   }
-  return null;
-}
-
-export async function removeChainMember(branchId: string, userId: string): Promise<ActionResult> {
-  const gate = await requireAdmin();
-  if (!gate.ok) return { ok: false, error: gate.error };
-  const admin = createAdminClient() as any;
-  const level = await memberLevel(branchId, userId);
-  if (level != null) {
-    const left = await guardLevelStillCovered(branchId, userId, level);
-    if (left) return { ok: false, error: left };
-  }
-  const { error } = await admin.from("ticket_chain_members").delete().eq("branch_id", branchId).eq("user_id", userId);
-  if (error) return { ok: false, error: error.message };
-  revalidateTickets();
+  const [delRes, insRes] = await Promise.all([
+    toRemove.length > 0
+      ? admin.from("ticket_superiors").delete().eq("branch_id", branchId).eq("user_id", userId).in("superior_id", toRemove)
+      : Promise.resolve({ error: null }),
+    toAdd.length > 0
+      ? admin.from("ticket_superiors").insert(toAdd.map((superior_id) => ({ branch_id: branchId, user_id: userId, superior_id })))
+      : Promise.resolve({ error: null }),
+  ]);
+  const err = delRes.error ?? insRes.error;
+  if (err) return { ok: false, error: err.message };
+  // Hanya halaman tiket yang memakai data ini (tidak perlu menyegarkan beranda/admin).
+  revalidatePath("/tickets");
+  revalidatePath("/admin/tickets");
   return { ok: true };
 }

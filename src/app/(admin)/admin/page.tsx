@@ -27,6 +27,8 @@ import {
 import { AdminHomePage } from "@/components/admin/home/AdminHomePage";
 import { CelebrationsCard } from "@/components/dashboard/CelebrationsCard";
 import { getScorecardHome } from "@/lib/actions/unit-scorecard.actions";
+import { getMyPendingVerifications } from "@/lib/actions/verifications.actions";
+import { VerificationInbox } from "@/components/verification/VerificationInbox";
 
 /**
  * Admin Home / Today — the new landing surface for admins.
@@ -57,6 +59,7 @@ export default async function AdminHomeRoute() {
     revenueViewerCandidates,
     cleaningReviewQuickAccess,
     unitScorecard,
+    pendingVerifications,
   ] = await Promise.all([
     getCurrentProfile(),
     getAdminHomeToday(),
@@ -78,6 +81,7 @@ export default async function AdminHomeRoute() {
     listEligibleForRevenueDashboard(),
     getCleaningReviewQuickAccess().catch(() => ({ freshUnreviewedCount: 0 })),
     getScorecardHome(null).catch(() => null),
+    getMyPendingVerifications().catch(() => []),
   ]);
 
   // Resolve dispute → user lookup once so the client doesn't have to
@@ -109,6 +113,11 @@ export default async function AdminHomeRoute() {
 
   return (
     <>
+      {pendingVerifications.length > 0 && (
+        <div className="mb-6">
+          <VerificationInbox items={pendingVerifications} />
+        </div>
+      )}
       <AdminHomePage
         greetingName={greetingName}
         today={today}

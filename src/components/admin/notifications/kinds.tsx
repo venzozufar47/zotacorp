@@ -115,7 +115,7 @@ export function notifDesc(p: PendingConfirmationItem): string {
     case "sim_card":
       return p.detail ?? "Nomor SIM lewat tenggat — perlu isi pulsa";
     case "ticket":
-      return p.detail ? `Eskalasi tiket: ${p.detail}` : "Tiket studio perlu ditangani";
+      return p.detail ? `Eskalasi tiket: ${p.detail}` : "Tiket perlu ditangani";
     case "registration":
       return "Menunggu ACC akun";
     case "late_proof":

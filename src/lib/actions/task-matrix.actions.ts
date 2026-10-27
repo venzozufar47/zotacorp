@@ -387,7 +387,7 @@ export async function assignEmployeesToTask(
   const [{ data: items }, { data: refs }] = await Promise.all([
     db
       .from("assigned_task_items")
-      .select("title, note, sort_order")
+      .select("title, note, sort_order, verifier_ids")
       .eq("task_id", template.id)
       .order("sort_order", { ascending: true }),
     db
@@ -420,7 +420,13 @@ export async function assignEmployeesToTask(
   if (error || !created) return { ok: false, error: error?.message ?? "Gagal menugaskan." };
 
   const itemRows = created.flatMap((t: any) =>
-    items.map((i: any) => ({ task_id: t.id, title: i.title, note: i.note, sort_order: i.sort_order }))
+    items.map((i: any) => ({
+      task_id: t.id,
+      title: i.title,
+      note: i.note,
+      sort_order: i.sort_order,
+      verifier_ids: i.verifier_ids ?? [],
+    }))
   );
   const { error: itemErr } = await db.from("assigned_task_items").insert(itemRows);
   if (itemErr) {
@@ -505,7 +511,7 @@ export async function getRowEditData(rowId: string): Promise<ActionResult<RowEdi
   const [{ data: items }, lockedReason, { data: refRows }] = await Promise.all([
     db
       .from("assigned_task_items")
-      .select("title, note, sort_order")
+      .select("title, note, sort_order, verifier_ids")
       .eq("task_id", ref.id)
       .order("sort_order", { ascending: true }),
     itemsLockReason(db, live),
@@ -594,6 +600,7 @@ const rowEditSchema = z.object({
       z.object({
         title: z.string().trim().min(1, "Judul item wajib diisi").max(200),
         note: z.string().trim().max(500).nullable().optional(),
+        verifierIds: z.array(z.string().uuid()).max(6).optional(),
       })
     )
     .min(1, "Minimal satu item checklist")
@@ -677,8 +684,10 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
   if (items && itemTargets.length > 0) {
     const { data: oldItems } = await db
       .from("assigned_task_items")
-      .select("id")
+      .select("id, title, verifier_ids")
       .in("task_id", itemTargets.map((t) => t.id));
+    const keptVerifiers = new Map<string, string[]>();
+    for (const o of oldItems ?? []) if (!keptVerifiers.has(o.title)) keptVerifiers.set(o.title, o.verifier_ids ?? []);
     const { data: inserted, error: insErr } = await db
       .from("assigned_task_items")
       .insert(
@@ -688,6 +697,7 @@ export async function updateRowTask(input: z.input<typeof rowEditSchema>): Promi
             title: it.title,
             note: it.note || null,
             sort_order: idx,
+            verifier_ids: it.verifierIds ?? keptVerifiers.get(it.title) ?? [],
           }))
         )
       )
@@ -808,7 +818,7 @@ async function restoreTemplateIfOrphaned(db: any, sourceId: string, adminId: str
   const [{ data: items }, { data: refs }] = await Promise.all([
     db
       .from("assigned_task_items")
-      .select("title, note, sort_order")
+      .select("title, note, sort_order, verifier_ids")
       .eq("task_id", src.id)
       .order("sort_order", { ascending: true }),
     db
@@ -825,6 +835,7 @@ async function restoreTemplateIfOrphaned(db: any, sourceId: string, adminId: str
         title: i.title,
         note: i.note,
         sort_order: i.sort_order,
+        verifier_ids: i.verifier_ids ?? [],
       }))
     );
   }

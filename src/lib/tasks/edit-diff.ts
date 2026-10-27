@@ -3,13 +3,19 @@ export interface ExistingItem {
   title: string;
   note: string | null;
   sort_order: number;
+  verifier_ids?: string[] | null;
 }
 
 export interface DraftItemInput {
   id?: string;
   title: string;
   note?: string | null;
+  /** Verifikator poin ini (kosong = tanpa verifikasi). Undefined = tidak diubah. */
+  verifierIds?: string[];
 }
+
+const sameIds = (a: readonly string[] | null | undefined, b: readonly string[] | null | undefined) =>
+  [...(a ?? [])].sort().join(",") === [...(b ?? [])].sort().join(",");
 
 export type ItemDiff =
   | { ok: false; error: string }
@@ -51,6 +57,7 @@ export function diffTaskItems(existing: ExistingItem[], draft: DraftItemInput[])
         !old ||
         old.title !== d.title ||
         (old.note ?? null) !== (d.note || null) ||
+        (d.verifierIds !== undefined && !sameIds(old.verifier_ids, d.verifierIds)) ||
         old.sort_order !== idx
       );
     });

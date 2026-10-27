@@ -1,9 +1,9 @@
 /**
- * Cached access helpers Ticketing System (hierarki per cabang).
+ * Cached access helpers Ticketing System (hierarki atasan per orang).
  *
- *  - isStudioHead()      : anggota rantai tiket di cabang mana pun (nama lama dipertahankan; kini bukan hanya Yeobo).
- *  - canResolveTickets() : admin (owner) ATAU anggota rantai.
- *  - canFileTickets()    : owner/anggota rantai ATAU karyawan yang ditugaskan ke sebuah cabang tiket (pelapor), atau
+ *  - isStudioHead()      : punya bawahan di cabang mana pun (nama lama dipertahankan; kini bukan hanya Yeobo).
+ *  - canResolveTickets() : admin (owner) ATAU atasan.
+ *  - canFileTickets()    : owner/atasan ATAU karyawan yang ditugaskan ke sebuah cabang tiket (pelapor), atau
  *                          penerima tiket "turun".
  *  - getMyTicketRole()   : peran penampil utk UI ('owner' | 'head' | 'filer').
  *
@@ -12,24 +12,24 @@
 
 import { cache } from "react";
 import { getCurrentUser, getCurrentRole } from "@/lib/supabase/cached";
-import { branchesOfEmployee, chainMembershipsOf } from "./chain";
+import { branchesOfEmployee, managedBy } from "./chain";
 import type { TicketViewerRole } from "./types";
 
-/** Anggota rantai tiket (tingkat berapa pun, cabang mana pun). */
+/** Atasan: punya bawahan langsung di cabang mana pun. */
 export const isStudioHead = cache(async (): Promise<boolean> => {
   const user = await getCurrentUser();
   if (!user) return false;
-  return (await chainMembershipsOf(user.id)).length > 0;
+  return (await managedBy(user.id)).length > 0;
 });
 
-/** Owner (admin) atau anggota rantai — boleh menindaklanjuti tiket. */
+/** Owner (admin) atau atasan — boleh menindaklanjuti tiket. */
 export const canResolveTickets = cache(async (): Promise<boolean> => {
   const role = await getCurrentRole();
   if (role === "admin") return true;
   return await isStudioHead();
 });
 
-/** Boleh buka halaman & membuat tiket: owner/anggota rantai, atau karyawan yang ditugaskan ke sebuah cabang tiket. */
+/** Boleh buka halaman & membuat tiket: owner/atasan, atau karyawan yang ditugaskan ke sebuah cabang tiket. */
 export const canFileTickets = cache(async (): Promise<boolean> => {
   const role = await getCurrentRole();
   if (role === "admin") return true;

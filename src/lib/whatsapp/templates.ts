@@ -306,10 +306,10 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
   ticket_new_alert: {
     label: "Tiket — laporan baru masuk",
     description:
-      "Dikirim saat ada tiket baru dibuat karyawan Yeobo Space, ke Kepala Studio, karyawan lain di cabang yang sama, dan superadmin.",
-    recipient: "Kepala Studio (studio_heads), karyawan sesama cabang, & admin",
+      "Dikirim saat ada tiket baru dibuat karyawan, ke atasan yang dituju dan superadmin.",
+    recipient: "Atasan yang dituju & admin",
     placeholders: [
-      { key: "branch", description: "Cabang studio (Tlogosari/Tembalang/Jebres)" },
+      { key: "branch", description: "Nama cabang" },
       { key: "category", description: "Kategori laporan" },
       { key: "title", description: "Judul tiket" },
     ],
@@ -317,24 +317,24 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
       "🎫 Tiket baru — {branch}\n\n{category}: {title}\n\nBuka Zota App → menu Tiket untuk menindaklanjuti. 🙏",
   },
   ticket_escalated_alert: {
-    label: "Tiket — eskalasi ke owner",
+    label: "Tiket — eskalasi ke atasan",
     description:
-      "Dikirim ke owner/admin saat Kepala Studio mengeskalasi sebuah tiket.",
-    recipient: "Owner / admin (daftar penerima admin)",
+      "Dikirim ke atasan berikutnya (atau owner bila tak ada atasan) saat sebuah tiket dieskalasi.",
+    recipient: "Atasan berikutnya / owner",
     placeholders: [
-      { key: "branch", description: "Cabang studio" },
+      { key: "branch", description: "Nama cabang" },
       { key: "title", description: "Judul tiket" },
-      { key: "note", description: "Catatan eskalasi dari Kepala Studio" },
+      { key: "note", description: "Catatan eskalasi" },
     ],
     defaultBody:
-      "⏫ Eskalasi tiket — {branch}\n\n{title}\n\nCatatan Kepala Studio: {note}\n\nBuka Zota App → Tiket untuk ACC atau tolak. 🙏",
+      "⏫ Eskalasi tiket — {branch}\n\n{title}\n\nCatatan eskalasi: {note}\n\nBuka Zota App → Tiket untuk ACC atau tolak. 🙏",
   },
   ticket_resolved_alert: {
     label: "Tiket — selesai",
     description: "Dikirim ke pembuat tiket saat tiketnya ditandai selesai.",
     recipient: "Pembuat tiket",
     placeholders: [
-      { key: "branch", description: "Cabang studio" },
+      { key: "branch", description: "Nama cabang" },
       { key: "title", description: "Judul tiket yang selesai" },
       { key: "note", description: "Catatan penyelesaian (jika ada)" },
     ],
@@ -342,22 +342,22 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
       "✅ Tiket kamu ditandai SELESAI.\n\nTiket: {title} ({branch})\nCatatan: {note}\n\nMohon cek & konfirmasi di Zota App → menu Tiket. Kalau belum beres, tandai 'Belum beres' ya 🙏",
   },
   ticket_returned_alert: {
-    label: "Tiket — dikembalikan owner",
+    label: "Tiket — eskalasi ditolak",
     description:
-      "Dikirim ke Kepala Studio saat owner menolak eskalasi (tiket dikembalikan untuk dikerjakan sendiri).",
-    recipient: "Kepala Studio (studio_heads)",
+      "Dikirim ke pengaju eskalasi saat atasannya menolak eskalasi (tiket dikembalikan untuk dikerjakan sendiri).",
+    recipient: "Atasan yang dituju",
     placeholders: [
       { key: "title", description: "Judul tiket" },
-      { key: "note", description: "Catatan owner" },
+      { key: "note", description: "Catatan penolak eskalasi" },
     ],
     defaultBody:
-      "↩️ Eskalasi ditolak owner — dikerjakan sendiri ya.\n\nTiket: {title}\nCatatan owner: {note}\n\nBuka Zota App → Tiket. 🙏",
+      "↩️ Eskalasi ditolak — dikerjakan sendiri ya.\n\nTiket: {title}\nCatatan penolak: {note}\n\nBuka Zota App → Tiket. 🙏",
   },
   ticket_reopened_alert: {
     label: "Tiket — dibuka kembali oleh pelapor",
     description:
-      "Dikirim ke Kepala Studio saat karyawan pelapor menandai tiket yang sudah diselesaikan sebagai 'belum beres' (dibuka kembali).",
-    recipient: "Kepala Studio (studio_heads)",
+      "Dikirim ke pemegang tiket saat karyawan pelapor menandai tiket yang sudah diselesaikan sebagai 'belum beres' (dibuka kembali).",
+    recipient: "Atasan yang dituju",
     placeholders: [
       { key: "title", description: "Judul tiket" },
       { key: "note", description: "Catatan pelapor kenapa belum beres" },
@@ -366,17 +366,17 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKey, TemplateMeta> = {
       "🔁 Tiket dibuka kembali oleh pelapor — belum beres.\n\nTiket: {title}\nCatatan pelapor: {note}\n\nMohon ditindaklanjuti lagi. Buka Zota App → Tiket. 🙏",
   },
   ticket_active_reminder: {
-    label: "Tiket — reminder harian Kepala Studio",
+    label: "Tiket — reminder harian",
     description:
-      "Dikirim tiap hari 11.00 WIB ke Kepala Studio berisi jumlah tiket studio yang masih aktif hari itu, sebagai pengingat untuk segera menyelesaikannya. Tidak dikirim bila tidak ada tiket aktif.",
-    recipient: "Kepala Studio (studio_heads)",
+      "Dikirim tiap hari 11.00 WIB ke atasan berisi jumlah tiket yang masih aktif hari itu, sebagai pengingat untuk segera menyelesaikannya. Tidak dikirim bila tidak ada tiket aktif.",
+    recipient: "Atasan yang dituju",
     placeholders: [
-      { key: "name", description: "Nama/panggilan Kepala Studio" },
+      { key: "name", description: "Nama/panggilan penerima" },
       { key: "count", description: "Jumlah tiket aktif (open + in progress) hari ini" },
       { key: "list", description: "Daftar tiket aktif (judul, cabang, kategori; urgent ditandai 🔴 + keterangan artinya)" },
     ],
     defaultBody:
-      "⏰ Halo {name}!\n\nHari ini ada {count} tiket studio Yeobo Space yang masih aktif & menunggu ditindaklanjuti:\n\n{list}\n\nYuk segera diselesaikan ya 🙏 Buka Zota App → menu Tiket.",
+      "⏰ Halo {name}!\n\nHari ini ada {count} tiket yang masih aktif & menunggu ditindaklanjuti:\n\n{list}\n\nYuk segera diselesaikan ya 🙏 Buka Zota App → menu Tiket.",
   },
   sim_expiry_reminder: {
     label: "Kartu SIM — tenggat terlewat",

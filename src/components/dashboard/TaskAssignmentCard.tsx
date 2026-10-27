@@ -380,6 +380,11 @@ export function TaskAssignmentCard({ tasks }: { tasks: MyTask[] }) {
                                     {item.note}
                                   </p>
                                 )}
+                                {item.verifierNames.length > 0 && (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    🛡 Akan diverifikasi oleh {item.verifierNames.join(", ")}
+                                  </p>
+                                )}
                               </div>
 
                               {item.done && item.photoUrl && (

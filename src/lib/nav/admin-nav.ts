@@ -149,6 +149,12 @@ export function buildAdminNav({
           color: "bg-primary",
         },
         {
+          href: "/admin/tickets",
+          icon: Ticket,
+          label: "Tiket",
+          color: "bg-tertiary",
+        },
+        {
           href: "/admin/cleaning",
           icon: Sparkles,
           label: "SOP",
@@ -324,12 +330,6 @@ export function buildAdminNav({
                 ]
               : []),
           ],
-        },
-        {
-          href: "/admin/tickets",
-          icon: Ticket,
-          label: "Tiket Studio",
-          color: "bg-tertiary",
         },
         {
           href: "/admin/social",

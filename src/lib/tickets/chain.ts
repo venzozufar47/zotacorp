@@ -1,12 +1,11 @@
 import "server-only";
 import { createAdminClient } from "@/lib/actions/_supabase-admin";
-import { OWNER_LEVEL, type ChainMember } from "./chain-logic";
+import { OWNER_LEVEL, type Link } from "./chain-logic";
 
-export { OWNER_LEVEL, firstLevel, nextLevelAbove, levelBelow, levelLabel, type ChainMember } from "./chain-logic";
+export { OWNER_LEVEL, PERSON_LEVEL, resolveTarget, wouldCreateCycle, holderLabel, type Link, type Target } from "./chain-logic";
 
 /**
- * Hierarki tiket: tiap cabang punya rantai bertingkat (Tingkat 1, 2, ...) yang diatur owner; owner (admin) selalu
- * puncak. Tiket "naik" mulai di Tingkat 1 dan dieskalasi satu tingkat demi satu tingkat sampai owner (OWNER_LEVEL).
+ * Hierarki tiket per orang: tiap karyawan punya atasan langsung per cabang (ticket_superiors); owner (admin) selalu puncak.
  * Semua pembacaan memakai service-role (tabelnya dibatasi RLS); pemanggil WAJIB sudah memeriksa siapa penggunanya.
  */
 
@@ -57,35 +56,44 @@ export async function branchesOfEmployee(userId: string): Promise<TicketBranchRo
   return ((data ?? []) as any[]).map(mapBranch);
 }
 
-/** Tingkat seseorang di rantai sebuah cabang (null = bukan anggota). */
-export async function memberLevel(branchId: string, userId: string): Promise<number | null> {
+/** Atasan langsung seseorang di sebuah cabang (kosong = langsung ke owner). */
+export async function superiorsOf(branchId: string, userId: string): Promise<string[]> {
   const admin = createAdminClient() as any;
-  const { data } = await admin.from("ticket_chain_members").select("level").eq("branch_id", branchId).eq("user_id", userId).maybeSingle();
-  return data ? Number(data.level) : null;
+  const { data } = await admin.from("ticket_superiors").select("superior_id").eq("branch_id", branchId).eq("user_id", userId);
+  return ((data ?? []) as any[]).map((r) => r.superior_id as string);
 }
 
-/** Cabang + tingkat yang dipegang seseorang (semua cabang tempat dia masuk rantai). */
-export async function chainMembershipsOf(userId: string): Promise<{ branchId: string; level: number }[]> {
+/** Bawahan langsung seseorang di sebuah cabang. */
+export async function subordinatesOf(branchId: string, userId: string): Promise<string[]> {
   const admin = createAdminClient() as any;
-  const { data } = await admin.from("ticket_chain_members").select("branch_id, level").eq("user_id", userId);
-  return ((data ?? []) as any[]).map((r) => ({ branchId: r.branch_id as string, level: Number(r.level) }));
+  const { data } = await admin.from("ticket_superiors").select("user_id").eq("branch_id", branchId).eq("superior_id", userId);
+  return ((data ?? []) as any[]).map((r) => r.user_id as string);
 }
 
-export async function chainOf(branchId: string): Promise<ChainMember[]> {
+/** Cabang tempat seseorang menjadi atasan (punya bawahan), beserta id bawahannya. */
+export async function managedBy(userId: string): Promise<{ branchId: string; subordinateIds: string[] }[]> {
   const admin = createAdminClient() as any;
-  const { data } = await admin.from("ticket_chain_members").select("user_id, level").eq("branch_id", branchId).order("level");
-  return ((data ?? []) as any[]).map((r) => ({ userId: r.user_id as string, level: Number(r.level) }));
+  const { data } = await admin.from("ticket_superiors").select("branch_id, user_id").eq("superior_id", userId);
+  const byBranch = new Map<string, string[]>();
+  for (const r of (data ?? []) as any[]) byBranch.set(r.branch_id, [...(byBranch.get(r.branch_id) ?? []), r.user_id as string]);
+  return Array.from(byBranch, ([branchId, subordinateIds]) => ({ branchId, subordinateIds }));
 }
 
-/** Penerima notifikasi untuk sebuah tingkat: anggota tingkat itu, atau semua admin bila owner. */
-export async function recipientsAtLevel(branchId: string, level: number): Promise<string[]> {
+/** Semua garis atasan-bawahan sebuah cabang. */
+export async function linksOf(branchId: string): Promise<Link[]> {
   const admin = createAdminClient() as any;
+  const { data } = await admin.from("ticket_superiors").select("user_id, superior_id").eq("branch_id", branchId);
+  return ((data ?? []) as any[]).map((r) => ({ userId: r.user_id as string, superiorId: r.superior_id as string }));
+}
+
+/** Penerima notifikasi pemegang tiket: orangnya, atau semua admin bila owner. */
+export async function holderRecipients(level: number, handlerId: string | null): Promise<string[]> {
   if (level >= OWNER_LEVEL) {
+    const admin = createAdminClient() as any;
     const { data } = await admin.from("profiles").select("id").eq("role", "admin");
     return ((data ?? []) as any[]).map((r) => r.id as string);
   }
-  const { data } = await admin.from("ticket_chain_members").select("user_id").eq("branch_id", branchId).eq("level", level);
-  return ((data ?? []) as any[]).map((r) => r.user_id as string);
+  return handlerId ? [handlerId] : [];
 }
 
 /** Karyawan yang ditugaskan ke cabang (untuk "tiket ke bawah" ke seluruh cabang dan antrean rekan). */
@@ -95,11 +103,4 @@ export async function employeesOfBranch(branchId: string): Promise<string[]> {
   if (!b?.location_id) return [];
   const { data } = await admin.from("employee_locations").select("employee_id").eq("location_id", b.location_id);
   return Array.from(new Set(((data ?? []) as any[]).map((r) => r.employee_id as string).filter(Boolean)));
-}
-
-/** True bila `userId` memegang tiket ini: anggota tingkat `handlerLevel` cabangnya, atau admin bila level owner. */
-export async function canHandleAtLevel(branchId: string, handlerLevel: number, userId: string, isAdmin: boolean): Promise<boolean> {
-  if (handlerLevel >= OWNER_LEVEL) return isAdmin;
-  const lvl = await memberLevel(branchId, userId);
-  return lvl != null && lvl === handlerLevel;
 }

@@ -287,6 +287,14 @@ export function TaskDetailView({
               <p className="text-xs font-medium leading-snug break-words">
                 <span className="text-muted-foreground">{idx + 1}.</span> {item.title}
               </p>
+              {item.verifiers.length > 0 && (
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  🛡 Verifikasi:{" "}
+                  {item.verifiers
+                    .map((v) => `${v.name} ${v.status === "verified" ? "✓" : v.status === "rejected" ? "✗" : v.status === "pending" ? "(menunggu)" : ""}`.trim())
+                    .join(", ")}
+                </p>
+              )}
             </li>
           );
         })}

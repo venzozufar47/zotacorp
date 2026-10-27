@@ -45,6 +45,8 @@ import { parseBreakWindows } from "@/lib/utils/break-windows";
 import type { AttendanceBreakLog } from "@/lib/supabase/types";
 import { getTodayCleaningTasks } from "@/lib/actions/cleaning.actions";
 import { getMyOpenTasks } from "@/lib/actions/assigned-tasks.actions";
+import { getMyPendingVerifications } from "@/lib/actions/verifications.actions";
+import { VerificationInbox } from "@/components/verification/VerificationInbox";
 import { TaskAssignmentCard } from "@/components/dashboard/TaskAssignmentCard";
 import { CleaningChecklistCard } from "@/components/cleaning/CleaningChecklistCard";
 import { ServiceLevelPanel } from "@/components/dashboard/ServiceLevelPanel";
@@ -155,6 +157,7 @@ export default async function DashboardPage() {
     missedCheckouts,
     payslipBasisRes,
     myTasks,
+    pendingVerifications,
     pendingLeaveApprovals,
     canFileComplaintFlag,
     answeredMonthlyPulse,
@@ -205,6 +208,7 @@ export default async function DashboardPage() {
       .eq("user_id", user.id)
       .maybeSingle(),
     getMyOpenTasks(),
+    getMyPendingVerifications(),
     // Kartu fitur baru disembunyikan (lihat EMPLOYEE_HOME_FEATURES): query-nya dilewati selagi mati.
     FEATURES.izin ? getPendingLeaveApprovalCountForMe() : Promise.resolve(0),
     FEATURES.keluhan || FEATURES.risetProduk ? canFileComplaint() : Promise.resolve(false),
@@ -292,6 +296,9 @@ export default async function DashboardPage() {
           menghilang sendiri saat kosong. */}
       <TaskAssignmentCard tasks={myTasks} />
 
+      {/* Poin tugas / tiket yang menunjuk saya sebagai verifikator (verifikasi dua pihak). Hilang sendiri bila kosong. */}
+      <VerificationInbox items={pendingVerifications} />
+
       {/* Foto kebersihan yang perlu diperbaiki — di ATAS catatan pembinaan:
           ini yang mengunci sign-in/checkout (lihat hasPendingCleaningRedo),
           jadi lebih mendesak daripada catatan yang cuma perlu dibaca.
@@ -371,10 +378,10 @@ export default async function DashboardPage() {
           </span>
           <span className="flex-1 min-w-0">
             <span className="block font-display font-bold text-sm">
-              {studioQueueCount} tiket studio menunggu ditangani
+              {studioQueueCount} tiket menunggu ditangani
             </span>
             <span className="block text-xs text-muted-foreground">
-              Kamu Kepala Studio — ketuk untuk menindaklanjuti.
+              Tiket ditujukan kepadamu — ketuk untuk menindaklanjuti.
             </span>
           </span>
           <span className="text-sm font-bold shrink-0">→</span>
@@ -639,7 +646,7 @@ export default async function DashboardPage() {
         <AdminRevenueCard today={revenueSummary} yeobo={yeoboRevenue} />
       )}
 
-      {/* Kartu KPI Kepala Studio — render sendiri nol kalau bukan Kepala Studio. */}
+      {/* Kartu KPI tiket — render sendiri nol kalau bukan atasan. */}
       <TicketResolutionPanel kpi={ticketResolutionKpi} />
 
       {/* Attendance — magazine-style section with an eyebrow label and a soft
