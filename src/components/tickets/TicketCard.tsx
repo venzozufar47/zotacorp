@@ -12,6 +12,7 @@ import {
   ThumbsDown,
   Loader2,
   ImagePlus,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +31,7 @@ import {
   startTicket,
   resolveTicket,
   escalateTicket,
+  delegateTicket,
   cancelTicket,
   ownerDecideTicket,
   confirmTicketResolution,
@@ -75,12 +77,15 @@ export function TicketCard({
   viewerRole,
   context,
   mySuperiors = [],
+  myTeam = [],
 }: {
   ticket: Ticket;
   viewerRole: TicketViewerRole;
   context: Context;
   /** Atasan langsung saya di cabang tiket ini (tujuan eskalasi). */
   mySuperiors?: { id: string; name: string }[];
+  /** Bawahan langsung saya di cabang tiket ini (tujuan "Teruskan" untuk tiket dari owner). */
+  myTeam?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -221,7 +226,10 @@ export function TicketCard({
         {ticket.direction === "down" && (
           <>
             <span>·</span>
-            <span>Untuk: {ticket.assigneeName ?? "seluruh cabang (belum diambil)"}</span>
+            <span>
+              Untuk: {ticket.assigneeName ?? "seluruh cabang (belum diambil)"}
+              {ticket.delegatedFromName ? ` (diteruskan oleh ${ticket.delegatedFromName})` : ""}
+            </span>
           </>
         )}
         {context !== "mine" && ticket.createdByName && (
@@ -317,6 +325,16 @@ export function TicketCard({
                 : undefined,
             run: (n, _p, to) => escalateTicket(ticket.id, n, to || null),
             successMsg: ticket.direction === "down" ? "Tiket dikembalikan ke owner" : "Tiket dieskalasi ke atasan",
+          })
+        }
+        canDelegate={ticket.direction === "down" && myTeam.length > 0}
+        onDelegate={() =>
+          setPrompt({
+            title: "Teruskan ke anggota tim",
+            required: false,
+            choose: { label: "Pilih anggota tim tujuan", options: myTeam },
+            run: (n, _p, to) => delegateTicket(ticket.id, n, to),
+            successMsg: "Tiket diteruskan ke anggota tim",
           })
         }
         onCancel={() =>
@@ -491,6 +509,8 @@ function ActionBar({
   onStart,
   onResolveDirect,
   onEscalate,
+  canDelegate,
+  onDelegate,
   onCancel,
   onAccept,
   onReject,
@@ -504,6 +524,8 @@ function ActionBar({
   onStart: () => void;
   onResolveDirect: () => void;
   onEscalate: () => void;
+  canDelegate: boolean;
+  onDelegate: () => void;
   onCancel: () => void;
   onAccept: () => void;
   onReject: () => void;
@@ -567,6 +589,12 @@ function ActionBar({
           <ArrowUpCircle size={13} /> {ticket.direction === "down" ? "Kembalikan ke owner" : "Eskalasi"}
         </Button>
       );
+      if (canDelegate)
+        btns.push(
+          <Button key="delegate" variant="outline" size="xs" disabled={pending} onClick={onDelegate}>
+            <Users size={13} /> Teruskan
+          </Button>
+        );
     }
     if (s === "escalated")
       btns.push(

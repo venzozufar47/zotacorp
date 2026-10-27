@@ -117,7 +117,7 @@ export function TicketingSystem({
       {assignedActive.length > 0 && (
         <Section icon={<ClipboardCheck size={16} />} title="Untuk saya (dari owner)" count={assignedActive.length} empty="">
           {assignedActive.map((t) => (
-            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="assigned" />
+            <TicketCard key={t.id} ticket={t} viewerRole={viewerRole} context="assigned" myTeam={formOptions.myTeam[t.branchId]} />
           ))}
         </Section>
       )}

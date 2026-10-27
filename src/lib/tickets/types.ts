@@ -82,6 +82,9 @@ export interface Ticket {
   /** Penerima tiket 'down' (kosong = ditujukan ke seluruh cabang, belum diambil). */
   assigneeId: string | null;
   assigneeName?: string | null;
+  /** Orang yang terakhir meneruskan tiket 'down' ke penerima sekarang (null = belum pernah diteruskan). */
+  delegatedFromId: string | null;
+  delegatedFromName?: string | null;
   /** Tingkat yang sedang memegang tiket 'up' (OWNER_LEVEL = owner). */
   handlerLevel: number;
   /** Tingkat asal eskalasi (untuk mengembalikan bila ditolak); 0 = penerima tiket 'down'. */

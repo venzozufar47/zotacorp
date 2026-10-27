@@ -46,6 +46,8 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
 
   const assignTarget = options.downTargets.find((t) => t.branch.id === assignBranch);
+  const coordinators = (assignTarget?.employees ?? []).filter((e) => e.coordinator);
+  const teamMembers = (assignTarget?.employees ?? []).filter((e) => !e.coordinator);
   // Atasan tujuan tiket "naik": 0 = owner, 1 = otomatis, 2+ = pembuat memilih. Owner membuat untuk dirinya sendiri.
   const supers = !isOwner && mode === "report" ? options.mySuperiors[reportBranch] ?? [] : [];
 
@@ -204,13 +206,32 @@ export function TicketForm({ uid, options, isOwner }: { uid: string; options: Ti
             <Field label="Untuk siapa">
               <Select value={assignee} onChange={setAssignee}>
                 <option value={WHOLE_BRANCH}>Seluruh karyawan cabang (yang pertama mengambil)</option>
-                {(assignTarget?.employees ?? []).map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
+                {coordinators.length > 0 && (
+                  <optgroup label="Koordinator cabang — meneruskan ke timnya">
+                    {coordinators.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {teamMembers.length > 0 && (
+                  <optgroup label="Anggota tim — langsung ke orangnya">
+                    {teamMembers.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </Select>
-              <p className="text-[11px] text-muted-foreground">Penerima mengerjakan dan melampirkan foto bukti; kamu yang mengonfirmasi selesai.</p>
+              <p className="text-[11px] text-muted-foreground">
+                {assignee === WHOLE_BRANCH
+                  ? "Semua orang di cabang diberi tahu; yang pertama mengambil yang mengerjakan. Koordinator bisa meneruskannya ke timnya."
+                  : coordinators.some((c) => c.id === assignee)
+                    ? "Koordinator menerima tiket ini lalu meneruskannya ke anggota timnya bila perlu. Kamu yang mengonfirmasi selesai."
+                    : "Langsung ke orangnya; atasan langsungnya diberi tahu dan bisa memantau. Penerima melampirkan foto bukti, kamu yang mengonfirmasi selesai."}
+              </p>
             </Field>
           )}
 

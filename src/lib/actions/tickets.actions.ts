@@ -50,6 +50,7 @@ import {
   listTicketBranches,
   managedBy,
   resolveTarget,
+  subordinatesOf,
   superiorsOf,
   wouldCreateCycle,
   type TicketBranchRow,
@@ -85,6 +86,7 @@ function mapTicket(r: any): Ticket {
     branchId: r.branch_id,
     direction: r.direction === "down" ? "down" : "up",
     assigneeId: r.assignee_id ?? null,
+    delegatedFromId: r.delegated_from_id ?? null,
     handlerLevel: Number(r.handler_level ?? 1),
     handlerId: r.handler_id ?? null,
     escalatedFromId: r.escalated_from_id ?? null,
@@ -120,7 +122,7 @@ async function hydrate(rows: any[]): Promise<Ticket[]> {
   const tickets = rows.map(mapTicket);
   if (tickets.length === 0) return tickets;
   const ids = tickets.map((t) => t.id);
-  const personIds = Array.from(new Set(tickets.flatMap((t) => [t.createdBy, t.assigneeId, t.handlerId]).filter(Boolean) as string[]));
+  const personIds = Array.from(new Set(tickets.flatMap((t) => [t.createdBy, t.assigneeId, t.handlerId, t.delegatedFromId]).filter(Boolean) as string[]));
   // Service-role: RLS `profiles` memblokir non-admin membaca profil rekan lain.
   const admin = createAdminClient() as any;
   const needVerif = tickets.filter((t) => t.verifierIds.length > 0).map((t) => t.id);
@@ -160,6 +162,7 @@ async function hydrate(rows: any[]): Promise<Ticket[]> {
     t.createdByAvatarSeed = p?.avatar_seed ?? null;
     t.assigneeName = t.assigneeId ? nameOf(profById.get(t.assigneeId)) : null;
     t.handlerName = t.handlerId ? nameOf(profById.get(t.handlerId)) : null;
+    t.delegatedFromName = t.delegatedFromId ? nameOf(profById.get(t.delegatedFromId)) : null;
     t.branchLabel = branchById.get(t.branchId)?.label ?? t.branch;
     const vr = verifByTicket.get(t.id) ?? [];
     if (vr.length > 0) {
@@ -212,11 +215,17 @@ async function requireTicketManager(): Promise<ManagerGate | { ok: false; error:
   };
 }
 
-/** Tiket yang boleh dilihat atasan: yang dia pegang, yang dia eskalasi, dan milik bawahan langsungnya. */
+/**
+ * Tiket yang boleh dilihat atasan: yang dia pegang, yang dia eskalasi, milik bawahan langsungnya, dan tiket 'turun'
+ * dari owner yang diberikan langsung ke bawahannya (atau yang dia teruskan sendiri) — atasan tidak boleh buta.
+ */
 function visibleToManager(gate: ManagerGate, row: any): boolean {
   if (gate.isAdmin) return true;
-  if (row.handler_id === gate.userId || row.escalated_by === gate.userId) return true;
-  return gate.subordinates.get(row.branch_id)?.has(row.created_by) ?? false;
+  if (row.handler_id === gate.userId || row.escalated_by === gate.userId || row.delegated_from_id === gate.userId) return true;
+  const subs = gate.subordinates.get(row.branch_id);
+  if (!subs) return false;
+  if (row.direction === "down") return !!row.assignee_id && subs.has(row.assignee_id);
+  return subs.has(row.created_by);
 }
 
 async function loadRow(admin: any, id: string): Promise<any | null> {
@@ -429,8 +438,63 @@ export async function createDownTicket(input: z.infer<typeof createDownSchema>):
       url: "/tickets",
     }
   );
+  // Diberikan langsung ke satu orang → atasan langsung orang itu diberi tahu (bisa memantau, tidak bisa menahan).
+  if (d.assigneeId) {
+    const bosses = (await superiorsOf(branch.id, d.assigneeId)).filter((id) => id !== d.assigneeId && id !== gate.userId);
+    if (bosses.length > 0) {
+      const [assigneeName] = await namesOf(admin, [d.assigneeId]);
+      void firePush(bosses, {
+        title: "Owner menugaskan anggota timmu",
+        body: `${assigneeName}: ${d.title} (${branch.label})`,
+        url: "/tickets",
+      });
+    }
+  }
   revalidateTickets();
   return { ok: true, data: { id: ticketId } };
+}
+
+/**
+ * Tiket 'turun' dari owner: penerima (atau siapa pun di cabang bila belum diambil) meneruskannya ke BAWAHAN LANGSUNG
+ * di cabang itu — koordinator membagi tugas ke timnya. Pembuat (owner) tetap yang mengonfirmasi selesai.
+ */
+export async function delegateTicket(ticketId: string, note: string, toUserId: string): Promise<ActionResult> {
+  const actor = await getActor();
+  if (!actor) return { ok: false, error: "Not signed in" };
+  if (!toUserId) return { ok: false, error: "Pilih anggota tim tujuan" };
+  const admin = createAdminClient() as any;
+  const row = await loadRow(admin, ticketId);
+  if (!row) return { ok: false, error: "Tiket tidak ditemukan" };
+  if (row.direction !== "down") return { ok: false, error: "Hanya tiket dari owner yang bisa diteruskan" };
+  if (!(await isHandler(row, actor))) return { ok: false, error: "Forbidden — kamu bukan penerima tiket ini" };
+  if (!["open", "in_progress"].includes(row.status)) return { ok: false, error: "Tiket tidak bisa diteruskan pada status ini" };
+  if (toUserId === actor.userId) return { ok: false, error: "Tiket sudah di kamu" };
+  if (!(await subordinatesOf(row.branch_id, actor.userId)).includes(toUserId)) {
+    return { ok: false, error: "Hanya bisa meneruskan ke bawahan langsungmu di cabang ini" };
+  }
+  const { data: alive } = await admin.from("profiles").select("id").eq("id", toUserId).eq("is_active", true).is("resigned_at", null).maybeSingle();
+  if (!alive) return { ok: false, error: "Anggota tim itu sudah tidak aktif" };
+  if (((row.verifier_ids ?? []) as string[]).includes(toUserId)) {
+    return { ok: false, error: "Orang itu verifikator tiket ini, tidak bisa sekaligus pengerjanya" };
+  }
+  const { error } = await admin
+    .from("tickets")
+    .update({
+      assignee_id: toUserId,
+      delegated_from_id: actor.userId,
+      delegated_at: new Date().toISOString(),
+      status: "open",
+      in_progress_at: null,
+      in_progress_by: null,
+    })
+    .eq("id", ticketId)
+    .in("status", ["open", "in_progress"]);
+  if (error) return { ok: false, error: error.message };
+  const [fromName] = await namesOf(admin, [actor.userId]);
+  const extra = note.trim() ? ` — "${note.trim()}"` : "";
+  void firePush([toUserId], { title: "Tiket diteruskan ke kamu", body: `${fromName}: ${row.title} (${row.branch})${extra}`, url: "/tickets" });
+  revalidateTickets();
+  return { ok: true };
 }
 
 export async function cancelTicket(ticketId: string): Promise<ActionResult> {
@@ -947,7 +1011,9 @@ export interface TicketFormOptions {
   /** Cabang yang boleh dipilih saat membuat tiket "naik" (cabang saya; admin: semua). */
   fileBranches: TicketBranchRow[];
   /** Admin saja: cabang beserta karyawannya, untuk tiket "turun". */
-  downTargets: { branch: TicketBranchRow; employees: { id: string; name: string }[] }[];
+  downTargets: { branch: TicketBranchRow; employees: { id: string; name: string; coordinator: boolean }[] }[];
+  /** Bawahan langsung saya per cabang (id cabang → bawahan): tujuan "Teruskan" untuk tiket dari owner. */
+  myTeam: Record<string, { id: string; name: string }[]>;
   /** Atasan langsung saya per cabang (id cabang → atasan). Kosong = tiket langsung ke owner; 2+ = saya memilih. */
   mySuperiors: Record<string, { id: string; name: string }[]>;
   /** Orang yang boleh dipilih sebagai verifikator penyelesaian tiket. */
@@ -956,7 +1022,7 @@ export interface TicketFormOptions {
 
 export async function getTicketFormOptions(): Promise<TicketFormOptions> {
   const actor = await getActor();
-  if (!actor) return { fileBranches: [], downTargets: [], mySuperiors: {}, verifierPeople: [] };
+  if (!actor) return { fileBranches: [], downTargets: [], myTeam: {}, mySuperiors: {}, verifierPeople: [] };
   const verifierPeople = await listVerifierPeople();
   let fileBranches: TicketBranchRow[];
   if (actor.isAdmin) fileBranches = await listTicketBranches({ onlyActive: true });
@@ -983,13 +1049,27 @@ export async function getTicketFormOptions(): Promise<TicketFormOptions> {
         .map((p) => ({ id: p.id as string, name: (p.nickname?.trim() || p.full_name || "Atasan") as string }))
         .sort((a, c) => a.name.localeCompare(c.name, "id", { sensitivity: "base" }));
     }
-    return { fileBranches, downTargets: [], mySuperiors, verifierPeople };
+    const myTeam: TicketFormOptions["myTeam"] = {};
+    for (const m of await managedBy(actor.userId)) {
+      const { data } = await db
+        .from("profiles")
+        .select("id, full_name, nickname")
+        .in("id", m.subordinateIds)
+        .eq("is_active", true)
+        .is("resigned_at", null);
+      myTeam[m.branchId] = ((data ?? []) as any[])
+        .map((p) => ({ id: p.id as string, name: (p.nickname?.trim() || p.full_name || "Karyawan") as string }))
+        .sort((a, c) => a.name.localeCompare(c.name, "id", { sensitivity: "base" }));
+    }
+    return { fileBranches, downTargets: [], myTeam, mySuperiors, verifierPeople };
   }
 
   const admin = createAdminClient() as any;
   const downTargets: TicketFormOptions["downTargets"] = [];
   for (const branch of fileBranches) {
-    const ids = await employeesOfBranch(branch.id);
+    const [ids, links] = await Promise.all([employeesOfBranch(branch.id), linksOf(branch.id)]);
+    // Koordinator = orang yang punya bawahan di cabang ini (menerima tiket owner lalu meneruskannya ke timnya).
+    const coordinatorIds = new Set(links.map((l) => l.superiorId));
     if (ids.length === 0) {
       downTargets.push({ branch, employees: [] });
       continue;
@@ -998,11 +1078,11 @@ export async function getTicketFormOptions(): Promise<TicketFormOptions> {
     downTargets.push({
       branch,
       employees: ((data ?? []) as any[])
-        .map((p) => ({ id: p.id as string, name: (p.nickname?.trim() || p.full_name || "Karyawan") as string }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        .map((p) => ({ id: p.id as string, name: (p.nickname?.trim() || p.full_name || "Karyawan") as string, coordinator: coordinatorIds.has(p.id as string) }))
+        .sort((a, b) => a.name.localeCompare(b.name, "id", { sensitivity: "base" })),
     });
   }
-  return { fileBranches, downTargets, mySuperiors: {}, verifierPeople };
+  return { fileBranches, downTargets, myTeam: {}, mySuperiors: {}, verifierPeople };
 }
 
 // ─── Hierarki (admin) ───────────────────────────────────────────────────────
