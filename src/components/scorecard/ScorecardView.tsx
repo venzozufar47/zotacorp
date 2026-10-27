@@ -11,7 +11,6 @@ const BAND_META: Record<ScorecardBand, { label: string; dot: string; text: strin
 };
 
 export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
-  const prevByKey = new Map(scorecard.previousMonthMetrics.map((m) => [m.key, m]));
   return (
     <div className="space-y-4">
       {scorecard.twoWeeksRedLabels.length > 0 && (
@@ -31,7 +30,6 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
       <div className="grid grid-cols-2 gap-3">
         {scorecard.metrics.map((m) => {
           const meta = BAND_META[m.band];
-          const prev = prevByKey.get(m.key);
           return (
             <Card key={m.key}>
               <CardHeader>
@@ -47,13 +45,6 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
                   <span className={`size-2 rounded-full ${meta.dot}`} /> {meta.label}
                 </span>
                 {m.note && <p className="text-[10.5px] text-muted-foreground">{m.note}</p>}
-                {prev && (
-                  <p className="flex items-center gap-1.5 border-t border-border/60 pt-1 text-[10.5px] text-muted-foreground">
-                    <span className={`size-1.5 rounded-full ${BAND_META[prev.band].dot}`} />
-                    {scorecard.previousMonthLabel}:{" "}
-                    <span className="font-semibold tabular-nums text-foreground">{prev.displayValue}</span>
-                  </p>
-                )}
               </CardContent>
             </Card>
           );
