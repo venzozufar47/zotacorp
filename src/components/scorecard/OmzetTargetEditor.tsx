@@ -112,7 +112,7 @@ export function OmzetTargetEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] text-muted-foreground">
           {total > 0 ? `Total target: Rp${total.toLocaleString("id-ID")}. ` : ""}
-          Dibagi per hari kerja (Senin–Sabtu). Kolom yang kosong tidak ikut dinilai.
+          Kartu menampilkan progres omzet bulan berjalan terhadap target bulan penuh. Kolom yang kosong tidak ikut dinilai.
         </p>
         <Button type="button" onClick={save} disabled={busy || !dirty} className="h-10">
           {busy ? "Menyimpan…" : "Simpan"}

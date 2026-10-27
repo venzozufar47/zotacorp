@@ -295,11 +295,16 @@ export async function computeMetricsAsOf(
       : null;
   // Hanya komponen yang punya target ikut dihitung, supaya omzet yang tak bertarget tidak menggelembungkan persen.
   const omzetActual = opts ? (opts.posTarget ? mtd.total : 0) + (opts.cakeTarget ? cakeMtd : 0) : mtd.total + cakeMtd;
-  const omzetPct = targetPace && targetPace > 0 ? (omzetActual / targetPace) * 100 : null;
-  // Target ada tapi belum ada hari kerja berjalan (mis. tanggal 1 jatuh hari Minggu): belum bisa dinilai, bukan 0%.
-  const omzetTooEarly = !!(opts?.posTarget || opts?.cakeTarget) && workedDays === 0;
-  const part = (actual: number, pace: number, target: number | null | undefined) =>
-    target && pace > 0 ? ` (${Math.round((actual / pace) * 100)}% dari target)` : "";
+  // Tampilan scorecard = PROGRES terhadap target bulan penuh (naik ke 100% di akhir bulan). Cek "2 minggu merah"
+  // (period "week") tetap memakai laju sebanding hari kerja, kalau tidak setiap awal bulan terbaca merah palsu.
+  const progressMode = !!opts && period === "month";
+  const fullTarget = (opts?.posTarget ?? 0) + (opts?.cakeTarget ?? 0);
+  const basis = progressMode ? fullTarget : targetPace;
+  const omzetPct = basis && basis > 0 ? (omzetActual / basis) * 100 : null;
+  // Target ada tapi belum ada hari kerja berjalan (laju): belum bisa dinilai, bukan 0%.
+  const omzetTooEarly = !progressMode && !!(opts?.posTarget || opts?.cakeTarget) && workedDays === 0;
+  const part = (actual: number, target: number | null | undefined) =>
+    target ? ` (${Math.round((actual / target) * 100)}% dari target bulan)` : "";
   const complaintsPer1000 = txCount30 > 0 ? (complaintCount / txCount30) * 1000 : 0;
   const daysSinceEpoch =
     (new Date(asOf).getTime() - new Date(COMPLAINT_TRACKING_EPOCH).getTime()) / 86_400_000;
@@ -329,8 +334,8 @@ export async function computeMetricsAsOf(
       displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : omzetTooEarly ? "Belum ada hari kerja" : "Target belum diatur",
       band: omzetTooEarly ? "measuring" : omzetBand(omzetPct),
       note: opts
-        ? `POS ${rupiah(mtd.total)}${part(mtd.total, posPace, opts.posTarget)} + Custom Cake ${rupiah(cakeMtd)}${part(cakeMtd, cakePace, opts.cakeTarget)}` +
-          (targetPace ? `. Target sampai hari ini ${rupiah(targetPace)} (${workedDays} dari ${monthWorkDays} hari kerja)` : "")
+        ? `POS ${rupiah(mtd.total)}${part(mtd.total, opts.posTarget)} + Custom Cake ${rupiah(cakeMtd)}${part(cakeMtd, opts.cakeTarget)}` +
+          (fullTarget ? `. Target bulan ${rupiah(fullTarget)}; acuan sampai hari ini ${rupiah(targetPace ?? 0)} (${workedDays} dari ${monthWorkDays} hari kerja)` : "")
         : undefined,
       ranges: omzetRanges(),
     },
