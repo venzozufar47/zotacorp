@@ -56,19 +56,11 @@ export interface ScorecardMetric {
 
 export interface BranchScorecard {
   branch: ScorecardBranch;
-  /** Angka bulan berjalan (1 tanggal bulan ini s.d. hari ini). */
+  /** Angka tampilan: waste & service level 30 hari terakhir, omzet & keluhan bulan berjalan. */
   metrics: ScorecardMetric[];
-  /** Angka bulan lalu penuh, untuk pembanding kecil di tiap kartu. */
-  previousMonthMetrics: ScorecardMetric[];
-  previousMonthLabel: string;
   /** Nama metrik (ukuran mingguan, sesuai SOP) yang merah 2 minggu berturut-turut. */
   twoWeeksRedLabels: string[];
 }
-
-const MONTH_NAMES = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-];
 
 /** Sebelum tanggal ini, metrik keluhan dihitung hijau tanpa syarat (SOP
  *  "selama 30 hari pengukuran pertama, angka keluhan dihitung hijau").
@@ -201,7 +193,7 @@ export async function computeMetricsAsOf(
   asOf: string,
   /**
    * "week" (bawaan; dipakai Kalkulator Bonus & cek 2 minggu merah): 7 hari terakhir bergulir, keluhan 30 hari.
-   * "month": 1 tanggal bulan `asOf` s.d. `asOf` (tampilan scorecard).
+   * "month" (tampilan scorecard): waste & service level 30 hari terakhir; omzet & keluhan 1 tanggal bulan `asOf` s.d. `asOf`.
    */
   period: "week" | "month" = "week"
 ): Promise<ScorecardMetric[]> {
@@ -209,8 +201,10 @@ export async function computeMetricsAsOf(
   // hari sesudah `asOf` saat Kalkulator Bonus menghitung akhir bulan lampau.
   const weekEnd = asOf;
   const monthStart = monthStartOf(asOf);
-  const weekStart = period === "month" ? monthStart : addDays(asOf, -6);
-  const windowName = period === "month" ? "bulan ini" : "7 hari terakhir";
+  // Tampilan: waste & service level adalah rasio → 30 hari bergulir (selalu cukup data, tidak mulai dari nol tiap
+  // tanggal 1); omzet & keluhan tetap bulan berjalan karena dibandingkan dengan target bulanan.
+  const weekStart = period === "month" ? addDays(asOf, -29) : addDays(asOf, -6);
+  const windowName = period === "month" ? "30 hari terakhir" : "7 hari terakhir";
   const daysElapsed = Number(asOf.slice(8, 10));
 
   const [wastePct, serviceLevel, mtd, complaintCount, txCount30] = await Promise.all([
@@ -288,13 +282,11 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
 
   const today = jakartaDateString(new Date());
   const lastWeek = addDays(today, -7);
-  const prevMonthEnd = addDays(monthStartOf(today), -1);
 
-  // Tampilan = bulan berjalan + bulan lalu penuh (pembanding). Aturan SOP "2 minggu merah berturut-turut"
-  // tetap memakai ukuran mingguan (7 hari bergulir, dibandingkan dengan seminggu sebelumnya).
-  const [metrics, previousMonthMetrics, weekNow, weekPrev] = await Promise.all([
+  // Aturan SOP "2 minggu merah berturut-turut" tetap memakai ukuran mingguan (7 hari bergulir,
+  // dibandingkan dengan seminggu sebelumnya).
+  const [metrics, weekNow, weekPrev] = await Promise.all([
     computeMetricsAsOf(branch, account.id, dailyTarget, today, "month"),
-    computeMetricsAsOf(branch, account.id, dailyTarget, prevMonthEnd, "month"),
     computeMetricsAsOf(branch, account.id, dailyTarget, today),
     computeMetricsAsOf(branch, account.id, dailyTarget, lastWeek),
   ]);
@@ -304,8 +296,7 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
     .filter((m) => m.band === "red" && prevByKey.get(m.key)?.band === "red")
     .map((m) => m.label);
 
-  const previousMonthLabel = `${MONTH_NAMES[Number(prevMonthEnd.slice(5, 7)) - 1]} ${prevMonthEnd.slice(0, 4)}`;
-  return { branch, metrics, previousMonthMetrics, previousMonthLabel, twoWeeksRedLabels };
+  return { branch, metrics, twoWeeksRedLabels };
 }
 
 /**
