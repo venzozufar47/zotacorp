@@ -45,6 +45,18 @@ export function ScorecardView({ scorecard }: { scorecard: BranchScorecard }) {
                   <span className={`size-2 rounded-full ${meta.dot}`} /> {meta.label}
                 </span>
                 {m.note && <p className="text-[10.5px] text-muted-foreground">{m.note}</p>}
+                <div className="space-y-1 border-t border-border/60 pt-1.5">
+                  {m.ranges ? (
+                    m.ranges.map((r) => (
+                      <p key={r.band} className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
+                        <span className={`size-2 shrink-0 rounded-full ${BAND_META[r.band].dot}`} />
+                        {r.text}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-[10.5px] text-muted-foreground">{m.rangesNote}</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           );
