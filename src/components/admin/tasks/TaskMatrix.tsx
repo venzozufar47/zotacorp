@@ -1139,7 +1139,7 @@ function RowEditDialog({
           </div>
 
           <label className="block text-xs font-semibold">
-            Keterangan (opsional)
+            Keterangan dan kriteria (opsional)
             <textarea
               className={inputCls}
               rows={4}

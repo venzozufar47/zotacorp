@@ -168,7 +168,7 @@ export function TaskEditForm({
         </Field>
       )}
 
-      <Field label="Keterangan (opsional)">
+      <Field label="Keterangan dan kriteria (opsional)">
         <textarea
           className={inputCls}
           rows={2}
