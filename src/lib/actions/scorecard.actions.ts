@@ -60,6 +60,8 @@ export interface BranchScorecard {
   metrics: ScorecardMetric[];
   /** Nama metrik (ukuran mingguan, sesuai SOP) yang merah 2 minggu berturut-turut. */
   twoWeeksRedLabels: string[];
+  /** Target omzet bulanan (POS + Custom Cake); null = belum diatur. */
+  omzetTarget: number | null;
 }
 
 /** Sebelum tanggal ini, metrik keluhan dihitung hijau tanpa syarat (SOP
@@ -103,6 +105,44 @@ async function sumPaidPosTotal(
   const rows = data ?? [];
   return { total: rows.reduce((s, r) => s + r.total, 0), count: rows.length };
 }
+
+/**
+ * Omzet Custom Cake cabang pada [from, to] (inklusif, tanggal WIB menurut `scheduled_at`): total − ongkir − refund,
+ * tanpa order batal/dibuang/gratis. Aturan yang sama dengan petunjuk alokasi di laporan laba-rugi (`fetchPnL`).
+ */
+async function sumCakeRevenue(branch: ScorecardBranch, from: string, to: string): Promise<number> {
+  const admin = createAdminClient();
+  const startIso = `${from}T00:00:00+07:00`;
+  const endIso = `${addDays(to, 1)}T00:00:00+07:00`;
+  const PAGE = 1000;
+  let total = 0;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await admin
+      .from("cake_orders")
+      .select("total_idr, delivery_fee_idr, refund_idr, status, free_claim")
+      .ilike("branch", branch)
+      .gte("scheduled_at", startIso)
+      .lt("scheduled_at", endIso)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as unknown as {
+      total_idr: number | null;
+      delivery_fee_idr: number | null;
+      refund_idr: number | null;
+      status: string | null;
+      free_claim: boolean | null;
+    }[];
+    for (const c of rows) {
+      if (c.status === "cancelled" || c.status === "discarded" || c.free_claim) continue;
+      total += (Number(c.total_idr) || 0) - (Number(c.delivery_fee_idr) || 0) - (Number(c.refund_idr) || 0);
+    }
+    if (rows.length < PAGE) break;
+  }
+  return total;
+}
+
+const rupiah = (n: number) => `Rp${Math.round(n).toLocaleString("id-ID")}`;
 
 /**
  * Persen susut pada jendela [start, end]. `null` = tidak ada produksi tercatat di jendela itu —
@@ -195,7 +235,12 @@ export async function computeMetricsAsOf(
    * "week" (bawaan; dipakai Kalkulator Bonus & cek 2 minggu merah): 7 hari terakhir bergulir, keluhan 30 hari.
    * "month" (tampilan scorecard): waste & service level 30 hari terakhir; omzet & keluhan 1 tanggal bulan `asOf` s.d. `asOf`.
    */
-  period: "week" | "month" = "week"
+  period: "week" | "month" = "week",
+  /**
+   * Tampilan scorecard: omzet = POS + Custom Cake dibanding target BULANAN (`null` = belum diatur), dengan
+   * target dihitung sebanding hari berjalan. Tanpa ini (Kalkulator Bonus) omzet tetap POS-saja vs target harian kasir.
+   */
+  opts?: { monthlyTarget: number | null }
 ): Promise<ScorecardMetric[]> {
   // Mingguan: 7 hari bergulir (bukan Senin–Minggu): tidak kosong tiap Senin, dan tidak ikut menghitung
   // hari sesudah `asOf` saat Kalkulator Bonus menghitung akhir bulan lampau.
@@ -207,10 +252,11 @@ export async function computeMetricsAsOf(
   const windowName = period === "month" ? "30 hari terakhir" : "7 hari terakhir";
   const daysElapsed = Number(asOf.slice(8, 10));
 
-  const [wastePct, serviceLevel, mtd, complaintCount, txCount30] = await Promise.all([
+  const [wastePct, serviceLevel, mtd, cakeMtd, complaintCount, txCount30] = await Promise.all([
     computeWastePercent(bankAccountId, weekStart, weekEnd),
     pooledServiceLevel(bankAccountId, weekStart, weekEnd),
     sumPaidPosTotal(bankAccountId, monthStart, asOf),
+    opts ? sumCakeRevenue(branch, monthStart, asOf) : Promise.resolve(0),
     period === "month"
       ? getComplaintCountBetween(branch, monthStart, asOf)
       : getComplaintCount(branch, 30),
@@ -220,8 +266,16 @@ export async function computeMetricsAsOf(
   ]);
 
   const wasteMeasured = wastePct !== null;
-  const targetPace = dailyTarget ? dailyTarget * daysElapsed : null;
-  const omzetPct = targetPace && targetPace > 0 ? (mtd.total / targetPace) * 100 : null;
+  const daysInMonth = new Date(Date.UTC(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)), 0)).getUTCDate();
+  const targetPace = opts
+    ? opts.monthlyTarget
+      ? (opts.monthlyTarget * daysElapsed) / daysInMonth
+      : null
+    : dailyTarget
+      ? dailyTarget * daysElapsed
+      : null;
+  const omzetActual = mtd.total + cakeMtd;
+  const omzetPct = targetPace && targetPace > 0 ? (omzetActual / targetPace) * 100 : null;
   const complaintsPer1000 = txCount30 > 0 ? (complaintCount / txCount30) * 1000 : 0;
   const daysSinceEpoch =
     (new Date(asOf).getTime() - new Date(COMPLAINT_TRACKING_EPOCH).getTime()) / 86_400_000;
@@ -250,6 +304,7 @@ export async function computeMetricsAsOf(
       value: omzetPct ?? 0,
       displayValue: omzetPct !== null ? `${omzetPct.toFixed(0)}%` : "Target belum diatur",
       band: omzetBand(omzetPct),
+      note: opts ? `POS ${rupiah(mtd.total)} + Custom Cake ${rupiah(cakeMtd)}` : undefined,
       ranges: omzetRanges(),
     },
     {
@@ -279,6 +334,14 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
     .eq("id", account.id)
     .maybeSingle();
   const dailyTarget = bankAccount?.daily_revenue_target ?? null;
+  const { data: targetRow } = await admin
+    .from("scorecard_branch_targets" as never)
+    .select("monthly_omzet_target")
+    .eq("branch", branch)
+    .maybeSingle();
+  const rawTarget = (targetRow as { monthly_omzet_target: string | number | null } | null)?.monthly_omzet_target;
+  const omzetTarget = rawTarget == null ? null : Number(rawTarget);
+  const opts = { monthlyTarget: omzetTarget };
 
   const today = jakartaDateString(new Date());
   const lastWeek = addDays(today, -7);
@@ -286,9 +349,9 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
   // Aturan SOP "2 minggu merah berturut-turut" tetap memakai ukuran mingguan (7 hari bergulir,
   // dibandingkan dengan seminggu sebelumnya).
   const [metrics, weekNow, weekPrev] = await Promise.all([
-    computeMetricsAsOf(branch, account.id, dailyTarget, today, "month"),
-    computeMetricsAsOf(branch, account.id, dailyTarget, today),
-    computeMetricsAsOf(branch, account.id, dailyTarget, lastWeek),
+    computeMetricsAsOf(branch, account.id, dailyTarget, today, "month", opts),
+    computeMetricsAsOf(branch, account.id, dailyTarget, today, "week", opts),
+    computeMetricsAsOf(branch, account.id, dailyTarget, lastWeek, "week", opts),
   ]);
 
   const prevByKey = new Map(weekPrev.map((m) => [m.key, m]));
@@ -296,7 +359,7 @@ export async function getBranchScorecard(branch: ScorecardBranch): Promise<Branc
     .filter((m) => m.band === "red" && prevByKey.get(m.key)?.band === "red")
     .map((m) => m.label);
 
-  return { branch, metrics, twoWeeksRedLabels };
+  return { branch, metrics, twoWeeksRedLabels, omzetTarget };
 }
 
 /**

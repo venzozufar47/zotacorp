@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { getCurrentRole } from "@/lib/supabase/cached";
 import { getBranchScorecard } from "@/lib/actions/scorecard.actions";
 import { ScorecardView } from "@/components/scorecard/ScorecardView";
+import { OmzetTargetEditor } from "@/components/scorecard/OmzetTargetEditor";
 
 const BRANCHES = ["Pare", "Semarang"] as const;
 
-// Hanya metrik yang punya halaman pengaturan sungguhan. Ambang waste ada di kode; target omzet harian belum punya halaman input.
+// Hanya metrik yang punya tempat pengaturan sungguhan. Omzet: editor di halaman ini; waste: ambang ada di kode.
 const SETTINGS_LINKS = {
   service_level: { href: "/admin/service-level", label: "Atur target service level" },
 };
@@ -33,7 +34,13 @@ export default async function AdminScorecardPage() {
           <section key={b} className="space-y-3">
             <h2 className="font-display text-base font-bold">Cabang {b}</h2>
             {cards[i] ? (
-              <ScorecardView scorecard={cards[i]!} settingsLinks={SETTINGS_LINKS} />
+              <>
+                <OmzetTargetEditor branch={b} initial={cards[i]!.omzetTarget} />
+                <ScorecardView
+                  scorecard={cards[i]!}
+                  settingsLinks={{ ...SETTINGS_LINKS, omzet: { href: `#target-omzet-${b}`, label: "Atur target omzet" } }}
+                />
+              </>
             ) : (
               <p className="rounded-xl border-2 border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 Data cabang {b} belum tersedia (rekening POS cabang tidak ditemukan).
