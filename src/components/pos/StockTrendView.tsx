@@ -1,12 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Info } from "lucide-react";
-import { getStockTrend, type StockTrend, type StockTrendRow } from "@/lib/actions/pos-stock-trend.actions";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Info, Loader2 } from "lucide-react";
+import {
+  getStockMonths,
+  getStockTrend,
+  type StockMonth,
+  type StockTrend,
+  type StockTrendRow,
+} from "@/lib/actions/pos-stock-trend.actions";
 import { dayTotals, pooledSellThrough, sellThrough, type DayCell } from "@/lib/pos/stock-trend";
 import { cn } from "@/lib/utils";
 
-const WINDOWS = [7, 14] as const;
+const WINDOWS = [7, 14, 30] as const;
+/** Paling banyak 14 hari tampil sekaligus di layar; lebih dari itu digeser ke kiri/kanan. */
+const MAX_VISIBLE = 14;
+
+type Range = { kind: "days"; n: number } | { kind: "month"; ym: string };
+
+const MONTHS_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+const monthShort = (ym: string) => MONTHS_ID[Number(ym.slice(5)) - 1].slice(0, 3);
+const monthLong = (ym: string) => `${MONTHS_ID[Number(ym.slice(5)) - 1]} ${ym.slice(0, 4)}`;
 
 const WD = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const dayLabel = (ymd: string) => {
@@ -27,7 +41,8 @@ const HATCH: React.CSSProperties = {
  * produk TANPA produksi yang stok lamanya ditarik tidak terbaca sebagai produksi hari itu yang gagal laku.
  */
 export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
-  const [windowDays, setWindowDays] = useState<number>(7);
+  const [range, setRange] = useState<Range>({ kind: "days", n: 7 });
+  const [months, setMonths] = useState<StockMonth[]>([]);
   const [data, setData] = useState<StockTrend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -36,7 +51,7 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await getStockTrend(bankAccountId, windowDays);
+        const res = await getStockTrend(bankAccountId, range.kind === "days" ? { days: range.n } : { month: range.ym });
         if (cancelled) return;
         if (!res.ok) setError(res.error);
         else {
@@ -51,29 +66,27 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [bankAccountId, windowDays]);
+  }, [bankAccountId, range]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await getStockMonths(bankAccountId).catch(() => null);
+      if (!cancelled && res && res.ok) setMonths(res.data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bankAccountId]);
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tren stok harian</p>
-        <div className="flex gap-1 rounded-full border border-border bg-muted/40 p-1">
-          {WINDOWS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => setWindowDays(w)}
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition",
-                windowDays === w ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {w} hari
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Tren stok harian{range.kind === "month" ? ` · ${monthLong(range.ym)}` : ""}
+        </p>
+        <RangeFilter range={range} months={months} onChange={setRange} />
       </div>
-
       {error && (
         <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>
       )}
@@ -108,6 +121,175 @@ export function StockTrendView({ bankAccountId }: { bankAccountId: string }) {
   );
 }
 
+/* ───────────── filter rentang ───────────── */
+
+function RangeFilter({ range, months, onChange }: { range: Range; months: StockMonth[]; onChange: (r: Range) => void }) {
+  const idx = range.kind === "month" ? months.findIndex((m) => m.month === range.ym) : -1;
+  const go = (delta: number) => {
+    const m = months[idx + delta];
+    if (m) onChange({ kind: "month", ym: m.month });
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex gap-1 rounded-full border border-border bg-muted/40 p-1">
+        {WINDOWS.map((w) => (
+          <button
+            key={w}
+            type="button"
+            onClick={() => onChange({ kind: "days", n: w })}
+            aria-pressed={range.kind === "days" && range.n === w}
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition",
+              range.kind === "days" && range.n === w
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {w} hari
+          </button>
+        ))}
+      </div>
+      {months.length > 0 && (
+        <div className="flex items-center gap-1">
+          {range.kind === "month" && (
+            <button
+              type="button"
+              onClick={() => go(-1)}
+              disabled={idx <= 0}
+              aria-label="Bulan sebelumnya"
+              className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground hover:bg-muted disabled:opacity-30"
+            >
+              <ChevronLeft size={14} />
+            </button>
+          )}
+          <MonthPicker range={range} months={months} onChange={onChange} />
+          {range.kind === "month" && (
+            <button
+              type="button"
+              onClick={() => go(1)}
+              disabled={idx < 0 || idx >= months.length - 1}
+              aria-label="Bulan berikutnya"
+              className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground hover:bg-muted disabled:opacity-30"
+            >
+              <ChevronRight size={14} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Pemilih bulan: kisi bulan per tahun dengan total produksi sebagai petunjuk (bukan <select> bawaan). */
+function MonthPicker({ range, months, onChange }: { range: Range; months: StockMonth[]; onChange: (r: Range) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const active = range.kind === "month";
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const byYear = useMemo(() => {
+    const map = new Map<string, StockMonth[]>();
+    for (const m of months) {
+      const y = m.month.slice(0, 4);
+      map.set(y, [...(map.get(y) ?? []), m]);
+    }
+    return [...map.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }, [months]);
+  const maxProd = Math.max(1, ...months.map((m) => m.production));
+  const current = months[months.length - 1]?.month;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={cn(
+          "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold transition",
+          active
+            ? "border-foreground bg-primary text-primary-foreground"
+            : "border-border bg-muted/40 text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <CalendarDays size={13} />
+        {active ? monthLong(range.ym) : "Pilih bulan"}
+        <ChevronDown size={12} className={cn("transition", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Pilih bulan"
+          className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] space-y-3 rounded-2xl border-2 border-foreground bg-card p-3 shadow-[3px_3px_0_0_var(--foreground)]"
+        >
+          {byYear.map(([year, list]) => (
+            <div key={year} className="space-y-1.5">
+              <p className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{year}</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {list.map((m) => {
+                  const isActive = range.kind === "month" && range.ym === m.month;
+                  return (
+                    <button
+                      key={m.month}
+                      type="button"
+                      onClick={() => {
+                        onChange({ kind: "month", ym: m.month });
+                        setOpen(false);
+                      }}
+                      className={cn(
+                        "flex flex-col gap-1 rounded-xl border px-2 py-1.5 text-left transition",
+                        isActive
+                          ? "border-foreground bg-primary text-primary-foreground"
+                          : "border-border hover:border-foreground/50 hover:bg-muted/50"
+                      )}
+                    >
+                      <span className="flex items-baseline justify-between gap-1">
+                        <span className="text-sm font-bold leading-none">{monthShort(m.month)}</span>
+                        {m.month === current && (
+                          <span className={cn("text-[9px] font-semibold uppercase", isActive ? "text-primary-foreground/80" : "text-primary")}>
+                            berjalan
+                          </span>
+                        )}
+                      </span>
+                      <span className={cn("h-1 overflow-hidden rounded-full", isActive ? "bg-primary-foreground/30" : "bg-muted")}>
+                        <i
+                          className={cn("block h-full rounded-full", isActive ? "bg-primary-foreground" : "bg-primary/70")}
+                          style={{ width: `${Math.max(m.production > 0 ? 6 : 0, (m.production / maxProd) * 100)}%` }}
+                        />
+                      </span>
+                      <span className={cn("text-[10px] tabular-nums", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                        {m.production > 0 ? `${m.production.toLocaleString("id-ID")} pcs` : "tanpa produksi"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <p className="text-[10px] leading-snug text-muted-foreground">
+            Batang kecil = total produksi bulan itu. Bulan yang lebih dari {MAX_VISIBLE} hari digeser ke kiri/kanan.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ───────────── B · kolom harian ───────────── */
 
 function DayColumns({
@@ -139,7 +321,8 @@ function DayColumns({
         <p className="text-[11px] text-muted-foreground">atas = produksi hari itu · bawah = stok lama ditarik</p>
       </div>
       <Legend />
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div className="overflow-x-auto pb-1" style={{ containerType: "inline-size" }}>
+      <div className="flex gap-1.5" style={cols.length > MAX_VISIBLE ? { width: "max-content" } : undefined}>
         {cols.map(({ date, t }) => {
           const active = date === selected;
           return (
@@ -149,8 +332,14 @@ function DayColumns({
               onClick={() => onSelect(date)}
               aria-pressed={active}
               title={`${dayLabel(date)}: produksi ${t.production}, terjual ${t.sold}, ditarik ${t.withdrawnOld + t.withdrawnNew}`}
+              style={
+                cols.length > MAX_VISIBLE
+                  ? { flex: "0 0 calc((100cqw - 0.375rem * (14 - 1)) / 14)" }
+                  : undefined
+              }
               className={cn(
-                "flex min-w-[2.6rem] flex-1 flex-col rounded-lg px-0.5 pb-1 text-center transition",
+                "flex flex-col rounded-lg px-0.5 pb-1 text-center transition",
+                cols.length > MAX_VISIBLE ? "" : "min-w-[2.6rem] flex-1",
                 active ? "bg-muted ring-1 ring-foreground/30" : "hover:bg-muted/50"
               )}
             >
@@ -174,8 +363,9 @@ function DayColumns({
           );
         })}
       </div>
+      </div>
       <p className="text-[11px] text-muted-foreground">
-        Ketuk satu hari untuk melihat rincian per produk di bawah. Batang atas hanya menghitung yang diproduksi hari itu,
+        {cols.length > MAX_VISIBLE ? "Geser ke kiri/kanan untuk hari lainnya. " : ""}Ketuk satu hari untuk melihat rincian per produk di bawah. Batang atas hanya menghitung yang diproduksi hari itu,
         jadi stok kemarin yang ditarik tidak mengotori tinggi batang.
       </p>
     </div>
@@ -335,6 +525,13 @@ function heatClass(st: number): string {
 
 type HeatMode = "persen" | "kuantitas";
 
+/** > 14 hari: tiap kolom hari selebar 1/14 area tabel (di luar kolom nama dan rata-rata), sisanya digeser. */
+function dayColStyle(n: number): React.CSSProperties | undefined {
+  if (n <= MAX_VISIBLE) return undefined;
+  const w = "calc((100cqw - 12rem) / 14)";
+  return { width: w, minWidth: w, maxWidth: w };
+}
+
 /** Rentang jumlah produksi per hari → warna (satu rona, makin tua makin banyak). */
 const QTY_BANDS: { max: number; label: string; cls: string }[] = [
   { max: 5, label: "1–5", cls: "bg-primary/10" },
@@ -399,13 +596,13 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
           ))}
         </div>
       )}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ containerType: "inline-size" }}>
         <table className="w-full border-separate border-spacing-0.5 text-left">
           <thead>
             <tr className="text-[10px] text-muted-foreground">
               <th className="sticky left-0 z-10 bg-card pr-2 font-normal">Produk</th>
               {data.dates.map((d) => (
-                <th key={d} className="px-0 text-center font-normal">
+                <th key={d} className="px-0 text-center font-normal" style={dayColStyle(data.dates.length)}>
                   <button type="button" onClick={() => onSelect(d)} className={cn("w-full", d === selected && "font-semibold text-foreground")}>
                     {dayLabel(d)}
                   </button>
@@ -426,7 +623,7 @@ function Heatmap({ data, selected, onSelect }: { data: StockTrend; selected: str
                     const noProd = mode === "persen" && c && c.production === 0 && c.withdrawnOld > 0;
                     const qty = c && c.production > 0 ? c.production : null;
                     return (
-                      <td key={d} className="p-0">
+                      <td key={d} className="p-0" style={dayColStyle(data.dates.length)}>
                         <button
                           type="button"
                           onClick={() => onSelect(d)}

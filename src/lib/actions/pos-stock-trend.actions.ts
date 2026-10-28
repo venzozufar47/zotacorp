@@ -29,21 +29,51 @@ export interface StockTrend {
 
 const MAX_DAYS = 31;
 
+/** Rentang tren: N hari terakhir, atau satu bulan kalender (YYYY-MM). */
+export type StockTrendRange = { days: number } | { month: string };
+
+export interface StockMonth {
+  month: string; // YYYY-MM
+  /** Total pcs diproduksi bulan itu (pembanding visual di pemilih bulan). */
+  production: number;
+  /** Jumlah hari yang ada produksi. */
+  days: number;
+}
+
+const addDay = (ymd: string, n: number) => {
+  const d = new Date(ymd + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
 /**
  * Tren stok harian per produk (stok awal, produksi, terjual, ditarik, akhir) untuk `days` hari terakhir.
  * Hitungan murni ada di `lib/pos/stock-trend`; di sini hanya memuat event sejak opname jangkar.
  */
-export async function getStockTrend(bankAccountId: string, days: number): Promise<ActionResult<StockTrend>> {
+export async function getStockTrend(bankAccountId: string, range: StockTrendRange): Promise<ActionResult<StockTrend>> {
   const gate = await requireAdminOrPosAssignee(bankAccountId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
   try {
     const supabase = await createClient();
-    const span = Math.max(1, Math.min(MAX_DAYS, Math.floor(days)));
     const today = jakartaDateString(new Date());
-    const fromDate = jakartaDateMinusDays(today, span - 1);
+    let fromDate: string;
+    let toDate: string;
+    if ("month" in range) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(range.month)) return { ok: false, error: "Bulan tidak valid" };
+      const [y, m] = range.month.split("-").map(Number);
+      const last = `${range.month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+      fromDate = `${range.month}-01`;
+      if (fromDate > today) return { ok: false, error: "Bulan itu belum dimulai" };
+      toDate = last < today ? last : today;
+    } else {
+      const span = Math.max(1, Math.min(MAX_DAYS, Math.floor(range.days)));
+      fromDate = jakartaDateMinusDays(today, span - 1);
+      toDate = today;
+    }
     const fromIso = jakartaHourIso(fromDate, 0);
-    const nowIso = new Date().toISOString();
+    // Batas atas: akhir hari terakhir rentang (bulan lampau tidak perlu memuat event sesudahnya).
+    const nowIso = toDate < today ? jakartaHourIso(addDay(toDate, 1), 0) : new Date().toISOString();
 
     const { skus, aggregateProductIds } = await listActiveSkus(supabase, bankAccountId);
     const anchor = await loadBaselineAt(supabase, bankAccountId, fromIso, aggregateProductIds);
@@ -118,7 +148,7 @@ export async function getStockTrend(bankAccountId: string, days: number): Promis
     }));
 
     const dates: string[] = [];
-    for (let d = new Date(fromDate + "T00:00:00Z"); d.toISOString().slice(0, 10) <= today; d.setUTCDate(d.getUTCDate() + 1)) {
+    for (let d = new Date(fromDate + "T00:00:00Z"); d.toISOString().slice(0, 10) <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
       dates.push(d.toISOString().slice(0, 10));
     }
 
@@ -145,7 +175,7 @@ export async function getStockTrend(bankAccountId: string, days: number): Promis
       ok: true,
       data: {
         fromDate,
-        toDate: today,
+        toDate,
         dates,
         rows,
         truncated: moves.truncated || sales.truncated || opHeaders.truncated,
@@ -153,5 +183,44 @@ export async function getStockTrend(bankAccountId: string, days: number): Promis
     };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Gagal memuat tren stok" };
+  }
+}
+
+/**
+ * Bulan yang bisa dipilih di pemilih bulan: dari bulan produksi pertama sampai bulan ini, lengkap dengan total
+ * produksinya (bulan tanpa produksi tetap muncul dengan 0).
+ */
+export async function getStockMonths(bankAccountId: string): Promise<ActionResult<StockMonth[]>> {
+  const gate = await requireAdminOrPosAssignee(bankAccountId);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  try {
+    const supabase = await createClient();
+    const { rows } = await fetchAllPages<{ movement_date: string; qty: number }>(() =>
+      supabase
+        .from("pos_stock_movements")
+        .select("id, movement_date, qty")
+        .eq("bank_account_id", bankAccountId)
+        .eq("type", "production")
+        .lte("qty", 10_000)
+    );
+    const by = new Map<string, { production: number; days: Set<string> }>();
+    for (const r of rows) {
+      const m = r.movement_date.slice(0, 7);
+      const cur = by.get(m) ?? { production: 0, days: new Set<string>() };
+      cur.production += r.qty;
+      cur.days.add(r.movement_date);
+      by.set(m, cur);
+    }
+    const thisMonth = jakartaDateString(new Date()).slice(0, 7);
+    const first = [...by.keys()].sort()[0] ?? thisMonth;
+    const out: StockMonth[] = [];
+    for (let [y, m] = first.split("-").map(Number); `${y}-${String(m).padStart(2, "0")}` <= thisMonth; m === 12 ? ((y += 1), (m = 1)) : (m += 1)) {
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      const v = by.get(key);
+      out.push({ month: key, production: v?.production ?? 0, days: v?.days.size ?? 0 });
+    }
+    return { ok: true, data: out };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal memuat daftar bulan" };
   }
 }
