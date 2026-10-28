@@ -144,6 +144,9 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
             {p.moneySource === "laci" && (
               <span className="ml-2 rounded-full bg-warning/20 px-2 py-0.5 align-middle text-[10px] font-semibold">Uang laci</span>
             )}
+            {p.moneySource === "shopee" && (
+              <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 align-middle text-[10px] font-semibold">Saldo Shopee</span>
+            )}
             {flagged > 0 && <AlertTriangle size={13} className="ml-1.5 inline text-destructive" />}
           </p>
           <p className="truncate text-[11.5px] text-muted-foreground">

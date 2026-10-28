@@ -15,6 +15,7 @@ import {
   ReceiptText,
   Search,
   Trash2,
+  ShoppingBag,
   Wallet,
   X,
 } from "lucide-react";
@@ -96,9 +97,7 @@ export function PurchaseForm({
   const { access } = data;
   // Sumber uang: bila hanya satu yang tersedia dipilih otomatis; bila dua, WAJIB dipilih (tanpa bawaan) —
   // salah sumber membuat kas laci tidak cocok.
-  const [source, setSource] = useState<MoneySource | null>(
-    access.pengadaan && !access.laci ? "pengadaan" : !access.pengadaan && access.laci ? "laci" : null
-  );
+  const [source, setSource] = useState<MoneySource | null>(!access.pengadaan && access.laci ? "laci" : null);
   const [saving, startSaving] = useTransition();
   const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -181,8 +180,12 @@ export function PurchaseForm({
         <div>
           <h2 className="font-display text-lg font-bold">Nota tersimpan</h2>
           <p className="text-sm text-muted-foreground">
-            {formatRp(done.total)} · {done.lines} baris — sudah masuk buku kas
-            {done.source === "laci" ? " dan mengurangi kas laci shift ini." : " dan (untuk bahan) stok."}
+            {formatRp(done.total)} · {done.lines} baris —{" "}
+            {done.source === "shopee"
+              ? "mengurangi Saldo Shopee dan (untuk bahan) menambah stok."
+              : done.source === "laci"
+                ? "sudah masuk buku kas dan mengurangi kas laci shift ini."
+                : "sudah masuk buku kas dan (untuk bahan) stok."}
           </p>
         </div>
         {done.flagged > 0 && (
@@ -236,6 +239,16 @@ export function PurchaseForm({
             setEditDate(false);
           }}
         />
+        <SourceCard
+          icon={<ShoppingBag size={20} />}
+          title="Saldo Shopee"
+          desc={`Belanja lewat Shopee memakai saldo ShopeePay dari transferan owner.${
+            access.shopeeBalance != null ? ` Saldo ${formatRp(access.shopeeBalance)}.` : ""
+          }`}
+          disabled={!access.shopee}
+          disabledReason="Hanya untuk petugas pengadaan"
+          onClick={() => setSource("shopee")}
+        />
         <p className="text-[11px] text-muted-foreground">
           Salah memilih membuat kas laci tidak cocok. Ragu? Tanyakan: apakah uangnya diambil dari laci kasir?
         </p>
@@ -245,25 +258,18 @@ export function PurchaseForm({
 
   return (
     <div className="mx-auto max-w-xl space-y-4 pb-48 md:pb-28">
-      {access.pengadaan && !access.laci && (
-        <div
-          className={cn(
-            "rounded-xl px-3 py-2 text-xs leading-snug",
-            access.walletBalance != null && access.walletBalance <= 0 ? "bg-destructive/10 text-destructive" : "bg-muted/60"
-          )}
-        >
-          Sumber uang: <b>Uang pengadaan</b>
-          {access.walletBalance != null && <> (saldo <b>{formatRp(access.walletBalance)}</b>)</>}. Uang laci kasir belum tersedia (
-          {(access.laciReason ?? "tidak ada shift terbuka").toLowerCase()}).
-          {access.walletBalance != null && access.walletBalance <= 0 && (
-            <> Tidak ada uang yang bisa dipakai sekarang: minta kasir membuka shift, atau catat setelah uang diambil dari laci.</>
-          )}
+      {source === "pengadaan" && !access.laci && access.walletBalance != null && access.walletBalance <= 0 && (
+        <div className="rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
+          Uang laci kasir belum tersedia ({(access.laciReason ?? "tidak ada shift terbuka").toLowerCase()}) dan saldo uang
+          pengadaan habis: minta kasir membuka shift, atau catat setelah uang diambil dari laci.
         </div>
       )}
-      {(access.pengadaan && access.laci) && (
+      {access.pengadaan && (
         <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
           <span>
-            Sumber uang: <b>{source === "laci" ? "Uang laci kasir" : "Uang pengadaan"}</b>
+            Sumber uang: <b>{source === "laci" ? "Uang laci kasir" : source === "shopee" ? "Saldo Shopee" : "Uang pengadaan"}</b>
+            {source === "pengadaan" && access.walletBalance != null && <> (saldo {formatRp(access.walletBalance)})</>}
+            {source === "shopee" && access.shopeeBalance != null && <> (saldo {formatRp(access.shopeeBalance)})</>}
           </span>
           <button
             type="button"
@@ -477,6 +483,12 @@ export function PurchaseForm({
             {source === "pengadaan" && access.walletBalance != null && total > access.walletBalance && (
               <p className="text-[11px] font-semibold text-destructive">
                 Melebihi saldo uang pengadaan ({formatRp(access.walletBalance)}): saldo jadi −{formatRp(total - access.walletBalance)}
+              </p>
+            )}
+            {source === "shopee" && access.shopeeBalance != null && total > access.shopeeBalance && (
+              <p className="text-[11px] font-semibold text-destructive">
+                Melebihi Saldo Shopee ({formatRp(access.shopeeBalance)}): saldo jadi −{formatRp(total - access.shopeeBalance)}. Sudah tambah
+                saldo dari transferan owner?
               </p>
             )}
           </div>

@@ -38,6 +38,7 @@ import {
 import { jakartaDateString, jakartaHHMM } from "@/lib/utils/jakarta";
 import { sendPushToAdmins } from "@/lib/push/web-push";
 import { getCashPosition } from "./procurement-wallet.actions";
+import { shopeeBalance } from "@/lib/procurement/shopee-wallet";
 import { isPurchaseUnit } from "@/lib/costing/unit-options";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -73,7 +74,11 @@ async function resolveCashAccount(
   return data ? { id: data.id, branch: data.default_branch ?? f.branch ?? null } : null;
 }
 
-export type MoneySource = "pengadaan" | "laci";
+/**
+ * "shopee" = Saldo Shopee (saldo ShopeePay petugas dari transferan owner). Tidak menulis baris buku kas: uangnya
+ * sudah tercatat sebagai pengeluaran di rekening bank saat owner mentransfer, jadi mencatatnya lagi = hitung ganda.
+ */
+export type MoneySource = "pengadaan" | "laci" | "shopee";
 
 /** Akses seseorang ke form nota di satu cabang. */
 interface PurchaseAuth {
@@ -197,6 +202,9 @@ export interface PurchaseFormData {
     lainOnly: boolean;
     /** Saldo uang pengadaan cabang ini (saldo buku − isi laci); null = tak diketahui / bukan petugas. */
     walletBalance: number | null;
+    /** Saldo Shopee: hanya petugas pengadaan. */
+    shopee: boolean;
+    shopeeBalance: number | null;
   };
 }
 
@@ -213,10 +221,13 @@ export async function getPurchaseFormData(businessUnit: string): Promise<ActionR
     drawerState: auth.drawer.state,
     lainOnly: !auth.isStaff,
     walletBalance: null,
+    shopee: auth.isStaff,
+    shopeeBalance: null,
   };
   if (auth.isStaff) {
     const pos = await getCashPosition(businessUnit);
     if (pos.ok && pos.data) accessInfo.walletBalance = pos.data.procurementBalance ?? null;
+    accessInfo.shopeeBalance = await shopeeBalance(admin, businessUnit);
   }
   // Petugas non-pengadaan (akun kasir): tanpa master bahan / harga acuan — hanya pengeluaran laci.
   if (!auth.isStaff) {
@@ -421,13 +432,15 @@ interface Created {
 export async function createPurchase(
   input: CreatePurchaseInput
 ): Promise<ActionResult<{ id: string; total: number; flagged: number }>> {
-  if (input.moneySource !== "pengadaan" && input.moneySource !== "laci")
+  if (input.moneySource !== "pengadaan" && input.moneySource !== "laci" && input.moneySource !== "shopee")
     return { ok: false, error: "Pilih sumber uangnya dulu" };
   const access = await authorizePurchaseAccess(input.businessUnit);
   if (!access.ok) return { ok: false, error: access.error };
   const { auth } = access;
   const gate = { userId: auth.userId };
-  if (input.moneySource === "pengadaan" && !auth.isStaff) return { ok: false, error: "Forbidden" };
+  if ((input.moneySource === "pengadaan" || input.moneySource === "shopee") && !auth.isStaff)
+    return { ok: false, error: "Forbidden" };
+  const writeLedger = input.moneySource !== "shopee";
   if (input.moneySource === "laci" && auth.drawer.state === "unknown")
     return {
       ok: false,
@@ -612,44 +625,48 @@ export async function createPurchase(
     return { ok: false, error: hErr.message };
   }
 
-  // Statement kas bulan nota.
-  const [y, m] = date.split("-").map(Number);
-  const { data: stmt } = await admin
-    .from("cashflow_statements")
-    .select("id")
-    .eq("bank_account_id", acct.id)
-    .eq("period_year", y)
-    .eq("period_month", m)
-    .maybeSingle();
-  let statementId = stmt?.id ?? null;
-  if (!statementId) {
-    const { data: ns, error } = await admin
+  // Statement kas bulan nota (tidak diperlukan untuk Saldo Shopee: tanpa baris buku kas).
+  let statementId: string | null = null;
+  let txSort = 0;
+  if (writeLedger) {
+    const [y, m] = date.split("-").map(Number);
+    const { data: stmt } = await admin
       .from("cashflow_statements")
-      .insert({
-        bank_account_id: acct.id,
-        period_month: m,
-        period_year: y,
-        opening_balance: 0,
-        closing_balance: 0,
-        status: "draft",
-        created_by: gate.userId,
-      })
       .select("id")
-      .single();
-    if (error || !ns) {
-      await rollback();
-      return { ok: false, error: error?.message ?? "Gagal membuat statement kas" };
+      .eq("bank_account_id", acct.id)
+      .eq("period_year", y)
+      .eq("period_month", m)
+      .maybeSingle();
+    statementId = stmt?.id ?? null;
+    if (!statementId) {
+      const { data: ns, error } = await admin
+        .from("cashflow_statements")
+        .insert({
+          bank_account_id: acct.id,
+          period_month: m,
+          period_year: y,
+          opening_balance: 0,
+          closing_balance: 0,
+          status: "draft",
+          created_by: gate.userId,
+        })
+        .select("id")
+        .single();
+      if (error || !ns) {
+        await rollback();
+        return { ok: false, error: error?.message ?? "Gagal membuat statement kas" };
+      }
+      statementId = ns.id;
     }
-    statementId = ns.id;
+    const { data: maxRow } = await admin
+      .from("cashflow_transactions")
+      .select("sort_order")
+      .eq("statement_id", statementId)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    txSort = (maxRow?.sort_order ?? -1) + 1;
   }
-  const { data: maxRow } = await admin
-    .from("cashflow_transactions")
-    .select("sort_order")
-    .eq("statement_id", statementId)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  let txSort = (maxRow?.sort_order ?? -1) + 1;
 
   // Isi laci bisa berubah status sejak form dibuka (mis. shift baru dibuka lalu langsung ditutup
   // tanpa hitungan tutup): cek ulang, bukan dipin ke shift yang sama — laci tetap sah dipakai baik
@@ -672,6 +689,8 @@ export async function createPurchase(
   let flagged = 0;
 
   for (const c of calcs) {
+    let txId: string | null = null;
+    if (writeLedger && statementId) {
     const { data: tx, error: txErr } = await admin
       .from("cashflow_transactions")
       .insert({
@@ -710,6 +729,8 @@ export async function createPurchase(
     if (attErr) {
       await rollback();
       return { ok: false, error: attErr.message };
+    }
+    txId = tx.id;
     }
 
     let receiptId: string | null = null;
@@ -790,7 +811,7 @@ export async function createPurchase(
         total: c.total,
         category: c.category,
         description: c.description,
-        cashflow_transaction_id: tx.id,
+        cashflow_transaction_id: txId,
         receipt_id: receiptId,
         ref_price_before: refBefore,
         ref_price_after: refAfter,
@@ -1001,8 +1022,9 @@ export async function listPurchases(
         createdAt: h.created_at as string,
         receiptUrl: urls.get(h.receipt_path as string) ?? null,
         canDelete: isAdmin || (createdBy === userId && sameDay),
-        canChangeSource: isAdmin || (createdBy === userId && sameDay),
-        moneySource: (h.money_source as MoneySource) === "laci" ? "laci" : "pengadaan",
+        // Nota Saldo Shopee tidak punya baris buku kas yang bisa dibalik: koreksinya hapus lalu catat ulang.
+        canChangeSource: h.money_source !== "shopee" && (isAdmin || (createdBy === userId && sameDay)),
+        moneySource: h.money_source === "laci" ? "laci" : h.money_source === "shopee" ? "shopee" : "pengadaan",
         lines: byPurchase.get(h.id as string) ?? [],
       };
     }),
@@ -1166,6 +1188,7 @@ export async function deletePurchase(id: string): Promise<ActionResult> {
  */
 export async function updatePurchaseMoneySource(input: { id: string; newSource: MoneySource }): Promise<ActionResult> {
   if (input.newSource !== "pengadaan" && input.newSource !== "laci") return { ok: false, error: "Sumber uang tidak dikenal" };
+  // (Saldo Shopee sengaja tak bisa jadi tujuan: lihat `canChangeSource`.)
   const admin = createAdminClient();
   const { data: head } = await admin
     .from("procurement_purchases" as never)
@@ -1175,6 +1198,8 @@ export async function updatePurchaseMoneySource(input: { id: string; newSource: 
   const h = head as Record<string, unknown> | null;
   if (!h) return { ok: false, error: "Nota tidak ditemukan" };
   if (h.money_source === input.newSource) return { ok: true };
+  if (h.money_source === "shopee")
+    return { ok: false, error: "Nota Saldo Shopee tidak bisa dipindah sumbernya — hapus lalu catat ulang" };
 
   const access = await authorizePurchaseAccess(h.business_unit as string);
   if (!access.ok) return { ok: false, error: access.error };

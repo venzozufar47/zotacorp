@@ -20,6 +20,8 @@ import {
 import { listMaterialDetails } from "@/lib/actions/procurement-materials.actions";
 import { getCashPosition } from "@/lib/actions/procurement-wallet.actions";
 import { CashPositionCard } from "@/components/procurement/CashPositionCard";
+import { getShopeeWallet } from "@/lib/actions/procurement-shopee.actions";
+import { ShopeeWalletCard } from "@/components/procurement/ShopeeWalletCard";
 import { MaterialsManager } from "@/components/procurement/MaterialsManager";
 import { OpnameBanner } from "@/components/procurement/OpnameBanner";
 import { getTodayCountPlan } from "@/lib/actions/procurement-count.actions";
@@ -144,11 +146,12 @@ async function OpnameReminder({ brand }: { brand: string }) {
 
 /** Saldo uang pengadaan & saldo laci cabang aktif — dilihat petugas sebelum mencatat belanja. */
 async function PositionBar({ brand }: { brand: string }) {
-  const res = await getCashPosition(brand);
+  const [res, shopee] = await Promise.all([getCashPosition(brand), getShopeeWallet(brand)]);
   if (!res.ok || !res.data) return null;
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="mx-auto max-w-xl space-y-3">
       <CashPositionCard positions={[res.data]} />
+      {shopee.ok && shopee.data && <ShopeeWalletCard wallet={shopee.data} />}
     </div>
   );
 }
