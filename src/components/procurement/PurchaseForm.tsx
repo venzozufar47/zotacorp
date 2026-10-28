@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronRight,
   HelpCircle,
+  ImageIcon,
   Loader2,
   Landmark,
   PackagePlus,
@@ -34,8 +35,8 @@ import {
   categoryLabelFull,
   expenseCategory,
   searchCategories,
-  suggestFromWizard,
-  type WizardAnswers,
+  WIZARD_ROOT,
+  type WizardNode,
 } from "@/lib/procurement/categories";
 import { needsPriceReview, priceDeviation, PRICE_REVIEW_THRESHOLD } from "@/lib/procurement/purchase-math";
 import {
@@ -100,7 +101,8 @@ export function PurchaseForm({
   const [source, setSource] = useState<MoneySource | null>(!access.pengadaan && access.laci ? "laci" : null);
   const [saving, startSaving] = useTransition();
   const [done, setDone] = useState<{ total: number; lines: number; flagged: number; source: MoneySource } | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+  const galleryRef = useRef<HTMLInputElement | null>(null);
   // Kunci idempotensi: klik ganda / kirim ulang setelah timeout tidak membuat nota kembar. Diganti setelah sukses.
   const clientIdRef = useRef<string>(crypto.randomUUID());
 
@@ -108,7 +110,7 @@ export function PurchaseForm({
   const missing = !source
     ? "Pilih sumber uang dulu"
     : !receiptPath
-    ? "Ambil foto nota dulu"
+    ? "Tambahkan foto nota dulu"
     : lines.length === 0
       ? "Tambahkan minimal satu baris"
       : uploading
@@ -136,7 +138,8 @@ export function PurchaseForm({
       toast.error(e instanceof Error ? e.message : "Gagal memproses foto");
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+      if (cameraRef.current) cameraRef.current.value = "";
+      if (galleryRef.current) galleryRef.current.value = "";
     }
   }
 
@@ -285,11 +288,19 @@ export function PurchaseForm({
       {/* 1. Foto nota */}
       <section className="space-y-2">
         <StepTitle n={1} title="Foto nota" done={!!receiptPath} />
+        {/* Dua input: kamera langsung, dan galeri (mis. screenshot nota Shopee) tanpa `capture`. */}
         <input
-          ref={fileRef}
+          ref={cameraRef}
           type="file"
           accept="image/*"
           capture="environment"
+          className="hidden"
+          onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
+        />
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/*"
           className="hidden"
           onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
         />
@@ -301,28 +312,51 @@ export function PurchaseForm({
               <p className="text-sm font-semibold">Foto nota siap</p>
               <p className="text-xs text-muted-foreground">Pastikan total dan tanggal di nota terbaca jelas.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading || saving}
-              className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
-            >
-              {uploading ? "Mengunggah…" : "Ganti"}
-            </button>
+            <div className="flex shrink-0 flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                disabled={uploading || saving}
+                className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              >
+                {uploading ? "Mengunggah…" : "Foto ulang"}
+              </button>
+              <button
+                type="button"
+                onClick={() => galleryRef.current?.click()}
+                disabled={uploading || saving}
+                className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              >
+                Dari galeri
+              </button>
+            </div>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading || saving}
-            className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-foreground/40 bg-card px-4 py-7 text-muted-foreground transition hover:bg-muted/50 disabled:opacity-60"
-          >
-            {uploading ? <Loader2 size={26} className="animate-spin" /> : <Camera size={26} />}
-            <span className="text-sm font-semibold text-foreground">
-              {uploading ? "Mengunggah foto…" : "Ambil foto nota"}
-            </span>
-            <span className="text-xs">Wajib untuk setiap pengeluaran. Tanpa struk? Foto layar aplikasi/ojek.</span>
-          </button>
+          <div className="space-y-2 rounded-2xl border-2 border-dashed border-foreground/40 bg-card p-3">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                disabled={uploading || saving}
+                className="flex flex-col items-center gap-1.5 rounded-xl border border-border px-3 py-4 text-foreground transition hover:bg-muted/50 disabled:opacity-60"
+              >
+                {uploading ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
+                <span className="text-sm font-semibold">{uploading ? "Mengunggah…" : "Ambil foto"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => galleryRef.current?.click()}
+                disabled={uploading || saving}
+                className="flex flex-col items-center gap-1.5 rounded-xl border border-border px-3 py-4 text-foreground transition hover:bg-muted/50 disabled:opacity-60"
+              >
+                <ImageIcon size={24} />
+                <span className="text-sm font-semibold">Pilih dari galeri</span>
+              </button>
+            </div>
+            <p className="text-center text-xs text-muted-foreground">
+              Wajib untuk setiap pengeluaran. Nota Shopee/online: pilih screenshot dari galeri. Tanpa struk? Foto layar aplikasi/ojek.
+            </p>
+          </div>
         )}
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -565,11 +599,46 @@ function SourceCard({
 /** Harga acuan yang mudah dibaca: per satuan beli, plus per satuan pakai (menolong data master yang satuan belinya ambigu). */
 function refPriceLabel(m: PurchaseMaterialOption): string {
   const perUsage = m.contentPerPurchase > 0 ? m.purchasePrice / m.contentPerPurchase : 0;
-  const perBuy =
-    m.purchaseUnit.toLowerCase() === m.usageUnit.toLowerCase()
-      ? `${formatRp(m.purchasePrice)} per ${nf(m.contentPerPurchase, 0)} ${m.usageUnit}`
-      : `${formatRp(m.purchasePrice)} / ${m.purchaseUnit}`;
-  return `${perBuy} · ≈ Rp ${nf(perUsage, 2)}/${m.usageUnit}`;
+  if (m.purchaseUnit.toLowerCase() === m.usageUnit.toLowerCase()) {
+    return `acuan ${formatRp(m.purchasePrice)} per ${nf(m.contentPerPurchase, 0)} ${m.usageUnit} · ≈ Rp ${nf(perUsage, 2)}/${m.usageUnit}`;
+  }
+  return `1 ${m.purchaseUnit} = ${nf(m.contentPerPurchase, 2)} ${m.usageUnit} · acuan ${formatRp(m.purchasePrice)}/${m.purchaseUnit} (≈ Rp ${nf(perUsage, 2)}/${m.usageUnit})`;
+}
+
+/** Ringkasan bahan di form nota: satuan beli, isi per satuan beli, dan harga acuannya — supaya petugas tak perlu membuka halaman Bahan. */
+function MaterialRefCard({ m, onChange }: { m: PurchaseMaterialOption; onChange?: () => void }) {
+  const perUsage = m.contentPerPurchase > 0 ? m.purchasePrice / m.contentPerPurchase : 0;
+  const same = m.purchaseUnit.toLowerCase() === m.usageUnit.toLowerCase();
+  return (
+    <div className="space-y-2 rounded-xl bg-muted/50 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-sm font-semibold">{m.name}</p>
+        {onChange && (
+          <button type="button" onClick={onChange} className="shrink-0 text-xs font-semibold text-primary hover:underline">
+            Ganti
+          </button>
+        )}
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11.5px]">
+        <dt className="text-muted-foreground">Satuan beli</dt>
+        <dd className="font-semibold">{m.purchaseUnit}</dd>
+        {!same && (
+          <>
+            <dt className="text-muted-foreground">Isi 1 {m.purchaseUnit}</dt>
+            <dd className="font-semibold">
+              {nf(m.contentPerPurchase, 2)} {m.usageUnit}
+            </dd>
+          </>
+        )}
+        <dt className="text-muted-foreground">Harga acuan</dt>
+        <dd className="font-semibold tabular-nums">
+          {formatRp(m.purchasePrice)} {same ? `per ${nf(m.contentPerPurchase, 0)} ${m.usageUnit}` : `per ${m.purchaseUnit}`}
+        </dd>
+        <dt className="text-muted-foreground">Per {m.usageUnit}</dt>
+        <dd className="font-semibold tabular-nums">≈ Rp {nf(perUsage, 2)}</dd>
+      </dl>
+    </div>
+  );
 }
 
 function StepTitle({ n, title, done }: { n: number; title: string; done: boolean }) {
@@ -683,6 +752,13 @@ function BahanComposer({
               className="pl-8"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setProposing(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+          >
+            <PackagePlus size={13} /> Bahan belum ada? Ajukan bahan baru
+          </button>
           <ul className="max-h-[55vh] divide-y divide-border overflow-y-auto rounded-xl border border-border md:max-h-64">
             {results.map((m) => (
               <li key={m.id}>
@@ -694,7 +770,7 @@ function BahanComposer({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{m.name}</span>
                     <span className="block text-[11px] text-muted-foreground">
-                      Harga acuan {refPriceLabel(m)}
+                      {refPriceLabel(m)}
                     </span>
                   </span>
                   {m.pending && (
@@ -708,30 +784,15 @@ function BahanComposer({
               <li className="px-3 py-4 text-center text-xs text-muted-foreground">Bahan &ldquo;{query}&rdquo; belum ada.</li>
             )}
           </ul>
-          <button
-            type="button"
-            onClick={() => setProposing(true)}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
-          >
-            <PackagePlus size={13} /> Bahan belum ada? Ajukan bahan baru
-          </button>
         </>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/50 px-3 py-2">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{picked.name}</p>
-              <p className="text-[11px] text-muted-foreground">
-                Harga acuan {refPriceLabel(picked)}
-              </p>
-            </div>
-            <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-primary hover:underline">
-              Ganti
-            </button>
-          </div>
+          <MaterialRefCard m={picked} onChange={() => setPicked(null)} />
 
           <div className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Jumlah dibeli</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Jumlah dibeli (pilih satuan sesuai nota)
+            </span>
             <div className="flex gap-2">
               <Input
                 inputMode="decimal"
@@ -779,9 +840,23 @@ function BahanComposer({
               )}
             >
               <p>
+                Dibeli {nf(calc.q, 2)} {unit}
+                {unit.toLowerCase() !== picked.usageUnit.toLowerCase() && <> = {nf(calc.usage, 2)} {picked.usageUnit}</>}
+                {unit.toLowerCase() === picked.usageUnit.toLowerCase() &&
+                  picked.purchaseUnit.toLowerCase() !== picked.usageUnit.toLowerCase() &&
+                  picked.contentPerPurchase > 0 && (
+                    <> = {nf(calc.usage / picked.contentPerPurchase, 2)} {picked.purchaseUnit}</>
+                  )}
+              </p>
+              <p>
                 ≈ <b className="text-foreground">Rp {nf(calc.perUsage, 2)}</b> per {picked.usageUnit} · masuk stok{" "}
                 {nf(calc.usage, 1)} {picked.usageUnit}
               </p>
+              {calc.ref > 0 && (
+                <p>
+                  Menurut harga acuan, jumlah ini ≈ <b className="text-foreground">{formatRp(Math.round(calc.ref * calc.usage))}</b>
+                </p>
+              )}
               {calc.dev != null && (
                 <p className="mt-0.5">
                   {needsPriceReview(calc.dev) ? (
@@ -1114,17 +1189,16 @@ function LainComposer({ onAdd, onCancel }: { onAdd: (line: DraftLine) => void; o
   );
 }
 
-/** "Bantu pilih": tiga pertanyaan ya/tidak → kategori. */
+/** "Bantu pilih": pohon pertanyaan (WIZARD_ROOT) — mencakup SEMUA kategori, termasuk gaji, dividen, refund, dan sewa. */
 function CategoryWizard({ onPick, onClose }: { onPick: (category: string) => void; onClose: () => void }) {
-  const [answers, setAnswers] = useState<WizardAnswers>({ intoProduct: null, isService: null, durable: null });
-  const step = answers.intoProduct === null ? 0 : answers.intoProduct ? 3 : answers.isService === null ? 1 : answers.isService ? 3 : answers.durable === null ? 2 : 3;
-  const result = step === 3 ? suggestFromWizard(answers) : null;
-
-  const questions = [
-    { key: "intoProduct" as const, text: "Barang ini jadi bagian produk yang dijual (atau kemasannya)?" },
-    { key: "isService" as const, text: "Ini jasa atau biaya perbaikan, bukan barang?" },
-    { key: "durable" as const, text: "Barangnya tahan lama (dipakai bertahun-tahun, seperti oven atau rak)?" },
-  ];
+  // Jejak jawaban: tiap elemen = indeks opsi yang dipilih; node saat ini = hasil menelusuri jejak dari akar.
+  const [trail, setTrail] = useState<number[]>([]);
+  let node: WizardNode = WIZARD_ROOT;
+  for (const idx of trail) {
+    if (!("options" in node)) break;
+    node = node.options[idx].next;
+  }
+  const result = "category" in node ? expenseCategory(node.category) : null;
 
   return (
     <div className="space-y-2.5 rounded-xl border border-primary/40 bg-primary/5 p-3">
@@ -1134,33 +1208,39 @@ function CategoryWizard({ onPick, onClose }: { onPick: (category: string) => voi
           <X size={14} />
         </button>
       </div>
-      {step < 3 ? (
+      {"options" in node ? (
         <>
-          <p className="text-sm font-medium">{questions[step].text}</p>
-          <div className="flex gap-2">
-            {[true, false].map((v) => (
+          <p className="text-sm font-medium">{node.question}</p>
+          <div className="grid gap-1.5">
+            {node.options.map((o, i) => (
               <button
-                key={String(v)}
+                key={o.text}
                 type="button"
-                onClick={() => setAnswers((a) => ({ ...a, [questions[step].key]: v }))}
-                className="flex-1 rounded-full border-2 border-foreground bg-card px-3 py-2 text-sm font-semibold hover:bg-muted"
+                onClick={() => setTrail((t) => [...t, i])}
+                className="rounded-xl border-2 border-foreground bg-card px-3 py-2 text-left hover:bg-muted"
               >
-                {v ? "Ya" : "Bukan"}
+                <span className="block text-sm font-semibold">{o.text}</span>
+                {o.hint && <span className="block text-[11px] text-muted-foreground">{o.hint}</span>}
               </button>
             ))}
           </div>
+          {trail.length > 0 && (
+            <button type="button" onClick={() => setTrail((t) => t.slice(0, -1))} className="text-xs font-semibold text-primary hover:underline">
+              Kembali
+            </button>
+          )}
         </>
       ) : result ? (
         <>
           <p className="text-sm">
-            Masukkan ke <b>{result.label}</b>
+            Masukkan ke <b>{result.label}</b> <span className="text-muted-foreground">({result.value})</span>
           </p>
           <p className="text-[11px] text-muted-foreground">{result.examples}</p>
           <div className="flex gap-2">
             <Button type="button" size="sm" className="flex-1" onClick={() => onPick(result.value)}>
               Pakai kategori ini
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => setAnswers({ intoProduct: null, isService: null, durable: null })}>
+            <Button type="button" size="sm" variant="outline" onClick={() => setTrail([])}>
               Ulangi
             </Button>
           </div>

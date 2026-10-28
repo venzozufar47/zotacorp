@@ -129,22 +129,38 @@ export function searchCategories(query: string): ExpenseCategory[] {
   return scored.sort((a, b) => b.score - a.score).map((x) => x.c);
 }
 
-/** "Bantu pilih": jawaban tiga pertanyaan sederhana → kategori. */
-export interface WizardAnswers {
-  /** Barang itu menjadi bagian produk yang dijual (atau kemasannya)? */
-  intoProduct: boolean | null;
-  /** Jasa/biaya (bukan barang)? */
-  isService: boolean | null;
-  /** Bila barang bukan bahan produk: tahan lama (bertahun-tahun)? */
-  durable: boolean | null;
-}
+/**
+ * "Bantu pilih": pohon pertanyaan. Pertanyaan pertama menanyakan UNTUK APA uangnya dipakai, dengan satu pilihan
+ * untuk tiap kelompok kategori; hanya "barang lain" yang punya pertanyaan lanjutan (tahan lama atau habis pakai).
+ * Setiap kategori di EXPENSE_CATEGORIES harus bisa dicapai dari sini.
+ */
+export type WizardNode =
+  | { question: string; options: { text: string; hint?: string; next: WizardNode }[] }
+  | { category: string };
 
-export function suggestFromWizard(a: WizardAnswers): ExpenseCategory | null {
-  if (a.intoProduct) return expenseCategory("Cost of Goods Sold") ?? null;
-  if (a.isService) return expenseCategory("Maintenance") ?? null;
-  if (a.durable) return expenseCategory("Asset Investment") ?? null;
-  if (a.intoProduct === false && a.isService === false && a.durable === false) {
-    return expenseCategory("Office Supplies") ?? null;
-  }
-  return null;
-}
+export const WIZARD_ROOT: WizardNode = {
+  question: "Uang ini dipakai untuk apa?",
+  options: [
+    { text: "Bahan atau kemasan produk", hint: "tepung, telur, box kue, plastik", next: { category: "Cost of Goods Sold" } },
+    { text: "Gaji atau upah orang", hint: "gaji, lembur, bonus, THR", next: { category: "Salaries & Wages" } },
+    { text: "Diambil owner / keperluan pribadi", hint: "dividen, bagi hasil", next: { category: "Dividend" } },
+    { text: "Dikembalikan ke pelanggan", hint: "refund pesanan batal atau komplain", next: { category: "Sales Refund" } },
+    { text: "Ongkir atau antar pesanan", hint: "ojek online, kurir, bensin antar", next: { category: "Shipping Cost" } },
+    { text: "Tagihan rutin", hint: "listrik, air, galon, gas, pulsa, wifi", next: { category: "Utilities" } },
+    { text: "Sewa tempat atau alat", next: { category: "Rent" } },
+    { text: "Iklan atau promosi", hint: "ads sosmed, brosur, banner, endorse", next: { category: "Advertising" } },
+    { text: "Langganan aplikasi atau layanan bulanan", next: { category: "Subscription" } },
+    { text: "Servis atau perbaikan", hint: "servis oven/AC, tukang, sparepart", next: { category: "Maintenance" } },
+    {
+      text: "Beli barang lain (bukan bahan produk)",
+      hint: "alat, perlengkapan toko, kebersihan",
+      next: {
+        question: "Barangnya tahan lama (dipakai bertahun-tahun, seperti oven atau rak)?",
+        options: [
+          { text: "Ya, tahan lama", next: { category: "Asset Investment" } },
+          { text: "Bukan, habis pakai", next: { category: "Office Supplies" } },
+        ],
+      },
+    },
+  ],
+};

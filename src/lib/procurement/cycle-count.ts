@@ -10,8 +10,8 @@ import type { ProcurementStatus } from "./calc";
 
 export type AbcClass = "A" | "B" | "C" | "D";
 
-/** Hanya cabang ini yang memakai daftar harian (Semarang menyusul). */
-export const CYCLE_COUNT_BRANDS: readonly string[] = ["Haengbocake Pare"];
+/** Cabang yang memakai daftar opname harian (≈12 bahan/hari) beserta pengingat pukul 14.00 & 18.00. */
+export const CYCLE_COUNT_BRANDS: readonly string[] = ["Haengbocake Pare", "Haengbocake Semarang"];
 
 /** Anggaran per hari kerja (jam kerja pengadaan 4 jam, termasuk belanja & checkout): ±12 bahan ≈ 20–25 menit. */
 export const DAILY_BUDGET = 12;
