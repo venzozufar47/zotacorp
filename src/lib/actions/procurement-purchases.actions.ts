@@ -517,8 +517,29 @@ interface Created {
   filePaths: string[];
 }
 
+/**
+ * Pembungkus: error tak terduga (jaringan, penyimpanan) di tengah penulisan tidak boleh meninggalkan nota setengah
+ * jadi — apalagi pada mode edit, saat nota lama sudah dibalik. `ctx.rollback` diisi begitu fase tulis dimulai.
+ */
 export async function createPurchase(
   input: CreatePurchaseInput
+): Promise<ActionResult<{ id: string; total: number; flagged: number }>> {
+  const ctx: { rollback?: () => Promise<void> } = {};
+  try {
+    return await createPurchaseImpl(input, ctx);
+  } catch (e) {
+    try {
+      await ctx.rollback?.();
+    } catch {
+      // Pembatalan terbaik-usaha.
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan nota" };
+  }
+}
+
+async function createPurchaseImpl(
+  input: CreatePurchaseInput,
+  ctx: { rollback?: () => Promise<void> }
 ): Promise<ActionResult<{ id: string; total: number; flagged: number }>> {
   if (input.moneySource !== "pengadaan" && input.moneySource !== "laci" && input.moneySource !== "shopee")
     return { ok: false, error: "Pilih sumber uangnya dulu" };
@@ -710,11 +731,7 @@ export async function createPurchase(
       await admin.from("procurement_purchases" as never).insert(old.head as never);
       if (old.txs.length)
         await admin.from("cashflow_transactions").insert(
-          old.txs.map((t) => {
-            const rest = { ...t };
-            delete rest.effective_period;
-            return rest;
-          }) as never
+          old.txs.map(stripTx) as never
         );
       if (old.receipts.length)
         await admin
@@ -748,10 +765,17 @@ export async function createPurchase(
     }
     if (created.receiptIds.length) await admin.from("costing_material_receipts" as never).delete().in("id", created.receiptIds);
     if (created.txIds.length) await admin.from("cashflow_transactions").delete().in("id", created.txIds);
-    await admin.from("procurement_purchases" as never).delete().eq("id", purchaseId);
+    // Mode edit: sebelum nota lama dibalik, baris dengan id ini ADALAH nota lama — jangan dihapus.
+    if (!old || reverted) await admin.from("procurement_purchases" as never).delete().eq("id", purchaseId);
     const files = [...created.txFiles, ...created.filePaths];
     if (files.length) await admin.storage.from(RECEIPT_BUCKET).remove(files);
     await restoreOld();
+  };
+  ctx.rollback = rollback;
+  const stripTx = (t: Record<string, unknown>) => {
+    const rest = { ...t };
+    delete rest.effective_period; // kolom turunan: tak boleh diisi eksplisit
+    return rest;
   };
 
   const srcBucket = keepReceipt ? RECEIPT_BUCKET : TMP_BUCKET;
@@ -775,17 +799,19 @@ export async function createPurchase(
     if (oldTxIds.length) {
       const { error } = await admin.from("cashflow_transactions").delete().in("id", oldTxIds);
       if (error) {
-        reverted = true; // sebagian mungkin sudah terhapus: pulihkan dari snapshot
-        await rollback();
+        // Satu perintah hapus (atomik): tak ada yang berubah, cukup bersihkan foto baru.
+        await admin.storage.from(RECEIPT_BUCKET).remove(created.filePaths);
         return { ok: false, error: error.message };
       }
     }
-    reverted = true;
     const { error: delErr } = await admin.from("procurement_purchases" as never).delete().eq("id", purchaseId);
     if (delErr) {
-      await rollback();
+      // Buku kas lama sudah terhapus tapi nota belum: kembalikan baris buku kas dari snapshot.
+      if (old.txs.length) await admin.from("cashflow_transactions").insert(old.txs.map(stripTx) as never);
+      await admin.storage.from(RECEIPT_BUCKET).remove(created.filePaths);
       return { ok: false, error: delErr.message };
     }
+    reverted = true;
     for (const l of [...old.lines].sort((a, b) => num(b.sort_order) - num(a.sort_order))) {
       if (!l.material_id || l.ref_price_before == null || l.ref_price_after == null) continue;
       if (round2(num(l.ref_price_before)) === round2(num(l.ref_price_after))) continue;
@@ -1079,6 +1105,8 @@ export async function createPurchase(
     } as never);
   }
 
+  // Semua penulisan sudah berhasil: kegagalan setelah titik ini (bersih-bersih, notifikasi) tak boleh membatalkan nota.
+  ctx.rollback = undefined;
   if (!keepReceipt) await admin.storage.from(TMP_BUCKET).remove([input.receiptPath]);
   if (old) {
     // Foto lama baru dibuang setelah semuanya berhasil (foto baru sudah disalin ke jalurnya sendiri).

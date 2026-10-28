@@ -53,6 +53,9 @@ export function findSimilarMaterials<T extends { name: string }>(query: string, 
     const cJoined = cTokens.join("");
     if (qJoined.length >= 4 && cJoined.length >= 4 && (cJoined.includes(qJoined) || qJoined.includes(cJoined))) {
       score = Math.max(score, 0.85);
+    } else if (qJoined.length >= 6 && cJoined.length >= 6 && levenshtein(qJoined, cJoined) <= 2) {
+      // Salah ketik kecil pada nama utuh ("cream chese" vs "Creamcheese").
+      score = Math.max(score, 0.8);
     }
     if (score >= 0.5) scored.push({ m, score });
   }

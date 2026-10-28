@@ -58,6 +58,26 @@ const moneyText = (v: string) => v.replace(/[^0-9.,]/g, "");
 const num = (v: string) => parseMoneyId(v);
 const nf = (n: number, max = 2) => n.toLocaleString("id-ID", { maximumFractionDigits: max });
 
+/**
+ * Nominal sama saja belum tentu dobel: Rp20.000/Rp10.000 (ongkir, galon) sering muncul berulang. Dianggap mungkin dobel
+ * bila nominalnya "tidak bulat" (bukan kelipatan Rp5.000 — kebetulan sama jauh lebih jarang) ATAU keterangannya berbagi
+ * kata dengan catatan yang sudah ada.
+ */
+function likelyDuplicate(line: DraftLine, e: RecentExpense): boolean {
+  if (Math.round(line.total) % 5000 !== 0) return true;
+  const words = (t: string) =>
+    new Set(
+      t
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 4 && !["beli", "bayar", "uang", "bahan", "nota", "pengadaan", "dicatat", "kasir", "shift", "laci"].includes(w))
+    );
+  const mine = words(line.kind === "lain" ? line.description : line.material.name);
+  for (const w of words(e.label)) if (mine.has(w)) return true;
+  return false;
+}
+
 /** Satu baris di draf nota (belum disimpan). */
 type DraftLine =
   | {
@@ -150,6 +170,11 @@ export function PurchaseForm({
   const clientIdRef = useRef<string>(crypto.randomUUID());
 
   const total = lines.reduce((s, l) => s + l.total, 0);
+  // Edit: saldo yang tampil sudah dikurangi nota ini (bila sumbernya sama) — kembalikan dulu supaya perbandingan adil.
+  const walletAvail =
+    access.walletBalance == null ? null : access.walletBalance + (editing?.moneySource === "pengadaan" ? editing.total : 0);
+  const shopeeAvail =
+    access.shopeeBalance == null ? null : access.shopeeBalance + (editing?.moneySource === "shopee" ? editing.total : 0);
 
   // Peringatan duplikat: baris dengan nominal yang sama dengan pengeluaran 36 jam terakhir (nota, pengeluaran shift,
   // catatan manual) — penyebab umum pencatatan ganda yang membuat saldo pengadaan minus. Nota yang baru disimpan di
@@ -160,7 +185,7 @@ export function PurchaseForm({
     const pool = [...data.recentExpenses, ...sessionExpenses];
     const out: { amount: number; label: string; at: string }[] = [];
     for (const l of lines) {
-      const hit = pool.find((e) => Math.abs(e.amount - l.total) < 0.5);
+      const hit = pool.find((e) => Math.abs(e.amount - l.total) < 0.5 && likelyDuplicate(l, e));
       if (hit && !out.some((o) => o.amount === hit.amount)) out.push(hit);
     }
     return out;
@@ -367,7 +392,7 @@ export function PurchaseForm({
           )}
         </div>
       )}
-      {source === "pengadaan" && !access.laci && access.walletBalance != null && access.walletBalance <= 0 && (
+      {source === "pengadaan" && !access.laci && walletAvail != null && walletAvail <= 0 && (
         <div className="rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-snug text-destructive">
           Uang laci kasir belum tersedia ({(access.laciReason ?? "tidak ada shift terbuka").toLowerCase()}) dan saldo uang
           pengadaan habis: minta kasir membuka shift, atau catat setelah uang diambil dari laci.
@@ -377,8 +402,8 @@ export function PurchaseForm({
         <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs">
           <span>
             Sumber uang: <b>{source === "laci" ? "Uang laci kasir" : source === "shopee" ? "Saldo Shopee" : "Uang pengadaan"}</b>
-            {source === "pengadaan" && access.walletBalance != null && <> (saldo {formatRp(access.walletBalance)})</>}
-            {source === "shopee" && access.shopeeBalance != null && <> (saldo {formatRp(access.shopeeBalance)})</>}
+            {source === "pengadaan" && walletAvail != null && <> (saldo {formatRp(walletAvail)})</>}
+            {source === "shopee" && shopeeAvail != null && <> (saldo {formatRp(shopeeAvail)})</>}
           </span>
           <button
             type="button"
@@ -620,9 +645,9 @@ export function PurchaseForm({
               {lines.length} baris{missing ? ` · ${missing}` : ""}
             </p>
             <p className="font-display text-lg font-extrabold tabular-nums leading-tight">{formatRp(total)}</p>
-            {source === "pengadaan" && access.walletBalance != null && total > access.walletBalance && (
+            {source === "pengadaan" && walletAvail != null && total > walletAvail && (
               <p className="text-[11px] font-semibold text-destructive">
-                Melebihi saldo uang pengadaan ({formatRp(access.walletBalance)}): saldo jadi −{formatRp(total - access.walletBalance)}
+                Melebihi saldo uang pengadaan ({formatRp(walletAvail)}): saldo jadi −{formatRp(total - walletAvail)}
               </p>
             )}
             {dups.length > 0 && (
@@ -630,9 +655,9 @@ export function PurchaseForm({
                 Mungkin dobel: {dups.map(dupText).join(" · ")}. Cek dulu sebelum menyimpan.
               </p>
             )}
-            {source === "shopee" && access.shopeeBalance != null && total > access.shopeeBalance && (
+            {source === "shopee" && shopeeAvail != null && total > shopeeAvail && (
               <p className="text-[11px] font-semibold text-destructive">
-                Melebihi Saldo Shopee ({formatRp(access.shopeeBalance)}): saldo jadi −{formatRp(total - access.shopeeBalance)}. Sudah tambah
+                Melebihi Saldo Shopee ({formatRp(shopeeAvail)}): saldo jadi −{formatRp(total - shopeeAvail)}. Sudah tambah
                 saldo dari transferan owner?
               </p>
             )}
