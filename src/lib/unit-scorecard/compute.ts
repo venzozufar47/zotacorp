@@ -19,7 +19,7 @@ import {
   type MetricStatus,
   type UnitStatus,
 } from "./engine";
-import { classifyCategories, rentLooksMissing, usesPosRegime, type CategoryRow, type FinanceBreakdown } from "./finance";
+import { applyRentAccrual, classifyCategories, rentLooksMissing, usesPosRegime, type CategoryRow, type FinanceBreakdown } from "./finance";
 import { cakeHpp } from "./cake-hpp";
 import { listCakeOrdersNet } from "@/lib/scorecard/cake-revenue";
 
@@ -559,7 +559,7 @@ async function computeStudio(deps: ComputeDeps, unit: ScUnit, month: string, onl
   // ── Keuangan ──
   const finFor = (m: string): FinanceBreakdown | null => {
     const br = finance.yeobo.get(ymKey(m))?.byBranch[unit.pnl_branch];
-    return br ? classifyCategories(toCategoryRows(br.byCategory)) : null;
+    return br ? applyRentAccrual(classifyCategories(toCategoryRows(br.byCategory)), unit.pnl_branch, ymKey(m)) : null;
   };
   const fin = finFor(month);
   if (!fin) {
@@ -586,6 +586,7 @@ async function computeStudio(deps: ComputeDeps, unit: ScUnit, month: string, onl
         pembilang_sewa_rp: rd(fin.rent),
         penyebut_revenue_rp: rd(revenue),
         peringatan: rentMissing ? "Tidak ada biaya sewa tercatat bulan ini (dibayar di muka / belum dicatat?): tidak dinilai." : undefined,
+        catatan: fin.rentCash !== undefined ? `Sewa dibagi rata per bulan dari pembayaran tahunan (kas bulan ini: Rp${Math.round(fin.rentCash).toLocaleString("id-ID")}).` : undefined,
       })
     );
 

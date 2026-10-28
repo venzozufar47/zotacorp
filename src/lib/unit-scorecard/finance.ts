@@ -27,6 +27,8 @@ export interface FinanceBreakdown {
   cogs: number;
   labor: number;
   rent: number;
+  /** Hanya terisi bila `rent` diganti jatah bulanan (lihat applyRentAccrual): sewa yang tercatat di kas bulan itu. */
+  rentCash?: number;
   fees: number;
   refund: number;
   directOpex: number;
@@ -103,6 +105,30 @@ export function classifyCategories(rows: CategoryRow[]): FinanceBreakdown {
 export const POS_REGIME_START = "2026-05-01";
 export function usesPosRegime(monthIso: string): boolean {
   return monthIso.slice(0, 10) >= POS_REGIME_START;
+}
+
+/**
+ * Sewa yang dibayar sekali (setahun) tetapi menjadi beban tiap bulan masa sewa. Tanpa ini, bulan bayar tampak
+ * sewa >100% omzet dan bulan lain Rp0. `from`/`to` = bulan pertama/terakhir masa sewa ("YYYY-MM", inklusif).
+ * Perpanjangan sewa = tambah baris baru di sini; di luar masa sewa kembali ke pencatatan kas.
+ */
+export interface RentAccrual {
+  branch: string;
+  from: string;
+  to: string;
+  annualAmount: number;
+}
+
+export const RENT_ACCRUALS: RentAccrual[] = [
+  // Yeotem (Tembalang): Rp25 jt/tahun dibayar tiap Januari; Rp10 jt tercatat di bank 2 Jan 2026, sisanya tak lewat rekening.
+  { branch: "Tembalang", from: "2026-01", to: "2026-12", annualAmount: 25_000_000 },
+];
+
+/** Ganti sewa kas bulan itu dengan jatah bulanan (annual ÷ 12) bila bulan tersebut ada dalam masa sewa. */
+export function applyRentAccrual(fin: FinanceBreakdown, branch: string, ym: string, rules: RentAccrual[] = RENT_ACCRUALS): FinanceBreakdown {
+  const rule = rules.find((r) => r.branch === branch && ym >= r.from && ym <= r.to);
+  if (!rule) return fin;
+  return { ...fin, rent: Math.round(rule.annualAmount / 12), rentCash: fin.rent };
 }
 
 /**
