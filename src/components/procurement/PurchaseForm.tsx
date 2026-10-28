@@ -38,12 +38,14 @@ import {
   WIZARD_ROOT,
   type WizardNode,
 } from "@/lib/procurement/categories";
+import { findSimilarMaterials } from "@/lib/procurement/similar-materials";
 import { needsPriceReview, priceDeviation, PRICE_REVIEW_THRESHOLD } from "@/lib/procurement/purchase-math";
 import {
   createPurchase,
   discardPurchaseReceipt,
   proposeMaterial,
   uploadPurchaseReceipt,
+  type RecentExpense,
   type MoneySource,
   type PurchaseFormData,
   type PurchaseLineInput,
@@ -107,6 +109,29 @@ export function PurchaseForm({
   const clientIdRef = useRef<string>(crypto.randomUUID());
 
   const total = lines.reduce((s, l) => s + l.total, 0);
+
+  // Peringatan duplikat: baris dengan nominal yang sama dengan pengeluaran 36 jam terakhir (nota, pengeluaran shift,
+  // catatan manual) — penyebab umum pencatatan ganda yang membuat saldo pengadaan minus. Nota yang baru disimpan di
+  // halaman ini ikut dihitung, karena `data` tidak dimuat ulang.
+  const [sessionExpenses, setSessionExpenses] = useState<RecentExpense[]>([]);
+  const dups = useMemo(() => {
+    const pool = [...data.recentExpenses, ...sessionExpenses];
+    const out: { amount: number; label: string; at: string }[] = [];
+    for (const l of lines) {
+      const hit = pool.find((e) => Math.abs(e.amount - l.total) < 0.5);
+      if (hit && !out.some((o) => o.amount === hit.amount)) out.push(hit);
+    }
+    return out;
+  }, [lines, data.recentExpenses, sessionExpenses]);
+  const dupText = (d: { amount: number; label: string; at: string }) =>
+    `${formatRp(d.amount)}${d.label ? ` (“${d.label.slice(0, 40)}”)` : ""}, tercatat ${new Date(d.at).toLocaleString("id-ID", {
+      timeZone: "Asia/Jakarta",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+
   const missing = !source
     ? "Pilih sumber uang dulu"
     : !receiptPath
@@ -145,6 +170,13 @@ export function PurchaseForm({
 
   function save() {
     if (missing || !receiptPath || !source) return;
+    if (
+      dups.length > 0 &&
+      !confirm(
+        `Nominal ini sudah pernah tercatat:\n${dups.map((d) => `• ${dupText(d)}`).join("\n")}\n\nBila ini belanja yang sama, JANGAN disimpan lagi (saldo jadi minus). Tetap simpan sebagai nota baru?`
+      )
+    )
+      return;
     const payload: PurchaseLineInput[] = lines.map((l) =>
       l.kind === "bahan"
         ? { kind: "bahan", materialId: l.material.id, qty: l.qty, unit: l.unit, total: l.total }
@@ -166,6 +198,15 @@ export function PurchaseForm({
       }
       if (receiptPreview) URL.revokeObjectURL(receiptPreview);
       clientIdRef.current = crypto.randomUUID();
+      const nowIso = new Date().toISOString();
+      setSessionExpenses((s) => [
+        ...s,
+        ...lines.map((l) => ({
+          amount: l.total,
+          at: nowIso,
+          label: l.kind === "lain" ? l.description : l.material.name,
+        })),
+      ]);
       setDone({ total: res.data.total, lines: lines.length, flagged: res.data.flagged, source });
       setLines([]);
       setReceiptPath(null);
@@ -519,6 +560,11 @@ export function PurchaseForm({
                 Melebihi saldo uang pengadaan ({formatRp(access.walletBalance)}): saldo jadi −{formatRp(total - access.walletBalance)}
               </p>
             )}
+            {dups.length > 0 && (
+              <p className="text-[11px] font-semibold text-destructive">
+                Mungkin dobel: {dups.map(dupText).join(" · ")}. Cek dulu sebelum menyimpan.
+              </p>
+            )}
             {source === "shopee" && access.shopeeBalance != null && total > access.shopeeBalance && (
               <p className="text-[11px] font-semibold text-destructive">
                 Melebihi Saldo Shopee ({formatRp(access.shopeeBalance)}): saldo jadi −{formatRp(total - access.shopeeBalance)}. Sudah tambah
@@ -721,6 +767,11 @@ function BahanComposer({
         businessUnit={businessUnit}
         usageUnits={usageUnits}
         initialName={query}
+        materials={materials}
+        onUseExisting={(m) => {
+          setProposing(false);
+          pick(m);
+        }}
         onCancel={() => setProposing(false)}
         onCreated={(m) => {
           onAddMaterial(m);
@@ -923,16 +974,21 @@ function ProposeMaterial({
   businessUnit,
   usageUnits,
   initialName,
+  materials,
+  onUseExisting,
   onCancel,
   onCreated,
 }: {
   businessUnit: string;
   usageUnits: { code: string; label: string }[];
   initialName: string;
+  materials: PurchaseMaterialOption[];
+  onUseExisting: (m: PurchaseMaterialOption) => void;
   onCancel: () => void;
   onCreated: (m: PurchaseMaterialOption) => void;
 }) {
   const [name, setName] = useState(initialName);
+  const similar = useMemo(() => findSimilarMaterials(name, materials), [name, materials]);
   const [purchaseUnit, setPurchaseUnit] = useState("");
   const [content, setContent] = useState("");
   const [usageUnit, setUsageUnit] = useState(usageUnits[0]?.code ?? "gram");
@@ -984,6 +1040,30 @@ function ProposeMaterial({
         Langsung bisa dipakai di nota ini. Owner akan merapikan nama &amp; satuannya sebelum dipakai di resep.
       </p>
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama bahan (mis. Tepung Segitiga Biru)" maxLength={80} />
+      {similar.length > 0 && (
+        <div className="space-y-1.5 rounded-xl border border-warning/60 bg-warning/10 px-3 py-2.5">
+          <p className="flex items-center gap-1.5 text-xs font-semibold">
+            <AlertTriangle size={13} className="shrink-0" /> Mungkin bahan ini sudah ada — cek dulu:
+          </p>
+          <ul className="divide-y divide-border/60">
+            {similar.map((m) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onClick={() => onUseExisting(m)}
+                  className="flex w-full items-center gap-2 py-1.5 text-left hover:opacity-80"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{m.name}</span>
+                    <span className="block text-[11px] text-muted-foreground">{refPriceLabel(m)}</span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-primary">Pakai ini</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">Satuan beli</span>
