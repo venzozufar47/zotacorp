@@ -393,13 +393,20 @@ export function BranchCardsGrid({
     });
   }
 
-  // Cabang paling bermasalah di depan: merah → kuning → abu-abu → hijau; seri → lebih banyak temuan.
+  // Urutan kartu TETAP (sama dengan urutan unit di scorecard) supaya posisi tidak berpindah tiap bulan berganti status.
+  const FIXED_ORDER = ["haengbocake_semarang", "haengbocake_pare", "yeobo_tlogosari", "yeobo_tembalang", "yeobo_jebres"];
+  const pos = (code: string) => {
+    const i = FIXED_ORDER.indexOf(code);
+    return i === -1 ? FIXED_ORDER.length : i;
+  };
+  const ordered = [...branches].sort((a, b) => pos(a.unitCode) - pos(b.unitCode));
+  // Cabang yang dipilih otomatis (sebelum Anda mengklik) tetap yang paling bermasalah: merah → kuning → abu-abu → hijau; seri → lebih banyak temuan.
   const rank = (code: string) => {
     const s = scUnit(code)?.status;
     return s === "red" ? 0 : s === "yellow" ? 1 : s === "green" ? 3 : 2;
   };
-  const ordered = [...branches].sort((a, b) => rank(a.unitCode) - rank(b.unitCode) || b.flags.length - a.flags.length);
-  const selected = ordered.find((b) => b.key === selectedKey) ?? ordered[0] ?? null;
+  const worst = [...branches].sort((a, b) => rank(a.unitCode) - rank(b.unitCode) || b.flags.length - a.flags.length)[0] ?? null;
+  const selected = ordered.find((b) => b.key === selectedKey) ?? worst;
   const selectedUnit = selected ? scUnit(selected.unitCode) : undefined;
 
   const TOP_BORDER: Record<string, string> = {
@@ -413,7 +420,7 @@ export function BranchCardsGrid({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="font-display text-[15px] font-semibold tracking-[-0.015em] text-foreground lg:text-base">Pilih cabang</div>
-          <div className="text-[11px] text-muted-foreground">Cabang yang paling perlu perhatian di depan · klik untuk rincian lengkap</div>
+          <div className="text-[11px] text-muted-foreground">Urutan tetap · cabang paling bermasalah terpilih otomatis · klik untuk rincian lengkap</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {sc && sc.periods.length > 0 && (
