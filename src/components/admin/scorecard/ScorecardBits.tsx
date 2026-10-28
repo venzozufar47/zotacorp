@@ -67,8 +67,11 @@ export function TrendChart({
   const H = 64;
   const padX = 8;
   const padY = 8;
-  const lo = Math.min(...pts.map((p) => p.v));
-  const hi = Math.max(...pts.map((p) => p.v));
+  // Skala dijangkarkan pada ambang: ambang yang diketahui selalu ikut dalam rentang (bukan hanya data), supaya jarak ke
+  // ambang terbaca benar dan zigzag kecil di dalam satu zona tidak tampak seperti lonjakan. Data di luar ambang memperlebar rentang.
+  const anchors = [green, red].filter((t): t is number => t != null);
+  const lo = Math.min(...pts.map((p) => p.v), ...anchors);
+  const hi = Math.max(...pts.map((p) => p.v), ...anchors);
   const span = hi - lo || Math.max(Math.abs(hi) * 0.1, 1);
   const min = lo - span * 0.25;
   const max = hi + span * 0.25;
