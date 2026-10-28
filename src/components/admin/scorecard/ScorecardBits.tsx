@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { HomeUnitCard, HomeMetricCell } from "@/lib/unit-scorecard/persist";
 import type { MetricChange } from "@/lib/unit-scorecard/changes";
@@ -165,12 +166,21 @@ export function ScorecardPanel({ unit, months, changes }: { unit: HomeUnitCard; 
         return (
           <div key={m.code} className={cn("rounded-xl border bg-card p-3", m.isFourWall ? "border-foreground/30" : "border-border/70")}>
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate text-[12px] font-semibold text-foreground">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <div className="min-w-0 truncate text-[12px] font-semibold text-foreground">
                   {m.label}
                   {m.isFourWall && <span className="ml-1.5 rounded bg-accent px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--teal-700)]">penentu</span>}
                 </div>
-                {range && <div className="text-[10.5px] text-muted-foreground">{range}</div>}
+                {range && (
+                  <span className="group relative shrink-0">
+                    <button type="button" aria-label={`Ambang: ${range}`} className="grid size-4 place-items-center rounded-full text-muted-foreground hover:text-foreground focus-visible:text-foreground">
+                      <Info size={13} />
+                    </button>
+                    <span role="tooltip" className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 hidden w-max max-w-[220px] -translate-x-1/2 whitespace-normal rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] font-normal leading-snug text-foreground shadow-md group-hover:block group-focus-within:block">
+                      {range}
+                    </span>
+                  </span>
+                )}
               </div>
               <span className={cn("shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-bold leading-none", STATUS_TONE[m.status])}>
                 {STATUS_ICON[m.status]} {METRIC_STATUS_LABEL[m.status]}
