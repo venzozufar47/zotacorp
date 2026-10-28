@@ -38,7 +38,19 @@ const nextConfig: NextConfig = {
    * Mark it external so Next traces it from node_modules instead of
    * trying to bundle via turbopack, which previously broke the worker.
    */
-  serverExternalPackages: ["unpdf", "pdfjs-dist", "web-push"],
+  serverExternalPackages: ["unpdf", "pdfjs-dist", "web-push", "sharp"],
+  /**
+   * `sharp` memuat libvips native (`@img/sharp-libvips-*`) lewat dlopen, yang tidak terdeteksi oleh
+   * tracer — di Vercel `libvips-cpp.so` tidak ikut ter-bundle (ERR_DLOPEN_FAILED). Sertakan paksa
+   * untuk rute cron backup (satu-satunya pemakai sharp lewat legacy-compress).
+   */
+  outputFileTracingIncludes: {
+    "/api/cron/backup-database": [
+      "./node_modules/sharp/**/*",
+      "./node_modules/@img/sharp-linux-x64/**/*",
+      "./node_modules/@img/sharp-libvips-linux-x64/**/*",
+    ],
+  },
   /**
    * POS per-cabang: URL publik cantik `/pospare` & `/possemarang`
    * di-rewrite (internal, browser tetap menampilkan URL asli) ke satu

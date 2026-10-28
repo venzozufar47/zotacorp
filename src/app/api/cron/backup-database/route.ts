@@ -24,7 +24,6 @@ import {
   sweepCleaningReviewAttachmentRetention,
 } from "@/lib/storage/cleaning-retention";
 import { sweepMediaRetention } from "@/lib/storage/media-retention";
-import { sweepLegacyCompress } from "@/lib/storage/legacy-compress";
 import { checkCronAuth } from "@/lib/utils/cron-auth";
 
 export async function GET(req: Request) {
@@ -45,7 +44,14 @@ export async function GET(req: Request) {
   const media = await sweepMediaRetention().catch(() => []);
   const gc = await gcOrphanStorage().catch(() => []);
   // Kompres bertahap foto lama (dibatasi 20 MB unduhan & 60 dtk per malam; lihat legacy-compress.ts).
-  const legacyCompress = await sweepLegacyCompress().catch(() => null);
+  // Import dinamis: legacy-compress memuat `sharp` (native). Kalau libvips gagal dimuat di runtime,
+  // hanya langkah ini yang mati — backup database tetap jalan.
+  const legacyCompress = await import("@/lib/storage/legacy-compress")
+    .then((m) => m.sweepLegacyCompress())
+    .catch((e) => {
+      console.error("[backup-database] sweepLegacyCompress gagal", e);
+      return null;
+    });
 
   const check = await dueForCron();
   if (!check.due) {
