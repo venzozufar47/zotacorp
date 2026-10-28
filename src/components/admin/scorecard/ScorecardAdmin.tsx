@@ -32,6 +32,7 @@ const btnPrimary = "h-9 rounded-lg border-2 border-foreground bg-primary px-3 te
 function StatusPanel({ items, onChanged }: { items: DataStatusItem[]; onChanged: () => void }) {
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
 
   function refresh(month: string, label: string) {
     setBusy(month);
@@ -44,8 +45,34 @@ function StatusPanel({ items, onChanged }: { items: DataStatusItem[]; onChanged:
     });
   }
 
+  // Satu bulan per panggilan, berurutan: tiap panggilan tetap pendek dan satu bulan gagal tak menghentikan yang lain.
+  function refreshAll() {
+    start(async () => {
+      let created = 0;
+      let failed = 0;
+      for (let i = 0; i < items.length; i++) {
+        setBusy(items[i].month);
+        setProgress(`${i + 1}/${items.length}`);
+        const r = await refreshScorecardNow(items[i].month);
+        if (!r.ok) failed += 1;
+        else if (r.data?.created) created += 1;
+      }
+      setBusy(null);
+      setProgress(null);
+      const msg = `Semua bulan dihitung ulang: ${created} bulan berubah${failed ? `, ${failed} gagal` : ""}`;
+      if (failed) toast.error(msg);
+      else toast.success(msg);
+      onChanged();
+    });
+  }
+
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <button type="button" onClick={refreshAll} disabled={pending || items.length === 0} className={btnPrimary}>
+          {progress ? `Menghitung ${progress}…` : "Hitung ulang semuanya"}
+        </button>
+      </div>
       <p className="text-[12.5px] text-muted-foreground">
         Scorecard dihitung ulang otomatis tiap malam (sekitar 02.30 WIB) untuk 3 bulan terakhir yang sudah berakhir, jadi transaksi yang terlambat dicatat ikut terhitung. Versi baru hanya dibuat bila ada angka yang berubah, dan versi lama tetap tersimpan. Tidak perlu menutup atau membuka buku.
       </p>
