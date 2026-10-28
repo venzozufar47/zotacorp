@@ -141,6 +141,9 @@ function PurchaseCard({ p, admin }: { p: PurchaseView; admin: boolean }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
             {p.vendor || "Tanpa nama toko"}
+            {p.moneySource === "pengadaan" && (
+              <span className="ml-2 rounded-full bg-success/15 px-2 py-0.5 align-middle text-[10px] font-semibold">Uang pengadaan</span>
+            )}
             {p.moneySource === "laci" && (
               <span className="ml-2 rounded-full bg-warning/20 px-2 py-0.5 align-middle text-[10px] font-semibold">Uang laci</span>
             )}
